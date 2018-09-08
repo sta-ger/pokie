@@ -1,0 +1,19 @@
+{
+  "name": "slotify",
+  "version": "1.0.0",
+  "description": "A video slot game session framework for JavaScript",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "generate-barrels": "barrelsby --delete -d ./src",
+    "prepublish": "npm run build",
+    "build": "npm run generate-barrels && tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "sta-ger",
+  "license": "ISC",
+  "dependencies": {
+    "barrelsby": "^1.0.2",
+    "typescript": "^3.0.1"
+  }
+}
