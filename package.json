@@ -10,6 +10,13 @@
     "build": "npm run generate-barrels && tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "files": [
+    "dist/",
+    "src/",
+    "package.json",
+    "README.md",
+    "tsconfig.json"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sta-ger/slotify.js.git"
