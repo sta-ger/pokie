@@ -1,5 +1,5 @@
 {
-  "name": "slotify",
+  "name": "slotify.js",
   "version": "1.0.0",
   "description": "A video slot game session framework for JavaScript",
   "main": "dist/index.js",
