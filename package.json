@@ -10,7 +10,22 @@
     "build": "npm run generate-barrels && tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "sta-ger",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sta-ger/slotify.js.git"
+  },
+  "keywords": [
+    "TypeScript",
+    "JavaScript",
+    "Casino",
+    "Slot"
+  ],
+  "author": {
+    "name": "sta-ger",
+    "email": "pascaldelger@gmail.com",
+    "url": "https://github.com/sta-ger"
+  },
+  "homepage": "https://github.com/sta-ger/slotify.js",
   "license": "ISC",
   "dependencies": {
     "barrelsby": "^1.0.2",
