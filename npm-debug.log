@@ -1,0 +1,118 @@
+0 info it worked if it ends with ok
+1 verbose cli [ '/usr/local/bin/node', '/usr/local/bin/npm', 'publish' ]
+2 info using npm@3.10.10
+3 info using node@v6.11.4
+4 verbose publish [ '.' ]
+5 silly cache add args [ '.', null ]
+6 verbose cache add spec .
+7 silly cache add parsed spec Result {
+7 silly cache add   raw: '.',
+7 silly cache add   scope: null,
+7 silly cache add   escapedName: null,
+7 silly cache add   name: null,
+7 silly cache add   rawSpec: '.',
+7 silly cache add   spec: '/Users/pascaldelger/Work/slotify.js',
+7 silly cache add   type: 'directory' }
+8 verbose addLocalDirectory /Users/pascaldelger/.npm/slotify.js/1.0.0/package.tgz not in flight; packing
+9 verbose correctMkdir /Users/pascaldelger/.npm correctMkdir not in flight; initializing
+10 info lifecycle slotify.js@1.0.0~prepublish: slotify.js@1.0.0
+11 verbose lifecycle slotify.js@1.0.0~prepublish: unsafe-perm in lifecycle true
+12 verbose lifecycle slotify.js@1.0.0~prepublish: PATH: /usr/local/lib/node_modules/npm/bin/node-gyp-bin:/Users/pascaldelger/Work/slotify.js/node_modules/.bin:/anaconda2/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+13 verbose lifecycle slotify.js@1.0.0~prepublish: CWD: /Users/pascaldelger/Work/slotify.js
+14 silly lifecycle slotify.js@1.0.0~prepublish: Args: [ '-c', 'npm run build' ]
+15 silly lifecycle slotify.js@1.0.0~prepublish: Returned: code: 0  signal: null
+16 verbose tar pack [ '/Users/pascaldelger/.npm/slotify.js/1.0.0/package.tgz',
+16 verbose tar pack   '/Users/pascaldelger/Work/slotify.js' ]
+17 verbose tarball /Users/pascaldelger/.npm/slotify.js/1.0.0/package.tgz
+18 verbose folder /Users/pascaldelger/Work/slotify.js
+19 verbose addLocalTarball adding from inside cache /Users/pascaldelger/.npm/slotify.js/1.0.0/package.tgz
+20 verbose correctMkdir /Users/pascaldelger/.npm correctMkdir not in flight; initializing
+21 silly cache afterAdd slotify.js@1.0.0
+22 verbose afterAdd /Users/pascaldelger/.npm/slotify.js/1.0.0/package/package.json not in flight; writing
+23 verbose correctMkdir /Users/pascaldelger/.npm correctMkdir not in flight; initializing
+24 verbose afterAdd /Users/pascaldelger/.npm/slotify.js/1.0.0/package/package.json written
+25 silly publish { name: 'slotify.js',
+25 silly publish   version: '1.0.0',
+25 silly publish   description: 'A video slot game session framework for JavaScript',
+25 silly publish   main: 'dist/index.js',
+25 silly publish   types: 'dist/index.d.ts',
+25 silly publish   scripts:
+25 silly publish    { 'generate-barrels': 'barrelsby --delete -d ./src',
+25 silly publish      prepublish: 'npm run build',
+25 silly publish      build: 'npm run generate-barrels && tsc',
+25 silly publish      test: 'echo "Error: no test specified" && exit 1' },
+25 silly publish   files: [ 'dist/', 'src/', 'package.json', 'README.md', 'tsconfig.json' ],
+25 silly publish   repository:
+25 silly publish    { type: 'git',
+25 silly publish      url: 'git+https://github.com/sta-ger/slotify.js.git' },
+25 silly publish   keywords: [ 'TypeScript', 'JavaScript', 'Casino', 'Slot' ],
+25 silly publish   author:
+25 silly publish    { name: 'sta-ger',
+25 silly publish      email: 'pascaldelger@gmail.com',
+25 silly publish      url: 'https://github.com/sta-ger' },
+25 silly publish   homepage: 'https://github.com/sta-ger/slotify.js',
+25 silly publish   license: 'ISC',
+25 silly publish   dependencies: { barrelsby: '^1.0.2', typescript: '^3.0.1' },
+25 silly publish   readme: '# slotify.js\nA video slot game session framework for JavaScript\n',
+25 silly publish   readmeFilename: 'README.md',
+25 silly publish   gitHead: 'f76a0675586ec47e3b443f649f05f21178d143cb',
+25 silly publish   bugs: { url: 'https://github.com/sta-ger/slotify.js/issues' },
+25 silly publish   _id: 'slotify.js@1.0.0',
+25 silly publish   _shasum: '468485857807f9d5c32ed973aa11000a053aa274',
+25 silly publish   _from: '.' }
+26 verbose getPublishConfig undefined
+27 silly mapToRegistry name slotify.js
+28 silly mapToRegistry using default registry
+29 silly mapToRegistry registry https://registry.npmjs.org/
+30 silly mapToRegistry data Result {
+30 silly mapToRegistry   raw: 'slotify.js',
+30 silly mapToRegistry   scope: null,
+30 silly mapToRegistry   escapedName: 'slotify.js',
+30 silly mapToRegistry   name: 'slotify.js',
+30 silly mapToRegistry   rawSpec: '',
+30 silly mapToRegistry   spec: 'latest',
+30 silly mapToRegistry   type: 'tag' }
+31 silly mapToRegistry uri https://registry.npmjs.org/slotify.js
+32 verbose publish registryBase https://registry.npmjs.org/
+33 silly publish uploading /Users/pascaldelger/.npm/slotify.js/1.0.0/package.tgz
+34 verbose request uri https://registry.npmjs.org/slotify.js
+35 verbose request sending authorization for write operation
+36 info attempt registry request try #1 at 8:21:31 AM
+37 verbose request using bearer token for auth
+38 verbose request id 20a1d99f091bdd0c
+39 http request PUT https://registry.npmjs.org/slotify.js
+40 http 400 https://registry.npmjs.org/slotify.js
+41 verbose headers { date: 'Thu, 13 Sep 2018 06:21:35 GMT',
+41 verbose headers   'content-type': 'application/json',
+41 verbose headers   'content-length': '87',
+41 verbose headers   connection: 'keep-alive',
+41 verbose headers   'set-cookie': [ '__cfduid=d03fa165df4adf89dfb07900510c5be561536819694; expires=Fri, 13-Sep-19 06:21:34 GMT; path=/; domain=.registry.npmjs.org; HttpOnly' ],
+41 verbose headers   'cf-ray': '459883b20c1fb823-WAW',
+41 verbose headers   'expect-ct': 'max-age=604800, report-uri="https://report-uri.cloudflare.com/cdn-cgi/beacon/expect-ct"',
+41 verbose headers   vary: 'Accept-Encoding',
+41 verbose headers   server: 'cloudflare' }
+42 verbose request invalidating /Users/pascaldelger/.npm/registry.npmjs.org/slotify.js on PUT
+43 error publish Failed PUT 400
+44 verbose stack Error: Cannot publish over previously published version "1.0.0". : slotify.js
+44 verbose stack     at makeError (/usr/local/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:302:12)
+44 verbose stack     at CachingRegistryClient.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:290:14)
+44 verbose stack     at Request._callback (/usr/local/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:210:14)
+44 verbose stack     at Request.self.callback (/usr/local/lib/node_modules/npm/node_modules/request/request.js:187:22)
+44 verbose stack     at emitTwo (events.js:106:13)
+44 verbose stack     at Request.emit (events.js:191:7)
+44 verbose stack     at Request.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/request/request.js:1048:10)
+44 verbose stack     at emitOne (events.js:96:13)
+44 verbose stack     at Request.emit (events.js:188:7)
+44 verbose stack     at IncomingMessage.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/request/request.js:969:12)
+45 verbose statusCode 400
+46 verbose pkgid slotify.js
+47 verbose cwd /Users/pascaldelger/Work/slotify.js
+48 error Darwin 17.7.0
+49 error argv "/usr/local/bin/node" "/usr/local/bin/npm" "publish"
+50 error node v6.11.4
+51 error npm  v3.10.10
+52 error code E400
+53 error Cannot publish over previously published version "1.0.0". : slotify.js
+54 error If you need help, you may report this error at:
+54 error     <https://github.com/npm/npm/issues>
+55 verbose exit [ 1, true ]
