@@ -1,6 +1,6 @@
 {
   "name": "slotify.js",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A video slot game session framework for JavaScript",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,8 +9,6 @@
     "prepublish": "npm run build",
     "build": "npm run generate-barrels && tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
-
-
     "preversion": "git checkout master && git merge develop",
     "version": "npm run build && git add -A",
     "postversion": "git checkout develop && git merge master"
