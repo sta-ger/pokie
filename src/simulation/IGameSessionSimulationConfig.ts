@@ -6,7 +6,7 @@ export interface IGameSessionSimulationConfig {
     
     numberOfRounds?: number;
     
-    changeBetScenario: string;
+    changeBetScenario?: string;
     
     beforePlayCallback?: () => void;
     
