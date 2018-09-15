@@ -54,7 +54,7 @@ export class Slotify {
                 protected createSessionModel(): IGameSessionModel {
                     let r: IGameSessionModel;
                     r = super.createSessionModel();
-                    if (config.creditsAmount !== undefined) {
+                    if (config && config.creditsAmount !== undefined) {
                         r.credits = config.creditsAmount;
                     }
                     return r;
