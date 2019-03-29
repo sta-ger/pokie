@@ -7,10 +7,6 @@ import {ReelGameWithFreeGamesSessionFlow} from "./flow/ReelGameWithFreeGamesSess
 
 export class ReelGameWithFreeGamesSession extends ReelGameSession implements IReelGameWithFreeGamesSession {
     
-    constructor() {
-        super();
-    }
-    
     public getFreeGameNum(): number {
         return (<IReelGameWithFreeGamesSessionModel>this._sessionModel).freeGamesNum;
     }

@@ -1,16 +1,10 @@
 import {GameSession} from "../../GameSession";
 import {ReelGameSessionParameters} from "./ReelGameSessionParameters";
 import {GameSessionParameters} from "../../GameSessionParameters";
-import {ReelGameSessionFlow} from "./flow/ReelGameSessionFlow";
-import {IGameSessionFlow} from "../../flow/IGameSessionFlow";
 import {IReelGameSession} from "./IReelGameSession";
 import {IReelGameSessionFlow} from "./flow/IReelGameSessionFlow";
 
 export class ReelGameSession extends GameSession implements IReelGameSession {
-    
-    constructor() {
-        super();
-    }
     
     protected initializeGlobalSessionParameters(): void {
         let itemId: string;
@@ -91,10 +85,6 @@ export class ReelGameSession extends GameSession implements IReelGameSession {
     
     public getReelsNumber(): number {
         return ReelGameSessionParameters.reelsNumber;
-    }
-    
-    protected createFlow(): IGameSessionFlow {
-        return new ReelGameSessionFlow();
     }
     
 }

@@ -13,6 +13,23 @@
     "version": "npm run build && git add -A",
     "postversion": "git checkout develop && git merge master"
   },
+  "jest": {
+    "transform": {
+      "^.+\\.(t|j)sx?$": "ts-jest"
+    },
+    "testPathIgnorePatterns": [
+      "./lib"
+    ],
+    "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$",
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "jsx",
+      "json",
+      "node"
+    ]
+  },
   "files": [
     "dist/",
     "src/",
@@ -38,7 +55,10 @@
   "homepage": "https://github.com/sta-ger/slotify.js",
   "license": "ISC",
   "dependencies": {
+    "@types/jest": "^24.0.11",
     "barrelsby": "^1.0.2",
+    "jest": "^24.5.0",
+    "ts-jest": "^24.0.0",
     "typescript": "^3.0.1"
   }
 }

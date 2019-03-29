@@ -1,16 +1,16 @@
 import {IGameSession} from "./IGameSession";
 import {IGameSessionFlow} from "./flow/IGameSessionFlow";
 import {IGameSessionModel} from "./IGameSessionModel";
-import {GameSessionFlow} from "./flow/GameSessionFlow";
 import {GameSessionParameters} from "./GameSessionParameters";
 
 export class GameSession implements IGameSession {
-    protected _flow: IGameSessionFlow;
-    protected _sessionModel: IGameSessionModel;
     
-    constructor() {
+    constructor(
+        protected _flow: IGameSessionFlow,
+        protected _sessionModel: IGameSessionModel
+    ) {
+        this._flow.create(this._sessionModel);
         this.initializeGlobalSessionParameters();
-        this.initialize();
     }
     
     protected initializeGlobalSessionParameters(): void {
@@ -28,21 +28,7 @@ export class GameSession implements IGameSession {
             100
         ];
     }
-    
-    protected initialize(): void {
-        this.initializeSessionModel();
-        this.initializeFlow();
-    }
-    
-    protected initializeFlow(): void {
-        this._flow = this.createFlow();
-        this._flow.create(this._sessionModel);
-    }
-    
-    protected initializeSessionModel(): void {
-        this._sessionModel = this.createSessionModel();
-    }
-    
+
     public getAcceptedBets(): number[] {
         return GameSessionParameters.availableBets;
     }
@@ -70,17 +56,5 @@ export class GameSession implements IGameSession {
     public canPlayNextGame(): boolean {
         return this._flow.canPlayNextGame();
     }
-    
-    protected createFlow(): IGameSessionFlow {
-        return new GameSessionFlow();
-    }
-    
-    protected createSessionModel(): IGameSessionModel {
-        return {
-            credits: 10000,
-            bet: 1,
-            winning: 0
-        };
-    }
-    
+
 }
