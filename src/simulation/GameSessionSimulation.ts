@@ -62,7 +62,7 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     
     protected setBetOnCantPlayNextBet(): void {
         let bets: number[];
-        bets = this._session.getAcceptedBets();
+        bets = this._session.getAvailableBets();
         bets.sort();
         this._session.setBet(bets[0]);
     }
@@ -89,7 +89,7 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     protected setRandomBet(): void {
         let bet: number;
         let bets: number[];
-        bets = this._session.getAcceptedBets();
+        bets = this._session.getAvailableBets();
         bet = bets[Math.floor(Math.random() * bets.length)];
         this._session.setBet(bet);
     }

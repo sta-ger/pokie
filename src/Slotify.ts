@@ -3,6 +3,7 @@ import {ReelGameSessionParameters} from "./session/videogames/reelgames/ReelGame
 import {IReelGameSession} from "./session/videogames/reelgames/IReelGameSession";
 import {GameSessionParameters} from "./session/GameSessionParameters";
 import {IGameSessionModel} from "./session/IGameSessionModel";
+import {IReelGameSessionConfig} from "./session/videogames/reelgames/IReelGameSessionConfig";
 
 export class Slotify {
     
@@ -68,38 +69,5 @@ export class Slotify {
     
 }
 
-export interface IReelGameSessionConfig extends IGameSessionConfig {
-    
-    paytable?: {
-        [bet: number]: {
-            [itemId: string]: {
-                [times: number]: number
-            }
-        }
-    };
-    
-    availableItems?: string[];
-    
-    wildItemId?: string;
-    
-    scatters?: any[][];
-    
-    reelsNumber?: number;
-    
-    reelsItemsNumber?: number;
-    
-    reelsItemsSequences?: string[][];
-    
-    linesDirections?: {};
-    
-}
 
-export interface IGameSessionConfig {
-    
-    customSessionClass?: any;
-    
-    availableBets?: number[];
-    
-    creditsAmount?: number;
-    
-}
+

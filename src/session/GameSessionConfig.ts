@@ -6,6 +6,8 @@ export class GameSessionConfig implements IGameSessionConfig {
         1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100
     ];
 
-    creditsAmount?: number = 1000;
+    public creditsAmount?: number = 1000;
+
+    public bet?: number = this.availableBets[0];
 
 }

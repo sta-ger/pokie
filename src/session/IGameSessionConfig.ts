@@ -4,4 +4,6 @@ export interface IGameSessionConfig {
 
     creditsAmount?: number;
 
+    bet?: number;
+
 }

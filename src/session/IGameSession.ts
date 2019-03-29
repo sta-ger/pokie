@@ -2,7 +2,9 @@ export interface IGameSession  {
     
     getCreditsAmount(): number;
     
-    getAcceptedBets(): number[];
+    getAvailableBets(): number[];
+
+    isBetAvailable(bet: number): boolean;
     
     getWinningAmount(): number;
     

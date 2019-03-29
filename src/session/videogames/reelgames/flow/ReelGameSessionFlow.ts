@@ -5,7 +5,6 @@ import {ReelGameSessionReelsController} from "./reelscontroller/ReelGameSessionR
 import {IGameSessionModel} from "../../../IGameSessionModel";
 import {IReelGameSessionWinningLineModel} from "./IReelGameSessionWinningLineModel";
 import {IReelGameSessionWinCalculator} from "./wincalculator/IReelGameSessionWinCalculator";
-import {IReelGameSessionWinningScatterModel} from "./IReelGameSessionWinningScatterModel";
 import {ReelGameSessionWinCalculator} from "./wincalculator/ReelGameSessionWinCalculator";
 
 export class ReelGameSessionFlow extends GameSessionFlow implements IReelGameSessionFlow {
