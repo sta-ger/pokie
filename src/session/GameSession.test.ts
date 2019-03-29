@@ -10,7 +10,6 @@ describe("GameSession", () => {
         expect(session.getAvailableBets()).toEqual(config.availableBets);
         expect(session.getBet()).toBe(config.availableBets[0]);
         expect(session.getCreditsAmount()).toBe(1000);
-        expect(session.getWinningAmount()).toBe(0);
     });
 
     it("creates session with specified config", () => {
@@ -23,7 +22,6 @@ describe("GameSession", () => {
         expect(session.getAvailableBets()).toEqual(config.availableBets);
         expect(session.getBet()).toBe(config.availableBets[0]);
         expect(session.getCreditsAmount()).toBe(5000);
-        expect(session.getWinningAmount()).toBe(0);
     });
 
     it("creates session with wrong initial bet", () => {

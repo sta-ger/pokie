@@ -1,9 +1,9 @@
 export interface IGameSessionConfig {
 
-    availableBets?: number[];
+    availableBets: number[];
 
-    creditsAmount?: number;
+    creditsAmount: number;
 
-    bet?: number;
+    bet: number;
 
 }

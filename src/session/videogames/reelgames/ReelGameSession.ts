@@ -1,90 +1,85 @@
-import {GameSession} from "../../GameSession";
-import {ReelGameSessionParameters} from "./ReelGameSessionParameters";
-import {GameSessionParameters} from "../../GameSessionParameters";
 import {IReelGameSession} from "./IReelGameSession";
-import {IReelGameSessionFlow} from "./flow/IReelGameSessionFlow";
+import {IReelGameSessionConfig} from "./IReelGameSessionConfig";
+import {IReelGameSessionModel} from "./IReelGameSessionModel";
+import {IGameSession} from "../../IGameSession";
+import {GameSession} from "../../GameSession";
+import {ReelGameSessionConfig} from "./ReelGameSessionConfig";
 
-export class ReelGameSession extends GameSession implements IReelGameSession {
-    
-    protected initializeGlobalSessionParameters(): void {
-        let itemId: string;
-        let j: number;
-        let bet: number;
-        let i: number;
-        let k: number;
-        
-        super.initializeGlobalSessionParameters();
-    
-        ReelGameSessionParameters.reelsNumber = 3;
-        ReelGameSessionParameters.reelsItemsNumber = 3;
-    
-        ReelGameSessionParameters.linesDirections = {
-            0: [1, 1, 1],
-            1: [0, 0, 0],
-            2: [2, 2, 2],
-            3: [0, 1, 2],
-            4: [2, 1, 0]
-        };
-    
-        ReelGameSessionParameters.availableItems = [
-            "0",
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8",
-            "9"
-        ];
-    
-        ReelGameSessionParameters.wildItemId = "w";
-    
-        ReelGameSessionParameters.scatters = undefined;
-    
-        ReelGameSessionParameters.paytable = {};
-        for (i = 0; i < GameSessionParameters.availableBets.length; i++) {
-            bet = GameSessionParameters.availableBets[i];
-            ReelGameSessionParameters.paytable[bet] = {};
-            for (j = 0; j < ReelGameSessionParameters.availableItems.length; j++) {
-                itemId = ReelGameSessionParameters.availableItems[j];
-                if (itemId !== ReelGameSessionParameters.wildItemId) {
-                    ReelGameSessionParameters.paytable[bet][itemId] = {};
-                    for (k = 3; k <= ReelGameSessionParameters.reelsNumber; k++) {
-                        ReelGameSessionParameters.paytable[bet][itemId][k] = (k - 2) * bet;
-                    }
-                }
-            }
+export class ReelGameSession implements IReelGameSession {
+    private _config: IReelGameSessionConfig;
+    private _sessionModel: IReelGameSessionModel;
+
+    private _adaptee: IGameSession;
+
+    constructor(config?: IReelGameSessionConfig) {
+        if (config) {
+            this._config = config;
+        } else {
+            this._config = new ReelGameSessionConfig();
         }
+        this._adaptee = new GameSession(this._config);
+        this._sessionModel = {
+            winningAmount: 0,
+        };
     }
-    
+
     public getReelsItems(): string[][] {
-        return (<IReelGameSessionFlow>this._flow).getReelsItems();
+        return null;
     }
     
     public getWinningLines(): {} {
-        return (<IReelGameSessionFlow>this._flow).getWinningLines();
+        return null;
     }
     
     public getWinningScatters(): {} {
-        return (<IReelGameSessionFlow>this._flow).getWinningScatters();
+        return null;
     }
     
     public getPaytable(): { [p: string]: { [p: number]: number } } {
-        return ReelGameSessionParameters.paytable[this._sessionModel.bet];
+        return this._config.paytable[this.getBet()];
     }
     
     public getReelsItemsSequences(): string[][] {
-        return ReelGameSessionParameters.reelsItemsSequences;
+        return this._config.reelsItemsSequences;
     }
     
     public getReelsItemsNumber(): number {
-        return ReelGameSessionParameters.reelsItemsNumber;
+        return this._config.reelsItemsNumber;
     }
     
     public getReelsNumber(): number {
-        return ReelGameSessionParameters.reelsNumber;
+        return this._config.reelsNumber;
+    }
+
+    public canPlayNextGame(): boolean {
+        return this._adaptee.canPlayNextGame();
+    }
+
+    public getAvailableBets(): number[] {
+        return this._config.availableBets;
+    }
+
+    public getBet(): number {
+        return this._adaptee.getBet();
+    }
+
+    public getCreditsAmount(): number {
+        return this._adaptee.getCreditsAmount();
+    }
+
+    public getWinningAmount(): number {
+        return this._sessionModel.winningAmount;
+    }
+
+    public isBetAvailable(bet: number): boolean {
+        return this._adaptee.isBetAvailable(bet);
+    }
+
+    public play(): void {
+    }
+
+    public setBet(bet: number): void {
+        this._adaptee.setBet(bet);
     }
     
 }

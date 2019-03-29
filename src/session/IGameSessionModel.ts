@@ -4,6 +4,4 @@ export interface IGameSessionModel {
     
     bet: number;
     
-    winning: number;
-    
 }

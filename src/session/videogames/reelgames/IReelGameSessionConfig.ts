@@ -2,7 +2,7 @@ import {IGameSessionConfig} from "../../IGameSessionConfig";
 
 export interface IReelGameSessionConfig extends IGameSessionConfig {
 
-    paytable?: {
+    paytable: {
         [bet: number]: {
             [itemId: string]: {
                 [times: number]: number
@@ -10,18 +10,18 @@ export interface IReelGameSessionConfig extends IGameSessionConfig {
         }
     };
 
-    availableItems?: string[];
+    availableItems: string[];
 
-    wildItemId?: string;
+    wildItemId: string;
 
-    scatters?: any[][];
+    scatters: any[][];
 
-    reelsNumber?: number;
+    reelsNumber: number;
 
-    reelsItemsNumber?: number;
+    reelsItemsNumber: number;
 
-    reelsItemsSequences?: string[][];
+    reelsItemsSequences: string[][];
 
-    linesDirections?: {};
+    linesDirections: {};
 
 }

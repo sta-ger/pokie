@@ -14,7 +14,6 @@ export class GameSession implements IGameSession {
             this._config = new GameSessionConfig();
         }
         this._sessionModel = {
-            winning: 0,
             bet: this.isBetAvailable(this._config.bet) ? this._config.bet : this._config.availableBets[0],
             credits: this._config.creditsAmount
         };
@@ -32,10 +31,6 @@ export class GameSession implements IGameSession {
         return this._sessionModel.bet;
     }
 
-    public getWinningAmount(): number {
-        return this._sessionModel.winning;
-    }
-
     public getCreditsAmount(): number {
         return this._sessionModel.credits;
     }
@@ -46,9 +41,7 @@ export class GameSession implements IGameSession {
 
     public play(): void {
         if (this.canPlayNextGame()) {
-            this._sessionModel.winning = 0;
             this._sessionModel.credits -= this._sessionModel.bet;
-            this._sessionModel.credits += this._sessionModel.winning;
         }
     }
 

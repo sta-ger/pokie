@@ -1,24 +1,29 @@
-import {createSessionModel} from "../../GameSession.test";
-import {IGameSessionModel} from "../../IGameSessionModel";
-import {IGameSession} from "../../IGameSession";
-import {ReelGameSessionFlow} from "./flow/ReelGameSessionFlow";
 import {ReelGameSession} from "./ReelGameSession";
-
-export const createReelGameSession = (model?: IGameSessionModel): IGameSession => {
-    return new ReelGameSession(new ReelGameSessionFlow(), model ? model : createSessionModel());
-};
+import {ReelGameSessionConfig} from "./ReelGameSessionConfig";
+import {IReelGameSession} from "./IReelGameSession";
+import {IReelGameSessionConfig} from "./IReelGameSessionConfig";
 
 describe("ReelGameSession", () => {
 
-    it("creates reel game session with provided model", () => {
-        const model: IGameSessionModel = createSessionModel();
-        const session: IGameSession = createReelGameSession();
-        expect(session.getBet()).toBe(model.bet);
-        expect(session.getCreditsAmount()).toBe(model.credits);
-        expect(session.getWinningAmount()).toBe(model.winning);
+    it("creates default reel game session", () => {
+        const config: IReelGameSessionConfig = new ReelGameSessionConfig();
+        const session: IReelGameSession = new ReelGameSession();
+        expect(session.getAvailableBets()).toEqual(config.availableBets);
+        expect(session.getBet()).toEqual(config.availableBets[0]);
+        expect(session.getCreditsAmount()).toEqual(1000);
+        expect(session.getWinningAmount()).toEqual(0);
+
+
+        expect(session.getPaytable()).toEqual(config.paytable[session.getBet()]);
+        /*expect(session.getReelsItems()).toEqual(0);
+        expect(session.getWinningLines()).toEqual(0);
+        expect(session.getWinningScatters()).toEqual(0);*/
+        expect(session.getReelsItemsSequences().length).toEqual(config.reelsItemsSequences.length);
+        expect(session.getReelsItemsNumber()).toEqual(config.reelsItemsNumber);
+        expect(session.getReelsNumber()).toEqual(config.reelsNumber);
     });
 
-    it("should play until any winning", () => {
+    /*it("should play until any winning", () => {
         const model = createSessionModel();
         model.credits = Infinity;
         const session = createReelGameSession(model);
@@ -30,12 +35,12 @@ describe("ReelGameSession", () => {
             lastBet = session.getBet();
             session.play();
             if (session.getWinningAmount() === 0) {
-                expect(session.getCreditsAmount()).toBe(lastCredits - lastBet);
+                expect(session.getCreditsAmount()).toEqual(lastCredits - lastBet);
             }
         }
 
-        expect(session.getCreditsAmount()).toBeGreaterThan(lastCredits - lastBet);
+        expect(session.getCreditsAmount()).toEqualGreaterThan(lastCredits - lastBet);
 
-    });
+    });*/
 
 });

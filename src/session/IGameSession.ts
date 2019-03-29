@@ -6,8 +6,6 @@ export interface IGameSession  {
 
     isBetAvailable(bet: number): boolean;
     
-    getWinningAmount(): number;
-    
     getBet(): number;
     
     setBet(bet: number): void;

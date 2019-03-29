@@ -2,8 +2,7 @@ import {IReelGameSessionConfig} from "./IReelGameSessionConfig";
 import {GameSessionConfig} from "../../GameSessionConfig";
 
 export class ReelGameSessionConfig extends GameSessionConfig implements IReelGameSessionConfig {
-
-    public paytable?: {
+    private _paytable: {
         [bet: number]: {
             [itemId: string]: {
                 [times: number]: number
@@ -11,24 +10,24 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         }
     };
 
-    public availableItems?: string[];
+    private _availableItems: string[];
 
-    public wildItemId?: string;
+    private _wildItemId: string;
 
-    public scatters?: any[][];
+    private _scatters: any[][];
 
-    public reelsNumber?: number;
+    private _reelsNumber: number;
 
-    public reelsItemsNumber?: number;
+    private _reelsItemsNumber: number;
 
-    public reelsItemsSequences?: string[][];
+    private _reelsItemsSequences: string[][];
 
-    public linesDirections?: {};
+    private _linesDirections: {};
 
     constructor(reelsNumber: number = 5, reelsItemsNumber: number = 3) {
         super();
 
-        this.availableItems = [
+        this._availableItems = [
             "A",
             "K",
             "Q",
@@ -39,29 +38,124 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
             "S"
         ];
 
-        this.wildItemId = "W";
+        this._wildItemId = "W";
 
-        this.scatters = [
+        this._scatters = [
             ["S", 3]
         ];
 
-        this.reelsNumber = reelsNumber;
-        this.reelsItemsNumber = reelsItemsNumber;
+        this._reelsNumber = reelsNumber;
+        this._reelsItemsNumber = reelsItemsNumber;
+        this._linesDirections = ReelGameSessionConfig.createLinesDirections(this._reelsNumber, this._reelsItemsNumber);
+        this._reelsItemsSequences = ReelGameSessionConfig.createReelsItemsSequences(this._reelsNumber, this._availableItems);
+        this._paytable = ReelGameSessionConfig.createPaytable(this.availableBets, this._availableItems, this._reelsNumber, this._wildItemId);
+    }
 
-        this.linesDirections = [];
-        for (let i: number = 0; i < this.reelsItemsNumber; i++) {
-            for (let j: number = 0; j < this.reelsNumber; j++) {
-                if (!this.linesDirections[i]) {
-                    this.linesDirections[i] = [];
+    public get linesDirections(): {} {
+        return this._linesDirections;
+    }
+
+    public set linesDirections(value: {}) {
+        this._linesDirections = value;
+    }
+
+    public get reelsItemsSequences(): string[][] {
+        return this._reelsItemsSequences;
+    }
+
+    public set reelsItemsSequences(value: string[][]) {
+        this._reelsItemsSequences = value;
+    }
+
+    public get reelsItemsNumber(): number {
+        return this._reelsItemsNumber;
+    }
+
+    public set reelsItemsNumber(value: number) {
+        this._reelsItemsNumber = value;
+        this._linesDirections = ReelGameSessionConfig.createLinesDirections(this._reelsNumber, this._reelsItemsNumber);
+    }
+
+    public get reelsNumber(): number {
+        return this._reelsNumber;
+    }
+
+    public set reelsNumber(value: number) {
+        this._reelsNumber = value;
+        this._linesDirections = ReelGameSessionConfig.createLinesDirections(this._reelsNumber, this._reelsItemsNumber);
+    }
+
+    public get scatters(): any[][] {
+        return this._scatters;
+    }
+
+    public set scatters(value: any[][]) {
+        this._scatters = value;
+    }
+
+    public get wildItemId(): string {
+        return this._wildItemId;
+    }
+
+    public set wildItemId(value: string) {
+        this._wildItemId = value;
+    }
+
+    public get availableItems(): string[] {
+        return this._availableItems;
+    }
+
+    public set availableItems(value: string[]) {
+        this._availableItems = value;
+        this._reelsItemsSequences = ReelGameSessionConfig.createReelsItemsSequences(this._reelsNumber, this._availableItems);
+        this._paytable = ReelGameSessionConfig.createPaytable(this.availableBets, this._availableItems, this._reelsNumber, this._wildItemId);
+    }
+
+    public get paytable(): { [p: number]: { [p: string]: { [p: number]: number } } } {
+        return this._paytable;
+    }
+
+    public set paytable(value: { [p: number]: { [p: string]: { [p: number]: number } } }) {
+        this._paytable = value;
+    }
+
+    public static createLinesDirections(reelsNumber: number, reelsItemsNumber: number): {} {
+        let r = [];
+        for (let i: number = 0; i < reelsItemsNumber; i++) {
+            for (let j: number = 0; j < reelsNumber; j++) {
+                if (!r[i]) {
+                    r[i] = [];
                 }
-                this.linesDirections[i].push(i);
+                r[i].push(i);
             }
         }
+        return r;
+    }
 
-        this.reelsItemsSequences = [];
+    public static createReelsItemsSequences(reelsNumber: number, availableItems: string[]): string[][] {
+        let r = [];
         for (let i = 0; i < reelsNumber; i++) {
-            this.reelsItemsSequences[i] = this.availableItems.reduce(ob => [...ob, ...this.availableItems], this.availableItems).sort(() => Math.random() - 0.5);
+            r[i] = availableItems.reduce(ob => [...ob, ...availableItems], availableItems).sort(() => Math.random() - 0.5);
         }
+        return r;
+    }
+
+    public static createPaytable(availableBets: number[], availableItems: string[], reelsNumber: number, wildItemId?: string): {} {
+        let r = {};
+        for (let i = 0; i < availableBets.length; i++) {
+            let bet = availableBets[i];
+            r[bet] = {};
+            for (let j = 0; j < availableItems.length; j++) {
+                let itemId = availableItems[j];
+                if (itemId !== wildItemId) {
+                    r[bet][itemId] = {};
+                    for (let k = 3; k <= reelsNumber; k++) {
+                        r[bet][itemId][k] = (k - 2) * bet;
+                    }
+                }
+            }
+        }
+        return r;
     }
 
 }
