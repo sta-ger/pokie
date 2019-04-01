@@ -1,9 +1,9 @@
 export interface IReelGameSessionReelsController {
-    
-    spin(): void;
-    
-    getItems(): string[][];
-    
-    flipMatrix(source: any[][]): any[][]
-    
+
+    getRandomItemsCombination(): string[][];
+
+    getRandomReelItems(reelId: number): string[];
+
+    getRandomItem(x: number): string;
+
 }

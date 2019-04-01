@@ -1,72 +1,28 @@
 import {IReelGameSessionReelsController} from "./IReelGameSessionReelsController";
-import {ReelGameSessionParameters} from "../../ReelGameSessionParameters";
 
 export class ReelGameSessionReelsController implements IReelGameSessionReelsController {
-    protected _reelsNumber: number;
-    protected _reelsItemsNumber: number;
-    
-    protected _reelsItems: string[][];
-    
-    protected _reelsSequences: string[][];
-    
-    protected _itemsOnReelsSequencesNumbers: {
-        [reelId: number]: {
-            [itemId: string]: number
-        }
-    };
-    protected _availableItems: string[];
+    private readonly _reelsNumber: number;
+    private readonly _reelsItemsNumber: number;
 
-    constructor() {
-        this.initializeParameters();
-        this.initialize();
+    private readonly _reelsSequences: string[][];
+
+    constructor(reelsNumber: number, reelsItemsNumber: number, reelsItemsSequences: string[][]) {
+        this._reelsNumber = reelsNumber;
+        this._reelsItemsNumber = reelsItemsNumber;
+        this._reelsSequences = reelsItemsSequences;
     }
-    
-    protected initializeParameters() {
-        this._availableItems = ReelGameSessionParameters.availableItems;
-        this._reelsNumber = ReelGameSessionParameters.reelsNumber;
-        this._reelsItemsNumber = ReelGameSessionParameters.reelsItemsNumber;
-    }
-    
-    protected initialize(): void {
-        this._itemsOnReelsSequencesNumbers = this.createItemsOnReelsSequencesNumbers();
-        if (ReelGameSessionParameters.reelsItemsSequences !== undefined) {
-            this._reelsSequences = ReelGameSessionParameters.reelsItemsSequences;
-        } else {
-            this._reelsSequences = this.createReelsSequences();
-            ReelGameSessionParameters.reelsItemsSequences = this._reelsSequences;
-        }
-        this.updateReelsItems();
-    }
-    
-    public spin(): void {
-        this.updateReelsItems();
-    }
-    
-    protected updateReelsItems(): void {
-        this._reelsItems = this.getRandomItemsCombination();
-    }
-    
-    public getItems(): string[][] {
-        return this._reelsItems;
-    }
-    
-    protected getRandomItemsCombination(): string[][] {
+
+    public getRandomItemsCombination(): string[][] {
         let i: number;
         let rv: string[][];
         rv = [];
         for (i = 0; i < this._reelsNumber; i++) {
-            rv[i] = this.getRandomReelsItems(i);
+            rv[i] = this.getRandomReelItems(i);
         }
         return rv;
     }
-    
-    protected getRandomReelsItems(reelId: number): string[] {
-        let rv: string[];
-        rv = this.getReelItemsFromSequenceAtRandomPlace(reelId);
-        return rv;
-    }
-    
-    protected getReelItemsFromSequenceAtRandomPlace(reelId: number): string[] {
+
+    public getRandomReelItems(reelId: number): string[] {
         let rv: string[];
         let i: number;
         let placeOnSequence: number;
@@ -85,36 +41,35 @@ export class ReelGameSessionReelsController implements IReelGameSessionReelsCont
         }
         return rv;
     }
-    
-    protected getRandomItem(x: number, y: number): string {
+
+    public getRandomItem(reelId: number): string {
         let item: string;
         let sequence: string[];
-        sequence = this._reelsSequences[x];
+        sequence = this._reelsSequences[reelId];
         item = sequence[Math.floor(Math.random() * sequence.length)];
         return item;
     }
-    
-    protected createReelsSequences(): string[][] {
+
+    public static createItemsSequences(reelsNumber: number, availableItems: string[], countsOfItems?: { [reelId: number]: { [itemId: string]: number } }): string[][] {
         let rv: string[][];
         let i: number;
         let reelId: number;
         rv = [];
-        for (i = 0; i < this._reelsNumber; i++) {
+        for (i = 0; i < reelsNumber; i++) {
             reelId = i;
-            rv[reelId] = this.createReelSequence(reelId);
+            rv[reelId] = this.createItemsSequence(availableItems, countsOfItems && countsOfItems.hasOwnProperty(reelId) ? countsOfItems[reelId] : null);
         }
         return rv;
     }
-    
-    protected createReelSequence(reelId: number): string[] {
+
+    public static createItemsSequence(availableItems: string[], countsOfItems?: { [itemId: string]: number }): string[] {
         let i: number;
         let itemId: string;
         let rv: string[];
-        let itemsNumbersForReel: { [itemId: string]: number };
         rv = [];
-        itemsNumbersForReel = this._itemsOnReelsSequencesNumbers[reelId];
-        for (itemId in itemsNumbersForReel) {
-            for (i = 0; i < itemsNumbersForReel[itemId]; i++) {
+        for (itemId of availableItems) {
+            let countIfItems: { [p: string]: number } | number = countsOfItems && countsOfItems.hasOwnProperty(itemId) ? countsOfItems[itemId] : 1;
+            for (i = 0; i < countIfItems; i++) {
                 rv.push(itemId);
             }
         }
@@ -124,32 +79,8 @@ export class ReelGameSessionReelsController implements IReelGameSessionReelsCont
         }
         return rv;
     }
-    
-    protected createItemsOnReelsSequencesNumbers(): {} {
-        let rv: {};
-        let i: number;
-        let j: number;
-        let item: string;
-        let reelId: number;
-        rv = {};
-        for (i = 0; i < this._reelsNumber; i++) {
-            reelId = i;
-            rv[reelId] = {};
-            for (j = 0; j < this._availableItems.length; j++) {
-                item = this._availableItems[j];
-                rv[reelId][item] = this.getItemOnReelSequenceNumber(reelId, item);
-            }
-        }
-        return rv;
-    }
-    
-    protected getItemOnReelSequenceNumber(reelId: number, itemId: string): number {
-        let rv: number;
-        rv = 1;
-        return rv;
-    }
-    
-    public flipMatrix(source: any[][]): any[][] {
+
+    public static transposeMatrix(source: any[][]): any[][] {
         let r: any[][];
         let i: number;
         let j: number;
@@ -164,5 +95,5 @@ export class ReelGameSessionReelsController implements IReelGameSessionReelsCont
         }
         return r;
     }
-    
+
 }
