@@ -7,8 +7,8 @@
   "scripts": {
     "generate-barrels": "barrelsby --delete -d ./src",
     "prepublish": "npm run build",
-    "build": "npm run generate-barrels && tsc",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "npm run test && npm run generate-barrels && tsc",
+    "test": "jest",
     "preversion": "git checkout master && git merge develop",
     "version": "npm run build && git add -A",
     "postversion": "git checkout develop && git merge master"
