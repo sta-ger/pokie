@@ -143,4 +143,28 @@ describe("ReelGameSessionReelsController", () => {
 
     });
 
+    describe("getRandomReelItems", () => {
+
+        it("returns fragment of visible symbols from random position at reel's sequence", () => {
+            for (let i = 0; i <  5; i++) {
+                //For each reel
+                for (let j = 0; j < 1000; j++) {
+                    let items = reelsController.getRandomReelItems(i);
+                    expect(items.length).toBe(3);
+                    items.forEach(item => {
+                        //Check is returned item one of available items
+                        expect(availableItems.indexOf(item)).toBeGreaterThanOrEqual(0);
+                        if (i === 2) {
+                            //and is not equal to symbol "A" removed from third reel's sequence
+                            expect(item).not.toBe("A");
+                        }
+                    });
+                }
+            }
+
+        });
+
+    });
+
+
 });
