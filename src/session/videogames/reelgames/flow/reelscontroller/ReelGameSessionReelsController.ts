@@ -50,26 +50,35 @@ export class ReelGameSessionReelsController implements IReelGameSessionReelsCont
         return item;
     }
 
-    public static createItemsSequences(reelsNumber: number, availableItems: string[], countsOfItems?: { [reelId: number]: { [itemId: string]: number } }): string[][] {
+    public static createItemsSequences(reelsNumber: number, availableItems: string[], countsOfItems?: { [reelId: number]: { [itemId: string]: number } } | number): string[][] {
         let rv: string[][];
         let i: number;
         let reelId: number;
         rv = [];
         for (i = 0; i < reelsNumber; i++) {
             reelId = i;
-            rv[reelId] = this.createItemsSequence(availableItems, countsOfItems && countsOfItems.hasOwnProperty(reelId) ? countsOfItems[reelId] : null);
+            if (typeof countsOfItems === "number") {
+                rv[reelId] = this.createItemsSequence(availableItems, countsOfItems);
+            } else {
+                rv[reelId] = this.createItemsSequence(availableItems, countsOfItems && countsOfItems.hasOwnProperty(reelId) ? countsOfItems[reelId] : null);
+            }
         }
         return rv;
     }
 
-    public static createItemsSequence(availableItems: string[], countsOfItems?: { [itemId: string]: number }): string[] {
+    public static createItemsSequence(availableItems: string[], countsOfItems?: { [itemId: string]: number } | number): string[] {
         let i: number;
         let itemId: string;
         let rv: string[];
         rv = [];
         for (itemId of availableItems) {
-            let countIfItems: { [p: string]: number } | number = countsOfItems && countsOfItems.hasOwnProperty(itemId) ? countsOfItems[itemId] : 1;
-            for (i = 0; i < countIfItems; i++) {
+            let countIoItems: { [p: string]: number } | number;
+            if (typeof countsOfItems === "number") {
+                countIoItems = countsOfItems;
+            } else {
+                countIoItems = countsOfItems && countsOfItems.hasOwnProperty(itemId) ? countsOfItems[itemId] : 1;
+            }
+            for (i = 0; i < countIoItems; i++) {
                 rv.push(itemId);
             }
         }

@@ -1,6 +1,14 @@
 import {ReelGameSessionReelsController} from "./ReelGameSessionReelsController";
 
 describe("ReelGameSessionReelsController", () => {
+    let availableItems: string[] = [
+        "A",
+        "K",
+        "Q",
+        "J",
+        "10",
+        "9",
+    ];
 
     describe("transposeMatrix", () => {
 
@@ -19,14 +27,6 @@ describe("ReelGameSessionReelsController", () => {
     });
 
     describe("createItemsSequence", () => {
-        const availableItems: string[] = [
-            "A",
-            "K",
-            "Q",
-            "J",
-            "10",
-            "9",
-        ];
 
         it("creates shuffled sequence of specified items", () => {
             expect(ReelGameSessionReelsController.createItemsSequence(availableItems)).toHaveLength(availableItems.length);
@@ -49,19 +49,12 @@ describe("ReelGameSessionReelsController", () => {
                 "9": 60
             };
             expect(ReelGameSessionReelsController.createItemsSequence(availableItems, counts)).toHaveLength(Object.keys(counts).map(key => counts[key]).reduce((sum, item) => sum += item, 0));
+            expect(ReelGameSessionReelsController.createItemsSequence(availableItems, 10)).toHaveLength(10 * availableItems.length);
         });
 
     });
 
     describe("createItemsSequences", () => {
-        const availableItems: string[] = [
-            "A",
-            "K",
-            "Q",
-            "J",
-            "10",
-            "9",
-        ];
 
         it("creates an array of shuffled sequences for specified number of reels", () => {
             expect(ReelGameSessionReelsController.createItemsSequences(5, availableItems)).toHaveLength(5);
@@ -112,7 +105,41 @@ describe("ReelGameSessionReelsController", () => {
             items.forEach((curItems, i) => {
                 expect(curItems).toHaveLength(Object.keys(counts[i]).map(key => counts[i][key]).reduce((sum, item) => sum += item, 0));
             });
+
+            items = ReelGameSessionReelsController.createItemsSequences(5, availableItems, 10);
+            items.forEach((curItems, i) => {
+                expect(curItems).toHaveLength(availableItems.length * 10);
+            });
         })
+
+    });
+
+    let sequences = ReelGameSessionReelsController.createItemsSequences(5, availableItems, 10);
+    sequences[2] = sequences[2].reduce((arr, item) => {
+        //Remove symbol "A" from third reel
+        if (item !== "A") {
+            arr.push(item);
+        }
+        return arr;
+    }, []);
+    let reelsController = new ReelGameSessionReelsController(5, 3, sequences);
+
+    describe("getRandomItem", () => {
+
+        it("returns any of available items", () => {
+            for (let i = 0; i <  5; i++) {
+                //For each reel
+                for (let j = 0; j < 1000; j++) {
+                    //Check is returned item one of available items
+                    let item = reelsController.getRandomItem(i);
+                    expect(availableItems.indexOf(item)).toBeGreaterThanOrEqual(0);
+                    if (i === 2) {
+                        //and is not equal to symbol "A" removed from third reel's sequence
+                        expect(item).not.toBe("A");
+                    }
+                }
+            }
+        });
 
     });
 
