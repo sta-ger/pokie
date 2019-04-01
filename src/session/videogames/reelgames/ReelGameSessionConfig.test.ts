@@ -1,10 +1,12 @@
 import {ReelGameSessionConfig} from "./ReelGameSessionConfig";
+import {IReelGameSessionConfig} from "./IReelGameSessionConfig";
 
 describe("ReelGameSessionConfig", () => {
 
-    it("creates a default config", () => {
+    it("creates default config", () => {
         const conf: ReelGameSessionConfig = new ReelGameSessionConfig();
         expect(conf.wildItemId).toEqual("W");
+        expect(conf.wildsMultipliers).toEqual({"1": 2, "2": 4, "3": 6, "4": 8});
         expect(conf.scatters).toEqual([["S", 3]]);
         expect(conf.reelsNumber).toEqual(5);
         expect(conf.reelsItemsNumber).toEqual(3);
@@ -142,6 +144,18 @@ describe("ReelGameSessionConfig", () => {
                     S: {"3": 100, "4": 200, "5": 300}
                 }
         });
+    });
+
+    it("detects is item wild", () => {
+        const conf: IReelGameSessionConfig = new ReelGameSessionConfig();
+        expect(conf.isItemWild("W")).toBeTruthy();
+        expect(conf.isItemWild("A")).toBeFalsy();
+    });
+
+    it("detects is item scatter", () => {
+        const conf: IReelGameSessionConfig = new ReelGameSessionConfig();
+        expect(conf.isItemScatter("S")).toBeTruthy();
+        expect(conf.isItemScatter("A")).toBeFalsy();
     });
 
 });

@@ -24,4 +24,12 @@ export interface IReelGameSessionConfig extends IGameSessionConfig {
 
     linesDirections: {};
 
+    wildsMultipliers: {
+        [wildsNum: number]: number
+    };
+
+    isItemWild(itemId): boolean;
+
+    isItemScatter(itemId): boolean;
+
 }

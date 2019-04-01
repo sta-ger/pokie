@@ -24,6 +24,8 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
 
     private _linesDirections: {};
 
+    private _wildsMultipliers: { [wildsNum: number]: number };
+
     constructor(reelsNumber: number = 5, reelsItemsNumber: number = 3) {
         super();
 
@@ -43,6 +45,13 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         this._scatters = [
             ["S", 3]
         ];
+
+        this._wildsMultipliers = {};
+        let j = 2;
+        for (let i = 1; i < reelsNumber; i++) {
+            this._wildsMultipliers[i] = j;
+            j += 2;
+        }
 
         this._reelsNumber = reelsNumber;
         this._reelsItemsNumber = reelsItemsNumber;
@@ -119,6 +128,14 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         this._paytable = value;
     }
 
+    public get wildsMultipliers(): { [p: number]: number } {
+        return this._wildsMultipliers;
+    }
+
+    public set wildsMultipliers(value: { [p: number]: number }) {
+        this._wildsMultipliers = value;
+    }
+
     public static createLinesDirections(reelsNumber: number, reelsItemsNumber: number): {} {
         let r = [];
         for (let i: number = 0; i < reelsItemsNumber; i++) {
@@ -156,6 +173,19 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
             }
         }
         return r;
+    }
+
+    public isItemScatter(itemId): boolean {
+        return this._scatters && this._scatters.reduce((flag, entry) => {
+            if (!flag && itemId === entry[0]) {
+                flag = true;
+            }
+            return flag;
+        }, false);
+    }
+
+    public isItemWild(itemId): boolean {
+        return itemId === this._wildItemId;
     }
 
 }
