@@ -27,7 +27,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     private _winningLines: { [lineId: string]: IReelGameSessionWinningLineModel };
     private _winningScatters: { [scatterItemId: string]: IReelGameSessionWinningScatterModel };
 
-    private _linesPatterns: { [numberOfItems: number]: number[] };
+    private _linesPatterns: number[][];
 
     constructor(conf: IReelGameSessionConfig) {
         this._config = conf;
@@ -41,14 +41,14 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         this._linesPatterns = ReelGameSessionWinCalculator.createLinesPatterns(this._reelsNumber);
     }
 
-    public static createLinesPatterns(reelsNumber: number): { [numberOfItems: number]: number[] } {
-        let r = {};
-        for (let i = 0; i < reelsNumber; i++) {
-            let arr = new Array(reelsNumber + 1).join("0").split("").map(item => parseInt(item));;
+    public static createLinesPatterns(reelsNumber: number): number[][] {
+        let r = [];
+        for (let i = 0; i < reelsNumber - 1; i++) {
+            let arr = new Array(reelsNumber + 1).join("0").split("").map(item => parseInt(item));
             for (let j = 0; j < reelsNumber - i; j++) {
                 arr[j] = 1;
             }
-            r[reelsNumber - i] = arr;
+            r.push(arr);
         }
         return  r;
     }
@@ -59,6 +59,23 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             return items[col][row];
         });
         return r;
+    }
+
+    public static getItemsMatchingPattern(items: string[], pattern: number[]): string[] {
+        return pattern.reduce((arr, val, i) => {
+            if (val === 1) {
+                arr.push(items[i]);
+            }
+            return arr;
+        }, []);
+    }
+
+    public static isMatchPattern(items: string[], pattern: number[], wildItemId?: string): boolean {
+        let itemsByPattern = this.getItemsMatchingPattern(items, pattern);
+        let unique = itemsByPattern.filter( (value, index, self) => {
+            return self.indexOf(value) === index;
+        });
+        return unique.length === 1;
     }
 
     public setGameState(bet: number, items: string[][]): void {
