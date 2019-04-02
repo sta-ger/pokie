@@ -27,6 +27,8 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     private _winningLines: { [lineId: string]: IReelGameSessionWinningLineModel };
     private _winningScatters: { [scatterItemId: string]: IReelGameSessionWinningScatterModel };
 
+    private _linesPatterns: { [numberOfItems: number]: number[] };
+
     constructor(conf: IReelGameSessionConfig) {
         this._config = conf;
         this._reelsItemsNumber = conf.reelsItemsNumber;
@@ -36,6 +38,27 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         this._linesDirections = conf.linesDirections;
         this._wildsMultipliers = conf.wildsMultipliers;
         this._paytable = conf.paytable;
+        this._linesPatterns = ReelGameSessionWinCalculator.createLinesPatterns(this._reelsNumber);
+    }
+
+    public static createLinesPatterns(reelsNumber: number): { [numberOfItems: number]: number[] } {
+        let r = {};
+        for (let i = 0; i < reelsNumber; i++) {
+            let arr = new Array(reelsNumber + 1).join("0").split("").map(item => parseInt(item));;
+            for (let j = 0; j < reelsNumber - i; j++) {
+                arr[j] = 1;
+            }
+            r[reelsNumber - i] = arr;
+        }
+        return  r;
+    }
+
+    public static getItemsFromDirection(items: string[][], direction: number[]): string[] {
+        let r: string[];
+        r = direction.map((row, col) => {
+            return items[col][row];
+        });
+        return r;
     }
 
     public setGameState(bet: number, items: string[][]): void {
