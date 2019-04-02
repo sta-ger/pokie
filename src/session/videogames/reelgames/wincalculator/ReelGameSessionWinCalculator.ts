@@ -73,7 +73,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     public static getMatchingPattern(items: string[], patterns: number[][], wildItemId?: string): number[] {
         let r: number[];
         for (let i: number = 0; i < patterns.length; i++) {
-            if (this.isMatchPattern(items, patterns[i])) {
+            if (this.isMatchPattern(items, patterns[i], wildItemId)) {
                 r = patterns[i];
                 break;
             }
@@ -157,8 +157,10 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     private calculateWinning(bet: number): void {
         let lineId: string;
         let line: IReelGameSessionWinningLineModel;
+        let winningLinesIds: string[];
         this._winningLines = {};
-        for (lineId in this._linesDirections) {
+        winningLinesIds = ReelGameSessionWinCalculator.getWinningLinesIds(this._items, this._linesDirections, this._linesPatterns, this._wildItemId);
+        for (lineId of winningLinesIds) {
             line = this.generateWinningLine(bet, lineId);
             if (line.winningAmount > 0) {
                 this._winningLines[lineId] = line;
@@ -182,7 +184,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
                 curScatterItemId = scatter[0];
                 curScatterMinItemsForWin = scatter[1];
                 curScatterItemsPositions = this.getScatterItemsPositions(curScatterItemId);
-                if (curScatterItemsPositions.length >= curScatterMinItemsForWin) {
+                if (curScatterItemsPositions && curScatterItemsPositions.length >= curScatterMinItemsForWin) {
                     curScatterModel = new ReelGameSessionWinningScatterModel();
                     curScatterModel.itemId = curScatterItemId;
                     curScatterModel.itemsPositions = curScatterItemsPositions;
@@ -195,96 +197,30 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     }
 
     private getScatterItemsPositions(itemId: string): number[][] {
-        let i: number;
-        let j: number;
-        let rv: number[][];
-        let item: string;
-        rv = [];
-        for (i = 0; i < this._items.length; i++) {
-            for (j = 0; j < this._items[i].length; j++) {
-                item = this._items[i][j];
-                if (item === itemId) {
-                    rv.push([i, j]);
-                }
-            }
-        }
-        return rv;
+        return ReelGameSessionWinCalculator.getScatterItemsPositions(this._items, itemId);
     }
 
     private generateWinningLine(bet: number, lineId: string): IReelGameSessionWinningLineModel {
         let line: IReelGameSessionWinningLineModel;
-        let i: number;
-        let dirX: number;
-        let dirY: number;
         let direction: number[];
-        let itemId: string;
-        let prevItemId: string;
-        let itemsPositions: number[];
-        let wildItemsPositions: number[];
-        let itemPaytable: { [times: number]: number };
-        let itemPaytableTimes: string;
-        let times: number;
+        let itemsLine: string[];
+        let pattern: number[];
         direction = this._linesDirections[lineId];
-        itemsPositions = [];
-        wildItemsPositions = [];
+        itemsLine = ReelGameSessionWinCalculator.getItemsForDirection(this._items, direction);
+        pattern = ReelGameSessionWinCalculator.getMatchingPattern(itemsLine, this._linesPatterns, this._wildItemId);
         line = new ReelGameSessionWinningLineModel();
         line.winningAmount = 0;
         line.direction = direction;
-        line.itemsPositions = [];
-        line.wildItemsPositions = [];
         line.lineId = lineId;
-        for (i = 0; i < direction.length; i++) {
-            dirX = i;
-            dirY = direction[i];
-            itemId = this._items[dirX][dirY];
-            if (!prevItemId) {
-                if (this._config.isItemScatter(itemId)) {
-                    break;
-                }
-                prevItemId = itemId;
-                if (this._config.isItemWild(itemId)) {
-                    wildItemsPositions.push(dirX);
-                }
-                itemsPositions.push(dirX);
-            } else {
-                if (
-                    (itemId !== prevItemId && !this._config.isItemWild(itemId)) ||
-                    (itemsPositions.length === direction.length - 1 && (itemId === prevItemId || this._config.isItemWild(itemId)))
-                ) {
-                    if (itemsPositions.length === direction.length - 1 && (itemId === prevItemId || this._config.isItemWild(itemId) || this._config.isItemWild(prevItemId))) {
-                        if (this._config.isItemWild(itemId)) {
-                            wildItemsPositions.push(dirX);
-                        }
-                        itemsPositions.push(dirX);
-                    }
-                    if (this._config.isItemWild(prevItemId)) {
-                        for (let i: number = 0; i < itemsPositions.length; i++) {
-                            if (!this._config.isItemWild(this._items[direction[i]][itemsPositions[i]])) {
-                                prevItemId = this._items[direction[i]][itemsPositions[i]];
-                                break;
-                            }
-                        }
-                    }
-                    itemPaytable = this._paytable[bet][prevItemId];
-                    for (itemPaytableTimes in itemPaytable) {
-                        if (itemsPositions.length === parseInt(itemPaytableTimes)) {
-                            times = itemsPositions.length;
-                            line.itemsPositions = itemsPositions;
-                            line.wildItemsPositions = wildItemsPositions;
-                            line.itemId = prevItemId;
-                            line.winningAmount = this.getLineWinningAmount(bet, line);
-                            break;
-                        }
-                    }
-                    break;
-                } else {
-                    if (this._config.isItemWild(itemId)) {
-                        wildItemsPositions.push(dirX);
-                    }
-                    itemsPositions.push(dirX);
-                }
+        line.itemsPositions = pattern.reduce((arr, val, i) => {
+            if (val === 1) {
+                arr.push(i);
             }
-        }
+            return arr;
+        }, []);
+        line.wildItemsPositions = ReelGameSessionWinCalculator.getWildItemsPositions(itemsLine, pattern, this._wildItemId);
+        line.itemId = ReelGameSessionWinCalculator.getWinningItemId(itemsLine, pattern, this._wildItemId);
+        line.winningAmount = this.getLineWinningAmount(bet, line);
         return line;
     }
 

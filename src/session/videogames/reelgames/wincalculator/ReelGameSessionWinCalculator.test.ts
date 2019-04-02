@@ -73,6 +73,9 @@ describe("ReelGameSessionWinCalculator", () => {
         expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "A", "A", "K", "Q",], patterns)).toEqual([1, 1, 1, 0, 0]);
         expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "A", "A", "A", "Q",], patterns)).toEqual([1, 1, 1, 1, 0]);
         expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "A", "A", "A", "A",], patterns)).toEqual([1, 1, 1, 1, 1]);
+        expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "W", "A", "W", "A",], patterns, "W")).toEqual([1, 1, 1, 1, 1]);
+        expect(ReelGameSessionWinCalculator.getMatchingPattern(["W", "W", "A", "W", "K",], patterns, "W")).toEqual([1, 1, 1, 1, 0]);
+        expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "W", "A", "W", "K",], patterns, "W")).toEqual([1, 1, 1, 1, 0]);
     });
 
     it("determines wild items positions on line", () => {
