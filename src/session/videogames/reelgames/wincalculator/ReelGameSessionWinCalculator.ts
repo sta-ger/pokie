@@ -53,7 +53,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         return r;
     }
 
-    public static getItemsFromDirection(items: string[][], direction: number[]): string[] {
+    public static getItemsForDirection(items: string[][], direction: number[]): string[] {
         let r: string[];
         r = direction.map((row, col) => {
             return items[col][row];
@@ -124,6 +124,17 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             }
         }
         return r;
+    }
+
+    public static getWinningLinesIds(items: string[][], linesDirections: { [lineId: string]: number[] }, patterns: number[][], wildItemId?: string): string[] {
+        return Object.keys(linesDirections).reduce((arr, lineId) => {
+            let itemsLine: string[] = ReelGameSessionWinCalculator.getItemsForDirection(items, linesDirections[lineId]);
+            let mPattern = ReelGameSessionWinCalculator.getMatchingPattern(itemsLine, patterns, wildItemId);
+            if (mPattern) {
+                arr.push(lineId);
+            }
+            return arr;
+        }, []);
     }
 
     public setGameState(bet: number, items: string[][]): void {

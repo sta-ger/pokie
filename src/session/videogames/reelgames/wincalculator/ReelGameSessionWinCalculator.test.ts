@@ -101,28 +101,69 @@ describe("ReelGameSessionWinCalculator", () => {
         ]);
     });
 
+    it("determines winning lines for items combination", () => {
+        let directions = {
+            0: [1, 1, 1],
+            1: [0, 0, 0],
+            2: [2, 2, 2],
+            3: [0, 1, 2],
+            4: [2, 1, 0],
+        };
+        let patterns = ReelGameSessionWinCalculator.createLinesPatterns(3);
+        expect(ReelGameSessionWinCalculator.getWinningLinesIds(ReelGameSessionReelsController.transposeMatrix([
+            ["A", "A", "A"],
+            ["K", "Q", "J"],
+            ["K", "Q", "J"],
+        ]), directions, patterns)).toEqual(["1"]);
+        expect(ReelGameSessionWinCalculator.getWinningLinesIds(ReelGameSessionReelsController.transposeMatrix([
+            ["A", "A", "A"],
+            ["K", "Q", "J"],
+            ["A", "A", "A"],
+        ]), directions, patterns)).toEqual(["1", "2"]);
+        expect(ReelGameSessionWinCalculator.getWinningLinesIds(ReelGameSessionReelsController.transposeMatrix([
+            ["K", "Q", "J"],
+            ["A", "A", "A"],
+            ["K", "Q", "J"],
+        ]), directions, patterns)).toEqual(["0"]);
+        expect(ReelGameSessionWinCalculator.getWinningLinesIds(ReelGameSessionReelsController.transposeMatrix([
+            ["A", "A", "A"],
+            ["A", "A", "A"],
+            ["K", "Q", "J"],
+        ]), directions, patterns)).toEqual(["0", "1", "3"]);
+        expect(ReelGameSessionWinCalculator.getWinningLinesIds(ReelGameSessionReelsController.transposeMatrix([
+            ["K", "Q", "J"],
+            ["A", "A", "A"],
+            ["A", "A", "A"],
+        ]), directions, patterns)).toEqual(["0", "2", "4"]);
+        expect(ReelGameSessionWinCalculator.getWinningLinesIds(ReelGameSessionReelsController.transposeMatrix([
+            ["A", "A", "A"],
+            ["A", "A", "A"],
+            ["A", "A", "A"],
+        ]), directions, patterns)).toEqual(["0", "1", "2", "3", "4"]);
+    });
+
     it("extracts proper items from direction", () => {
-        expect(ReelGameSessionWinCalculator.getItemsFromDirection(ReelGameSessionReelsController.transposeMatrix([
+        expect(ReelGameSessionWinCalculator.getItemsForDirection(ReelGameSessionReelsController.transposeMatrix([
             ["A", "A", "A", "K", "Q"],
             ["A", "K", "Q", "J", "10"],
             ["K", "Q", "J", "10", "9"]
         ]), [0, 0, 0, 0, 0])).toEqual(["A", "A", "A", "K", "Q"]);
-        expect(ReelGameSessionWinCalculator.getItemsFromDirection(ReelGameSessionReelsController.transposeMatrix([
+        expect(ReelGameSessionWinCalculator.getItemsForDirection(ReelGameSessionReelsController.transposeMatrix([
             ["A", "A", "A", "K", "Q"],
             ["A", "K", "Q", "J", "10"],
             ["K", "Q", "J", "10", "9"]
         ]), [1, 1, 1, 1, 1])).toEqual(["A", "K", "Q", "J", "10"]);
-        expect(ReelGameSessionWinCalculator.getItemsFromDirection(ReelGameSessionReelsController.transposeMatrix([
+        expect(ReelGameSessionWinCalculator.getItemsForDirection(ReelGameSessionReelsController.transposeMatrix([
             ["A", "A", "A", "K", "Q"],
             ["A", "K", "Q", "J", "10"],
             ["K", "Q", "J", "10", "9"]
         ]), [2, 2, 2, 2, 2])).toEqual(["K", "Q", "J", "10", "9"]);
-        expect(ReelGameSessionWinCalculator.getItemsFromDirection(ReelGameSessionReelsController.transposeMatrix([
+        expect(ReelGameSessionWinCalculator.getItemsForDirection(ReelGameSessionReelsController.transposeMatrix([
             ["A", "A", "A", "K", "Q"],
             ["A", "K", "Q", "J", "10"],
             ["K", "Q", "J", "10", "9"]
         ]), [0, 1, 2, 1, 0])).toEqual(["A", "K", "J", "J", "Q"]);
-        expect(ReelGameSessionWinCalculator.getItemsFromDirection(ReelGameSessionReelsController.transposeMatrix([
+        expect(ReelGameSessionWinCalculator.getItemsForDirection(ReelGameSessionReelsController.transposeMatrix([
             ["A", "A", "A", "K", "Q"],
             ["A", "K", "Q", "J", "10"],
             ["K", "Q", "J", "10", "9"]
