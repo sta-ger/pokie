@@ -1,4 +1,5 @@
 import {ReelGameSessionReelsController} from "./ReelGameSessionReelsController";
+import {ReelGameSessionConfig} from "../ReelGameSessionConfig";
 
 describe("ReelGameSessionReelsController", () => {
     let availableItems: string[] = [
@@ -122,7 +123,10 @@ describe("ReelGameSessionReelsController", () => {
         }
         return arr;
     }, []);
-    let reelsController = new ReelGameSessionReelsController(5, 3, sequences);
+    let conf = new ReelGameSessionConfig(5, 3);
+    conf.availableItems = availableItems;
+    conf.reelsItemsSequences = sequences;
+    let reelsController = new ReelGameSessionReelsController(conf);
 
     describe("getRandomItem", () => {
 

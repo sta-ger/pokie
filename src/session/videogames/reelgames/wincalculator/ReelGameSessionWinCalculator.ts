@@ -1,12 +1,12 @@
 import {IReelGameSessionWinCalculator} from "./IReelGameSessionWinCalculator";
-import {IReelGameSessionConfig} from "../IReelGameSessionConfig";
 import {IReelGameSessionWinningLineModel} from "./IReelGameSessionWinningLineModel";
 import {IReelGameSessionWinningScatterModel} from "./IReelGameSessionWinningScatterModel";
 import {ReelGameSessionWinningScatterModel} from "./ReelGameSessionWinningScatterModel";
 import {ReelGameSessionWinningLineModel} from "./ReelGameSessionWinningLineModel";
+import {IReelGameSessionWinCalculatorConfig} from "./IReelGameSessionWinCalculatorConfig";
 
 export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculator {
-    private readonly _config: IReelGameSessionConfig;
+    private readonly _config: IReelGameSessionWinCalculatorConfig;
     private readonly _reelsItemsNumber: number;
     private readonly _reelsNumber: number;
     private readonly _wildItemId: string;
@@ -29,7 +29,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
 
     private _linesPatterns: number[][];
 
-    constructor(conf: IReelGameSessionConfig) {
+    constructor(conf: IReelGameSessionWinCalculatorConfig) {
         this._config = conf;
         this._reelsItemsNumber = conf.reelsItemsNumber;
         this._reelsNumber = conf.reelsNumber;

@@ -1,15 +1,18 @@
 import {IReelGameSessionReelsController} from "./IReelGameSessionReelsController";
+import {IReelGameSessionReelsControllerConfig} from "./IReelGameSessionReelsControllerConfig";
 
 export class ReelGameSessionReelsController implements IReelGameSessionReelsController {
+
+
     private readonly _reelsNumber: number;
     private readonly _reelsItemsNumber: number;
 
     private readonly _reelsSequences: string[][];
 
-    constructor(reelsNumber: number, reelsItemsNumber: number, reelsItemsSequences: string[][]) {
-        this._reelsNumber = reelsNumber;
-        this._reelsItemsNumber = reelsItemsNumber;
-        this._reelsSequences = reelsItemsSequences;
+    constructor(conf: IReelGameSessionReelsControllerConfig) {
+        this._reelsNumber = conf.reelsNumber;
+        this._reelsItemsNumber = conf.reelsItemsNumber;
+        this._reelsSequences = conf.reelsItemsSequences;
     }
 
     public getRandomItemsCombination(): string[][] {

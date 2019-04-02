@@ -2,33 +2,35 @@ import {IReelGameSession} from "./IReelGameSession";
 import {IReelGameSessionConfig} from "./IReelGameSessionConfig";
 import {IGameSession} from "../../IGameSession";
 import {GameSession} from "../../GameSession";
-import {ReelGameSessionConfig} from "./ReelGameSessionConfig";
+import {IReelGameSessionReelsController} from "./reelscontroller/IReelGameSessionReelsController";
+import {IReelGameSessionWinCalculator} from "./wincalculator/IReelGameSessionWinCalculator";
 
 export class ReelGameSession implements IReelGameSession {
     private readonly _config: IReelGameSessionConfig;
+    private readonly _reelsController: IReelGameSessionReelsController;
+    private readonly _winningCalculator: IReelGameSessionWinCalculator;
     private readonly _adaptee: IGameSession;
     private _winningAmount: number;
+    private _reelsItems: string[][];
 
-    constructor(config?: IReelGameSessionConfig) {
-        if (config) {
-            this._config = config;
-        } else {
-            this._config = new ReelGameSessionConfig();
-        }
+    constructor(config: IReelGameSessionConfig, reelsController: IReelGameSessionReelsController, winningCalculator: IReelGameSessionWinCalculator) {
+        this._config = config;
+        this._reelsController = reelsController;
+        this._winningCalculator = winningCalculator;
         this._adaptee = new GameSession(this._config);
         this._winningAmount = 0
     }
 
     public getReelsItems(): string[][] {
-        return null;
+        return this._reelsItems;
     }
     
     public getWinningLines(): {} {
-        return null;
+        return this._winningCalculator.getWinningLines();
     }
     
     public getWinningScatters(): {} {
-        return null;
+        return this._winningCalculator.getWinningScatters();
     }
     
     public getPaytable(): { [p: string]: { [p: number]: number } } {
@@ -72,6 +74,9 @@ export class ReelGameSession implements IReelGameSession {
     }
 
     public play(): void {
+        this._adaptee.play();
+        this._reelsItems = this._reelsController.getRandomItemsCombination();
+        this._winningCalculator.setGameState(this.getBet(), this._reelsItems);
     }
 
     public setBet(bet: number): void {

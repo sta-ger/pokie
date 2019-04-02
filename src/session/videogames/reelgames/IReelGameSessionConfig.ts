@@ -1,32 +1,8 @@
 import {IGameSessionConfig} from "../../IGameSessionConfig";
+import {IReelGameSessionWinCalculatorConfig} from "./wincalculator/IReelGameSessionWinCalculatorConfig";
+import {IReelGameSessionReelsControllerConfig} from "./reelscontroller/IReelGameSessionReelsControllerConfig";
 
-export interface IReelGameSessionConfig extends IGameSessionConfig {
-
-    paytable: {
-        [bet: number]: {
-            [itemId: string]: {
-                [times: number]: number
-            }
-        }
-    };
-
-    availableItems: string[];
-
-    wildItemId: string;
-
-    scatters: any[][];
-
-    reelsNumber: number;
-
-    reelsItemsNumber: number;
-
-    reelsItemsSequences: string[][];
-
-    linesDirections: {};
-
-    wildsMultipliers: {
-        [wildsNum: number]: number
-    };
+export interface IReelGameSessionConfig extends IGameSessionConfig, IReelGameSessionWinCalculatorConfig, IReelGameSessionReelsControllerConfig {
 
     isItemWild(itemId): boolean;
 

@@ -1,18 +1,13 @@
 import {IGameSession} from "./IGameSession";
 import {IGameSessionConfig} from "./IGameSessionConfig";
-import {GameSessionConfig} from "./GameSessionConfig";
 
 export class GameSession implements IGameSession {
     private readonly _config?: IGameSessionConfig;
     private _bet: number;
     private _credits: number;
 
-    constructor(config?: IGameSessionConfig) {
-        if (config) {
-            this._config = config;
-        } else {
-            this._config = new GameSessionConfig();
-        }
+    constructor(config: IGameSessionConfig) {
+        this._config = config;
         this._bet = this.isBetAvailable(this._config.bet) ? this._config.bet : this._config.availableBets[0];
         this._credits = this._config.creditsAmount;
     }

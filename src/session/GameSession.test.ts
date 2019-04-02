@@ -6,7 +6,7 @@ import {IGameSessionConfig} from "./IGameSessionConfig";
 describe("GameSession", () => {
     it("creates default session", () => {
         const config: IGameSessionConfig = new GameSessionConfig();
-        const session: IGameSession = new GameSession();
+        const session: IGameSession = new GameSession(config);
         expect(session.getAvailableBets()).toEqual(config.availableBets);
         expect(session.getBet()).toBe(config.availableBets[0]);
         expect(session.getCreditsAmount()).toBe(1000);
@@ -33,7 +33,8 @@ describe("GameSession", () => {
     });
 
     it("plays while enough credits", () => {
-        const session = new GameSession();
+        const config: IGameSessionConfig = new GameSessionConfig();
+        const session = new GameSession(config);
         session.setBet(10);
         session.play();
         expect(session.getCreditsAmount()).toBe(990);

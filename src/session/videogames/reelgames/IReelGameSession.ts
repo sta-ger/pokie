@@ -1,5 +1,5 @@
 import {IGameSession} from "../../IGameSession";
-import {IReelGameSessionWinningScatterModel} from "./flow/IReelGameSessionWinningScatterModel";
+import {IReelGameSessionWinningScatterModel} from "./wincalculator/IReelGameSessionWinningScatterModel";
 
 export interface IReelGameSession extends IGameSession {
     
