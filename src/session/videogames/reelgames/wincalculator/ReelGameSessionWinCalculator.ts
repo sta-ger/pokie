@@ -50,7 +50,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             }
             r.push(arr);
         }
-        return  r;
+        return r;
     }
 
     public static getItemsFromDirection(items: string[][], direction: number[]): string[] {
@@ -83,7 +83,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
 
     public static isMatchPattern(items: string[], pattern: number[], wildItemId?: string): boolean {
         let itemsByPattern = this.getItemsMatchingPattern(items, pattern);
-        let unique = itemsByPattern.filter( (value, index, self) => {
+        let unique = itemsByPattern.filter((value, index, self) => {
             return self.indexOf(value) === index;
         });
         return unique.length === 1 || (unique.length === 2 && unique.indexOf(wildItemId) >= 0);
@@ -91,7 +91,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
 
     public static getWinningItemId(items: string[], pattern: number[], wildItemId?: string): string {
         let itemsByPattern = this.getItemsMatchingPattern(items, pattern);
-        let unique = itemsByPattern.filter( (value, index, self) => {
+        let unique = itemsByPattern.filter((value, index, self) => {
             return self.indexOf(value) === index;
         });
         return unique.reduce((prev, cur) => {
@@ -100,6 +100,30 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             }
             return prev;
         });
+    }
+
+    public static getWildItemsPositions(items: string[], pattern: number[], wildItemId: string): number[] {
+        return items.reduce((arr, item, i) => {
+            if (item === wildItemId && pattern[i] === 1) {
+                arr.push(i);
+            }
+            return arr;
+        }, []);
+    }
+
+    public static getScatterItemsPositions(items: string[][], scatterItemId: string): number[][] {
+        let r: number[][];
+        for (let i: number = 0; i < items.length; i++) {
+            for (let j: number = 0; j < items[i].length; j++) {
+                if (items[i][j] === scatterItemId) {
+                    if (!r) {
+                        r = [];
+                    }
+                    r.push([i, j]);
+                }
+            }
+        }
+        return r;
     }
 
     public setGameState(bet: number, items: string[][]): void {
