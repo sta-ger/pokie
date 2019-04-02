@@ -6,13 +6,12 @@ import {ReelGameSessionWinningScatterModel} from "./ReelGameSessionWinningScatte
 import {ReelGameSessionWinningLineModel} from "./ReelGameSessionWinningLineModel";
 
 export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculator {
-    private _items: string[][];
-
+    private readonly _config: IReelGameSessionConfig;
     private readonly _reelsItemsNumber: number;
     private readonly _reelsNumber: number;
     private readonly _wildItemId: string;
     private readonly _scatters: any[][];
-    private readonly _linesDirections: {};
+    private readonly _linesDirections: { [lineId: string]: number[] };
     private readonly _wildsMultipliers: {
         [wildsNum: number]: number
     };
@@ -24,10 +23,12 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         }
     };
 
+    private _items: string[][];
     private _winningLines: { [lineId: string]: IReelGameSessionWinningLineModel };
     private _winningScatters: { [scatterItemId: string]: IReelGameSessionWinningScatterModel };
 
     constructor(conf: IReelGameSessionConfig) {
+        this._config = conf;
         this._reelsItemsNumber = conf.reelsItemsNumber;
         this._reelsNumber = conf.reelsNumber;
         this._wildItemId = conf.wildItemId;
@@ -138,24 +139,32 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             dirY = direction[i];
             itemId = this._items[dirX][dirY];
             if (!prevItemId) {
-                if (this.isItemScatter(itemId)) {
+                if (this._config.isItemScatter(itemId)) {
                     break;
                 }
                 prevItemId = itemId;
-                if (itemId === this._wildItemId) {
+                if (this._config.isItemWild(itemId)) {
                     wildItemsPositions.push(dirX);
                 }
                 itemsPositions.push(dirX);
             } else {
                 if (
-                    (itemId !== prevItemId && itemId !== this._wildItemId) ||
-                    (itemsPositions.length === direction.length - 1 && (itemId === prevItemId || itemId === this._wildItemId))
+                    (itemId !== prevItemId && !this._config.isItemWild(itemId)) ||
+                    (itemsPositions.length === direction.length - 1 && (itemId === prevItemId || this._config.isItemWild(itemId)))
                 ) {
-                    if (itemsPositions.length === direction.length - 1 && (itemId === prevItemId || itemId === this._wildItemId)) {
-                        if (itemId === this._wildItemId) {
+                    if (itemsPositions.length === direction.length - 1 && (itemId === prevItemId || this._config.isItemWild(itemId) || this._config.isItemWild(prevItemId))) {
+                        if (this._config.isItemWild(itemId)) {
                             wildItemsPositions.push(dirX);
                         }
                         itemsPositions.push(dirX);
+                    }
+                    if (this._config.isItemWild(prevItemId)) {
+                        for (let i: number = 0; i < itemsPositions.length; i++) {
+                            if (!this._config.isItemWild(this._items[direction[i]][itemsPositions[i]])) {
+                                prevItemId = this._items[direction[i]][itemsPositions[i]];
+                                break;
+                            }
+                        }
                     }
                     itemPaytable = this._paytable[bet][prevItemId];
                     for (itemPaytableTimes in itemPaytable) {
@@ -170,7 +179,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
                     }
                     break;
                 } else {
-                    if (itemId === this._wildItemId) {
+                    if (this._config.isItemWild(itemId)) {
                         wildItemsPositions.push(dirX);
                     }
                     itemsPositions.push(dirX);
@@ -178,20 +187,6 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             }
         }
         return line;
-    }
-
-    private isItemScatter(itemId: string): boolean {
-        let i: number;
-        let rv: boolean;
-        if (this._scatters) {
-            for (i = 0; i < this._scatters.length; i++) {
-                if (this._scatters[i][0] === itemId) {
-                    rv = true;
-                    break;
-                }
-            }
-        }
-        return rv;
     }
 
     private getLineWinningAmount(bet: number, line: IReelGameSessionWinningLineModel): number {

@@ -22,7 +22,7 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
 
     private _reelsItemsSequences: string[][];
 
-    private _linesDirections: {};
+    private _linesDirections: { [lineId: string]: number[] };
 
     private _wildsMultipliers: { [wildsNum: number]: number };
 
@@ -136,8 +136,8 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         this._wildsMultipliers = value;
     }
 
-    public static createLinesDirections(reelsNumber: number, reelsItemsNumber: number): {} {
-        let r = [];
+    public static createLinesDirections(reelsNumber: number, reelsItemsNumber: number): { [lineId: string]: number[] } {
+        let r = [] as {};
         for (let i: number = 0; i < reelsItemsNumber; i++) {
             for (let j: number = 0; j < reelsNumber; j++) {
                 if (!r[i]) {
