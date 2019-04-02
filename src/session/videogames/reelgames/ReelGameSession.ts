@@ -12,13 +12,15 @@ export class ReelGameSession implements IReelGameSession {
     private readonly _adaptee: IGameSession;
     private _winningAmount: number;
     private _reelsItems: string[][];
+    private _creditsAmount: number;
 
     constructor(config: IReelGameSessionConfig, reelsController: IReelGameSessionReelsController, winningCalculator: IReelGameSessionWinCalculator) {
         this._config = config;
         this._reelsController = reelsController;
         this._winningCalculator = winningCalculator;
         this._adaptee = new GameSession(this._config);
-        this._winningAmount = 0
+        this._winningAmount = 0;
+        this._creditsAmount = this._adaptee.getCreditsAmount();
     }
 
     public getReelsItems(): string[][] {
@@ -62,7 +64,7 @@ export class ReelGameSession implements IReelGameSession {
     }
 
     public getCreditsAmount(): number {
-        return this._adaptee.getCreditsAmount();
+        return this._creditsAmount;
     }
 
     public getWinningAmount(): number {
@@ -77,6 +79,8 @@ export class ReelGameSession implements IReelGameSession {
         this._adaptee.play();
         this._reelsItems = this._reelsController.getRandomItemsCombination();
         this._winningCalculator.setGameState(this.getBet(), this._reelsItems);
+        this._winningAmount = this._winningCalculator.getWinningAmount();
+        this._creditsAmount = this._adaptee.getCreditsAmount() + this._winningAmount;
     }
 
     public setBet(bet: number): void {

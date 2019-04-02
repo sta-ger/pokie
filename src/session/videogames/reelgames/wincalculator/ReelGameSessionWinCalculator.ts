@@ -28,6 +28,8 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     private _winningScatters: { [scatterItemId: string]: IReelGameSessionWinningScatterModel };
 
     private _linesPatterns: number[][];
+    private _linesWinning: number;
+    private _scattersWinning: number;
 
     constructor(conf: IReelGameSessionWinCalculatorConfig) {
         this._config = conf;
@@ -159,14 +161,20 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         let line: IReelGameSessionWinningLineModel;
         let winningLinesIds: string[];
         this._winningLines = {};
+        this._linesWinning = 0;
         winningLinesIds = ReelGameSessionWinCalculator.getWinningLinesIds(this._items, this._linesDirections, this._linesPatterns, this._wildItemId);
         for (lineId of winningLinesIds) {
             line = this.generateWinningLine(bet, lineId);
             if (line.winningAmount > 0) {
                 this._winningLines[lineId] = line;
+                this._linesWinning += line.winningAmount;
             }
         }
+        this._scattersWinning = 0;
         this._winningScatters = this.generateWinningScatters(bet);
+        Object.keys(this._winningScatters).forEach((scatterId) => {
+            this._scattersWinning += this._winningScatters[scatterId].winningAmount;
+        });
     }
 
     private generateWinningScatters(bet: number): { [scatterItemId: string]: IReelGameSessionWinningScatterModel } {
@@ -238,6 +246,18 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             rv = 0;
         }
         return rv;
+    }
+
+    public getWinningAmount(): number {
+        return this.getLinesWinning() + this.getScattersWinning();
+    }
+
+    public getLinesWinning(): number {
+        return this._linesWinning;
+    }
+
+    public getScattersWinning(): number {
+        return this._scattersWinning;
     }
 
 }

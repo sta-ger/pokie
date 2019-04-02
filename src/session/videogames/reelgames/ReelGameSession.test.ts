@@ -6,7 +6,6 @@ import {ReelGameSessionReelsController} from "./reelscontroller/ReelGameSessionR
 import {ReelGameSessionWinCalculator} from "./wincalculator/ReelGameSessionWinCalculator";
 
 describe("ReelGameSession", () => {
-
     it("creates default reel game session", () => {
         const config: IReelGameSessionConfig = new ReelGameSessionConfig();
         const session: IReelGameSession = new ReelGameSession(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
@@ -26,24 +25,34 @@ describe("ReelGameSession", () => {
         expect(session.getWinningScatters()).not.toBeDefined();
     });
 
-    /*it("should play until any winning", () => {
-        const model = createSessionModel();
-        model.credits = Infinity;
-        const session = createReelGameSession(model);
+    it("should several times play until any winning", () => {
+        const config: IReelGameSessionConfig = new ReelGameSessionConfig();
+        config.creditsAmount = 10000000;
+        const session: IReelGameSession = new ReelGameSession(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
 
         let lastBet: number;
         let lastCredits: number;
-        while (session.getWinningAmount() === 0) {
-            lastCredits = session.getCreditsAmount();
-            lastBet = session.getBet();
-            session.play();
-            if (session.getWinningAmount() === 0) {
-                expect(session.getCreditsAmount()).toEqual(lastCredits - lastBet);
+        let wasLinesWin: boolean;
+        let wasScattersWin: boolean;
+        const timesToPlay: number = 100;
+        for (let i: number = 0; i < timesToPlay; i++) {
+            while (session.getWinningAmount() === 0) {
+                lastCredits = session.getCreditsAmount();
+                lastBet = session.getBet();
+                session.play();
+                if (session.getWinningAmount() === 0) {
+                    expect(session.getCreditsAmount()).toEqual(lastCredits - lastBet);
+                }
+            }
+            expect(session.getCreditsAmount()).toBeGreaterThanOrEqual(lastCredits - lastBet);
+
+            wasLinesWin = Object.keys(session.getWinningLines()).length > 0;
+            wasScattersWin = Object.keys(session.getWinningScatters()).length > 0;
+            if (i === timesToPlay - 1 && !wasLinesWin && !wasScattersWin) {
+                i = 0;
             }
         }
 
-        expect(session.getCreditsAmount()).toEqualGreaterThan(lastCredits - lastBet);
-
-    });*/
+    });
 
 });

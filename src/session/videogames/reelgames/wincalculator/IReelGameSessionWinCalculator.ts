@@ -9,5 +9,11 @@ export interface IReelGameSessionWinCalculator {
     
     getWinningScatters(): { [scatterItemId: string]: IReelGameSessionWinningScatterModel };
 
+    getWinningAmount(): number;
+
+    getLinesWinning(): number;
+
+    getScattersWinning(): number;
+
     
 }

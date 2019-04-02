@@ -325,4 +325,31 @@ describe("ReelGameSessionWinCalculator", () => {
         expect(scatters["S"].winningAmount).toBe(config.paytable[1][scatters["S"].itemId][scatters["S"].itemsPositions.length]);
     });
 
+    it("calculates all lines win amount", () => {
+        winningCalculator.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
+            ["A", "A", "A", "A", "A"],
+            ["A", "A", "A", "K", "Q"],
+            ["A", "A", "K", "Q", "J"]
+        ]));
+        expect(winningCalculator.getLinesWinning()).toBeGreaterThan(0);
+    });
+
+    it("calculates all scatters win amount", () => {
+        winningCalculator.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
+            ["A", "A", "A", "A", "A"],
+            ["A", "A", "A", "S", "S"],
+            ["A", "A", "K", "Q", "S"]
+        ]));
+        expect(winningCalculator.getScattersWinning()).toBeGreaterThan(0);
+    });
+
+    it("calculates total win amount", () => {
+        winningCalculator.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
+            ["A", "A", "A", "A", "A"],
+            ["A", "A", "A", "S", "S"],
+            ["A", "A", "K", "Q", "S"]
+        ]));
+        expect(winningCalculator.getWinningAmount()).toBeGreaterThan(0);
+    });
+
 });
