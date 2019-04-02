@@ -35,7 +35,7 @@ const testPlayUntilWin = (sessionClass, configClass) => {
 
     const timesToPlay: number = 100;
     for (let i: number = 0; i < timesToPlay; i++) {
-        while (session.getWinningAmount() === 0) {
+        while (session.getWinningAmount() === 0 || wasLinesWin) {
             lastCredits = session.getCreditsAmount();
             lastBet = session.getBet();
             session.play();
