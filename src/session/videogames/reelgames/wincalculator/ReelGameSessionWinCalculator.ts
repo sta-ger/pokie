@@ -70,12 +70,36 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         }, []);
     }
 
+    public static getMatchingPattern(items: string[], patterns: number[][], wildItemId?: string): number[] {
+        let r: number[];
+        for (let i: number = 0; i < patterns.length; i++) {
+            if (this.isMatchPattern(items, patterns[i])) {
+                r = patterns[i];
+                break;
+            }
+        }
+        return r;
+    }
+
     public static isMatchPattern(items: string[], pattern: number[], wildItemId?: string): boolean {
         let itemsByPattern = this.getItemsMatchingPattern(items, pattern);
         let unique = itemsByPattern.filter( (value, index, self) => {
             return self.indexOf(value) === index;
         });
-        return unique.length === 1;
+        return unique.length === 1 || (unique.length === 2 && unique.indexOf(wildItemId) >= 0);
+    }
+
+    public static getWinningItemId(items: string[], pattern: number[], wildItemId?: string): string {
+        let itemsByPattern = this.getItemsMatchingPattern(items, pattern);
+        let unique = itemsByPattern.filter( (value, index, self) => {
+            return self.indexOf(value) === index;
+        });
+        return unique.reduce((prev, cur) => {
+            if (cur !== wildItemId) {
+                prev = cur;
+            }
+            return prev;
+        });
     }
 
     public setGameState(bet: number, items: string[][]): void {

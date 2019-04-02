@@ -53,6 +53,26 @@ describe("ReelGameSessionWinCalculator", () => {
         expect(ReelGameSessionWinCalculator.isMatchPattern(["W", "W", "K", "Q", "J",], [1, 1, 1, 0, 0], "W")).toBeTruthy();
         expect(ReelGameSessionWinCalculator.isMatchPattern(["W", "W", "W", "K", "Q",], [1, 1, 1, 1, 0], "W")).toBeTruthy();
         expect(ReelGameSessionWinCalculator.isMatchPattern(["W", "W", "W", "W", "K",], [1, 1, 1, 1, 1], "W")).toBeTruthy();
+        expect(ReelGameSessionWinCalculator.isMatchPattern(["W", "W", "K", "W", "K",], [1, 1, 1, 1, 1], "W")).toBeTruthy();
+        expect(ReelGameSessionWinCalculator.isMatchPattern(["K", "W", "K", "W", "K",], [1, 1, 1, 1, 1], "W")).toBeTruthy();
+        expect(ReelGameSessionWinCalculator.isMatchPattern(["K", "W", "A", "W", "K",], [1, 1, 1, 1, 1], "W")).toBeFalsy();
+    });
+
+    it("determines which item is winning", () => {
+        expect(ReelGameSessionWinCalculator.getWinningItemId(["A", "A", "A", "K", "Q",], [1, 1, 1, 0, 0])).toBe("A");
+        expect(ReelGameSessionWinCalculator.getWinningItemId(["A", "W", "A", "K", "Q",], [1, 1, 1, 0, 0], "W")).toBe("A");
+        expect(ReelGameSessionWinCalculator.getWinningItemId(["A", "W", "W", "K", "Q",], [1, 1, 1, 0, 0], "W")).toBe("A");
+        expect(ReelGameSessionWinCalculator.getWinningItemId(["W", "W", "A", "K", "Q",], [1, 1, 1, 0, 0], "W")).toBe("A");
+        expect(ReelGameSessionWinCalculator.getWinningItemId(["W", "A", "A", "K", "Q",], [1, 1, 1, 0, 0], "W")).toBe("A");
+        expect(ReelGameSessionWinCalculator.getWinningItemId(["W", "A", "W", "K", "Q",], [1, 1, 1, 0, 0], "W")).toBe("A");
+    });
+
+    it("determines which pattern the line match to", () => {
+        let patterns = ReelGameSessionWinCalculator.createLinesPatterns(5);
+        expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "A", "K", "Q", "J",], patterns)).toEqual([1, 1, 0, 0, 0]);
+        expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "A", "A", "K", "Q",], patterns)).toEqual([1, 1, 1, 0, 0]);
+        expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "A", "A", "A", "Q",], patterns)).toEqual([1, 1, 1, 1, 0]);
+        expect(ReelGameSessionWinCalculator.getMatchingPattern(["A", "A", "A", "A", "A",], patterns)).toEqual([1, 1, 1, 1, 1]);
     });
 
     it("extracts proper items from direction", () => {
