@@ -1,15 +1,13 @@
 import {IReelGameSession} from "./IReelGameSession";
 import {IReelGameSessionConfig} from "./IReelGameSessionConfig";
-import {IReelGameSessionModel} from "./IReelGameSessionModel";
 import {IGameSession} from "../../IGameSession";
 import {GameSession} from "../../GameSession";
 import {ReelGameSessionConfig} from "./ReelGameSessionConfig";
 
 export class ReelGameSession implements IReelGameSession {
-    private _config: IReelGameSessionConfig;
-    private _sessionModel: IReelGameSessionModel;
-
-    private _adaptee: IGameSession;
+    private readonly _config: IReelGameSessionConfig;
+    private readonly _adaptee: IGameSession;
+    private _winningAmount: number;
 
     constructor(config?: IReelGameSessionConfig) {
         if (config) {
@@ -18,9 +16,7 @@ export class ReelGameSession implements IReelGameSession {
             this._config = new ReelGameSessionConfig();
         }
         this._adaptee = new GameSession(this._config);
-        this._sessionModel = {
-            winningAmount: 0,
-        };
+        this._winningAmount = 0
     }
 
     public getReelsItems(): string[][] {
@@ -68,7 +64,7 @@ export class ReelGameSession implements IReelGameSession {
     }
 
     public getWinningAmount(): number {
-        return this._sessionModel.winningAmount;
+        return this._winningAmount;
     }
 
     public isBetAvailable(bet: number): boolean {

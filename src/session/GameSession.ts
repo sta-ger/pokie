@@ -1,11 +1,11 @@
 import {IGameSession} from "./IGameSession";
-import {IGameSessionModel} from "./IGameSessionModel";
 import {IGameSessionConfig} from "./IGameSessionConfig";
 import {GameSessionConfig} from "./GameSessionConfig";
 
 export class GameSession implements IGameSession {
-    private _sessionModel: IGameSessionModel;
-    private _config?: IGameSessionConfig;
+    private readonly _config?: IGameSessionConfig;
+    private _bet: number;
+    private _credits: number;
 
     constructor(config?: IGameSessionConfig) {
         if (config) {
@@ -13,10 +13,8 @@ export class GameSession implements IGameSession {
         } else {
             this._config = new GameSessionConfig();
         }
-        this._sessionModel = {
-            bet: this.isBetAvailable(this._config.bet) ? this._config.bet : this._config.availableBets[0],
-            credits: this._config.creditsAmount
-        };
+        this._bet = this.isBetAvailable(this._config.bet) ? this._config.bet : this._config.availableBets[0];
+        this._credits = this._config.creditsAmount;
     }
 
     public isBetAvailable(bet: number): boolean {
@@ -28,25 +26,25 @@ export class GameSession implements IGameSession {
     }
 
     public getBet(): number {
-        return this._sessionModel.bet;
+        return this._bet;
     }
 
     public getCreditsAmount(): number {
-        return this._sessionModel.credits;
+        return this._credits;
     }
 
     public setBet(bet: number): void {
-        this._sessionModel.bet = bet;
+        this._bet = bet;
     }
 
     public play(): void {
         if (this.canPlayNextGame()) {
-            this._sessionModel.credits -= this._sessionModel.bet;
+            this._credits -= this._bet;
         }
     }
 
     public canPlayNextGame(): boolean {
-        return this._sessionModel.credits >= this._sessionModel.bet;
+        return this._credits >= this._bet;
     }
 
 }
