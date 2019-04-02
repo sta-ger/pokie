@@ -2,11 +2,13 @@ import {ReelGameSessionWinCalculator} from "./ReelGameSessionWinCalculator";
 import {ReelGameSessionConfig} from "../ReelGameSessionConfig";
 import {ReelGameSessionReelsController} from "../reelscontroller/ReelGameSessionReelsController";
 import {IReelGameSessionWinningLineModel} from "./IReelGameSessionWinningLineModel";
+import {IReelGameSessionWinningScatterModel} from "./IReelGameSessionWinningScatterModel";
 
 describe("ReelGameSessionWinCalculator", () => {
     let config = new ReelGameSessionConfig(5, 3);
     let winningCalculator = new ReelGameSessionWinCalculator(config);
     let lines: { [lineId: string]: IReelGameSessionWinningLineModel };
+    let scatters: { [scatterId: string]: IReelGameSessionWinningScatterModel };
 
     const testWinning = (bet, lines) => {
         Object.keys(lines).forEach(lineId => {
@@ -294,6 +296,33 @@ describe("ReelGameSessionWinCalculator", () => {
         testWinning(1, lines);
         testWildItemsPositions(lines["0"], 4);
         testItemsPositions(lines["0"], 5);
+    });
+
+    it("calculates winning scatters", () => {
+        winningCalculator.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
+            ["A", "S", "A", "K", "Q"],
+            ["A", "K", "Q", "J", "10"],
+            ["K", "Q", "J", "10", "9"]
+        ]));
+        scatters = winningCalculator.getWinningScatters();
+        expect(Object.keys(scatters)).toHaveLength(0);
+
+        winningCalculator.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
+            ["A", "S", "A", "K", "Q"],
+            ["A", "K", "S", "J", "10"],
+            ["K", "Q", "J", "10", "9"]
+        ]));
+        scatters = winningCalculator.getWinningScatters();
+        expect(Object.keys(scatters)).toHaveLength(0);
+
+        winningCalculator.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
+            ["A", "S", "A", "K", "Q"],
+            ["A", "K", "S", "J", "10"],
+            ["K", "Q", "J", "10", "S"]
+        ]));
+        scatters = winningCalculator.getWinningScatters();
+        expect(Object.keys(scatters)).toHaveLength(1);
+        expect(scatters["S"].winningAmount).toBe(config.paytable[1][scatters["S"].itemId][scatters["S"].itemsPositions.length]);
     });
 
 });
