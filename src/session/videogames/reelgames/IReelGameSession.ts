@@ -11,8 +11,6 @@ export interface IReelGameSession extends IGameSession {
     
     getReelsItems(): string[][];
 
-    getWinningAmount(): number;
-
     getWinningLines(): {};
     
     getWinningScatters(): { [scatterId: string]: IReelGameSessionWinningScatterModel };

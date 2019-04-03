@@ -3,6 +3,8 @@ export interface IGameSession  {
     getCreditsAmount(): number;
 
     setCreditsAmount(value: number): void;
+
+    getWinningAmount(): number;
     
     getAvailableBets(): number[];
 

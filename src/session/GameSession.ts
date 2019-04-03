@@ -46,4 +46,8 @@ export class GameSession implements IGameSession {
         return this._credits >= this._bet;
     }
 
+    public getWinningAmount(): number {
+        return 0;
+    }
+
 }
