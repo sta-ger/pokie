@@ -33,9 +33,11 @@ const testPlayUntilWin = (sessionClass, configClass) => {
     config.creditsAmount = 10000000;
     const session: IReelGameSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
 
-    const timesToPlay: number = 100;
+    const timesToPlay: number = 1000;
     for (let i: number = 0; i < timesToPlay; i++) {
-        while (session.getWinningAmount() === 0 || wasLinesWin) {
+        while (session.getWinningAmount() === 0 || wasLinesWin || wasScattersWin) {
+            wasLinesWin = false;
+            wasScattersWin = false;
             lastCredits = session.getCreditsAmount();
             lastBet = session.getBet();
             session.play();

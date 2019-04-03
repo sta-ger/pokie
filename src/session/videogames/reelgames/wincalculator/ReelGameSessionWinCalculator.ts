@@ -234,13 +234,23 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
 
     private getLineWinningAmount(bet: number, line: IReelGameSessionWinningLineModel): number {
         let rv: number;
-        rv = this._paytable[bet][line.itemId][line.itemsPositions.length] * (this._wildsMultipliers.hasOwnProperty(line.wildItemsPositions.length) ? this._wildsMultipliers[line.wildItemsPositions.length] : 1);
+        if (
+            this._paytable[bet] &&
+            this._paytable[bet][line.itemId] &&
+            this._paytable[bet][line.itemId][line.itemsPositions.length]
+        ) {
+            rv = this._paytable[bet][line.itemId][line.itemsPositions.length] * (this._wildsMultipliers.hasOwnProperty(line.wildItemsPositions.length) ? this._wildsMultipliers[line.wildItemsPositions.length] : 1);
+        }
         return rv;
     }
 
     private getScatterWinningAmount(bet: number, model: IReelGameSessionWinningScatterModel): number {
         let rv: number;
-        if (this._paytable[bet].hasOwnProperty(model.itemId)) {
+        if (
+            this._paytable[bet] &&
+            this._paytable[bet][model.itemId] &&
+            this._paytable[bet][model.itemId][model.itemsPositions.length]
+        ) {
             rv = this._paytable[bet][model.itemId][model.itemsPositions.length];
         } else {
             rv = 0;

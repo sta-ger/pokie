@@ -4,9 +4,10 @@ import {IReelGameSessionWinCalculator} from "./wincalculator/IReelGameSessionWin
 import {IReelGameWithFreeGamesSession} from "./IReelGameWithFreeGamesSession";
 import {IReelGameSession} from "./IReelGameSession";
 import {ReelGameSession} from "./ReelGameSession";
+import {IReelGameWithFreeGamesSessionConfig} from "./IReelGameWithFreeGamesSessionConfig";
 
 export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSession {
-    private readonly _config: IReelGameSessionConfig;
+    private readonly _config: IReelGameWithFreeGamesSessionConfig;
     private readonly _reelsController: IReelGameSessionReelsController;
     private readonly _winningCalculator: IReelGameSessionWinCalculator;
     private readonly _adaptee: IReelGameSession;
@@ -15,7 +16,7 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
     private _freeGamesSum: number;
     private _freeBank: number;
 
-    constructor(config: IReelGameSessionConfig, reelsController: IReelGameSessionReelsController, winningCalculator: IReelGameSessionWinCalculator) {
+    constructor(config: IReelGameWithFreeGamesSessionConfig, reelsController: IReelGameSessionReelsController, winningCalculator: IReelGameSessionWinCalculator) {
         this._config = config;
         this._reelsController = reelsController;
         this._winningCalculator = winningCalculator;
@@ -66,6 +67,10 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
         return this._adaptee.getCreditsAmount();
     }
 
+    public setCreditsAmount(value: number): void {
+        this._adaptee.setCreditsAmount(value);
+    }
+
     public getWinningAmount(): number {
         return this._adaptee.getWinningAmount();
     }
@@ -75,7 +80,43 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
     }
 
     public play(): void {
+        let creditsBeforePlay: number;
+        let wonFreeGames: number;
+        if (this._freeGamesNum === this._freeGamesSum) {
+            this._freeBank = 0;
+            this._freeGamesNum = 0;
+            this._freeGamesSum = 0;
+        }
+        creditsBeforePlay = this.getCreditsAmount();
         this._adaptee.play();
+        if (this._freeGamesSum > 0 && this._freeGamesNum < this._freeGamesSum) {
+            this._freeGamesNum++;
+            this.setCreditsAmount(creditsBeforePlay);
+        }
+        wonFreeGames = this.getWonFreeGamesNumber();
+        if (wonFreeGames) {
+            this._freeGamesSum += wonFreeGames;
+        }
+    }
+
+    private getWonFreeGamesNumber(): number {
+        let rv: number;
+        let scatterId: string;
+        let scatterTimes: number;
+        let i: string;
+        let wonScatters: {};
+        rv = 0;
+        wonScatters = this.getWinningScatters();
+        for (i in wonScatters) {
+            scatterId = wonScatters[i].itemId;
+            scatterTimes = wonScatters[i].itemsPositions.length;
+            if (this._config.freeGamesForScatters.hasOwnProperty(scatterId)) {
+                if (this._config.freeGamesForScatters[scatterId].hasOwnProperty(scatterTimes.toString())) {
+                    rv = this._config.freeGamesForScatters[scatterId][scatterTimes];
+                }
+            }
+        }
+        return rv;
     }
 
     public setBet(bet: number): void {

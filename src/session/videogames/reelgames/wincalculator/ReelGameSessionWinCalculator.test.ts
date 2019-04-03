@@ -296,6 +296,14 @@ describe("ReelGameSessionWinCalculator", () => {
         testWinning(1, lines);
         testWildItemsPositions(lines["0"], 4);
         testItemsPositions(lines["0"], 5);
+
+        winningCalculator.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
+            ["W", "W", "W", "W", "W"],
+            ["A", "K", "Q", "J", "10"],
+            ["K", "Q", "J", "10", "9"]
+        ]));
+        lines = winningCalculator.getWinningLines();
+        expect(Object.keys(lines)).toHaveLength(0);
     });
 
     it("calculates winning scatters", () => {

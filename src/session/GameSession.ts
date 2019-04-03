@@ -28,6 +28,10 @@ export class GameSession implements IGameSession {
         return this._credits;
     }
 
+    public setCreditsAmount(value: number): void {
+        this._credits = value;
+    }
+
     public setBet(bet: number): void {
         this._bet = bet;
     }
