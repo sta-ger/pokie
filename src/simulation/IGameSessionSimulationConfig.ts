@@ -1,4 +1,5 @@
 import {IGameSession} from "../session/IGameSession";
+import {GameSimulationChangeBetScenario} from "./GameSimulationChangeBetScenario";
 
 export interface IGameSessionSimulationConfig {
     
@@ -6,12 +7,6 @@ export interface IGameSessionSimulationConfig {
     
     numberOfRounds?: number;
     
-    changeBetScenario?: string;
-    
-    beforePlayCallback?: () => void;
-    
-    afterPlayCallback?: () => void;
-    
-    onFinishedCallback?: () => void;
+    changeBetScenario?: GameSimulationChangeBetScenario;
     
 }

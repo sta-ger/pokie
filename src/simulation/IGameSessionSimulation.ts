@@ -9,5 +9,13 @@ export interface IGameSessionSimulation {
     getTotalReturn(): number;
     
     getCurrentGameNumber(): number;
+
+    getTotalGameToPlayNumber(): number;
+
+    beforePlayCallback?: () => void;
+
+    afterPlayCallback?: () => void;
+
+    onFinishedCallback?: () => void;
     
 }

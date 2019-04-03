@@ -4,27 +4,23 @@ import {IGameSession} from "../session/IGameSession";
 import {GameSimulationChangeBetScenario} from "./GameSimulationChangeBetScenario";
 
 export class GameSessionSimulation implements IGameSessionSimulation {
-    protected _config: IGameSessionSimulationConfig;
+    private readonly _config: IGameSessionSimulationConfig;
+    private readonly _session: IGameSession;
+    private readonly _numberOfRounds: number;
+    private readonly _changeBetScenario: GameSimulationChangeBetScenario;
+
+    public beforePlayCallback: () => void;
+    public afterPlayCallback: () => void;
+    public onFinishedCallback: () => void;
     
-    protected _session: IGameSession;
-    protected _numberOfRounds: number;
-    protected _changeBetScenario: string;
-    protected _beforePlayCallback: () => void;
-    protected _afterPlayCallback: () => void;
-    protected _onFinishedCallback: () => void;
+    private _totalBet: number;
+    private _totalReturn: number;
+    private _rtp: number;
     
-    protected _totalBet: number;
-    protected _totalReturn: number;
-    protected _rtp: number;
-    
-    protected _currentGameNumber: number;
+    private _currentGameNumber: number;
     
     constructor(config: IGameSessionSimulationConfig) {
         this._config = config;
-        this.initialize();
-    }
-    
-    protected initialize(): void {
         this._totalBet = 0;
         this._totalReturn = 0;
         this._currentGameNumber = 0;
@@ -32,11 +28,8 @@ export class GameSessionSimulation implements IGameSessionSimulation {
         this._numberOfRounds = this._config.numberOfRounds;
         this._changeBetScenario = this._config.changeBetScenario;
         if (!this._changeBetScenario) {
-            this._changeBetScenario = GameSimulationChangeBetScenario.DONT_CHANGE;
+            this._changeBetScenario = GameSimulationChangeBetScenario.DontChange;
         }
-        this._beforePlayCallback = this._config.beforePlayCallback;
-        this._afterPlayCallback = this._config.afterPlayCallback;
-        this._onFinishedCallback = this._config.onFinishedCallback;
         if (!this._numberOfRounds) {
             this._numberOfRounds = 1000;
         }
@@ -60,33 +53,33 @@ export class GameSessionSimulation implements IGameSessionSimulation {
         this.onFinished();
     }
     
-    protected setBetOnCantPlayNextBet(): void {
+    private setBetOnCantPlayNextBet(): void {
         let bets: number[];
         bets = this._session.getAvailableBets();
         bets.sort();
         this._session.setBet(bets[0]);
     }
     
-    protected onFinished(): void {
-        if (this._onFinishedCallback) {
-            this._onFinishedCallback();
+    private onFinished(): void {
+        if (this.onFinishedCallback) {
+            this.onFinishedCallback();
         }
     }
     
-    protected canPlayNextGame(): boolean {
+    private canPlayNextGame(): boolean {
         return this._session.canPlayNextGame();
     }
     
-    protected setBetBeforePlay(): void {
+    private setBetBeforePlay(): void {
         switch (this._changeBetScenario) {
-            case GameSimulationChangeBetScenario.CHANGE_RANDOMLY:
+            case GameSimulationChangeBetScenario.ChangeRandomly:
                 this.setRandomBet();
                 break;
             default:
         }
     }
     
-    protected setRandomBet(): void {
+    private setRandomBet(): void {
         let bet: number;
         let bets: number[];
         bets = this._session.getAvailableBets();
@@ -94,7 +87,7 @@ export class GameSessionSimulation implements IGameSessionSimulation {
         this._session.setBet(bet);
     }
     
-    protected doPlay(): void {
+    private doPlay(): void {
         this._currentGameNumber++;
         this.setBetBeforePlay();
         this._totalBet += this._session.getBet();
@@ -104,19 +97,19 @@ export class GameSessionSimulation implements IGameSessionSimulation {
         this.doAfterPlay();
     }
     
-    protected doBeforePlay(): void {
-        if (this._beforePlayCallback) {
-            this._beforePlayCallback();
+    private doBeforePlay(): void {
+        if (this.beforePlayCallback) {
+            this.beforePlayCallback();
         }
     }
     
-    protected doAfterPlay(): void {
-        if (this._afterPlayCallback) {
-            this._afterPlayCallback();
+    private doAfterPlay(): void {
+        if (this.afterPlayCallback) {
+            this.afterPlayCallback();
         }
     }
     
-    protected calculateRtp(): void {
+    private calculateRtp(): void {
         this._rtp = this._totalReturn / this._totalBet;
     }
     
@@ -134,6 +127,10 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     
     public getCurrentGameNumber(): number {
         return this._currentGameNumber;
+    }
+
+    public getTotalGameToPlayNumber(): number {
+        return this._numberOfRounds;
     }
     
 }
