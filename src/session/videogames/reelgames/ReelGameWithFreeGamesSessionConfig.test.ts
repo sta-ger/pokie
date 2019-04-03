@@ -7,7 +7,7 @@ describe("ReelGameSessionConfig", () => {
     it("creates default config", () => {
         const conf: IReelGameWithFreeGamesSessionConfig = new ReelGameWithFreeGamesSessionConfig();
         expect(conf.freeGamesForScatters).toEqual({
-            "s": {
+            "S": {
                 3: 10
             }
         });

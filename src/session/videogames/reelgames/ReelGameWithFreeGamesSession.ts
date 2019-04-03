@@ -91,7 +91,11 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
         this._adaptee.play();
         if (this._freeGamesSum > 0 && this._freeGamesNum < this._freeGamesSum) {
             this._freeGamesNum++;
+            this._freeBank += this.getWinningAmount();
             this.setCreditsAmount(creditsBeforePlay);
+        }
+        if (this._freeGamesSum > 0 && this._freeGamesNum === this._freeGamesSum) {
+            this.setCreditsAmount(this.getCreditsAmount()+ this._freeBank);
         }
         wonFreeGames = this.getWonFreeGamesNumber();
         if (wonFreeGames) {
@@ -99,20 +103,22 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
         }
     }
 
-    private getWonFreeGamesNumber(): number {
+    public getWonFreeGamesNumber(): number {
         let rv: number;
         let scatterId: string;
         let scatterTimes: number;
         let i: string;
         let wonScatters: {};
         rv = 0;
-        wonScatters = this.getWinningScatters();
-        for (i in wonScatters) {
-            scatterId = wonScatters[i].itemId;
-            scatterTimes = wonScatters[i].itemsPositions.length;
-            if (this._config.freeGamesForScatters.hasOwnProperty(scatterId)) {
-                if (this._config.freeGamesForScatters[scatterId].hasOwnProperty(scatterTimes.toString())) {
-                    rv = this._config.freeGamesForScatters[scatterId][scatterTimes];
+        if (this._config.freeGamesForScatters) {
+            wonScatters = this.getWinningScatters();
+            for (i in wonScatters) {
+                scatterId = wonScatters[i].itemId;
+                scatterTimes = wonScatters[i].itemsPositions.length;
+                if (this._config.freeGamesForScatters.hasOwnProperty(scatterId)) {
+                    if (this._config.freeGamesForScatters[scatterId].hasOwnProperty(scatterTimes.toString())) {
+                        rv = this._config.freeGamesForScatters[scatterId][scatterTimes];
+                    }
                 }
             }
         }

@@ -7,7 +7,7 @@ export class ReelGameWithFreeGamesSessionConfig extends ReelGameSessionConfig im
     constructor() {
         super();
         this._freeGamesForScatters = {
-            "s": {
+            "S": {
                 3: 10
             }
         };
