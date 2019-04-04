@@ -1,12 +1,15 @@
 import {GameSessionSimulation} from "./GameSessionSimulation";
-import {ReelGameSessionConfig} from "..";
-import {IGameSessionSimulation, IGameSessionSimulationConfig, IReelGameSession, ReelGameSession} from "..";
-import {IReelGameSessionReelsController} from "..";
-import {IReelGameSessionWinCalculator} from "..";
-import {ReelGameSessionReelsController} from "..";
-import {ReelGameSessionWinCalculator} from "..";
-import {IReelGameSessionConfig} from "..";
 import fn = jest.fn;
+import {IReelGameSessionConfig} from "../session/videogames/reelgames/IReelGameSessionConfig";
+import {ReelGameSessionConfig} from "../session/videogames/reelgames/ReelGameSessionConfig";
+import {ReelGameSessionReelsController} from "../session/videogames/reelgames/reelscontroller/ReelGameSessionReelsController";
+import {IReelGameSessionReelsController} from "../session/videogames/reelgames/reelscontroller/IReelGameSessionReelsController";
+import {IReelGameSessionWinCalculator} from "../session/videogames/reelgames/wincalculator/IReelGameSessionWinCalculator";
+import {ReelGameSession} from "../session/videogames/reelgames/ReelGameSession";
+import {ReelGameSessionWinCalculator} from "../session/videogames/reelgames/wincalculator/ReelGameSessionWinCalculator";
+import {IReelGameSession} from "../session/videogames/reelgames/IReelGameSession";
+import {IGameSessionSimulationConfig} from "./IGameSessionSimulationConfig";
+import {IGameSessionSimulation} from "./IGameSessionSimulation";
 
 describe("GameSessionSimulation", () => {
 

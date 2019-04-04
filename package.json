@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "generate-barrels": "barrelsby --delete -d ./src",
+    "generate-barrels": "barrelsby --delete -d ./src --exclude .test.ts",
     "prepublish": "npm run build",
     "build": "npm run test && npm run generate-barrels && tsc",
     "test": "jest",

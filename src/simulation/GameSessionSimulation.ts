@@ -1,7 +1,7 @@
 import {IGameSessionSimulationConfig} from "./IGameSessionSimulationConfig";
 import {IGameSessionSimulation} from "./IGameSessionSimulation";
-import {IGameSession} from "..";
 import {GameSimulationChangeBetScenario} from "./GameSimulationChangeBetScenario";
+import {IGameSession} from "../session/IGameSession";
 
 export class GameSessionSimulation implements IGameSessionSimulation {
     private readonly _config: IGameSessionSimulationConfig;
