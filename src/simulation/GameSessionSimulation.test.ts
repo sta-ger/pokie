@@ -1,24 +1,33 @@
 import {GameSessionSimulation} from "./GameSessionSimulation";
-import {ReelGameSessionConfig} from "../session/videogames/reelgames/ReelGameSessionConfig";
-import {IGameSessionSimulationConfig, IReelGameSession, ReelGameSession} from "..";
-import {IReelGameSessionReelsController} from "../session/videogames/reelgames/reelscontroller/IReelGameSessionReelsController";
-import {IReelGameSessionWinCalculator} from "../session/videogames/reelgames/wincalculator/IReelGameSessionWinCalculator";
-import {ReelGameSessionReelsController} from "../session/videogames/reelgames/reelscontroller/ReelGameSessionReelsController";
-import {ReelGameSessionWinCalculator} from "../session/videogames/reelgames/wincalculator/ReelGameSessionWinCalculator";
-import {IReelGameSessionConfig} from "../session/videogames/reelgames/IReelGameSessionConfig";
+import {ReelGameSessionConfig} from "..";
+import {IGameSessionSimulation, IGameSessionSimulationConfig, IReelGameSession, ReelGameSession} from "..";
+import {IReelGameSessionReelsController} from "..";
+import {IReelGameSessionWinCalculator} from "..";
+import {ReelGameSessionReelsController} from "..";
+import {ReelGameSessionWinCalculator} from "..";
+import {IReelGameSessionConfig} from "..";
 import fn = jest.fn;
 
 describe("GameSessionSimulation", () => {
 
     it("plays specified number of rounds and calculates RTP", () => {
         const sessionConfig: IReelGameSessionConfig = new ReelGameSessionConfig();
+        sessionConfig.creditsAmount = Infinity;
+        sessionConfig.reelsItemsSequences = [
+            ['J', '9', 'Q', '10', 'A', 'S', 'K'],
+            ['K', 'S', '10', 'A', '9', 'Q', 'J'],
+            ['J', 'Q', '10', '9', 'S', 'A', 'K'],
+            ['Q', '10', '9', 'S', 'K', 'A', 'J'],
+            ['Q', 'A', 'J', '10', '9', 'S', 'K']
+        ];
         const reelsController: IReelGameSessionReelsController = new ReelGameSessionReelsController(sessionConfig);
         const winningCalculator: IReelGameSessionWinCalculator = new ReelGameSessionWinCalculator(sessionConfig);
         const session: IReelGameSession = new ReelGameSession(sessionConfig, reelsController, winningCalculator);
         const simulationConfig: IGameSessionSimulationConfig = {
-            session: session
+            session: session,
+            numberOfRounds: 10000
         };
-        const simulation: GameSessionSimulation = new GameSessionSimulation(simulationConfig);
+        const simulation: IGameSessionSimulation = new GameSessionSimulation(simulationConfig);
 
 
         simulation.beforePlayCallback = fn();
@@ -31,8 +40,8 @@ describe("GameSessionSimulation", () => {
         expect(simulation.afterPlayCallback).toBeCalledTimes(simulation.getTotalGameToPlayNumber());
         expect(simulation.onFinishedCallback).toBeCalledTimes(1);
 
-        expect(simulation.getRtp()).toBeGreaterThan(1);
-        expect(simulation.getRtp()).toBeLessThan(3);
+        expect(simulation.getRtp()).toBeGreaterThan(0.5);
+        expect(simulation.getRtp()).toBeLessThan(0.6);
     });
 
 });
