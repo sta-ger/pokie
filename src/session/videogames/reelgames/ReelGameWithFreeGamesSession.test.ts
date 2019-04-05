@@ -20,6 +20,17 @@ const testDefaultReelGameWithFreeGamesSession = (sessionClass, configClass) => {
     expect(session.getFreeGameBank()).not.toBeDefined();
 };
 
+const testFreeGamesGettersSetters = (sessionClass, configClass) => {
+    const config: IReelGameWithFreeGamesSessionConfig = new configClass();
+    const session: IReelGameWithFreeGamesSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
+    session.setFreeGameBank(100);
+    session.setFreeGameNum(5);
+    session.setFreeGameSum(10);
+    expect(session.getFreeGameSum()).toBe(10);
+    expect(session.getFreeGameNum()).toBe(5);
+    expect(session.getFreeGameBank()).toBe(100);
+};
+
 const testPlayUntilWinFreeGames = (sessionClass, configClass) => {
     const config: IReelGameSessionConfig = new configClass();
     config.creditsAmount = Infinity;
@@ -107,6 +118,10 @@ describe("ReelGameWithFreeGamesSession", () => {
                 return null;
             }
         });
+    });
+
+    it("sets free games num/sum/bank", () => {
+        testFreeGamesGettersSetters(sessionClass, configClass);
     });
 
     it("creates default reel game with free games session", () => {

@@ -1,4 +1,3 @@
-import {IReelGameSessionConfig} from "./IReelGameSessionConfig";
 import {IReelGameSessionReelsController} from "./reelscontroller/IReelGameSessionReelsController";
 import {IReelGameSessionWinCalculator} from "./wincalculator/IReelGameSessionWinCalculator";
 import {IReelGameWithFreeGamesSession} from "./IReelGameWithFreeGamesSession";
@@ -139,6 +138,18 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
 
     public getFreeGameSum(): number {
         return this._freeGamesSum;
+    }
+
+    public setFreeGameBank(value: number): void {
+        this._freeBank = value;
+    }
+
+    public setFreeGameNum(value: number): void {
+        this._freeGamesNum = value;
+    }
+
+    public setFreeGameSum(value: number): void {
+        this._freeGamesSum = value;
     }
     
 }
