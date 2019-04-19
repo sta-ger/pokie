@@ -270,4 +270,30 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         return this._scattersWinning;
     }
 
+    public static getLinesWithSymbol(lines: {}, symbolId: string): IReelGameSessionWinningLineModel[] {
+        //TODO test
+        let r: IReelGameSessionWinningLineModel[] = [];
+        for (let lineId in lines) {
+            let line: IReelGameSessionWinningLineModel = lines[lineId];
+            if (line.itemId === symbolId) {
+                r.push(line);
+            }
+        }
+        return r;
+    }
+
+    public static getLinesWithDifferentSymbols(lines: {}): IReelGameSessionWinningLineModel[] {
+        //TODO test
+        let symbols: string[] = [];
+        let r: IReelGameSessionWinningLineModel[] = [];
+        for (let lineId in lines) {
+            let line: IReelGameSessionWinningLineModel = lines[lineId];
+            if (symbols.indexOf(line.itemId) < 0) {
+                symbols.push(line.itemId);
+                r.push(line);
+            }
+        }
+        return r;
+    }
+
 }

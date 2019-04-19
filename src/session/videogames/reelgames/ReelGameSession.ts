@@ -4,6 +4,7 @@ import {IGameSession} from "../../IGameSession";
 import {GameSession} from "../../GameSession";
 import {IReelGameSessionReelsController} from "./reelscontroller/IReelGameSessionReelsController";
 import {IReelGameSessionWinCalculator} from "./wincalculator/IReelGameSessionWinCalculator";
+import {ReelGameSessionWinCalculator} from "./wincalculator/ReelGameSessionWinCalculator";
 
 export class ReelGameSession implements IReelGameSession {
     private readonly _config: IReelGameSessionConfig;
@@ -87,6 +88,65 @@ export class ReelGameSession implements IReelGameSession {
 
     public setBet(bet: number): void {
         this._adaptee.setBet(bet);
+    }
+
+    public static getLosingCombination(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController): string[][] {
+        //TODO test
+        let combination: string[][];
+        combination = reelsController.getRandomItemsCombination();
+        winningCalculator.setGameState(1, combination);
+        while (
+            Object.keys(winningCalculator.getWinningLines()).length > 0 ||
+            Object.keys(winningCalculator.getWinningScatters()).length > 0
+            ) {
+            combination = reelsController.getRandomItemsCombination();
+            winningCalculator.setGameState(1, combination);
+        }
+        return combination;
+    }
+
+    public static getWinningCombinationWithScatter(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController): string[][] {
+        //TODO test
+        let combination: string[][];
+        winningCalculator.setGameState(1, reelsController.getRandomItemsCombination());
+        while (
+            Object.keys(winningCalculator.getWinningLines()).length > 0 ||
+            Object.keys(winningCalculator.getWinningScatters()).length === 0
+            ) {
+            combination = reelsController.getRandomItemsCombination();
+            winningCalculator.setGameState(1, combination);
+        }
+        return combination;
+    }
+
+    public static getWinningCombinationForSymbol(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController, symbolId: string): string[][] {
+        //TODO test
+        let combination: string[][];
+        winningCalculator.setGameState(1, reelsController.getRandomItemsCombination());
+        while (
+            Object.keys(winningCalculator.getWinningLines()).length === 0 ||
+            Object.keys(winningCalculator.getWinningScatters()).length > 0 ||
+            ReelGameSessionWinCalculator.getLinesWithSymbol(winningCalculator.getWinningLines(), symbolId).length === 0
+            ) {
+            combination = reelsController.getRandomItemsCombination();
+            winningCalculator.setGameState(1, combination);
+        }
+        return combination;
+    }
+
+    public static getWinningCombinationWithDifferentSymbols(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController): string[][] {
+        //TODO test
+        let combination: string[][];
+        winningCalculator.setGameState(1, reelsController.getRandomItemsCombination());
+        while (
+            Object.keys(winningCalculator.getWinningLines()).length <= 1 ||
+            Object.keys(winningCalculator.getWinningScatters()).length > 0 ||
+            ReelGameSessionWinCalculator.getLinesWithDifferentSymbols(winningCalculator.getWinningLines()).length <= 1
+            ) {
+            combination = reelsController.getRandomItemsCombination();
+            winningCalculator.setGameState(1, combination);
+        }
+        return combination;
     }
     
 }
