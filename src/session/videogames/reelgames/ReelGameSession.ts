@@ -119,13 +119,13 @@ export class ReelGameSession implements IReelGameSession {
         return combination;
     }
 
-    public static getWinningCombinationForSymbol(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController, symbolId: string, allowWilds: boolean = true, wildItemId?: string): string[][] {
+    public static getWinningCombinationForSymbol(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController, symbolId: string, minLinesNumber: number = 1, allowWilds: boolean = true, wildItemId?: string): string[][] {
         //TODO test
         let combination: string[][];
         combination = reelsController.getRandomItemsCombination();
         winningCalculator.setGameState(1, combination);
         while (
-            Object.keys(winningCalculator.getWinningLines()).length === 0 ||
+            Object.keys(winningCalculator.getWinningLines()).length < minLinesNumber ||
             Object.keys(winningCalculator.getWinningScatters()).length > 0 ||
             ReelGameSessionWinCalculator.getLinesWithSymbol(winningCalculator.getWinningLines(), symbolId).length === 0 ||
             !ReelGameSessionWinCalculator.isAllLinesHasSameItemId(winningCalculator.getWinningLines()) ||
