@@ -296,4 +296,38 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         return r;
     }
 
+    public static isAllLinesHasSameItemId(lines: {}): boolean {
+        //TODO test
+        let id: string;
+        let r: boolean = true;
+        for (let lineId in lines) {
+            let line: IReelGameSessionWinningLineModel = lines[lineId];
+            if (!id) {
+                id = line.itemId;
+                continue;
+            }
+            if (Object.keys(line).length > 1 && id !== line.itemId) {
+                r = false;
+                break;
+            }
+        }
+        return r;
+    }
+
+    public static getLinesContainingItem(lines: {}, items: string[][], itemId: string): IReelGameSessionWinningLineModel[] {
+        //TODO test
+        let r: IReelGameSessionWinningLineModel[] = [];
+        for (let lineId in lines) {
+            let line: IReelGameSessionWinningLineModel = lines[lineId];
+            let lineItems: string[] = ReelGameSessionWinCalculator.getItemsForDirection(items, line.direction);
+            for (let i: number = 0; i < lineItems.length; i++) {
+                if (lineItems[i] === itemId) {
+                    r.push(line);
+                    break;
+                }
+            }
+        }
+        return r;
+
+
 }
