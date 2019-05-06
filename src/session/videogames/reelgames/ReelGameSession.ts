@@ -108,7 +108,8 @@ export class ReelGameSession implements IReelGameSession {
     public static getWinningCombinationWithScatter(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController): string[][] {
         //TODO test
         let combination: string[][];
-        winningCalculator.setGameState(1, reelsController.getRandomItemsCombination());
+        combination = reelsController.getRandomItemsCombination();
+        winningCalculator.setGameState(1, combination);
         while (
             Object.keys(winningCalculator.getWinningLines()).length > 0 ||
             Object.keys(winningCalculator.getWinningScatters()).length === 0
@@ -140,7 +141,8 @@ export class ReelGameSession implements IReelGameSession {
     public static getWinningCombinationWithDifferentSymbols(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController): string[][] {
         //TODO test
         let combination: string[][];
-        winningCalculator.setGameState(1, reelsController.getRandomItemsCombination());
+        combination = reelsController.getRandomItemsCombination();
+        winningCalculator.setGameState(1, combination);
         while (
             Object.keys(winningCalculator.getWinningLines()).length <= 1 ||
             Object.keys(winningCalculator.getWinningScatters()).length > 0 ||
