@@ -193,7 +193,7 @@ describe("ReelGameSessionWinCalculator", () => {
         config.availableBets.forEach(bet => {
             config.availableItems.forEach(item => {
                 if (
-                    config.isItemWild(item) && config.isItemScatter(item)
+                    !config.isItemWild(item) && !config.isItemScatter(item)
                 ) {
                     winningCalculator.setGameState(bet, ReelGameSessionReelsController.transposeMatrix([
                         [item, item, item, item, item],
@@ -204,9 +204,9 @@ describe("ReelGameSessionWinCalculator", () => {
                     expect(Object.keys(lines)).toHaveLength(3);
                     expect(Object.keys(lines)).toEqual(["0", "1", "2"]);
                     testWinning(bet, lines);
-                    testItemsPositions(lines["0"], 3);
-                    testItemsPositions(lines["1"], 3);
-                    testItemsPositions(lines["2"], 3);
+                    testItemsPositions(lines["0"], 5);
+                    testItemsPositions(lines["1"], 5);
+                    testItemsPositions(lines["2"], 5);
                 }
             });
         });
