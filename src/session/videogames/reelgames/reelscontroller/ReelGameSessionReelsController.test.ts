@@ -108,7 +108,7 @@ describe("ReelGameSessionReelsController", () => {
             });
 
             items = ReelGameSessionReelsController.createItemsSequences(5, availableItems, 10);
-            items.forEach((curItems, i) => {
+            items.forEach((curItems) => {
                 expect(curItems).toHaveLength(availableItems.length * 10);
             });
         })

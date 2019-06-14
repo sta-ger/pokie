@@ -31,7 +31,7 @@ const testSessionWithWrongInitialBet = (sessionClass, configClass) => {
     expect(session.getBet()).toBe(config.availableBets[0]);
 };
 
-const testPlayWhileEnoughCredits = (session) => {
+const testPlayWhileEnoughCredits = (session: IGameSession) => {
     session.setBet(10);
     session.play();
     expect(session.getCreditsAmount()).toBe(990);

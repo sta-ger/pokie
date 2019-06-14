@@ -27,7 +27,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     private _winningLines: { [lineId: string]: IReelGameSessionWinningLineModel };
     private _winningScatters: { [scatterItemId: string]: IReelGameSessionWinningScatterModel };
 
-    private _linesPatterns: number[][];
+    private readonly _linesPatterns: number[][];
     private _linesWinning: number;
     private _scattersWinning: number;
 

@@ -26,8 +26,8 @@ const testDefaultReelGameSession = (sessionClass, configClass) => {
 const testPlayUntilWin = (sessionClass, configClass) => {
     let lastBet: number;
     let lastCredits: number;
-    let wasLinesWin: boolean;
-    let wasScattersWin: boolean;
+    let wasLinesWin: boolean = false;
+    let wasScattersWin: boolean = false;
 
     const config: IReelGameSessionConfig = new configClass();
     config.creditsAmount = 10000000;

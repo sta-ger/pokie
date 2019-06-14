@@ -1,4 +1,3 @@
-import {ReelGameSessionConfig} from "./ReelGameSessionConfig";
 import {IReelGameWithFreeGamesSessionConfig} from "./IReelGameWithFreeGamesSessionConfig";
 import {ReelGameWithFreeGamesSessionConfig} from "./ReelGameWithFreeGamesSessionConfig";
 

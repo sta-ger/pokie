@@ -71,11 +71,8 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     }
     
     private setBetBeforePlay(): void {
-        switch (this._changeBetScenario) {
-            case GameSimulationChangeBetScenario.ChangeRandomly:
-                this.setRandomBet();
-                break;
-            default:
+        if (this._changeBetScenario === GameSimulationChangeBetScenario.ChangeRandomly) {
+            this.setRandomBet();
         }
     }
     
