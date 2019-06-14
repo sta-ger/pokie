@@ -10,15 +10,15 @@ describe("ReelGameSessionWinCalculator", () => {
     let lines: { [lineId: string]: IReelGameSessionWinningLineModel };
     let scatters: { [scatterId: string]: IReelGameSessionWinningScatterModel };
 
-    const testWinning = (bet, lines) => {
+    const testWinning = (bet: number, lines: any) => {
         Object.keys(lines).forEach(lineId => {
             expect(lines[lineId].winningAmount).toBe(config.paytable[bet][lines[lineId].itemId][lines[lineId].itemsPositions.length] * (config.wildsMultipliers.hasOwnProperty(lines[lineId].wildItemsPositions.length) ? config.wildsMultipliers[lines[lineId].wildItemsPositions.length] : 1));
         });
     };
-    const testItemsPositions = (line: IReelGameSessionWinningLineModel, expectedItemsPositionsLength) => {
+    const testItemsPositions = (line: IReelGameSessionWinningLineModel, expectedItemsPositionsLength: number) => {
         expect(line.itemsPositions).toHaveLength(expectedItemsPositionsLength);
     };
-    const testWildItemsPositions = (line: IReelGameSessionWinningLineModel, expectedItemsPositionsLength) => {
+    const testWildItemsPositions = (line: IReelGameSessionWinningLineModel, expectedItemsPositionsLength: number) => {
         expect(line.wildItemsPositions).toHaveLength(expectedItemsPositionsLength);
     };
 

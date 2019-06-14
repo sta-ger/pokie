@@ -91,7 +91,7 @@ describe("ReelGameSessionReelsController", () => {
                 }
             });
 
-            const counts = [0, 1, 2, 3, 4].reduce((o: { [reelId: string]: { [itemId: string]: number } }, item) => {
+            const counts: { [reelId: string]: { [itemId: string]: number } } = [0, 1, 2, 3, 4].reduce((o: { [reelId: string]: { [itemId: string]: number } }, item) => {
                 o[item] = {
                     "A": 10,
                     "K": 20,
@@ -116,7 +116,7 @@ describe("ReelGameSessionReelsController", () => {
     });
 
     let sequences = ReelGameSessionReelsController.createItemsSequences(5, availableItems, 10);
-    sequences[2] = sequences[2].reduce((arr, item) => {
+    sequences[2] = sequences[2].reduce((arr: string[], item: string) => {
         //Remove symbol "A" from third reel
         if (item !== "A") {
             arr.push(item);
