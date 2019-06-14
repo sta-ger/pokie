@@ -1,4 +1,4 @@
-import {IGameSession} from "../session/IGameSession";
+import {IGameSession} from "..";
 import {GameSimulationChangeBetScenario} from "./GameSimulationChangeBetScenario";
 
 export interface IGameSessionSimulationConfig {

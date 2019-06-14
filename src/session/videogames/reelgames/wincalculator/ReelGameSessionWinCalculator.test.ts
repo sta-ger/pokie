@@ -1,6 +1,6 @@
 import {ReelGameSessionWinCalculator} from "./ReelGameSessionWinCalculator";
 import {ReelGameSessionConfig} from "../ReelGameSessionConfig";
-import {ReelGameSessionReelsController} from "../reelscontroller/ReelGameSessionReelsController";
+import {ReelGameSessionReelsController} from "../../../..";
 import {IReelGameSessionWinningLineModel} from "./IReelGameSessionWinningLineModel";
 import {IReelGameSessionWinningScatterModel} from "./IReelGameSessionWinningScatterModel";
 
