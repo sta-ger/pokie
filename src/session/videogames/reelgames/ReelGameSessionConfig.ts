@@ -1,14 +1,16 @@
 import {IReelGameSessionConfig} from "./IReelGameSessionConfig";
 import {GameSessionConfig} from "../../GameSessionConfig";
 
-export class ReelGameSessionConfig extends GameSessionConfig implements IReelGameSessionConfig {
-    private _paytable: {
-        [bet: number]: {
-            [itemId: string]: {
-                [times: number]: number
-            }
+export type ReelGameSessionPaytable = {
+    [bet: number]: {
+        [itemId: string]: {
+            [times: number]: number
         }
-    };
+    }
+};
+
+export class ReelGameSessionConfig extends GameSessionConfig implements IReelGameSessionConfig {
+    private _paytable: ReelGameSessionPaytable;
 
     private _availableItems: string[];
 
@@ -137,7 +139,7 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
     }
 
     public static createLinesDirections(reelsNumber: number, reelsItemsNumber: number): { [lineId: string]: number[] } {
-        let r = [] as {};
+        let r: { [lineId: string]: number[] } = {};
         for (let i: number = 0; i < reelsItemsNumber; i++) {
             for (let j: number = 0; j < reelsNumber; j++) {
                 if (!r[i]) {
@@ -157,8 +159,8 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         return r;
     }
 
-    public static createPaytable(availableBets: number[], availableItems: string[], reelsNumber: number, wildItemId?: string): {} {
-        let r = {};
+    public static createPaytable(availableBets: number[], availableItems: string[], reelsNumber: number, wildItemId?: string): ReelGameSessionPaytable {
+        let r: ReelGameSessionPaytable = {};
         for (let i = 0; i < availableBets.length; i++) {
             let bet = availableBets[i];
             r[bet] = {};
@@ -175,7 +177,7 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         return r;
     }
 
-    public isItemScatter(itemId): boolean {
+    public isItemScatter(itemId: string): boolean {
         return this._scatters && this._scatters.reduce((flag, entry) => {
             if (!flag && itemId === entry[0]) {
                 flag = true;
@@ -184,7 +186,7 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         }, false);
     }
 
-    public isItemWild(itemId): boolean {
+    public isItemWild(itemId: string): boolean {
         return itemId === this._wildItemId;
     }
 

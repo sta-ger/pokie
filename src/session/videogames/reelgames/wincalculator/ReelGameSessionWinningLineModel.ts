@@ -1,12 +1,12 @@
 import {IReelGameSessionWinningLineModel} from "./IReelGameSessionWinningLineModel";
 
 export class ReelGameSessionWinningLineModel implements IReelGameSessionWinningLineModel{
-    protected _wildItemsPositions: number[];
-    protected _lineId: string;
-    protected _itemId: string;
-    protected _winningAmount: number;
-    protected _itemsPositions: number[];
-    protected _direction: number[];
+    protected _wildItemsPositions: number[] = [];
+    protected _lineId: string = "";
+    protected _itemId: string = "";
+    protected _winningAmount: number = 0;
+    protected _itemsPositions: number[] = [];
+    protected _direction: number[] = [];
     
     public get direction(): number[] {
         return this._direction;

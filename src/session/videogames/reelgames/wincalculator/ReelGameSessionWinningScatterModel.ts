@@ -1,9 +1,9 @@
 import {IReelGameSessionWinningScatterModel} from "./IReelGameSessionWinningScatterModel";
 
 export class ReelGameSessionWinningScatterModel implements IReelGameSessionWinningScatterModel {
-    protected _itemId: string;
-    protected _itemsPositions: number[][];
-    protected _winningAmount: number;
+    protected _itemId: string = "";
+    protected _itemsPositions: number[][] = [];
+    protected _winningAmount: number = 0;
     
     public get winningAmount(): number {
         return this._winningAmount;

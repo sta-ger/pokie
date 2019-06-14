@@ -10,11 +10,11 @@ describe("ReelGameSessionConfig", () => {
         expect(conf.scatters).toEqual([["S", 3]]);
         expect(conf.reelsNumber).toEqual(5);
         expect(conf.reelsItemsNumber).toEqual(3);
-        expect(conf.linesDirections).toEqual([
-            [0, 0, 0, 0, 0],
-            [1, 1, 1, 1, 1],
-            [2, 2, 2, 2, 2]
-        ]);
+        expect(conf.linesDirections).toEqual({
+            0: [0, 0, 0, 0, 0],
+            1: [1, 1, 1, 1, 1],
+            2: [2, 2, 2, 2, 2]
+        });
         expect(conf.reelsItemsSequences.length).toEqual(conf.reelsNumber);
         conf.reelsItemsSequences.forEach((seq: string[]) => {
             conf.availableItems.forEach(item => {
