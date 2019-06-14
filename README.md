@@ -1,6 +1,7 @@
 # slotify.js
 
 [![npm version](https://badge.fury.io/js/slotify.js.svg)](https://badge.fury.io/js/slotify.js)
+[![Build Status](https://travis-ci.org/sta-ger/slotify.js.svg?branch=master)](https://travis-ci.org/sta-ger/slotify.js)
 
 A server-side video slot game logic framework in JavaScript.
 
