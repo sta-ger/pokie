@@ -1,4 +1,7 @@
 # slotify.js
+
+[![npm version](https://badge.fury.io/js/slotify.js.svg)](https://badge.fury.io/js/slotify.js)
+
 A server-side video slot game logic framework in JavaScript.
 
 `npm install slotify.js`
