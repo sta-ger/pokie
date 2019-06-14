@@ -11,6 +11,7 @@ script:
   - npm run build
 
 deploy:
-  provider: npm
-  email: pascaldelger@gmail.com
-  api_key: $NPM_TOKEN
+  provider: script
+  script: "cp .npmrc.template $HOME/.npmrc && npm publish"
+  skip_cleanup: true
+
