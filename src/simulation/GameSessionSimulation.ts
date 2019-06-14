@@ -7,7 +7,7 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     private readonly _config: IGameSessionSimulationConfig;
     private readonly _session: IGameSession;
     private readonly _numberOfRounds: number;
-    private readonly _changeBetScenario: GameSimulationChangeBetScenario | undefined;
+    private readonly _changeBetScenario?: GameSimulationChangeBetScenario;
 
     public beforePlayCallback?: () => void;
     public afterPlayCallback?: () => void;
