@@ -1,6 +1,6 @@
 {
   "name": "slotify.js",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "A video slot game session framework for JavaScript",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
