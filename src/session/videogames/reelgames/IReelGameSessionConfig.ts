@@ -4,8 +4,8 @@ import {IReelGameSessionReelsControllerConfig} from "./reelscontroller/IReelGame
 
 export interface IReelGameSessionConfig extends IGameSessionConfig, IReelGameSessionWinCalculatorConfig, IReelGameSessionReelsControllerConfig {
 
-    isItemWild(itemId): boolean;
+    isItemWild(itemId: string): boolean;
 
-    isItemScatter(itemId): boolean;
+    isItemScatter(itemId: string): boolean;
 
 }
