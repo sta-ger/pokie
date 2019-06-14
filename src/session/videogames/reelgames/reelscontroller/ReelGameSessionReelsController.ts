@@ -63,13 +63,13 @@ export class ReelGameSessionReelsController implements IReelGameSessionReelsCont
             if (typeof countsOfItems === "number") {
                 rv[reelId] = this.createItemsSequence(availableItems, countsOfItems);
             } else {
-                rv[reelId] = this.createItemsSequence(availableItems, countsOfItems && countsOfItems.hasOwnProperty(reelId) ? countsOfItems[reelId] : null);
+                rv[reelId] = this.createItemsSequence(availableItems, countsOfItems && countsOfItems.hasOwnProperty(reelId) ? countsOfItems[reelId] : undefined);
             }
         }
         return rv;
     }
 
-    public static createItemsSequence(availableItems: string[], countsOfItems?: { [itemId: string]: number } | number): string[] {
+    public static createItemsSequence(availableItems: string[], countsOfItems?: { [itemId: string]: number } | number | undefined): string[] {
         let i: number;
         let itemId: string;
         let rv: string[];

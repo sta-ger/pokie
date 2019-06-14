@@ -41,7 +41,7 @@ describe("ReelGameSessionReelsController", () => {
                 "A": 0
             })).toHaveLength(availableItems.length - 1);
 
-            const counts = {
+            const counts: { [itemId: string]: number } = {
                 "A": 10,
                 "K": 20,
                 "Q": 30,
@@ -49,7 +49,7 @@ describe("ReelGameSessionReelsController", () => {
                 "10": 50,
                 "9": 60
             };
-            expect(ReelGameSessionReelsController.createItemsSequence(availableItems, counts)).toHaveLength(Object.keys(counts).map(key => counts[key]).reduce((sum, item) => sum += item, 0));
+            expect(ReelGameSessionReelsController.createItemsSequence(availableItems, counts)).toHaveLength(Object.keys(counts).map((key: string) => counts[key]).reduce((sum, item) => sum += item, 0));
             expect(ReelGameSessionReelsController.createItemsSequence(availableItems, 10)).toHaveLength(10 * availableItems.length);
         });
 
@@ -91,7 +91,7 @@ describe("ReelGameSessionReelsController", () => {
                 }
             });
 
-            const counts = [0, 1, 2, 3, 4].reduce((o, item) => {
+            const counts = [0, 1, 2, 3, 4].reduce((o: { [reelId: string]: { [itemId: string]: number } }, item) => {
                 o[item] = {
                     "A": 10,
                     "K": 20,

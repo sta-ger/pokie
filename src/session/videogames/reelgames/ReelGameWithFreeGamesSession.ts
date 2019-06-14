@@ -4,6 +4,7 @@ import {IReelGameWithFreeGamesSession} from "./IReelGameWithFreeGamesSession";
 import {IReelGameSession} from "./IReelGameSession";
 import {ReelGameSession} from "./ReelGameSession";
 import {IReelGameWithFreeGamesSessionConfig} from "./IReelGameWithFreeGamesSessionConfig";
+import {IReelGameSessionWinningScatterModel} from "./wincalculator/IReelGameSessionWinningScatterModel";
 
 export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSession {
     private readonly _config: IReelGameWithFreeGamesSessionConfig;
@@ -11,9 +12,9 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
     private readonly _winningCalculator: IReelGameSessionWinCalculator;
     private readonly _adaptee: IReelGameSession;
 
-    private _freeGamesNum: number;
-    private _freeGamesSum: number;
-    private _freeBank: number;
+    private _freeGamesNum: number = 0;
+    private _freeGamesSum: number = 0;
+    private _freeBank: number = 0;
 
     constructor(config: IReelGameWithFreeGamesSessionConfig, reelsController: IReelGameSessionReelsController, winningCalculator: IReelGameSessionWinCalculator) {
         this._config = config;
@@ -107,7 +108,7 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
         let scatterId: string;
         let scatterTimes: number;
         let i: string;
-        let wonScatters: {};
+        let wonScatters: { [scatterId: string]: IReelGameSessionWinningScatterModel };
         rv = 0;
         if (this._config.freeGamesForScatters) {
             wonScatters = this.getWinningScatters();

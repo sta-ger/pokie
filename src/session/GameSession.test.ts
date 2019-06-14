@@ -3,7 +3,7 @@ import {IGameSession} from "./IGameSession";
 import {IGameSessionConfig} from "./IGameSessionConfig";
 import {GameSessionConfig} from "./GameSessionConfig";
 
-const testDefaultSession = (sessionClass, configClass) => {
+const testDefaultSession = (sessionClass: any, configClass: any) => {
     const config: IGameSessionConfig = new configClass();
     const session: IGameSession = new sessionClass(config);
     expect(session.getAvailableBets()).toEqual(config.availableBets);
@@ -11,7 +11,7 @@ const testDefaultSession = (sessionClass, configClass) => {
     expect(session.getCreditsAmount()).toBe(1000);
 };
 
-const testSessionWithSpecifiedConfig = (sessionClass, configClass) => {
+const testSessionWithSpecifiedConfig = (sessionClass: any, configClass: any) => {
     const config: IGameSessionConfig = new configClass();
     config.availableBets = [10, 20, 30];
     config.creditsAmount = 5000;
@@ -23,7 +23,7 @@ const testSessionWithSpecifiedConfig = (sessionClass, configClass) => {
     expect(session.getCreditsAmount()).toBe(5000);
 };
 
-const testSessionWithWrongInitialBet = (sessionClass, configClass) => {
+const testSessionWithWrongInitialBet = (sessionClass: any, configClass: any) => {
     const config: IGameSessionConfig = new configClass();
     config.availableBets = [10, 20, 30];
     config.bet = 1;

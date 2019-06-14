@@ -10,7 +10,7 @@ import {
     testSessionWithWrongInitialBet
 } from "../../GameSession.test";
 
-const testDefaultReelGameSession = (sessionClass, configClass) => {
+const testDefaultReelGameSession = (sessionClass: any, configClass: any) => {
     const config: IReelGameSessionConfig = new configClass();
     const session: IReelGameSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
     expect(session.getWinningAmount()).toEqual(0);
@@ -23,9 +23,9 @@ const testDefaultReelGameSession = (sessionClass, configClass) => {
     expect(session.getWinningScatters()).not.toBeDefined();
 };
 
-const testPlayUntilWin = (sessionClass, configClass) => {
-    let lastBet: number;
-    let lastCredits: number;
+const testPlayUntilWin = (sessionClass: any, configClass: any) => {
+    let lastBet: number = 0;
+    let lastCredits: number = 0;
     let wasLinesWin: boolean = false;
     let wasScattersWin: boolean = false;
 

@@ -12,7 +12,7 @@ import {
 import {testDefaultReelGameSession, testPlayUntilWin} from "./ReelGameSession.test";
 import {ReelGameWithFreeGamesSessionConfig} from "./ReelGameWithFreeGamesSessionConfig";
 
-const testDefaultReelGameWithFreeGamesSession = (sessionClass, configClass) => {
+const testDefaultReelGameWithFreeGamesSession = (sessionClass: any, configClass: any) => {
     const config: IReelGameWithFreeGamesSessionConfig = new configClass();
     const session: IReelGameWithFreeGamesSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
     expect(session.getFreeGameNum()).not.toBeDefined();
@@ -20,7 +20,7 @@ const testDefaultReelGameWithFreeGamesSession = (sessionClass, configClass) => {
     expect(session.getFreeGameBank()).not.toBeDefined();
 };
 
-const testFreeGamesGettersSetters = (sessionClass, configClass) => {
+const testFreeGamesGettersSetters = (sessionClass: any, configClass: any) => {
     const config: IReelGameWithFreeGamesSessionConfig = new configClass();
     const session: IReelGameWithFreeGamesSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
     session.setFreeGameBank(100);
@@ -31,7 +31,7 @@ const testFreeGamesGettersSetters = (sessionClass, configClass) => {
     expect(session.getFreeGameBank()).toBe(100);
 };
 
-const testPlayUntilWinFreeGames = (sessionClass, configClass) => {
+const testPlayUntilWinFreeGames = (sessionClass: any, configClass: any) => {
     const config: IReelGameSessionConfig = new configClass();
     config.creditsAmount = Infinity;
     const session: IReelGameWithFreeGamesSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
@@ -42,7 +42,7 @@ const testPlayUntilWinFreeGames = (sessionClass, configClass) => {
     expect(session.getFreeGameSum()).toBeGreaterThan(0);
 };
 
-const testPlayFreeGames = (sessionClass, configClass) => {
+const testPlayFreeGames = (sessionClass: any, configClass: any) => {
     const config: IReelGameWithFreeGamesSessionConfig = new configClass();
     config.creditsAmount = Infinity;
     config.reelsItemsSequences = ReelGameSessionReelsController.createItemsSequences(config.reelsNumber, config.availableItems, {
@@ -56,10 +56,10 @@ const testPlayFreeGames = (sessionClass, configClass) => {
     const session: IReelGameWithFreeGamesSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
 
     //The following situations need to be checked:
-    let wasNormalFreeGames: boolean; //played normal 10 free games
-    let wasAdditionalFreeGames: boolean; //free games was won again at free games mode
-    let wasFreeBank: boolean; //was any winning during free games mode
-    let wasNoFreeBank: boolean; //was no winnings during free games mode
+    let wasNormalFreeGames: boolean = false; //played normal 10 free games
+    let wasAdditionalFreeGames: boolean = false; //free games was won again at free games mode
+    let wasFreeBank: boolean = false; //was any winning during free games mode
+    let wasNoFreeBank: boolean = false; //was no winnings during free games mode
     while (!wasNormalFreeGames || !wasAdditionalFreeGames || !wasFreeBank || !wasNormalFreeGames) {
         while (session.getFreeGameSum() === 0 || session.getFreeGameSum() === undefined || (session.getFreeGameSum() > 0 && session.getFreeGameNum() === session.getFreeGameSum())) { //Play until won free games
             session.play();
@@ -115,7 +115,7 @@ describe("ReelGameWithFreeGamesSession", () => {
             }
 
             public get freeGamesForScatters(): { [p: string]: { [p: number]: number } } {
-                return null;
+                return {};
             }
         });
     });
