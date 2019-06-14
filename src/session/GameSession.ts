@@ -2,7 +2,7 @@ import {IGameSession} from "./IGameSession";
 import {IGameSessionConfig} from "./IGameSessionConfig";
 
 export class GameSession implements IGameSession {
-    private readonly _config?: IGameSessionConfig;
+    private readonly _config: IGameSessionConfig;
     private _bet: number;
     private _credits: number;
 

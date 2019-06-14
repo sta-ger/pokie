@@ -12,7 +12,7 @@ export class ReelGameSession implements IReelGameSession {
     private readonly _winningCalculator: IReelGameSessionWinCalculator;
     private readonly _adaptee: IGameSession;
     private _winningAmount: number;
-    private _reelsItems: string[][];
+    private _reelsItems: string[][] = [];
 
     constructor(config: IReelGameSessionConfig, reelsController: IReelGameSessionReelsController, winningCalculator: IReelGameSessionWinCalculator) {
         this._config = config;
@@ -120,7 +120,7 @@ export class ReelGameSession implements IReelGameSession {
         return combination;
     }
 
-    public static getWinningCombinationForSymbol(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController, symbolId: string, minLinesNumber: number = 1, allowWilds: boolean = true, wildItemId?: string): string[][] {
+    public static getWinningCombinationForSymbol(winningCalculator: IReelGameSessionWinCalculator, reelsController: IReelGameSessionReelsController, symbolId: string, minLinesNumber: number = 1, allowWilds: boolean = true, wildItemId: string = ""): string[][] {
         //TODO test
         let combination: string[][];
         combination = reelsController.getRandomItemsCombination();

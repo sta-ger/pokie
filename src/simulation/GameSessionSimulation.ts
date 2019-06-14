@@ -7,25 +7,22 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     private readonly _config: IGameSessionSimulationConfig;
     private readonly _session: IGameSession;
     private readonly _numberOfRounds: number;
-    private readonly _changeBetScenario: GameSimulationChangeBetScenario;
+    private readonly _changeBetScenario: GameSimulationChangeBetScenario | undefined;
 
-    public beforePlayCallback: () => void;
-    public afterPlayCallback: () => void;
-    public onFinishedCallback: () => void;
+    public beforePlayCallback?: () => void;
+    public afterPlayCallback?: () => void;
+    public onFinishedCallback?: () => void;
     
-    private _totalBet: number;
-    private _totalReturn: number;
-    private _rtp: number;
+    private _totalBet: number = 0;
+    private _totalReturn: number = 0;
+    private _rtp: number = 0;
     
-    private _currentGameNumber: number;
+    private _currentGameNumber: number = 0;
     
     constructor(config: IGameSessionSimulationConfig) {
         this._config = config;
-        this._totalBet = 0;
-        this._totalReturn = 0;
-        this._currentGameNumber = 0;
         this._session = this._config.session;
-        this._numberOfRounds = this._config.numberOfRounds;
+        this._numberOfRounds = this._config.numberOfRounds ? this._config.numberOfRounds : 0;
         this._changeBetScenario = this._config.changeBetScenario;
         if (!this._changeBetScenario) {
             this._changeBetScenario = GameSimulationChangeBetScenario.DontChange;
