@@ -18,9 +18,9 @@ const testDefaultReelGameSession = (sessionClass: any, configClass: any) => {
     expect(session.getReelsItemsSequences().length).toEqual(config.reelsItemsSequences.length);
     expect(session.getReelsItemsNumber()).toEqual(config.reelsItemsNumber);
     expect(session.getReelsNumber()).toEqual(config.reelsNumber);
-    expect(session.getReelsItems()).not.toBeDefined();
-    expect(session.getWinningLines()).not.toBeDefined();
-    expect(session.getWinningScatters()).not.toBeDefined();
+    expect(session.getReelsItems()).toEqual([]);
+    expect(session.getWinningLines()).toEqual({});
+    expect(session.getWinningScatters()).toEqual({});
 };
 
 const testPlayUntilWin = (sessionClass: any, configClass: any) => {

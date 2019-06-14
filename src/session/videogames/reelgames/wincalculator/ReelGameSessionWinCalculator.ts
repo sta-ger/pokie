@@ -129,7 +129,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         return Object.keys(linesDirections).reduce((arr: string[], lineId) => {
             let itemsLine: string[] = ReelGameSessionWinCalculator.getItemsForDirection(items, linesDirections[lineId]);
             let mPattern = ReelGameSessionWinCalculator.getMatchingPattern(itemsLine, patterns, wildItemId);
-            if (mPattern) {
+            if (mPattern.length > 0) {
                 arr.push(lineId);
             }
             return arr;

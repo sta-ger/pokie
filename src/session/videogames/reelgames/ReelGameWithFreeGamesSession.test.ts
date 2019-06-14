@@ -15,9 +15,9 @@ import {ReelGameWithFreeGamesSessionConfig} from "./ReelGameWithFreeGamesSession
 const testDefaultReelGameWithFreeGamesSession = (sessionClass: any, configClass: any) => {
     const config: IReelGameWithFreeGamesSessionConfig = new configClass();
     const session: IReelGameWithFreeGamesSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
-    expect(session.getFreeGameNum()).not.toBeDefined();
-    expect(session.getFreeGameSum()).not.toBeDefined();
-    expect(session.getFreeGameBank()).not.toBeDefined();
+    expect(session.getFreeGameNum()).toBe(0);
+    expect(session.getFreeGameSum()).toBe(0);
+    expect(session.getFreeGameBank()).toBe(0);
 };
 
 const testFreeGamesGettersSetters = (sessionClass: any, configClass: any) => {
