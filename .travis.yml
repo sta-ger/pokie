@@ -14,5 +14,3 @@ deploy:
   provider: npm
   email: pascaldelger@gmail.com
   api_key: $NPM_TOKEN
-  on:
-    tags: true
