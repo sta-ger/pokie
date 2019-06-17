@@ -27,10 +27,9 @@ describe("GameSessionSimulation", () => {
         const winningCalculator: IReelGameSessionWinCalculator = new ReelGameSessionWinCalculator(sessionConfig);
         const session: IReelGameSession = new ReelGameSession(sessionConfig, reelsController, winningCalculator);
         const simulationConfig: IGameSessionSimulationConfig = {
-            session: session,
             numberOfRounds: 10000
         };
-        const simulation: IGameSessionSimulation = new GameSessionSimulation(simulationConfig);
+        const simulation: IGameSessionSimulation = new GameSessionSimulation(session, simulationConfig);
 
 
         simulation.beforePlayCallback = fn();

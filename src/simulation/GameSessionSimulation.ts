@@ -19,9 +19,9 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     
     private _currentGameNumber: number = 0;
     
-    constructor(config: IGameSessionSimulationConfig) {
+    constructor(session: IGameSession, config: IGameSessionSimulationConfig) {
+        this._session = session;
         this._config = config;
-        this._session = this._config.session;
         this._numberOfRounds = this._config.numberOfRounds ? this._config.numberOfRounds : 0;
         this._changeBetScenario = this._config.changeBetScenario;
         if (!this._changeBetScenario) {

@@ -72,10 +72,9 @@ const reelsController = new ReelGameSessionReelsController(sessionConfig);
 const winningCalculator = new ReelGameSessionWinCalculator(sessionConfig);
 const session = new ReelGameSession(sessionConfig, reelsController, winningCalculator);
 const simulationConfig = {
-    session: session,
     numberOfRounds: 10000
 };
-const simulation = new GameSessionSimulation(simulationConfig);
+const simulation = new GameSessionSimulation(session, simulationConfig);
 
 
 simulation.beforePlayCallback = () => {
