@@ -2,10 +2,6 @@ language: node_js
 node_js:
   - stable
 
-branches:
-  only:
-    - master
-
 script:
   - npm run coveralls
   - npm run build
@@ -13,4 +9,7 @@ script:
 deploy:
   provider: npm
   email: pascaldelger@gmail.com
-  api_key: $NPM_TOKEN
+  api_key:
+    secure: Jdrh9+i58gFSlUa0aXFx1lOAaK4cLX2+3mkQ2zhEZ2tLEw9tCYFGqX27A6obeNHY0Ws/Irr7WHo0PVRQZGvOwZIWr8eS8vpjQTGUUUvVrB7v9xjye6WEVURiTXDs+MKFZPhx0o3eBCVNWMEHldkEwSWLP3ZZnOZcgQ6H7xjYoGvSPptQQU3iM6YZoQz7RhvYP3nqrcmhUln6+AkMI1iCPmxVLEngU8sbrYjhhS5/lrnw8DCmwqx3rPKQrokB4f97ZfynPSolxMEah8g0B39Q/3ASUBG6HZmFK2QLJAFAXmvx+JgSTDW8gpGbyU4T77fUEZkTtV1XsRcZeK5rTkkpmUFU9ZtBTvE0fM0ayfwoitcZk/tucPNkEIeI2Ru95qINpVFTbchg5RNXWLqXKR2wG5yPuSciGfSUsjcpFRdNhqGaDBU1WEp57FIAOLoGu/0mlKUBwNd7eajd1arztBvDvjlFPPrZBpZgM6C/EGAAb2/LqNVm2lsqT+KhNERP5+c9ERG3MMFKJZdeF36wDJmXjn4HkhGksmoX4kqp+c39WFMMd3SHRM822iz+bwBZ9ORrad18A9BJRA7ckcOQ0XsE+v4BhSoXJ7BpBglYopi5JHZxC9uVUv2CChoV2trOCFL7zhA4Dng/DMndwma4abw3QvvPSbPIAWYaNlOFTVVNgrU=
+  on:
+    branch: master
