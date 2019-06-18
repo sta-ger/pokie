@@ -7,7 +7,6 @@
   "scripts": {
     "coveralls": "npm run test:cov && cat ./coverage/lcov.info | coveralls",
     "generate-barrels": "barrelsby --delete -d ./src --exclude .test.ts",
-    "prepublish": "npm run coveralls && npm run build",
     "build": "npm run generate-barrels && tsc",
     "test": "jest",
     "test:cov": "jest --coverage",
