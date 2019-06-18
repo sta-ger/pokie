@@ -2,10 +2,6 @@ language: node_js
 node_js:
   - stable
 
-script:
-  - npm run coveralls
-  - npm run build
-
 deploy:
   skip_cleanup: true
   provider: npm
