@@ -44,7 +44,6 @@ const testPlayUntilWinFreeGames = (sessionClass: any, configClass: any) => {
 
 const testPlayFreeGames = (sessionClass: any, configClass: any) => {
     const config: IReelGameWithFreeGamesSessionConfig = new configClass();
-    config.creditsAmount = Infinity;
     config.reelsItemsSequences = ReelGameSessionReelsController.createItemsSequences(config.reelsNumber, config.availableItems, {
         0: {
             "S": 0
@@ -62,6 +61,7 @@ const testPlayFreeGames = (sessionClass: any, configClass: any) => {
     let wasNoFreeBank: boolean = false; //was no winnings during free games mode
     while (!wasNormalFreeGames || !wasAdditionalFreeGames || !wasFreeBank || !wasNormalFreeGames) {
         while (session.getFreeGameSum() === 0 || session.getFreeGameSum() === undefined || (session.getFreeGameSum() > 0 && session.getFreeGameNum() === session.getFreeGameSum())) { //Play until won free games
+            config.creditsAmount = 10000;
             session.play();
         }
         let playedFreeGamesCount: number = 0;
@@ -72,7 +72,11 @@ const testPlayFreeGames = (sessionClass: any, configClass: any) => {
             lastFreeBank = session.getFreeGameBank();
             session.play();
             expect(session.getFreeGameBank()).toBe(lastFreeBank + session.getWinningAmount());
-            expect(session.getCreditsAmount()).toBe(creditsBeforeFreeGame); //Bet should not be subtracted in at free games mode
+            if (session.getFreeGameNum() < session.getFreeGameSum()) {
+                expect(session.getCreditsAmount()).toBe(creditsBeforeFreeGame); //Bet should not be subtracted in at free games mode
+            } else {
+                expect(session.getCreditsAmount()).toBe(creditsBeforeFreeGame + session.getFreeGameBank());
+            }
             playedFreeGamesCount++;
             if (session.getFreeGameSum() > expectedPlayedFreeGamesCount) {
                 wasAdditionalFreeGames = true;
@@ -94,7 +98,6 @@ const testPlayFreeGames = (sessionClass: any, configClass: any) => {
             wasFreeBank = true;
         }
 
-        expect(session.getCreditsAmount()).toBe(creditsBeforeFreeGame + lastFreeBank);
         expect(playedFreeGamesCount).toBe(expectedPlayedFreeGamesCount);
     }
 };
