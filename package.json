@@ -7,12 +7,12 @@
   "scripts": {
     "coveralls": "npm run test:cov && cat ./coverage/lcov.info | coveralls",
     "generate-barrels": "barrelsby --delete -d ./src --exclude .test.ts",
-    "prepublish": "npm run build",
+    "prepublish": "npm run coveralls && npm run build",
     "build": "npm run generate-barrels && tsc",
     "test": "jest",
     "test:cov": "jest --coverage",
     "preversion": "git checkout master && git merge develop",
-    "version": "npm run build && git add -A",
+    "version": "npm run test && npm run build && git add -A",
     "postversion": "git checkout develop && git merge master"
   },
   "jest": {
