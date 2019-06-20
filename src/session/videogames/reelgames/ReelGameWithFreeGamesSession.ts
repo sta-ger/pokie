@@ -94,12 +94,13 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
             this._freeBank += this.getWinningAmount();
             this.setCreditsAmount(creditsBeforePlay);
         }
-        if (this._freeGamesSum > 0 && this._freeGamesNum === this._freeGamesSum) {
-            this.setCreditsAmount(this.getCreditsAmount()+ this._freeBank);
-        }
         wonFreeGames = this.getWonFreeGamesNumber();
         if (wonFreeGames) {
             this._freeGamesSum += wonFreeGames;
+        } else {
+            if (this._freeGamesSum > 0 && this._freeGamesNum === this._freeGamesSum) {
+                this.setCreditsAmount(this.getCreditsAmount()+ this._freeBank);
+            }
         }
     }
 

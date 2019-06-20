@@ -57,9 +57,10 @@ const testPlayFreeGames = (sessionClass: any, configClass: any) => {
     //The following situations need to be checked:
     let wasNormalFreeGames: boolean = false; //played normal 10 free games
     let wasAdditionalFreeGames: boolean = false; //free games was won again at free games mode
+    let wasAdditionalFreeGamesWonAtLastFreeGame: boolean = false; //additional free games was won at 10 of 10 free games
     let wasFreeBank: boolean = false; //was any winning during free games mode
     let wasNoFreeBank: boolean = false; //was no winnings during free games mode
-    while (!wasNormalFreeGames || !wasAdditionalFreeGames || !wasFreeBank || !wasNormalFreeGames) {
+    while (!wasNormalFreeGames || !wasAdditionalFreeGames || !wasFreeBank || !wasNoFreeBank || !wasAdditionalFreeGamesWonAtLastFreeGame) {
         while (session.getFreeGameSum() === 0 || session.getFreeGameSum() === undefined || (session.getFreeGameSum() > 0 && session.getFreeGameNum() === session.getFreeGameSum())) { //Play until won free games
             config.creditsAmount = 10000;
             session.play();
@@ -67,12 +68,17 @@ const testPlayFreeGames = (sessionClass: any, configClass: any) => {
         let playedFreeGamesCount: number = 0;
         let expectedPlayedFreeGamesCount: number = session.getFreeGameSum();
         let lastFreeBank: number = 0;
+        let lastFreeGamesSum: number;
         let creditsBeforeFreeGame: number = session.getCreditsAmount();
         while (session.getFreeGameSum() > 0 && session.getFreeGameNum() !== session.getFreeGameSum()) { //Play until end of free games
             lastFreeBank = session.getFreeGameBank();
+            lastFreeGamesSum = session.getFreeGameSum();
             session.play();
+            if (session.getFreeGameSum() > lastFreeGamesSum && session.getFreeGameNum() == lastFreeGamesSum) {
+                wasAdditionalFreeGamesWonAtLastFreeGame = true;
+            }
             expect(session.getFreeGameBank()).toBe(lastFreeBank + session.getWinningAmount());
-            if (session.getFreeGameNum() < session.getFreeGameSum()) {
+            if (session.getFreeGameNum() < session.getFreeGameSum() || session.getFreeGameSum() > expectedPlayedFreeGamesCount) {
                 expect(session.getCreditsAmount()).toBe(creditsBeforeFreeGame); //Bet should not be subtracted in at free games mode
             } else {
                 expect(session.getCreditsAmount()).toBe(creditsBeforeFreeGame + session.getFreeGameBank());
