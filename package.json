@@ -10,6 +10,7 @@
     "build": "npm run generate-barrels && tsc",
     "test": "jest",
     "test:cov": "jest --coverage",
+    "lint": "tslint --project .",
     "preversion": "git checkout master && git merge develop",
     "version": "npm run test && npm run build && git add -A",
     "postversion": "git checkout develop && git merge master"
@@ -61,6 +62,7 @@
     "coveralls": "^3.0.4",
     "jest": "^24.5.0",
     "ts-jest": "^24.0.0",
+    "tslint": "^5.18.0",
     "typescript": "^3.0.1"
   }
 }
