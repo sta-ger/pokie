@@ -16,7 +16,11 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
     private _freeGamesSum: number = 0;
     private _freeBank: number = 0;
 
-    constructor(config: IReelGameWithFreeGamesSessionConfig, reelsController: IReelGameSessionReelsController, winningCalculator: IReelGameSessionWinCalculator) {
+    constructor(
+        config: IReelGameWithFreeGamesSessionConfig,
+        reelsController: IReelGameSessionReelsController,
+        winningCalculator: IReelGameSessionWinCalculator,
+    ) {
         this._config = config;
         this._reelsController = reelsController;
         this._winningCalculator = winningCalculator;
@@ -26,27 +30,27 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
     public getReelsItems(): string[][] {
         return this._adaptee.getReelsItems();
     }
-    
+
     public getWinningLines(): {} {
         return this._winningCalculator.getWinningLines();
     }
-    
+
     public getWinningScatters(): {} {
         return this._winningCalculator.getWinningScatters();
     }
-    
+
     public getPaytable(): { [p: string]: { [p: number]: number } } {
         return this._config.paytable[this.getBet()];
     }
-    
+
     public getReelsItemsSequences(): string[][] {
         return this._config.reelsItemsSequences;
     }
-    
+
     public getReelsItemsNumber(): number {
         return this._config.reelsItemsNumber;
     }
-    
+
     public getReelsNumber(): number {
         return this._config.reelsNumber;
     }
@@ -99,7 +103,7 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
             this._freeGamesSum += wonFreeGames;
         } else {
             if (this._freeGamesSum > 0 && this._freeGamesNum === this._freeGamesSum) {
-                this.setCreditsAmount(this.getCreditsAmount()+ this._freeBank);
+                this.setCreditsAmount(this.getCreditsAmount() + this._freeBank);
             }
         }
     }
@@ -108,14 +112,13 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
         let rv: number;
         let scatterId: string;
         let scatterTimes: number;
-        let i: string;
         let wonScatters: { [scatterId: string]: IReelGameSessionWinningScatterModel };
         rv = 0;
         if (this._config.freeGamesForScatters) {
             wonScatters = this.getWinningScatters();
-            for (i in wonScatters) {
-                scatterId = wonScatters[i].itemId;
-                scatterTimes = wonScatters[i].itemsPositions.length;
+            for (const scatter of Object.values(wonScatters)) {
+                scatterId = scatter.itemId;
+                scatterTimes = scatter.itemsPositions.length;
                 if (this._config.freeGamesForScatters.hasOwnProperty(scatterId)) {
                     if (this._config.freeGamesForScatters[scatterId].hasOwnProperty(scatterTimes.toString())) {
                         rv = this._config.freeGamesForScatters[scatterId][scatterTimes];
@@ -153,5 +156,5 @@ export class ReelGameWithFreeGamesSession implements IReelGameWithFreeGamesSessi
     public setFreeGameSum(value: number): void {
         this._freeGamesSum = value;
     }
-    
+
 }
