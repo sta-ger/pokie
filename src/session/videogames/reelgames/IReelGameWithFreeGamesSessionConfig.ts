@@ -4,8 +4,8 @@ export interface IReelGameWithFreeGamesSessionConfig extends IReelGameSessionCon
 
     freeGamesForScatters: {
         [scatterId: string]: {
-            [times: number]: number
-        }
+            [times: number]: number,
+        };
     };
 
 }

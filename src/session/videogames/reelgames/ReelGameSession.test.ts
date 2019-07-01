@@ -7,12 +7,16 @@ import {ReelGameSessionWinCalculator} from "./wincalculator/ReelGameSessionWinCa
 import {
     testDefaultSession,
     testSessionWithSpecifiedConfig,
-    testSessionWithWrongInitialBet
+    testSessionWithWrongInitialBet,
 } from "../../GameSession.test";
 
 const testDefaultReelGameSession = (sessionClass: any, configClass: any) => {
     const config: IReelGameSessionConfig = new configClass();
-    const session: IReelGameSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
+    const session: IReelGameSession = new sessionClass(
+        config,
+        new ReelGameSessionReelsController(config),
+        new ReelGameSessionWinCalculator(config),
+    );
     expect(session.getWinningAmount()).toEqual(0);
     expect(session.getPaytable()).toEqual(config.paytable[session.getBet()]);
     expect(session.getReelsItemsSequences().length).toEqual(config.reelsItemsSequences.length);
@@ -31,7 +35,11 @@ const testPlayUntilWin = (sessionClass: any, configClass: any) => {
 
     const config: IReelGameSessionConfig = new configClass();
     config.creditsAmount = 10000000;
-    const session: IReelGameSession = new sessionClass(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
+    const session: IReelGameSession = new sessionClass(
+        config,
+        new ReelGameSessionReelsController(config),
+        new ReelGameSessionWinCalculator(config),
+    );
 
     const timesToPlay: number = 1000;
     for (let i: number = 0; i < timesToPlay; i++) {
@@ -60,9 +68,9 @@ describe("ReelGameSession", () => {
     const configClass = ReelGameSessionConfig;
 
     it("pass base tests", () => {
-        testDefaultSession(sessionClass,configClass);
-        testSessionWithSpecifiedConfig(sessionClass,configClass);
-        testSessionWithWrongInitialBet(sessionClass,configClass);
+        testDefaultSession(sessionClass, configClass);
+        testSessionWithSpecifiedConfig(sessionClass, configClass);
+        testSessionWithWrongInitialBet(sessionClass, configClass);
     });
 
     it("creates default reel game session", () => {

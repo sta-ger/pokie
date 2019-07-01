@@ -11,9 +11,9 @@ export interface IReelGameWithFreeGamesSession extends IReelGameSession {
     getFreeGameSum(): number;
 
     setFreeGameSum(value: number): void;
-    
+
     getFreeGameBank(): number;
 
     setFreeGameBank(value: number): void;
-    
+
 }
