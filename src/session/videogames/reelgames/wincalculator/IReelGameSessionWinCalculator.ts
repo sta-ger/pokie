@@ -15,5 +15,4 @@ export interface IReelGameSessionWinCalculator {
 
     getScattersWinning(): number;
 
-
 }

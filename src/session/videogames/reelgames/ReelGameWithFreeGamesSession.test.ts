@@ -152,6 +152,7 @@ describe("ReelGameWithFreeGamesSession", () => {
         testSessionWithWrongInitialBet(sessionClass, configClass);
         testDefaultReelGameSession(sessionClass, configClass);
         testPlayUntilWin(sessionClass, class A extends ReelGameWithFreeGamesSessionConfig {
+            // noinspection JSUnusedLocalSymbols
             public set freeGamesForScatters(value: { [p: string]: { [p: number]: number } }) {
                 // Base test will not be passed because credits are not decremented at free games mode
                 // Disabling free game for pass base test

@@ -1,6 +1,6 @@
 export enum GameSimulationChangeBetScenario {
-    
+
     DontChange,
-    ChangeRandomly
-    
+    ChangeRandomly,
+
 }

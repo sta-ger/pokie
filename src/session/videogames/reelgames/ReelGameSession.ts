@@ -7,6 +7,7 @@ import {IReelGameSessionWinCalculator} from "./wincalculator/IReelGameSessionWin
 import {ReelGameSessionWinCalculator} from "./wincalculator/ReelGameSessionWinCalculator";
 
 export class ReelGameSession implements IReelGameSession {
+
     public static getLosingCombination(
         winningCalculator: IReelGameSessionWinCalculator,
         reelsController: IReelGameSessionReelsController,

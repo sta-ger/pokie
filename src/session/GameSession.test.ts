@@ -37,7 +37,7 @@ const testPlayWhileEnoughCredits = (session: IGameSession) => {
     expect(session.getCreditsAmount()).toBe(990);
     expect(session.canPlayNextGame()).toBeTruthy();
 
-    //Play with different bet
+    // Play with different bet
     session.setBet(100);
     session.play();
     expect(session.getCreditsAmount()).toBe(890);
@@ -52,7 +52,7 @@ const testPlayWhileEnoughCredits = (session: IGameSession) => {
 
     expect(playedGamesNum).toBe(expectedGamesToPlay);
 
-    //Decrease bet to 10 and play remaining 9 games
+    // Decrease bet to 10 and play remaining 9 games
     session.setBet(10);
     playedGamesNum = 0;
     expectedGamesToPlay = Math.floor(session.getCreditsAmount() / session.getBet());
@@ -91,5 +91,5 @@ describe("GameSession", () => {
 export {
     testDefaultSession,
     testSessionWithSpecifiedConfig,
-    testSessionWithWrongInitialBet
+    testSessionWithWrongInitialBet,
 };

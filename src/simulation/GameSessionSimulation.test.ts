@@ -17,20 +17,19 @@ describe("GameSessionSimulation", () => {
         const sessionConfig: IReelGameSessionConfig = new ReelGameSessionConfig();
         sessionConfig.creditsAmount = Infinity;
         sessionConfig.reelsItemsSequences = [
-            ['J', '9', 'Q', '10', 'A', 'S', 'K'],
-            ['K', 'S', '10', 'A', '9', 'Q', 'J'],
-            ['J', 'Q', '10', '9', 'S', 'A', 'K'],
-            ['Q', '10', '9', 'S', 'K', 'A', 'J'],
-            ['Q', 'A', 'J', '10', '9', 'S', 'K']
+            ["J", "9", "Q", "10", "A", "S", "K"],
+            ["K", "S", "10", "A", "9", "Q", "J"],
+            ["J", "Q", "10", "9", "S", "A", "K"],
+            ["Q", "10", "9", "S", "K", "A", "J"],
+            ["Q", "A", "J", "10", "9", "S", "K"],
         ];
         const reelsController: IReelGameSessionReelsController = new ReelGameSessionReelsController(sessionConfig);
         const winningCalculator: IReelGameSessionWinCalculator = new ReelGameSessionWinCalculator(sessionConfig);
         const session: IReelGameSession = new ReelGameSession(sessionConfig, reelsController, winningCalculator);
         const simulationConfig: IGameSessionSimulationConfig = {
-            numberOfRounds: 10000
+            numberOfRounds: 10000,
         };
         const simulation: IGameSessionSimulation = new GameSessionSimulation(session, simulationConfig);
-
 
         simulation.beforePlayCallback = fn();
         simulation.afterPlayCallback = fn();
