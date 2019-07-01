@@ -6,47 +6,13 @@ import {ReelGameSessionWinningLineModel} from "./ReelGameSessionWinningLineModel
 import {IReelGameSessionWinCalculatorConfig} from "./IReelGameSessionWinCalculatorConfig";
 
 export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculator {
-    private readonly _config: IReelGameSessionWinCalculatorConfig;
-    private readonly _reelsItemsNumber: number;
-    private readonly _reelsNumber: number;
-    private readonly _wildItemId: string;
-    private readonly _scatters: any[][];
-    private readonly _linesDirections: { [lineId: string]: number[] };
-    private readonly _wildsMultipliers: {
-        [wildsNum: number]: number
-    };
-    private readonly _paytable: {
-        [bet: number]: {
-            [itemId: string]: {
-                [times: number]: number
-            }
-        }
-    };
-
-    private _items: string[][] = [];
-    private _winningLines: { [lineId: string]: IReelGameSessionWinningLineModel } = {};
-    private _winningScatters: { [scatterItemId: string]: IReelGameSessionWinningScatterModel } = {};
-
-    private readonly _linesPatterns: number[][];
-    private _linesWinning: number = 0;
-    private _scattersWinning: number = 0;
-
-    constructor(conf: IReelGameSessionWinCalculatorConfig) {
-        this._config = conf;
-        this._reelsItemsNumber = conf.reelsItemsNumber;
-        this._reelsNumber = conf.reelsNumber;
-        this._wildItemId = conf.wildItemId;
-        this._scatters = conf.scatters;
-        this._linesDirections = conf.linesDirections;
-        this._wildsMultipliers = conf.wildsMultipliers;
-        this._paytable = conf.paytable;
-        this._linesPatterns = ReelGameSessionWinCalculator.createLinesPatterns(this._reelsNumber);
-    }
-
     public static createLinesPatterns(reelsNumber: number): number[][] {
-        let r = [];
+        const r = [];
         for (let i = 0; i < reelsNumber - 1; i++) {
-            let arr = new Array(reelsNumber + 1).join("0").split("").map(item => parseInt(item));
+            const arr = new Array(reelsNumber + 1)
+                .join("0")
+                .split("")
+                .map((item) => parseInt(item, 10));
             for (let j = 0; j < reelsNumber - i; j++) {
                 arr[j] = 1;
             }
@@ -74,9 +40,9 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
 
     public static getMatchingPattern(items: string[], patterns: number[][], wildItemId?: string): number[] {
         let r: number[] = [];
-        for (let i: number = 0; i < patterns.length; i++) {
-            if (this.isMatchPattern(items, patterns[i], wildItemId)) {
-                r = patterns[i];
+        for (const pattern of patterns) {
+            if (this.isMatchPattern(items, pattern, wildItemId)) {
+                r = pattern;
                 break;
             }
         }
@@ -84,16 +50,16 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     }
 
     public static isMatchPattern(items: string[], pattern: number[], wildItemId: string = ""): boolean {
-        let itemsByPattern = this.getItemsMatchingPattern(items, pattern);
-        let unique = itemsByPattern.filter((value, index, self) => {
+        const itemsByPattern = this.getItemsMatchingPattern(items, pattern);
+        const unique = itemsByPattern.filter((value, index, self) => {
             return self.indexOf(value) === index;
         });
         return unique.length === 1 || (unique.length === 2 && unique.indexOf(wildItemId) >= 0);
     }
 
     public static getWinningItemId(items: string[], pattern: number[], wildItemId?: string): string {
-        let itemsByPattern = this.getItemsMatchingPattern(items, pattern);
-        let unique = itemsByPattern.filter((value, index, self) => {
+        const itemsByPattern = this.getItemsMatchingPattern(items, pattern);
+        const unique = itemsByPattern.filter((value, index, self) => {
             return self.indexOf(value) === index;
         });
         return unique.reduce((prev, cur) => {
@@ -114,7 +80,7 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
     }
 
     public static getScatterItemsPositions(items: string[][], scatterItemId: string): number[][] {
-        let r: number[][] = [];
+        const r: number[][] = [];
         for (let i: number = 0; i < items.length; i++) {
             for (let j: number = 0; j < items[i].length; j++) {
                 if (items[i][j] === scatterItemId) {
@@ -125,10 +91,17 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         return r;
     }
 
-    public static getWinningLinesIds(items: string[][], linesDirections: { [lineId: string]: number[] }, patterns: number[][], wildItemId?: string): string[] {
+    public static getWinningLinesIds(
+        items: string[][],
+        linesDirections: { [lineId: string]: number[] },
+        patterns: number[][],
+        wildItemId?: string,
+    ): string[] {
         return Object.keys(linesDirections).reduce((arr: string[], lineId) => {
-            let itemsLine: string[] = ReelGameSessionWinCalculator.getItemsForDirection(items, linesDirections[lineId]);
-            let mPattern = ReelGameSessionWinCalculator.getMatchingPattern(itemsLine, patterns, wildItemId);
+            const itemsLine: string[] = ReelGameSessionWinCalculator.getItemsForDirection(
+                items, linesDirections[lineId],
+            );
+            const mPattern = ReelGameSessionWinCalculator.getMatchingPattern(itemsLine, patterns, wildItemId);
             if (mPattern.length > 0) {
                 arr.push(lineId);
             }
@@ -136,12 +109,125 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         }, []);
     }
 
+    public static getLinesWithSymbol(
+        lines: { [lineId: string]: IReelGameSessionWinningLineModel }, symbolId: string,
+    ): IReelGameSessionWinningLineModel[] {
+        // TODO test
+        const r: IReelGameSessionWinningLineModel[] = [];
+        for (const line of Object.values(lines)) {
+            if (line.itemId === symbolId) {
+                r.push(line);
+            }
+        }
+        return r;
+    }
+
+    public static getLinesWithDifferentSymbols(
+        lines: { [lineId: string]: IReelGameSessionWinningLineModel },
+    ): IReelGameSessionWinningLineModel[] {
+        // TODO test
+        const symbols: string[] = [];
+        const r: IReelGameSessionWinningLineModel[] = [];
+        for (const line of Object.values(lines)) {
+            if (symbols.indexOf(line.itemId) < 0) {
+                symbols.push(line.itemId);
+                r.push(line);
+            }
+        }
+        return r;
+    }
+
+    public static isAllLinesHasSameItemId(lines: { [lineId: string]: IReelGameSessionWinningLineModel }): boolean {
+        // TODO test
+        let id: string | undefined;
+        let r: boolean = true;
+        for (const line of Object.values(lines)) {
+            if (!id) {
+                id = line.itemId;
+                continue;
+            }
+            if (Object.keys(line).length > 1 && id !== line.itemId) {
+                r = false;
+                break;
+            }
+        }
+        return r;
+    }
+
+    public static getLinesContainingItem(
+        lines: { [lineId: string]: IReelGameSessionWinningLineModel },
+        items: string[][],
+        itemId: string,
+    ): IReelGameSessionWinningLineModel[] {
+        // TODO test
+        const r: IReelGameSessionWinningLineModel[] = [];
+        for (const line of Object.values(lines)) {
+            const lineItems: string[] = ReelGameSessionWinCalculator.getItemsForDirection(items, line.direction);
+            for (const item of lineItems) {
+                if (item === itemId) {
+                    r.push(line);
+                    break;
+                }
+            }
+        }
+        return r;
+    }
+
+    private readonly _config: IReelGameSessionWinCalculatorConfig;
+    private readonly _reelsItemsNumber: number;
+    private readonly _reelsNumber: number;
+    private readonly _wildItemId: string;
+    private readonly _scatters: any[][];
+    private readonly _linesDirections: { [lineId: string]: number[] };
+    private readonly _wildsMultipliers: {
+        [wildsNum: number]: number,
+    };
+    private readonly _paytable: {
+        [bet: number]: {
+            [itemId: string]: {
+                [times: number]: number,
+            },
+        },
+    };
+
+    private _items: string[][] = [];
+    private _winningLines: { [lineId: string]: IReelGameSessionWinningLineModel } = {};
+    private _winningScatters: { [scatterItemId: string]: IReelGameSessionWinningScatterModel } = {};
+
+    private readonly _linesPatterns: number[][];
+    private _linesWinning: number = 0;
+    private _scattersWinning: number = 0;
+
+    constructor(conf: IReelGameSessionWinCalculatorConfig) {
+        this._config = conf;
+        this._reelsItemsNumber = conf.reelsItemsNumber;
+        this._reelsNumber = conf.reelsNumber;
+        this._wildItemId = conf.wildItemId;
+        this._scatters = conf.scatters;
+        this._linesDirections = conf.linesDirections;
+        this._wildsMultipliers = conf.wildsMultipliers;
+        this._paytable = conf.paytable;
+        this._linesPatterns = ReelGameSessionWinCalculator.createLinesPatterns(this._reelsNumber);
+    }
+
+    public getWinningAmount(): number {
+        return this.getLinesWinning() + this.getScattersWinning();
+    }
+
+    public getLinesWinning(): number {
+        return this._linesWinning;
+    }
+
+    public getScattersWinning(): number {
+        return this._scattersWinning;
+    }
+
     public setGameState(bet: number, items: string[][]): void {
         if (this._paytable.hasOwnProperty(bet)) {
             this._items = items;
             this.calculateWinning(bet);
         } else {
-            throw `Bet ${bet} does not specified at paytable`;
+            throw new Error(`Bet ${bet} does not specified at paytable`);
         }
     }
 
@@ -159,7 +245,9 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         let winningLinesIds: string[];
         this._winningLines = {};
         this._linesWinning = 0;
-        winningLinesIds = ReelGameSessionWinCalculator.getWinningLinesIds(this._items, this._linesDirections, this._linesPatterns, this._wildItemId);
+        winningLinesIds = ReelGameSessionWinCalculator.getWinningLinesIds(
+            this._items, this._linesDirections, this._linesPatterns, this._wildItemId,
+        );
         for (lineId of winningLinesIds) {
             line = this.generateWinningLine(bet, lineId);
             if (line.winningAmount > 0) {
@@ -223,7 +311,9 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             }
             return arr;
         }, []);
-        line.wildItemsPositions = ReelGameSessionWinCalculator.getWildItemsPositions(itemsLine, pattern, this._wildItemId);
+        line.wildItemsPositions = ReelGameSessionWinCalculator.getWildItemsPositions(
+            itemsLine, pattern, this._wildItemId,
+        );
         line.itemId = ReelGameSessionWinCalculator.getWinningItemId(itemsLine, pattern, this._wildItemId);
         line.winningAmount = this.getLineWinningAmount(bet, line);
         return line;
@@ -236,7 +326,9 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
             this._paytable[bet][line.itemId] &&
             this._paytable[bet][line.itemId][line.itemsPositions.length]
         ) {
-            rv = this._paytable[bet][line.itemId][line.itemsPositions.length] * (this._wildsMultipliers.hasOwnProperty(line.wildItemsPositions.length) ? this._wildsMultipliers[line.wildItemsPositions.length] : 1);
+            rv = this._paytable[bet][line.itemId][line.itemsPositions.length]
+                * (this._wildsMultipliers.hasOwnProperty(line.wildItemsPositions.length)
+                    ? this._wildsMultipliers[line.wildItemsPositions.length] : 1);
         }
         return rv;
     }
@@ -254,78 +346,5 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         }
         return rv;
     }
-
-    public getWinningAmount(): number {
-        return this.getLinesWinning() + this.getScattersWinning();
-    }
-
-    public getLinesWinning(): number {
-        return this._linesWinning;
-    }
-
-    public getScattersWinning(): number {
-        return this._scattersWinning;
-    }
-
-    public static getLinesWithSymbol(lines: { [lineId: string]: IReelGameSessionWinningLineModel }, symbolId: string): IReelGameSessionWinningLineModel[] {
-        //TODO test
-        let r: IReelGameSessionWinningLineModel[] = [];
-        for (let lineId in lines) {
-            let line: IReelGameSessionWinningLineModel = lines[lineId];
-            if (line.itemId === symbolId) {
-                r.push(line);
-            }
-        }
-        return r;
-    }
-
-    public static getLinesWithDifferentSymbols(lines: { [lineId: string]: IReelGameSessionWinningLineModel }): IReelGameSessionWinningLineModel[] {
-        //TODO test
-        let symbols: string[] = [];
-        let r: IReelGameSessionWinningLineModel[] = [];
-        for (let lineId in lines) {
-            let line: IReelGameSessionWinningLineModel = lines[lineId];
-            if (symbols.indexOf(line.itemId) < 0) {
-                symbols.push(line.itemId);
-                r.push(line);
-            }
-        }
-        return r;
-    }
-
-    public static isAllLinesHasSameItemId(lines: { [lineId: string]: IReelGameSessionWinningLineModel }): boolean {
-        //TODO test
-        let id: string | undefined;
-        let r: boolean = true;
-        for (let lineId in lines) {
-            let line: IReelGameSessionWinningLineModel = lines[lineId];
-            if (!id) {
-                id = line.itemId;
-                continue;
-            }
-            if (Object.keys(line).length > 1 && id !== line.itemId) {
-                r = false;
-                break;
-            }
-        }
-        return r;
-    }
-
-    public static getLinesContainingItem(lines: { [lineId: string]: IReelGameSessionWinningLineModel }, items: string[][], itemId: string): IReelGameSessionWinningLineModel[] {
-        //TODO test
-        let r: IReelGameSessionWinningLineModel[] = [];
-        for (let lineId in lines) {
-            let line: IReelGameSessionWinningLineModel = lines[lineId];
-            let lineItems: string[] = ReelGameSessionWinCalculator.getItemsForDirection(items, line.direction);
-            for (let i: number = 0; i < lineItems.length; i++) {
-                if (lineItems[i] === itemId) {
-                    r.push(line);
-                    break;
-                }
-            }
-        }
-        return r;
-    }
-
 
 }

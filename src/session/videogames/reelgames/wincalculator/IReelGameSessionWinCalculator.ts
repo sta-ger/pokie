@@ -2,11 +2,11 @@ import {IReelGameSessionWinningLineModel} from "./IReelGameSessionWinningLineMod
 import {IReelGameSessionWinningScatterModel} from "./IReelGameSessionWinningScatterModel";
 
 export interface IReelGameSessionWinCalculator {
-    
+
     setGameState(bet: number, items: string[][]): void;
-    
+
     getWinningLines(): { [lineId: string]: IReelGameSessionWinningLineModel };
-    
+
     getWinningScatters(): { [scatterItemId: string]: IReelGameSessionWinningScatterModel };
 
     getWinningAmount(): number;
@@ -15,5 +15,5 @@ export interface IReelGameSessionWinCalculator {
 
     getScattersWinning(): number;
 
-    
+
 }

@@ -3,9 +3,9 @@ export interface IReelGameSessionWinCalculatorConfig {
     paytable: {
         [bet: number]: {
             [itemId: string]: {
-                [times: number]: number
-            }
-        }
+                [times: number]: number,
+            },
+        },
     };
 
     wildItemId: string;
@@ -19,8 +19,7 @@ export interface IReelGameSessionWinCalculatorConfig {
     linesDirections: {};
 
     wildsMultipliers: {
-        [wildsNum: number]: number
+        [wildsNum: number]: number,
     };
 
-    
 }
