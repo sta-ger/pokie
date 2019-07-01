@@ -4,7 +4,8 @@
     "target": "es5",
     "module": "commonjs",
     "declaration": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "lib": ["esnext"]
   },
   "include": [
     "src/**/*"

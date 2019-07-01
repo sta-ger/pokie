@@ -4,12 +4,56 @@ import {GameSessionConfig} from "../../GameSessionConfig";
 export type ReelGameSessionPaytable = {
     [bet: number]: {
         [itemId: string]: {
-            [times: number]: number
-        }
-    }
+            [times: number]: number,
+        },
+    },
 };
 
 export class ReelGameSessionConfig extends GameSessionConfig implements IReelGameSessionConfig {
+    public static createLinesDirections(reelsNumber: number, reelsItemsNumber: number): { [lineId: string]: number[] } {
+        const r: { [lineId: string]: number[] } = {};
+        for (let i: number = 0; i < reelsItemsNumber; i++) {
+            for (let j: number = 0; j < reelsNumber; j++) {
+                if (!r[i]) {
+                    r[i] = [];
+                }
+                r[i].push(i);
+            }
+        }
+        return r;
+    }
+
+    public static createReelsItemsSequences(reelsNumber: number, availableItems: string[]): string[][] {
+        const r = [];
+        for (let i = 0; i < reelsNumber; i++) {
+            r[i] = availableItems.reduce(
+                (ob) => [...ob, ...availableItems], availableItems).sort(() => Math.random() - 0.5,
+            );
+        }
+        return r;
+    }
+
+    public static createPaytable(
+        availableBets: number[],
+        availableItems: string[],
+        reelsNumber: number,
+        wildItemId?: string,
+    ): ReelGameSessionPaytable {
+        const r: ReelGameSessionPaytable = {};
+        for (const bet of availableBets) {
+            r[bet] = {};
+            for (const itemId of availableItems) {
+                if (itemId !== wildItemId) {
+                    r[bet][itemId] = {};
+                    for (let k = 3; k <= reelsNumber; k++) {
+                        r[bet][itemId][k] = (k - 2) * bet;
+                    }
+                }
+            }
+        }
+        return r;
+    }
+
     private _paytable: ReelGameSessionPaytable;
 
     private _availableItems: string[];
@@ -39,13 +83,13 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
             "10",
             "9",
             "W",
-            "S"
+            "S",
         ];
 
         this._wildItemId = "W";
 
         this._scatters = [
-            ["S", 3]
+            ["S", 3],
         ];
 
         this._wildsMultipliers = {};
@@ -58,8 +102,12 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         this._reelsNumber = reelsNumber;
         this._reelsItemsNumber = reelsItemsNumber;
         this._linesDirections = ReelGameSessionConfig.createLinesDirections(this._reelsNumber, this._reelsItemsNumber);
-        this._reelsItemsSequences = ReelGameSessionConfig.createReelsItemsSequences(this._reelsNumber, this._availableItems);
-        this._paytable = ReelGameSessionConfig.createPaytable(this.availableBets, this._availableItems, this._reelsNumber, this._wildItemId);
+        this._reelsItemsSequences = ReelGameSessionConfig.createReelsItemsSequences(
+            this._reelsNumber, this._availableItems,
+        );
+        this._paytable = ReelGameSessionConfig.createPaytable(
+            this.availableBets, this._availableItems, this._reelsNumber, this._wildItemId,
+        );
     }
 
     public get linesDirections(): {} {
@@ -118,8 +166,12 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
 
     public set availableItems(value: string[]) {
         this._availableItems = value;
-        this._reelsItemsSequences = ReelGameSessionConfig.createReelsItemsSequences(this._reelsNumber, this._availableItems);
-        this._paytable = ReelGameSessionConfig.createPaytable(this.availableBets, this._availableItems, this._reelsNumber, this._wildItemId);
+        this._reelsItemsSequences = ReelGameSessionConfig.createReelsItemsSequences(
+            this._reelsNumber, this._availableItems,
+        );
+        this._paytable = ReelGameSessionConfig.createPaytable(
+            this.availableBets, this._availableItems, this._reelsNumber, this._wildItemId,
+        );
     }
 
     public get paytable(): { [p: number]: { [p: string]: { [p: number]: number } } } {
@@ -136,45 +188,6 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
 
     public set wildsMultipliers(value: { [p: number]: number }) {
         this._wildsMultipliers = value;
-    }
-
-    public static createLinesDirections(reelsNumber: number, reelsItemsNumber: number): { [lineId: string]: number[] } {
-        let r: { [lineId: string]: number[] } = {};
-        for (let i: number = 0; i < reelsItemsNumber; i++) {
-            for (let j: number = 0; j < reelsNumber; j++) {
-                if (!r[i]) {
-                    r[i] = [];
-                }
-                r[i].push(i);
-            }
-        }
-        return r;
-    }
-
-    public static createReelsItemsSequences(reelsNumber: number, availableItems: string[]): string[][] {
-        let r = [];
-        for (let i = 0; i < reelsNumber; i++) {
-            r[i] = availableItems.reduce(ob => [...ob, ...availableItems], availableItems).sort(() => Math.random() - 0.5);
-        }
-        return r;
-    }
-
-    public static createPaytable(availableBets: number[], availableItems: string[], reelsNumber: number, wildItemId?: string): ReelGameSessionPaytable {
-        let r: ReelGameSessionPaytable = {};
-        for (let i = 0; i < availableBets.length; i++) {
-            let bet = availableBets[i];
-            r[bet] = {};
-            for (let j = 0; j < availableItems.length; j++) {
-                let itemId = availableItems[j];
-                if (itemId !== wildItemId) {
-                    r[bet][itemId] = {};
-                    for (let k = 3; k <= reelsNumber; k++) {
-                        r[bet][itemId][k] = (k - 2) * bet;
-                    }
-                }
-            }
-        }
-        return r;
     }
 
     public isItemScatter(itemId: string): boolean {
