@@ -8,6 +8,8 @@ A server-side video slot game logic framework in JavaScript.
 
 `npm install slotify.js`
 
+[slotify4j](https://github.com/sta-ger/slotify4j) - Java version.
+
 ## Usage
 
 ### Game Session
