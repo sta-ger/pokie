@@ -8,6 +8,7 @@ export * from "./session/videogames/reelgames/IReelGameWithFreeGamesSession";
 export * from "./session/videogames/reelgames/IReelGameWithFreeGamesSessionConfig";
 export * from "./session/videogames/reelgames/ReelGameSession";
 export * from "./session/videogames/reelgames/ReelGameSessionConfig";
+export * from "./session/videogames/reelgames/ReelGameSessionTools";
 export * from "./session/videogames/reelgames/ReelGameWithFreeGamesSession";
 export * from "./session/videogames/reelgames/ReelGameWithFreeGamesSessionConfig";
 export * from "./session/videogames/reelgames/reelscontroller/IReelGameSessionReelsController";
