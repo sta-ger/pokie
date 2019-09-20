@@ -250,7 +250,9 @@ export class ReelGameSessionWinCalculator implements IReelGameSessionWinCalculat
         );
         for (lineId of winningLinesIds) {
             line = this.generateWinningLine(bet, lineId);
-            if (line.winningAmount > 0) {
+            if (this._config.scatters.filter(
+                (scatterData: any[]) => scatterData[0] === line.itemId
+            ).length === 0 && line.winningAmount > 0) {
                 this._winningLines[lineId] = line;
                 this._linesWinning += line.winningAmount;
             }

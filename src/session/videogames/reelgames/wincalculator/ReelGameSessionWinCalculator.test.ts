@@ -315,6 +315,22 @@ describe("ReelGameSessionWinCalculator", () => {
         testItemsPositions(lines["0"], 3);
     });
 
+    it("does not create a line of scatter symbols", () => {
+        const conf: ReelGameSessionConfig = new ReelGameSessionConfig();
+        conf.scatters = [
+            ["A", 3]
+        ];
+        const calc: ReelGameSessionWinCalculator = new ReelGameSessionWinCalculator(conf);
+
+        calc.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
+            ["A", "A", "A", "K", "Q"],
+            ["A", "K", "Q", "J", "10"],
+            ["K", "Q", "J", "10", "9"]
+        ]));
+        lines = calc.getWinningLines();
+        expect(Object.keys(lines)).toHaveLength(0);
+    });
+
     it("calculates winning lines with wilds", () => {
 
         winningCalculator.setGameState(1, ReelGameSessionReelsController.transposeMatrix([
