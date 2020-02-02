@@ -1,6 +1,5 @@
 # slotify.js
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/eb1e7f9f099c438383a1da89d37b8e2f)](https://app.codacy.com/app/sta-ger/slotify.js?utm_source=github.com&utm_medium=referral&utm_content=sta-ger/slotify.js&utm_campaign=Badge_Grade_Dashboard)
 [![npm version](https://badge.fury.io/js/slotify.js.svg)](https://badge.fury.io/js/slotify.js)
 [![Build Status](https://travis-ci.org/sta-ger/slotify.js.svg?branch=master)](https://travis-ci.org/sta-ger/slotify.js)
 
@@ -59,7 +58,7 @@ session.getWinningScatters(); //returns winning scatters data
 
 ### Simulation
 
-Simple way to run a lot game rounds and calculate Return To Player percentage.
+Simple way to run a lot of game rounds and calculate Return To Player percentage.
 
 ```js
 const sessionConfig = new ReelGameSessionConfig();
