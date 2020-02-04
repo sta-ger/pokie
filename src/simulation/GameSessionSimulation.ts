@@ -23,7 +23,7 @@ export class GameSessionSimulation implements IGameSessionSimulation {
         this._session = session;
         this._config = config;
         this._numberOfRounds = this._config.numberOfRounds ? this._config.numberOfRounds : 0;
-        this._changeBetScenario = this._config.changeBetScenario;
+        this._changeBetScenario = this._config.changeBetStrategy;
         if (!this._changeBetScenario) {
             this._changeBetScenario = GameSimulationChangeBetScenario.DontChange;
         }
