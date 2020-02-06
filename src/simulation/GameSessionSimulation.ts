@@ -1,7 +1,7 @@
 import {IGameSessionSimulationConfig} from "./IGameSessionSimulationConfig";
 import {IGameSessionSimulation} from "./IGameSessionSimulation";
-import {GameSimulationChangeBetScenario} from "./GameSimulationChangeBetScenario";
 import {IGameSession} from "..";
+import {IChangeBetStrategy} from "./IChangeBetStrategy";
 
 export class GameSessionSimulation implements IGameSessionSimulation {
     public beforePlayCallback?: () => void;
@@ -11,7 +11,7 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     private readonly _config: IGameSessionSimulationConfig;
     private readonly _session: IGameSession;
     private readonly _numberOfRounds: number;
-    private readonly _changeBetScenario?: GameSimulationChangeBetScenario;
+    private readonly _changeBetStrategy?: IChangeBetStrategy;
 
     private _totalBet: number = 0;
     private _totalReturn: number = 0;
@@ -23,10 +23,7 @@ export class GameSessionSimulation implements IGameSessionSimulation {
         this._session = session;
         this._config = config;
         this._numberOfRounds = this._config.numberOfRounds ? this._config.numberOfRounds : 0;
-        this._changeBetScenario = this._config.changeBetStrategy;
-        if (!this._changeBetScenario) {
-            this._changeBetScenario = GameSimulationChangeBetScenario.DontChange;
-        }
+        this._changeBetStrategy = config.changeBetStrategy;
         if (!this._numberOfRounds) {
             this._numberOfRounds = 1000;
         }
@@ -88,17 +85,9 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     }
 
     private setBetBeforePlay(): void {
-        if (this._changeBetScenario === GameSimulationChangeBetScenario.ChangeRandomly) {
-            this.setRandomBet();
+        if (this._changeBetStrategy) {
+            this._changeBetStrategy.setBetForPlay(this._session);
         }
-    }
-
-    private setRandomBet(): void {
-        let bet: number;
-        let bets: number[];
-        bets = this._session.getAvailableBets();
-        bet = bets[Math.floor(Math.random() * bets.length)];
-        this._session.setBet(bet);
     }
 
     private doPlay(): void {

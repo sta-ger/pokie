@@ -1,13 +1,8 @@
-import {
-    GameSession,
-    GameSessionSimulation,
-    IGameSession,
-    IGameSessionSimulation,
-    IGameSessionSimulationConfig
-} from "..";
+import {GameSessionSimulation, IGameSession, IGameSessionSimulation} from "..";
+import {RandomChangeBetStrategy} from "./RandomChangeBetStrategy";
 
 it("changes bet randomly during simulation", () => {
-    const betsDuringPlay = [];
+    const betsDuringPlay: Set<number> = new Set();
     const sessionMock: IGameSession = new class A implements IGameSession {
         canPlayNextGame(): boolean {
             return false;
@@ -37,6 +32,7 @@ it("changes bet randomly during simulation", () => {
         }
 
         setBet(bet: number): void {
+            betsDuringPlay.add(bet);
         }
 
         setCreditsAmount(value: number): void {
@@ -46,25 +42,18 @@ it("changes bet randomly during simulation", () => {
 
     const simulation: IGameSessionSimulation = new GameSessionSimulation(
         sessionMock,
-        GameSessionSimulationConfig
-            .builder()
-            .withNumberOfRounds(1000)
-            .withChangeBetStrategy(new RandomChangeBetStrategy())
-            .build()
+        {
+            changeBetStrategy: new RandomChangeBetStrategy(),
+            numberOfRounds: 1000
+        }
     );
 
     simulation.run();
 
-    long[] betsArrayOfSet = betsDuringPlay.stream().mapToLong(Long::valueOf).toArray();
+    const betsArrayOfSet: number[] = Array.from(betsDuringPlay.values());
 
     // Contents of betsDuringPlay after simulation should contain shuffled array of all possible bets
-    assertFalse(Arrays.equals(
-        betsArrayOfSet,
-        sessionMock.getAvailableBets()
-    ));
-    assertArrayEquals(
-        Arrays.stream(betsArrayOfSet).sorted().toArray(),
-        sessionMock.getAvailableBets()
-    );
+    expect(betsArrayOfSet).not.toEqual(sessionMock.getAvailableBets());
+    expect(betsArrayOfSet.sort()).not.toEqual(sessionMock.getAvailableBets());
 
 });
