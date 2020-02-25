@@ -22,5 +22,7 @@ export * from "./session/videogames/reelgames/wincalculator/ReelGameSessionWinCa
 export * from "./session/videogames/reelgames/wincalculator/ReelGameSessionWinningLineModel";
 export * from "./session/videogames/reelgames/wincalculator/ReelGameSessionWinningScatterModel";
 export * from "./simulation/GameSessionSimulation";
+export * from "./simulation/IChangeBetStrategy";
 export * from "./simulation/IGameSessionSimulation";
 export * from "./simulation/IGameSessionSimulationConfig";
+export * from "./simulation/RandomChangeBetStrategy";
