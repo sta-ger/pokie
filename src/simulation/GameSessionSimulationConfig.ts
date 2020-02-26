@@ -3,20 +3,18 @@ import {IGameSessionSimulationConfig} from "./IGameSessionSimulationConfig";
 
 export class GameSessionSimulationConfig implements IGameSessionSimulationConfig {
     private _changeBetStrategy?: IChangeBetStrategy;
-    private _numberOfRounds: number = 0;
+    private _numberOfRounds?: number;
 
     constructor(numberOfRounds?: number, changeBetStrategy?: IChangeBetStrategy) {
         this._changeBetStrategy = changeBetStrategy;
-        if (numberOfRounds) {
-            this._numberOfRounds = numberOfRounds;
-        }
+        this._numberOfRounds = numberOfRounds;
     }
 
-    public get numberOfRounds(): number {
+    public get numberOfRounds(): number | undefined {
         return this._numberOfRounds;
     }
 
-    public set numberOfRounds(value: number) {
+    public set numberOfRounds(value: number | undefined) {
         this._numberOfRounds = value;
     }
 

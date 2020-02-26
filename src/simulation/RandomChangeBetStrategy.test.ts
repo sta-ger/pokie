@@ -1,59 +1,62 @@
 import {GameSessionSimulation, IGameSession, IGameSessionSimulation} from "..";
 import {RandomChangeBetStrategy} from "./RandomChangeBetStrategy";
 
-it("changes bet randomly during simulation", () => {
-    const betsDuringPlay: Set<number> = new Set();
-    const sessionMock: IGameSession = new class A implements IGameSession {
-        canPlayNextGame(): boolean {
-            return false;
-        }
+describe("GameSessionSimulation", () => {
 
-        getAvailableBets(): number[] {
-            return [];
-        }
+    it("changes bet randomly during simulation", () => {
+        const betsDuringPlay: Set<number> = new Set();
+        const sessionMock: IGameSession = new class A implements IGameSession {
+            canPlayNextGame(): boolean {
+                return false;
+            }
 
-        getBet(): number {
-            return 0;
-        }
+            getAvailableBets(): number[] {
+                return [];
+            }
 
-        getCreditsAmount(): number {
-            return 0;
-        }
+            getBet(): number {
+                return 0;
+            }
 
-        getWinningAmount(): number {
-            return 0;
-        }
+            getCreditsAmount(): number {
+                return 0;
+            }
 
-        isBetAvailable(bet: number): boolean {
-            return false;
-        }
+            getWinningAmount(): number {
+                return 0;
+            }
 
-        play(): void {
-        }
+            isBetAvailable(bet: number): boolean {
+                return false;
+            }
 
-        setBet(bet: number): void {
-            betsDuringPlay.add(bet);
-        }
+            play(): void {
+            }
 
-        setCreditsAmount(value: number): void {
-        }
+            setBet(bet: number): void {
+                betsDuringPlay.add(bet);
+            }
 
-    };
+            setCreditsAmount(value: number): void {
+            }
 
-    const simulation: IGameSessionSimulation = new GameSessionSimulation(
-        sessionMock,
-        {
-            changeBetStrategy: new RandomChangeBetStrategy(),
-            numberOfRounds: 1000
-        }
-    );
+        };
 
-    simulation.run();
+        const simulation: IGameSessionSimulation = new GameSessionSimulation(
+            sessionMock,
+            {
+                changeBetStrategy: new RandomChangeBetStrategy(),
+                numberOfRounds: 1000
+            }
+        );
 
-    const betsArrayOfSet: number[] = Array.from(betsDuringPlay.values());
+        simulation.run();
 
-    // Contents of betsDuringPlay after simulation should contain shuffled array of all possible bets
-    expect(betsArrayOfSet).not.toEqual(sessionMock.getAvailableBets());
-    expect(betsArrayOfSet.sort()).not.toEqual(sessionMock.getAvailableBets());
+        const betsArrayOfSet: number[] = Array.from(betsDuringPlay.values());
+
+        // Contents of betsDuringPlay after simulation should contain shuffled array of all possible bets
+        expect(betsArrayOfSet).not.toEqual(sessionMock.getAvailableBets());
+        expect(betsArrayOfSet.sort()).not.toEqual(sessionMock.getAvailableBets());
+    });
 
 });
