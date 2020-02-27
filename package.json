@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "eslint": "eslint ./src --ext .ts",
     "coveralls": "npm run test:cov && cat ./coverage/lcov.info | coveralls",
     "generate-barrels": "barrelsby --delete -d ./src --exclude .test.ts",
     "build": "npm run generate-barrels && tsc",
@@ -58,11 +59,13 @@
   "license": "ISC",
   "dependencies": {
     "@types/jest": "^24.0.11",
+    "@typescript-eslint/eslint-plugin": "^2.21.0",
+    "@typescript-eslint/parser": "^2.21.0",
     "barrelsby": "^1.0.2",
     "coveralls": "^3.0.4",
+    "eslint": "^6.8.0",
     "jest": "^24.5.0",
     "ts-jest": "^24.0.0",
-    "tslint": "^5.18.0",
     "typescript": "^3.0.1"
   }
 }
