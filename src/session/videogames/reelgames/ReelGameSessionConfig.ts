@@ -60,7 +60,7 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
 
     private _wildItemId: string;
 
-    private _scatters: any[][];
+    private _scatters: [string, number][];
 
     private _reelsNumber: number;
 
@@ -144,11 +144,11 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
         this._linesDirections = ReelGameSessionConfig.createLinesDirections(this._reelsNumber, this._reelsItemsNumber);
     }
 
-    public get scatters(): any[][] {
+    public get scatters(): [string, number][] {
         return this._scatters;
     }
 
-    public set scatters(value: any[][]) {
+    public set scatters(value: [string, number][]) {
         this._scatters = value;
     }
 
@@ -191,7 +191,7 @@ export class ReelGameSessionConfig extends GameSessionConfig implements IReelGam
     }
 
     public isItemScatter(itemId: string): boolean {
-        return this._scatters && this._scatters.reduce((flag, entry) => {
+        return this._scatters && this._scatters.reduce((flag: boolean, entry) => {
             if (!flag && itemId === entry[0]) {
                 flag = true;
             }

@@ -10,13 +10,13 @@ export interface IReelGameSessionWinCalculatorConfig {
 
     wildItemId: string;
 
-    scatters: any[][];
+    scatters: [string, number][];
 
     reelsNumber: number;
 
     reelsItemsNumber: number;
 
-    linesDirections: {};
+    linesDirections: { [lineId: string]: number[] };
 
     wildsMultipliers: {
         [wildsNum: number]: number,

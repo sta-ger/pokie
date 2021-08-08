@@ -1,5 +1,6 @@
 import {IGameSession} from "../../IGameSession";
 import {IReelGameSessionWinningScatterModel} from "./wincalculator/IReelGameSessionWinningScatterModel";
+import {IReelGameSessionWinningLineModel} from "./wincalculator/IReelGameSessionWinningLineModel";
 
 export interface IReelGameSession extends IGameSession {
 
@@ -11,7 +12,7 @@ export interface IReelGameSession extends IGameSession {
 
     getReelsItems(): string[][];
 
-    getWinningLines(): {};
+    getWinningLines(): { [lineId: string]: IReelGameSessionWinningLineModel };
 
     getWinningScatters(): { [scatterId: string]: IReelGameSessionWinningScatterModel };
 

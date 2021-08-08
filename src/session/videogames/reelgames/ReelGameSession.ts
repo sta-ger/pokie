@@ -5,6 +5,7 @@ import {GameSession} from "../../GameSession";
 import {IReelGameSessionReelsController} from "./reelscontroller/IReelGameSessionReelsController";
 import {IReelGameSessionWinCalculator} from "./wincalculator/IReelGameSessionWinCalculator";
 import {ReelGameSessionWinCalculator} from "./wincalculator/ReelGameSessionWinCalculator";
+import {IReelGameSessionWinningLineModel} from "./wincalculator/IReelGameSessionWinningLineModel";
 
 export class ReelGameSession implements IReelGameSession {
 
@@ -117,7 +118,7 @@ export class ReelGameSession implements IReelGameSession {
         return this._reelsItems;
     }
 
-    public getWinningLines(): {} {
+    public getWinningLines(): { [lineId: string]: IReelGameSessionWinningLineModel } {
         return this._winningCalculator.getWinningLines();
     }
 
