@@ -2,26 +2,30 @@ import {IGameSessionSimulationConfig} from "./IGameSessionSimulationConfig";
 import {IGameSessionSimulation} from "./IGameSessionSimulation";
 import {IGameSession} from "..";
 import {IChangeBetStrategy} from "./IChangeBetStrategy";
+import {IGameSessionSimulationModel} from "./IGameSessionSimulationModel";
+import {GameSessionSimulationModel} from "./GameSessionSimulationModel";
 
 export class GameSessionSimulation implements IGameSessionSimulation {
     public beforePlayCallback?: () => void;
     public afterPlayCallback?: () => void;
     public onFinishedCallback?: () => void;
 
+    private readonly _simulationModel: IGameSessionSimulationModel;
     private readonly _config: IGameSessionSimulationConfig;
     private readonly _session: IGameSession;
     private readonly _numberOfRounds: number;
     private readonly _changeBetStrategy?: IChangeBetStrategy;
 
-    private _totalBet: number = 0;
-    private _totalReturn: number = 0;
-    private _rtp: number = 0;
-
     private _currentGameNumber: number = 0;
 
-    constructor(session: IGameSession, config: IGameSessionSimulationConfig) {
+    constructor(
+        session: IGameSession,
+        config: IGameSessionSimulationConfig,
+        simulationModel: IGameSessionSimulationModel = new GameSessionSimulationModel(session),
+    ) {
         this._session = session;
         this._config = config;
+        this._simulationModel = simulationModel;
         this._numberOfRounds = this._config.numberOfRounds ? this._config.numberOfRounds : 0;
         this._changeBetStrategy = config.changeBetStrategy;
         if (!this._numberOfRounds) {
@@ -48,15 +52,15 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     }
 
     public getRtp(): number {
-        return this._rtp;
+        return this._simulationModel.getRtp();
     }
 
     public getTotalBetAmount(): number {
-        return this._totalBet;
+        return this._simulationModel.getTotalBetAmount();
     }
 
     public getTotalReturn(): number {
-        return this._totalReturn;
+        return this._simulationModel.getTotalReturnAmount();
     }
 
     public getCurrentGameNumber(): number {
@@ -93,10 +97,9 @@ export class GameSessionSimulation implements IGameSessionSimulation {
     private doPlay(): void {
         this._currentGameNumber++;
         this.setBetBeforePlay();
-        this._totalBet += this._session.getBet();
+        this._simulationModel.updateTotalBetBeforePlay();
         this._session.play();
-        this._totalReturn += this._session.getWinningAmount();
-        this.calculateRtp();
+        this._simulationModel.updateTotalReturnAfterPlay();
         this.doAfterPlay();
     }
 
@@ -111,9 +114,4 @@ export class GameSessionSimulation implements IGameSessionSimulation {
             this.afterPlayCallback();
         }
     }
-
-    private calculateRtp(): void {
-        this._rtp = this._totalReturn / this._totalBet;
-    }
-
 }
