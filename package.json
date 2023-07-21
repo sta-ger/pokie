@@ -1,71 +1,40 @@
 {
-  "name": "slotify.js",
-  "version": "1.2.16",
-  "description": "A video slot game session framework for JavaScript",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "eslint": "eslint ./src --ext .ts",
-    "coveralls": "npm run test:cov && cat ./coverage/lcov.info | coveralls",
-    "generate-barrels": "barrelsby --delete -d ./src --exclude .test.ts",
-    "build": "npm run generate-barrels && tsc",
-    "test": "jest",
-    "test:cov": "jest --coverage",
-    "lint": "tslint --project .",
-    "preversion": "git checkout master && git merge develop",
-    "version": "npm run test && npm run build && git add -A",
-    "postversion": "git checkout develop && git merge master"
-  },
-  "jest": {
-    "transform": {
-      "^.+\\.(t|j)sx?$": "ts-jest"
+    "name": "pokie",
+    "version": "1.0.0",
+    "description": "",
+    "type": "module",
+    "exports": {
+        "import": {
+            "default": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
     },
-    "testPathIgnorePatterns": [
-      "./dist"
-    ],
-    "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$",
-    "moduleFileExtensions": [
-      "ts",
-      "tsx",
-      "js",
-      "jsx",
-      "json",
-      "node"
+    "types": "./dist/index.d.ts",
+    "scripts": {
+        "generate-barrels": "node generate-barrels.js",
+        "test": "jest",
+        "build": "npm run generate-barrels && shx rm -rf ./dist && tsc --project tsconfig.prod.json "
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@types/jest": "^29.5.2",
+        "@typescript-eslint/eslint-plugin": "^5.59.11",
+        "@typescript-eslint/parser": "^5.59.11",
+        "eslint": "^8.42.0",
+        "eslint-config-prettier": "^8.8.0",
+        "eslint-plugin-eslint-comments": "^3.2.0",
+        "fs-extra": "^11.1.1",
+        "jest": "^29.5.0",
+        "prettier": "^2.8.8",
+        "shx": "^0.3.4",
+        "ts-jest": "^29.1.0",
+        "typescript": "^5.0.4"
+    },
+    "files": [
+        "dist/",
+        "src/",
+        "package.json"
     ]
-  },
-  "files": [
-    "dist/",
-    "src/",
-    "package.json",
-    "README.md",
-    "tsconfig.json"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/sta-ger/slotify.js.git"
-  },
-  "keywords": [
-    "TypeScript",
-    "JavaScript",
-    "Casino",
-    "Slot"
-  ],
-  "author": {
-    "name": "sta-ger",
-    "email": "pascaldelger@gmail.com",
-    "url": "https://github.com/sta-ger"
-  },
-  "homepage": "https://github.com/sta-ger/slotify.js",
-  "license": "ISC",
-  "dependencies": {
-    "@types/jest": "^26.0.24",
-    "@typescript-eslint/eslint-plugin": "^2.21.0",
-    "@typescript-eslint/parser": "^2.21.0",
-    "barrelsby": "^1.0.2",
-    "coveralls": "^3.0.4",
-    "eslint": "^6.8.0",
-    "jest": "^27.0.6",
-    "ts-jest": "^27.0.4",
-    "typescript": "^3.0.1"
-  }
 }

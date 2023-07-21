@@ -1,41 +1,41 @@
-import {IGameSessionConfig} from "./IGameSessionConfig";
+import {GameSessionConfigRepresenting} from "pokie";
 
-export class GameSessionConfig implements IGameSessionConfig {
-    private _availableBets: number[] = [
-        1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100,
-    ];
+export class GameSessionConfig implements GameSessionConfigRepresenting {
+    private availableBets = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100];
 
-    private _creditsAmount: number = 1000;
+    private creditsAmount = 1000;
 
-    private _bet: number;
+    private bet: number;
 
     constructor() {
-        this._bet = this._availableBets[0];
+        this.bet = this.availableBets[0];
     }
 
-    public get availableBets(): number[] {
-        return this._availableBets;
+    public setAvailableBets(availableBets: number[]): void {
+        this.availableBets = [...availableBets];
     }
 
-    public set availableBets(value: number[]) {
-        this._availableBets = value;
-        this._bet = this._availableBets[0];
+    public getAvailableBets(): number[] {
+        return [...this.availableBets];
     }
 
-    public get creditsAmount(): number {
-        return this._creditsAmount;
+    public setCreditsAmount(creditsAmount: number): void {
+        this.creditsAmount = creditsAmount;
     }
 
-    public set creditsAmount(value: number) {
-        this._creditsAmount = value;
+    public getCreditsAmount(): number {
+        return this.creditsAmount;
     }
 
-    public get bet(): number {
-        return this._bet;
+    public setBet(bet: number): void {
+        this.bet = bet;
     }
 
-    public set bet(value: number) {
-        this._bet = value;
+    public getBet(): number {
+        return this.bet;
     }
 
+    public isBetAvailable(bet: number): boolean {
+        return this.getAvailableBets().includes(bet);
+    }
 }

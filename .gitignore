@@ -1,4 +1,6 @@
-.idea/
-dist/
-node_modules/
-coverage/
+.idea
+.vscode
+dist
+coverage
+node_modules
+.DS_Store

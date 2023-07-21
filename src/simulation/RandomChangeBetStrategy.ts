@@ -1,12 +1,9 @@
-import {IChangeBetStrategy} from "./IChangeBetStrategy";
-import {IGameSession} from "..";
+import {BetForNextSimulationRoundSetting, GameSessionHandling} from "pokie";
 
-export class RandomChangeBetStrategy implements IChangeBetStrategy {
-
-    public setBetForPlay(session: IGameSession): void {
+export class RandomChangeBetStrategy implements BetForNextSimulationRoundSetting {
+    public setBetForNextRound(session: GameSessionHandling): void {
         const bets: number[] = session.getAvailableBets();
-        const bet = bets[Math.floor(Math.random() * bets.length)];
+        const bet: number = bets[Math.floor(Math.random() * bets.length)];
         session.setBet(bet);
     }
-
 }

@@ -1,84 +1,71 @@
-# slotify.js
+# POKIE
 
-[![npm version](https://badge.fury.io/js/slotify.js.svg)](https://badge.fury.io/js/slotify.js)
-[![Build Status](https://travis-ci.org/sta-ger/slotify.js.svg?branch=master)](https://travis-ci.org/sta-ger/slotify.js)
+_In Australia, they call slot machines "pokies"._
 
-A server-side video slot game logic framework in JavaScript.
+Introducing **POKIE**, a server-side video slot game logic framework for JavaScript and TypeScript.
 
-`npm install slotify.js`
+`npm install pokie`
 
-[slotify4j](https://github.com/sta-ger/slotify4j) - Java version.
+## Use cases
+
+### Back-End
+
+Utilize **POKIE** to implement the video slot game mechanics on the Back-End. Create and manage game sessions, serialize
+them, and transfer the payload to the game client through your API.
+
+### Front-End
+
+When playing for fun, you can implement the standalone game logic on the client-side, relieving the servers from
+unnecessary load. Utilize simulations to showcase specific game features for demonstration purposes.
+
+### Math
+
+**POKIE** also serves as an essential tool for balancing the parameters of the slot game's math model, ensuring an immersive
+gaming experience. Configure the game session and run Monte Carlo simulations to guarantee that the model meets all
+necessary requirements.
+
+### Examples
+
+See the [examples](https://github.com/sta-ger/pokie-examples) of various video slot game mechanics implemented with
+**POKIE**.
+
+[Simple video slot game](https://github.com/sta-ger/pokie-examples)
+
+[Video slot with free spins](https://github.com/sta-ger/pokie-examples)
+
+[Video slot with sticky re-spin](https://github.com/sta-ger/pokie-examples)
 
 ## Usage
 
-### Game Session
-
-Simple casino game logic.
-
-```js
-import {GameSession, GameSessionConfig} from "slotify.js";
-
-const config = new GameSessionConfig();
-config.availableBets = [10, 20, 30];
-config.creditsAmount = 5000;
-
-const session = new GameSession(config);
-session.getAvailableBets(); //[10, 20, 30]
-session.getBet(); //10
-session.getCreditsAmount(); //5000
-
-session.setBet(20);
-session.getBet(); //20
-
-session.play();
-session.getCreditsAmount(); //4980
-```
+### Session
 
 Video slot game logic.
 
 ```js
-import {ReelGameSession, ReelGameSessionConfig} from "slotify.js";
+import {VideoSlotSession} from "pokie";
 
-const config = new ReelGameSessionConfig();
-const session = new ReelGameSession(config, new ReelGameSessionReelsController(config), new ReelGameSessionWinCalculator(config));
-
-//specified at config
-session.getPaytable(); //paytable
-session.getReelsItemsNumber(); //number of reels (columns)
-session.getReelsNumber(); //number of items on reels (rows)
-session.getReelsItemsSequences(); //distributions of symbols on reels (probabilities)
+const session = new VideoSlotSession();
 
 session.play();
 
-session.getReelsItems(); //combination of symbols on reels after play
-session.getWinningAmount(); //if there where a winning combination returns total winning amount
-session.getWinningLines(); //returns winning lines data
-session.getWinningScatters(); //returns winning scatters data
+session.getSymbolsCombination(); // symbols combination
+session.getWinAmount(); // total round win amount
+session.getWinningLines(); // winning lines data
+session.getWinningScatters(); // winning scatters data
 ```
 
 ### Simulation
 
-Simple way to run a lot of game rounds and calculate Return To Player percentage.
+Running a certain number of game rounds and calculating RTP.
 
 ```js
-const sessionConfig = new ReelGameSessionConfig();
-sessionConfig.creditsAmount = Infinity;
-sessionConfig.reelsItemsSequences = [
-    ['J', '9', 'Q', '10', 'A', 'S', 'K'],
-    ['K', 'S', '10', 'A', '9', 'Q', 'J'],
-    ['J', 'Q', '10', '9', 'S', 'A', 'K'],
-    ['Q', '10', '9', 'S', 'K', 'A', 'J'],
-    ['Q', 'A', 'J', '10', '9', 'S', 'K']
-];
-const reelsController = new ReelGameSessionReelsController(sessionConfig);
-const winningCalculator = new ReelGameSessionWinCalculator(sessionConfig);
-const session = new ReelGameSession(sessionConfig, reelsController, winningCalculator);
-const simulationConfig = {
-    numberOfRounds: 10000
-};
-const simulation = new GameSessionSimulation(session, simulationConfig);
+import {SimulationConfig, Simulation} from "pokie";
 
+const simulationConfig = new SimulationConfig();
+simulationConfig.setNumberOfRounds(10000);
+const simulation = new Simulation(session, simulationConfig);
 
+// set the callbacks if you want to control the session manually
 simulation.beforePlayCallback = () => {
     console.log("Before play");
 };
@@ -89,7 +76,18 @@ simulation.onFinishedCallback = () => {
     console.log("Simulation finished");
 };
 
-simulation.run();  //10000 rounds will be played
+simulation.run(); // 10000 rounds will be played
 
-simulation.getRtp(); //returns rtp for current session (about 50-60% with symbols distributions specified earlier at session config) 
+simulation.getRtp(); // RTP of the current session
+```
+
+Capturing specific game features.
+
+```js
+const simulationConfig = new SimulationConfig();
+simulationConfig.setNumberOfRounds(Infinity);
+simulationConfig.setPlayStrategy(new PlayUntilSymbolWinStrategy("A"));
+
+const simulation = new Simulation(session, simulationConfig);
+simulation.run(); // the simulation will be stopped on any winning combination with symbol "A"
 ```

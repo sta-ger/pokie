@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "esModuleInterop": true,
+        "noImplicitAny": false,
+        "module": "node16",
+        "sourceMap": true,
+        "declaration": true,
+        "strict": true,
+        "outDir": "dist",
+        "paths": {
+            "pokie": ["./src/index.ts"]
+        }
+    },
+    "include": ["src"]
+}

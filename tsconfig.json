@@ -1,16 +1,4 @@
 {
-  "compilerOptions": {
-    "strict": true,
-    "target": "es5",
-    "module": "commonjs",
-    "declaration": true,
-    "outDir": "./dist",
-    "lib": ["esnext"]
-  },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "src/**/*.test.ts"
-  ]
+    "extends": "./tsconfig.prod.json",
+    "include": ["src", "tests"]
 }

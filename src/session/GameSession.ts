@@ -1,53 +1,72 @@
-import {IGameSession} from "./IGameSession";
-import {IGameSessionConfig} from "./IGameSessionConfig";
+import {
+    GameSessionConfig,
+    GameSessionConfigRepresenting,
+    GameSessionHandling,
+    NoWinAmount,
+    WinAmountDetermining,
+} from "pokie";
 
-export class GameSession implements IGameSession {
-    private readonly _config: IGameSessionConfig;
-    private _bet: number;
-    private _credits: number;
+export class GameSession implements GameSessionHandling {
+    private readonly config: GameSessionConfigRepresenting;
+    private readonly winCalculator: WinAmountDetermining;
+    private bet: number;
+    private credits: number;
 
-    constructor(config: IGameSessionConfig) {
-        this._config = config;
-        this._bet = this.isBetAvailable(this._config.bet) ? this._config.bet : this._config.availableBets[0];
-        this._credits = this._config.creditsAmount;
-    }
-
-    public isBetAvailable(bet: number): boolean {
-        return this._config.availableBets.indexOf(bet) >= 0;
-    }
-
-    public getAvailableBets(): number[] {
-        return this._config.availableBets;
-    }
-
-    public getBet(): number {
-        return this._bet;
+    constructor(
+        config: GameSessionConfigRepresenting = new GameSessionConfig(),
+        winAmountCalculator: WinAmountDetermining = new NoWinAmount(),
+    ) {
+        this.config = config;
+        this.winCalculator = winAmountCalculator;
+        this.bet = this.getInitialBet();
+        this.credits = config.getCreditsAmount();
     }
 
     public getCreditsAmount(): number {
-        return this._credits;
+        return this.credits;
     }
 
-    public setCreditsAmount(value: number): void {
-        this._credits = value;
+    public setCreditsAmount(creditsAmount: number): void {
+        this.credits = creditsAmount;
+    }
+
+    public getWinAmount(): number {
+        return this.winCalculator.getWinAmount();
+    }
+
+    public getAvailableBets(): number[] {
+        return this.config.getAvailableBets();
+    }
+
+    public getBet(): number {
+        return this.bet;
     }
 
     public setBet(bet: number): void {
-        this._bet = bet;
-    }
-
-    public play(): void {
-        if (this.canPlayNextGame()) {
-            this._credits -= this._bet;
+        if (!this.config.isBetAvailable(bet)) {
+            this.bet = this.getAvailableBets()[0];
+        } else {
+            this.bet = bet;
         }
     }
 
     public canPlayNextGame(): boolean {
-        return this._credits >= this._bet;
+        return this.credits >= this.bet;
     }
 
-    public getWinningAmount(): number {
-        return 0;
+    public play(): void {
+        if (this.canPlayNextGame()) {
+            this.credits -= this.bet;
+        }
     }
 
+    private getInitialBet(): number {
+        let initialBet: number;
+        if (this.config.isBetAvailable(this.config.getBet())) {
+            initialBet = this.config.getBet();
+        } else {
+            initialBet = this.config.getAvailableBets()[0];
+        }
+        return initialBet;
+    }
 }
