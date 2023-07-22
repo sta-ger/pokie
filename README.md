@@ -24,16 +24,35 @@ unnecessary load. Utilize simulations to showcase specific game features for dem
 gaming experience. Configure the game session and run Monte Carlo simulations to guarantee that the model meets all
 necessary requirements.
 
-### Examples
+## Examples
 
 See the [examples](https://github.com/sta-ger/pokie-examples) of various video slot game mechanics implemented with
 **POKIE**.
 
-[Simple video slot game](https://github.com/sta-ger/pokie-examples)
+### Simple video slot game [[Demo](https://sta-ger.github.io/pokie-examples/simple-slot.html)] [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/simple-slot)]
 
-[Video slot with free spins](https://github.com/sta-ger/pokie-examples)
+An example of a simple 5x4 video slot game with 8 winning lines.
 
-[Video slot with sticky re-spin](https://github.com/sta-ger/pokie-examples)
+Features:
+- Winning lines are counted from right to left. A line of minimum 3 winning symbols pays out.
+- "Wild" is a wild symbol that substitutes any other symbol on a winning line.
+- "Scatter1" is a scatter symbol that pays out 10x, 20x, or 30x the bet if 3 or more symbols appear on any positions. Only one "Scatter1" can appear on any reel.
+- "Scatter2" is a stacked scatter symbol that can appear on the 3 middle reels. If all 3 middle reels are covered with "Scatter2" symbols, the game pays 100x the bet.
+
+### Video slot with free spins [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-free-games.html)] [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-free-games)]
+
+An example of a 5x3 video slot game with free spins.
+
+Features:
+- A minimum of 2 winning symbols on a winning line or scattered across all reels pays out.
+- During free spins, symbols on a winning line are counted not only from left to right but can also be scattered across the winning line definition.
+- During free spins, symbol sequences are different from the base game's ones. Sequences during free spins do not contain scatter symbols, so free spins cannot be re-triggered.
+- During free spins, all wins are multiplied by x2.
+- This example also demonstrates the usage of Simulation to obtain the desired game outcomes.
+
+### Video slot with sticky re-spin [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-sticky-respin.html)] [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-sticky-respin)]
+
+An example of a 5x3 video slot game with sticky re-spin feature. Every winning combination triggers the re-spin during which all the winning symbols are held on their places. The re-spins continue as long as there are new wins.
 
 ## Usage
 
