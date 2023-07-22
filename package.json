@@ -1,7 +1,7 @@
 {
     "name": "pokie",
     "version": "1.0.1",
-    "description": "",
+    "description": "A server-side video slot game logic framework for JavaScript and TypeScript.",
     "type": "module",
     "exports": {
         "import": {
@@ -15,8 +15,22 @@
         "test": "jest",
         "build": "npm run generate-barrels && shx rm -rf ./dist && tsc --project tsconfig.prod.json "
     },
-    "keywords": [],
-    "author": "",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sta-ger/pokie.git"
+    },
+    "keywords": [
+        "TypeScript",
+        "JavaScript",
+        "Casino",
+        "Slot"
+    ],
+    "author": {
+        "name": "sta-ger",
+        "email": "pascaldelger@gmail.com",
+        "url": "https://github.com/sta-ger"
+    },
+    "homepage": "https://github.com/sta-ger/pokie",
     "license": "ISC",
     "devDependencies": {
         "@types/jest": "^29.5.2",

@@ -1,5 +1,7 @@
 # POKIE
 
+[![npm version](https://badge.fury.io/js/pokie.svg)](https://badge.fury.io/js/pokie)
+
 _In Australia, they call slot machines "pokies"._
 
 Introducing **POKIE**, a server-side video slot game logic framework for JavaScript and TypeScript.
