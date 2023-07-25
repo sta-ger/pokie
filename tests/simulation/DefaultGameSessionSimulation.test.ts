@@ -38,7 +38,7 @@ describe("DefaultGameSessionSimulation", () => {
         let totalReturn = 0;
         const callbacksCounts = [0, 0, 0];
         simulation.setBeforePlayCallback(() => {
-            expect(simulation.getCurrentGameNumber()).toBe(callbacksCounts[0]);
+            expect(simulation.getCurrentRoundNumber()).toBe(callbacksCounts[0]);
             callbacksCounts[0]++;
             session.setCreditsAmount(10000);
         });
@@ -51,14 +51,14 @@ describe("DefaultGameSessionSimulation", () => {
 
         simulation.run();
 
-        expect(callbacksCounts[0]).toBe(simulation.getTotalGamesToPlayNumber());
-        expect(callbacksCounts[1]).toBe(simulation.getTotalGamesToPlayNumber());
+        expect(callbacksCounts[0]).toBe(simulation.getTotalNumberOfRounds());
+        expect(callbacksCounts[1]).toBe(simulation.getTotalNumberOfRounds());
         expect(callbacksCounts[2]).toBe(1);
 
         expect(simulation.getTotalBetAmount()).toBe(totalBet);
-        expect(simulation.getTotalReturn()).toBe(totalReturn);
-        expect(simulation.getRtp()).toBeGreaterThan(0.5);
-        expect(simulation.getRtp()).toBeLessThan(0.6);
+        expect(simulation.getTotalPayoutAmount()).toBe(totalReturn);
+        expect(simulation.getLastRtp()).toBeGreaterThan(0.5);
+        expect(simulation.getLastRtp()).toBeLessThan(0.6);
     });
 
     test("testSetAndRemoveCallbacks", () => {
@@ -71,7 +71,7 @@ describe("DefaultGameSessionSimulation", () => {
         simulation.setBeforePlayCallback(() => callbacksCounts[0]++);
         simulation.setAfterPlayCallback(() => {
             callbacksCounts[1]++;
-            if (simulation.getCurrentGameNumber() === 50) {
+            if (simulation.getCurrentRoundNumber() === 50) {
                 simulation.removeBeforePlayCallback();
                 simulation.removeAfterPlayCallback();
             }

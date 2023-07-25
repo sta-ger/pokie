@@ -1,15 +1,33 @@
 export interface SimulationHandling {
     run(): void;
 
-    getRtp(): number;
+    getLastRtp(): number;
+
+    getAverageRtp(): number;
+
+    getAllRtpValues(): number[];
+
+    getHitFrequency(): number;
+
+    getPayoutsStandardDeviation(includeZeroPayouts?: boolean): number;
 
     getTotalBetAmount(): number;
 
-    getTotalReturn(): number;
+    getTotalPayoutAmount(): number;
 
-    getCurrentGameNumber(): number;
+    getCurrentRoundNumber(): number;
 
-    getTotalGamesToPlayNumber(): number;
+    getAllBets(): number[];
+
+    getAverageBet(): number;
+
+    getPayouts(includeZeroPayouts?: boolean): number[];
+
+    getAveragePayout(includeZeroPayouts?: boolean): number;
+
+    getNumberOfWinningRounds(): number;
+
+    getTotalNumberOfRounds(): number;
 
     setBeforePlayCallback(callback: () => void): void;
 

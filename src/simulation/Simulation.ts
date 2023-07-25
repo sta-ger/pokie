@@ -12,11 +12,15 @@ export class Simulation implements SimulationHandling {
     private readonly changeBetStrategy: BetForNextSimulationRoundSetting | undefined;
     private readonly playStrategy: NextSessionRoundPlayableDetermining | undefined;
 
-    private totalBet = 0;
-    private totalReturn = 0;
-    private rtp = 0;
+    private totalBetAmount = 0;
+    private totalPayoutAmount = 0;
+    private numberOfWiningRounds = 0;
+    private readonly rtpPerRound: number[] = [];
+    private readonly allPayouts: number[] = [];
+    private readonly nonZeroPayouts: number[] = [];
+    private readonly betsPerRound: number[] = [];
 
-    private currentGameNumber = 0;
+    private currentRoundNumber = 0;
 
     private beforePlayCallback?: () => void;
     private afterPlayCallback?: () => void;
@@ -42,23 +46,43 @@ export class Simulation implements SimulationHandling {
         this.onFinished();
     }
 
-    public getRtp(): number {
-        return this.rtp;
+    public getLastRtp(): number {
+        return this.rtpPerRound[this.rtpPerRound.length - 1];
+    }
+
+    public getAverageRtp(): number {
+        return this.rtpPerRound.reduce((sum, rtp) => sum + rtp, 0) / this.currentRoundNumber;
+    }
+
+    public getHitFrequency(): number {
+        return this.numberOfWiningRounds / this.currentRoundNumber;
+    }
+
+    public getPayoutsStandardDeviation(includeZeroPayouts = true): number {
+        const payouts = includeZeroPayouts ? this.allPayouts : this.nonZeroPayouts;
+        const averagePayout = this.getAveragePayout(includeZeroPayouts);
+        const squaredDifferences = payouts.map((payout) => (payout - averagePayout) ** 2);
+        const variance = squaredDifferences.reduce((acc, val) => acc + val, 0) / payouts.length;
+        return Math.sqrt(variance);
     }
 
     public getTotalBetAmount(): number {
-        return this.totalBet;
+        return this.totalBetAmount;
     }
 
-    public getTotalReturn(): number {
-        return this.totalReturn;
+    public getTotalPayoutAmount(): number {
+        return this.totalPayoutAmount;
     }
 
-    public getCurrentGameNumber(): number {
-        return this.currentGameNumber;
+    public getCurrentRoundNumber(): number {
+        return this.currentRoundNumber;
     }
 
-    public getTotalGamesToPlayNumber(): number {
+    public getNumberOfWinningRounds(): number {
+        return this.numberOfWiningRounds;
+    }
+
+    public getTotalNumberOfRounds(): number {
         return this.numberOfRounds;
     }
 
@@ -86,6 +110,26 @@ export class Simulation implements SimulationHandling {
         this.onFinishedCallback = undefined;
     }
 
+    public getAllBets(): number[] {
+        return this.betsPerRound;
+    }
+
+    public getPayouts(includeZeroPayouts = true): number[] {
+        return includeZeroPayouts ? this.allPayouts : this.nonZeroPayouts;
+    }
+
+    public getAllRtpValues(): number[] {
+        return this.rtpPerRound;
+    }
+
+    public getAveragePayout(includeZeroPayouts = true): number {
+        return this.totalPayoutAmount / (includeZeroPayouts ? this.currentRoundNumber : this.numberOfWiningRounds);
+    }
+
+    public getAverageBet(): number {
+        return this.totalBetAmount / this.currentRoundNumber;
+    }
+
     private onFinished(): void {
         if (this.onFinishedCallback) {
             this.onFinishedCallback();
@@ -110,18 +154,20 @@ export class Simulation implements SimulationHandling {
         if (this.beforePlayCallback) {
             this.beforePlayCallback();
         }
-        this.currentGameNumber++;
+        this.currentRoundNumber++;
         this.setBetBeforePlay();
-        this.totalBet += this.session.getBet();
+        this.totalBetAmount += this.session.getBet();
+        this.betsPerRound.push(this.session.getBet());
         this.session.play();
-        this.totalReturn += this.session.getWinAmount();
-        this.calculateRtp();
+        this.totalPayoutAmount += this.session.getWinAmount();
+        this.allPayouts.push(this.session.getWinAmount());
+        if (this.session.getWinAmount()) {
+            this.numberOfWiningRounds++;
+            this.nonZeroPayouts.push(this.session.getWinAmount());
+        }
+        this.rtpPerRound.push(this.totalPayoutAmount / this.totalBetAmount);
         if (this.afterPlayCallback) {
             this.afterPlayCallback();
         }
-    }
-
-    private calculateRtp(): void {
-        this.rtp = this.totalReturn / this.totalBet;
     }
 }
