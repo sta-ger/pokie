@@ -132,6 +132,10 @@ export class SymbolsSequence implements SymbolsSequenceRepresenting {
     }
 
     public fromSymbolsWeights(symbolsWeights: Record<string, number>, sequenceLength = 50): this {
+        const weightsSum = Object.values(symbolsWeights).reduce((sum, val) => sum + val, 0);
+        if (weightsSum !== 100) {
+            throw "Wrong weights data. Expected sum of values is 100, but actual is " + weightsSum;
+        }
         const symbols: string[] = [];
         for (const symbolId in symbolsWeights) {
             if (symbolsWeights[symbolId] !== undefined) {
