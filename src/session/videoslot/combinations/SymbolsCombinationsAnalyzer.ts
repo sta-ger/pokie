@@ -1,4 +1,4 @@
-import {LinesDefinitionsDescribing} from "pokie";
+import {LinesDefinitionsDescribing, SymbolsSequenceDescribing} from "pokie";
 
 export class SymbolsCombinationsAnalyzer {
     public static getSymbolsForDefinition(symbols: string[][], definition: number[]): string[] {
@@ -73,5 +73,43 @@ export class SymbolsCombinationsAnalyzer {
         });
         ids.sort();
         return ids;
+    }
+
+    public static getAllPossibleSymbolsCombinations(
+        sequences: SymbolsSequenceDescribing[],
+        symbolsNumber: number,
+    ): string[][][] {
+        function generateCombinations(arr) {
+            const result: number[][] = [];
+
+            function generateRecursively(currCombination: number[], index: number) {
+                if (index === arr.length) {
+                    result.push(currCombination.slice());
+                    return;
+                }
+
+                for (let i = 0; i <= arr[index]; i++) {
+                    currCombination[index] = i;
+                    generateRecursively(currCombination, index + 1);
+                }
+            }
+
+            generateRecursively(new Array(arr.length).fill(0), 0);
+            return result;
+        }
+
+        const sequencesSizes: number[] = [];
+        sequences.forEach((seq) => sequencesSizes.push(seq.getSize() - 1));
+        const combinations = generateCombinations(sequencesSizes);
+
+        const allPossibleSymbolsCombinations: string[][][] = [];
+        combinations.forEach((values) => {
+            const curCombination: string[][] = new Array(sequences.length);
+            values.forEach((value, i) => {
+                curCombination[i] = sequences[i].getSymbols(value, symbolsNumber);
+            });
+            allPossibleSymbolsCombinations.push(curCombination);
+        });
+        return allPossibleSymbolsCombinations;
     }
 }
