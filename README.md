@@ -56,6 +56,10 @@ Features:
 
 An example of a 5x3 video slot game with sticky re-spin feature. Every winning combination triggers the re-spin during which all the winning symbols are held on their places. The re-spins continue as long as there are new wins.
 
+### Exploring Video Slot Math with POKIE
+
+A [Medium](https://medium.com/@sta-ger/exploring-video-slot-math-with-pokie-3bc7191b72a0) article about how POKIE can be utilized for slot game math modelling.
+
 ## Usage
 
 ### Session
