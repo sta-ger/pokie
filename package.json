@@ -1,6 +1,6 @@
 {
     "name": "pokie",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "A server-side video slot game logic framework for JavaScript and TypeScript.",
     "type": "module",
     "exports": {
