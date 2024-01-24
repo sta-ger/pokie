@@ -2,11 +2,12 @@
     "compilerOptions": {
         "esModuleInterop": true,
         "noImplicitAny": false,
+        "target": "es2015",
         "module": "node16",
         "sourceMap": true,
         "declaration": true,
         "strict": true,
-        "outDir": "dist",
+        "outDir": "dist/esm",
         "paths": {
             "pokie": ["./src/index.ts"]
         }

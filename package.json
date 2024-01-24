@@ -5,15 +5,21 @@
     "type": "module",
     "exports": {
         "import": {
-            "types": "./dist/index.d.ts",
-            "default": "./dist/index.js"
+            "types": "./dist/esm/index.d.ts",
+            "default": "./dist/esm/index.js"
+        },
+        "require": {
+            "types": "./dist/cjs/index.d.ts",
+            "default": "./dist/cjs/index.js"
         }
     },
     "types": "./dist/index.d.ts",
     "scripts": {
         "generate-barrels": "node generate-barrels.js",
         "test": "jest",
-        "build": "npm run generate-barrels && shx rm -rf ./dist && tsc --project tsconfig.prod.json "
+        "build-esm": "npm run generate-barrels && tsc --project tsconfig.prod.json",
+        "build-cjs": "npm run generate-barrels && tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs",
+        "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs"
     },
     "repository": {
         "type": "git",
