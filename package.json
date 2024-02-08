@@ -13,7 +13,8 @@
             "default": "./dist/cjs/index.js"
         }
     },
-    "types": "./dist/index.d.ts",
+    "main": "./dist/cjs/index.js",
+    "types": "./dist/cjs/index.d.ts",
     "scripts": {
         "generate-barrels": "node generate-barrels.js",
         "test": "jest",
