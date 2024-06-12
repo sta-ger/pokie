@@ -1,15 +1,17 @@
+// noinspection DuplicatedCode
+
 import {
     BetForNextSimulationRoundSetting,
     GameSession,
     GameSessionConfig,
+    NextSessionRoundPlayableDetermining,
     Simulation,
     SimulationConfig,
-    VideoSlotSession,
-    VideoSlotConfig,
     SymbolsCombinationsGenerator,
-    VideoSlotWinCalculator,
     SymbolsSequence,
-    NextSessionRoundPlayableDetermining,
+    VideoSlotConfig,
+    VideoSlotSession,
+    VideoSlotWinCalculator,
 } from "pokie";
 
 describe("DefaultGameSessionSimulation", () => {
@@ -166,5 +168,53 @@ describe("DefaultGameSessionSimulation", () => {
         });
         simulation.run();
         expect(playedRoundsNumber).toBe(5);
+    });
+
+    test("playSpecifiedNumOfRoundsAsync", async () => {
+        const sessionConfig = new VideoSlotConfig();
+        sessionConfig.setSymbolsSequences([
+            new SymbolsSequence().fromArray(["J", "9", "Q", "10", "A", "S", "K"]),
+            new SymbolsSequence().fromArray(["K", "S", "10", "A", "9", "Q", "J"]),
+            new SymbolsSequence().fromArray(["J", "Q", "10", "9", "S", "A", "K"]),
+            new SymbolsSequence().fromArray(["Q", "10", "9", "S", "K", "A", "J"]),
+            new SymbolsSequence().fromArray(["Q", "A", "J", "10", "9", "S", "K"]),
+        ]);
+        const combinationsGenerator = new SymbolsCombinationsGenerator(sessionConfig);
+        const winCalculator = new VideoSlotWinCalculator(sessionConfig);
+        const session = new VideoSlotSession(
+            sessionConfig,
+            combinationsGenerator,
+            winCalculator,
+            new GameSession(sessionConfig),
+        );
+        const simulationConfig = new SimulationConfig();
+        simulationConfig.setNumberOfRounds(10000);
+        const simulation = new Simulation(session, simulationConfig);
+
+        let totalBet = 0;
+        let totalReturn = 0;
+        const callbacksCounts = [0, 0, 0];
+        simulation.setBeforePlayCallback(() => {
+            expect(simulation.getCurrentRoundNumber()).toBe(callbacksCounts[0]);
+            callbacksCounts[0]++;
+            session.setCreditsAmount(10000);
+        });
+        simulation.setAfterPlayCallback(() => {
+            callbacksCounts[1]++;
+            totalBet += session.getBet();
+            totalReturn += session.getWinAmount();
+        });
+        simulation.setOnFinishedCallback(() => callbacksCounts[2]++);
+
+        await simulation.runAsync();
+
+        expect(callbacksCounts[0]).toBe(simulation.getTotalNumberOfRounds());
+        expect(callbacksCounts[1]).toBe(simulation.getTotalNumberOfRounds());
+        expect(callbacksCounts[2]).toBe(1);
+
+        expect(simulation.getTotalBetAmount()).toBe(totalBet);
+        expect(simulation.getTotalPayoutAmount()).toBe(totalReturn);
+        expect(simulation.getLastRtp()).toBeGreaterThan(0.5);
+        expect(simulation.getLastRtp()).toBeLessThan(0.6);
     });
 });

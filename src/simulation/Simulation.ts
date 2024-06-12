@@ -1,12 +1,12 @@
 import {
+    AsyncSimulationHandling,
     BetForNextSimulationRoundSetting,
     GameSessionHandling,
     NextSessionRoundPlayableDetermining,
     SimulationConfigRepresenting,
-    SimulationHandling,
 } from "pokie";
 
-export class Simulation implements SimulationHandling {
+export class Simulation implements AsyncSimulationHandling {
     private readonly session: GameSessionHandling;
     private readonly numberOfRounds: number;
     private readonly changeBetStrategy: BetForNextSimulationRoundSetting | undefined;
@@ -44,6 +44,37 @@ export class Simulation implements SimulationHandling {
             }
         }
         this.onFinished();
+    }
+
+    public runAsync(chunkSize = 1000, delayBetweenChunks = 0): Promise<void> {
+        return new Promise((resolve) => {
+            let currentRound = 0;
+
+            const playChunk = (): void => {
+                const chunkEnd = Math.min(currentRound + chunkSize, this.numberOfRounds);
+
+                for (let i = currentRound; i < chunkEnd; i++) {
+                    if (this.canPlayNextGame()) {
+                        this.doPlay();
+                    } else {
+                        this.onFinished();
+                        resolve();
+                        return;
+                    }
+                }
+
+                currentRound = chunkEnd;
+
+                if (currentRound < this.numberOfRounds) {
+                    setTimeout(playChunk, delayBetweenChunks);
+                } else {
+                    this.onFinished();
+                    resolve();
+                }
+            };
+
+            playChunk();
+        });
     }
 
     public getLastRtp(): number {

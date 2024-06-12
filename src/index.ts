@@ -79,6 +79,7 @@ export * from "./session/videoslot/paytable/PaytableSymbolsPayoutsSetting.js";
 export * from "./session/videoslot/wincalculator/VideoSlotWinCalculating.js";
 export * from "./session/videoslot/wincalculator/VideoSlotWinCalculator.js";
 export * from "./session/videoslot/wincalculator/WinningLinesAnalyzer.js";
+export * from "./simulation/AsyncSimulationHandling.js";
 export * from "./simulation/BetForNextSimulationRoundSetting.js";
 export * from "./simulation/RandomChangeBetStrategy.js";
 export * from "./simulation/Simulation.js";
