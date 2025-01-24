@@ -169,6 +169,7 @@ export class VideoSlotConfig implements VideoSlotConfigRepresenting {
         reel0.fromNumberOfEachSymbol(availableSymbols, 15);
         this.wilds.forEach((wild) => reel0.addSymbol(wild, 5));
         this.scatters.forEach((scatter) => reel0.addSymbol(scatter, 3));
+        reel0.shuffle();
         while (
             reel0
                 .getSymbolsStacksIndexes()
