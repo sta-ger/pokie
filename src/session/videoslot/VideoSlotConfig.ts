@@ -162,25 +162,22 @@ export class VideoSlotConfig implements VideoSlotConfigRepresenting {
 
     private createReelsSymbolsSequences(): SymbolsSequenceDescribing[] {
         const r: SymbolsSequenceDescribing[] = [];
-        const reel0 = new SymbolsSequence();
-        const availableSymbols = this.availableSymbols.filter((symbolId) => {
-            return !this.isSymbolScatter(symbolId) && !this.isSymbolWild(symbolId);
-        });
-        reel0.fromNumberOfEachSymbol(availableSymbols, 15);
-        this.wilds.forEach((wild) => reel0.addSymbol(wild, 5));
-        this.scatters.forEach((scatter) => reel0.addSymbol(scatter, 3));
-        reel0.shuffle();
-        while (
-            reel0
-                .getSymbolsStacksIndexes()
-                .some((stack) => this.scatters.some((scatter) => scatter === reel0.getSymbol(stack.index)))
-        ) {
-            reel0.shuffle();
-        }
-        r.push(reel0);
-        for (let i = 1; i < this.reelsNumber; i++) {
+        for (let i = 0; i < this.reelsNumber; i++) {
             const reel = new SymbolsSequence();
-            reel.fromArray(reel0.toArray());
+            const availableSymbols = this.availableSymbols.filter((symbolId) => {
+                return !this.isSymbolScatter(symbolId) && !this.isSymbolWild(symbolId);
+            });
+            reel.fromNumberOfEachSymbol(availableSymbols, 15);
+            this.wilds.forEach((wild) => reel.addSymbol(wild, 5));
+            this.scatters.forEach((scatter) => reel.addSymbol(scatter, 3));
+            reel.shuffle();
+            while (
+                reel
+                    .getSymbolsStacksIndexes()
+                    .some((stack) => this.scatters.some((scatter) => scatter === reel.getSymbol(stack.index)))
+            ) {
+                reel.shuffle();
+            }
             r.push(reel);
         }
         return r;
