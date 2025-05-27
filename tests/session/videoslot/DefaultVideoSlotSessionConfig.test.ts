@@ -84,4 +84,18 @@ describe("DefaultVideoSlotSessionConfig", () => {
         config.setPaytable(d);
         expect(config.getPaytable()).toBe(d);
     });
+
+    it("should re-create symbols sequences if scatters symbols updated", () => {
+        const seq1 = config.getSymbolsSequences()[0];
+        const seq2 = config.getSymbolsSequences()[1];
+        const seq3 = config.getSymbolsSequences()[2];
+        const seq4 = config.getSymbolsSequences()[3];
+        const seq5 = config.getSymbolsSequences()[4];
+        config.setScatterSymbols(["SCATTER"]);
+        expect(config.getSymbolsSequences()[0]).not.toEqual(seq1);
+        expect(config.getSymbolsSequences()[1]).not.toEqual(seq2);
+        expect(config.getSymbolsSequences()[2]).not.toEqual(seq3);
+        expect(config.getSymbolsSequences()[3]).not.toEqual(seq4);
+        expect(config.getSymbolsSequences()[4]).not.toEqual(seq5);
+    });
 });

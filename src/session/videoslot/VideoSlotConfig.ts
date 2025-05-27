@@ -64,6 +64,7 @@ export class VideoSlotConfig implements VideoSlotConfigRepresenting {
 
     public setScatterSymbols(value: string[]): void {
         this.scatters = value.slice();
+        this.reelsSymbolsSequences = this.createReelsSymbolsSequences();
     }
 
     public getLinesDefinitions(): LinesDefinitionsDescribing {
