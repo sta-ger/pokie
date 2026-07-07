@@ -85,13 +85,18 @@ const allCombinations = SymbolsCombinationsAnalyzer.getAllPossibleSymbolsCombina
 const winCalculator = new VideoSlotWinCalculator(config);
 const bet = config.getAvailableBets()[0];
 
-let totalWin = 0;
-for (const combinationMatrix of allCombinations) {
-    winCalculator.calculateWin(bet, new SymbolsCombination().fromMatrix(combinationMatrix));
-    totalWin += winCalculator.getWinAmount();
+// dedupe identical grids (different reel stops can render the same visible symbols) so
+// calculateWin only runs once per unique grid, weighted by how often it actually occurs
+const uniqueCombinations = SymbolsCombinationsAnalyzer.getUniqueCombinationsWithWeights(allCombinations);
+const combinationProbability = SymbolsCombinationsAnalyzer.getCombinationProbability(config.getSymbolsSequences());
+
+let expectedWinPerBet = 0;
+for (const {combination, weight} of uniqueCombinations) {
+    winCalculator.calculateWin(bet, new SymbolsCombination().fromMatrix(combination));
+    expectedWinPerBet += (winCalculator.getWinAmount() / bet) * weight * combinationProbability;
 }
 
-const theoreticalRtp = totalWin / (allCombinations.length * bet);
+const theoreticalRtp = expectedWinPerBet;
 ```
 
 This is combinatorially expensive — cost is the product of every reel strip's length (see

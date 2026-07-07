@@ -57,6 +57,23 @@ export class SymbolsCombinationsAnalyzer {
         return r;
     }
 
+    public static getSymbolsCount(symbols: string[][], symbolId: string): number {
+        return symbols.reduce(
+            (count, reelSymbols) => count + reelSymbols.filter((symbol) => symbol === symbolId).length,
+            0,
+        );
+    }
+
+    public static getSymbolsFrequency(symbols: string[][]): Record<string, number> {
+        const frequency: Record<string, number> = {};
+        symbols.forEach((reelSymbols) =>
+            reelSymbols.forEach((symbol) => {
+                frequency[symbol] = (frequency[symbol] ?? 0) + 1;
+            }),
+        );
+        return frequency;
+    }
+
     public static getWinningLinesIds(
         symbols: string[][],
         linesDefinitions: LinesDefinitionsDescribing,
@@ -107,5 +124,31 @@ export class SymbolsCombinationsAnalyzer {
             }
         }
         return allPossibleSymbolsCombinations;
+    }
+
+    public static getCombinationProbability(sequences: SymbolsSequenceDescribing[]): number {
+        // Every reel stop is drawn uniformly (see SymbolsCombinationsGenerator), so a single
+        // combination's probability is the product of each reel's 1-in-getSize() chance.
+        return sequences.reduce((probability, sequence) => probability / sequence.getSize(), 1);
+    }
+
+    public static getUniqueCombinationsWithWeights(
+        combinations: string[][][],
+    ): {combination: string[][]; weight: number}[] {
+        const entriesByKey = new Map<string, {combination: string[][]; weight: number}>();
+        combinations.forEach((combination) => {
+            const key = JSON.stringify(combination);
+            const entry = entriesByKey.get(key);
+            if (entry) {
+                entry.weight++;
+            } else {
+                entriesByKey.set(key, {combination, weight: 1});
+            }
+        });
+        return Array.from(entriesByKey.values());
+    }
+
+    public static areCombinationsEqual(a: string[][], b: string[][]): boolean {
+        return JSON.stringify(a) === JSON.stringify(b);
     }
 }

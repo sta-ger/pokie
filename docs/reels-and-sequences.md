@@ -117,11 +117,29 @@ static getWinningSymbolId(symbols: string[], pattern: number[], wildSymbols?: st
 static getMatchingPattern(symbols: string[], patterns: number[][], wildSymbols?: string[]): number[] | null
 static getWildSymbolsPositions(symbols: string[], pattern: number[], wildSymbols: string[]): number[]
 static getScatterSymbolsPositions(symbols: string[][], scatterSymbolId: string): number[][]
+static getSymbolsCount(symbols: string[][], symbolId: string): number
+static getSymbolsFrequency(symbols: string[][]): Record<string, number>
 static getWinningLinesIds(symbols: string[][], linesDefinitions: LinesDefinitionsDescribing, patterns: number[][], wildSymbols?: string[]): string[]
 static getAllPossibleSymbolsCombinations(sequences: SymbolsSequenceDescribing[], symbolsNumber: number): string[][][]
+static getCombinationProbability(sequences: SymbolsSequenceDescribing[]): number
+static getUniqueCombinationsWithWeights(combinations: string[][][]): {combination: string[][]; weight: number}[]
+static areCombinationsEqual(a: string[][], b: string[][]): boolean
 ```
+
+`getSymbolsCount`/`getSymbolsFrequency` scan the whole grid (all reels/rows) — useful for quick analysis of a
+combination without wiring up scatter config or a payline (e.g. "how many wilds landed this spin").
 
 `getAllPossibleSymbolsCombinations` exhaustively enumerates **every** stop-position combination across all reels —
 the total is the product of every reel's sequence size (5 reels × 50-symbol strips ≈ 312.5M combinations). It's
 meant for exact, brute-force RTP calculation over reasonably small strip sizes; keep reel-strip lengths modest when
-using it, or expect long runtimes and heavy memory use.
+using it, or expect long runtimes and heavy memory use. Three companion methods make that enumeration more useful in
+practice:
+
+- **`getCombinationProbability(sequences)`** — the probability of any *one* specific combination, i.e.
+  `1 / product(reel sizes)` (every reel stop is equally likely — see `SymbolsCombinationsGenerator`). Pairs with
+  `getAllPossibleSymbolsCombinations` for a weighted RTP sum without re-deriving the probability by hand.
+- **`getUniqueCombinationsWithWeights(combinations)`** — deduplicates identical grids out of an exhaustively
+  enumerated set and returns `{combination, weight}` pairs (`weight` = how many stop-position tuples produced that
+  grid). Different reel-stop combinations can render the same visible grid (e.g. on strips with repeated adjacent
+  symbols); running win calculation once per unique grid × its weight avoids redundant work.
+- **`areCombinationsEqual(a, b)`** — deep equality check for two grids, handy for tests/debugging.

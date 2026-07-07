@@ -193,6 +193,45 @@ describe("DefaultVideoSlotSessionWinCalculator", () => {
         ]);
     });
 
+    test("getSymbolsCount", () => {
+        const symbols = new SymbolsCombination()
+            .fromMatrix(
+                [
+                    ["A", "K", "Q", "J", "10"],
+                    ["A", "A", "Q", "J", "S"],
+                    ["A", "K", "S", "J", "10"],
+                ],
+                true,
+            )
+            .toMatrix();
+
+        expect(SymbolsCombinationsAnalyzer.getSymbolsCount(symbols, "A")).toBe(4);
+        expect(SymbolsCombinationsAnalyzer.getSymbolsCount(symbols, "J")).toBe(3);
+        expect(SymbolsCombinationsAnalyzer.getSymbolsCount(symbols, "9")).toBe(0);
+    });
+
+    test("getSymbolsFrequency", () => {
+        const symbols = new SymbolsCombination()
+            .fromMatrix(
+                [
+                    ["A", "K", "Q", "J", "10"],
+                    ["A", "A", "Q", "J", "S"],
+                    ["A", "K", "S", "J", "10"],
+                ],
+                true,
+            )
+            .toMatrix();
+
+        expect(SymbolsCombinationsAnalyzer.getSymbolsFrequency(symbols)).toEqual({
+            A: 4,
+            K: 2,
+            Q: 2,
+            J: 3,
+            "10": 2,
+            S: 2,
+        });
+    });
+
     test("getSymbolsForDefinitionTest", () => {
         expect(
             SymbolsCombinationsAnalyzer.getSymbolsForDefinition(
@@ -743,5 +782,55 @@ describe("DefaultVideoSlotSessionWinCalculator", () => {
         }
         expect(combinations).toEqual(expect.arrayContaining(expected));
         expect(expected).toEqual(expect.arrayContaining(combinations));
+    });
+
+    test("getCombinationProbability", () => {
+        const reel1 = new SymbolsSequence().fromArray(["A", "K", "Q", "J"]); // size 4
+        const reel2 = new SymbolsSequence().fromArray(["A", "K"]); // size 2
+
+        expect(SymbolsCombinationsAnalyzer.getCombinationProbability([reel1, reel2])).toBeCloseTo(1 / 8);
+    });
+
+    test("getUniqueCombinationsWithWeights", () => {
+        const combinationA = [
+            ["A", "K"],
+            ["Q", "J"],
+        ];
+        const combinationB = [
+            ["A", "K"],
+            ["Q", "J"],
+        ]; // same content as combinationA, different array instance
+        const combinationC = [
+            ["9", "10"],
+            ["Q", "J"],
+        ];
+
+        const unique = SymbolsCombinationsAnalyzer.getUniqueCombinationsWithWeights([
+            combinationA,
+            combinationB,
+            combinationC,
+        ]);
+
+        expect(unique).toHaveLength(2);
+        expect(unique.find((entry) => entry.combination === combinationA)?.weight).toBe(2);
+        expect(unique.find((entry) => entry.combination === combinationC)?.weight).toBe(1);
+    });
+
+    test("areCombinationsEqual", () => {
+        const combinationA = [
+            ["A", "K"],
+            ["Q", "J"],
+        ];
+        const combinationB = [
+            ["A", "K"],
+            ["Q", "J"],
+        ];
+        const combinationC = [
+            ["A", "K"],
+            ["Q", "10"],
+        ];
+
+        expect(SymbolsCombinationsAnalyzer.areCombinationsEqual(combinationA, combinationB)).toBe(true);
+        expect(SymbolsCombinationsAnalyzer.areCombinationsEqual(combinationA, combinationC)).toBe(false);
     });
 });
