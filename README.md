@@ -8,6 +8,12 @@ Introducing **POKIE**, a server-side video slot game logic framework for JavaScr
 
 `npm install pokie`
 
+## Documentation
+
+See the [docs](docs/README.md) for the full reference: architecture and conventions, game session and
+configuration, reels and symbol sequences, paylines and line patterns, paytable and win calculation, free games,
+simulation, network serialization, and a walkthrough of modeling slot math with POKIE.
+
 ## Use cases
 
 ### Back-End
@@ -58,7 +64,7 @@ An example of a 5x3 video slot game with sticky re-spin feature. Every winning c
 
 ### Exploring Video Slot Math with POKIE
 
-A [Medium](https://medium.com/@sta-ger/exploring-video-slot-math-with-pokie-3bc7191b72a0) article about how POKIE can be utilized for slot game math modelling.
+A [Medium](https://medium.com/@sta-ger/exploring-video-slot-math-with-pokie-3bc7191b72a0) article about how POKIE can be utilized for slot game math modelling. See also the [updated, API-verified walkthrough](docs/math-modeling.md) in the docs.
 
 ## Usage
 
@@ -91,19 +97,20 @@ simulationConfig.setNumberOfRounds(10000);
 const simulation = new Simulation(session, simulationConfig);
 
 // set the callbacks if you want to control the session manually
-simulation.beforePlayCallback = () => {
+simulation.setBeforePlayCallback(() => {
     console.log("Before play");
-};
-simulation.afterPlayCallback = () => {
+});
+simulation.setAfterPlayCallback(() => {
     console.log("After play");
-};
-simulation.onFinishedCallback = () => {
+});
+simulation.setOnFinishedCallback(() => {
     console.log("Simulation finished");
-};
+});
 
 simulation.run(); // 10000 rounds will be played
 
-simulation.getRtp(); // RTP of the current session
+simulation.getLastRtp(); // RTP after the last round played
+simulation.getAverageRtp(); // average RTP across all rounds played
 ```
 
 Capturing specific game features.
