@@ -79,37 +79,33 @@ export class SymbolsCombinationsAnalyzer {
         sequences: SymbolsSequenceDescribing[],
         symbolsNumber: number,
     ): string[][][] {
-        function generateCombinations(arr) {
-            const result: number[][] = [];
-
-            function generateRecursively(currCombination: number[], index: number) {
-                if (index === arr.length) {
-                    result.push(currCombination.slice());
-                    return;
-                }
-
-                for (let i = 0; i <= arr[index]; i++) {
-                    currCombination[index] = i;
-                    generateRecursively(currCombination, index + 1);
-                }
+        // Each reel only has `getSize()` distinct visible windows, so precompute them once
+        // instead of recomputing the same window on every combination that includes it.
+        const reelsWindows: string[][][] = sequences.map((sequence) => {
+            const windows: string[][] = new Array(sequence.getSize());
+            for (let position = 0; position < sequence.getSize(); position++) {
+                windows[position] = sequence.getSymbols(position, symbolsNumber);
             }
-
-            generateRecursively(new Array(arr.length).fill(0), 0);
-            return result;
-        }
-
-        const sequencesSizes: number[] = [];
-        sequences.forEach((seq) => sequencesSizes.push(seq.getSize() - 1));
-        const combinations = generateCombinations(sequencesSizes);
+            return windows;
+        });
+        const reelsSizes: number[] = reelsWindows.map((windows) => windows.length);
 
         const allPossibleSymbolsCombinations: string[][][] = [];
-        combinations.forEach((values) => {
-            const curCombination: string[][] = new Array(sequences.length);
-            values.forEach((value, i) => {
-                curCombination[i] = sequences[i].getSymbols(value, symbolsNumber);
-            });
-            allPossibleSymbolsCombinations.push(curCombination);
-        });
+        const stopPositions: number[] = new Array(reelsWindows.length).fill(0);
+        while (true) {
+            allPossibleSymbolsCombinations.push(
+                stopPositions.map((position, reelId) => reelsWindows[reelId][position]),
+            );
+
+            let reelId = stopPositions.length - 1;
+            while (reelId >= 0 && ++stopPositions[reelId] === reelsSizes[reelId]) {
+                stopPositions[reelId] = 0;
+                reelId--;
+            }
+            if (reelId < 0) {
+                break;
+            }
+        }
         return allPossibleSymbolsCombinations;
     }
 }

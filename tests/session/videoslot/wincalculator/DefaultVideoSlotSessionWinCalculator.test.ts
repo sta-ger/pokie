@@ -3,6 +3,7 @@ import {
     LeftToRightLinesPatterns,
     SymbolsCombination,
     SymbolsCombinationsAnalyzer,
+    SymbolsSequence,
     VideoSlotConfig,
     VideoSlotWinCalculator,
     WinningLineDescribing,
@@ -721,5 +722,26 @@ describe("DefaultVideoSlotSessionWinCalculator", () => {
             ),
         );
         expect(winCalculator.getWinAmount()).toBeGreaterThan(0);
+    });
+
+    test("getAllPossibleSymbolsCombinations", () => {
+        const reel1 = new SymbolsSequence().fromArray(["A", "K", "Q"]);
+        const reel2 = new SymbolsSequence().fromArray(["A", "K"]);
+
+        const combinations = SymbolsCombinationsAnalyzer.getAllPossibleSymbolsCombinations([reel1, reel2], 2);
+
+        // total number of combinations is the product of every reel's size
+        expect(combinations).toHaveLength(reel1.getSize() * reel2.getSize());
+
+        // every combination reads `symbolsNumber` consecutive (wrapping) symbols from each reel,
+        // starting at every possible stop position on that reel
+        const expected: string[][][] = [];
+        for (let reel1Stop = 0; reel1Stop < reel1.getSize(); reel1Stop++) {
+            for (let reel2Stop = 0; reel2Stop < reel2.getSize(); reel2Stop++) {
+                expected.push([reel1.getSymbols(reel1Stop, 2), reel2.getSymbols(reel2Stop, 2)]);
+            }
+        }
+        expect(combinations).toEqual(expect.arrayContaining(expected));
+        expect(expected).toEqual(expect.arrayContaining(combinations));
     });
 });
