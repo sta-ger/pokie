@@ -5,21 +5,24 @@ import {
     VideoSlotRoundNetworkData,
     VideoSlotSessionHandling,
     VideoSlotSessionSerializing,
+    WinningScatterDescribing,
+    WinningScatterNetworkData,
 } from "pokie";
 
-export class VideoSlotSessionSerializer implements VideoSlotSessionSerializing {
+export class VideoSlotSessionSerializer<T extends string | number | symbol = string>
+implements VideoSlotSessionSerializing<T> {
     private readonly baseSerializer: GameSessionSerializing;
 
     constructor(baseSerializer: GameSessionSerializing = new GameSessionSerializer()) {
         this.baseSerializer = baseSerializer;
     }
 
-    public getInitialData(session: VideoSlotSessionHandling): VideoSlotInitialNetworkData {
+    public getInitialData(session: VideoSlotSessionHandling<T>): VideoSlotInitialNetworkData<T> {
         const availableSymbols = session.getAvailableSymbols();
         const reelsNumber = session.getReelsNumber();
         const reelsSymbolsNumber = session.getReelsSymbolsNumber();
         const paytable = session.getPaytable().toMap();
-        const linesDefinitions = {};
+        const linesDefinitions: Record<string, number[]> = {};
         session
             .getLinesDefinitions()
             .getLinesIds()
@@ -37,11 +40,11 @@ export class VideoSlotSessionSerializer implements VideoSlotSessionSerializing {
         };
     }
 
-    public getRoundData(session: VideoSlotSessionHandling): VideoSlotRoundNetworkData {
+    public getRoundData(session: VideoSlotSessionHandling<T>): VideoSlotRoundNetworkData<T> {
         const symbolsCombination = session.getSymbolsCombination();
         const winningLines = session.getWinningLines();
         const winningScatters = session.getWinningScatters();
-        const r: VideoSlotRoundNetworkData = {
+        const r: VideoSlotRoundNetworkData<T> = {
             ...this.baseSerializer.getRoundData(session),
             reelsSymbols: symbolsCombination.toMatrix(),
         };
@@ -62,16 +65,21 @@ export class VideoSlotSessionSerializer implements VideoSlotSessionSerializing {
             }, {});
         }
         if (Object.keys(winningScatters).length > 0) {
-            r.winningScatters = Object.values(winningScatters).reduce((acc, scatter) => {
-                return {
+            // Object.values() on a Record keyed by a generic type parameter loses its value type,
+            // so it's cast back to a string-keyed view (safe: JS object keys are always
+            // strings/symbols at runtime regardless of T).
+            const scattersByKey = winningScatters as unknown as Record<string, WinningScatterDescribing<T>>;
+            r.winningScatters = Object.values(scattersByKey).reduce(
+                (acc, scatter) => ({
                     ...acc,
                     [scatter.getSymbolId()]: {
                         symbolId: scatter.getSymbolId(),
                         symbolsPositions: scatter.getSymbolsPositions(),
                         winAmount: scatter.getWinAmount(),
                     },
-                };
-            }, {});
+                }),
+                {} as Record<T, WinningScatterNetworkData<T>>,
+            );
         }
         return r;
     }

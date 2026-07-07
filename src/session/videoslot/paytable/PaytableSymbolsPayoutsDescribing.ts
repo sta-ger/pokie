@@ -1,7 +1,7 @@
-export interface PaytableSymbolsPayoutsDescribing {
-    getWinAmountForSymbol(symbolId: string, numberOfSymbols: number, bet: number): number;
+export interface PaytableSymbolsPayoutsDescribing<T extends string | number | symbol = string> {
+    getWinAmountForSymbol(symbolId: T, numberOfSymbols: number, bet: number): number;
 
-    getAvailableSymbolsForBet(bet: number): string[];
+    getAvailableSymbolsForBet(bet: number): T[];
 
-    getNumbersOfSymbolsForBet(bet: number, symbolId: string): number[];
+    getNumbersOfSymbolsForBet(bet: number, symbolId: T): number[];
 }

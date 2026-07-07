@@ -136,5 +136,36 @@ session.setBet(10);
 session.play();
 ```
 
+### Symbol IDs are generic
+
+Every class that touches a symbol ID (`VideoSlotConfig`, `VideoSlotSession`, `Paytable`, `SymbolsSequence`,
+`SymbolsCombination`, `WinningLine`, `WinningScatter`, the win calculator/analyzer, the free-games layer, the `net/`
+serializers, and `PlayUntilSymbolWinStrategy`) is generic over a type parameter `T extends string | number | symbol`,
+defaulting to `T = string`. The default keeps every existing call site — `new VideoSlotConfig()`,
+`VideoSlotSessionHandling`, etc. — working exactly as before with no changes required.
+
+Pass an explicit type argument to use something other than plain strings, e.g. numeric symbol codes:
+
+```ts
+import {VideoSlotConfig, VideoSlotSession, SymbolsSequence} from "pokie";
+
+const config = new VideoSlotConfig<number>();
+config.setAvailableSymbols([1, 2, 3, 4, 100, 200]); // 100 = wild, 200 = scatter
+config.setWildSymbols([100]);
+config.setScatterSymbols([200]);
+config.setSymbolsSequences(
+    new Array(config.getReelsNumber())
+        .fill(0)
+        .map(() => new SymbolsSequence<number>().fromNumberOfEachSymbol([1, 2, 3, 4, 100, 200], 15)),
+);
+
+const session = new VideoSlotSession<number>(config);
+session.play();
+session.getSymbolsCombination().toMatrix(); // number[][]
+```
+
+A `string`-literal union (e.g. `"A" | "K" | "Q"`) also works as `T`, giving compile-time exhaustiveness checks over a
+fixed symbol set instead of plain unchecked `string`.
+
 See [Paylines & Line Patterns](paylines-and-patterns.md) and [Paytable & Win Calculation](paytable-and-wins.md) for
 details on lines/patterns/paytable, and [Free Games](free-games.md) for the bonus-round layer on top of this.

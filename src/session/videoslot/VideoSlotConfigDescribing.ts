@@ -6,24 +6,25 @@ import {
     SymbolsSequenceDescribing,
 } from "pokie";
 
-export interface VideoSlotConfigDescribing extends AvailableBetsDescribing {
-    getPaytable(): PaytableRepresenting;
+export interface VideoSlotConfigDescribing<T extends string | number | symbol = string>
+    extends AvailableBetsDescribing {
+    getPaytable(): PaytableRepresenting<T>;
 
-    getAvailableSymbols(): string[];
+    getAvailableSymbols(): T[];
 
     getReelsNumber(): number;
 
     getReelsSymbolsNumber(): number;
 
-    isSymbolScatter(symbolId: string): boolean;
+    isSymbolScatter(symbolId: T): boolean;
 
-    isSymbolWild(symbolId: string): boolean;
+    isSymbolWild(symbolId: T): boolean;
 
-    getSymbolsSequences(): SymbolsSequenceDescribing[];
+    getSymbolsSequences(): SymbolsSequenceDescribing<T>[];
 
-    getWildSymbols(): string[];
+    getWildSymbols(): T[];
 
-    getScatterSymbols(): string[];
+    getScatterSymbols(): T[];
 
     getLinesDefinitions(): LinesDefinitionsDescribing;
 

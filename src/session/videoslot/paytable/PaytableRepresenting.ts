@@ -6,9 +6,9 @@ import {
     PaytableSymbolsPayoutsSetting,
 } from "pokie";
 
-export interface PaytableRepresenting
-    extends ConvertableToMap<number, Record<string, Record<number, number>>>,
-        BuildableFromMap<number, Record<string, Record<number, number>>>,
+export interface PaytableRepresenting<T extends string | number | symbol = string>
+    extends ConvertableToMap<number, Record<T, Record<number, number>>>,
+        BuildableFromMap<number, Record<T, Record<number, number>>>,
         AvailableBetsDescribing,
-        PaytableSymbolsPayoutsDescribing,
-        PaytableSymbolsPayoutsSetting {}
+        PaytableSymbolsPayoutsDescribing<T>,
+        PaytableSymbolsPayoutsSetting<T> {}

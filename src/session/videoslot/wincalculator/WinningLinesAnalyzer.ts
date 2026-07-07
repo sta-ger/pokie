@@ -1,8 +1,10 @@
 import {SymbolsCombinationsAnalyzer, WinningLineDescribing} from "pokie";
 
 export class WinningLinesAnalyzer {
-    public static allLinesHaveSameSymbolId(lines: WinningLineDescribing[]): boolean {
-        let id: string | null = null;
+    public static allLinesHaveSameSymbolId<T extends string | number | symbol = string>(
+        lines: WinningLineDescribing<T>[],
+    ): boolean {
+        let id: T | null = null;
         let result = true;
         for (const line of lines) {
             if (id === null) {
@@ -15,14 +17,14 @@ export class WinningLinesAnalyzer {
         return result;
     }
 
-    public static getLinesWithSymbol(
-        lines: WinningLineDescribing[],
-        symbolsCombination: string[][],
-        symbolId: string,
-    ): WinningLineDescribing[] {
-        const result: WinningLineDescribing[] = [];
+    public static getLinesWithSymbol<T extends string | number | symbol = string>(
+        lines: WinningLineDescribing<T>[],
+        symbolsCombination: T[][],
+        symbolId: T,
+    ): WinningLineDescribing<T>[] {
+        const result: WinningLineDescribing<T>[] = [];
         for (const line of lines) {
-            const lineSymbols = SymbolsCombinationsAnalyzer.getSymbolsForDefinition(
+            const lineSymbols = SymbolsCombinationsAnalyzer.getSymbolsForDefinition<T>(
                 symbolsCombination,
                 line.getDefinition(),
             );
@@ -36,8 +38,11 @@ export class WinningLinesAnalyzer {
         return result;
     }
 
-    public static getLinesWithWinningSymbol(lines: WinningLineDescribing[], symbolId: string): WinningLineDescribing[] {
-        const result: WinningLineDescribing[] = [];
+    public static getLinesWithWinningSymbol<T extends string | number | symbol = string>(
+        lines: WinningLineDescribing<T>[],
+        symbolId: T,
+    ): WinningLineDescribing<T>[] {
+        const result: WinningLineDescribing<T>[] = [];
         for (const line of lines) {
             if (line.getSymbolId() === symbolId) {
                 result.push(line);
@@ -46,9 +51,11 @@ export class WinningLinesAnalyzer {
         return result;
     }
 
-    public static getLinesWithDifferentWinningSymbols(lines: WinningLineDescribing[]): WinningLineDescribing[] {
-        const symbols: string[] = [];
-        const result: WinningLineDescribing[] = [];
+    public static getLinesWithDifferentWinningSymbols<T extends string | number | symbol = string>(
+        lines: WinningLineDescribing<T>[],
+    ): WinningLineDescribing<T>[] {
+        const symbols: T[] = [];
+        const result: WinningLineDescribing<T>[] = [];
         for (const line of lines) {
             if (symbols.indexOf(line.getSymbolId()) < 0) {
                 symbols.push(line.getSymbolId());

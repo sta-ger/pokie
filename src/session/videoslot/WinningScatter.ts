@@ -1,17 +1,17 @@
 import {WinningScatterDescribing} from "pokie";
 
-export class WinningScatter implements WinningScatterDescribing {
-    private readonly symbolId: string;
+export class WinningScatter<T extends string | number | symbol = string> implements WinningScatterDescribing<T> {
+    private readonly symbolId: T;
     private readonly symbolsPositions: number[][];
     private readonly winAmount: number;
 
-    constructor(symbolId: string, symbolsPositions: number[][], winAmount: number) {
+    constructor(symbolId: T, symbolsPositions: number[][], winAmount: number) {
         this.symbolId = symbolId;
         this.symbolsPositions = [...symbolsPositions];
         this.winAmount = winAmount;
     }
 
-    public getSymbolId(): string {
+    public getSymbolId(): T {
         return this.symbolId;
     }
 

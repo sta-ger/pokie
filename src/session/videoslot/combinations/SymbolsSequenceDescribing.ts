@@ -1,21 +1,21 @@
 import {ConvertableToArray} from "pokie";
 
-export interface SymbolsSequenceDescribing extends ConvertableToArray {
+export interface SymbolsSequenceDescribing<T extends string | number | symbol = string> extends ConvertableToArray<T> {
     getIndex(index: number): number;
 
-    getSymbol(index: number): string;
+    getSymbol(index: number): T;
 
-    getSymbols(index: number, symbolsNumber: number): string[];
+    getSymbols(index: number, symbolsNumber: number): T[];
 
     getSize(): number;
 
-    getNumberOfSymbols(symbolId: string): number;
+    getNumberOfSymbols(symbolId: T): number;
 
-    getSymbolWeight(symbolId: string): number;
+    getSymbolWeight(symbolId: T): number;
 
-    getSymbolsWeights(): Record<string, number>;
+    getSymbolsWeights(): Record<T, number>;
 
-    getSymbolsIndexes(symbolsIds: string[]): number[];
+    getSymbolsIndexes(symbolsIds: T[]): number[];
 
     getSymbolsStacksIndexes(): {index: number; size: number}[];
 }

@@ -1,25 +1,39 @@
 import {LinesDefinitionsDescribing, SymbolsSequenceDescribing} from "pokie";
 
 export class SymbolsCombinationsAnalyzer {
-    public static getSymbolsForDefinition(symbols: string[][], definition: number[]): string[] {
+    public static getSymbolsForDefinition<T extends string | number | symbol = string>(
+        symbols: T[][],
+        definition: number[],
+    ): T[] {
         return definition.map((col, index) => symbols[index][col]);
     }
 
-    public static getSymbolsMatchingPattern(symbols: string[], pattern: number[]): string[] {
+    public static getSymbolsMatchingPattern<T extends string | number | symbol = string>(
+        symbols: T[],
+        pattern: number[],
+    ): T[] {
         return symbols.filter((_, i: number) => pattern[i] === 1);
     }
 
-    public static isMatchPattern(symbols: string[], pattern: number[], wildSymbols?: string[]): boolean {
-        const symbolsByPattern: string[] = SymbolsCombinationsAnalyzer.getSymbolsMatchingPattern(symbols, pattern);
+    public static isMatchPattern<T extends string | number | symbol = string>(
+        symbols: T[],
+        pattern: number[],
+        wildSymbols?: T[],
+    ): boolean {
+        const symbolsByPattern: T[] = SymbolsCombinationsAnalyzer.getSymbolsMatchingPattern(symbols, pattern);
         const unique = Array.from(new Set(symbolsByPattern));
         const uniqueNotWilds = unique.filter((symbol) => !wildSymbols?.some((wildSymbol) => wildSymbol === symbol));
         return uniqueNotWilds.length === 1;
     }
 
-    public static getWinningSymbolId(symbols: string[], pattern: number[], wildSymbols?: string[]): string | null {
-        const symbolsByPattern: string[] = SymbolsCombinationsAnalyzer.getSymbolsMatchingPattern(symbols, pattern);
-        const unique: Set<string> = new Set(symbolsByPattern);
-        let prev: string | null = null;
+    public static getWinningSymbolId<T extends string | number | symbol = string>(
+        symbols: T[],
+        pattern: number[],
+        wildSymbols?: T[],
+    ): T | null {
+        const symbolsByPattern: T[] = SymbolsCombinationsAnalyzer.getSymbolsMatchingPattern(symbols, pattern);
+        const unique: Set<T> = new Set(symbolsByPattern);
+        let prev: T | null = null;
         unique.forEach((cur) => {
             if (!wildSymbols?.some((wild) => wild === cur)) {
                 prev = cur;
@@ -28,7 +42,11 @@ export class SymbolsCombinationsAnalyzer {
         return prev;
     }
 
-    public static getMatchingPattern(symbols: string[], patterns: number[][], wildSymbols?: string[]): number[] | null {
+    public static getMatchingPattern<T extends string | number | symbol = string>(
+        symbols: T[],
+        patterns: number[][],
+        wildSymbols?: T[],
+    ): number[] | null {
         for (const pattern of patterns) {
             if (SymbolsCombinationsAnalyzer.isMatchPattern(symbols, pattern, wildSymbols)) {
                 return pattern;
@@ -37,15 +55,22 @@ export class SymbolsCombinationsAnalyzer {
         return null;
     }
 
-    public static getWildSymbolsPositions(symbols: string[], pattern: number[], wildSymbols: string[]): number[] {
+    public static getWildSymbolsPositions<T extends string | number | symbol = string>(
+        symbols: T[],
+        pattern: number[],
+        wildSymbols: T[],
+    ): number[] {
         return symbols
-            .map((symbol: string, i: number) =>
+            .map((symbol: T, i: number) =>
                 wildSymbols.some((wildSymbolId) => symbol === wildSymbolId) && pattern[i] === 1 ? i : -1,
             )
             .filter((index: number) => index !== -1);
     }
 
-    public static getScatterSymbolsPositions(symbols: string[][], scatterSymbolId: string): number[][] {
+    public static getScatterSymbolsPositions<T extends string | number | symbol = string>(
+        symbols: T[][],
+        scatterSymbolId: T,
+    ): number[][] {
         const r: number[][] = [];
         for (let i = 0; i < symbols.length; i++) {
             for (let j = 0; j < symbols[i].length; j++) {
@@ -57,15 +82,15 @@ export class SymbolsCombinationsAnalyzer {
         return r;
     }
 
-    public static getSymbolsCount(symbols: string[][], symbolId: string): number {
+    public static getSymbolsCount<T extends string | number | symbol = string>(symbols: T[][], symbolId: T): number {
         return symbols.reduce(
             (count, reelSymbols) => count + reelSymbols.filter((symbol) => symbol === symbolId).length,
             0,
         );
     }
 
-    public static getSymbolsFrequency(symbols: string[][]): Record<string, number> {
-        const frequency: Record<string, number> = {};
+    public static getSymbolsFrequency<T extends string | number | symbol = string>(symbols: T[][]): Record<T, number> {
+        const frequency = {} as Record<T, number>;
         symbols.forEach((reelSymbols) =>
             reelSymbols.forEach((symbol) => {
                 frequency[symbol] = (frequency[symbol] ?? 0) + 1;
@@ -74,15 +99,15 @@ export class SymbolsCombinationsAnalyzer {
         return frequency;
     }
 
-    public static getWinningLinesIds(
-        symbols: string[][],
+    public static getWinningLinesIds<T extends string | number | symbol = string>(
+        symbols: T[][],
         linesDefinitions: LinesDefinitionsDescribing,
         patterns: number[][],
-        wildSymbols?: string[],
+        wildSymbols?: T[],
     ): string[] {
         const lines: string[] = linesDefinitions.getLinesIds();
         const ids: string[] = lines.filter((lineId: string) => {
-            const symbolsLine: string[] = SymbolsCombinationsAnalyzer.getSymbolsForDefinition(
+            const symbolsLine: T[] = SymbolsCombinationsAnalyzer.getSymbolsForDefinition(
                 symbols,
                 linesDefinitions.getLineDefinition(lineId),
             );
@@ -92,14 +117,14 @@ export class SymbolsCombinationsAnalyzer {
         return ids;
     }
 
-    public static getAllPossibleSymbolsCombinations(
-        sequences: SymbolsSequenceDescribing[],
+    public static getAllPossibleSymbolsCombinations<T extends string | number | symbol = string>(
+        sequences: SymbolsSequenceDescribing<T>[],
         symbolsNumber: number,
-    ): string[][][] {
+    ): T[][][] {
         // Each reel only has `getSize()` distinct visible windows, so precompute them once
         // instead of recomputing the same window on every combination that includes it.
-        const reelsWindows: string[][][] = sequences.map((sequence) => {
-            const windows: string[][] = new Array(sequence.getSize());
+        const reelsWindows: T[][][] = sequences.map((sequence) => {
+            const windows: T[][] = new Array(sequence.getSize());
             for (let position = 0; position < sequence.getSize(); position++) {
                 windows[position] = sequence.getSymbols(position, symbolsNumber);
             }
@@ -107,9 +132,9 @@ export class SymbolsCombinationsAnalyzer {
         });
         const reelsSizes: number[] = reelsWindows.map((windows) => windows.length);
 
-        const allPossibleSymbolsCombinations: string[][][] = [];
+        const allPossibleSymbolsCombinations: T[][][] = [];
         const stopPositions: number[] = new Array(reelsWindows.length).fill(0);
-        while (true) {
+        for (;;) {
             allPossibleSymbolsCombinations.push(
                 stopPositions.map((position, reelId) => reelsWindows[reelId][position]),
             );
@@ -126,16 +151,18 @@ export class SymbolsCombinationsAnalyzer {
         return allPossibleSymbolsCombinations;
     }
 
-    public static getCombinationProbability(sequences: SymbolsSequenceDescribing[]): number {
+    public static getCombinationProbability<T extends string | number | symbol = string>(
+        sequences: SymbolsSequenceDescribing<T>[],
+    ): number {
         // Every reel stop is drawn uniformly (see SymbolsCombinationsGenerator), so a single
         // combination's probability is the product of each reel's 1-in-getSize() chance.
         return sequences.reduce((probability, sequence) => probability / sequence.getSize(), 1);
     }
 
-    public static getUniqueCombinationsWithWeights(
-        combinations: string[][][],
-    ): {combination: string[][]; weight: number}[] {
-        const entriesByKey = new Map<string, {combination: string[][]; weight: number}>();
+    public static getUniqueCombinationsWithWeights<T extends string | number | symbol = string>(
+        combinations: T[][][],
+    ): {combination: T[][]; weight: number}[] {
+        const entriesByKey = new Map<string, {combination: T[][]; weight: number}>();
         combinations.forEach((combination) => {
             const key = JSON.stringify(combination);
             const entry = entriesByKey.get(key);
@@ -148,7 +175,7 @@ export class SymbolsCombinationsAnalyzer {
         return Array.from(entriesByKey.values());
     }
 
-    public static areCombinationsEqual(a: string[][], b: string[][]): boolean {
+    public static areCombinationsEqual<T extends string | number | symbol = string>(a: T[][], b: T[][]): boolean {
         return JSON.stringify(a) === JSON.stringify(b);
     }
 }

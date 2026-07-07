@@ -7,13 +7,20 @@ import {
     VideoSlotWithFreeGamesConfigRepresenting,
 } from "pokie";
 
-export class VideoSlotWithFreeGamesConfig implements VideoSlotWithFreeGamesConfigRepresenting {
-    private readonly baseConfig: VideoSlotConfig;
-    private readonly freeGamesForScattersMap: Record<string, Record<number, number>>;
+export class VideoSlotWithFreeGamesConfig<T extends string | number | symbol = string>
+implements VideoSlotWithFreeGamesConfigRepresenting<T> {
+    private readonly baseConfig: VideoSlotConfig<T>;
+    private readonly freeGamesForScattersMap: Record<T, Record<number, number>>;
 
-    constructor(baseConfig = new VideoSlotConfig()) {
+    constructor(baseConfig = new VideoSlotConfig<T>()) {
         this.baseConfig = baseConfig;
-        this.freeGamesForScattersMap = VideoSlotWithFreeGamesConfig.createFreeGamesForScattersMap();
+        // The default scatter symbol ID ("S") is a string literal — safe for the default
+        // `T = string`, but TS can't prove an arbitrary `T` accepts it, hence the cast.
+        this.freeGamesForScattersMap =
+            VideoSlotWithFreeGamesConfig.createFreeGamesForScattersMap() as unknown as Record<
+                T,
+                Record<number, number>
+            >;
     }
 
     private static createFreeGamesForScattersMap(): Record<string, Record<number, number>> {
@@ -26,7 +33,7 @@ export class VideoSlotWithFreeGamesConfig implements VideoSlotWithFreeGamesConfi
         return rv;
     }
 
-    public getFreeGamesForScatters(symbolId: string, numberOfSymbols: number): number {
+    public getFreeGamesForScatters(symbolId: T, numberOfSymbols: number): number {
         if (
             !Reflect.has(this.freeGamesForScattersMap, symbolId) ||
             !Reflect.has(this.freeGamesForScattersMap[symbolId], numberOfSymbols)
@@ -37,18 +44,18 @@ export class VideoSlotWithFreeGamesConfig implements VideoSlotWithFreeGamesConfi
         }
     }
 
-    public setFreeGamesForScatters(symbolId: string, numberOfSymbols: number, freeGamesNum: number): void {
+    public setFreeGamesForScatters(symbolId: T, numberOfSymbols: number, freeGamesNum: number): void {
         if (!Reflect.has(this.freeGamesForScattersMap, symbolId)) {
             this.freeGamesForScattersMap[symbolId] = {};
         }
         this.freeGamesForScattersMap[symbolId][numberOfSymbols] = freeGamesNum;
     }
 
-    public isSymbolWild(symbolId: string): boolean {
+    public isSymbolWild(symbolId: T): boolean {
         return this.baseConfig.isSymbolWild(symbolId);
     }
 
-    public isSymbolScatter(symbolId: string): boolean {
+    public isSymbolScatter(symbolId: T): boolean {
         return this.baseConfig.isSymbolScatter(symbolId);
     }
 
@@ -64,27 +71,27 @@ export class VideoSlotWithFreeGamesConfig implements VideoSlotWithFreeGamesConfi
         return this.baseConfig.isBetAvailable(bet);
     }
 
-    public getPaytable(): PaytableRepresenting {
+    public getPaytable(): PaytableRepresenting<T> {
         return this.baseConfig.getPaytable();
     }
 
-    public setPaytable(paytable: PaytableRepresenting): void {
+    public setPaytable(paytable: PaytableRepresenting<T>): void {
         this.baseConfig.setPaytable(paytable);
     }
 
-    public getWildSymbols(): string[] {
+    public getWildSymbols(): T[] {
         return this.baseConfig.getWildSymbols();
     }
 
-    public setWildSymbols(value: string[]): void {
+    public setWildSymbols(value: T[]): void {
         this.baseConfig.setWildSymbols(value);
     }
 
-    public getScatterSymbols(): string[] {
+    public getScatterSymbols(): T[] {
         return this.baseConfig.getScatterSymbols();
     }
 
-    public setScatterSymbols(scattersData: string[]): void {
+    public setScatterSymbols(scattersData: T[]): void {
         this.baseConfig.setScatterSymbols([...scattersData]);
     }
 
@@ -136,19 +143,19 @@ export class VideoSlotWithFreeGamesConfig implements VideoSlotWithFreeGamesConfi
         this.baseConfig.setLinesPatterns(linesPatterns);
     }
 
-    public getAvailableSymbols(): string[] {
+    public getAvailableSymbols(): T[] {
         return [...this.baseConfig.getAvailableSymbols()];
     }
 
-    public setAvailableSymbols(availableSymbols: string[]): void {
+    public setAvailableSymbols(availableSymbols: T[]): void {
         this.baseConfig.setAvailableSymbols([...availableSymbols]);
     }
 
-    public getSymbolsSequences(): SymbolsSequenceDescribing[] {
+    public getSymbolsSequences(): SymbolsSequenceDescribing<T>[] {
         return this.baseConfig.getSymbolsSequences();
     }
 
-    public setSymbolsSequences(reelsSymbolsSequences: SymbolsSequenceDescribing[]): void {
+    public setSymbolsSequences(reelsSymbolsSequences: SymbolsSequenceDescribing<T>[]): void {
         this.baseConfig.setSymbolsSequences(reelsSymbolsSequences);
     }
 }

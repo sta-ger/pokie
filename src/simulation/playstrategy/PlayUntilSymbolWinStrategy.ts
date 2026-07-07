@@ -1,19 +1,20 @@
 import {NextSessionRoundPlayableDetermining, VideoSlotSessionHandling, WinningLinesAnalyzer} from "pokie";
 
-export class PlayUntilSymbolWinStrategy implements NextSessionRoundPlayableDetermining {
-    private readonly symbolId: string;
+export class PlayUntilSymbolWinStrategy<T extends string | number | symbol = string>
+implements NextSessionRoundPlayableDetermining {
+    private readonly symbolId: T;
     private minLinesNumber = 1;
     private onlySameSymbolId = false;
     private allowWilds = true;
-    private wildSymbolId?: string;
+    private wildSymbolId?: T;
     private minNumberOfWinningSymbols?: number;
     private exactNumberOfWinningSymbols?: number;
 
-    constructor(symbolId: string) {
+    constructor(symbolId: T) {
         this.symbolId = symbolId;
     }
 
-    public canPlayNextSimulationRound(session: VideoSlotSessionHandling): boolean {
+    public canPlayNextSimulationRound(session: VideoSlotSessionHandling<T>): boolean {
         const rgSession = session;
         const symbolsCombination = rgSession.getSymbolsCombination();
         const winningLines = rgSession.getWinningLines();
@@ -52,12 +53,10 @@ export class PlayUntilSymbolWinStrategy implements NextSessionRoundPlayableDeter
                 r = true;
             }
         } else {
-            r =
-                Object.keys(winningScatters).length === 0 ||
-                Object.keys(winningLines).length > 0 ||
-                !Object.keys(winningScatters).includes(this.getSymbolId());
+            const hasWinningScatter = Reflect.has(winningScatters, this.getSymbolId());
+            r = Object.keys(winningScatters).length === 0 || Object.keys(winningLines).length > 0 || !hasWinningScatter;
 
-            if (Object.keys(winningScatters).includes(this.getSymbolId())) {
+            if (hasWinningScatter) {
                 if (
                     this.getMinNumberOfWinningSymbols() !== undefined &&
                     winningScatters[this.getSymbolId()].getSymbolsPositions().length <
@@ -77,7 +76,7 @@ export class PlayUntilSymbolWinStrategy implements NextSessionRoundPlayableDeter
         return r;
     }
 
-    public getSymbolId(): string {
+    public getSymbolId(): T {
         return this.symbolId;
     }
 
@@ -101,12 +100,12 @@ export class PlayUntilSymbolWinStrategy implements NextSessionRoundPlayableDeter
         return this.allowWilds;
     }
 
-    public setAllowWilds(allowWilds: boolean, wildSymbolId: string): void {
+    public setAllowWilds(allowWilds: boolean, wildSymbolId: T): void {
         this.allowWilds = allowWilds;
         this.wildSymbolId = wildSymbolId;
     }
 
-    public getWildSymbolId(): string | undefined {
+    public getWildSymbolId(): T | undefined {
         return this.wildSymbolId;
     }
 

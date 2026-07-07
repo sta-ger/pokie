@@ -88,3 +88,13 @@ interface ConvertableToMatrix<T = string> { toMatrix(transposed?: boolean): T[][
 All `Buildable*` methods return `this`, so they're chainable (`new SymbolsSequence().fromArray([...]).shuffle()`).
 Concrete implementations deep-clone on both ends (via `JSON.parse(JSON.stringify(...))`), so the plain data you get
 out — or pass in — is always decoupled from the object's internal state.
+
+## Symbol IDs are a generic type parameter, defaulted to `string`
+
+Every class in the symbol/game/win/net chain — `SymbolsSequence`, `SymbolsCombination`, `VideoSlotConfig`,
+`VideoSlotSession`, `Paytable`, `VideoSlotWinCalculator`, `WinningLine`, `WinningScatter`, the free-games layer, the
+`net/` serializers, and `PlayUntilSymbolWinStrategy` — is generic over `T extends string | number | symbol = string`,
+the same "generic parameter with a concrete default" shape already used by `BuildableFromArray<T = string>` above.
+Because the default is `string`, every pre-existing call site keeps compiling and behaving identically without any
+type argument; opting into `T = number` (or a string-literal union) is additive, not a breaking change. See
+[Game Session & Configuration](game-session.md#symbol-ids-are-generic) for a worked example.

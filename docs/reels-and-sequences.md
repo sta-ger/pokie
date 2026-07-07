@@ -8,6 +8,11 @@ A `SymbolsSequence` (implements `SymbolsSequenceRepresenting = SymbolsSequenceDe
 is a mutable, **circular** list of symbol IDs representing everything printed on one physical reel strip — not just
 the visible window.
 
+`SymbolsSequence`, like every symbol-facing class in this subsystem, is generic over
+`T extends string | number | symbol = string` — the signatures below use the default `string` for readability; see
+[Architecture & Conventions](architecture.md#symbol-ids-are-a-generic-type-parameter-defaulted-to-string) for using
+`SymbolsSequence<number>` or a string-literal union instead.
+
 ```ts
 // building
 fromArray(symbols: string[]): this

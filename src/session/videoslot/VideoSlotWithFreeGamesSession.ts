@@ -17,18 +17,23 @@ import {
     WinningScatterDescribing,
 } from "pokie";
 
-export class VideoSlotWithFreeGamesSession implements VideoSlotWithFreeGamesSessionHandling {
-    private readonly baseSession: VideoSlotSessionHandling;
-    private readonly config: VideoSlotWithFreeGamesConfigRepresenting;
+export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = string>
+implements VideoSlotWithFreeGamesSessionHandling<T> {
+    private readonly baseSession: VideoSlotSessionHandling<T>;
+    private readonly config: VideoSlotWithFreeGamesConfigRepresenting<T>;
     private freeGamesNum = 0;
     private freeGamesSum = 0;
     private freeBank = 0;
 
     constructor(
-        config: VideoSlotWithFreeGamesConfigRepresenting = new VideoSlotWithFreeGamesConfig(),
-        combinationsGenerator: SymbolsCombinationsGenerating = new SymbolsCombinationsGenerator(config),
-        winCalculator: VideoSlotWinCalculating = new VideoSlotWinCalculator(config),
-        baseSession: VideoSlotSessionHandling = new VideoSlotSession(config, combinationsGenerator, winCalculator),
+        config: VideoSlotWithFreeGamesConfigRepresenting<T> = new VideoSlotWithFreeGamesConfig<T>(),
+        combinationsGenerator: SymbolsCombinationsGenerating<T> = new SymbolsCombinationsGenerator<T>(config),
+        winCalculator: VideoSlotWinCalculating<T> = new VideoSlotWinCalculator<T>(config),
+        baseSession: VideoSlotSessionHandling<T> = new VideoSlotSession<T>(
+            config,
+            combinationsGenerator,
+            winCalculator,
+        ),
     ) {
         this.baseSession = baseSession;
         this.config = config;
@@ -37,7 +42,7 @@ export class VideoSlotWithFreeGamesSession implements VideoSlotWithFreeGamesSess
     public getWonFreeGamesNumber(): number {
         let rv = 0;
         const wonScatters = this.getWinningScatters();
-        for (const scatterModel of Object.values(wonScatters)) {
+        for (const scatterModel of Object.values<WinningScatterDescribing<T>>(wonScatters)) {
             const freeGamesForScatters = this.config.getFreeGamesForScatters(
                 scatterModel.getSymbolId(),
                 scatterModel.getSymbolsPositions().length,
@@ -73,23 +78,23 @@ export class VideoSlotWithFreeGamesSession implements VideoSlotWithFreeGamesSess
         this.freeBank = value;
     }
 
-    public getPaytable(): PaytableRepresenting {
+    public getPaytable(): PaytableRepresenting<T> {
         return this.config.getPaytable();
     }
 
-    public getSymbolsCombination(): SymbolsCombinationDescribing {
+    public getSymbolsCombination(): SymbolsCombinationDescribing<T> {
         return this.baseSession.getSymbolsCombination();
     }
 
-    public getWinningLines(): Record<number, WinningLineDescribing> {
+    public getWinningLines(): Record<number, WinningLineDescribing<T>> {
         return this.baseSession.getWinningLines();
     }
 
-    public getWinningScatters(): Record<string, WinningScatterDescribing> {
+    public getWinningScatters(): Record<T, WinningScatterDescribing<T>> {
         return this.baseSession.getWinningScatters();
     }
 
-    public getSymbolsSequences(): SymbolsSequenceDescribing[] {
+    public getSymbolsSequences(): SymbolsSequenceDescribing<T>[] {
         return this.baseSession.getSymbolsSequences();
     }
 
@@ -101,7 +106,7 @@ export class VideoSlotWithFreeGamesSession implements VideoSlotWithFreeGamesSess
         return this.baseSession.getReelsNumber();
     }
 
-    public getAvailableSymbols(): string[] {
+    public getAvailableSymbols(): T[] {
         return this.baseSession.getAvailableSymbols();
     }
 
@@ -156,23 +161,23 @@ export class VideoSlotWithFreeGamesSession implements VideoSlotWithFreeGamesSess
         }
     }
 
-    public getFreeGamesForScatters(symbolId: string, numberOfSymbols: number): number {
+    public getFreeGamesForScatters(symbolId: T, numberOfSymbols: number): number {
         return this.config.getFreeGamesForScatters(symbolId, numberOfSymbols);
     }
 
-    public isSymbolWild(symbolId: string): boolean {
+    public isSymbolWild(symbolId: T): boolean {
         return this.baseSession.isSymbolWild(symbolId);
     }
 
-    public isSymbolScatter(symbolId: string): boolean {
+    public isSymbolScatter(symbolId: T): boolean {
         return this.baseSession.isSymbolScatter(symbolId);
     }
 
-    public getWildSymbols(): string[] {
+    public getWildSymbols(): T[] {
         return this.baseSession.getWildSymbols();
     }
 
-    public getScatterSymbols(): string[] {
+    public getScatterSymbols(): T[] {
         return this.baseSession.getScatterSymbols();
     }
 

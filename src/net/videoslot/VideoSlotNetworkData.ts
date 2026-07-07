@@ -1,32 +1,32 @@
 import {GameInitialNetworkData, GameRoundNetworkData} from "pokie";
 
-export type VideoSlotInitialNetworkData = {
-    availableSymbols: string[];
+export type VideoSlotInitialNetworkData<T extends string | number | symbol = string> = {
+    availableSymbols: T[];
     reelsNumber: number;
     reelsSymbolsNumber: number;
-    paytable: Record<number, Record<string, Record<number, number>>>;
+    paytable: Record<number, Record<T, Record<number, number>>>;
     linesDefinitions: Record<string, number[]>;
 } & GameInitialNetworkData &
-    VideoSlotRoundNetworkData;
+    VideoSlotRoundNetworkData<T>;
 
-export type VideoSlotRoundNetworkData = {
-    reelsSymbols: string[][];
-    winningLines?: Record<string, WinningLineNetworkData>;
-    winningScatters?: Record<string, WinningScatterNetworkData>;
+export type VideoSlotRoundNetworkData<T extends string | number | symbol = string> = {
+    reelsSymbols: T[][];
+    winningLines?: Record<string, WinningLineNetworkData<T>>;
+    winningScatters?: Record<T, WinningScatterNetworkData<T>>;
 } & GameRoundNetworkData;
 
-export type WinningLineNetworkData = {
+export type WinningLineNetworkData<T extends string | number | symbol = string> = {
     definition: number[];
     pattern: number[];
-    symbolId: string;
+    symbolId: T;
     lineId: string;
     symbolsPositions: number[];
     wildSymbolsPositions: number[];
     winAmount: number;
 };
 
-export type WinningScatterNetworkData = {
-    symbolId: string;
+export type WinningScatterNetworkData<T extends string | number | symbol = string> = {
+    symbolId: T;
     symbolsPositions: number[][];
     winAmount: number;
 };

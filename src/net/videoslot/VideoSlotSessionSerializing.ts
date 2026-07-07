@@ -5,8 +5,9 @@ import {
     VideoSlotRoundNetworkData,
 } from "pokie";
 
-export interface VideoSlotSessionSerializing extends GameSessionSerializing {
-    getInitialData(session: VideoSlotSessionHandling): VideoSlotInitialNetworkData;
+export interface VideoSlotSessionSerializing<T extends string | number | symbol = string>
+    extends GameSessionSerializing {
+    getInitialData(session: VideoSlotSessionHandling<T>): VideoSlotInitialNetworkData<T>;
 
-    getRoundData(session: VideoSlotSessionHandling): VideoSlotRoundNetworkData;
+    getRoundData(session: VideoSlotSessionHandling<T>): VideoSlotRoundNetworkData<T>;
 }

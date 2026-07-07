@@ -7,24 +7,25 @@ import {
     VideoSlotConfigDescribing,
 } from "pokie";
 
-export class SymbolsCombinationsGenerator implements SymbolsCombinationsGenerating {
+export class SymbolsCombinationsGenerator<T extends string | number | symbol = string>
+implements SymbolsCombinationsGenerating<T> {
     private readonly rng: RandomNumberGenerating;
-    private readonly config: VideoSlotConfigDescribing;
+    private readonly config: VideoSlotConfigDescribing<T>;
 
-    constructor(config: VideoSlotConfigDescribing, rng: RandomNumberGenerating = new PseudorandomNumberGenerator()) {
+    constructor(config: VideoSlotConfigDescribing<T>, rng: RandomNumberGenerating = new PseudorandomNumberGenerator()) {
         this.config = config;
         this.rng = rng;
     }
 
-    public generateSymbolsCombination(): SymbolsCombinationDescribing {
-        const arr: string[][] = new Array(this.config.getReelsNumber());
+    public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        const arr: T[][] = new Array(this.config.getReelsNumber());
         for (let i = 0; i < this.config.getReelsNumber(); i++) {
             arr[i] = this.getRandomReelSymbols(i);
         }
-        return new SymbolsCombination().fromMatrix(arr);
+        return new SymbolsCombination<T>().fromMatrix(arr);
     }
 
-    private getRandomReelSymbols(reelId: number): string[] {
+    private getRandomReelSymbols(reelId: number): T[] {
         const sequence = this.config.getSymbolsSequences()[reelId];
         const random = this.rng.getRandomInt(0, sequence.getSize());
         return sequence.getSymbols(random, this.config.getReelsSymbolsNumber());
