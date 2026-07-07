@@ -55,9 +55,8 @@ gotchas (the `from*` builders replace strip contents rather than append to them)
 
 Fewer paylines concentrate the same total bet into fewer, more impactful winning positions; more paylines smooth out
 variance. Presets and custom definitions are covered in
-[Paylines & Line Patterns](paylines-and-patterns.md) — e.g. dropping from 11 lines to 5 by using
-`CustomLinesDefinitions` with only the lines you want, or building your own with `LinesDefinitionsFor5x3` as a
-starting point.
+[Paylines & Line Patterns](paylines-and-patterns.md) — e.g. dropping to 5 hand-picked lines via
+`CustomLinesDefinitions`, or starting from `LinesDefinitionsFor5x3`'s 25 preset lines and trimming it down.
 
 ## Step 4 — set the paytable
 

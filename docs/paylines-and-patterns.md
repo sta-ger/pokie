@@ -36,9 +36,12 @@ interface LinesDefinitionsDescribing {
   toMap(): Record<string, number[]>              // deep-cloned out
   ```
 - **`LinesDefinitionsFor3x3` / `LinesDefinitionsFor5x3` / `LinesDefinitionsFor5x4`** — static preset tables (not
-  parametrized generators) of common industry-standard payline layouts: 11, 13, and 12 lines respectively (a mix of
-  horizontals, diagonals, and V/zig-zag shapes). Use these when your grid size matches exactly; otherwise use
-  `HorizontalLines` or `CustomLinesDefinitions`.
+  parametrized generators) of commonly-seen payline layouts: 11, 25, and 12 lines respectively, built from
+  recognizable shape families (flat, V, M/W arch, staircase, zigzag, notch). These aren't a single official industry
+  spec — every real provider ships their own table — but `LinesDefinitionsFor5x3` in particular follows the
+  widely-circulated "standard 20/25-line" reference used across countless real 5×3 games, extended with a few
+  asymmetric half-staircase lines (common once a game goes past ~20 lines). Use these when your grid size matches
+  exactly; otherwise use `HorizontalLines` or `CustomLinesDefinitions`.
 - **`WaysDefinitions(reelsNumber, reelsSymbolsNumber)`** — models "ways to win" instead of fixed paylines: every
   possible row combination across reels counts as a line (a symbol anywhere in each reel matches). Line ids here are
   just array indices, not meaningful identifiers, and the definition count is `reelsSymbolsNumber ** reelsNumber`
