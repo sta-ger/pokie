@@ -39,6 +39,7 @@ constructor(
     combinationsGenerator: SymbolsCombinationsGenerating = new SymbolsCombinationsGenerator(config),
     winCalculator: VideoSlotWinCalculating = new VideoSlotWinCalculator(config),
     baseSession: VideoSlotSessionHandling = new VideoSlotSession(config, combinationsGenerator, winCalculator),
+    freeGamesRoundHandler: FreeGamesRoundHandling = new DefaultFreeGamesRoundHandler(),
 )
 
 getFreeGamesNum(): number / setFreeGamesNum(v: number): void     // free games played so far in the current round
@@ -55,17 +56,65 @@ whole bonus round — it can grow further via retriggers).
 
 ### `play()` flow
 
-1. If the previous round's free games are all used up (`freeGamesNum === freeGamesSum`), the bank/num/sum counters
-   reset to `0`.
-2. Records credits before playing, then plays the underlying `VideoSlotSession` round as normal (bet is deducted,
-   win is added to credits by the base session).
-3. **While inside a free-games round** (`freeGamesSum > 0 && freeGamesNum < freeGamesSum`): increments
-   `freeGamesNum`, adds this round's win to `freeGamesBank`, and **restores credits to what they were before this
-   round** (free spins don't cost/pay credits directly — winnings accrue in the bank instead).
-4. Checks `getWonFreeGamesNumber()` from this round's scatter wins. If free games were won, adds them to
-   `freeGamesSum` (a trigger or retrigger). Otherwise, if this was the last free game in the round
+`play()` itself is now just three lines — the bookkeeping is delegated to the injected `FreeGamesRoundHandling`:
+
+```ts
+public play(): void {
+    this.freeGamesRoundHandler.beforeRoundPlayed(this);
+    const creditsBeforePlay = this.getCreditsAmount();
+    this.baseSession.play();
+    this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
+}
+```
+
+`DefaultFreeGamesRoundHandler` (the constructor's default 5th argument) implements the classic bank-and-retrigger
+mechanic described below:
+
+1. **`beforeRoundPlayed`** — if the previous round's free games are all used up (`freeGamesNum === freeGamesSum`),
+   the bank/num/sum counters reset to `0`.
+2. The session records credits before playing, then plays the underlying `VideoSlotSession` round as normal (bet is
+   deducted, win is added to credits by the base session).
+3. **`afterRoundPlayed`**, while inside a free-games round (`freeGamesSum > 0 && freeGamesNum < freeGamesSum`):
+   increments `freeGamesNum`, adds this round's win to `freeGamesBank`, and **restores credits to what they were
+   before this round** (free spins don't cost/pay credits directly — winnings accrue in the bank instead). Then
+   checks `getWonFreeGamesNumber()` from this round's scatter wins: if free games were won, adds them to
+   `freeGamesSum` (a trigger or retrigger); otherwise, if this was the last free game in the round
    (`freeGamesSum > 0 && freeGamesNum === freeGamesSum`), the accumulated `freeGamesBank` is finally added to real
    credits.
+
+### Extension points
+
+A different bonus mechanic — a progressive per-spin multiplier, paying out immediately instead of banking, a
+"buy the feature" flow — is a different `FreeGamesRoundHandling` implementation, not a fork of the whole session:
+
+```ts
+import {FreeGamesRoundHandling, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession} from "pokie";
+
+class ImmediatePayoutFreeGamesHandler implements FreeGamesRoundHandling {
+    public beforeRoundPlayed(session) {
+        /* ... */
+    }
+
+    public afterRoundPlayed(session, creditsBeforePlay) {
+        // e.g. pay out every free-spin win immediately instead of banking it
+    }
+}
+
+const config = new VideoSlotWithFreeGamesConfig();
+const session = new VideoSlotWithFreeGamesSession(
+    config,
+    undefined,
+    undefined,
+    undefined,
+    new ImmediatePayoutFreeGamesHandler(),
+);
+```
+
+Note the `undefined` placeholders — TypeScript only applies a parameter default when the argument is `undefined`,
+so skipping the 2nd-4th constructor args this way still gets you their normal defaults. See
+[Architecture](architecture.md#extension-points-for-custom-game-mechanics) for the full list of injectable
+extension points, including `AbstractVideoSlotSessionDecorator` for writing your own session wrapper (the same
+pattern `VideoSlotWithFreeGamesSession` itself is built on) without re-implementing every passthrough method.
 
 ```ts
 import {VideoSlotWithFreeGamesSession} from "pokie";

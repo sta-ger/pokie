@@ -23,4 +23,7 @@ export interface VideoSlotConfigSetting<T extends string | number | symbol = str
     setLinesDefinitions(linesDefinitions: LinesDefinitionsDescribing): void;
 
     setLinesPatterns(linesPatterns: LinesPatternsDescribing): void;
+
+    // Optional so existing implementers of this interface keep compiling unchanged.
+    setWildSubstitutions?(value: Partial<Record<T, T[]>>): void;
 }

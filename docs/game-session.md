@@ -99,10 +99,17 @@ Defaults (no-arg constructor): 5 reels × 3 rows, `availableSymbols = ["A","K","
 
 ### Reel sequence auto-generation
 
-`VideoSlotConfig` builds one `SymbolsSequence` per reel via a private `createReelsSymbolsSequences()`: 15 copies of
-each non-wild/non-scatter symbol, 5 copies of each wild, 3 copies of each scatter, then shuffles — re-rolling the
-shuffle until no reel has a scatter symbol as part of a multi-symbol stack (so scatters land as single symbols on
-each reel by default). This runs:
+```ts
+constructor(
+    baseConfig = new GameSessionConfig(),
+    sequencesGenerator: ReelsSymbolsSequencesGenerating = new DefaultReelsSymbolsSequencesGenerator(),
+)
+```
+
+`VideoSlotConfig` builds one `SymbolsSequence` per reel by delegating to the injected `ReelsSymbolsSequencesGenerating`.
+The default, `DefaultReelsSymbolsSequencesGenerator`: 15 copies of each non-wild/non-scatter symbol, 5 copies of each
+wild, 3 copies of each scatter, then shuffles — re-rolling the shuffle until no reel has a scatter symbol as part of
+a multi-symbol stack (so scatters land as single symbols on each reel by default). This runs:
 
 - once, in the constructor,
 - again whenever `setScatterSymbols(...)` is called,
@@ -110,7 +117,22 @@ each reel by default). This runs:
 
 Calling `setSymbolsSequences(...)` yourself overrides whatever was auto-generated — this is how you supply your own,
 math-model-tuned reel strips (see [Reels & Symbol Sequences](reels-and-sequences.md) and
-[Modeling Slot Math with POKIE](math-modeling.md)).
+[Modeling Slot Math with POKIE](math-modeling.md)). If instead you want a *different generation algorithm* to run
+automatically on every `setAvailableSymbols`/`setScatterSymbols` call (e.g. weighted by paytable, or without the
+"no scattered stacks" constraint), implement `ReelsSymbolsSequencesGenerating` and pass it as the 2nd constructor
+argument instead of replacing the generated sequences after the fact:
+
+```ts
+import {ReelsSymbolsSequencesGenerating, SymbolsSequenceDescribing, VideoSlotConfig} from "pokie";
+
+class WeightedReelsGenerator implements ReelsSymbolsSequencesGenerating {
+    public generate(reelsNumber: number, availableSymbols: string[], wildSymbols: string[], scatterSymbols: string[]): SymbolsSequenceDescribing[] {
+        // your own strip-generation logic
+    }
+}
+
+const config = new VideoSlotConfig(new GameSessionConfig(), new WeightedReelsGenerator());
+```
 
 ### Example: a custom 5×3 game
 

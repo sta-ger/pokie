@@ -1,4 +1,5 @@
 import {
+    DefaultReelsSymbolsSequencesGenerator,
     GameSessionConfig,
     HorizontalLines,
     LeftToRightLinesPatterns,
@@ -6,13 +7,14 @@ import {
     LinesPatternsDescribing,
     Paytable,
     PaytableRepresenting,
-    SymbolsSequence,
+    ReelsSymbolsSequencesGenerating,
     SymbolsSequenceDescribing,
     VideoSlotConfigRepresenting,
 } from "pokie";
 
 export class VideoSlotConfig<T extends string | number | symbol = string> implements VideoSlotConfigRepresenting<T> {
     private readonly baseConfig: GameSessionConfig;
+    private readonly sequencesGenerator: ReelsSymbolsSequencesGenerating<T>;
 
     private reelsNumber: number;
     private reelsSymbolsNumber: number;
@@ -23,9 +25,14 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
     private scatters: T[];
     private linesDefinitions: LinesDefinitionsDescribing;
     private linesPatterns: LinesPatternsDescribing;
+    private wildSubstitutions: Partial<Record<T, T[]>> = {};
 
-    constructor(baseConfig = new GameSessionConfig()) {
+    constructor(
+        baseConfig = new GameSessionConfig(),
+        sequencesGenerator: ReelsSymbolsSequencesGenerating<T> = new DefaultReelsSymbolsSequencesGenerator<T>(),
+    ) {
         this.baseConfig = baseConfig;
+        this.sequencesGenerator = sequencesGenerator;
         this.reelsNumber = 5;
         this.reelsSymbolsNumber = 3;
         // Default symbol IDs are string literals — safe for the default `T = string`, but TS
@@ -58,6 +65,14 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
 
     public setWildSymbols(value: T[]): void {
         this.wilds = value;
+    }
+
+    public getWildSubstitutions(): Partial<Record<T, T[]>> {
+        return this.wildSubstitutions;
+    }
+
+    public setWildSubstitutions(value: Partial<Record<T, T[]>>): void {
+        this.wildSubstitutions = value;
     }
 
     public getScatterSymbols(): T[] {
@@ -164,25 +179,6 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
     }
 
     private createReelsSymbolsSequences(): SymbolsSequenceDescribing<T>[] {
-        const r: SymbolsSequenceDescribing<T>[] = [];
-        for (let i = 0; i < this.reelsNumber; i++) {
-            const reel = new SymbolsSequence<T>();
-            const availableSymbols = this.availableSymbols.filter((symbolId) => {
-                return !this.isSymbolScatter(symbolId) && !this.isSymbolWild(symbolId);
-            });
-            reel.fromNumberOfEachSymbol(availableSymbols, 15);
-            this.wilds.forEach((wild) => reel.addSymbol(wild, 5));
-            this.scatters.forEach((scatter) => reel.addSymbol(scatter, 3));
-            reel.shuffle();
-            while (
-                reel
-                    .getSymbolsStacksIndexes()
-                    .some((stack) => this.scatters.some((scatter) => scatter === reel.getSymbol(stack.index)))
-            ) {
-                reel.shuffle();
-            }
-            r.push(reel);
-        }
-        return r;
+        return this.sequencesGenerator.generate(this.reelsNumber, this.availableSymbols, this.wilds, this.scatters);
     }
 }

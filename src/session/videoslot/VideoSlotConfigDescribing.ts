@@ -29,4 +29,9 @@ export interface VideoSlotConfigDescribing<T extends string | number | symbol = 
     getLinesDefinitions(): LinesDefinitionsDescribing;
 
     getLinesPatterns(): LinesPatternsDescribing;
+
+    // Optional so existing implementers of this interface keep compiling unchanged. Absent (or an
+    // empty map) means every wild substitutes for any symbol — the pre-existing default behavior.
+    // A wild present as a key only substitutes for the symbols listed for it.
+    getWildSubstitutions?(): Partial<Record<T, T[]>>;
 }

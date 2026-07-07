@@ -10,7 +10,8 @@ see [pokie-examples](https://github.com/sta-ger/pokie-examples).
 
 1. **[Getting Started](getting-started.md)** — install, create a session, play a round, read the results.
 2. **[Architecture & Conventions](architecture.md)** — the interface-per-role naming convention, composition over
-   inheritance, package layout, and the dependency-injection style used throughout.
+   inheritance, package layout, the dependency-injection style used throughout, and the built-in extension points
+   for customizing win logic, wild substitution, reel generation, and free-games mechanics.
 3. **[Game Session & Configuration](game-session.md)** — `GameSession`/`GameSessionConfig` (bet, credits, generic
    play loop) and `VideoSlotSession`/`VideoSlotConfig` (symbols, wilds, scatters, reels).
 4. **[Reels & Symbol Sequences](reels-and-sequences.md)** — `SymbolsSequence` (a reel strip), `SymbolsCombination`

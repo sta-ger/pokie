@@ -87,6 +87,14 @@ implements VideoSlotWithFreeGamesConfigRepresenting<T> {
         this.baseConfig.setWildSymbols(value);
     }
 
+    public getWildSubstitutions(): Partial<Record<T, T[]>> {
+        return this.baseConfig.getWildSubstitutions();
+    }
+
+    public setWildSubstitutions(value: Partial<Record<T, T[]>>): void {
+        this.baseConfig.setWildSubstitutions(value);
+    }
+
     public getScatterSymbols(): T[] {
         return this.baseConfig.getScatterSymbols();
     }

@@ -117,14 +117,14 @@ never instantiated). It's the engine behind both win calculation
 ```ts
 static getSymbolsForDefinition(symbols: string[][], definition: number[]): string[]
 static getSymbolsMatchingPattern(symbols: string[], pattern: number[]): string[]
-static isMatchPattern(symbols: string[], pattern: number[], wildSymbols?: string[]): boolean
+static isMatchPattern(symbols: string[], pattern: number[], wildSymbols?: string[], wildSubstitutions?: Partial<Record<string, string[]>>): boolean
 static getWinningSymbolId(symbols: string[], pattern: number[], wildSymbols?: string[]): string | null
-static getMatchingPattern(symbols: string[], patterns: number[][], wildSymbols?: string[]): number[] | null
+static getMatchingPattern(symbols: string[], patterns: number[][], wildSymbols?: string[], wildSubstitutions?: Partial<Record<string, string[]>>): number[] | null
 static getWildSymbolsPositions(symbols: string[], pattern: number[], wildSymbols: string[]): number[]
 static getScatterSymbolsPositions(symbols: string[][], scatterSymbolId: string): number[][]
 static getSymbolsCount(symbols: string[][], symbolId: string): number
 static getSymbolsFrequency(symbols: string[][]): Record<string, number>
-static getWinningLinesIds(symbols: string[][], linesDefinitions: LinesDefinitionsDescribing, patterns: number[][], wildSymbols?: string[]): string[]
+static getWinningLinesIds(symbols: string[][], linesDefinitions: LinesDefinitionsDescribing, patterns: number[][], wildSymbols?: string[], wildSubstitutions?: Partial<Record<string, string[]>>): string[]
 static getAllPossibleSymbolsCombinations(sequences: SymbolsSequenceDescribing[], symbolsNumber: number): string[][][]
 static getCombinationProbability(sequences: SymbolsSequenceDescribing[]): number
 static getUniqueCombinationsWithWeights(combinations: string[][][]): {combination: string[][]; weight: number}[]
@@ -148,3 +148,9 @@ practice:
   grid). Different reel-stop combinations can render the same visible grid (e.g. on strips with repeated adjacent
   symbols); running win calculation once per unique grid × its weight avoids redundant work.
 - **`areCombinationsEqual(a, b)`** — deep equality check for two grids, handy for tests/debugging.
+
+`isMatchPattern`/`getMatchingPattern`/`getWinningLinesIds` accept an optional trailing `wildSubstitutions` map
+restricting which target symbols a given wild is allowed to complete a match for (a wild absent from the map keeps
+substituting for anything, the pre-existing default). See
+[Paytable & Win Calculation](paytable-and-wins.md#per-symbol-wild-substitution) for the full explanation and an
+example wired through `VideoSlotConfig`.

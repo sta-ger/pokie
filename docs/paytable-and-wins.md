@@ -39,7 +39,11 @@ them. The special "count anywhere on the grid, not along a line" semantics live 
 ## `VideoSlotWinCalculator`
 
 ```ts
-constructor(conf: VideoSlotConfigDescribing)
+constructor(
+    conf: VideoSlotConfigDescribing,
+    lineWinCalculator: LineWinCalculating = new DefaultLineWinCalculator(conf),
+    scatterWinCalculator: ScatterWinCalculating = new DefaultScatterWinCalculator(conf),
+)
 calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing): void
 getWinningLines(): Record<string, WinningLineDescribing>
 getWinningScatters(): Record<string, WinningScatterDescribing>
@@ -48,13 +52,18 @@ getScattersWinning(): number  // sum of all winning scatters' amounts
 getWinAmount(): number        // getLinesWinning() + getScattersWinning()
 ```
 
+`VideoSlotWinCalculator` itself is now just a thin dispatcher: `calculateWin` validates the bet, then hands the
+combination to the injected `LineWinCalculating` and `ScatterWinCalculating` collaborators and stores what they
+return. All the logic described below (steps 2-5) lives in the default implementations of those two interfaces —
+see [Extension points](#extension-points).
+
 `calculateWin(bet, combination)`:
 
 1. **Throws** `Bet ${bet} is not specified at paytable` if `bet` isn't in `config.getAvailableBets()`. (Note the
    asymmetry: `Paytable.getWinAmountForSymbol` itself never throws — it defaults to `0` for anything unknown. Only
    the calculator's entry point validates the bet.)
 2. Finds every winning line id via
-   `SymbolsCombinationsAnalyzer.getWinningLinesIds(matrix, linesDefinitions, patterns, wildSymbols)`.
+   `SymbolsCombinationsAnalyzer.getWinningLinesIds(matrix, linesDefinitions, patterns, wildSymbols, wildSubstitutions)`.
 3. For each, builds a `WinningLine`: extracts the line's symbols
    (`getSymbolsForDefinition`), finds the matching pattern (`getMatchingPattern` — since pattern arrays are built
    longest-first, this always resolves to the **longest** matching run, never a shorter subset), resolves the
@@ -105,6 +114,54 @@ class NoWinAmount implements WinAmountDetermining { getWinAmount(): number { ret
 
 The generic contract the base `GameSession` depends on — it knows nothing about paylines or scatters, just "how much
 did this round win." `NoWinAmount` is the null-object default before a slot-specific calculator is wired in.
+
+## Extension points
+
+### Custom line/scatter win logic
+
+```ts
+interface LineWinCalculating<T = string> {
+    calculateWinningLines(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<string, WinningLineDescribing<T>>;
+}
+interface ScatterWinCalculating<T = string> {
+    calculateWinningScatters(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): Record<T, WinningScatterDescribing<T>>;
+}
+```
+
+`DefaultLineWinCalculator`/`DefaultScatterWinCalculator` implement the steps described above and are
+`VideoSlotWinCalculator`'s default 2nd/3rd constructor arguments — replace either one (or both) to change how wins
+are computed without touching bet validation, the scatter grid scan, or anything else the calculator already does
+correctly:
+
+```ts
+import {LineWinCalculating, VideoSlotConfig, VideoSlotWinCalculator} from "pokie";
+
+class ClusterPaysLineCalculator implements LineWinCalculating {
+    public calculateWinningLines(bet, symbolsCombination) {
+        // your own logic — e.g. count same-symbol clusters instead of paylines
+    }
+}
+
+const config = new VideoSlotConfig();
+const calculator = new VideoSlotWinCalculator(config, new ClusterPaysLineCalculator());
+```
+
+### Per-symbol wild substitution
+
+By default every wild in `config.getWildSymbols()` substitutes for any symbol (the classic behavior). To restrict a
+specific wild to only some symbols, call `VideoSlotConfig.setWildSubstitutions`:
+
+```ts
+const config = new VideoSlotConfig();
+config.setWildSubstitutions({W: ["A", "K"]}); // "W" only substitutes for A or K, not Q/J/10/9
+```
+
+`DefaultLineWinCalculator` picks this up automatically (via `config.getWildSubstitutions?.()`) and forwards it to
+`SymbolsCombinationsAnalyzer.isMatchPattern`/`getMatchingPattern`/`getWinningLinesIds`, all of which take an optional
+trailing `wildSubstitutions?: Partial<Record<T, T[]>>` parameter. A wild with no entry in the map keeps substituting
+for anything — this is opt-in per wild, not a global switch. Since `getWildSubstitutions`/`setWildSubstitutions` are
+optional interface members, custom `VideoSlotConfigDescribing`/`VideoSlotConfigSetting` implementations written
+before this feature existed keep compiling unchanged.
 
 ## Rules worth knowing before you tune a paytable
 

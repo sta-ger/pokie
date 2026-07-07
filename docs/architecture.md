@@ -89,6 +89,51 @@ All `Buildable*` methods return `this`, so they're chainable (`new SymbolsSequen
 Concrete implementations deep-clone on both ends (via `JSON.parse(JSON.stringify(...))`), so the plain data you get
 out — or pass in — is always decoupled from the object's internal state.
 
+## Extension points for custom game mechanics
+
+The composition pattern above only pays off if the pieces you'd actually want to swap for a custom feature
+(substitution rules, win calculation, reel-strip generation, bonus-round bookkeeping) are themselves injectable
+collaborators rather than logic buried inside a concrete class. Five seams exist specifically for this:
+
+| Want to customize... | Implement | Injected into |
+|---|---|---|
+| How lines are turned into wins (cluster pays, multipliers, ...) | `LineWinCalculating<T>` | `VideoSlotWinCalculator`'s 2nd constructor param |
+| How scatters are turned into wins | `ScatterWinCalculating<T>` | `VideoSlotWinCalculator`'s 3rd constructor param |
+| Which symbols a wild is allowed to substitute for | `VideoSlotConfig.setWildSubstitutions(...)` | picked up automatically by the default line calculator |
+| How reel strips are auto-generated | `ReelsSymbolsSequencesGenerating<T>` | `VideoSlotConfig`'s 2nd constructor param |
+| Free-games bank/retrigger bookkeeping | `FreeGamesRoundHandling<T>` | `VideoSlotWithFreeGamesSession`'s 5th constructor param |
+
+All five follow the same rule as everywhere else in the library: an optional constructor parameter whose default
+reproduces the exact pre-existing behavior, so nothing that doesn't opt in is affected. See
+[Paytable & Win Calculation](paytable-and-wins.md#extension-points), [Reels & Symbol Sequences](reels-and-sequences.md),
+and [Free Games](free-games.md#extension-points) for details and examples.
+
+### `AbstractVideoSlotSessionDecorator` — writing your own session decorator without the boilerplate
+
+Wrapping a `VideoSlotSessionHandling` to change one or two methods (the way `VideoSlotWithFreeGamesSession` wraps
+`VideoSlotSession` to add free-games bookkeeping around `play()`) otherwise means hand-writing a pass-through for
+every other method on a fairly wide interface. `AbstractVideoSlotSessionDecorator<T>` is exactly that pass-through,
+written once:
+
+```ts
+import {AbstractVideoSlotSessionDecorator, VideoSlotSessionHandling} from "pokie";
+
+class LoggingSession<T extends string | number | symbol = string> extends AbstractVideoSlotSessionDecorator<T> {
+    public override play(): void {
+        console.log("playing round, bet =", this.getBet());
+        super.play();
+        console.log("win =", this.getWinAmount());
+    }
+}
+
+const session = new LoggingSession(new VideoSlotSession());
+```
+
+It holds no state and no business logic of its own — just `protected readonly baseSession` and one delegating
+method per interface member — so it doesn't reintroduce inheritance between domain classes; it only removes the
+boilerplate of forwarding methods a decorator doesn't care about. `VideoSlotWithFreeGamesSession` itself is built
+this way — read it as a worked example.
+
 ## Symbol IDs are a generic type parameter, defaulted to `string`
 
 Every class in the symbol/game/win/net chain — `SymbolsSequence`, `SymbolsCombination`, `VideoSlotConfig`,

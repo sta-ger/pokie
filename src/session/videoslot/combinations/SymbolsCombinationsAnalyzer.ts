@@ -19,11 +19,24 @@ export class SymbolsCombinationsAnalyzer {
         symbols: T[],
         pattern: number[],
         wildSymbols?: T[],
+        wildSubstitutions?: Partial<Record<T, T[]>>,
     ): boolean {
         const symbolsByPattern: T[] = SymbolsCombinationsAnalyzer.getSymbolsMatchingPattern(symbols, pattern);
         const unique = Array.from(new Set(symbolsByPattern));
-        const uniqueNotWilds = unique.filter((symbol) => !wildSymbols?.some((wildSymbol) => wildSymbol === symbol));
-        return uniqueNotWilds.length === 1;
+        const isWild = (symbol: T): boolean => Boolean(wildSymbols?.some((wildSymbol) => wildSymbol === symbol));
+        const uniqueNotWilds = unique.filter((symbol) => !isWild(symbol));
+        if (uniqueNotWilds.length !== 1) {
+            return false;
+        }
+        const targetSymbol = uniqueNotWilds[0];
+        // A wild with no entry in wildSubstitutions substitutes for anything (the default,
+        // pre-existing behavior); a wild with an entry only substitutes for the symbols listed.
+        return unique
+            .filter((symbol) => isWild(symbol))
+            .every((wild) => {
+                const allowedSubstitutes = wildSubstitutions?.[wild];
+                return allowedSubstitutes === undefined || allowedSubstitutes.includes(targetSymbol);
+            });
     }
 
     public static getWinningSymbolId<T extends string | number | symbol = string>(
@@ -46,9 +59,10 @@ export class SymbolsCombinationsAnalyzer {
         symbols: T[],
         patterns: number[][],
         wildSymbols?: T[],
+        wildSubstitutions?: Partial<Record<T, T[]>>,
     ): number[] | null {
         for (const pattern of patterns) {
-            if (SymbolsCombinationsAnalyzer.isMatchPattern(symbols, pattern, wildSymbols)) {
+            if (SymbolsCombinationsAnalyzer.isMatchPattern(symbols, pattern, wildSymbols, wildSubstitutions)) {
                 return pattern;
             }
         }
@@ -104,6 +118,7 @@ export class SymbolsCombinationsAnalyzer {
         linesDefinitions: LinesDefinitionsDescribing,
         patterns: number[][],
         wildSymbols?: T[],
+        wildSubstitutions?: Partial<Record<T, T[]>>,
     ): string[] {
         const lines: string[] = linesDefinitions.getLinesIds();
         const ids: string[] = lines.filter((lineId: string) => {
@@ -111,7 +126,10 @@ export class SymbolsCombinationsAnalyzer {
                 symbols,
                 linesDefinitions.getLineDefinition(lineId),
             );
-            return SymbolsCombinationsAnalyzer.getMatchingPattern(symbolsLine, patterns, wildSymbols) !== null;
+            return (
+                SymbolsCombinationsAnalyzer.getMatchingPattern(symbolsLine, patterns, wildSymbols, wildSubstitutions) !==
+                null
+            );
         });
         ids.sort();
         return ids;

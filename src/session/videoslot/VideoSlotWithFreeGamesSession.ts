@@ -1,11 +1,10 @@
 import {
-    LinesDefinitionsDescribing,
-    LinesPatternsDescribing,
+    AbstractVideoSlotSessionDecorator,
+    DefaultFreeGamesRoundHandler,
+    FreeGamesRoundHandling,
     PaytableRepresenting,
-    SymbolsCombinationDescribing,
     SymbolsCombinationsGenerating,
     SymbolsCombinationsGenerator,
-    SymbolsSequenceDescribing,
     VideoSlotSession,
     VideoSlotSessionHandling,
     VideoSlotWinCalculating,
@@ -13,14 +12,14 @@ import {
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesConfigRepresenting,
     VideoSlotWithFreeGamesSessionHandling,
-    WinningLineDescribing,
     WinningScatterDescribing,
 } from "pokie";
 
 export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = string>
-implements VideoSlotWithFreeGamesSessionHandling<T> {
-    private readonly baseSession: VideoSlotSessionHandling<T>;
+    extends AbstractVideoSlotSessionDecorator<T>
+    implements VideoSlotWithFreeGamesSessionHandling<T> {
     private readonly config: VideoSlotWithFreeGamesConfigRepresenting<T>;
+    private readonly freeGamesRoundHandler: FreeGamesRoundHandling<T>;
     private freeGamesNum = 0;
     private freeGamesSum = 0;
     private freeBank = 0;
@@ -34,9 +33,11 @@ implements VideoSlotWithFreeGamesSessionHandling<T> {
             combinationsGenerator,
             winCalculator,
         ),
+        freeGamesRoundHandler: FreeGamesRoundHandling<T> = new DefaultFreeGamesRoundHandler<T>(),
     ) {
-        this.baseSession = baseSession;
+        super(baseSession);
         this.config = config;
+        this.freeGamesRoundHandler = freeGamesRoundHandler;
     }
 
     public getWonFreeGamesNumber(): number {
@@ -78,122 +79,18 @@ implements VideoSlotWithFreeGamesSessionHandling<T> {
         this.freeBank = value;
     }
 
-    public getPaytable(): PaytableRepresenting<T> {
-        return this.config.getPaytable();
-    }
-
-    public getSymbolsCombination(): SymbolsCombinationDescribing<T> {
-        return this.baseSession.getSymbolsCombination();
-    }
-
-    public getWinningLines(): Record<number, WinningLineDescribing<T>> {
-        return this.baseSession.getWinningLines();
-    }
-
-    public getWinningScatters(): Record<T, WinningScatterDescribing<T>> {
-        return this.baseSession.getWinningScatters();
-    }
-
-    public getSymbolsSequences(): SymbolsSequenceDescribing<T>[] {
-        return this.baseSession.getSymbolsSequences();
-    }
-
-    public getReelsSymbolsNumber(): number {
-        return this.baseSession.getReelsSymbolsNumber();
-    }
-
-    public getReelsNumber(): number {
-        return this.baseSession.getReelsNumber();
-    }
-
-    public getAvailableSymbols(): T[] {
-        return this.baseSession.getAvailableSymbols();
-    }
-
-    public getCreditsAmount(): number {
-        return this.baseSession.getCreditsAmount();
-    }
-
-    public setCreditsAmount(creditsAmount: number): void {
-        this.baseSession.setCreditsAmount(creditsAmount);
-    }
-
-    public getWinAmount(): number {
-        return this.baseSession.getWinAmount();
-    }
-
-    public getAvailableBets(): number[] {
-        return this.baseSession.getAvailableBets();
-    }
-
-    public getBet(): number {
-        return this.baseSession.getBet();
-    }
-
-    public setBet(bet: number): void {
-        this.baseSession.setBet(bet);
-    }
-
-    public canPlayNextGame(): boolean {
-        return this.baseSession.canPlayNextGame();
-    }
-
-    public play(): void {
-        if (this.getFreeGamesNum() === this.getFreeGamesSum()) {
-            this.setFreeGamesBank(0);
-            this.setFreeGamesNum(0);
-            this.setFreeGamesSum(0);
-        }
+    public override play(): void {
+        this.freeGamesRoundHandler.beforeRoundPlayed(this);
         const creditsBeforePlay = this.getCreditsAmount();
         this.baseSession.play();
-        if (this.getFreeGamesSum() > 0 && this.getFreeGamesNum() < this.getFreeGamesSum()) {
-            this.setFreeGamesNum(this.getFreeGamesNum() + 1);
-            this.setFreeGamesBank(this.getFreeGamesBank() + this.getWinAmount());
-            this.setCreditsAmount(creditsBeforePlay);
-        }
-        const wonFreeGames = this.getWonFreeGamesNumber();
-        if (wonFreeGames > 0) {
-            this.setFreeGamesSum(this.getFreeGamesSum() + wonFreeGames);
-        } else {
-            if (this.getFreeGamesSum() > 0 && this.getFreeGamesNum() === this.getFreeGamesSum()) {
-                this.setCreditsAmount(this.getCreditsAmount() + this.getFreeGamesBank());
-            }
-        }
+        this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
     }
 
     public getFreeGamesForScatters(symbolId: T, numberOfSymbols: number): number {
         return this.config.getFreeGamesForScatters(symbolId, numberOfSymbols);
     }
 
-    public isSymbolWild(symbolId: T): boolean {
-        return this.baseSession.isSymbolWild(symbolId);
-    }
-
-    public isSymbolScatter(symbolId: T): boolean {
-        return this.baseSession.isSymbolScatter(symbolId);
-    }
-
-    public getWildSymbols(): T[] {
-        return this.baseSession.getWildSymbols();
-    }
-
-    public getScatterSymbols(): T[] {
-        return this.baseSession.getScatterSymbols();
-    }
-
-    public getLinesDefinitions(): LinesDefinitionsDescribing {
-        return this.baseSession.getLinesDefinitions();
-    }
-
-    public getLinesPatterns(): LinesPatternsDescribing {
-        return this.baseSession.getLinesPatterns();
-    }
-
-    public getLinesWinning(): number {
-        return this.baseSession.getLinesWinning();
-    }
-
-    public getScattersWinning(): number {
-        return this.baseSession.getScattersWinning();
+    public override getPaytable(): PaytableRepresenting<T> {
+        return this.config.getPaytable();
     }
 }
