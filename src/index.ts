@@ -57,6 +57,7 @@ export * from "./session/videoslot/combinations/PseudorandomNumberGenerator.js";
 export * from "./session/videoslot/combinations/RandomNumberGenerating.js";
 export * from "./session/videoslot/combinations/ReelsSymbolsSequencesGenerating.js";
 export * from "./session/videoslot/combinations/SecureRandomNumberGenerator.js";
+export * from "./session/videoslot/combinations/SeededRandomNumberGenerator.js";
 export * from "./session/videoslot/combinations/SymbolsCombination.js";
 export * from "./session/videoslot/combinations/SymbolsCombinationDescribing.js";
 export * from "./session/videoslot/combinations/SymbolsCombinationsAnalyzer.js";

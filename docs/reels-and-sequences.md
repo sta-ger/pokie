@@ -84,12 +84,17 @@ data is laid out row-major (`[row][reel]`) instead — both directions deep-clon
 ```ts
 constructor(config: VideoSlotConfigDescribing, rng: RandomNumberGenerating = new PseudorandomNumberGenerator())
 generateSymbolsCombination(): SymbolsCombinationDescribing
+getLastStopPositions(): number[]
 ```
 
 For each reel, it draws a random start position anywhere on that reel's `SymbolsSequence`
 (`rng.getRandomInt(0, sequence.getSize())`) and reads `reelsSymbolsNumber` consecutive symbols from there, wrapping
 around the strip's end via `SymbolsSequence.getIndex` if needed — simulating "spin the physical strip, stop at a
-random position, read the visible window."
+random position, read the visible window." `getLastStopPositions()` returns the per-reel stop position (index into
+that reel's `SymbolsSequence`) used to produce the most recently generated combination — e.g. for logging/auditing
+exactly how a round's outcome was produced, or reconstructing it later. It's declared as an optional
+(`getLastStopPositions?()`) member on `SymbolsCombinationsGenerating`, so custom implementations of that interface
+written before this existed keep compiling unchanged.
 
 ### RNGs
 
@@ -97,7 +102,8 @@ random position, read the visible window."
 interface RandomNumberGenerating { getRandomInt(min: number, max: number): number; } // [min, max)
 ```
 
-- **`PseudorandomNumberGenerator`** (the default) — `Math.random()`-based, not cryptographically secure.
+- **`PseudorandomNumberGenerator`** (the default) — `Math.random()`-based, not cryptographically secure. **Don't use
+  this for real-money/regulated games** — see the warning in [Getting Started](getting-started.md).
 - **`SecureRandomNumberGenerator`** — uses Node's `crypto.randomInt`. Not used anywhere by default; opt in for
   real-money/regulated gameplay by passing it explicitly:
 
@@ -105,6 +111,17 @@ interface RandomNumberGenerating { getRandomInt(min: number, max: number): numbe
   import {SymbolsCombinationsGenerator, SecureRandomNumberGenerator} from "pokie";
 
   const generator = new SymbolsCombinationsGenerator(config, new SecureRandomNumberGenerator());
+  ```
+- **`SeededRandomNumberGenerator(seed)`** — a deterministic PRNG (mulberry32): the same seed always produces the
+  same sequence of draws. Not cryptographically secure, so not a substitute for `SecureRandomNumberGenerator` in
+  production — but useful for reproducible tests, replaying a specific round, or demo/practice modes that need
+  consistent outcomes:
+
+  ```ts
+  import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator} from "pokie";
+
+  const generator = new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(12345));
+  generator.generateSymbolsCombination(); // always the same combination for a given config + seed
   ```
 
 ## `SymbolsCombinationsAnalyzer` — static analysis utilities
