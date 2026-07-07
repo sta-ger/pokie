@@ -36,12 +36,17 @@ interface LinesDefinitionsDescribing {
   toMap(): Record<string, number[]>              // deep-cloned out
   ```
 - **`LinesDefinitionsFor3x3` / `LinesDefinitionsFor5x3` / `LinesDefinitionsFor5x4`** — static preset tables (not
-  parametrized generators) of commonly-seen payline layouts: 11, 25, and 12 lines respectively, built from
+  parametrized generators) of commonly-seen payline layouts: 11, 25, and 16 lines respectively, built from
   recognizable shape families (flat, V, M/W arch, staircase, zigzag, notch). These aren't a single official industry
   spec — every real provider ships their own table — but `LinesDefinitionsFor5x3` in particular follows the
   widely-circulated "standard 20/25-line" reference used across countless real 5×3 games, extended with a few
-  asymmetric half-staircase lines (common once a game goes past ~20 lines). Use these when your grid size matches
-  exactly; otherwise use `HorizontalLines` or `CustomLinesDefinitions`.
+  asymmetric half-staircase lines (common once a game goes past ~20 lines). `LinesDefinitionsFor3x3` is actually
+  *complete* for its grid: with only 3 reels, it contains every symmetric (mirror-image) line shape possible — 3
+  flat + 2 full diagonals + all 6 single-reel notch variants — there's nothing sensible left to add.
+  `LinesDefinitionsFor5x4` follows the same shape families as the 5×3 table, but a V spanning all 4 rows can't
+  physically fit in 5 reels (2 steps each side of center only reaches 2 rows away), so its V/staircase shapes split
+  into "3-of-4-rows" and "all-4-rows" variants — the full-grid staircases only became possible to add for that
+  reason. Use these when your grid size matches exactly; otherwise use `HorizontalLines` or `CustomLinesDefinitions`.
 - **`WaysDefinitions(reelsNumber, reelsSymbolsNumber)`** — models "ways to win" instead of fixed paylines: every
   possible row combination across reels counts as a line (a symbol anywhere in each reel matches). Line ids here are
   just array indices, not meaningful identifiers, and the definition count is `reelsSymbolsNumber ** reelsNumber`
