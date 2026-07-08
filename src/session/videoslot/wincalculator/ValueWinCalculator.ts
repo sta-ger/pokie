@@ -10,7 +10,7 @@ import {
 // value (e.g. differently-weighted variants of the same conceptual symbol, each worth a different
 // amount), and every occurrence on the grid contributes that value independently — there's no
 // count-tiered payout lookup, the win is simply (occurrences found) * (value of that symbol) * bet.
-export class DefaultValueWinCalculator<T extends string | number | symbol = string> implements ValueWinCalculating<T> {
+export class ValueWinCalculator<T extends string | number | symbol = string> implements ValueWinCalculating<T> {
     private readonly symbolValues: Partial<Record<T, number>>;
 
     constructor(symbolValues: Partial<Record<T, number>>) {

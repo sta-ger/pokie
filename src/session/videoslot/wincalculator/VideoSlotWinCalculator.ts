@@ -1,9 +1,9 @@
 import {
     ClusterWinCalculating,
-    DefaultLineWinCalculator,
-    DefaultScatterWinCalculator,
     LineWinCalculating,
+    LineWinCalculator,
     ScatterWinCalculating,
+    ScatterWinCalculator,
     SymbolsCombinationDescribing,
     ValueWinCalculating,
     VideoSlotConfigDescribing,
@@ -33,9 +33,9 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
 
     constructor(
         conf: VideoSlotConfigDescribing<T>,
-        lineWinCalculator: LineWinCalculating<T> = new DefaultLineWinCalculator<T>(conf),
-        scatterWinCalculator: ScatterWinCalculating<T> = new DefaultScatterWinCalculator<T>(conf),
-        // Left undefined by default (rather than defaulting to a DefaultClusterWinCalculator
+        lineWinCalculator: LineWinCalculating<T> = new LineWinCalculator<T>(conf),
+        scatterWinCalculator: ScatterWinCalculating<T> = new ScatterWinCalculator<T>(conf),
+        // Left undefined by default (rather than defaulting to a ClusterWinCalculator
         // instance) so calculateWin() below only computes cluster wins when a caller opts in —
         // existing callers that never pass this argument see no change in behavior or winAmount.
         clusterWinCalculator: ClusterWinCalculating<T> | undefined = undefined,

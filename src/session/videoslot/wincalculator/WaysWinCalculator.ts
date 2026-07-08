@@ -7,12 +7,12 @@ import {
     WinningWayDescribing,
 } from "pokie";
 
-// Multiplicative ways-to-win (243-ways/Megaways style): for every payable symbol, pays
+// Multiplicative ways-to-win (243-ways-style) evaluation: for every payable symbol, pays
 // paytable(symbolId, reelsMatched, bet) * waysCount, where waysCount is the product of how many
 // matching cells sit in each consecutive reel from the left (see
-// SymbolsCombinationsAnalyzer.getWaysForSymbol). Distinct from DefaultLineWinCalculator, which
-// checks fixed row-combinations one at a time and never surfaces a ways count.
-export class DefaultWaysWinCalculator<T extends string | number | symbol = string> implements WaysWinCalculating<T> {
+// SymbolsCombinationsAnalyzer.getWaysForSymbol). Distinct from LineWinCalculator, which checks
+// fixed row-combinations one at a time and never surfaces a ways count.
+export class WaysWinCalculator<T extends string | number | symbol = string> implements WaysWinCalculating<T> {
     private readonly config: VideoSlotConfigDescribing<T>;
 
     constructor(config: VideoSlotConfigDescribing<T>) {

@@ -1,6 +1,6 @@
 import {ReelsSymbolsSequencesGenerating, SymbolsSequence, SymbolsSequenceDescribing} from "pokie";
 
-export class DefaultReelsSymbolsSequencesGenerator<T extends string | number | symbol = string>
+export class ReelsSymbolsSequencesGenerator<T extends string | number | symbol = string>
 implements ReelsSymbolsSequencesGenerating<T> {
     public generate(
         reelsNumber: number,

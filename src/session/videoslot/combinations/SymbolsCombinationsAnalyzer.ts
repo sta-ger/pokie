@@ -166,7 +166,7 @@ export class SymbolsCombinationsAnalyzer {
 
     // Combines the multiplier values carried by whichever of `positions` land on a symbol present
     // in `multiplierValues` (e.g. multiplier wilds sitting inside a winning line/cluster) — distinct
-    // from value-pay (DefaultValueWinCalculator), which pays its own independent win instead of
+    // from value-pay (ValueWinCalculator), which pays its own independent win instead of
     // scaling someone else's. Positions on symbols absent from `multiplierValues` are skipped
     // rather than treated as a neutral value baked into `combine`, so a plain symbol never resets an
     // accumulated multiplier back to the identity. Defaults to multiplying (identity 1); pass a
@@ -185,7 +185,7 @@ export class SymbolsCombinationsAnalyzer {
         }, identity);
     }
 
-    // Multiplicative ways-to-win evaluation (243-ways/Megaways style): for `symbolId`, counts how
+    // Multiplicative ways-to-win evaluation (243-ways-style): for `symbolId`, counts how
     // many matching (or wild-substitutable) cells sit in reel 0, reel 1, and so on, stopping at the
     // first reel with zero matches. `waysCount` is the product of those per-reel counts — the number
     // of distinct left-to-right paths a symbol appears on — as opposed to getWinningLinesIds, which

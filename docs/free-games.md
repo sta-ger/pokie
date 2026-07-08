@@ -39,7 +39,7 @@ constructor(
     combinationsGenerator: SymbolsCombinationsGenerating = new SymbolsCombinationsGenerator(config),
     winCalculator: VideoSlotWinCalculating = new VideoSlotWinCalculator(config),
     baseSession: VideoSlotSessionHandling = new VideoSlotSession(config, combinationsGenerator, winCalculator),
-    freeGamesRoundHandler: FreeGamesRoundHandling = new DefaultFreeGamesRoundHandler(),
+    freeGamesRoundHandler: FreeGamesRoundHandling = new FreeGamesRoundHandler(),
 )
 
 getFreeGamesNum(): number / setFreeGamesNum(v: number): void     // free games played so far in the current round
@@ -67,7 +67,7 @@ public play(): void {
 }
 ```
 
-`DefaultFreeGamesRoundHandler` (the constructor's default 5th argument) implements the classic bank-and-retrigger
+`FreeGamesRoundHandler` (the constructor's default 5th argument) implements the classic bank-and-retrigger
 mechanic described below:
 
 1. **`beforeRoundPlayed`** — if the previous round's free games are all used up (`freeGamesNum === freeGamesSum`),

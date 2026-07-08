@@ -7,7 +7,7 @@ import {
     WinningLineDescribing,
 } from "pokie";
 
-export class DefaultLineWinCalculator<T extends string | number | symbol = string> implements LineWinCalculating<T> {
+export class LineWinCalculator<T extends string | number | symbol = string> implements LineWinCalculating<T> {
     private readonly config: VideoSlotConfigDescribing<T>;
 
     constructor(config: VideoSlotConfigDescribing<T>) {

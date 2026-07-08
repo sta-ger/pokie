@@ -1,6 +1,6 @@
 import {FreeGamesRoundHandling, VideoSlotWithFreeGamesSessionHandling} from "pokie";
 
-export class DefaultFreeGamesRoundHandler<T extends string | number | symbol = string>
+export class FreeGamesRoundHandler<T extends string | number | symbol = string>
 implements FreeGamesRoundHandling<T> {
     public beforeRoundPlayed(session: VideoSlotWithFreeGamesSessionHandling<T>): void {
         if (session.getFreeGamesNum() === session.getFreeGamesSum()) {

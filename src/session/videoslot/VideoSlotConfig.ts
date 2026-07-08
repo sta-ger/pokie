@@ -1,5 +1,4 @@
 import {
-    DefaultReelsSymbolsSequencesGenerator,
     GameSessionConfig,
     HorizontalLines,
     LeftToRightLinesPatterns,
@@ -8,6 +7,7 @@ import {
     Paytable,
     PaytableRepresenting,
     ReelsSymbolsSequencesGenerating,
+    ReelsSymbolsSequencesGenerator,
     SymbolsSequenceDescribing,
     VideoSlotConfigRepresenting,
 } from "pokie";
@@ -29,7 +29,7 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
 
     constructor(
         baseConfig = new GameSessionConfig(),
-        sequencesGenerator: ReelsSymbolsSequencesGenerating<T> = new DefaultReelsSymbolsSequencesGenerator<T>(),
+        sequencesGenerator: ReelsSymbolsSequencesGenerating<T> = new ReelsSymbolsSequencesGenerator<T>(),
     ) {
         this.baseConfig = baseConfig;
         this.sequencesGenerator = sequencesGenerator;

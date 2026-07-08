@@ -41,8 +41,8 @@ them. The special "count anywhere on the grid, not along a line" semantics live 
 ```ts
 constructor(
     conf: VideoSlotConfigDescribing,
-    lineWinCalculator: LineWinCalculating = new DefaultLineWinCalculator(conf),
-    scatterWinCalculator: ScatterWinCalculating = new DefaultScatterWinCalculator(conf),
+    lineWinCalculator: LineWinCalculating = new LineWinCalculator(conf),
+    scatterWinCalculator: ScatterWinCalculating = new ScatterWinCalculator(conf),
 )
 calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing): void
 getWinningLines(): Record<string, WinningLineDescribing>
@@ -128,7 +128,7 @@ interface ScatterWinCalculating<T = string> {
 }
 ```
 
-`DefaultLineWinCalculator`/`DefaultScatterWinCalculator` implement the steps described above and are
+`LineWinCalculator`/`ScatterWinCalculator` implement the steps described above and are
 `VideoSlotWinCalculator`'s default 2nd/3rd constructor arguments — replace either one (or both) to change how wins
 are computed without touching bet validation, the scatter grid scan, or anything else the calculator already does
 correctly:
@@ -156,7 +156,7 @@ const config = new VideoSlotConfig();
 config.setWildSubstitutions({W: ["A", "K"]}); // "W" only substitutes for A or K, not Q/J/10/9
 ```
 
-`DefaultLineWinCalculator` picks this up automatically (via `config.getWildSubstitutions?.()`) and forwards it to
+`LineWinCalculator` picks this up automatically (via `config.getWildSubstitutions?.()`) and forwards it to
 `SymbolsCombinationsAnalyzer.isMatchPattern`/`getMatchingPattern`/`getWinningLinesIds`, all of which take an optional
 trailing `wildSubstitutions?: Partial<Record<T, T[]>>` parameter. A wild with no entry in the map keeps substituting
 for anything — this is opt-in per wild, not a global switch. Since `getWildSubstitutions`/`setWildSubstitutions` are

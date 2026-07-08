@@ -1,6 +1,6 @@
 import {
     AbstractVideoSlotSessionDecorator,
-    DefaultFreeGamesRoundHandler,
+    FreeGamesRoundHandler,
     FreeGamesRoundHandling,
     PaytableRepresenting,
     SymbolsCombinationsGenerating,
@@ -33,7 +33,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
             combinationsGenerator,
             winCalculator,
         ),
-        freeGamesRoundHandler: FreeGamesRoundHandling<T> = new DefaultFreeGamesRoundHandler<T>(),
+        freeGamesRoundHandler: FreeGamesRoundHandling<T> = new FreeGamesRoundHandler<T>(),
     ) {
         super(baseSession);
         this.config = config;

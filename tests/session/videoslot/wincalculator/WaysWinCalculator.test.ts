@@ -1,10 +1,10 @@
-import {DefaultWaysWinCalculator, SymbolsCombination, VideoSlotConfig} from "pokie";
+import {WaysWinCalculator, SymbolsCombination, VideoSlotConfig} from "pokie";
 
-describe("DefaultWaysWinCalculator", () => {
+describe("WaysWinCalculator", () => {
     test("pays a symbol matching across consecutive reels, scaled by the ways count", () => {
         const config = new VideoSlotConfig();
         config.setReelsNumber(3);
-        const calculator = new DefaultWaysWinCalculator(config);
+        const calculator = new WaysWinCalculator(config);
         const bet = config.getAvailableBets()[0];
 
         // Reel-major grid (combination[reelId][rowIndex]). "A" chains across all 3 reels
@@ -29,7 +29,7 @@ describe("DefaultWaysWinCalculator", () => {
     test("does not pay a symbol absent from the first reel", () => {
         const config = new VideoSlotConfig();
         config.setReelsNumber(3);
-        const calculator = new DefaultWaysWinCalculator(config);
+        const calculator = new WaysWinCalculator(config);
         const bet = config.getAvailableBets()[0];
 
         // "A" is absent from reel0 -> excluded outright. "K" is on reel0 but nowhere else, so it
@@ -47,7 +47,7 @@ describe("DefaultWaysWinCalculator", () => {
         const config = new VideoSlotConfig();
         config.setReelsNumber(3);
         const bet = config.getAvailableBets()[0];
-        const calculator = new DefaultWaysWinCalculator(config);
+        const calculator = new WaysWinCalculator(config);
 
         // an all-wild, all-scatter grid should never produce a "winning way" for W or S themselves
         const combination = new SymbolsCombination().fromMatrix([

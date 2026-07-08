@@ -102,12 +102,12 @@ Defaults (no-arg constructor): 5 reels × 3 rows, `availableSymbols = ["A","K","
 ```ts
 constructor(
     baseConfig = new GameSessionConfig(),
-    sequencesGenerator: ReelsSymbolsSequencesGenerating = new DefaultReelsSymbolsSequencesGenerator(),
+    sequencesGenerator: ReelsSymbolsSequencesGenerating = new ReelsSymbolsSequencesGenerator(),
 )
 ```
 
 `VideoSlotConfig` builds one `SymbolsSequence` per reel by delegating to the injected `ReelsSymbolsSequencesGenerating`.
-The default, `DefaultReelsSymbolsSequencesGenerator`: 15 copies of each non-wild/non-scatter symbol, 5 copies of each
+The default, `ReelsSymbolsSequencesGenerator`: 15 copies of each non-wild/non-scatter symbol, 5 copies of each
 wild, 3 copies of each scatter, then shuffles — re-rolling the shuffle until no reel has a scatter symbol as part of
 a multi-symbol stack (so scatters land as single symbols on each reel by default). This runs:
 

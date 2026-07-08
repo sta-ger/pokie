@@ -1,8 +1,8 @@
-import {DefaultValueWinCalculator, SymbolsCombination} from "pokie";
+import {ValueWinCalculator, SymbolsCombination} from "pokie";
 
-describe("DefaultValueWinCalculator", () => {
+describe("ValueWinCalculator", () => {
     test("pays every occurrence of a valued symbol independently, unlike a count-tiered paytable lookup", () => {
-        const calculator = new DefaultValueWinCalculator<string>({VALUE_5: 5, VALUE_10: 10});
+        const calculator = new ValueWinCalculator<string>({VALUE_5: 5, VALUE_10: 10});
         const bet = 2;
 
         // Reel-major grid: two occurrences of VALUE_5, one of VALUE_10.
@@ -21,7 +21,7 @@ describe("DefaultValueWinCalculator", () => {
     });
 
     test("ignores symbols with no configured value and symbols absent from the grid", () => {
-        const calculator = new DefaultValueWinCalculator<string>({VALUE_5: 5, VALUE_100: 100});
+        const calculator = new ValueWinCalculator<string>({VALUE_5: 5, VALUE_100: 100});
         const bet = 1;
 
         const combination = new SymbolsCombination().fromMatrix([["K", "Q", "J"]]);
@@ -30,7 +30,7 @@ describe("DefaultValueWinCalculator", () => {
     });
 
     test("skips a configured value of zero", () => {
-        const calculator = new DefaultValueWinCalculator<string>({VALUE_0: 0});
+        const calculator = new ValueWinCalculator<string>({VALUE_0: 0});
         const bet = 1;
 
         const combination = new SymbolsCombination().fromMatrix([["VALUE_0", "VALUE_0"]]);

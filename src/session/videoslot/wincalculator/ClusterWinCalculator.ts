@@ -7,14 +7,13 @@ import {
     WinningClusterDescribing,
 } from "pokie";
 
-// Pay-anywhere-by-adjacency win style used by cluster-pay slots: unlike DefaultLineWinCalculator
-// (fixed paylines) or DefaultScatterWinCalculator (counts a symbol anywhere on the grid, no
+// Pay-anywhere-by-adjacency win style used by cluster-pay slots: unlike LineWinCalculator
+// (fixed paylines) or ScatterWinCalculator (counts a symbol anywhere on the grid, no
 // adjacency requirement), this groups orthogonally-adjacent same-symbol cells (4-directional flood
 // fill across the reel/row grid) and pays each group that reaches the minimum cluster size on its
 // own. A grid can contain several separate clusters of the same symbol, so results are keyed by a
 // generated cluster index rather than by symbolId (mirrors how winningLines are keyed by lineId).
-export class DefaultClusterWinCalculator<T extends string | number | symbol = string>
-implements ClusterWinCalculating<T> {
+export class ClusterWinCalculator<T extends string | number | symbol = string> implements ClusterWinCalculating<T> {
     private readonly config: VideoSlotConfigDescribing<T>;
     private readonly minimumClusterSize: number;
 

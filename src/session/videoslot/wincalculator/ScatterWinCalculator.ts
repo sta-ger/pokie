@@ -7,8 +7,7 @@ import {
     WinningScatterDescribing,
 } from "pokie";
 
-export class DefaultScatterWinCalculator<T extends string | number | symbol = string>
-implements ScatterWinCalculating<T> {
+export class ScatterWinCalculator<T extends string | number | symbol = string> implements ScatterWinCalculating<T> {
     private readonly config: VideoSlotConfigDescribing<T>;
 
     constructor(config: VideoSlotConfigDescribing<T>) {

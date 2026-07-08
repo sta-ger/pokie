@@ -1,9 +1,9 @@
-import {DefaultClusterWinCalculator, SymbolsCombination, VideoSlotConfig} from "pokie";
+import {ClusterWinCalculator, SymbolsCombination, VideoSlotConfig} from "pokie";
 
-describe("DefaultClusterWinCalculator", () => {
+describe("ClusterWinCalculator", () => {
     test("pays a cluster of orthogonally-adjacent same symbols that meets the minimum size", () => {
         const config = new VideoSlotConfig();
-        const calculator = new DefaultClusterWinCalculator(config, 5);
+        const calculator = new ClusterWinCalculator(config, 5);
         const bet = config.getAvailableBets()[0];
 
         // Reel-major grid (combination[reelId][rowIndex]): a plus-shaped cluster of 5 "A"s.
@@ -27,7 +27,7 @@ describe("DefaultClusterWinCalculator", () => {
 
     test("does not pay a cluster below the minimum size", () => {
         const config = new VideoSlotConfig();
-        const calculator = new DefaultClusterWinCalculator(config, 6);
+        const calculator = new ClusterWinCalculator(config, 6);
         const bet = config.getAvailableBets()[0];
 
         const combination = new SymbolsCombination().fromMatrix(
@@ -44,7 +44,7 @@ describe("DefaultClusterWinCalculator", () => {
 
     test("keys separate clusters of the same symbol independently, unlike scatter/line wins", () => {
         const config = new VideoSlotConfig();
-        const calculator = new DefaultClusterWinCalculator(config, 3);
+        const calculator = new ClusterWinCalculator(config, 3);
         const bet = config.getAvailableBets()[0];
 
         // Top row and bottom row are each a 3-cell "A" cluster; the middle row's "K"s are diagonal
