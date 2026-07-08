@@ -3,6 +3,7 @@ import {
     WinningClusterDescribing,
     WinningLineDescribing,
     WinningScatterDescribing,
+    WinningValueDescribing,
 } from "pokie";
 
 export interface VideoSlotWinDetermining<T extends string | number | symbol = string> extends WinAmountDetermining {
@@ -21,4 +22,11 @@ export interface VideoSlotWinDetermining<T extends string | number | symbol = st
     getWinningClusters?(): Record<string, WinningClusterDescribing<T>>;
 
     getClustersWinning?(): number;
+
+    // Optional for the same reason. Per-symbol bet-multiplier values (each occurrence contributes
+    // independently, no count-tiered payout lookup) are opt-in via a ValueWinCalculating
+    // implementation, e.g. DefaultValueWinCalculator.
+    getWinningValues?(): Record<T, WinningValueDescribing<T>>;
+
+    getValuesWinning?(): number;
 }

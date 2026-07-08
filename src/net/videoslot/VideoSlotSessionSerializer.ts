@@ -9,6 +9,8 @@ import {
     WinningClusterNetworkData,
     WinningScatterDescribing,
     WinningScatterNetworkData,
+    WinningValueDescribing,
+    WinningValueNetworkData,
 } from "pokie";
 
 export class VideoSlotSessionSerializer<T extends string | number | symbol = string>
@@ -98,6 +100,23 @@ implements VideoSlotSessionSerializing<T> {
                     },
                 }),
                 {} as Record<string, WinningClusterNetworkData<T>>,
+            );
+        }
+        // getWinningValues is optional on VideoSlotSessionHandling for the same reason as
+        // getWinningClusters — value-pay is an opt-in extension (see VideoSlotWinDetermining).
+        const winningValues = session.getWinningValues?.() ?? {};
+        if (Object.keys(winningValues).length > 0) {
+            const valuesByKey = winningValues as unknown as Record<string, WinningValueDescribing<T>>;
+            r.winningValues = Object.values(valuesByKey).reduce(
+                (acc, value) => ({
+                    ...acc,
+                    [value.getSymbolId()]: {
+                        symbolId: value.getSymbolId(),
+                        symbolsPositions: value.getSymbolsPositions(),
+                        winAmount: value.getWinAmount(),
+                    },
+                }),
+                {} as Record<T, WinningValueNetworkData<T>>,
             );
         }
         return r;
