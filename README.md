@@ -1,6 +1,7 @@
 # POKIE
 
 [![npm version](https://badge.fury.io/js/pokie.svg)](https://badge.fury.io/js/pokie)
+[![license](https://img.shields.io/npm/l/pokie.svg)](LICENSE)
 
 _In Australia, they call slot machines "pokies"._
 
@@ -108,3 +109,7 @@ See the [examples](https://github.com/sta-ger/pokie-examples) of various video s
 See the [walkthrough](docs/math-modeling.md) in the docs for balancing RTP, hit frequency, and volatility with
 POKIE. It's an updated, API-verified version of the original
 [Medium article](https://medium.com/@sta-ger/exploring-video-slot-math-with-pokie-3bc7191b72a0) on the same topic.
+
+## License
+
+ISC — see [LICENSE](LICENSE).
