@@ -8,12 +8,9 @@ Introducing **POKIE**, a server-side video slot game logic framework for JavaScr
 
 `npm install pokie`
 
-> **⚠️ RNG note:** the default random number generator (`PseudorandomNumberGenerator`) is `Math.random()`-based —
-> not cryptographically secure and not suitable for real-money/regulated games. For those, pass
-> `SecureRandomNumberGenerator` explicitly wherever a `RandomNumberGenerating` is accepted (e.g.
-> `new SymbolsCombinationsGenerator(config, new SecureRandomNumberGenerator())`). See
-> [Reels & Symbol Sequences](docs/reels-and-sequences.md) for details, and `SeededRandomNumberGenerator` for
-> deterministic/reproducible spins in tests.
+> **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure. Use
+> `SecureRandomNumberGenerator` for real-money/regulated games. See
+> [Reels & Symbol Sequences](docs/reels-and-sequences.md).
 
 ## Usage
 
