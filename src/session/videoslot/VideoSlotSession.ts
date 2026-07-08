@@ -17,19 +17,21 @@ import {
     WinningLineDescribing,
     WinningScatterDescribing,
 } from "pokie";
+import {LegacyWinEvaluationResultAdapter} from "./winevaluation/LegacyWinEvaluationResultAdapter.js";
+import {WinEvaluationResult} from "./winevaluation/WinEvaluationResult.js";
 
-export class VideoSlotSession implements VideoSlotSessionHandling {
+export class VideoSlotSession<T extends string | number | symbol = string> implements VideoSlotSessionHandling<T> {
     private readonly baseSession: GameSessionHandling;
-    private readonly config: VideoSlotConfigRepresenting;
-    private readonly combinationsGenerator: SymbolsCombinationsGenerating;
-    private readonly winCalculator: VideoSlotWinCalculating;
+    private readonly config: VideoSlotConfigRepresenting<T>;
+    private readonly combinationsGenerator: SymbolsCombinationsGenerating<T>;
+    private readonly winCalculator: VideoSlotWinCalculating<T>;
     private winAmount = 0;
-    private symbolsCombination: SymbolsCombinationDescribing = new SymbolsCombination();
+    private symbolsCombination: SymbolsCombinationDescribing<T> = new SymbolsCombination<T>();
 
     constructor(
-        config: VideoSlotConfigRepresenting = new VideoSlotConfig(),
-        combinationsGenerator: SymbolsCombinationsGenerating = new SymbolsCombinationsGenerator(config),
-        winCalculator: VideoSlotWinCalculating = new VideoSlotWinCalculator(config),
+        config: VideoSlotConfigRepresenting<T> = new VideoSlotConfig<T>(),
+        combinationsGenerator: SymbolsCombinationsGenerating<T> = new SymbolsCombinationsGenerator<T>(config),
+        winCalculator: VideoSlotWinCalculating<T> = new VideoSlotWinCalculator<T>(config),
         baseSession: GameSessionHandling = new GameSession(config),
     ) {
         this.config = config;
@@ -39,23 +41,30 @@ export class VideoSlotSession implements VideoSlotSessionHandling {
         this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
     }
 
-    public getPaytable(): PaytableRepresenting {
+    public getPaytable(): PaytableRepresenting<T> {
         return this.config.getPaytable();
     }
 
-    public getSymbolsCombination(): SymbolsCombinationDescribing {
+    public getSymbolsCombination(): SymbolsCombinationDescribing<T> {
         return this.symbolsCombination;
     }
 
-    public getWinningLines(): Record<number, WinningLineDescribing> {
+    public getWinningLines(): Record<number, WinningLineDescribing<T>> {
         return this.winCalculator.getWinningLines();
     }
 
-    public getWinningScatters(): Record<string, WinningScatterDescribing> {
+    public getWinningScatters(): Record<T, WinningScatterDescribing<T>> {
         return this.winCalculator.getWinningScatters();
     }
 
-    public getSymbolsSequences(): SymbolsSequenceDescribing[] {
+    public getWinEvaluationResult(): WinEvaluationResult<T> {
+        if (this.supportsWinEvaluationResult()) {
+            return this.winCalculator.getWinEvaluationResult!();
+        }
+        return LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
+    }
+
+    public getSymbolsSequences(): SymbolsSequenceDescribing<T>[] {
         return this.config.getSymbolsSequences();
     }
 
@@ -67,7 +76,7 @@ export class VideoSlotSession implements VideoSlotSessionHandling {
         return this.config.getReelsNumber();
     }
 
-    public getAvailableSymbols(): string[] {
+    public getAvailableSymbols(): T[] {
         return [...this.config.getAvailableSymbols()];
     }
 
@@ -80,7 +89,7 @@ export class VideoSlotSession implements VideoSlotSessionHandling {
     }
 
     public getWinAmount(): number {
-        return this.winAmount;
+        return this.supportsWinEvaluationResult() ? this.getWinEvaluationResult().getTotalWin() : this.winCalculator.getWinAmount();
     }
 
     public getLinesWinning(): number {
@@ -111,23 +120,23 @@ export class VideoSlotSession implements VideoSlotSessionHandling {
         this.baseSession.play();
         this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
         this.winCalculator.calculateWin(this.getBet(), this.symbolsCombination);
-        this.winAmount = this.winCalculator.getWinAmount();
+        this.winAmount = this.getWinAmount();
         this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
     }
 
-    public isSymbolWild(symbolId: string): boolean {
+    public isSymbolWild(symbolId: T): boolean {
         return this.config.isSymbolWild(symbolId);
     }
 
-    public isSymbolScatter(symbolId: string): boolean {
+    public isSymbolScatter(symbolId: T): boolean {
         return this.config.isSymbolScatter(symbolId);
     }
 
-    public getWildSymbols(): string[] {
+    public getWildSymbols(): T[] {
         return this.config.getWildSymbols();
     }
 
-    public getScatterSymbols(): string[] {
+    public getScatterSymbols(): T[] {
         return this.config.getScatterSymbols();
     }
 
@@ -137,5 +146,9 @@ export class VideoSlotSession implements VideoSlotSessionHandling {
 
     public getLinesPatterns(): LinesPatternsDescribing {
         return this.config.getLinesPatterns();
+    }
+
+    private supportsWinEvaluationResult(): boolean {
+        return typeof this.winCalculator.getWinEvaluationResult === "function";
     }
 }

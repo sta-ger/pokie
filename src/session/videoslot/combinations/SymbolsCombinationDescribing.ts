@@ -1,5 +1,7 @@
 import {BuildableFromMatrix, ConvertableToMatrix} from "pokie";
 
-export interface SymbolsCombinationDescribing extends ConvertableToMatrix, BuildableFromMatrix {
-    getSymbols(reelId: number): string[];
+export interface SymbolsCombinationDescribing<T extends string | number | symbol = string>
+    extends ConvertableToMatrix<T>,
+        BuildableFromMatrix<T> {
+    getSymbols(reelId: number): T[];
 }

@@ -5,13 +5,13 @@ import {
     VideoSlotRoundNetworkData,
 } from "pokie";
 
-export type VideoSlotWithFreeGamesInitialNetworkData = {
+export type VideoSlotWithFreeGamesInitialNetworkData<T extends string | number | symbol = string> = {
     /** empty **/
-} & VideoSlotInitialNetworkData &
+} & VideoSlotInitialNetworkData<T> &
     GameWithFreeGamesInitialNetworkData &
-    VideoSlotWithFreeGamesRoundNetworkData;
+    VideoSlotWithFreeGamesRoundNetworkData<T>;
 
-export type VideoSlotWithFreeGamesRoundNetworkData = {
+export type VideoSlotWithFreeGamesRoundNetworkData<T extends string | number | symbol = string> = {
     /** empty **/
-} & VideoSlotRoundNetworkData &
+} & VideoSlotRoundNetworkData<T> &
     GameWithFreeGamesRoundNetworkData;

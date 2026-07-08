@@ -1,23 +1,23 @@
 import {BuildableFromArray} from "pokie";
 
-export interface SymbolsSequenceModifying extends BuildableFromArray {
-    addSymbol(symbolId: string, stackSize?: number, index?: number): this;
+export interface SymbolsSequenceModifying<T extends string | number | symbol = string> extends BuildableFromArray<T> {
+    addSymbol(symbolId: T, stackSize?: number, index?: number): this;
 
     removeSymbol(index: number): this;
 
-    removeAllSymbols(symbolId: string): this;
+    removeAllSymbols(symbolId: T): this;
 
-    addSymbols(symbolsIds: string[], index?: number): this;
+    addSymbols(symbolsIds: T[], index?: number): this;
 
-    setSymbol(index: number, symbolId: string): this;
+    setSymbol(index: number, symbolId: T): this;
 
-    setSymbols(index: number, symbols: string[]): this;
+    setSymbols(index: number, symbols: T[]): this;
 
     shuffle(): this;
 
-    fromSymbolsWeights(symbolsWeights: Record<string, number>): this;
+    fromSymbolsWeights(symbolsWeights: Record<T, number>): this;
 
-    fromNumbersOfSymbols(symbolsNumbers: Record<string, number>): this;
+    fromNumbersOfSymbols(symbolsNumbers: Record<T, number>): this;
 
-    fromNumberOfEachSymbol(availableSymbols: string[], symbolsNumber: number): this;
+    fromNumberOfEachSymbol(availableSymbols: T[], symbolsNumber: number): this;
 }

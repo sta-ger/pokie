@@ -1,4 +1,4 @@
-import {VideoSlotConfig, SymbolsCombinationsGenerator, SymbolsSequence} from "pokie";
+import {SeededRandomNumberGenerator, SymbolsCombinationsGenerator, SymbolsSequence, VideoSlotConfig} from "pokie";
 
 describe("DefaultCombinationsGenerator", () => {
     let combinationsGenerator: SymbolsCombinationsGenerator;
@@ -34,6 +34,28 @@ describe("DefaultCombinationsGenerator", () => {
                     }
                 });
             }
+        });
+    });
+
+    test("getLastStopPositions reports the exact per-reel position that produced the last combination", () => {
+        const sequences = new Array(REELS_NUMBER)
+            .fill(0)
+            .map(() => new SymbolsSequence().fromNumberOfEachSymbol(availableSymbols, 10));
+        const conf = new VideoSlotConfig();
+        conf.setReelsNumber(REELS_NUMBER);
+        conf.setReelsSymbolsNumber(REELS_SYMBOLS_NUMBER);
+        conf.setAvailableSymbols(availableSymbols);
+        conf.setSymbolsSequences(sequences);
+        const generator = new SymbolsCombinationsGenerator(conf, new SeededRandomNumberGenerator(7));
+
+        const combination = generator.generateSymbolsCombination();
+        const stopPositions = generator.getLastStopPositions();
+
+        expect(stopPositions).toHaveLength(REELS_NUMBER);
+        stopPositions.forEach((position, reelId) => {
+            expect(sequences[reelId].getSymbols(position, REELS_SYMBOLS_NUMBER)).toEqual(
+                combination.toMatrix()[reelId],
+            );
         });
     });
 });

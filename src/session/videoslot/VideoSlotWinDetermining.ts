@@ -1,11 +1,42 @@
-import {WinAmountDetermining, WinningLineDescribing, WinningScatterDescribing} from "pokie";
+import {
+    WinEvaluationResult,
+    WinAmountDetermining,
+    WinningClusterDescribing,
+    WinningLineDescribing,
+    WinningScatterDescribing,
+    WinningValueDescribing,
+    WinningWayDescribing,
+} from "pokie";
 
-export interface VideoSlotWinDetermining extends WinAmountDetermining {
-    getWinningLines(): Record<string, WinningLineDescribing>;
+export interface VideoSlotWinDetermining<T extends string | number | symbol = string> extends WinAmountDetermining {
+    getWinEvaluationResult?(): WinEvaluationResult<T>;
 
-    getWinningScatters(): Record<string, WinningScatterDescribing>;
+    getWinningLines(): Record<string, WinningLineDescribing<T>>;
+
+    getWinningScatters(): Record<T, WinningScatterDescribing<T>>;
 
     getLinesWinning(): number;
 
     getScattersWinning(): number;
+
+    // Optional so existing implementers of this interface (VideoSlotSession, custom
+    // VideoSlotWinCalculating implementations, etc.) keep compiling unchanged. Cluster-pay wins
+    // (adjacent same-symbol groups anywhere on the grid) are opt-in via a ClusterWinCalculating
+    // implementation, e.g. ClusterWinCalculator.
+    getWinningClusters?(): Record<string, WinningClusterDescribing<T>>;
+
+    getClustersWinning?(): number;
+
+    // Optional for the same reason. Per-symbol bet-multiplier values (each occurrence contributes
+    // independently, no count-tiered payout lookup) are opt-in via a ValueWinCalculating
+    // implementation, e.g. ValueWinCalculator.
+    getWinningValues?(): Record<T, WinningValueDescribing<T>>;
+
+    getValuesWinning?(): number;
+
+    // Optional for the same reason. Multiplicative ways-to-win (243-ways-style) is opt-in via a
+    // WaysWinCalculating implementation, e.g. WaysWinCalculator.
+    getWinningWays?(): Record<T, WinningWayDescribing<T>>;
+
+    getWaysWinning?(): number;
 }

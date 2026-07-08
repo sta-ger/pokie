@@ -1,6 +1,8 @@
-import {GameSessionHandling, VideoSlotConfigDescribing, VideoSlotRoundStateDetermining} from "pokie";
+import {GameSessionHandling, VideoSlotConfigDescribing, VideoSlotRoundStateDetermining, WinEvaluationResult} from "pokie";
 
-export interface VideoSlotSessionHandling
-    extends VideoSlotConfigDescribing,
+export interface VideoSlotSessionHandling<T extends string | number | symbol = string>
+    extends VideoSlotConfigDescribing<T>,
         GameSessionHandling,
-        VideoSlotRoundStateDetermining {}
+        VideoSlotRoundStateDetermining<T> {
+    getWinEvaluationResult(): WinEvaluationResult<T>;
+}

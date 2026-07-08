@@ -17,9 +17,12 @@
     "types": "./dist/cjs/index.d.ts",
     "scripts": {
         "generate-barrels": "node generate-barrels.js",
+        "lint": "eslint . --ext .ts",
+        "pretest": "npm run lint",
         "test": "jest",
         "build-esm": "npm run generate-barrels && tsc --project tsconfig.prod.json",
         "build-cjs": "npm run generate-barrels && tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs",
+        "prebuild": "npm run lint",
         "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs"
     },
     "repository": {

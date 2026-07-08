@@ -1,3 +1,3 @@
-export interface PaytableSymbolsPayoutsSetting {
-    setPayoutForSymbol(symbolId: string, times: number, betMultiplier: number, bet?: number);
+export interface PaytableSymbolsPayoutsSetting<T extends string | number | symbol = string> {
+    setPayoutForSymbol(symbolId: T, times: number, betMultiplier: number, bet?: number);
 }

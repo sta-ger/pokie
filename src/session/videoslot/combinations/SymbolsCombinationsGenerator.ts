@@ -7,26 +7,36 @@ import {
     VideoSlotConfigDescribing,
 } from "pokie";
 
-export class SymbolsCombinationsGenerator implements SymbolsCombinationsGenerating {
+export class SymbolsCombinationsGenerator<T extends string | number | symbol = string>
+implements SymbolsCombinationsGenerating<T> {
     private readonly rng: RandomNumberGenerating;
-    private readonly config: VideoSlotConfigDescribing;
+    private readonly config: VideoSlotConfigDescribing<T>;
+    private lastStopPositions: number[] = [];
 
-    constructor(config: VideoSlotConfigDescribing, rng: RandomNumberGenerating = new PseudorandomNumberGenerator()) {
+    constructor(config: VideoSlotConfigDescribing<T>, rng: RandomNumberGenerating = new PseudorandomNumberGenerator()) {
         this.config = config;
         this.rng = rng;
     }
 
-    public generateSymbolsCombination(): SymbolsCombinationDescribing {
-        const arr: string[][] = new Array(this.config.getReelsNumber());
+    public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        const arr: T[][] = new Array(this.config.getReelsNumber());
+        const stopPositions: number[] = new Array(this.config.getReelsNumber());
         for (let i = 0; i < this.config.getReelsNumber(); i++) {
-            arr[i] = this.getRandomReelSymbols(i);
+            const reel = this.getRandomReelSymbols(i);
+            arr[i] = reel.symbols;
+            stopPositions[i] = reel.position;
         }
-        return new SymbolsCombination().fromMatrix(arr);
+        this.lastStopPositions = stopPositions;
+        return new SymbolsCombination<T>().fromMatrix(arr);
     }
 
-    private getRandomReelSymbols(reelId: number): string[] {
+    public getLastStopPositions(): number[] {
+        return [...this.lastStopPositions];
+    }
+
+    private getRandomReelSymbols(reelId: number): {symbols: T[]; position: number} {
         const sequence = this.config.getSymbolsSequences()[reelId];
-        const random = this.rng.getRandomInt(0, sequence.getSize());
-        return sequence.getSymbols(random, this.config.getReelsSymbolsNumber());
+        const position = this.rng.getRandomInt(0, sequence.getSize());
+        return {symbols: sequence.getSymbols(position, this.config.getReelsSymbolsNumber()), position};
     }
 }

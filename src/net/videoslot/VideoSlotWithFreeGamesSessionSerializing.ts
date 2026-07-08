@@ -6,10 +6,10 @@ import {
     VideoSlotWithFreeGamesSessionHandling,
 } from "pokie";
 
-export interface VideoSlotWithFreeGamesSessionSerializing
-    extends VideoSlotSessionSerializing,
+export interface VideoSlotWithFreeGamesSessionSerializing<T extends string | number | symbol = string>
+    extends VideoSlotSessionSerializing<T>,
         GameWithFreeGamesSessionSerializing {
-    getInitialData(session: VideoSlotWithFreeGamesSessionHandling): VideoSlotWithFreeGamesInitialNetworkData;
+    getInitialData(session: VideoSlotWithFreeGamesSessionHandling<T>): VideoSlotWithFreeGamesInitialNetworkData<T>;
 
-    getRoundData(session: VideoSlotWithFreeGamesSessionHandling): VideoSlotWithFreeGamesRoundNetworkData;
+    getRoundData(session: VideoSlotWithFreeGamesSessionHandling<T>): VideoSlotWithFreeGamesRoundNetworkData<T>;
 }

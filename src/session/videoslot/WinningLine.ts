@@ -1,13 +1,13 @@
 import {WinningLineDescribing} from "pokie";
 
-export class WinningLine implements WinningLineDescribing {
+export class WinningLine<T extends string | number | symbol = string> implements WinningLineDescribing<T> {
     private readonly winAmount: number;
     private readonly definition: number[];
     private readonly pattern: number[];
     private readonly lineId: string;
     private readonly symbolsPositions: number[];
     private readonly wildSymbolsPositions: number[];
-    private readonly symbolId: string;
+    private readonly symbolId: T;
 
     constructor(
         winAmount: number,
@@ -16,7 +16,7 @@ export class WinningLine implements WinningLineDescribing {
         lineId: string,
         symbolsPositions: number[],
         wildSymbolsPositions: number[],
-        symbolId: string,
+        symbolId: T,
     ) {
         this.winAmount = winAmount;
         this.definition = [...definition];
@@ -31,7 +31,7 @@ export class WinningLine implements WinningLineDescribing {
         return [...this.definition];
     }
 
-    public getSymbolId(): string {
+    public getSymbolId(): T {
         return this.symbolId;
     }
 

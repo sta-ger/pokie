@@ -4,7 +4,7 @@ import {
     VideoSlotWithFreeGamesConfigDescribing,
 } from "pokie";
 
-export interface VideoSlotWithFreeGamesSessionHandling
-    extends VideoSlotSessionHandling,
+export interface VideoSlotWithFreeGamesSessionHandling<T extends string | number | symbol = string>
+    extends VideoSlotSessionHandling<T>,
         GameWithFreeGamesSessionHandling,
-        VideoSlotWithFreeGamesConfigDescribing {}
+        VideoSlotWithFreeGamesConfigDescribing<T> {}
