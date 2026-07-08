@@ -6,6 +6,13 @@
 statistics — the tool for RTP/volatility/hit-frequency work. See
 [Modeling Slot Math with POKIE](math-modeling.md) for a full worked example.
 
+`Simulation` remains the rich analysis mode that keeps full per-round series. For very large runs where you only want
+aggregates, use the newer foundation classes:
+
+- `SimulationAccumulator` — online mean/variance, total bet/payout, hit count, max win, histogram, merge support.
+- `AggregateSimulationRunner` — runs a session without storing per-round payout arrays.
+- `ConfidenceIntervalCalculator` — basic 95% confidence interval helper.
+
 ## `SimulationConfig`
 
 ```ts
@@ -157,4 +164,18 @@ stake level, not just the default bet.
 ```ts
 await simulation.runAsync();       // default chunkSize=1000, delayBetweenChunks=0
 await simulation.runAsync(500, 0); // smaller chunks, yields more often
+```
+
+## Aggregate-only example
+
+```ts
+import {AggregateSimulationRunner, VideoSlotSession} from "pokie";
+
+const runner = new AggregateSimulationRunner(new VideoSlotSession(), 1_000_000);
+const accumulator = runner.run();
+const stats = accumulator.getStatistics();
+
+stats.rtp;
+stats.volatility;
+stats.confidenceInterval95;
 ```

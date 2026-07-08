@@ -1,7 +1,7 @@
 import {
+    ClusterDetector,
     ClusterWinCalculating,
     SymbolsCombinationDescribing,
-    SymbolsCombinationsAnalyzer,
     VideoSlotConfigDescribing,
     WinningCluster,
     WinningClusterDescribing,
@@ -16,10 +16,12 @@ import {
 export class ClusterWinCalculator<T extends string | number | symbol = string> implements ClusterWinCalculating<T> {
     private readonly config: VideoSlotConfigDescribing<T>;
     private readonly minimumClusterSize: number;
+    private readonly clusterDetector: ClusterDetector;
 
-    constructor(config: VideoSlotConfigDescribing<T>, minimumClusterSize = 5) {
+    constructor(config: VideoSlotConfigDescribing<T>, minimumClusterSize = 5, clusterDetector: ClusterDetector = new ClusterDetector()) {
         this.config = config;
         this.minimumClusterSize = minimumClusterSize;
+        this.clusterDetector = clusterDetector;
     }
 
     public calculateWinningClusters(
@@ -27,7 +29,7 @@ export class ClusterWinCalculator<T extends string | number | symbol = string> i
         symbolsCombination: SymbolsCombinationDescribing<T>,
     ): Record<string, WinningClusterDescribing<T>> {
         const winningClusters: Record<string, WinningClusterDescribing<T>> = {};
-        const clusters = SymbolsCombinationsAnalyzer.getSymbolsClusters<T>(
+        const clusters = this.clusterDetector.detect<T>(
             symbolsCombination.toMatrix(),
             this.minimumClusterSize,
             this.config.getWildSymbols(),

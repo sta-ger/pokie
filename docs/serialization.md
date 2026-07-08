@@ -36,11 +36,14 @@ type GameWithFreeGamesRoundNetworkData = {
 
 type VideoSlotRoundNetworkData = {
     reelsSymbols: string[][];
+    totalWin?: number;
+    winningPositions?: number[][];
     winningLines?: Record<string, WinningLineNetworkData>;
     winningScatters?: Record<string, WinningScatterNetworkData>;
     winningClusters?: Record<string, WinningClusterNetworkData>;
     winningValues?: Record<string, WinningValueNetworkData>;
     winningWays?: Record<string, WinningWayNetworkData>;
+    winEvaluationResult?: WinEvaluationResultNetworkData;
 } & GameRoundNetworkData;
 
 type VideoSlotInitialNetworkData = {
@@ -56,6 +59,8 @@ type VideoSlotInitialNetworkData = {
 `WinningWayNetworkData` are the plain-data mirrors of `WinningLineDescribing`/`WinningScatterDescribing`/
 `WinningClusterDescribing`/`WinningValueDescribing`/`WinningWayDescribing` (see
 [Paytable & Win Calculation](paytable-and-wins.md)) — same fields, plain data instead of getters.
+`WinEvaluationResultNetworkData` is the unified round breakdown for reporting/replay/debug: total win, winning
+positions, per-type component arrays, and metadata.
 `VideoSlotWithFreeGamesInitialNetworkData`/`RoundNetworkData` add no fields of their own — they're pure type
 intersections of the video-slot and free-games shapes above.
 
@@ -64,7 +69,7 @@ intersections of the video-slot and free-games shapes above.
 | Serializer | Adds (round) | Adds (initial, on top of round) |
 |---|---|---|
 | `GameSessionSerializer` | `credits` ← `getCreditsAmount()`, `bet` ← `getBet()` | `availableBets` ← `getAvailableBets()` |
-| `VideoSlotSessionSerializer` | `reelsSymbols` ← `getSymbolsCombination().toMatrix()`; `winningLines`/`winningScatters` ← `getWinningLines()`/`getWinningScatters()`, **only added if non-empty**; `winningClusters`/`winningValues`/`winningWays` ← `session.getWinningClusters?.()` etc., same non-empty rule — **but stock `VideoSlotSession` never implements these three optional methods**, so they're omitted even when cluster/value/ways calculators are wired into the win calculator, unless you serialize a session that forwards them (see below) | `availableSymbols`, `reelsNumber`, `reelsSymbolsNumber`, `paytable` ← `getPaytable().toMap()`, `linesDefinitions` (hand-built by iterating `getLinesDefinitions().getLinesIds()`) |
+| `VideoSlotSessionSerializer` | `reelsSymbols` ← `getSymbolsCombination().toMatrix()`; `totalWin`/`winningPositions`/`winEvaluationResult` ← `getWinEvaluationResult()`; legacy `winningLines`/`winningScatters`/`winningClusters`/`winningValues`/`winningWays` are still emitted as non-empty compatibility fields | `availableSymbols`, `reelsNumber`, `reelsSymbolsNumber`, `paytable` ← `getPaytable().toMap()`, `linesDefinitions` (hand-built by iterating `getLinesDefinitions().getLinesIds()`) |
 | `VideoSlotWithFreeGamesSessionSerializer` | `freeGamesNum`/`freeGamesSum`/`freeGamesBank` ← `getFreeGamesNum/Sum/Bank()`; `wonFreeGamesNumber` ← `getWonFreeGamesNumber()` | (nothing extra — just base-init ∪ own round data) |
 
 ```ts
@@ -106,10 +111,8 @@ Example `roundPayload`:
 
 - **`winningLines`/`winningScatters`/`winningClusters`/`winningValues`/`winningWays` are genuinely conditional** —
   omitted entirely from the payload when there are no wins of that kind (not present as empty objects).
-- **`winningClusters`/`winningValues`/`winningWays` need a session that implements the corresponding optional
-  getter.** Stock `VideoSlotSession` doesn't, regardless of what's wired into its `VideoSlotWinCalculator` — see
-  [Paytable & Win Calculation](paytable-and-wins.md#reading-clustervalueways-results-from-a-session) for the
-  decorator pattern that makes these three fields actually appear in the payload.
+- **`winEvaluationResult` is the preferred consumer-facing payload** for runtime/replay/reporting. The legacy
+  `winningLines`/`winningScatters`/`winningClusters`/`winningValues`/`winningWays` fields remain for compatibility.
 - **The free-games round fields are typed optional (`?`) but always populated** by the concrete
   `VideoSlotWithFreeGamesSessionSerializer` — the optionality exists because the underlying interface is meant to be
   reusable by non-video-slot free-games games too.

@@ -4,6 +4,7 @@ import {
     PaytableRepresenting,
     SymbolsCombinationDescribing,
     SymbolsSequenceDescribing,
+    WinEvaluationResult,
     VideoSlotSessionHandling,
     WinningLineDescribing,
     WinningScatterDescribing,
@@ -36,6 +37,10 @@ implements VideoSlotSessionHandling<T> {
 
     public getWinningScatters(): Record<T, WinningScatterDescribing<T>> {
         return this.baseSession.getWinningScatters();
+    }
+
+    public getWinEvaluationResult(): WinEvaluationResult<T> {
+        return this.baseSession.getWinEvaluationResult();
     }
 
     public getSymbolsSequences(): SymbolsSequenceDescribing<T>[] {

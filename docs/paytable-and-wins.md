@@ -173,6 +173,9 @@ const winCalculator = new VideoSlotWinCalculator(
     undefined,                              // keep default LineWinCalculator
     undefined,                              // keep default ScatterWinCalculator
     new ClusterWinCalculator(config, 5),    // minimum cluster size = 5 cells
+    undefined,
+    undefined,
+    {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("cluster")},
 );
 ```
 
@@ -208,8 +211,13 @@ import {ValueWinCalculator, VideoSlotConfig, VideoSlotWinCalculator} from "pokie
 
 const config = new VideoSlotConfig();
 const winCalculator = new VideoSlotWinCalculator(
-    config, undefined, undefined, undefined,
-    new ValueWinCalculator({VALUE_5: 5, VALUE_10: 10}),   // "VALUE_5" pays 5x bet per occurrence, "VALUE_10" pays 10x
+    config,
+    undefined,
+    undefined,
+    undefined,
+    new ValueWinCalculator({VALUE_5: 5, VALUE_10: 10}),
+    undefined,
+    {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("value")},
 );
 ```
 
@@ -246,8 +254,13 @@ import {VideoSlotConfig, VideoSlotWinCalculator, WaysWinCalculator} from "pokie"
 
 const config = new VideoSlotConfig();
 const winCalculator = new VideoSlotWinCalculator(
-    config, undefined, undefined, undefined, undefined,
+    config,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
     new WaysWinCalculator(config),
+    {aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("ways")},
 );
 ```
 
@@ -256,51 +269,38 @@ themselves. Respects wild substitution (see below). Note the trailing `undefined
 TypeScript only applies a constructor parameter default when the argument is literally `undefined`, so this is how
 you skip earlier optional arguments while still getting their defaults.
 
-## Reading cluster/value/ways results from a session
+## Reading full win results from a session
 
-`VideoSlotSession` only forwards `getWinningLines`/`getWinningScatters` (and their `*Winning()` totals) — it does
-**not** implement `getWinningClusters`/`getWinningValues`/`getWinningWays`, even when the `VideoSlotWinCalculator`
-you pass it was built with a cluster/value/ways calculator. `session.getWinAmount()` is still correct either way (it
-reads the win calculator's already-summed total), but the structured per-cluster/value/way breakdown is only
-reachable through the `VideoSlotWinCalculator` instance you constructed — keep a reference to it, or write a small
-decorator that forwards the calls:
+`VideoSlotSession` now exposes `getWinEvaluationResult()`. That is the preferred API for reports, replay, visual
+debug, and mixed-mechanic runtime code:
 
 ```ts
-import {
-    AbstractVideoSlotSessionDecorator,
-    ClusterWinCalculator,
-    VideoSlotConfig,
-    VideoSlotSession,
-    VideoSlotWinCalculator,
-    WinningClusterDescribing,
-} from "pokie";
-
-class SessionWithClusters extends AbstractVideoSlotSessionDecorator {
-    constructor(baseSession: VideoSlotSession, private readonly winCalculator: VideoSlotWinCalculator) {
-        super(baseSession);
-    }
-
-    public getWinningClusters(): Record<string, WinningClusterDescribing> {
-        return this.winCalculator.getWinningClusters();
-    }
-
-    public getClustersWinning(): number {
-        return this.winCalculator.getClustersWinning();
-    }
-}
-
 const config = new VideoSlotConfig();
-const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, new ClusterWinCalculator(config, 5));
-const baseSession = new VideoSlotSession(config, undefined, winCalculator);
-const session = new SessionWithClusters(baseSession, winCalculator);
+const winCalculator = new VideoSlotWinCalculator(config);
+const session = new VideoSlotSession(config, undefined, winCalculator);
 session.play();
-session.getWinningClusters(); // now readable through the session, and picked up by VideoSlotSessionSerializer too
+
+const result = session.getWinEvaluationResult();
+result.getTotalWin();
+result.getWinComponents();
+result.getWinningPositions();
 ```
 
-The same pattern applies to `getWinningValues`/`getValuesWinning` and `getWinningWays`/`getWaysWinning`. This
-matters for [serialization](serialization.md) too: `VideoSlotSessionSerializer` calls
-`session.getWinningClusters?.()`, which is `undefined` (and silently omitted from the payload) unless the session
-you serialize actually implements it.
+The old `getWinningLines()` / `getWinningScatters()` methods remain as compatibility views. Legacy
+`getWinningClusters()` / `getWinningValues()` / `getWinningWays()` are still available on `VideoSlotWinCalculator`
+itself.
+
+## Multipliers
+
+`MultiplierResolver` is the runtime boundary for symbol-driven multipliers. When configured through
+`VideoSlotWinCalculatorOptions`, the applied multiplier breakdown is attached to `WinEvaluationResult`. This is
+distinct from `ValueWinCalculator`, which pays its own independent amount rather than scaling another component.
+
+## Cascade status
+
+`collapseAndRefillSymbols` and `overlaySymbols` are still low-level grid primitives. A full cascade loop now lives in
+`CascadingSpinResolver`, which repeatedly evaluates wins, removes winning positions, collapses/refills the grid, and
+stops when no wins remain. Use `CascadeResult` / `CascadeStep` for replay, debug, or reporting.
 
 ## Per-symbol wild substitution
 
@@ -354,8 +354,8 @@ const calculator = new VideoSlotWinCalculator(config, new CustomLineCalculator()
    excluded from the line-win pass.
 3. **There is only one `bet` value** per round, used for every win calculator's paytable lookup — there's no
    per-line/per-cluster bet-splitting model.
-4. **Total win is a plain sum** across lines, scatters, clusters, values, and ways — no "highest win only"
-   exclusivity between them.
+4. **Mixed evaluators require explicit policy**. The default pipeline rejects incompatible sets such as lines + ways
+   or lines + clusters.
 5. **Effective minimum-to-win for lines depends on two independently configured things**: the line pattern's
    `minimumWinningSymbols` (default 2) *and* which counts the paytable actually has non-zero payouts for (default
    constructor only fills 3..reelsNumber). Changing one without the other silently changes what pays.

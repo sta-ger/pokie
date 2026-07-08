@@ -1,7 +1,7 @@
 import {
     SymbolsCombinationDescribing,
-    SymbolsCombinationsAnalyzer,
     VideoSlotConfigDescribing,
+    WaysAnalyzer,
     WaysWinCalculating,
     WinningWay,
     WinningWayDescribing,
@@ -14,9 +14,11 @@ import {
 // fixed row-combinations one at a time and never surfaces a ways count.
 export class WaysWinCalculator<T extends string | number | symbol = string> implements WaysWinCalculating<T> {
     private readonly config: VideoSlotConfigDescribing<T>;
+    private readonly waysAnalyzer: WaysAnalyzer;
 
-    constructor(config: VideoSlotConfigDescribing<T>) {
+    constructor(config: VideoSlotConfigDescribing<T>, waysAnalyzer: WaysAnalyzer = new WaysAnalyzer()) {
         this.config = config;
+        this.waysAnalyzer = waysAnalyzer;
     }
 
     public calculateWinningWays(
@@ -34,7 +36,7 @@ export class WaysWinCalculator<T extends string | number | symbol = string> impl
             );
 
         payableSymbols.forEach((symbolId) => {
-            const {reelsMatched, waysCount, positions} = SymbolsCombinationsAnalyzer.getWaysForSymbol<T>(
+            const {reelsMatched, waysCount, positions} = this.waysAnalyzer.analyzeForSymbol<T>(
                 matrix,
                 symbolId,
                 this.config.getWildSymbols(),

@@ -28,6 +28,7 @@ session.play();
 
 session.getSymbolsCombination(); // symbols combination
 session.getWinAmount(); // total round win amount
+session.getWinEvaluationResult(); // unified win breakdown for runtime/reporting/debug
 session.getWinningLines(); // winning lines data
 session.getWinningScatters(); // winning scatters data
 ```
@@ -78,6 +79,9 @@ simulation.run(); // the simulation will be stopped on any winning combination w
 See the [docs](docs/README.md) for the full reference: game session and configuration, reels and symbol sequences,
 paylines and line patterns, paytable and win calculation, free games, resizable grids, simulation, network
 serialization, extension points, and a walkthrough of modeling slot math with POKIE.
+
+Recent runtime additions include a unified `WinEvaluationResult`, explicit mixed-evaluator aggregation policies,
+deterministic cascade runtime foundation (`CascadingSpinResolver`), and aggregate-only simulation primitives.
 
 ## Use cases
 

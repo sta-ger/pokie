@@ -22,6 +22,7 @@ session.play();
 
 session.getSymbolsCombination().toMatrix(); // string[][] — the symbols shown on screen
 session.getWinAmount();                     // total win for this round
+session.getWinEvaluationResult();           // unified win breakdown object
 session.getWinningLines();                  // Record<string, WinningLineDescribing>
 session.getWinningScatters();               // Record<string, WinningScatterDescribing>
 session.getCreditsAmount();                 // credits after the bet was placed and the win added

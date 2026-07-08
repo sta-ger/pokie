@@ -245,7 +245,7 @@ static getPositionsMultiplier(symbols: string[][], positions: number[][], multip
 ### Grid transforms
 
 Pure functions — no RNG, no mutation of the input — for building cascade/expanding-wild/sticky-wild/mystery-symbol
-style mechanics on top of a generated combination:
+style mechanics on top of a generated combination. These are grid primitives, not by themselves a full runtime loop:
 
 ```ts
 static collapseAndRefillSymbols(symbols: string[][], positionsToRemove: number[][], refillSymbolsPerReel: string[][]): string[][]

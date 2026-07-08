@@ -7,6 +7,7 @@ import {
     LineWinCalculating,
     ReelsSymbolsSequencesGenerating,
     ScatterWinCalculating,
+    SumAllEnabledWinAggregationPolicy,
     SymbolsCombination,
     SymbolsCombinationDescribing,
     SymbolsCombinationsAnalyzer,
@@ -17,6 +18,7 @@ import {
     VideoSlotConfig,
     VideoSlotSession,
     VideoSlotWinCalculator,
+    MultiplierResolver,
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSession,
     WaysWinCalculating,
@@ -93,7 +95,9 @@ describe("ExtensionPoints", () => {
 
         const config = new VideoSlotConfig();
         config.setReelsNumber(3);
-        const calculator = new VideoSlotWinCalculator(config, noLines, noScatters, clusterWinCalculator);
+        const calculator = new VideoSlotWinCalculator(config, noLines, noScatters, clusterWinCalculator, undefined, undefined, {
+            aggregationPolicy: new SumAllEnabledWinAggregationPolicy(),
+        });
         calculator.calculateWin(
             config.getAvailableBets()[0],
             new SymbolsCombination().fromMatrix([
@@ -141,7 +145,9 @@ describe("ExtensionPoints", () => {
 
         const config = new VideoSlotConfig();
         config.setReelsNumber(3);
-        const calculator = new VideoSlotWinCalculator(config, noLines, noScatters, undefined, valueWinCalculator);
+        const calculator = new VideoSlotWinCalculator(config, noLines, noScatters, undefined, valueWinCalculator, undefined, {
+            aggregationPolicy: new SumAllEnabledWinAggregationPolicy(),
+        });
         calculator.calculateWin(
             config.getAvailableBets()[0],
             new SymbolsCombination().fromMatrix([
@@ -196,6 +202,9 @@ describe("ExtensionPoints", () => {
             undefined,
             undefined,
             waysWinCalculator,
+            {
+                aggregationPolicy: new SumAllEnabledWinAggregationPolicy(),
+            },
         );
         calculator.calculateWin(
             config.getAvailableBets()[0],
@@ -209,6 +218,81 @@ describe("ExtensionPoints", () => {
         expect(calculator.getWinningWays()).toEqual({A: fixedWay});
         expect(calculator.getWaysWinning()).toBe(30);
         expect(calculator.getWinAmount()).toBe(30);
+    });
+
+    test("VideoSlotWinCalculator exposes unified WinEvaluationResult and compatibility views derived from it", () => {
+        const fixedLine = new WinningLine(42, [0, 0, 0], [1, 1, 1], "0", [0, 1, 2], [], "A");
+        const fixedScatter = new WinningScatter("S", [[0, 0]], 7);
+        const lineWinCalculator: LineWinCalculating = {
+            calculateWinningLines: (): Record<string, WinningLineDescribing> => ({0: fixedLine}),
+        };
+        const scatterWinCalculator: ScatterWinCalculating = {
+            calculateWinningScatters: (): Record<string, WinningScatterDescribing> => ({S: fixedScatter}),
+        };
+        const calculator = new VideoSlotWinCalculator(new VideoSlotConfig(), lineWinCalculator, scatterWinCalculator);
+
+        calculator.calculateWin(
+            1,
+            new SymbolsCombination().fromMatrix([
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ]),
+        );
+
+        const result = calculator.getWinEvaluationResult();
+        expect(result.getTotalWin()).toBe(49);
+        expect(result.getWinComponents()).toHaveLength(2);
+        expect(calculator.getWinningLines()[0].getWinAmount()).toBe(42);
+        expect(calculator.getWinningScatters().S.getWinAmount()).toBe(7);
+    });
+
+    test("VideoSlotWinCalculator validates incompatible evaluators without explicit aggregation policy", () => {
+        const config = new VideoSlotConfig();
+        config.setReelsNumber(3);
+        const calculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, {
+            calculateWinningWays: (): Record<string, WinningWayDescribing> => ({A: new WinningWay("A", [[0, 0]], 1, 5)}),
+        });
+
+        const validation = calculator.validateWinEvaluation(
+            config.getAvailableBets()[0],
+            new SymbolsCombination().fromMatrix([
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ]),
+        );
+
+        expect(validation.hasErrors()).toBe(true);
+        expect(validation.getIssues().some((issue) => issue.code === "incompatible-win-evaluators")).toBe(true);
+    });
+
+    test("VideoSlotWinCalculator applies multiplier resolver to unified result and compatibility view", () => {
+        const fixedLine = new WinningLine(10, [0, 0], [1, 1], "0", [0, 1], [], "A");
+        const lineWinCalculator: LineWinCalculating = {
+            calculateWinningLines: (): Record<string, WinningLineDescribing> => ({0: fixedLine}),
+        };
+        const calculator = new VideoSlotWinCalculator(
+            new VideoSlotConfig(),
+            lineWinCalculator,
+            {calculateWinningScatters: (): Record<string, WinningScatterDescribing> => ({})},
+            undefined,
+            undefined,
+            undefined,
+            {multiplierResolver: new MultiplierResolver({X2: 2})},
+        );
+
+        calculator.calculateWin(
+            1,
+            new SymbolsCombination().fromMatrix([
+                ["X2", "A"],
+                ["A", "K"],
+            ]),
+        );
+
+        expect(calculator.getWinEvaluationResult().getTotalWin()).toBe(20);
+        expect(calculator.getWinEvaluationResult().getMultiplierBreakdown()).toHaveLength(1);
+        expect(calculator.getWinningLines()[0].getWinAmount()).toBe(20);
     });
 
     test("VideoSlotConfig delegates reel-strip generation to injected ReelsSymbolsSequencesGenerating", () => {

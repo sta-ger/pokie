@@ -1,4 +1,5 @@
 import {
+    WinEvaluationResult,
     WinAmountDetermining,
     WinningClusterDescribing,
     WinningLineDescribing,
@@ -8,6 +9,8 @@ import {
 } from "pokie";
 
 export interface VideoSlotWinDetermining<T extends string | number | symbol = string> extends WinAmountDetermining {
+    getWinEvaluationResult?(): WinEvaluationResult<T>;
+
     getWinningLines(): Record<string, WinningLineDescribing<T>>;
 
     getWinningScatters(): Record<T, WinningScatterDescribing<T>>;

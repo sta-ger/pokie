@@ -54,6 +54,7 @@ constructor(
 
 play(): void  // places the bet, generates a new combination, calculates win, adds win to credits
 getSymbolsCombination(): SymbolsCombinationDescribing
+getWinEvaluationResult(): WinEvaluationResult
 getWinningLines(): Record<string, WinningLineDescribing>
 getWinningScatters(): Record<string, WinningScatterDescribing>
 getLinesWinning(): number
@@ -73,12 +74,9 @@ getLinesPatterns(): LinesPatternsDescribing
 // plus the base session surface: getCreditsAmount/setCreditsAmount, getBet/setBet, getAvailableBets, canPlayNextGame
 ```
 
-`VideoSlotSession` does **not** expose `getWinningClusters`/`getWinningValues`/`getWinningWays` — if you inject a
-cluster/value/ways calculator into `VideoSlotWinCalculator`, `getWinAmount()` on the session already includes their
-totals, but reading the per-cluster/value/way breakdown requires keeping your own reference to the
-`VideoSlotWinCalculator` instance (or writing a thin wrapper that forwards those calls to it). See
-[Paytable & Win Calculation](paytable-and-wins.md#reading-clustervalueways-results-from-a-session) for the exact
-pattern.
+`VideoSlotSession.getWinEvaluationResult()` is now the canonical per-round breakdown. The old
+`getWinningLines()` / `getWinningScatters()` methods remain as compatibility views derived from that object. For
+legacy cluster/value/ways record getters, keep using the underlying `VideoSlotWinCalculator` when needed.
 
 `VideoSlotConfig` (implements `VideoSlotConfigRepresenting`) is where the game's shape lives:
 

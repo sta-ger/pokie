@@ -14,6 +14,8 @@ collaborators you need to change. All parameters below are optional with a worki
 | Cluster (adjacency) pays | `ClusterWinCalculating<T>` | `VideoSlotWinCalculator`'s 4th constructor arg (opt-in, no default) | [Paytable & Win Calculation](paytable-and-wins.md#cluster-pays) |
 | Per-symbol value pays | `ValueWinCalculating<T>` | `VideoSlotWinCalculator`'s 5th constructor arg (opt-in, no default) | [Paytable & Win Calculation](paytable-and-wins.md#value-pays) |
 | Ways-to-win pays | `WaysWinCalculating<T>` | `VideoSlotWinCalculator`'s 6th constructor arg (opt-in, no default) | [Paytable & Win Calculation](paytable-and-wins.md#ways-to-win) |
+| How multiple evaluator groups are aggregated | `WinAggregationPolicy<T>` | `VideoSlotWinCalculator`'s 7th constructor arg via `VideoSlotWinCalculatorOptions` | [Paytable & Win Calculation](paytable-and-wins.md#aggregation-policy) |
+| How symbol-driven multipliers are resolved | `MultiplierResolver<T>` | `VideoSlotWinCalculator`'s 7th constructor arg via `VideoSlotWinCalculatorOptions` | [Paytable & Win Calculation](paytable-and-wins.md#multipliers) |
 | Which symbols a wild is allowed to substitute for | — call `VideoSlotConfig.setWildSubstitutions(...)` | picked up automatically by line/cluster/ways calculators | [Paytable & Win Calculation](paytable-and-wins.md#per-symbol-wild-substitution) |
 | How reel strips are auto-generated | `ReelsSymbolsSequencesGenerating<T>` | `VideoSlotConfig`'s 2nd constructor arg | [Game Session & Configuration](game-session.md#reel-sequence-auto-generation) |
 | The RNG behind reel spins | `RandomNumberGenerating` | `SymbolsCombinationsGenerator`/`VariableHeightSymbolsCombinationsGenerator`/`ResizableSymbolsCombinationsGenerator`'s last constructor arg | [Reels & Symbol Sequences](reels-and-sequences.md#rngs) |
@@ -21,6 +23,7 @@ collaborators you need to change. All parameters below are optional with a worki
 | The generic play loop's win amount | `WinAmountDetermining` | `GameSession`'s 2nd constructor arg (defaults to `NoWinAmount`) | [Game Session & Configuration](game-session.md) |
 | Free-games bank/retrigger bookkeeping | `FreeGamesRoundHandling<T>` | `VideoSlotWithFreeGamesSession`'s 5th constructor arg | [Free Games](free-games.md#custom-bonus-mechanics) |
 | Grid resize policy between rounds | `GridResizeHandling<T>` | `VideoSlotWithResizableGridSession`'s 3rd constructor arg (**required**, no default) | [Resizable Grid](resizable-grid.md) |
+| How cascade refills are supplied | `CascadeRefillProviding<T>` | `CascadingSpinResolver`'s 3rd constructor arg (**required**) | [Paytable & Win Calculation](paytable-and-wins.md#cascade-status) |
 | Play-strategy gating for simulations | `NextSessionRoundPlayableDetermining` | `SimulationConfig.setPlayStrategy(...)` | [Simulation](simulation.md#play-strategies-nextsessionroundplayabledetermining) |
 | Bet size per simulated round | `BetForNextSimulationRoundSetting` | `SimulationConfig.setChangeBetStrategy(...)` | [Simulation](simulation.md#bet-changing-strategy) |
 | What a serializer's base layer contributes | `GameSessionSerializing` / `VideoSlotSessionSerializing` | the next serializer up's constructor arg | [Network Serialization](serialization.md) |

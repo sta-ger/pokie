@@ -14,6 +14,7 @@ import {
     WinningWayDescribing,
     WinningWayNetworkData,
 } from "pokie";
+import {WinEvaluationResult} from "../../session/videoslot/winevaluation/WinEvaluationResult.js";
 
 export class VideoSlotSessionSerializer<T extends string | number | symbol = string>
 implements VideoSlotSessionSerializing<T> {
@@ -50,9 +51,13 @@ implements VideoSlotSessionSerializing<T> {
         const symbolsCombination = session.getSymbolsCombination();
         const winningLines = session.getWinningLines();
         const winningScatters = session.getWinningScatters();
+        const winEvaluationResult = session.getWinEvaluationResult();
         const r: VideoSlotRoundNetworkData<T> = {
             ...this.baseSerializer.getRoundData(session),
             reelsSymbols: symbolsCombination.toMatrix(),
+            totalWin: winEvaluationResult.getTotalWin(),
+            winningPositions: winEvaluationResult.getWinningPositions(),
+            winEvaluationResult: this.serializeWinEvaluationResult(winEvaluationResult),
         };
         if (Object.keys(winningLines).length > 0) {
             r.winningLines = Object.values(winningLines).reduce((acc, line) => {
@@ -141,5 +146,46 @@ implements VideoSlotSessionSerializing<T> {
             );
         }
         return r;
+    }
+
+    private serializeWinEvaluationResult(result: WinEvaluationResult<T>) {
+        return {
+            totalWin: result.getTotalWin(),
+            winningPositions: result.getWinningPositions(),
+            lineWins: result.getLineWins().map((component) => {
+                const line = component.getWinningLine();
+                return {
+                    definition: line.getDefinition(),
+                    pattern: line.getPattern(),
+                    symbolId: line.getSymbolId(),
+                    lineId: line.getLineId(),
+                    symbolsPositions: line.getSymbolsPositions(),
+                    wildSymbolsPositions: line.getWildSymbolsPositions(),
+                    winAmount: component.getWinAmount(),
+                };
+            }),
+            scatterWins: result.getScatterWins().map((component) => ({
+                symbolId: component.getWinningScatter().getSymbolId(),
+                symbolsPositions: component.getWinningScatter().getSymbolsPositions(),
+                winAmount: component.getWinAmount(),
+            })),
+            clusterWins: result.getClusterWins().map((component) => ({
+                symbolId: component.getWinningCluster().getSymbolId(),
+                symbolsPositions: component.getWinningCluster().getSymbolsPositions(),
+                winAmount: component.getWinAmount(),
+            })),
+            valueWins: result.getValueWins().map((component) => ({
+                symbolId: component.getWinningValue().getSymbolId(),
+                symbolsPositions: component.getWinningValue().getSymbolsPositions(),
+                winAmount: component.getWinAmount(),
+            })),
+            waysWins: result.getWaysWins().map((component) => ({
+                symbolId: component.getWinningWay().getSymbolId(),
+                symbolsPositions: component.getWinningWay().getSymbolsPositions(),
+                waysCount: component.getWinningWay().getWaysCount(),
+                winAmount: component.getWinAmount(),
+            })),
+            metadata: result.getMetadata(),
+        };
     }
 }

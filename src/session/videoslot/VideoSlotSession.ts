@@ -17,6 +17,7 @@ import {
     WinningLineDescribing,
     WinningScatterDescribing,
 } from "pokie";
+import {WinEvaluationResult} from "./winevaluation/WinEvaluationResult.js";
 
 export class VideoSlotSession<T extends string | number | symbol = string> implements VideoSlotSessionHandling<T> {
     private readonly baseSession: GameSessionHandling;
@@ -55,6 +56,10 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return this.winCalculator.getWinningScatters();
     }
 
+    public getWinEvaluationResult(): WinEvaluationResult<T> {
+        return this.winCalculator.getWinEvaluationResult?.() ?? new WinEvaluationResult<T>();
+    }
+
     public getSymbolsSequences(): SymbolsSequenceDescribing<T>[] {
         return this.config.getSymbolsSequences();
     }
@@ -80,7 +85,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public getWinAmount(): number {
-        return this.winAmount;
+        return this.getWinEvaluationResult().getTotalWin();
     }
 
     public getLinesWinning(): number {
@@ -111,7 +116,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.baseSession.play();
         this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
         this.winCalculator.calculateWin(this.getBet(), this.symbolsCombination);
-        this.winAmount = this.winCalculator.getWinAmount();
+        this.winAmount = this.getWinEvaluationResult().getTotalWin();
         this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
     }
 
