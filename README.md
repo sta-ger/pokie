@@ -15,64 +15,6 @@ Introducing **POKIE**, a server-side video slot game logic framework for JavaScr
 > [Reels & Symbol Sequences](docs/reels-and-sequences.md) for details, and `SeededRandomNumberGenerator` for
 > deterministic/reproducible spins in tests.
 
-## Documentation
-
-See the [docs](docs/README.md) for the full reference: game session and configuration, reels and symbol sequences,
-paylines and line patterns, paytable and win calculation, free games, resizable grids, simulation, network
-serialization, extension points, and a walkthrough of modeling slot math with POKIE.
-
-## Use cases
-
-### Back-End
-
-Utilize **POKIE** to implement the video slot game mechanics on the Back-End. Create and manage game sessions, serialize
-them, and transfer the payload to the game client through your API.
-
-### Front-End
-
-When playing for fun, you can implement the standalone game logic on the client-side, relieving the servers from
-unnecessary load. Utilize simulations to showcase specific game features for demonstration purposes.
-
-### Math
-
-**POKIE** also serves as an essential tool for balancing the parameters of the slot game's math model, ensuring an immersive
-gaming experience. Configure the game session and run Monte Carlo simulations to guarantee that the model meets all
-necessary requirements.
-
-## Examples
-
-See the [examples](https://github.com/sta-ger/pokie-examples) of various video slot game mechanics implemented with
-**POKIE**.
-
-### Simple video slot game [[Demo](https://sta-ger.github.io/pokie-examples/simple-slot.html)] [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/simple-slot)]
-
-An example of a simple 5x4 video slot game with 8 winning lines.
-
-Features:
-- Winning lines are counted from right to left. A line of minimum 3 winning symbols pays out.
-- "Wild" is a wild symbol that substitutes any other symbol on a winning line.
-- "Scatter1" is a scatter symbol that pays out 10x, 20x, or 30x the bet if 3 or more symbols appear on any positions. Only one "Scatter1" can appear on any reel.
-- "Scatter2" is a stacked scatter symbol that can appear on the 3 middle reels. If all 3 middle reels are covered with "Scatter2" symbols, the game pays 100x the bet.
-
-### Video slot with free spins [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-free-games.html)] [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-free-games)]
-
-An example of a 5x3 video slot game with free spins.
-
-Features:
-- A minimum of 2 winning symbols on a winning line or scattered across all reels pays out.
-- During free spins, symbols on a winning line are counted not only from left to right but can also be scattered across the winning line definition.
-- During free spins, symbol sequences are different from the base game's ones. Sequences during free spins do not contain scatter symbols, so free spins cannot be re-triggered.
-- During free spins, all wins are multiplied by x2.
-- This example also demonstrates the usage of Simulation to obtain the desired game outcomes.
-
-### Video slot with sticky re-spin [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-sticky-respin.html)] [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-sticky-respin)]
-
-An example of a 5x3 video slot game with sticky re-spin feature. Every winning combination triggers the re-spin during which all the winning symbols are held on their places. The re-spins continue as long as there are new wins.
-
-### Exploring Video Slot Math with POKIE
-
-A [Medium](https://medium.com/@sta-ger/exploring-video-slot-math-with-pokie-3bc7191b72a0) article about how POKIE can be utilized for slot game math modelling. See also the [updated, API-verified walkthrough](docs/math-modeling.md) in the docs.
-
 ## Usage
 
 ### Session
@@ -123,6 +65,8 @@ simulation.getAverageRtp(); // average RTP across all rounds played
 Capturing specific game features.
 
 ```js
+import {SimulationConfig, Simulation, PlayUntilSymbolWinStrategy} from "pokie";
+
 const simulationConfig = new SimulationConfig();
 simulationConfig.setNumberOfRounds(Infinity);
 simulationConfig.setPlayStrategy(new PlayUntilSymbolWinStrategy("A"));
@@ -130,3 +74,40 @@ simulationConfig.setPlayStrategy(new PlayUntilSymbolWinStrategy("A"));
 const simulation = new Simulation(session, simulationConfig);
 simulation.run(); // the simulation will be stopped on any winning combination with symbol "A"
 ```
+
+## Documentation
+
+See the [docs](docs/README.md) for the full reference: game session and configuration, reels and symbol sequences,
+paylines and line patterns, paytable and win calculation, free games, resizable grids, simulation, network
+serialization, extension points, and a walkthrough of modeling slot math with POKIE.
+
+## Use cases
+
+- **Back-End** — implement the video slot game mechanics server-side: create and manage game sessions, serialize
+  round results, and send the payload to your game client through your API.
+- **Front-End** — run the same logic standalone client-side for fun/demo play, relieving the server of unnecessary
+  load. Use simulations to showcase specific game features.
+- **Math** — configure a session and run Monte Carlo simulations to balance RTP, hit frequency, and volatility
+  before a game ships.
+
+## Examples
+
+See the [examples](https://github.com/sta-ger/pokie-examples) of various video slot game mechanics implemented with
+**POKIE**.
+
+- **Simple video slot game** [[Demo](https://sta-ger.github.io/pokie-examples/simple-slot.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/simple-slot)] — 5x4, 8 lines, right-to-left
+  pays, a wild, and two scatter types (a classic any-position scatter and a stacked-reels bonus scatter).
+- **Video slot with free spins** [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-free-games.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-free-games)] — 5x3 free-spins
+  game with scattered line matching and a 2x win multiplier during the bonus; also demonstrates using `Simulation`
+  to capture specific outcomes.
+- **Video slot with sticky re-spin** [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-sticky-respin.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-sticky-respin)] — 5x3 game where
+  a win holds its symbols in place and triggers a re-spin, continuing as long as new wins land.
+
+### Modeling slot math with POKIE
+
+See the [walkthrough](docs/math-modeling.md) in the docs for balancing RTP, hit frequency, and volatility with
+POKIE. It's an updated, API-verified version of the original
+[Medium article](https://medium.com/@sta-ger/exploring-video-slot-math-with-pokie-3bc7191b72a0) on the same topic.
