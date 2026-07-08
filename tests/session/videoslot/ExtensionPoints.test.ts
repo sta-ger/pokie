@@ -19,6 +19,7 @@ import {
     VideoSlotWinCalculator,
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSession,
+    WaysWinCalculating,
     WinningCluster,
     WinningClusterDescribing,
     WinningLine,
@@ -27,6 +28,8 @@ import {
     WinningScatterDescribing,
     WinningValue,
     WinningValueDescribing,
+    WinningWay,
+    WinningWayDescribing,
 } from "pokie";
 
 describe("ExtensionPoints", () => {
@@ -151,6 +154,61 @@ describe("ExtensionPoints", () => {
         expect(calculator.getWinningValues()).toEqual({A: fixedValue});
         expect(calculator.getValuesWinning()).toBe(20);
         expect(calculator.getWinAmount()).toBe(20);
+    });
+
+    test("VideoSlotWinCalculator omits ways wins when no WaysWinCalculating is injected (unchanged old behavior)", () => {
+        const config = new VideoSlotConfig();
+        config.setReelsNumber(3);
+        const calculator = new VideoSlotWinCalculator(config);
+        calculator.calculateWin(
+            config.getAvailableBets()[0],
+            new SymbolsCombination().fromMatrix([
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ]),
+        );
+
+        expect(calculator.getWinningWays()).toEqual({});
+        expect(calculator.getWaysWinning()).toBe(0);
+    });
+
+    test("VideoSlotWinCalculator folds an injected WaysWinCalculating into winningWays/winAmount", () => {
+        const fixedWay = new WinningWay("A", [[0, 0], [1, 0], [1, 1]], 2, 30);
+
+        const waysWinCalculator: WaysWinCalculating = {
+            calculateWinningWays: (): Record<string, WinningWayDescribing> => ({A: fixedWay}),
+        };
+
+        const noLines: LineWinCalculating = {
+            calculateWinningLines: (): Record<string, WinningLineDescribing> => ({}),
+        };
+        const noScatters: ScatterWinCalculating = {
+            calculateWinningScatters: (): Record<string, WinningScatterDescribing> => ({}),
+        };
+
+        const config = new VideoSlotConfig();
+        config.setReelsNumber(3);
+        const calculator = new VideoSlotWinCalculator(
+            config,
+            noLines,
+            noScatters,
+            undefined,
+            undefined,
+            waysWinCalculator,
+        );
+        calculator.calculateWin(
+            config.getAvailableBets()[0],
+            new SymbolsCombination().fromMatrix([
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ]),
+        );
+
+        expect(calculator.getWinningWays()).toEqual({A: fixedWay});
+        expect(calculator.getWaysWinning()).toBe(30);
+        expect(calculator.getWinAmount()).toBe(30);
     });
 
     test("VideoSlotConfig delegates reel-strip generation to injected ReelsSymbolsSequencesGenerating", () => {

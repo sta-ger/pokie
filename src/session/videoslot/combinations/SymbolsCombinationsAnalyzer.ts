@@ -81,6 +81,14 @@ export class SymbolsCombinationsAnalyzer {
             .filter((index: number) => index !== -1);
     }
 
+    // Converts a winning line's own position format (indexes into `definition`, i.e. "which reels
+    // along this line participated") into the same [reelId, rowId] grid-position pairs that
+    // getScatterSymbolsPositions/getSymbolsClusters already return — e.g. for feeding into
+    // collapseAndRefillSymbols alongside scatter/cluster/value win positions.
+    public static getLineSymbolsGridPositions(definition: number[], symbolsPositions: number[]): number[][] {
+        return symbolsPositions.map((reelId) => [reelId, definition[reelId]]);
+    }
+
     public static getScatterSymbolsPositions<T extends string | number | symbol = string>(
         symbols: T[][],
         scatterSymbolId: T,
@@ -154,6 +162,120 @@ export class SymbolsCombinationsAnalyzer {
             }
         }
         return clusters;
+    }
+
+    // Combines the multiplier values carried by whichever of `positions` land on a symbol present
+    // in `multiplierValues` (e.g. multiplier wilds sitting inside a winning line/cluster) — distinct
+    // from value-pay (DefaultValueWinCalculator), which pays its own independent win instead of
+    // scaling someone else's. Positions on symbols absent from `multiplierValues` are skipped
+    // rather than treated as a neutral value baked into `combine`, so a plain symbol never resets an
+    // accumulated multiplier back to the identity. Defaults to multiplying (identity 1); pass a
+    // summing `combine` with `identity = 0` for games that add multiplier wilds together instead.
+    public static getPositionsMultiplier<T extends string | number | symbol = string>(
+        symbols: T[][],
+        positions: number[][],
+        multiplierValues: Partial<Record<T, number>>,
+        combine: (accumulated: number, next: number) => number = (a, b) => a * b,
+        identity = 1,
+    ): number {
+        return positions.reduce((multiplier, [reelId, rowId]) => {
+            const symbolId = symbols[reelId]?.[rowId];
+            const value = symbolId === undefined ? undefined : multiplierValues[symbolId];
+            return value === undefined ? multiplier : combine(multiplier, value);
+        }, identity);
+    }
+
+    // Multiplicative ways-to-win evaluation (243-ways/Megaways style): for `symbolId`, counts how
+    // many matching (or wild-substitutable) cells sit in reel 0, reel 1, and so on, stopping at the
+    // first reel with zero matches. `waysCount` is the product of those per-reel counts — the number
+    // of distinct left-to-right paths a symbol appears on — as opposed to getWinningLinesIds, which
+    // enumerates every fixed row-combination as its own discrete "line" (correct but combinatorially
+    // wasteful for this style of win, and it never surfaces the ways count itself).
+    public static getWaysForSymbol<T extends string | number | symbol = string>(
+        symbols: T[][],
+        symbolId: T,
+        wildSymbols?: T[],
+        wildSubstitutions?: Partial<Record<T, T[]>>,
+    ): {reelsMatched: number; waysCount: number; positions: number[][]} {
+        const isWild = (symbol: T): boolean => Boolean(wildSymbols?.some((wildSymbolId) => wildSymbolId === symbol));
+        const canSubstitute = (candidate: T): boolean => {
+            if (candidate === symbolId) {
+                return true;
+            }
+            if (!isWild(candidate)) {
+                return false;
+            }
+            const allowedSubstitutes = wildSubstitutions?.[candidate];
+            return allowedSubstitutes === undefined || allowedSubstitutes.includes(symbolId);
+        };
+
+        let waysCount = 1;
+        let reelsMatched = 0;
+        const positions: number[][] = [];
+        for (let reelId = 0; reelId < symbols.length; reelId++) {
+            const matchingRows: number[] = [];
+            for (let rowId = 0; rowId < symbols[reelId].length; rowId++) {
+                if (canSubstitute(symbols[reelId][rowId])) {
+                    matchingRows.push(rowId);
+                }
+            }
+            if (matchingRows.length === 0) {
+                break;
+            }
+            reelsMatched++;
+            waysCount *= matchingRows.length;
+            matchingRows.forEach((rowId) => positions.push([reelId, rowId]));
+        }
+        return {reelsMatched, waysCount: reelsMatched > 0 ? waysCount : 0, positions};
+    }
+
+    // Pure grid transform for cascade-style mechanics: clears the given positions, lets the
+    // remaining symbols in each affected reel fall towards the higher row index (row 0 is treated
+    // as the top, gravity pulls down), and fills the freed slots at the top from
+    // `refillSymbolsPerReel` — the caller decides how those replacement symbols were drawn (this
+    // stays RNG-free on purpose). Duplicate entries in `positionsToRemove` are safe (a position is
+    // either removed or not). Extra refill symbols beyond what a reel needs are ignored; providing
+    // too few for a reel throws, since silently returning a short reel would corrupt the grid.
+    public static collapseAndRefillSymbols<T extends string | number | symbol = string>(
+        symbols: T[][],
+        positionsToRemove: number[][],
+        refillSymbolsPerReel: T[][],
+    ): T[][] {
+        const removedRowsByReel: Set<number>[] = symbols.map(() => new Set<number>());
+        positionsToRemove.forEach(([reelId, rowId]) => {
+            removedRowsByReel[reelId]?.add(rowId);
+        });
+
+        return symbols.map((reelSymbols, reelId) => {
+            const remaining = reelSymbols.filter((_, rowId) => !removedRowsByReel[reelId].has(rowId));
+            const removedCount = reelSymbols.length - remaining.length;
+            const refill = refillSymbolsPerReel[reelId] ?? [];
+            if (refill.length < removedCount) {
+                throw new Error(
+                    `Not enough refill symbols for reel ${reelId}: need ${removedCount}, got ${refill.length}`,
+                );
+            }
+            return [...refill.slice(0, removedCount), ...remaining];
+        });
+    }
+
+    // Pure grid transform for "stamp a symbol onto specific cells" mechanics: expanding wilds
+    // (override a whole reel), walking/random wilds (override scattered empty cells before win
+    // evaluation), sticky wilds/Hold & Win respins (override held positions on a freshly generated
+    // grid), mystery-symbol reveal (override every mystery placeholder with the resolved symbol).
+    // No gravity, no removal — just direct placement. Later entries in `overrides` win ties on the
+    // same position. Out-of-range positions are ignored rather than throwing.
+    public static overlaySymbols<T extends string | number | symbol = string>(
+        symbols: T[][],
+        overrides: {position: number[]; symbolId: T}[],
+    ): T[][] {
+        const result = symbols.map((reelSymbols) => [...reelSymbols]);
+        overrides.forEach(({position: [reelId, rowId], symbolId}) => {
+            if (result[reelId] && rowId >= 0 && rowId < result[reelId].length) {
+                result[reelId][rowId] = symbolId;
+            }
+        });
+        return result;
     }
 
     public static getSymbolsCount<T extends string | number | symbol = string>(symbols: T[][], symbolId: T): number {

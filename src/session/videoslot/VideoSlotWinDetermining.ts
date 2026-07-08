@@ -4,6 +4,7 @@ import {
     WinningLineDescribing,
     WinningScatterDescribing,
     WinningValueDescribing,
+    WinningWayDescribing,
 } from "pokie";
 
 export interface VideoSlotWinDetermining<T extends string | number | symbol = string> extends WinAmountDetermining {
@@ -29,4 +30,10 @@ export interface VideoSlotWinDetermining<T extends string | number | symbol = st
     getWinningValues?(): Record<T, WinningValueDescribing<T>>;
 
     getValuesWinning?(): number;
+
+    // Optional for the same reason. Multiplicative ways-to-win (243-ways/Megaways style) is opt-in
+    // via a WaysWinCalculating implementation, e.g. DefaultWaysWinCalculator.
+    getWinningWays?(): Record<T, WinningWayDescribing<T>>;
+
+    getWaysWinning?(): number;
 }

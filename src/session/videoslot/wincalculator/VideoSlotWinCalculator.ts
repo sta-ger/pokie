@@ -8,11 +8,13 @@ import {
     ValueWinCalculating,
     VideoSlotConfigDescribing,
     VideoSlotWinCalculating,
+    WaysWinCalculating,
     WinningClusterDescribing,
     WinningLineDescribing,
     WinningScatter,
     WinningScatterDescribing,
     WinningValueDescribing,
+    WinningWayDescribing,
 } from "pokie";
 
 export class VideoSlotWinCalculator<T extends string | number | symbol = string> implements VideoSlotWinCalculating<T> {
@@ -21,11 +23,13 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     private readonly scatterWinCalculator: ScatterWinCalculating<T>;
     private readonly clusterWinCalculator?: ClusterWinCalculating<T>;
     private readonly valueWinCalculator?: ValueWinCalculating<T>;
+    private readonly waysWinCalculator?: WaysWinCalculating<T>;
 
     private winningLines: Record<string, WinningLineDescribing<T>> = {};
     private winningScatters: Record<T, WinningScatterDescribing<T>> = {} as Record<T, WinningScatterDescribing<T>>;
     private winningClusters: Record<string, WinningClusterDescribing<T>> = {};
     private winningValues: Record<T, WinningValueDescribing<T>> = {} as Record<T, WinningValueDescribing<T>>;
+    private winningWays: Record<T, WinningWayDescribing<T>> = {} as Record<T, WinningWayDescribing<T>>;
 
     constructor(
         conf: VideoSlotConfigDescribing<T>,
@@ -37,12 +41,15 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         clusterWinCalculator: ClusterWinCalculating<T> | undefined = undefined,
         // Same reasoning as clusterWinCalculator above — no default instance, opt-in only.
         valueWinCalculator: ValueWinCalculating<T> | undefined = undefined,
+        // Same reasoning again — opt-in only.
+        waysWinCalculator: WaysWinCalculating<T> | undefined = undefined,
     ) {
         this.config = conf;
         this.lineWinCalculator = lineWinCalculator;
         this.scatterWinCalculator = scatterWinCalculator;
         this.clusterWinCalculator = clusterWinCalculator;
         this.valueWinCalculator = valueWinCalculator;
+        this.waysWinCalculator = waysWinCalculator;
     }
 
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): void {
@@ -53,6 +60,9 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
             this.winningValues =
                 this.valueWinCalculator?.calculateWinningValues(bet, symbolsCombination) ??
                 ({} as Record<T, WinningValueDescribing<T>>);
+            this.winningWays =
+                this.waysWinCalculator?.calculateWinningWays(bet, symbolsCombination) ??
+                ({} as Record<T, WinningWayDescribing<T>>);
         } else {
             throw new Error(`Bet ${bet} is not specified at paytable`);
         }
@@ -74,8 +84,18 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         return this.winningValues;
     }
 
+    public getWinningWays(): Record<T, WinningWayDescribing<T>> {
+        return this.winningWays;
+    }
+
     public getWinAmount(): number {
-        return this.getLinesWinning() + this.getScattersWinning() + this.getClustersWinning() + this.getValuesWinning();
+        return (
+            this.getLinesWinning() +
+            this.getScattersWinning() +
+            this.getClustersWinning() +
+            this.getValuesWinning() +
+            this.getWaysWinning()
+        );
     }
 
     public getLinesWinning(): number {
@@ -97,5 +117,10 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     public getValuesWinning(): number {
         const values = this.getWinningValues() as unknown as Record<string, WinningValueDescribing<T>>;
         return Object.values(values).reduce((sum, value) => sum + value.getWinAmount(), 0);
+    }
+
+    public getWaysWinning(): number {
+        const ways = this.getWinningWays() as unknown as Record<string, WinningWayDescribing<T>>;
+        return Object.values(ways).reduce((sum, way) => sum + way.getWinAmount(), 0);
     }
 }

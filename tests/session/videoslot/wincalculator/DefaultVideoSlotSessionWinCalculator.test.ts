@@ -170,6 +170,27 @@ describe("DefaultVideoSlotSessionWinCalculator", () => {
         ).toEqual([1, 3]);
     });
 
+    test("getLineSymbolsGridPositions", () => {
+        // A horizontal middle-row line across 5 reels: definition[reelId] = row index for that reel.
+        const definition = [1, 1, 1, 1, 1];
+        expect(SymbolsCombinationsAnalyzer.getLineSymbolsGridPositions(definition, [0, 1, 2])).toEqual([
+            [0, 1],
+            [1, 1],
+            [2, 1],
+        ]);
+
+        // A zig-zag line: each reel has its own row, only reels 1, 3, 4 are part of the win.
+        const zigZagDefinition = [0, 2, 1, 0, 2];
+        expect(SymbolsCombinationsAnalyzer.getLineSymbolsGridPositions(zigZagDefinition, [1, 3, 4])).toEqual([
+            [1, 2],
+            [3, 0],
+            [4, 2],
+        ]);
+
+        // no winning reels -> no positions
+        expect(SymbolsCombinationsAnalyzer.getLineSymbolsGridPositions(definition, [])).toEqual([]);
+    });
+
     test("getScatterSymbolsPositions", () => {
         expect(
             SymbolsCombinationsAnalyzer.getScatterSymbolsPositions(
@@ -262,6 +283,246 @@ describe("DefaultVideoSlotSessionWinCalculator", () => {
         expect(
             SymbolsCombinationsAnalyzer.getSymbolsClusters(restrictedWild, 4, ["W"], {W: ["A"]}),
         ).toHaveLength(1);
+    });
+
+    test("collapseAndRefillSymbols", () => {
+        const symbols = [
+            ["A", "B", "C"],
+            ["D", "E", "F"],
+            ["G", "H", "I"],
+        ];
+
+        // Remove reel0/row1 ("B") and reel1/rows 0 and 2 ("D", "F"); reel2 is untouched.
+        const result = SymbolsCombinationsAnalyzer.collapseAndRefillSymbols(
+            symbols,
+            [
+                [0, 1],
+                [1, 0],
+                [1, 2],
+            ],
+            [["X"], ["Y", "Z"], []],
+        );
+
+        // Refill enters at row 0 (the top); surviving symbols keep their relative order and settle
+        // towards the higher row index (gravity pulls down).
+        expect(result).toEqual([
+            ["X", "A", "C"],
+            ["Y", "Z", "E"],
+            ["G", "H", "I"],
+        ]);
+
+        // the original grid is untouched (pure function)
+        expect(symbols).toEqual([
+            ["A", "B", "C"],
+            ["D", "E", "F"],
+            ["G", "H", "I"],
+        ]);
+    });
+
+    test("collapseAndRefillSymbols treats duplicate positions as a single removal", () => {
+        const symbols = [["A", "B", "C"]];
+
+        const result = SymbolsCombinationsAnalyzer.collapseAndRefillSymbols(
+            symbols,
+            [
+                [0, 1],
+                [0, 1],
+            ],
+            [["X"]],
+        );
+
+        expect(result).toEqual([["X", "A", "C"]]);
+    });
+
+    test("collapseAndRefillSymbols ignores extra refill symbols beyond what a reel needs", () => {
+        const symbols = [["A", "B", "C"]];
+
+        const result = SymbolsCombinationsAnalyzer.collapseAndRefillSymbols(symbols, [[0, 1]], [["X", "Y", "Z"]]);
+
+        expect(result).toEqual([["X", "A", "C"]]);
+    });
+
+    test("collapseAndRefillSymbols throws when a reel doesn't get enough refill symbols", () => {
+        const symbols = [["A", "B", "C"]];
+
+        expect(() =>
+            SymbolsCombinationsAnalyzer.collapseAndRefillSymbols(
+                symbols,
+                [
+                    [0, 0],
+                    [0, 1],
+                ],
+                [["X"]],
+            ),
+        ).toThrow();
+    });
+
+    test("collapseAndRefillSymbols ignores out-of-range reel ids and tolerates a missing refill entry", () => {
+        const symbols = [
+            ["A", "B"],
+            ["C", "D"],
+        ];
+
+        // reelId 5 doesn't exist on this grid and is silently ignored; reel1 has nothing removed,
+        // so its missing entry in refillSymbolsPerReel is never needed.
+        const result = SymbolsCombinationsAnalyzer.collapseAndRefillSymbols(symbols, [[5, 0]], [["X"]]);
+
+        expect(result).toEqual(symbols);
+    });
+
+    test("overlaySymbols stamps symbols onto specific cells without gravity", () => {
+        const symbols = [
+            ["A", "B"],
+            ["C", "D"],
+        ];
+
+        const result = SymbolsCombinationsAnalyzer.overlaySymbols(symbols, [
+            {position: [0, 1], symbolId: "X"},
+            {position: [1, 0], symbolId: "Y"},
+        ]);
+
+        expect(result).toEqual([
+            ["A", "X"],
+            ["Y", "D"],
+        ]);
+        // pure function — original grid untouched
+        expect(symbols).toEqual([
+            ["A", "B"],
+            ["C", "D"],
+        ]);
+    });
+
+    test("overlaySymbols lets a later override win ties on the same position", () => {
+        const symbols = [["A"]];
+
+        const result = SymbolsCombinationsAnalyzer.overlaySymbols(symbols, [
+            {position: [0, 0], symbolId: "X"},
+            {position: [0, 0], symbolId: "Y"},
+        ]);
+
+        expect(result).toEqual([["Y"]]);
+    });
+
+    test("overlaySymbols ignores out-of-range positions", () => {
+        const symbols = [["A"]];
+
+        const result = SymbolsCombinationsAnalyzer.overlaySymbols(symbols, [
+            {position: [5, 0], symbolId: "X"},
+            {position: [0, 5], symbolId: "Y"},
+        ]);
+
+        expect(result).toEqual([["A"]]);
+    });
+
+    test("overlaySymbols expands a whole reel when given every row on it", () => {
+        const symbols = [
+            ["A", "B", "C"],
+            ["D", "E", "F"],
+        ];
+
+        const result = SymbolsCombinationsAnalyzer.overlaySymbols(
+            symbols,
+            [0, 1, 2].map((rowId) => ({position: [0, rowId], symbolId: "W"})),
+        );
+
+        expect(result).toEqual([
+            ["W", "W", "W"],
+            ["D", "E", "F"],
+        ]);
+    });
+
+    test("getPositionsMultiplier combines multiplier-carrying positions and skips plain symbols", () => {
+        const symbols = [
+            ["X2", "A"],
+            ["X3", "B"],
+        ];
+        const multiplierValues = {X2: 2, X3: 3};
+
+        // both multiplier wilds and a plain symbol are inside the winning positions — the plain
+        // symbol is skipped rather than resetting the accumulated multiplier
+        expect(
+            SymbolsCombinationsAnalyzer.getPositionsMultiplier(
+                symbols,
+                [
+                    [0, 0],
+                    [0, 1],
+                    [1, 0],
+                ],
+                multiplierValues,
+            ),
+        ).toBe(6);
+
+        // no multiplier symbols in the winning positions -> identity (1 by default)
+        expect(SymbolsCombinationsAnalyzer.getPositionsMultiplier(symbols, [[0, 1]], multiplierValues)).toBe(1);
+
+        // empty positions -> identity
+        expect(SymbolsCombinationsAnalyzer.getPositionsMultiplier(symbols, [], multiplierValues)).toBe(1);
+
+        // custom combine (sum) with a matching identity
+        expect(
+            SymbolsCombinationsAnalyzer.getPositionsMultiplier(
+                symbols,
+                [
+                    [0, 0],
+                    [1, 0],
+                ],
+                multiplierValues,
+                (a, b) => a + b,
+                0,
+            ),
+        ).toBe(5);
+
+        // out-of-range position is skipped, not an error
+        expect(SymbolsCombinationsAnalyzer.getPositionsMultiplier(symbols, [[9, 9]], multiplierValues)).toBe(1);
+    });
+
+    test("getWaysForSymbol counts consecutive-reel matches and stops at the first non-matching reel", () => {
+        const symbols = [
+            ["A", "A"],
+            ["A", "K"],
+            ["K", "K"],
+        ];
+
+        // reel0 has 2 "A"s, reel1 has 1 "A", reel2 has 0 -> stops there, 2 reels matched, 2*1=2 ways
+        const result = SymbolsCombinationsAnalyzer.getWaysForSymbol(symbols, "A");
+        expect(result.reelsMatched).toBe(2);
+        expect(result.waysCount).toBe(2);
+        expect(result.positions).toEqual(
+            expect.arrayContaining([
+                [0, 0],
+                [0, 1],
+                [1, 0],
+            ]),
+        );
+        expect(result.positions).toHaveLength(3);
+
+        // symbol absent from reel0 entirely -> zero ways
+        const noMatch = SymbolsCombinationsAnalyzer.getWaysForSymbol(symbols, "Q");
+        expect(noMatch.reelsMatched).toBe(0);
+        expect(noMatch.waysCount).toBe(0);
+        expect(noMatch.positions).toEqual([]);
+    });
+
+    test("getWaysForSymbol lets a wild substitute, honoring wildSubstitutions", () => {
+        // reel0 is a lone wild, reel1 is a real "A".
+        const symbols = [["W"], ["A"]];
+
+        // unrestricted wild substitutes for "A" -> both reels match, 1*1 = 1 way
+        expect(SymbolsCombinationsAnalyzer.getWaysForSymbol(symbols, "A", ["W"])).toEqual({
+            reelsMatched: 2,
+            waysCount: 1,
+            positions: [
+                [0, 0],
+                [1, 0],
+            ],
+        });
+
+        // wild restricted to substitute only for "K" -> reel0 has zero matches for "A", stops there
+        expect(SymbolsCombinationsAnalyzer.getWaysForSymbol(symbols, "A", ["W"], {W: ["K"]})).toEqual({
+            reelsMatched: 0,
+            waysCount: 0,
+            positions: [],
+        });
     });
 
     test("getSymbolsCount", () => {

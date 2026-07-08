@@ -11,6 +11,8 @@ import {
     WinningScatterNetworkData,
     WinningValueDescribing,
     WinningValueNetworkData,
+    WinningWayDescribing,
+    WinningWayNetworkData,
 } from "pokie";
 
 export class VideoSlotSessionSerializer<T extends string | number | symbol = string>
@@ -117,6 +119,25 @@ implements VideoSlotSessionSerializing<T> {
                     },
                 }),
                 {} as Record<T, WinningValueNetworkData<T>>,
+            );
+        }
+        // getWinningWays is optional on VideoSlotSessionHandling for the same reason as
+        // getWinningClusters/getWinningValues — ways-pay is an opt-in extension (see
+        // VideoSlotWinDetermining).
+        const winningWays = session.getWinningWays?.() ?? {};
+        if (Object.keys(winningWays).length > 0) {
+            const waysByKey = winningWays as unknown as Record<string, WinningWayDescribing<T>>;
+            r.winningWays = Object.values(waysByKey).reduce(
+                (acc, way) => ({
+                    ...acc,
+                    [way.getSymbolId()]: {
+                        symbolId: way.getSymbolId(),
+                        symbolsPositions: way.getSymbolsPositions(),
+                        waysCount: way.getWaysCount(),
+                        winAmount: way.getWinAmount(),
+                    },
+                }),
+                {} as Record<T, WinningWayNetworkData<T>>,
             );
         }
         return r;
