@@ -73,6 +73,7 @@ export * from "./session/videoslot/combinations/SymbolsSequence.js";
 export * from "./session/videoslot/combinations/SymbolsSequenceDescribing.js";
 export * from "./session/videoslot/combinations/SymbolsSequenceModifying.js";
 export * from "./session/videoslot/combinations/SymbolsSequenceRepresenting.js";
+export * from "./session/videoslot/combinations/VariableHeightSymbolsCombinationsGenerator.js";
 export * from "./session/videoslot/linesdefinitions/CustomLinesDefinitions.js";
 export * from "./session/videoslot/linesdefinitions/HorizontalLines.js";
 export * from "./session/videoslot/linesdefinitions/LinesDefinitionsDescribing.js";
