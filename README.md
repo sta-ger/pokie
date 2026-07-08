@@ -109,6 +109,25 @@ See the [examples](https://github.com/sta-ger/pokie-examples) of various video s
 - **Video slot with sticky re-spin** [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-sticky-respin.html)]
   [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-sticky-respin)] — 5x3 game where
   a win holds its symbols in place and triggers a re-spin, continuing as long as new wins land.
+- **Cascading cluster pays** [[Demo](https://sta-ger.github.io/pokie-examples/cascading-cluster.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/cascading-cluster)] — 6x5 cluster-pay slot
+  using `CascadingSpinResolver`: winning clusters are removed, the grid collapses and refills, and evaluation
+  repeats until nothing wins, with an escalating step multiplier.
+- **Megaways-style ways-to-win** [[Demo](https://sta-ger.github.io/pokie-examples/megaways-style.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/megaways-style)] — each of 6 reels draws
+  its own row count every round (`VariableHeightSymbolsCombinationsGenerator`), paid with `WaysWinCalculator`.
+- **Growing grid bonus** [[Demo](https://sta-ger.github.io/pokie-examples/growing-grid.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/growing-grid)] — `ResizableSymbolsCombinationsGenerator`
+  grows the grid by a row on every win (up to a cap) and resets it on a loss.
+- **Value pay with multiplier wilds** [[Demo](https://sta-ger.github.io/pokie-examples/value-pay-multiplier.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/value-pay-multiplier)] — `ValueWinCalculator`
+  coins pay independently of `MultiplierResolver` wilds, which are scoped to line wins only.
+- **Verifiable spin** [[Demo](https://sta-ger.github.io/pokie-examples/verifiable-spin.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/verifiable-spin)] — `SeededRandomNumberGenerator`
+  plus a button that replays the session's seed from scratch and verifies it reproduces the same outcome.
+- **Mixed win evaluators** [[Demo](https://sta-ger.github.io/pokie-examples/mixed-evaluators.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/mixed-evaluators)] — the same grid
+  evaluated as lines, ways, and clusters at once, paid by whichever wins the most (`HighestWinOnlyAggregationPolicy`).
 
 ### Modeling slot math with POKIE
 
