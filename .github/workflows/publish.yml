@@ -1,0 +1,60 @@
+name: Publish
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Default GITHUB_TOKEN checkout can't push back to a protected branch; this uses the
+          # token explicitly so the version-bump commit/tag pushed below is authenticated the same way.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      - name: Configure release commit identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Defaults to a patch bump on a plain push to master; workflow_dispatch's "bump" input
+      # overrides it for an explicit minor/major release. The "[skip ci]" in the commit message is
+      # load-bearing: GitHub does not trigger workflow runs for a push whose head commit message
+      # contains it, which is what stops this workflow (and ci.yml) from re-triggering on the
+      # version-bump commit it's about to push.
+      - name: Bump version
+        run: |
+          npm version "${{ github.event.inputs.bump || 'patch' }}" -m "chore: release v%s [skip ci]"
+
+      - name: Push version bump and tag
+        run: git push --follow-tags
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
