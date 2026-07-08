@@ -8,24 +8,33 @@ export class MultiplierResolver<T extends string | number | symbol = string> {
     private readonly source: string;
     private readonly combine: (accumulated: number, next: number) => number;
     private readonly identity: number;
-    private readonly supportedComponentTypes: string[];
+    private readonly supportedComponentTypes?: string[];
 
-    constructor(
-        symbolMultipliers: Partial<Record<T, number>>,
-        source = "symbol-multipliers",
-        combine: (accumulated: number, next: number) => number = (a, b) => a * b,
-        identity = 1,
-        supportedComponentTypes = ["line", "scatter", "cluster", "ways", "value"],
-    ) {
+    constructor(symbolMultipliers: Partial<Record<T, number>>, options?: {
+        source?: string;
+        combine?: (accumulated: number, next: number) => number;
+        identity?: number;
+        supportedComponentTypes?: string[];
+    }) {
         this.symbolMultipliers = symbolMultipliers;
-        this.source = source;
-        this.combine = combine;
-        this.identity = identity;
-        this.supportedComponentTypes = [...supportedComponentTypes];
+        this.source = options?.source ?? "symbol-multipliers";
+        this.combine = options?.combine ?? ((a, b) => a * b);
+        this.identity = options?.identity ?? 1;
+        this.supportedComponentTypes = options?.supportedComponentTypes
+            ? [...options.supportedComponentTypes]
+            : undefined;
     }
 
-    public getSupportedComponentTypes(): string[] {
-        return [...this.supportedComponentTypes];
+    public getSupportedComponentTypes(): string[] | undefined {
+        return this.supportedComponentTypes ? [...this.supportedComponentTypes] : undefined;
+    }
+
+    public supportsComponentType(componentType: string): boolean {
+        return (
+            this.supportedComponentTypes === undefined ||
+            this.supportedComponentTypes.length === 0 ||
+            this.supportedComponentTypes.includes(componentType)
+        );
     }
 
     public resolve(

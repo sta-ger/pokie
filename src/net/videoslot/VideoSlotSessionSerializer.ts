@@ -2,6 +2,7 @@ import {
     GameSessionSerializer,
     GameSessionSerializing,
     VideoSlotInitialNetworkData,
+    WinEvaluationResultNetworkData,
     VideoSlotRoundNetworkData,
     VideoSlotSessionHandling,
     VideoSlotSessionSerializing,
@@ -49,13 +50,16 @@ implements VideoSlotSessionSerializing<T> {
 
     public getRoundData(session: VideoSlotSessionHandling<T>): VideoSlotRoundNetworkData<T> {
         const symbolsCombination = session.getSymbolsCombination();
+        const winEvaluationResult = session.getWinEvaluationResult();
         const winningLines = session.getWinningLines();
         const winningScatters = session.getWinningScatters();
-        const winEvaluationResult = session.getWinEvaluationResult();
+        const winningClusters = this.getDerivedWinningClusters(session, winEvaluationResult);
+        const winningValues = this.getDerivedWinningValues(session, winEvaluationResult);
+        const winningWays = this.getDerivedWinningWays(session, winEvaluationResult);
         const r: VideoSlotRoundNetworkData<T> = {
             ...this.baseSerializer.getRoundData(session),
             reelsSymbols: symbolsCombination.toMatrix(),
-            totalWin: winEvaluationResult.getTotalWin(),
+            totalWin: session.getWinAmount(),
             winningPositions: winEvaluationResult.getWinningPositions(),
             winEvaluationResult: this.serializeWinEvaluationResult(winEvaluationResult),
         };
@@ -95,9 +99,8 @@ implements VideoSlotSessionSerializing<T> {
         // getWinningClusters is optional on VideoSlotSessionHandling (cluster-pay is an opt-in
         // extension, see VideoSlotWinDetermining), so existing sessions that never implement it
         // still serialize unchanged.
-        const winningClusters = session.getWinningClusters?.() ?? {};
         if (Object.keys(winningClusters).length > 0) {
-            r.winningClusters = Object.entries(winningClusters as Record<string, WinningClusterDescribing<T>>).reduce(
+            r.winningClusters = Object.entries(winningClusters).reduce(
                 (acc, [clusterId, cluster]) => ({
                     ...acc,
                     [clusterId]: {
@@ -111,7 +114,6 @@ implements VideoSlotSessionSerializing<T> {
         }
         // getWinningValues is optional on VideoSlotSessionHandling for the same reason as
         // getWinningClusters — value-pay is an opt-in extension (see VideoSlotWinDetermining).
-        const winningValues = session.getWinningValues?.() ?? {};
         if (Object.keys(winningValues).length > 0) {
             const valuesByKey = winningValues as unknown as Record<string, WinningValueDescribing<T>>;
             r.winningValues = Object.values(valuesByKey).reduce(
@@ -129,7 +131,6 @@ implements VideoSlotSessionSerializing<T> {
         // getWinningWays is optional on VideoSlotSessionHandling for the same reason as
         // getWinningClusters/getWinningValues — ways-pay is an opt-in extension (see
         // VideoSlotWinDetermining).
-        const winningWays = session.getWinningWays?.() ?? {};
         if (Object.keys(winningWays).length > 0) {
             const waysByKey = winningWays as unknown as Record<string, WinningWayDescribing<T>>;
             r.winningWays = Object.values(waysByKey).reduce(
@@ -148,7 +149,7 @@ implements VideoSlotSessionSerializing<T> {
         return r;
     }
 
-    private serializeWinEvaluationResult(result: WinEvaluationResult<T>) {
+    private serializeWinEvaluationResult(result: WinEvaluationResult<T>): WinEvaluationResultNetworkData<T> {
         return {
             totalWin: result.getTotalWin(),
             winningPositions: result.getWinningPositions(),
@@ -187,5 +188,53 @@ implements VideoSlotSessionSerializing<T> {
             })),
             metadata: result.getMetadata(),
         };
+    }
+
+    private getDerivedWinningClusters(
+        session: VideoSlotSessionHandling<T>,
+        result: WinEvaluationResult<T>,
+    ): Record<string, WinningClusterDescribing<T>> {
+        const explicitClusters = session.getWinningClusters?.();
+        if (explicitClusters && Object.keys(explicitClusters).length > 0) {
+            return explicitClusters;
+        }
+
+        return result.getClusterWins().reduce(
+            (acc, component) => ({
+                ...acc,
+                [component.getId()]: component.getWinningCluster(),
+            }),
+            {} as Record<string, WinningClusterDescribing<T>>,
+        );
+    }
+
+    private getDerivedWinningValues(
+        session: VideoSlotSessionHandling<T>,
+        result: WinEvaluationResult<T>,
+    ): Record<T, WinningValueDescribing<T>> {
+        const explicitValues = session.getWinningValues?.();
+        if (explicitValues && Object.keys(explicitValues).length > 0) {
+            return explicitValues;
+        }
+
+        return result.getValueWins().reduce((acc, component) => {
+            acc[component.getWinningValue().getSymbolId()] = component.getWinningValue();
+            return acc;
+        }, {} as Record<T, WinningValueDescribing<T>>);
+    }
+
+    private getDerivedWinningWays(
+        session: VideoSlotSessionHandling<T>,
+        result: WinEvaluationResult<T>,
+    ): Record<T, WinningWayDescribing<T>> {
+        const explicitWays = session.getWinningWays?.();
+        if (explicitWays && Object.keys(explicitWays).length > 0) {
+            return explicitWays;
+        }
+
+        return result.getWaysWins().reduce((acc, component) => {
+            acc[component.getWinningWay().getSymbolId()] = component.getWinningWay();
+            return acc;
+        }, {} as Record<T, WinningWayDescribing<T>>);
     }
 }

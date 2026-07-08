@@ -17,6 +17,7 @@ import {
     WinningLineDescribing,
     WinningScatterDescribing,
 } from "pokie";
+import {LegacyWinEvaluationResultAdapter} from "./winevaluation/LegacyWinEvaluationResultAdapter.js";
 import {WinEvaluationResult} from "./winevaluation/WinEvaluationResult.js";
 
 export class VideoSlotSession<T extends string | number | symbol = string> implements VideoSlotSessionHandling<T> {
@@ -57,7 +58,10 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public getWinEvaluationResult(): WinEvaluationResult<T> {
-        return this.winCalculator.getWinEvaluationResult?.() ?? new WinEvaluationResult<T>();
+        if (this.supportsWinEvaluationResult()) {
+            return this.winCalculator.getWinEvaluationResult!();
+        }
+        return LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
     }
 
     public getSymbolsSequences(): SymbolsSequenceDescribing<T>[] {
@@ -85,7 +89,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public getWinAmount(): number {
-        return this.getWinEvaluationResult().getTotalWin();
+        return this.supportsWinEvaluationResult() ? this.getWinEvaluationResult().getTotalWin() : this.winCalculator.getWinAmount();
     }
 
     public getLinesWinning(): number {
@@ -116,7 +120,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.baseSession.play();
         this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
         this.winCalculator.calculateWin(this.getBet(), this.symbolsCombination);
-        this.winAmount = this.getWinEvaluationResult().getTotalWin();
+        this.winAmount = this.getWinAmount();
         this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
     }
 
@@ -142,5 +146,9 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
 
     public getLinesPatterns(): LinesPatternsDescribing {
         return this.config.getLinesPatterns();
+    }
+
+    private supportsWinEvaluationResult(): boolean {
+        return typeof this.winCalculator.getWinEvaluationResult === "function";
     }
 }

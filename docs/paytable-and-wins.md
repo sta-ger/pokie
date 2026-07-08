@@ -59,7 +59,7 @@ getScattersWinning(): number
 getClustersWinning(): number
 getValuesWinning(): number
 getWaysWinning(): number
-getWinAmount(): number   // sum of all five *Winning() totals above
+getWinAmount(): number   // canonical total from the current WinEvaluationResult (or legacy fallback)
 ```
 
 `calculateWin(bet, combination)`:
@@ -67,12 +67,15 @@ getWinAmount(): number   // sum of all five *Winning() totals above
 1. **Throws** `Bet ${bet} is not specified at paytable` if `bet` isn't in `config.getAvailableBets()`. (Note the
    asymmetry: `Paytable.getWinAmountForSymbol` itself never throws — it defaults to `0` for anything unknown. Only
    the calculator's entry point validates the bet.)
-2. Delegates to the injected line/scatter/cluster/value/ways calculators (whichever are present) and stores what
-   each returns. `getWinAmount()` is a plain sum across all five — no "highest win only" exclusivity.
+2. Builds a unified `WinEvaluationResult` from the configured evaluator pipeline. `getWinAmount()` reads that
+   canonical result (or falls back to the legacy calculator amount if no `getWinEvaluationResult()` is implemented).
 
 Constructing `VideoSlotWinCalculator` with only the first argument (or via `VideoSlotSession`'s default) gives you
 line + scatter pays only — the classic model. Cluster/value/ways are additive: pass any subset of them to combine
 win styles in the same game (e.g. lines + scatters + a value-pay bonus symbol).
+
+Legacy custom win calculators that do **not** implement `getWinEvaluationResult()` are still supported: the session
+adapts their legacy `getWinAmount()` into a canonical `WinEvaluationResult` instead of silently paying `0`.
 
 ## Line pays
 
@@ -296,11 +299,25 @@ itself.
 `VideoSlotWinCalculatorOptions`, the applied multiplier breakdown is attached to `WinEvaluationResult`. This is
 distinct from `ValueWinCalculator`, which pays its own independent amount rather than scaling another component.
 
+`MultiplierResolver` enforces supported component types at runtime:
+
+- omitted/empty `supportedComponentTypes` means "apply to all component types";
+- an explicit `supportedComponentTypes` list means "apply only to those types".
+
+Validation follows the same rule.
+
 ## Cascade status
 
 `collapseAndRefillSymbols` and `overlaySymbols` are still low-level grid primitives. A full cascade loop now lives in
 `CascadingSpinResolver`, which repeatedly evaluates wins, removes winning positions, collapses/refills the grid, and
 stops when no wins remain. Use `CascadeResult` / `CascadeStep` for replay, debug, or reporting.
+
+`CascadingSpinResolver` also supports a max-step guard through `CascadeResolverOptions`:
+
+- `maxCascadeSteps` (default `100`)
+- `onMaxCascadeStepsExceeded` (`"throw"` by default, optional `"stop"`)
+
+This prevents infinite cascade loops when a refill provider keeps recreating a winning screen.
 
 ## Per-symbol wild substitution
 

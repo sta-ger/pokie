@@ -82,6 +82,8 @@ serialization, extension points, and a walkthrough of modeling slot math with PO
 
 Recent runtime additions include a unified `WinEvaluationResult`, explicit mixed-evaluator aggregation policies,
 deterministic cascade runtime foundation (`CascadingSpinResolver`), and aggregate-only simulation primitives.
+Legacy custom win calculators remain supported, multiplier scopes are enforced per component type, and cascade
+resolution is protected by a max-step guard for deterministic runtime safety.
 
 ## Use cases
 

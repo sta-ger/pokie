@@ -5,4 +5,5 @@ export type VideoSlotWinCalculatorOptions<T extends string | number | symbol = s
     aggregationPolicy?: WinAggregationPolicy<T>;
     multiplierResolver?: MultiplierResolver<T>;
     minimumClusterSize?: number;
+    validateOnEvaluate?: boolean;
 };

@@ -13,6 +13,17 @@ aggregates, use the newer foundation classes:
 - `AggregateSimulationRunner` — runs a session without storing per-round payout arrays.
 - `ConfidenceIntervalCalculator` — basic 95% confidence interval helper.
 
+`SimulationAccumulator` keeps payout and RTP statistics separate:
+
+- `averagePayout`
+- `averagePayoutConfidenceInterval95`
+- `payoutStandardDeviation`
+- `rtp`
+- `rtpConfidenceInterval95`
+- `returnStandardDeviation`
+
+For variable bet sizes, RTP is computed from per-round return ratios (`payout / bet`), not from raw payout averages.
+
 ## `SimulationConfig`
 
 ```ts
@@ -177,5 +188,6 @@ const stats = accumulator.getStatistics();
 
 stats.rtp;
 stats.volatility;
-stats.confidenceInterval95;
+stats.averagePayoutConfidenceInterval95;
+stats.rtpConfidenceInterval95;
 ```

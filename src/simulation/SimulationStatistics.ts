@@ -5,9 +5,12 @@ export type SimulationStatistics = {
     totalPayout: number;
     averageBet: number;
     averagePayout: number;
+    averagePayoutConfidenceInterval95: {low: number; high: number};
     rtp: number;
+    rtpConfidenceInterval95: {low: number; high: number};
     volatility: number;
+    payoutStandardDeviation: number;
+    returnStandardDeviation: number;
     maxWin: number;
     payoutHistogram: Record<string, number>;
-    confidenceInterval95: {low: number; high: number};
 };

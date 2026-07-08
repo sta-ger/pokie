@@ -15,6 +15,7 @@ import {WaysEvaluatorValidationRule} from "./WaysEvaluatorValidationRule.js";
 import {WinAggregationPolicy} from "./WinAggregationPolicy.js";
 import {WinComponent} from "./WinComponent.js";
 import {WinEvaluationContext} from "./WinEvaluationContext.js";
+import {WinEvaluationPipelineOptions} from "./WinEvaluationPipelineOptions.js";
 import {WinEvaluationResult} from "./WinEvaluationResult.js";
 import {WinEvaluationValidationContext} from "./WinEvaluationValidationContext.js";
 import {WinEvaluator} from "./WinEvaluator.js";
@@ -24,12 +25,14 @@ export class WinEvaluationPipeline<T extends string | number | symbol = string> 
     private readonly aggregationPolicy: WinAggregationPolicy<T>;
     private readonly multiplierResolver?: MultiplierResolver<T>;
     private readonly validationRules: ValidationRule<WinEvaluationValidationContext<T>>[];
+    private readonly options: WinEvaluationPipelineOptions;
 
     constructor(
         evaluators: WinEvaluator<T>[],
         aggregationPolicy?: WinAggregationPolicy<T>,
         multiplierResolver?: MultiplierResolver<T>,
         validationRules?: ValidationRule<WinEvaluationValidationContext<T>>[],
+        options: WinEvaluationPipelineOptions = {},
     ) {
         this.evaluators = [...evaluators];
         this.aggregationPolicy = aggregationPolicy ?? new ErrorOnIncompatibleWinAggregationPolicy<T>();
@@ -41,12 +44,15 @@ export class WinEvaluationPipeline<T extends string | number | symbol = string> 
             new WaysEvaluatorValidationRule<T>(),
             new MixedEvaluatorsPolicyInfoValidationRule<T>(),
         ];
+        this.options = {...options};
     }
 
     public evaluate(context: WinEvaluationContext<T>): WinEvaluationResult<T> {
-        const validation = this.validate(context);
-        if (validation.hasErrors()) {
-            throw new Error(validation.getIssues().map((issue) => issue.message).join("; "));
+        if (this.options.validateOnEvaluate !== false) {
+            const validation = this.validate(context);
+            if (validation.hasErrors()) {
+                throw new Error(validation.getIssues().map((issue) => issue.message).join("; "));
+            }
         }
 
         const componentsByEvaluator = this.evaluators.map((evaluator) => ({
@@ -100,8 +106,15 @@ export class WinEvaluationPipeline<T extends string | number | symbol = string> 
         return [...this.validationRules];
     }
 
+    public getOptions(): WinEvaluationPipelineOptions {
+        return {...this.options};
+    }
+
     private applyMultiplier(component: WinComponent<T>, context: WinEvaluationContext<T>): WinComponent<T> {
         if (!this.multiplierResolver) {
+            return component;
+        }
+        if (!this.multiplierResolver.supportsComponentType(component.getType())) {
             return component;
         }
         const {winAmount, breakdown} = this.multiplierResolver.resolve(component, context);

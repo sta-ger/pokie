@@ -113,6 +113,9 @@ Example `roundPayload`:
   omitted entirely from the payload when there are no wins of that kind (not present as empty objects).
 - **`winEvaluationResult` is the preferred consumer-facing payload** for runtime/replay/reporting. The legacy
   `winningLines`/`winningScatters`/`winningClusters`/`winningValues`/`winningWays` fields remain for compatibility.
+- **Legacy custom calculators remain serializable.** If a session is backed by an older calculator without
+  `getWinEvaluationResult()`, the session adapts its legacy total so `totalWin` and `winEvaluationResult.totalWin`
+  still reflect the real win amount.
 - **The free-games round fields are typed optional (`?`) but always populated** by the concrete
   `VideoSlotWithFreeGamesSessionSerializer` — the optionality exists because the underlying interface is meant to be
   reusable by non-video-slot free-games games too.

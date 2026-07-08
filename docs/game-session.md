@@ -78,6 +78,10 @@ getLinesPatterns(): LinesPatternsDescribing
 `getWinningLines()` / `getWinningScatters()` methods remain as compatibility views derived from that object. For
 legacy cluster/value/ways record getters, keep using the underlying `VideoSlotWinCalculator` when needed.
 
+Legacy custom win calculators that only implement `calculateWin()` / `getWinAmount()` / `getWinningLines()` /
+`getWinningScatters()` continue to work: `VideoSlotSession.play()` and `VideoSlotSession.getWinAmount()` fall back to
+the legacy calculator amount instead of treating the win as zero.
+
 `VideoSlotConfig` (implements `VideoSlotConfigRepresenting`) is where the game's shape lives:
 
 ```ts

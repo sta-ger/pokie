@@ -22,6 +22,10 @@ implements ValidationRule<WinEvaluationValidationContext<T>> {
 
         const enabledTypes = new Set(target.getEvaluators().map((evaluator) => evaluator.getComponentType()));
         const supportedTypes = multiplierResolver.getSupportedComponentTypes();
+        if (supportedTypes === undefined || supportedTypes.length === 0) {
+            return [];
+        }
+
         if (supportedTypes.every((type) => !enabledTypes.has(type))) {
             return [
                 {

@@ -75,6 +75,8 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
             this.createEvaluators(),
             options.aggregationPolicy ?? new ErrorOnIncompatibleWinAggregationPolicy<T>(),
             options.multiplierResolver,
+            undefined,
+            {validateOnEvaluate: options.validateOnEvaluate},
         );
     }
 
