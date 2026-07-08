@@ -4,7 +4,7 @@
 
 For features where the grid's shape is persistent state that changes based on round outcomes rather than being
 redrawn randomly every spin — e.g. a feature that grows the grid by one row per win, or resets it after a bonus.
-Contrast with [`VariableHeightSymbolsCombinationsGenerator`](reels-and-sequences.md#variableheightsymbolscombinationsgenerator-a-random-height-every-round),
+Contrast with [`VariableHeightSymbolsCombinationsGenerator`](reels-and-sequences.md#variableheightsymbolscombinationsgenerator--a-random-height-every-round),
 which redraws a random height every round instead of persisting an explicit one.
 
 ## `GridResizeHandling`
