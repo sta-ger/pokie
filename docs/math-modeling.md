@@ -2,9 +2,7 @@
 
 # Modeling Slot Math with POKIE
 
-This is an updated, API-verified walkthrough of the workflow described in
-["Exploring Video Slot Math with POKIE"](https://medium.com/@sta-ger/exploring-video-slot-math-with-pokie-3bc7191b72a0)
-— balancing RTP, hit frequency, and volatility for a video slot's math model.
+A worked walkthrough of using POKIE to balance RTP, hit frequency, and volatility for a video slot's math model.
 
 ## The vocabulary
 
@@ -66,7 +64,8 @@ paytable.setPayoutForSymbol("A", 5, 15); // 5-of-a-kind "A" pays 15x bet, across
 config.setPaytable(paytable);
 ```
 
-See [Paytable & Win Calculation](paytable-and-wins.md) for the full payout data model.
+See [Paytable & Win Calculation](paytable-and-wins.md) for the full payout data model, and for cluster/value/ways
+win styles if your game isn't fixed-payline-based.
 
 ## Step 5 — compute the exact theoretical RTP
 
@@ -126,8 +125,3 @@ simulation.getPayoutsStandardDeviation(); // volatility indicator
 If the simulated RTP diverges noticeably from the theoretical one, or hit frequency/volatility don't match the
 target player experience, go back to steps 2–4: adjust symbol distribution on the reel strips, tweak paytable
 payouts, or change how many paylines are active — then re-run steps 5–6 until the numbers land where you want them.
-
-> An older version of this workflow (the linked Medium article) used `simulation.getRtp()` and direct property
-> assignment for callbacks (`simulation.beforePlayCallback = ...`). Neither exists on the current API — use
-> `simulation.getLastRtp()`/`getAverageRtp()` and `simulation.setBeforePlayCallback(...)` etc. instead (see
-> [Simulation](simulation.md)).

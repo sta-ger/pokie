@@ -19,8 +19,8 @@ isBetAvailable(bet: number): boolean
 Defaults (no-arg constructor): `availableBets = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]`, `creditsAmount = 1000`,
 `bet = availableBets[0]` (`1`).
 
-> **`GameSessionConfig.setBet` does not validate against `availableBets`.** It's dumb storage. Validation is a
-> session-layer responsibility.
+> **`GameSessionConfig.setBet` does not validate against `availableBets`.** It's dumb storage. Validation happens
+> one layer up, in `GameSession.setBet`.
 
 `GameSession` (implements `GameSessionHandling`) is the actual play loop:
 
@@ -36,14 +36,13 @@ canPlayNextGame(): boolean          // credits >= bet
 play(): void                        // if canPlayNextGame(), credits -= bet
 ```
 
-`GameSessionHandling` intentionally excludes `AvailableBetsSetting`/`AvailableBetDetermining` — a running session can
-read available bets but not redefine the set; that stays a config-only responsibility.
+`GameSessionHandling` intentionally excludes bet-list mutation (`setAvailableBets`) — a running session can read
+available bets but not redefine the set; that stays a config-only call (`config.setAvailableBets(...)`).
 
 ## The video-slot layer: `VideoSlotSession` / `VideoSlotConfig`
 
-`VideoSlotSession` composes a `GameSessionHandling`, a `SymbolsCombinationsGenerating`, and a
-`VideoSlotWinCalculating` around a `VideoSlotConfigRepresenting` (see [Architecture](architecture.md) for why it's
-composition, not inheritance):
+`VideoSlotSession` wraps a `GameSessionHandling`, a `SymbolsCombinationsGenerating`, and a `VideoSlotWinCalculating`
+around a `VideoSlotConfigRepresenting`:
 
 ```ts
 constructor(
@@ -74,15 +73,23 @@ getLinesPatterns(): LinesPatternsDescribing
 // plus the base session surface: getCreditsAmount/setCreditsAmount, getBet/setBet, getAvailableBets, canPlayNextGame
 ```
 
+`VideoSlotSession` does **not** expose `getWinningClusters`/`getWinningValues`/`getWinningWays` — if you inject a
+cluster/value/ways calculator into `VideoSlotWinCalculator`, `getWinAmount()` on the session already includes their
+totals, but reading the per-cluster/value/way breakdown requires keeping your own reference to the
+`VideoSlotWinCalculator` instance (or writing a thin wrapper that forwards those calls to it). See
+[Paytable & Win Calculation](paytable-and-wins.md#reading-clustervalueways-results-from-a-session) for the exact
+pattern.
+
 `VideoSlotConfig` (implements `VideoSlotConfigRepresenting`) is where the game's shape lives:
 
 ```ts
-constructor(baseConfig = new GameSessionConfig())
+constructor(baseConfig = new GameSessionConfig(), sequencesGenerator: ReelsSymbolsSequencesGenerating = new ReelsSymbolsSequencesGenerator())
 
 getReelsNumber(): number / setReelsNumber(n: number): void
 getReelsSymbolsNumber(): number / setReelsSymbolsNumber(n: number): void   // visible rows per reel
 getAvailableSymbols(): string[] / setAvailableSymbols(symbols: string[]): void
 getWildSymbols(): string[] / setWildSymbols(symbols: string[]): void
+getWildSubstitutions(): Partial<Record<string, string[]>> / setWildSubstitutions(v): void  // see paytable-and-wins.md
 getScatterSymbols(): string[] / setScatterSymbols(symbols: string[]): void
 isSymbolWild(symbolId: string): boolean
 isSymbolScatter(symbolId: string): boolean
@@ -99,17 +106,11 @@ Defaults (no-arg constructor): 5 reels × 3 rows, `availableSymbols = ["A","K","
 
 ### Reel sequence auto-generation
 
-```ts
-constructor(
-    baseConfig = new GameSessionConfig(),
-    sequencesGenerator: ReelsSymbolsSequencesGenerating = new ReelsSymbolsSequencesGenerator(),
-)
-```
-
-`VideoSlotConfig` builds one `SymbolsSequence` per reel by delegating to the injected `ReelsSymbolsSequencesGenerating`.
-The default, `ReelsSymbolsSequencesGenerator`: 15 copies of each non-wild/non-scatter symbol, 5 copies of each
-wild, 3 copies of each scatter, then shuffles — re-rolling the shuffle until no reel has a scatter symbol as part of
-a multi-symbol stack (so scatters land as single symbols on each reel by default). This runs:
+`VideoSlotConfig` builds one `SymbolsSequence` per reel by delegating to the injected `ReelsSymbolsSequencesGenerating`
+(2nd constructor argument). The default, `ReelsSymbolsSequencesGenerator`: 15 copies of each non-wild/non-scatter
+symbol, 5 copies of each wild, 3 copies of each scatter, then shuffles — re-rolling the shuffle until no reel has a
+scatter symbol as part of a multi-symbol stack (so scatters land as single symbols on each reel by default). This
+runs:
 
 - once, in the constructor,
 - again whenever `setScatterSymbols(...)` is called,
@@ -161,7 +162,7 @@ session.play();
 ### Symbol IDs are generic
 
 Every class that touches a symbol ID (`VideoSlotConfig`, `VideoSlotSession`, `Paytable`, `SymbolsSequence`,
-`SymbolsCombination`, `WinningLine`, `WinningScatter`, the win calculator/analyzer, the free-games layer, the `net/`
+`SymbolsCombination`, `WinningLine`, `WinningScatter`, the win calculators/analyzer, the free-games layer, the `net/`
 serializers, and `PlayUntilSymbolWinStrategy`) is generic over a type parameter `T extends string | number | symbol`,
 defaulting to `T = string`. The default keeps every existing call site — `new VideoSlotConfig()`,
 `VideoSlotSessionHandling`, etc. — working exactly as before with no changes required.
@@ -190,4 +191,5 @@ A `string`-literal union (e.g. `"A" | "K" | "Q"`) also works as `T`, giving comp
 fixed symbol set instead of plain unchecked `string`.
 
 See [Paylines & Line Patterns](paylines-and-patterns.md) and [Paytable & Win Calculation](paytable-and-wins.md) for
-details on lines/patterns/paytable, and [Free Games](free-games.md) for the bonus-round layer on top of this.
+details on lines/patterns/paytable, [Free Games](free-games.md) for the bonus-round layer on top of this, and
+[Resizable Grid](resizable-grid.md) for a grid whose per-reel height can change between rounds.

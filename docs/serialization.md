@@ -38,6 +38,9 @@ type VideoSlotRoundNetworkData = {
     reelsSymbols: string[][];
     winningLines?: Record<string, WinningLineNetworkData>;
     winningScatters?: Record<string, WinningScatterNetworkData>;
+    winningClusters?: Record<string, WinningClusterNetworkData>;
+    winningValues?: Record<string, WinningValueNetworkData>;
+    winningWays?: Record<string, WinningWayNetworkData>;
 } & GameRoundNetworkData;
 
 type VideoSlotInitialNetworkData = {
@@ -49,6 +52,10 @@ type VideoSlotInitialNetworkData = {
 } & GameInitialNetworkData & VideoSlotRoundNetworkData;
 ```
 
+`WinningLineNetworkData`/`WinningScatterNetworkData`/`WinningClusterNetworkData`/`WinningValueNetworkData`/
+`WinningWayNetworkData` are the plain-data mirrors of `WinningLineDescribing`/`WinningScatterDescribing`/
+`WinningClusterDescribing`/`WinningValueDescribing`/`WinningWayDescribing` (see
+[Paytable & Win Calculation](paytable-and-wins.md)) — same fields, plain data instead of getters.
 `VideoSlotWithFreeGamesInitialNetworkData`/`RoundNetworkData` add no fields of their own — they're pure type
 intersections of the video-slot and free-games shapes above.
 
@@ -57,7 +64,7 @@ intersections of the video-slot and free-games shapes above.
 | Serializer | Adds (round) | Adds (initial, on top of round) |
 |---|---|---|
 | `GameSessionSerializer` | `credits` ← `getCreditsAmount()`, `bet` ← `getBet()` | `availableBets` ← `getAvailableBets()` |
-| `VideoSlotSessionSerializer` | `reelsSymbols` ← `getSymbolsCombination().toMatrix()`; `winningLines`/`winningScatters` ← `getWinningLines()`/`getWinningScatters()`, **only added if non-empty** | `availableSymbols`, `reelsNumber`, `reelsSymbolsNumber`, `paytable` ← `getPaytable().toMap()`, `linesDefinitions` (hand-built by iterating `getLinesDefinitions().getLinesIds()`) |
+| `VideoSlotSessionSerializer` | `reelsSymbols` ← `getSymbolsCombination().toMatrix()`; `winningLines`/`winningScatters` ← `getWinningLines()`/`getWinningScatters()`, **only added if non-empty**; `winningClusters`/`winningValues`/`winningWays` ← `session.getWinningClusters?.()` etc., same non-empty rule — **but stock `VideoSlotSession` never implements these three optional methods**, so they're omitted even when cluster/value/ways calculators are wired into the win calculator, unless you serialize a session that forwards them (see below) | `availableSymbols`, `reelsNumber`, `reelsSymbolsNumber`, `paytable` ← `getPaytable().toMap()`, `linesDefinitions` (hand-built by iterating `getLinesDefinitions().getLinesIds()`) |
 | `VideoSlotWithFreeGamesSessionSerializer` | `freeGamesNum`/`freeGamesSum`/`freeGamesBank` ← `getFreeGamesNum/Sum/Bank()`; `wonFreeGamesNumber` ← `getWonFreeGamesNumber()` | (nothing extra — just base-init ∪ own round data) |
 
 ```ts
@@ -97,12 +104,16 @@ Example `roundPayload`:
 
 ## Notes
 
-- **`winningLines`/`winningScatters` are genuinely conditional** — omitted entirely from the payload when there are
-  no wins (not present as empty objects).
+- **`winningLines`/`winningScatters`/`winningClusters`/`winningValues`/`winningWays` are genuinely conditional** —
+  omitted entirely from the payload when there are no wins of that kind (not present as empty objects).
+- **`winningClusters`/`winningValues`/`winningWays` need a session that implements the corresponding optional
+  getter.** Stock `VideoSlotSession` doesn't, regardless of what's wired into its `VideoSlotWinCalculator` — see
+  [Paytable & Win Calculation](paytable-and-wins.md#reading-clustervalueways-results-from-a-session) for the
+  decorator pattern that makes these three fields actually appear in the payload.
 - **The free-games round fields are typed optional (`?`) but always populated** by the concrete
   `VideoSlotWithFreeGamesSessionSerializer` — the optionality exists because the underlying interface is meant to be
   reusable by non-video-slot free-games games too.
-- **`winningLines`/`winningScatters` entries duplicate their own key** (e.g. `winningLines["1"].lineId === "1"`) —
-  convenient for clients that flatten/iterate the values without needing the parent key, at the cost of redundancy.
+- **Winning-entry payloads duplicate their own key** (e.g. `winningLines["1"].lineId === "1"`) — convenient for
+  clients that flatten/iterate the values without needing the parent key, at the cost of redundancy.
 - **`linesDefinitions`/`paytable` are initial-only** — cache them from `getInitialData` on session start; they're
   never repeated in `getRoundData`.

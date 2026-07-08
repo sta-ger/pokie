@@ -17,9 +17,9 @@ Introducing **POKIE**, a server-side video slot game logic framework for JavaScr
 
 ## Documentation
 
-See the [docs](docs/README.md) for the full reference: architecture and conventions, game session and
-configuration, reels and symbol sequences, paylines and line patterns, paytable and win calculation, free games,
-simulation, network serialization, and a walkthrough of modeling slot math with POKIE.
+See the [docs](docs/README.md) for the full reference: game session and configuration, reels and symbol sequences,
+paylines and line patterns, paytable and win calculation, free games, resizable grids, simulation, network
+serialization, extension points, and a walkthrough of modeling slot math with POKIE.
 
 ## Use cases
 

@@ -4,8 +4,8 @@
 
 ## `VideoSlotWithFreeGamesConfig`
 
-Composes (does **not** subclass) a private `VideoSlotConfig` — every `VideoSlotConfigRepresenting` method is a
-one-line delegate. It adds exactly one thing: a scatter-symbol → symbol-count → free-games-awarded map.
+Wraps a `VideoSlotConfig` — every `VideoSlotConfigRepresenting` method is a one-line delegate. It adds exactly one
+thing: a scatter-symbol → symbol-count → free-games-awarded map.
 
 ```ts
 constructor(baseConfig = new VideoSlotConfig())
@@ -31,7 +31,7 @@ config.getFreeGamesForScatters("BONUS", 3); // 8
 
 ## `VideoSlotWithFreeGamesSession`
 
-Composes a private `baseSession: VideoSlotSessionHandling` and adds free-games bookkeeping:
+Wraps a `baseSession: VideoSlotSessionHandling` and adds free-games bookkeeping:
 
 ```ts
 constructor(
@@ -56,8 +56,6 @@ whole bonus round — it can grow further via retriggers).
 
 ### `play()` flow
 
-`play()` itself is now just three lines — the bookkeeping is delegated to the injected `FreeGamesRoundHandling`:
-
 ```ts
 public play(): void {
     this.freeGamesRoundHandler.beforeRoundPlayed(this);
@@ -68,7 +66,7 @@ public play(): void {
 ```
 
 `FreeGamesRoundHandler` (the constructor's default 5th argument) implements the classic bank-and-retrigger
-mechanic described below:
+mechanic:
 
 1. **`beforeRoundPlayed`** — if the previous round's free games are all used up (`freeGamesNum === freeGamesSum`),
    the bank/num/sum counters reset to `0`.
@@ -82,10 +80,29 @@ mechanic described below:
    (`freeGamesSum > 0 && freeGamesNum === freeGamesSum`), the accumulated `freeGamesBank` is finally added to real
    credits.
 
-### Extension points
+```ts
+import {VideoSlotWithFreeGamesSession} from "pokie";
+
+const session = new VideoSlotWithFreeGamesSession();
+session.setBet(10);
+session.play(); // base-game spin — may trigger free games via scatters
+
+if (session.getWonFreeGamesNumber() > 0) {
+    while (session.getFreeGamesNum() < session.getFreeGamesSum()) {
+        session.play(); // plays through the awarded free games; wins accumulate in the bank
+    }
+    // bank has now been paid out to credits automatically
+}
+```
+
+See [Simulation](simulation.md)'s `PlayFreeGamesStrategy` for driving a simulation deterministically through an
+entire free-games feature (trigger → all spins → payout).
+
+## Custom bonus mechanics
 
 A different bonus mechanic — a progressive per-spin multiplier, paying out immediately instead of banking, a
-"buy the feature" flow — is a different `FreeGamesRoundHandling` implementation, not a fork of the whole session:
+"buy the feature" flow — is a different `FreeGamesRoundHandling` implementation, injected as the constructor's 5th
+argument, not a fork of the whole session:
 
 ```ts
 import {FreeGamesRoundHandling, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession} from "pokie";
@@ -110,26 +127,8 @@ const session = new VideoSlotWithFreeGamesSession(
 );
 ```
 
-Note the `undefined` placeholders — TypeScript only applies a parameter default when the argument is `undefined`,
-so skipping the 2nd-4th constructor args this way still gets you their normal defaults. See
-[Architecture](architecture.md#extension-points-for-custom-game-mechanics) for the full list of injectable
-extension points, including `AbstractVideoSlotSessionDecorator` for writing your own session wrapper (the same
-pattern `VideoSlotWithFreeGamesSession` itself is built on) without re-implementing every passthrough method.
-
-```ts
-import {VideoSlotWithFreeGamesSession} from "pokie";
-
-const session = new VideoSlotWithFreeGamesSession();
-session.setBet(10);
-session.play(); // base-game spin — may trigger free games via scatters
-
-if (session.getWonFreeGamesNumber() > 0) {
-    while (session.getFreeGamesNum() < session.getFreeGamesSum()) {
-        session.play(); // plays through the awarded free games; wins accumulate in the bank
-    }
-    // bank has now been paid out to credits automatically
-}
-```
-
-See [Simulation](simulation.md)'s `PlayFreeGamesStrategy` for driving a simulation deterministically through an
-entire free-games feature (trigger → all spins → payout).
+Note the `undefined` placeholders — TypeScript only applies a parameter default when the argument is literally
+`undefined`, so skipping the 2nd-4th constructor args this way still gets you their normal defaults. See
+[Extension Points](extension-points.md) for the full list of injectable collaborators, including
+`AbstractVideoSlotSessionDecorator` for writing your own session wrapper (the same pattern
+`VideoSlotWithFreeGamesSession` itself is built on) without re-implementing every passthrough method.
