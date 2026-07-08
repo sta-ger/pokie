@@ -96,6 +96,66 @@ export class SymbolsCombinationsAnalyzer {
         return r;
     }
 
+    public static getSymbolsClusters<T extends string | number | symbol = string>(
+        symbols: T[][],
+        minimumClusterSize: number,
+        wildSymbols?: T[],
+        wildSubstitutions?: Partial<Record<T, T[]>>,
+    ): {symbolId: T; positions: number[][]}[] {
+        const isWild = (symbol: T): boolean => Boolean(wildSymbols?.some((wildSymbolId) => wildSymbolId === symbol));
+        const canJoinCluster = (targetSymbol: T, candidate: T): boolean => {
+            if (candidate === targetSymbol) {
+                return true;
+            }
+            if (!isWild(candidate)) {
+                return false;
+            }
+            const allowedSubstitutes = wildSubstitutions?.[candidate];
+            return allowedSubstitutes === undefined || allowedSubstitutes.includes(targetSymbol);
+        };
+
+        const visited: boolean[][] = symbols.map((reel) => reel.map(() => false));
+        const clusters: {symbolId: T; positions: number[][]}[] = [];
+
+        for (let reelId = 0; reelId < symbols.length; reelId++) {
+            for (let rowId = 0; rowId < symbols[reelId].length; rowId++) {
+                if (visited[reelId][rowId] || isWild(symbols[reelId][rowId])) {
+                    continue;
+                }
+                const targetSymbol = symbols[reelId][rowId];
+                const positions: number[][] = [];
+                const stack: number[][] = [[reelId, rowId]];
+                visited[reelId][rowId] = true;
+                while (stack.length > 0) {
+                    const [r, c] = stack.pop()!;
+                    positions.push([r, c]);
+                    [
+                        [r - 1, c],
+                        [r + 1, c],
+                        [r, c - 1],
+                        [r, c + 1],
+                    ].forEach(([nr, nc]) => {
+                        if (
+                            nr >= 0 &&
+                            nr < symbols.length &&
+                            nc >= 0 &&
+                            nc < symbols[nr].length &&
+                            !visited[nr][nc] &&
+                            canJoinCluster(targetSymbol, symbols[nr][nc])
+                        ) {
+                            visited[nr][nc] = true;
+                            stack.push([nr, nc]);
+                        }
+                    });
+                }
+                if (positions.length >= minimumClusterSize) {
+                    clusters.push({symbolId: targetSymbol, positions});
+                }
+            }
+        }
+        return clusters;
+    }
+
     public static getSymbolsCount<T extends string | number | symbol = string>(symbols: T[][], symbolId: T): number {
         return symbols.reduce(
             (count, reelSymbols) => count + reelSymbols.filter((symbol) => symbol === symbolId).length,

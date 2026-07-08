@@ -13,6 +13,7 @@ export type VideoSlotRoundNetworkData<T extends string | number | symbol = strin
     reelsSymbols: T[][];
     winningLines?: Record<string, WinningLineNetworkData<T>>;
     winningScatters?: Record<T, WinningScatterNetworkData<T>>;
+    winningClusters?: Record<string, WinningClusterNetworkData<T>>;
 } & GameRoundNetworkData;
 
 export type WinningLineNetworkData<T extends string | number | symbol = string> = {
@@ -26,6 +27,12 @@ export type WinningLineNetworkData<T extends string | number | symbol = string> 
 };
 
 export type WinningScatterNetworkData<T extends string | number | symbol = string> = {
+    symbolId: T;
+    symbolsPositions: number[][];
+    winAmount: number;
+};
+
+export type WinningClusterNetworkData<T extends string | number | symbol = string> = {
     symbolId: T;
     symbolsPositions: number[][];
     winAmount: number;

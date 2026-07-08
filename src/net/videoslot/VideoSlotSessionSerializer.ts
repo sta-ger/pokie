@@ -5,6 +5,8 @@ import {
     VideoSlotRoundNetworkData,
     VideoSlotSessionHandling,
     VideoSlotSessionSerializing,
+    WinningClusterDescribing,
+    WinningClusterNetworkData,
     WinningScatterDescribing,
     WinningScatterNetworkData,
 } from "pokie";
@@ -79,6 +81,23 @@ implements VideoSlotSessionSerializing<T> {
                     },
                 }),
                 {} as Record<T, WinningScatterNetworkData<T>>,
+            );
+        }
+        // getWinningClusters is optional on VideoSlotSessionHandling (cluster-pay is an opt-in
+        // extension, see VideoSlotWinDetermining), so existing sessions that never implement it
+        // still serialize unchanged.
+        const winningClusters = session.getWinningClusters?.() ?? {};
+        if (Object.keys(winningClusters).length > 0) {
+            r.winningClusters = Object.entries(winningClusters as Record<string, WinningClusterDescribing<T>>).reduce(
+                (acc, [clusterId, cluster]) => ({
+                    ...acc,
+                    [clusterId]: {
+                        symbolId: cluster.getSymbolId(),
+                        symbolsPositions: cluster.getSymbolsPositions(),
+                        winAmount: cluster.getWinAmount(),
+                    },
+                }),
+                {} as Record<string, WinningClusterNetworkData<T>>,
             );
         }
         return r;

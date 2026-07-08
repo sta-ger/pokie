@@ -193,6 +193,77 @@ describe("DefaultVideoSlotSessionWinCalculator", () => {
         ]);
     });
 
+    test("getSymbolsClusters", () => {
+        // Reel-major matrix (combination[reelId][rowIndex]) shaped like a plus sign of "A"s in
+        // the middle, plus one isolated "A" pair (below minimum size) and one non-"A" symbol.
+        const symbols = new SymbolsCombination()
+            .fromMatrix(
+                [
+                    ["K", "A", "K"],
+                    ["A", "A", "A"],
+                    ["K", "A", "K"],
+                ],
+                true,
+            )
+            .toMatrix();
+
+        const clusters = SymbolsCombinationsAnalyzer.getSymbolsClusters(symbols, 5);
+        expect(clusters).toHaveLength(1);
+        expect(clusters[0].symbolId).toBe("A");
+        expect(clusters[0].positions).toHaveLength(5);
+
+        // raising the minimum above the cluster's size drops it
+        expect(SymbolsCombinationsAnalyzer.getSymbolsClusters(symbols, 6)).toHaveLength(0);
+
+        // diagonal neighbors don't connect a cluster
+        const diagonalOnly = new SymbolsCombination()
+            .fromMatrix(
+                [
+                    ["A", "K"],
+                    ["K", "A"],
+                ],
+                true,
+            )
+            .toMatrix();
+        expect(SymbolsCombinationsAnalyzer.getSymbolsClusters(diagonalOnly, 2)).toHaveLength(0);
+
+        // a wild joins an adjacent cluster instead of starting/ending it on its own
+        const withWild = new SymbolsCombination()
+            .fromMatrix(
+                [
+                    ["A", "A"],
+                    ["A", "W"],
+                ],
+                true,
+            )
+            .toMatrix();
+        const clustersWithWild = SymbolsCombinationsAnalyzer.getSymbolsClusters(withWild, 4, ["W"]);
+        expect(clustersWithWild).toHaveLength(1);
+        expect(clustersWithWild[0].symbolId).toBe("A");
+        expect(clustersWithWild[0].positions).toHaveLength(4);
+
+        // a wild with no adjacent real symbol at all never seeds a cluster of its own
+        const isolatedWild = new SymbolsCombination().fromMatrix([["W"]]).toMatrix();
+        expect(SymbolsCombinationsAnalyzer.getSymbolsClusters(isolatedWild, 1, ["W"])).toHaveLength(0);
+
+        // wildSubstitutions restricts which target symbols a wild may join
+        const restrictedWild = new SymbolsCombination()
+            .fromMatrix(
+                [
+                    ["A", "A"],
+                    ["A", "W"],
+                ],
+                true,
+            )
+            .toMatrix();
+        expect(
+            SymbolsCombinationsAnalyzer.getSymbolsClusters(restrictedWild, 4, ["W"], {W: ["K"]}),
+        ).toHaveLength(0);
+        expect(
+            SymbolsCombinationsAnalyzer.getSymbolsClusters(restrictedWild, 4, ["W"], {W: ["A"]}),
+        ).toHaveLength(1);
+    });
+
     test("getSymbolsCount", () => {
         const symbols = new SymbolsCombination()
             .fromMatrix(

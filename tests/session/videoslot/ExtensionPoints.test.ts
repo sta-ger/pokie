@@ -1,5 +1,6 @@
 import {
     AbstractVideoSlotSessionDecorator,
+    ClusterWinCalculating,
     FreeGamesRoundHandling,
     GameSessionConfig,
     LeftToRightLinesPatterns,
@@ -17,6 +18,8 @@ import {
     VideoSlotWinCalculator,
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSession,
+    WinningCluster,
+    WinningClusterDescribing,
     WinningLine,
     WinningLineDescribing,
     WinningScatter,
@@ -49,6 +52,54 @@ describe("ExtensionPoints", () => {
         expect(calculator.getWinningLines()).toEqual({0: fixedLine});
         expect(calculator.getWinningScatters()).toEqual({S: fixedScatter});
         expect(calculator.getWinAmount()).toBe(49);
+    });
+
+    test("VideoSlotWinCalculator omits cluster wins when no ClusterWinCalculating is injected (unchanged old behavior)", () => {
+        const config = new VideoSlotConfig();
+        config.setReelsNumber(3);
+        const calculator = new VideoSlotWinCalculator(config);
+        calculator.calculateWin(
+            config.getAvailableBets()[0],
+            new SymbolsCombination().fromMatrix([
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ]),
+        );
+
+        expect(calculator.getWinningClusters()).toEqual({});
+        expect(calculator.getClustersWinning()).toBe(0);
+    });
+
+    test("VideoSlotWinCalculator folds an injected ClusterWinCalculating into winningClusters/winAmount", () => {
+        const fixedCluster = new WinningCluster("A", [[0, 0], [0, 1], [1, 0]], 15);
+
+        const clusterWinCalculator: ClusterWinCalculating = {
+            calculateWinningClusters: (): Record<string, WinningClusterDescribing> => ({0: fixedCluster}),
+        };
+
+        const noLines: LineWinCalculating = {
+            calculateWinningLines: (): Record<string, WinningLineDescribing> => ({}),
+        };
+        const noScatters: ScatterWinCalculating = {
+            calculateWinningScatters: (): Record<string, WinningScatterDescribing> => ({}),
+        };
+
+        const config = new VideoSlotConfig();
+        config.setReelsNumber(3);
+        const calculator = new VideoSlotWinCalculator(config, noLines, noScatters, clusterWinCalculator);
+        calculator.calculateWin(
+            config.getAvailableBets()[0],
+            new SymbolsCombination().fromMatrix([
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ]),
+        );
+
+        expect(calculator.getWinningClusters()).toEqual({0: fixedCluster});
+        expect(calculator.getClustersWinning()).toBe(15);
+        expect(calculator.getWinAmount()).toBe(15);
     });
 
     test("VideoSlotConfig delegates reel-strip generation to injected ReelsSymbolsSequencesGenerating", () => {
