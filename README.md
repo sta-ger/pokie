@@ -1,6 +1,6 @@
 # POKIE
 
-[![npm version](https://badge.fury.io/js/pokie.svg)](https://badge.fury.io/js/pokie)
+[![npm version](https://img.shields.io/npm/v/pokie.svg)](https://www.npmjs.com/package/pokie)
 [![license](https://img.shields.io/npm/l/pokie.svg)](LICENSE)
 
 _In Australia, they call slot machines "pokies"._
