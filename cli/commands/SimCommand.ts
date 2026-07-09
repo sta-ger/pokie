@@ -1,4 +1,12 @@
-import {AggregateSimulationRunner, loadPokieGame, PokieGame, PokieGameManifest, SimulationConfig, SimulationStatistics} from "pokie";
+import {
+    AggregateSimulationRunner,
+    loadPokieGame,
+    PokieGame,
+    SimulationConfig,
+    SimulationReport,
+    SimulationReportBuilder,
+    SimulationReportBuilding,
+} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 
@@ -12,32 +20,21 @@ type SimOptions = {
     format: SimFormat;
 };
 
-export type SimReport = {
-    game: {id: string; name: string; version: string};
-    requestedRounds: number;
-    rounds: number;
-    seed: string | null;
-    totalBet: number;
-    totalWin: number;
-    rtp: number;
-    hitFrequency: number;
-    maxWin: number;
-    durationMs: number;
-    spinsPerSecond: number;
-};
-
 const USAGE = "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--out <file>] [--format json]";
 
 export class SimCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
     private readonly writeFile: (file: string, contents: string) => void;
+    private readonly reportBuilder: SimulationReportBuilding;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
+        reportBuilder: SimulationReportBuilding = new SimulationReportBuilder(),
     ) {
         this.loadGame = loadGame;
         this.writeFile = writeFile;
+        this.reportBuilder = reportBuilder;
     }
 
     public getName(): string {
@@ -61,7 +58,13 @@ export class SimCommand implements CliCommandHandling {
         const statistics = new AggregateSimulationRunner(session, options.rounds).run().getStatistics();
         const durationMs = Date.now() - startedAt;
 
-        const report = this.buildReport(game.getManifest(), options, statistics, durationMs);
+        const report = this.reportBuilder.build({
+            manifest: game.getManifest(),
+            requestedRounds: options.rounds,
+            seed: options.seed,
+            statistics,
+            durationMs,
+        });
 
         if (options.out) {
             this.writeFile(options.out, JSON.stringify(report, null, 4));
@@ -133,24 +136,7 @@ export class SimCommand implements CliCommandHandling {
         return {packageRoot, rounds, seed, out, format};
     }
 
-    private buildReport(manifest: PokieGameManifest, options: SimOptions, statistics: SimulationStatistics, durationMs: number): SimReport {
-        const spinsPerSecond = Math.round(statistics.rounds / (Math.max(durationMs, 1) / 1000));
-        return {
-            game: {id: manifest.id, name: manifest.name, version: manifest.version},
-            requestedRounds: options.rounds,
-            rounds: statistics.rounds,
-            seed: options.seed ?? null,
-            totalBet: statistics.totalBet,
-            totalWin: statistics.totalPayout,
-            rtp: statistics.rtp,
-            hitFrequency: statistics.rounds > 0 ? statistics.hitCount / statistics.rounds : 0,
-            maxWin: statistics.maxWin,
-            durationMs,
-            spinsPerSecond,
-        };
-    }
-
-    private printSummary(report: SimReport): void {
+    private printSummary(report: SimulationReport): void {
         console.log(`Simulated "${report.game.name}" (id: "${report.game.id}", v${report.game.version})`);
         const roundsSuffix = report.rounds !== report.requestedRounds ? ` (requested ${report.requestedRounds})` : "";
         console.log(`  rounds          ${report.rounds}${roundsSuffix}`);

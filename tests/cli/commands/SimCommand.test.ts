@@ -1,8 +1,8 @@
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameManifest} from "pokie";
+import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameManifest, SimulationReport} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {SimCommand, SimReport} from "../../../cli/commands/SimCommand";
+import {SimCommand} from "../../../cli/commands/SimCommand";
 
 function createFakeSession(): GameSessionHandling {
     let credits = 1000;
@@ -94,7 +94,7 @@ describe("SimCommand", () => {
         expect(writeFile).toHaveBeenCalledTimes(1);
         const [file, contents] = writeFile.mock.calls[0];
         expect(file).toBe("report.json");
-        const report = JSON.parse(contents) as SimReport;
+        const report = JSON.parse(contents) as SimulationReport;
         expect(report.game).toEqual(manifest);
         expect(report.rounds).toBe(30);
         expect(report.requestedRounds).toBe(30);
@@ -113,7 +113,7 @@ describe("SimCommand", () => {
         await command.run(["./crazy-fruits", "--rounds", "20", "--format", "json"]);
 
         expect(logSpy).toHaveBeenCalledTimes(1);
-        const report = JSON.parse(logSpy.mock.calls[0][0]) as SimReport;
+        const report = JSON.parse(logSpy.mock.calls[0][0]) as SimulationReport;
         expect(report.rounds).toBe(20);
 
         logSpy.mockRestore();
@@ -141,7 +141,7 @@ describe("SimCommand (integration, real loadPokieGame + fixture game package)", 
         await command.run([fixtureRoot, "--rounds", "200", "--seed", "demo", "--out", outFile]);
 
         expect(fs.existsSync(outFile)).toBe(true);
-        const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimReport;
+        const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
         expect(report.game).toEqual({id: "playable-game", name: "Playable Game", version: "1.0.0"});
         expect(report.rounds).toBe(200);
         expect(report.seed).toBe("demo");
@@ -157,8 +157,8 @@ describe("SimCommand (integration, real loadPokieGame + fixture game package)", 
         await command.run([fixtureRoot, "--rounds", "300", "--seed", "reproducible-seed", "--out", firstFile]);
         await command.run([fixtureRoot, "--rounds", "300", "--seed", "reproducible-seed", "--out", secondFile]);
 
-        const first = JSON.parse(fs.readFileSync(firstFile, "utf-8")) as SimReport;
-        const second = JSON.parse(fs.readFileSync(secondFile, "utf-8")) as SimReport;
+        const first = JSON.parse(fs.readFileSync(firstFile, "utf-8")) as SimulationReport;
+        const second = JSON.parse(fs.readFileSync(secondFile, "utf-8")) as SimulationReport;
 
         expect(second.totalBet).toBe(first.totalBet);
         expect(second.totalWin).toBe(first.totalWin);
