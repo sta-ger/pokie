@@ -12,6 +12,15 @@ const report: SimulationReport = {
     maxWin: 120.5,
     durationMs: 1234,
     spinsPerSecond: 7942,
+    reproducibility: {
+        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        seed: "demo",
+        requestedRounds: 10000,
+        actualRounds: 9800,
+        command: "pokie sim <packageRoot> --rounds 10000 --seed demo",
+    },
+    warnings: [],
+    recommendations: [],
 };
 
 describe("HtmlSimulationReportRenderer", () => {
@@ -63,5 +72,55 @@ describe("HtmlSimulationReportRenderer", () => {
         const html = new HtmlSimulationReportRenderer().render({...report, seed: null});
 
         expect(html).toContain("<td>none</td>");
+    });
+
+    it("renders a Reproducibility section with game/seed/rounds/re-run command", () => {
+        const html = new HtmlSimulationReportRenderer().render(report);
+
+        expect(html).toContain("<h2>Reproducibility</h2>");
+        expect(html).toContain("Game: Crazy Fruits (crazy-fruits, v0.1.0)");
+        expect(html).toContain("Requested rounds: 10000");
+        expect(html).toContain("Actual rounds: 9800");
+        expect(html).toContain("Re-run command: <code>pokie sim &lt;packageRoot&gt; --rounds 10000 --seed demo</code>");
+    });
+
+    it("omits the Reproducibility section when the report has no reproducibility field (old report JSON)", () => {
+        const withoutReproducibility = {...report, reproducibility: undefined} as unknown as SimulationReport;
+        const html = new HtmlSimulationReportRenderer().render(withoutReproducibility);
+
+        expect(html).not.toContain("Reproducibility");
+    });
+
+    it("renders a Warnings section with each warning as a list item, escaped", () => {
+        const html = new HtmlSimulationReportRenderer().render({
+            ...report,
+            warnings: ["No seed was provided — this run is not reproducible.", "<script>alert(1)</script>"],
+        });
+
+        expect(html).toContain("<h2>Warnings</h2>");
+        expect(html).toContain("<li>No seed was provided — this run is not reproducible.</li>");
+        expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    });
+
+    it("omits the Warnings section when there are no warnings", () => {
+        const html = new HtmlSimulationReportRenderer().render({...report, warnings: []});
+
+        expect(html).not.toContain("Warnings");
+    });
+
+    it("renders a Recommendations section with each recommendation as a list item", () => {
+        const html = new HtmlSimulationReportRenderer().render({
+            ...report,
+            recommendations: ["Run with --seed <value> to make this simulation reproducible."],
+        });
+
+        expect(html).toContain("<h2>Recommendations</h2>");
+        expect(html).toContain("Run with --seed &lt;value&gt; to make this simulation reproducible.");
+    });
+
+    it("omits the Recommendations section when there are no recommendations", () => {
+        const html = new HtmlSimulationReportRenderer().render({...report, recommendations: []});
+
+        expect(html).not.toContain("Recommendations");
     });
 });

@@ -64,6 +64,7 @@ export class SimCommand implements CliCommandHandling {
             seed: options.seed,
             statistics,
             durationMs,
+            packageRoot: options.packageRoot,
         });
 
         if (options.out) {

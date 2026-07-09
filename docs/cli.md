@@ -126,8 +126,21 @@ The JSON report shape:
     maxWin: number;
     durationMs: number;
     spinsPerSecond: number;
+    reproducibility: {
+        game: {id: string; name: string; version: string};
+        seed: string | null;
+        requestedRounds: number;
+        actualRounds: number;
+        command: string;        // e.g. `pokie sim <packageRoot> --rounds 10000 --seed demo`, ready to re-run
+    };
+    warnings: string[];         // e.g. no seed given, low rounds, 0 hit frequency/maxWin/totalBet, early stop
+    recommendations: string[];  // simple next-step hints, e.g. use --seed, raise --rounds, run pokie diff/--out
 }
 ```
+
+`reproducibility`, `warnings`, and `recommendations` were added in v1.3 as purely additive fields — a `sim.json`
+produced by an older `pokie` still validates and renders fine with [`pokie report`](#pokie-report-simulationreportjson),
+it just won't have these sections.
 
 Failure modes:
 
@@ -155,6 +168,12 @@ Options:
 The rendered report includes, at minimum: game id/name/version, requested rounds, actual rounds, seed, total bet,
 total win, RTP, hit frequency, max win, duration, and spins per second. The HTML output is plain semantic HTML
 (a heading and a table) — no charts.
+
+When the report has a `reproducibility` block, a **Reproducibility** section follows with the game, seed,
+requested/actual rounds, and a ready-to-run `pokie sim` command. When `warnings`/`recommendations` are non-empty,
+matching **Warnings**/**Recommendations** sections list them. All three sections are omitted when the report
+doesn't have the corresponding field (e.g. an older `sim.json` from before v1.3) or the array is empty — a
+report can always be rendered, whether it has these fields or not.
 
 The reusable rendering API behind the command lives in `src/reporting`:
 

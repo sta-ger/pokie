@@ -39,7 +39,8 @@ POKIE goes well beyond classic paylines:
   scaffolds an existing npm project in place, both minimal, buildable, and loadable; `npx pokie sim <packageRoot>`
   runs a simulation against a package and reports RTP/hit-frequency/max-win; `npx pokie validate <packageRoot>`
   checks a package's contract without playing it; `npx pokie report <simulationReportJson>` renders a `pokie sim`
-  report as Markdown/HTML; `npx pokie diff <leftReportJson> <rightReportJson>` compares two `pokie sim` reports
+  report (including reproducibility info, warnings, and recommendations) as Markdown/HTML; `npx pokie diff
+  <leftReportJson> <rightReportJson>` compares two `pokie sim` reports
   (e.g. before/after a config change); `npx pokie replay <packageRoot>` best-effort replays a single round (by
   seed + round index) as a JSON artifact; `npx pokie serve <packageRoot>` (experimental) starts a local/dev JSON
   HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS — all optionally as

@@ -12,6 +12,15 @@ const report: SimulationReport = {
     maxWin: 120.5,
     durationMs: 1234,
     spinsPerSecond: 7942,
+    reproducibility: {
+        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        seed: "demo",
+        requestedRounds: 10000,
+        actualRounds: 9800,
+        command: "pokie sim <packageRoot> --rounds 10000 --seed demo",
+    },
+    warnings: [],
+    recommendations: [],
 };
 
 describe("MarkdownSimulationReportRenderer", () => {
@@ -42,5 +51,55 @@ describe("MarkdownSimulationReportRenderer", () => {
         const markdown = new MarkdownSimulationReportRenderer().render({...report, seed: null});
 
         expect(markdown).toContain("**Seed**: _none_");
+    });
+
+    it("renders a Reproducibility section with game/seed/rounds/re-run command", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render(report);
+
+        expect(markdown).toContain("## Reproducibility");
+        expect(markdown).toContain("**Game**: Crazy Fruits (`crazy-fruits`, v0.1.0)");
+        expect(markdown).toContain("**Requested rounds**: 10000");
+        expect(markdown).toContain("**Actual rounds**: 9800");
+        expect(markdown).toContain("**Re-run command**: `pokie sim <packageRoot> --rounds 10000 --seed demo`");
+    });
+
+    it("omits the Reproducibility section when the report has no reproducibility field (old report JSON)", () => {
+        const withoutReproducibility = {...report, reproducibility: undefined} as unknown as SimulationReport;
+        const markdown = new MarkdownSimulationReportRenderer().render(withoutReproducibility);
+
+        expect(markdown).not.toContain("## Reproducibility");
+    });
+
+    it("renders a Warnings section with each warning as a bullet", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render({
+            ...report,
+            warnings: ["No seed was provided — this run is not reproducible.", "Max win is 0 — no round produced a payout."],
+        });
+
+        expect(markdown).toContain("## Warnings");
+        expect(markdown).toContain("- No seed was provided — this run is not reproducible.");
+        expect(markdown).toContain("- Max win is 0 — no round produced a payout.");
+    });
+
+    it("omits the Warnings section when there are no warnings", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render({...report, warnings: []});
+
+        expect(markdown).not.toContain("## Warnings");
+    });
+
+    it("renders a Recommendations section with each recommendation as a bullet", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render({
+            ...report,
+            recommendations: ['Use "pokie diff" to compare this report against a previous run after changing the game\'s math.'],
+        });
+
+        expect(markdown).toContain("## Recommendations");
+        expect(markdown).toContain('- Use "pokie diff" to compare this report against a previous run after changing the game\'s math.');
+    });
+
+    it("omits the Recommendations section when there are no recommendations", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render({...report, recommendations: []});
+
+        expect(markdown).not.toContain("## Recommendations");
     });
 });

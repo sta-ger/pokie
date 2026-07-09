@@ -17,7 +17,21 @@ const report: SimulationReport = {
     maxWin: 120.5,
     durationMs: 1234,
     spinsPerSecond: 7942,
+    reproducibility: {
+        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        seed: "demo",
+        requestedRounds: 10000,
+        actualRounds: 9800,
+        command: "pokie sim <packageRoot> --rounds 10000 --seed demo",
+    },
+    warnings: [],
+    recommendations: [],
 };
+
+function omitNewReportFields(fullReport: SimulationReport): object {
+    const {game, requestedRounds, rounds, seed, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond} = fullReport;
+    return {game, requestedRounds, rounds, seed, totalBet, totalWin, rtp, hitFrequency, maxWin, durationMs, spinsPerSecond};
+}
 
 function createStubReadFile(files: Record<string, string>): (file: string) => string {
     return (file: string) => {
@@ -133,6 +147,24 @@ describe("ReportCommand", () => {
         expect(writeFile).not.toHaveBeenCalled();
 
         (console.log as jest.Mock).mockRestore();
+    });
+
+    it("accepts and renders an old report JSON without reproducibility/warnings/recommendations fields", async () => {
+        const oldShapeReport = omitNewReportFields(report);
+        const command = new ReportCommand(createStubReadFile({"old.json": JSON.stringify(oldShapeReport)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["old.json"]);
+        await command.run(["old.json", "--format", "html"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("# Simulation Report: Crazy Fruits");
+        expect(printed).not.toContain("## Reproducibility");
+        expect(printed).not.toContain("## Warnings");
+        expect(printed).not.toContain("## Recommendations");
+        expect(printed).toContain("<h1>Simulation Report: Crazy Fruits</h1>");
+
+        logSpy.mockRestore();
     });
 });
 

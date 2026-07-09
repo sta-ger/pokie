@@ -1,5 +1,13 @@
 import {SimulationReport, SimulationReportDiffer} from "pokie";
 
+const reproducibility = {
+    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    seed: "demo",
+    requestedRounds: 10000,
+    actualRounds: 9800,
+    command: "pokie sim <packageRoot> --rounds 10000 --seed demo",
+};
+
 const left: SimulationReport = {
     game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
     requestedRounds: 10000,
@@ -12,6 +20,9 @@ const left: SimulationReport = {
     maxWin: 120.5,
     durationMs: 1234,
     spinsPerSecond: 7942,
+    reproducibility,
+    warnings: [],
+    recommendations: [],
 };
 
 const right: SimulationReport = {
@@ -26,6 +37,9 @@ const right: SimulationReport = {
     maxWin: 130,
     durationMs: 1300,
     spinsPerSecond: 7900,
+    reproducibility,
+    warnings: [],
+    recommendations: [],
 };
 
 describe("SimulationReportDiffer", () => {

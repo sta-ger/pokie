@@ -35,10 +35,52 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             tableRows,
             "            </tbody>",
             "        </table>",
+            ...this.renderReproducibilitySection(report),
+            ...this.renderListSection("Warnings", report.warnings),
+            ...this.renderListSection("Recommendations", report.recommendations),
             "    </article>",
             "</body>",
             "</html>",
         ].join("\n") + "\n";
+    }
+
+    private renderReproducibilitySection(report: SimulationReport): string[] {
+        if (!report.reproducibility) {
+            return [];
+        }
+
+        const reproducibility = report.reproducibility;
+        const items = [
+            `Game: ${this.escapeHtml(reproducibility.game.name)} (${this.escapeHtml(reproducibility.game.id)}, v${this.escapeHtml(reproducibility.game.version)})`,
+            `Seed: ${reproducibility.seed === null ? "none" : this.escapeHtml(reproducibility.seed)}`,
+            `Requested rounds: ${reproducibility.requestedRounds}`,
+            `Actual rounds: ${reproducibility.actualRounds}`,
+            `Re-run command: <code>${this.escapeHtml(reproducibility.command)}</code>`,
+        ];
+
+        return [
+            "        <section>",
+            "            <h2>Reproducibility</h2>",
+            "            <ul>",
+            ...items.map((item) => `                <li>${item}</li>`),
+            "            </ul>",
+            "        </section>",
+        ];
+    }
+
+    private renderListSection(heading: string, items: string[] | undefined): string[] {
+        if (!items || items.length === 0) {
+            return [];
+        }
+
+        return [
+            "        <section>",
+            `            <h2>${heading}</h2>`,
+            "            <ul>",
+            ...items.map((item) => `                <li>${this.escapeHtml(item)}</li>`),
+            "            </ul>",
+            "        </section>",
+        ];
     }
 
     private escapeHtml(value: string): string {

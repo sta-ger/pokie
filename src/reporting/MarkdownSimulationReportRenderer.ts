@@ -20,6 +20,28 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Spins per second**: ${report.spinsPerSecond}`,
         ];
 
+        if (report.reproducibility) {
+            const reproducibility = report.reproducibility;
+            lines.push(
+                "",
+                "## Reproducibility",
+                "",
+                `- **Game**: ${reproducibility.game.name} (\`${reproducibility.game.id}\`, v${reproducibility.game.version})`,
+                `- **Seed**: ${reproducibility.seed ?? "_none_"}`,
+                `- **Requested rounds**: ${reproducibility.requestedRounds}`,
+                `- **Actual rounds**: ${reproducibility.actualRounds}`,
+                `- **Re-run command**: \`${reproducibility.command}\``,
+            );
+        }
+
+        if (report.warnings && report.warnings.length > 0) {
+            lines.push("", "## Warnings", "", ...report.warnings.map((warning) => `- ${warning}`));
+        }
+
+        if (report.recommendations && report.recommendations.length > 0) {
+            lines.push("", "## Recommendations", "", ...report.recommendations.map((recommendation) => `- ${recommendation}`));
+        }
+
         return lines.join("\n") + "\n";
     }
 }

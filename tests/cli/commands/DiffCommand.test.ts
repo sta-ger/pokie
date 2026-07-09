@@ -17,6 +17,15 @@ const left: SimulationReport = {
     maxWin: 120.5,
     durationMs: 1234,
     spinsPerSecond: 7942,
+    reproducibility: {
+        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        seed: "demo",
+        requestedRounds: 10000,
+        actualRounds: 9800,
+        command: "pokie sim <packageRoot> --rounds 10000 --seed demo",
+    },
+    warnings: [],
+    recommendations: [],
 };
 
 const right: SimulationReport = {

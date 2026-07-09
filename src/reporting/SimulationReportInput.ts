@@ -7,4 +7,5 @@ export type SimulationReportInput = {
     seed?: string;
     statistics: SimulationStatistics;
     durationMs: number;
+    packageRoot?: string;
 };
