@@ -9,8 +9,10 @@ Introducing **POKIE**, a server-side video slot game logic framework for JavaScr
 
 `npm install pokie`
 
-> **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure. Use
-> `SecureRandomNumberGenerator` for real-money/regulated games. See
+> **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure.
+> `SecureRandomNumberGenerator` gives a stronger, production-like, security-sensitive RNG primitive built on
+> Node's `crypto.randomInt`, but it's a building block, not a certification — real-money/regulated games still need
+> independent RNG certification and regulatory/compliance sign-off, which is outside POKIE's scope. See
 > [Reels & Symbol Sequences](docs/reels-and-sequences.md).
 
 ## What's included
@@ -112,8 +114,9 @@ stats.hitCount; // number of winning rounds
 ### Seeded RNG
 
 `SeededRandomNumberGenerator` produces the same sequence of draws for the same seed — useful for
-simulation/replay/debugging and regression tests that need a repeatable outcome. It's not a certified or
-security-sensitive RNG; use `SecureRandomNumberGenerator` for real-money/regulated games.
+simulation/replay/debugging and regression tests that need a repeatable outcome. It's not a production-grade RNG.
+For a stronger, security-sensitive entropy source, POKIE also provides `SecureRandomNumberGenerator` — but note
+that real-money/regulated play still requires independent RNG certification and compliance work outside POKIE.
 
 ```js
 import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator, VideoSlotConfig} from "pokie";

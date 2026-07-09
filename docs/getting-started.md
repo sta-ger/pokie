@@ -34,8 +34,9 @@ calculator, base session) — see [Game Session & Configuration](game-session.md
 swapped out.
 
 > **⚠️ Before you ship real money on this:** the default RNG behind reel spins (`PseudorandomNumberGenerator`) is
-> `Math.random()`-based — not cryptographically secure, and not something a regulator/certification lab will
-> accept. For real-money/regulated games, pass `SecureRandomNumberGenerator` explicitly instead — see
+> `Math.random()`-based — not cryptographically secure. `SecureRandomNumberGenerator` is a stronger, production-like
+> entropy source, but it's a building block, not a certification: real-money/regulated games still need independent
+> RNG certification and regulatory/compliance sign-off, which is outside POKIE's scope — see
 > [Reels & Symbol Sequences](reels-and-sequences.md#rngs).
 
 ## Determinism/audit gotcha
