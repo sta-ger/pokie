@@ -6,6 +6,7 @@ import {CliCommandHandling} from "./CliCommandHandling.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
 import {DiffCommand} from "./commands/DiffCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
+import {ReplayCommand} from "./commands/ReplayCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
@@ -31,6 +32,7 @@ async function run(): Promise<number> {
         new CreateCommand(readOwnVersion()),
         new DiffCommand(),
         new InitCommand(readOwnVersion()),
+        new ReplayCommand(),
         new ReportCommand(),
         new SimCommand(),
         new ValidateCommand(),

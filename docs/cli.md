@@ -261,6 +261,79 @@ Failure modes:
 - Each report path is read/parsed/validated the same way as [`pokie report`](#pokie-report-simulationreportjson) —
   the same "could not read"/"not valid JSON"/"does not look like a pokie sim report" errors apply to either side.
 
+## `pokie replay <packageRoot>`
+
+Best-effort replay of a single round, identified by `--seed`/`--round`, from a [game package](game-packages.md).
+This is the first foundation for POKIE replay — it does not (yet) reconstruct full session/RNG/audit state; see
+[Limitations](#limitations) below.
+
+```
+pokie replay ./crazy-fruits --seed demo --round 42 --out replay.json
+```
+
+Options:
+
+- `--round <number>` — **required**. A positive integer: the 1-indexed round to replay.
+- `--seed <string>` — forwarded as `context.seed` to `game.createSession(context)`, same best-effort caveat as
+  [`pokie sim --seed`](#pokie-sim-packageroot).
+- `--out <file>` — write the JSON replay descriptor to `<file>`.
+- `--format json` — accepted for symmetry with `pokie sim`/`pokie validate`; JSON is currently the only supported
+  format, and is always printed to stdout regardless of this flag.
+
+The session's credit balance is set to `Number.MAX_SAFE_INTEGER` before replaying, so reaching `--round` is never
+cut short by the session running out of credits.
+
+The JSON replay descriptor shape (`ReplayDescriptor`):
+
+```ts
+{
+    game: {id: string; name: string; version: string};
+    seed: string | null;
+    round: number;
+    totalBet: number;          // sum of getBet() across every round played to reach `round`
+    totalWin: number;          // sum of getWinAmount() across every round played to reach `round`
+    screen: unknown[][] | null; // getSymbolsCombination().toMatrix() when the session exposes it, else null
+    timestamp: number;          // Date.now() when the replay started
+    durationMs: number;         // wall-clock time spent replaying
+}
+```
+
+### Limitations
+
+`pokie replay` has no seek-to-round primitive to draw on — `GameSessionHandling` only exposes `play()`, so
+replaying round N means creating a fresh session and calling `play()` N times in a row. That makes reproducibility
+entirely dependent on the game package:
+
+- The game package's `createSession(context)` must actually read `context.seed` and thread it into a deterministic
+  RNG/setup — a game that ignores `context` will not replay identically across runs, seed or no seed.
+- Anything else non-deterministic in the game package's session construction (e.g. `VideoSlotConfig`'s default
+  reel-strip shuffling, which uses unseeded `Math.random()` — see the [`pokie sim`](#pokie-sim-packageroot) seed
+  caveat) will also break reproducibility.
+- `screen` is only populated when the session exposes `getSymbolsCombination()` (as `VideoSlotSessionHandling`
+  does) — the base `GameSessionHandling` contract has no screen/result accessor, so a plain `GameSession` replays
+  with `screen: null`.
+- This does **not** replay full session/RNG/audit state — no win breakdown, no free-games state, no RNG call log.
+  It is a foundation to build on, not a complete audit trail.
+
+The reusable recording API behind the command lives in `src/replay`:
+
+```ts
+import {ReplayRecorder, ReplayRecording} from "pokie";
+
+const recorder: ReplayRecording = new ReplayRecorder();
+const descriptor = recorder.record({game, seed: "demo", round: 42}); // game: PokieGame, e.g. from loadPokieGame
+```
+
+`ReplayRecorder` implements `ReplayRecording` (`record(options: ReplayRecordingOptions): ReplayDescriptor`), so a
+custom recorder can be swapped in without touching `ReplayCommand`.
+
+Failure modes:
+
+- Missing `<packageRoot>`, a missing/non-positive `--round`, a missing `--seed` value, or an unknown option throw a
+  `Usage: pokie replay ...` error.
+- An invalid `packageRoot` throws the same descriptive error `loadPokieGame` would throw directly — see
+  [Game Packages](game-packages.md).
+
 ## `pokie validate <packageRoot>`
 
 Loads a [game package](game-packages.md) and checks it against the `PokieGame` contract, without playing it —
@@ -306,7 +379,7 @@ an unknown option, `--out`/`--format` without a value) throw the usual `Usage: p
 
 ## What's next
 
-`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, and `pokie diff` are the first of a
-planned set of subcommands built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
-`isPokieGame`, `PokieGameContractValidationRule`). `pokie serve` (a local server adapter) is still planned. It
-doesn't exist yet — running it today just prints the CLI's usage/command list.
+`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`, and `pokie replay` are
+the first of a planned set of subcommands built on the same [game package](game-packages.md) primitives
+(`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`). `pokie serve` (a local server adapter) is
+still planned. It doesn't exist yet — running it today just prints the CLI's usage/command list.
