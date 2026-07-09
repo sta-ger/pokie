@@ -6,6 +6,10 @@ reference: what every class/interface does, its constructor and methods, and how
 For installation and a quick taste of the API, see the [main README](../README.md). For end-to-end example games,
 see [pokie-examples](https://github.com/sta-ger/pokie-examples).
 
+**Scope:** POKIE is a game-logic library, not a casino backend — it doesn't ship an RGS, a wallet/ledger system, a
+network transport, or player/session persistence. It computes what a round's outcome and win are; wiring that into
+an account, currency, or compliance system is left to the integrating backend.
+
 ## Contents
 
 1. **[Getting Started](getting-started.md)** — install, create a session, play a round, read the results.

@@ -13,6 +13,28 @@ Introducing **POKIE**, a server-side video slot game logic framework for JavaScr
 > `SecureRandomNumberGenerator` for real-money/regulated games. See
 > [Reels & Symbol Sequences](docs/reels-and-sequences.md).
 
+## What's included
+
+POKIE goes well beyond classic paylines:
+
+- **Win styles** — classic line wins, scatter wins, ways/megaways-style, cluster (grid) wins, and per-symbol value
+  pays, individually or [mixed](docs/paytable-and-wins.md) under an explicit aggregation policy.
+- **Cascading wins** — a deterministic win/remove/collapse/refill resolver (`CascadingSpinResolver`) with a
+  max-step guard, for tumble/cascade mechanics.
+- **Free games / free spins** and **resizable/growing grids** as first-class session types.
+- **Simulation** — full per-round `Simulation` plus aggregate-only primitives (`AggregateSimulationRunner`,
+  `SimulationAccumulator`) with RTP, hit frequency, volatility, and 95% confidence intervals, for runs too large
+  to keep every round in memory.
+- **Deterministic/seeded RNG** (`SeededRandomNumberGenerator`) for reproducible simulation, replay, and
+  regression tests, alongside the default and cryptographically-secure RNG options.
+- **Network serialization** — `net/` serializers turning session state into plain-data DTOs for a game client.
+- **Validation primitives** around the win evaluation pipeline, surfacing incompatible-evaluator or misconfigured
+  setups as structured issues instead of silent runtime surprises.
+
+See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
+megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
+verifiable/seeded-RNG spin).
+
 ## Usage
 
 ### Session
@@ -74,6 +96,34 @@ const simulation = new Simulation(session, simulationConfig);
 simulation.run(); // the simulation will be stopped on any winning combination with symbol "A"
 ```
 
+Running a large number of rounds without keeping every round in memory — just the running statistics.
+
+```js
+import {AggregateSimulationRunner, VideoSlotSession} from "pokie";
+
+const runner = new AggregateSimulationRunner(new VideoSlotSession(), 1_000_000);
+const stats = runner.run().getStatistics();
+
+stats.rtp; // return-to-player across all 1,000,000 rounds
+stats.rtpConfidenceInterval95; // {low, high}
+stats.hitCount; // number of winning rounds
+```
+
+### Seeded RNG
+
+`SeededRandomNumberGenerator` produces the same sequence of draws for the same seed — useful for
+simulation/replay/debugging and regression tests that need a repeatable outcome. It's not a certified or
+security-sensitive RNG; use `SecureRandomNumberGenerator` for real-money/regulated games.
+
+```js
+import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator, VideoSlotConfig} from "pokie";
+
+const config = new VideoSlotConfig();
+const generator = new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(12345));
+
+generator.generateSymbolsCombination(); // same seed always reproduces the same combination
+```
+
 ## Documentation
 
 See the [docs](docs/README.md) for the full reference: game session and configuration, reels and symbol sequences,
@@ -109,6 +159,24 @@ See the [examples](https://github.com/sta-ger/pokie-examples) of various video s
 - **Video slot with sticky re-spin** [[Demo](https://sta-ger.github.io/pokie-examples/slot-with-sticky-respin.html)]
   [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/slot-with-sticky-respin)] — 5x3 game where
   a win holds its symbols in place and triggers a re-spin, continuing as long as new wins land.
+- **Cascading cluster pays** [[Demo](https://sta-ger.github.io/pokie-examples/cascading-cluster.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/cascading-cluster)] — 6x5 cluster-pay slot;
+  winning clusters are removed, the grid collapses and refills, and evaluation repeats until nothing wins.
+- **Megaways-style ways-to-win** [[Demo](https://sta-ger.github.io/pokie-examples/megaways-style.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/megaways-style)] — each of 6 reels draws
+  its own row count every round, paid as ways-to-win rather than fixed paylines.
+- **Growing grid bonus** [[Demo](https://sta-ger.github.io/pokie-examples/growing-grid.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/growing-grid)] — the grid grows by a row
+  on every win (up to a cap) and resets on a loss.
+- **Value pay with multiplier wilds** [[Demo](https://sta-ger.github.io/pokie-examples/value-pay-multiplier.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/value-pay-multiplier)] — coin symbols pay
+  independently of line wilds that multiply whatever line they end up part of.
+- **Verifiable spin** [[Demo](https://sta-ger.github.io/pokie-examples/verifiable-spin.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/verifiable-spin)] — a seeded RNG plus a
+  button that replays the session from scratch and verifies it reproduces the same outcome.
+- **Mixed win evaluators** [[Demo](https://sta-ger.github.io/pokie-examples/mixed-evaluators.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/mixed-evaluators)] — the same grid
+  evaluated as lines, ways, and clusters at once, paid by whichever wins the most.
 
 ### Modeling slot math with POKIE
 
