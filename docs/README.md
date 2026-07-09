@@ -37,6 +37,8 @@ an account, currency, or compliance system is left to the integrating backend.
     hit frequency, and volatility.
 12. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
     `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
+13. **[CLI](cli.md)** — `pokie create <name>` (new directory) and `pokie init` (existing project), which scaffold
+    a minimal game package.
 
 ## Core concepts at a glance
 
@@ -51,6 +53,7 @@ an account, currency, or compliance system is left to the integrating backend.
 | Bulk RTP testing, targeted scenario capture | `Simulation`, play strategies |
 | Sending round results to a client | `net/` serializers |
 | Loading an external game package by convention | `PokieGame`, `loadPokieGame` |
+| Scaffolding a new game package | `pokie create <name>` / `pokie init` CLI |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.

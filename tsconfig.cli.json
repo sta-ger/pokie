@@ -1,0 +1,9 @@
+{
+    "extends": "./tsconfig.prod.json",
+    "compilerOptions": {
+        "outDir": "dist/cli",
+        "rootDir": "cli",
+        "paths": {}
+    },
+    "include": ["cli"]
+}

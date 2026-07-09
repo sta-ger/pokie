@@ -35,6 +35,8 @@ POKIE goes well beyond classic paylines:
 - **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
   `loadPokieGame` loader, so an external game can be loaded by a future CLI, simulator, validator, or server
   without knowing about it in advance.
+- **[CLI](docs/cli.md)** — `npx pokie create <name>` scaffolds a brand-new game package, `npx pokie init`
+  scaffolds an existing npm project in place, both minimal, buildable, and loadable.
 
 See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
 megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
@@ -129,6 +131,25 @@ const generator = new SymbolsCombinationsGenerator(config, new SeededRandomNumbe
 
 generator.generateSymbolsCombination(); // same seed always reproduces the same combination
 ```
+
+### CLI
+
+Scaffold a brand-new [game package](docs/game-packages.md) in a new directory:
+
+```
+npm i -g pokie
+pokie create crazy-fruits
+```
+
+Or turn an existing empty npm project into one in place:
+
+```
+npm init -y
+npm i pokie
+npx pokie init
+```
+
+See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate.
 
 ## Documentation
 

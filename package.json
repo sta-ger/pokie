@@ -15,6 +15,9 @@
     },
     "main": "./dist/cjs/index.js",
     "types": "./dist/cjs/index.d.ts",
+    "bin": {
+        "pokie": "./dist/cli/pokie.js"
+    },
     "scripts": {
         "generate-barrels": "node generate-barrels.js",
         "lint": "eslint . --ext .ts",
@@ -22,8 +25,9 @@
         "test": "jest",
         "build-esm": "npm run generate-barrels && tsc --project tsconfig.prod.json",
         "build-cjs": "npm run generate-barrels && tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js",
+        "build-cli": "tsc --project tsconfig.cli.json && shx chmod +x dist/cli/pokie.js",
         "prebuild": "npm run lint",
-        "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs"
+        "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs && npm run build-cli"
     },
     "repository": {
         "type": "git",
