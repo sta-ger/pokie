@@ -56,7 +56,7 @@ export class MultiplierResolver<T extends string | number | symbol = string> {
             this.combine,
             this.identity,
         );
-        if (matchedValues.length === 0 || multiplier === this.identity) {
+        if (matchedValues.length === 0) {
             return {winAmount: component.getWinAmount(), breakdown: []};
         }
         return {

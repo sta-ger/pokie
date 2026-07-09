@@ -1,7 +1,11 @@
-import {GameWithFreeGamesSessionHandling, GameInitialNetworkData, GameRoundNetworkData} from "pokie";
+import {
+    GameWithFreeGamesInitialNetworkData,
+    GameWithFreeGamesRoundNetworkData,
+    GameWithFreeGamesSessionHandling,
+} from "pokie";
 
 export interface GameWithFreeGamesSessionSerializing {
-    getInitialData(session: GameWithFreeGamesSessionHandling): GameInitialNetworkData;
+    getInitialData(session: GameWithFreeGamesSessionHandling): GameWithFreeGamesInitialNetworkData;
 
-    getRoundData(session: GameWithFreeGamesSessionHandling): GameRoundNetworkData;
+    getRoundData(session: GameWithFreeGamesSessionHandling): GameWithFreeGamesRoundNetworkData;
 }

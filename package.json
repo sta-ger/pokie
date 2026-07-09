@@ -21,7 +21,7 @@
         "pretest": "npm run lint",
         "test": "jest",
         "build-esm": "npm run generate-barrels && tsc --project tsconfig.prod.json",
-        "build-cjs": "npm run generate-barrels && tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs",
+        "build-cjs": "npm run generate-barrels && tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js",
         "prebuild": "npm run lint",
         "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs"
     },

@@ -31,7 +31,7 @@ implements VideoSlotSessionHandling<T> {
         return this.baseSession.getSymbolsCombination();
     }
 
-    public getWinningLines(): Record<number, WinningLineDescribing<T>> {
+    public getWinningLines(): Record<string, WinningLineDescribing<T>> {
         return this.baseSession.getWinningLines();
     }
 

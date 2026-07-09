@@ -49,7 +49,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return this.symbolsCombination;
     }
 
-    public getWinningLines(): Record<number, WinningLineDescribing<T>> {
+    public getWinningLines(): Record<string, WinningLineDescribing<T>> {
         return this.winCalculator.getWinningLines();
     }
 
