@@ -1,0 +1,7 @@
+{
+    "name": "nested-default-game",
+    "version": "1.0.0",
+    "pokie": {
+        "entry": "./index.js"
+    }
+}

@@ -52,4 +52,9 @@ describe("loadPokieGame", () => {
     it("throws when package.json has no pokie.entry field", async () => {
         await expect(loadPokieGame(path.join(fixturesRoot, "missing-entry-game"))).rejects.toThrow(/pokie\.entry/);
     });
+
+    it("unwraps a double-nested default (as produced by Node's native ESM loader for a tsc esModuleInterop-compiled entry)", async () => {
+        const game = await loadPokieGame(path.join(fixturesRoot, "nested-default-game"));
+        expect(game.getManifest()).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
+    });
 });
