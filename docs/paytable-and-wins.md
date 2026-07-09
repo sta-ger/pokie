@@ -293,6 +293,47 @@ The old `getWinningLines()` / `getWinningScatters()` methods remain as compatibi
 `getWinningClusters()` / `getWinningValues()` / `getWinningWays()` are still available on `VideoSlotWinCalculator`
 itself.
 
+## Aggregation policy
+
+When more than one evaluator group is enabled (line/scatter/cluster/value/ways), the `aggregationPolicy` field of
+`VideoSlotWinCalculator`'s 7th constructor argument (`VideoSlotWinCalculatorOptions`) decides which of their
+`WinComponent`s make it into the result:
+
+```ts
+interface WinAggregationPolicy<T = string> {
+    getPolicyName(): string;
+    aggregate(
+        componentsByEvaluator: {evaluator: WinEvaluator<T>; components: WinComponent<T>[]}[],
+        context: WinEvaluationContext<T>,
+    ): WinComponent<T>[];
+}
+```
+
+Built-in policies:
+
+- `ErrorOnIncompatibleWinAggregationPolicy` (default) — concatenates every enabled evaluator group's components
+  as-is; paired with the validation rule below to flag when that concatenation is mixing normally-exclusive
+  evaluator groups.
+- `SumAllEnabledWinAggregationPolicy` — same concatenation behavior, without the incompatibility flag; use it once
+  you've deliberately decided that summing mixed evaluator groups (e.g. lines + value pays) is correct for your
+  game.
+- `HighestWinOnlyAggregationPolicy` — keeps only the evaluator group with the highest total win amount, discarding
+  the rest. Used to pick a winner among mutually exclusive evaluation styles run over the same grid (see the
+  [mixed win evaluators example](https://github.com/sta-ger/pokie-examples/tree/main/src/games/mixed-evaluators)).
+- `SelectedEvaluatorGroupWinAggregationPolicy(group)` — keeps only the named evaluator group's components
+  (`"line"`, `"scatter"`, `"cluster"`, `"value"`, or `"ways"`), discarding the others; used above to pin the
+  calculator to a single win style while a game only has one calculator enabled.
+
+`MixedEvaluatorsPolicyInfoValidationRule` (one of the pipeline's default validation rules) surfaces an
+informational issue whenever more than one of the mutually-exclusive evaluator groups (`line`, `cluster`, `ways`,
+`value`) is enabled at once under a policy other than `ErrorOnIncompatibleWinAggregationPolicy` — a nudge to
+confirm mixing them was intentional, not silent.
+
+`validateOnEvaluate` — also on `VideoSlotWinCalculatorOptions` (and `WinEvaluationPipelineOptions` if you build a
+`WinEvaluationPipeline` directly) — controls whether the pipeline runs its validation rules, including the one
+above, on every `evaluate()` call; it defaults to `true` and throws if a rule reports an error-severity issue. Set
+it to `false` to skip validation on the hot path once a configuration is known-good.
+
 ## Multipliers
 
 `MultiplierResolver` is the runtime boundary for symbol-driven multipliers. When configured through

@@ -61,8 +61,8 @@ type VideoSlotInitialNetworkData = {
 [Paytable & Win Calculation](paytable-and-wins.md)) — same fields, plain data instead of getters.
 `WinEvaluationResultNetworkData` is the unified round breakdown for reporting/replay/debug: total win, winning
 positions, per-type component arrays, and metadata.
-`VideoSlotWithFreeGamesInitialNetworkData`/`RoundNetworkData` add no fields of their own — they're pure type
-intersections of the video-slot and free-games shapes above.
+`VideoSlotWithFreeGamesInitialNetworkData`/`VideoSlotWithFreeGamesRoundNetworkData` add no fields of their own —
+they're pure type intersections of the video-slot and free-games shapes above.
 
 ## What each serializer populates
 
@@ -118,7 +118,7 @@ Example `roundPayload`:
   still reflect the real win amount.
 - **The free-games round fields are typed optional (`?`) but always populated** by the concrete
   `VideoSlotWithFreeGamesSessionSerializer` — the optionality exists because the underlying interface is meant to be
-  reusable by non-video-slot free-games games too.
+  reusable by non-video-slot free-games mechanics too.
 - **Winning-entry payloads duplicate their own key** (e.g. `winningLines["1"].lineId === "1"`) — convenient for
   clients that flatten/iterate the values without needing the parent key, at the cost of redundancy.
 - **`linesDefinitions`/`paytable` are initial-only** — cache them from `getInitialData` on session start; they're
