@@ -163,7 +163,8 @@ pokie validate ./crazy-fruits
 ```
 
 See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate, what `pokie sim`/`pokie validate`
-report, and a [full create → validate → sim → report → diff → replay → serve walkthrough](docs/cli.md#workflow).
+report, and a
+[full create → validate → sim → report → diff → replay → serve walkthrough](docs/cli.md#workflow).
 
 ## Documentation
 

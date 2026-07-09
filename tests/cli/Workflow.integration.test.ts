@@ -1,4 +1,11 @@
-import {loadPokieGame, PokieDevServer, PokieDevServerHandling, ReplayDescriptor, SimulationReport, SimulationReportDiff} from "pokie";
+import {
+    loadPokieGame,
+    PokieDevServer,
+    PokieDevServerHandling,
+    ReplayDescriptor,
+    SimulationReport,
+    SimulationReportDiff,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -78,7 +85,9 @@ describe("CLI workflow (integration, real commands chained against one fixture g
             const session = (await sessionResponse.json()) as {sessionId: string};
             expect(session.sessionId).toEqual(expect.any(String));
 
-            const spinResponse = await fetch(`http://127.0.0.1:${port}/sessions/${session.sessionId}/spin`, {method: "POST"});
+            const spinResponse = await fetch(`http://127.0.0.1:${port}/sessions/${session.sessionId}/spin`, {
+                method: "POST",
+            });
             expect(spinResponse.status).toBe(200);
         } finally {
             await server!.stop();
