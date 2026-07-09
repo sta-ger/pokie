@@ -18,7 +18,7 @@ export type SimulationReport = {
     maxWin: number;
     durationMs: number;
     spinsPerSecond: number;
-    reproducibility: SimulationReportReproducibility;
-    warnings: string[];
-    recommendations: string[];
+    reproducibility?: SimulationReportReproducibility;
+    warnings?: string[];
+    recommendations?: string[];
 };

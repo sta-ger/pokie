@@ -85,7 +85,7 @@ describe("HtmlSimulationReportRenderer", () => {
     });
 
     it("omits the Reproducibility section when the report has no reproducibility field (old report JSON)", () => {
-        const withoutReproducibility = {...report, reproducibility: undefined} as unknown as SimulationReport;
+        const withoutReproducibility: SimulationReport = {...report, reproducibility: undefined};
         const html = new HtmlSimulationReportRenderer().render(withoutReproducibility);
 
         expect(html).not.toContain("Reproducibility");

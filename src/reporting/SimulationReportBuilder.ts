@@ -35,23 +35,30 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         };
     }
 
+    private hasSeed(core: CoreMetrics): boolean {
+        return core.seed !== null && core.seed.trim().length > 0;
+    }
+
     private buildReproducibility(core: CoreMetrics, packageRoot: string | undefined): SimulationReportReproducibility {
-        const target = packageRoot ?? "<packageRoot>";
-        const seedFlag = core.seed !== null ? ` --seed ${core.seed}` : "";
+        const target = packageRoot && packageRoot.trim().length > 0 ? packageRoot : "<packageRoot>";
+        const parts = ["pokie", "sim", target, "--rounds", String(core.requestedRounds)];
+        if (this.hasSeed(core)) {
+            parts.push("--seed", core.seed as string);
+        }
 
         return {
             game: core.game,
             seed: core.seed,
             requestedRounds: core.requestedRounds,
             actualRounds: core.rounds,
-            command: `pokie sim ${target} --rounds ${core.requestedRounds}${seedFlag}`,
+            command: parts.join(" "),
         };
     }
 
     private buildWarnings(core: CoreMetrics): string[] {
         const warnings: string[] = [];
 
-        if (core.seed === null) {
+        if (!this.hasSeed(core)) {
             warnings.push("No seed was provided — this run is not reproducible.");
         }
 
@@ -86,8 +93,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
     private buildRecommendations(core: CoreMetrics): string[] {
         const recommendations: string[] = [];
 
-        if (core.seed === null) {
-            recommendations.push("Run with --seed <value> to make this simulation reproducible.");
+        if (!this.hasSeed(core)) {
+            recommendations.push("Run with --seed <seed> (e.g. --seed demo) to make this simulation reproducible.");
         }
 
         if (core.requestedRounds < SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {

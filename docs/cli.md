@@ -126,21 +126,22 @@ The JSON report shape:
     maxWin: number;
     durationMs: number;
     spinsPerSecond: number;
-    reproducibility: {
+    reproducibility?: {
         game: {id: string; name: string; version: string};
         seed: string | null;
         requestedRounds: number;
         actualRounds: number;
-        command: string;        // e.g. `pokie sim <packageRoot> --rounds 10000 --seed demo`, ready to re-run
+        command: string;         // e.g. `pokie sim <packageRoot> --rounds 10000 --seed demo`, ready to re-run
     };
-    warnings: string[];         // e.g. no seed given, low rounds, 0 hit frequency/maxWin/totalBet, early stop
-    recommendations: string[];  // simple next-step hints, e.g. use --seed, raise --rounds, run pokie diff/--out
+    warnings?: string[];         // e.g. no seed given, low rounds, 0 hit frequency/maxWin/totalBet, early stop
+    recommendations?: string[];  // simple next-step hints, e.g. use --seed, raise --rounds, run pokie diff/--out
 }
 ```
 
-`reproducibility`, `warnings`, and `recommendations` were added in v1.3 as purely additive fields — a `sim.json`
-produced by an older `pokie` still validates and renders fine with [`pokie report`](#pokie-report-simulationreportjson),
-it just won't have these sections.
+`reproducibility`, `warnings`, and `recommendations` were added in v1.3 as purely additive, **optional** fields —
+a `sim.json` produced by an older `pokie` (or handwritten JSON without them) still validates and renders fine with
+[`pokie report`](#pokie-report-simulationreportjson), it just won't have these sections. `pokie sim` itself always
+populates all three on every report it produces.
 
 Failure modes:
 

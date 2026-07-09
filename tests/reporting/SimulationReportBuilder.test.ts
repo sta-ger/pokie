@@ -126,22 +126,22 @@ describe("SimulationReportBuilder", () => {
         test("includes game/seed/requested/actual rounds mirroring the top-level report", () => {
             const report = buildHealthyReport();
 
-            expect(report.reproducibility.game).toEqual(report.game);
-            expect(report.reproducibility.seed).toBe(report.seed);
-            expect(report.reproducibility.requestedRounds).toBe(report.requestedRounds);
-            expect(report.reproducibility.actualRounds).toBe(report.rounds);
+            expect(report.reproducibility!.game).toEqual(report.game);
+            expect(report.reproducibility!.seed).toBe(report.seed);
+            expect(report.reproducibility!.requestedRounds).toBe(report.requestedRounds);
+            expect(report.reproducibility!.actualRounds).toBe(report.rounds);
         });
 
         test("builds a re-run command with a placeholder packageRoot when none was given", () => {
             const report = buildHealthyReport();
 
-            expect(report.reproducibility.command).toBe("pokie sim <packageRoot> --rounds 10000 --seed demo");
+            expect(report.reproducibility!.command).toBe("pokie sim <packageRoot> --rounds 10000 --seed demo");
         });
 
         test("builds a re-run command using the given packageRoot", () => {
             const report = buildHealthyReport({packageRoot: "./crazy-fruits"});
 
-            expect(report.reproducibility.command).toBe("pokie sim ./crazy-fruits --rounds 10000 --seed demo");
+            expect(report.reproducibility!.command).toBe("pokie sim ./crazy-fruits --rounds 10000 --seed demo");
         });
 
         test("omits --seed from the re-run command when no seed was given", () => {
@@ -151,7 +151,51 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.reproducibility.command).toBe("pokie sim <packageRoot> --rounds 100");
+            expect(report.reproducibility!.command).toBe("pokie sim <packageRoot> --rounds 100");
+        });
+
+        test("treats a blank/whitespace-only seed the same as no seed at all (no dangling --seed)", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({manifest, requestedRounds: 100, seed: "   ", statistics: accumulator.getStatistics(), durationMs: 10});
+
+            expect(report.reproducibility!.command).toBe("pokie sim <packageRoot> --rounds 100");
+        });
+
+        test("treats a blank/whitespace-only packageRoot the same as no packageRoot at all", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 100,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                packageRoot: "  ",
+            });
+
+            expect(report.reproducibility!.command).toBe("pokie sim <packageRoot> --rounds 100 --seed demo");
+        });
+
+        test("never contains a double space, regardless of seed/packageRoot", () => {
+            const withSeedAndRoot = buildHealthyReport({packageRoot: "./crazy-fruits"});
+            const withoutSeedOrRoot = (() => {
+                const accumulator = new SimulationAccumulator();
+                accumulator.addRound(1, 0);
+                return new SimulationReportBuilder().build({
+                    manifest,
+                    requestedRounds: 100,
+                    statistics: accumulator.getStatistics(),
+                    durationMs: 10,
+                });
+            })();
+
+            expect(withSeedAndRoot.reproducibility!.command).not.toContain("  ");
+            expect(withoutSeedOrRoot.reproducibility!.command).not.toContain("  ");
         });
     });
 
@@ -159,7 +203,7 @@ describe("SimulationReportBuilder", () => {
         test("produces no warnings for a healthy report (seeded, enough rounds, hits, wins, bets)", () => {
             const report = buildHealthyReport();
 
-            expect(report.warnings).toEqual([]);
+            expect(report.warnings!).toEqual([]);
         });
 
         test("warns when no seed was given", () => {
@@ -169,7 +213,17 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings.some((warning) => warning.includes("No seed was provided"))).toBe(true);
+            expect(report.warnings!.some((warning) => warning.includes("No seed was provided"))).toBe(true);
+        });
+
+        test("warns when the seed is blank/whitespace-only, same as no seed", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({manifest, requestedRounds: 100, seed: "   ", statistics: accumulator.getStatistics(), durationMs: 10});
+
+            expect(report.warnings!.some((warning) => warning.includes("No seed was provided"))).toBe(true);
         });
 
         test("warns when requestedRounds is below the low-rounds threshold", () => {
@@ -179,13 +233,13 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({manifest, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings.some((warning) => warning.includes("Requested rounds (100) is low"))).toBe(true);
+            expect(report.warnings!.some((warning) => warning.includes("Requested rounds (100) is low"))).toBe(true);
         });
 
         test("does not warn about low rounds at/above the threshold", () => {
             const report = buildHealthyReport();
 
-            expect(report.warnings.some((warning) => warning.includes("is low"))).toBe(false);
+            expect(report.warnings!.some((warning) => warning.includes("is low"))).toBe(false);
         });
 
         test("warns when hit frequency is 0", () => {
@@ -195,7 +249,7 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({manifest, requestedRounds: 1, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings).toContain("Hit frequency is 0 — no round produced a win.");
+            expect(report.warnings!).toContain("Hit frequency is 0 — no round produced a win.");
         });
 
         test("warns when max win is 0", () => {
@@ -205,7 +259,7 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({manifest, requestedRounds: 1, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings).toContain("Max win is 0 — no round produced a payout.");
+            expect(report.warnings!).toContain("Max win is 0 — no round produced a payout.");
         });
 
         test("warns when total bet is 0", () => {
@@ -219,7 +273,7 @@ describe("SimulationReportBuilder", () => {
                 durationMs: 10,
             });
 
-            expect(report.warnings).toContain("Total bet is 0 — no rounds appear to have been played.");
+            expect(report.warnings!).toContain("Total bet is 0 — no rounds appear to have been played.");
         });
 
         test("warns when actual rounds is less than requested rounds", () => {
@@ -229,25 +283,37 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({manifest, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.warnings.some((warning) => warning.includes("Actual rounds (1) is less than requested rounds (100)"))).toBe(true);
+            expect(report.warnings!.some((warning) => warning.includes("Actual rounds (1) is less than requested rounds (100)"))).toBe(true);
         });
     });
 
     describe("recommendations", () => {
-        test("recommends running with a seed when none was given", () => {
+        test("recommends running with a seed when none was given, with a concrete example (not a dangling flag)", () => {
             const accumulator = new SimulationAccumulator();
             accumulator.addRound(1, 0);
             const builder = new SimulationReportBuilder();
 
             const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.recommendations.some((recommendation) => recommendation.includes("--seed <value>"))).toBe(true);
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("--seed <seed>"))).toBe(true);
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("--seed demo"))).toBe(true);
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("--seed  "))).toBe(false);
+        });
+
+        test("recommends running with a seed when the given seed is blank/whitespace-only", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({manifest, requestedRounds: 100, seed: "  ", statistics: accumulator.getStatistics(), durationMs: 10});
+
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("--seed <seed>"))).toBe(true);
         });
 
         test("does not recommend a seed when one was already given", () => {
             const report = buildHealthyReport();
 
-            expect(report.recommendations.some((recommendation) => recommendation.includes("--seed <value>"))).toBe(false);
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("--seed <seed>"))).toBe(false);
         });
 
         test("recommends increasing rounds when requestedRounds is below the low-rounds threshold", () => {
@@ -257,19 +323,19 @@ describe("SimulationReportBuilder", () => {
 
             const report = builder.build({manifest, requestedRounds: 100, seed: "demo", statistics: accumulator.getStatistics(), durationMs: 10});
 
-            expect(report.recommendations.some((recommendation) => recommendation.includes("Increase --rounds"))).toBe(true);
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("Increase --rounds"))).toBe(true);
         });
 
         test("always recommends using pokie diff after changing the game's math", () => {
             const report = buildHealthyReport();
 
-            expect(report.recommendations.some((recommendation) => recommendation.includes('"pokie diff"'))).toBe(true);
+            expect(report.recommendations!.some((recommendation) => recommendation.includes('"pokie diff"'))).toBe(true);
         });
 
         test("always recommends saving the report via --out", () => {
             const report = buildHealthyReport();
 
-            expect(report.recommendations.some((recommendation) => recommendation.includes("--out"))).toBe(true);
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("--out"))).toBe(true);
         });
     });
 });

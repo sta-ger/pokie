@@ -64,7 +64,7 @@ describe("MarkdownSimulationReportRenderer", () => {
     });
 
     it("omits the Reproducibility section when the report has no reproducibility field (old report JSON)", () => {
-        const withoutReproducibility = {...report, reproducibility: undefined} as unknown as SimulationReport;
+        const withoutReproducibility: SimulationReport = {...report, reproducibility: undefined};
         const markdown = new MarkdownSimulationReportRenderer().render(withoutReproducibility);
 
         expect(markdown).not.toContain("## Reproducibility");
