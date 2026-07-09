@@ -41,7 +41,7 @@ describe("GamePackageCreator", () => {
         const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
         expect(pkg.name).toBe("crazy-fruits");
         expect(pkg.dependencies).toEqual({pokie: "^1.2.1"});
-        expect(pkg.scripts).toEqual({build: "tsc", sim: "pokie sim"});
+        expect(pkg.scripts).toEqual({build: "tsc"});
         expect(pkg.pokie).toEqual({entry: "./dist/index.js"});
     });
 

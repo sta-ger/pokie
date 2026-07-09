@@ -133,5 +133,6 @@ if (result.hasErrors()) {
 }
 ```
 
-`loadPokieGame`, `isPokieGame`, and `PokieGameContractValidationRule` are the building blocks a future `pokie
-validate`/`pokie sim`/`pokie create` CLI and a server adapter are expected to be built on.
+`loadPokieGame`, `isPokieGame`, and `PokieGameContractValidationRule` are the building blocks the `pokie create`/
+`pokie init` [CLI](cli.md) is built on, and that a future `pokie validate`/`pokie sim` and a server adapter are
+expected to be built on too.

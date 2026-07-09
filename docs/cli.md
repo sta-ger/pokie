@@ -19,7 +19,7 @@ npm run build
 
 `pokie create <name>` creates `./<name>` and writes:
 
-- `package.json` — name `<name>`, a `pokie` dependency, `build`/`sim` scripts, and `pokie.entry` pointing at
+- `package.json` — name `<name>`, a `pokie` dependency, a `build` script, and `pokie.entry` pointing at
   `./dist/index.js`;
 - `tsconfig.json` (CommonJS output to `./dist`, source in `./src`);
 - `src/<GameName>Game.ts` — a `PokieGame` implementation (`<GameName>` is `<name>` converted to PascalCase, e.g.
@@ -55,7 +55,7 @@ npx pokie init
 Run inside the project directory. `pokie init` reads the project's `package.json` and:
 
 - adds/updates `pokie.entry` (pointing at `./dist/index.js`);
-- adds `build` (`tsc`) and `sim` (`pokie sim`) scripts, without overwriting any scripts you already have;
+- adds a `build` (`tsc`) script, without overwriting any script you already have;
 - adds `typescript` to `devDependencies` and `pokie` to `dependencies` if either is missing;
 - creates a minimal `tsconfig.json` (CommonJS output to `./dist`, source in `./src`);
 - creates `src/index.ts`, a working entry module exporting a `PokieGame` — `getManifest()` returns an id/name

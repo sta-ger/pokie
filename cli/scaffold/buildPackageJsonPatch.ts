@@ -8,7 +8,6 @@ export function buildPackageJsonPatch(pkg: PackageJsonLike, pokieVersion: string
         ...pkg,
         scripts: {
             build: "tsc",
-            sim: "pokie sim",
             ...pkg.scripts,
         },
         dependencies: {
