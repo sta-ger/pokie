@@ -1,0 +1,7 @@
+{
+    "name": "invalid-export-game",
+    "version": "1.0.0",
+    "pokie": {
+        "entry": "./index.js"
+    }
+}

@@ -6,7 +6,7 @@ export default {
     preset: "ts-jest",
     moduleFileExtensions: ["ts", "js"],
     moduleNameMapper: {
-        pokie: "<rootDir>/src/index.ts",
+        "^pokie$": "<rootDir>/src/index.ts",
         "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
     },
 };

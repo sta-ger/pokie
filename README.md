@@ -32,6 +32,9 @@ POKIE goes well beyond classic paylines:
 - **Network serialization** — `net/` serializers turning session state into plain-data DTOs for a game client.
 - **Validation primitives** around the win evaluation pipeline, surfacing incompatible-evaluator or misconfigured
   setups as structured issues instead of silent runtime surprises.
+- **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
+  `loadPokieGame` loader, so an external game can be loaded by a future CLI, simulator, validator, or server
+  without knowing about it in advance.
 
 See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
 megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a

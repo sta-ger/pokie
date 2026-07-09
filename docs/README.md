@@ -35,6 +35,8 @@ an account, currency, or compliance system is left to the integrating backend.
     method.
 11. **[Modeling Slot Math with POKIE](math-modeling.md)** — a worked walkthrough of using POKIE to balance RTP,
     hit frequency, and volatility.
+12. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
+    `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
 
 ## Core concepts at a glance
 
@@ -48,6 +50,7 @@ an account, currency, or compliance system is left to the integrating backend.
 | Grids that grow/shrink between rounds | `VideoSlotWithResizableGridSession`, `GridResizeHandling` |
 | Bulk RTP testing, targeted scenario capture | `Simulation`, play strategies |
 | Sending round results to a client | `net/` serializers |
+| Loading an external game package by convention | `PokieGame`, `loadPokieGame` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.
