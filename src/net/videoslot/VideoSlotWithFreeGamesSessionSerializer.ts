@@ -1,11 +1,11 @@
-import {
-    VideoSlotSessionSerializer,
-    VideoSlotSessionSerializing,
+import {VideoSlotSessionSerializer} from "./VideoSlotSessionSerializer.js";
+import type {VideoSlotSessionSerializing} from "./VideoSlotSessionSerializing.js";
+import type {
     VideoSlotWithFreeGamesInitialNetworkData,
     VideoSlotWithFreeGamesRoundNetworkData,
-    VideoSlotWithFreeGamesSessionHandling,
-    VideoSlotWithFreeGamesSessionSerializing,
-} from "pokie";
+} from "./VideoSlotWithFreeGamesNetworkData.js";
+import type {VideoSlotWithFreeGamesSessionHandling} from "../../session/videoslot/VideoSlotWithFreeGamesSessionHandling.js";
+import type {VideoSlotWithFreeGamesSessionSerializing} from "./VideoSlotWithFreeGamesSessionSerializing.js";
 
 export class VideoSlotWithFreeGamesSessionSerializer<T extends string | number | symbol = string>
 implements VideoSlotWithFreeGamesSessionSerializing<T> {

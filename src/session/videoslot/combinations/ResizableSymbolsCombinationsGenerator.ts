@@ -1,11 +1,9 @@
-import {
-    PseudorandomNumberGenerator,
-    RandomNumberGenerating,
-    SymbolsCombination,
-    SymbolsCombinationDescribing,
-    SymbolsCombinationsGenerating,
-    VideoSlotConfigDescribing,
-} from "pokie";
+import {PseudorandomNumberGenerator} from "./PseudorandomNumberGenerator.js";
+import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
+import {SymbolsCombination} from "./SymbolsCombination.js";
+import type {SymbolsCombinationDescribing} from "./SymbolsCombinationDescribing.js";
+import type {SymbolsCombinationsGenerating} from "./SymbolsCombinationsGenerating.js";
+import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
 
 // A sibling of SymbolsCombinationsGenerator for games where the grid's shape isn't fixed but also
 // isn't redrawn randomly every round (that's VariableHeightSymbolsCombinationsGenerator) — instead

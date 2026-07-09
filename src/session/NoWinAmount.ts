@@ -1,4 +1,4 @@
-import {WinAmountDetermining} from "pokie";
+import type {WinAmountDetermining} from "./WinAmountDetermining.js";
 
 export class NoWinAmount implements WinAmountDetermining {
     public getWinAmount(): number {

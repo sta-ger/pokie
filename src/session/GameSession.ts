@@ -1,10 +1,8 @@
-import {
-    GameSessionConfig,
-    GameSessionConfigRepresenting,
-    GameSessionHandling,
-    NoWinAmount,
-    WinAmountDetermining,
-} from "pokie";
+import {GameSessionConfig} from "./GameSessionConfig.js";
+import type {GameSessionConfigRepresenting} from "./GameSessionConfigRepresenting.js";
+import type {GameSessionHandling} from "./GameSessionHandling.js";
+import {NoWinAmount} from "./NoWinAmount.js";
+import type {WinAmountDetermining} from "./WinAmountDetermining.js";
 
 export class GameSession implements GameSessionHandling {
     private readonly config: GameSessionConfigRepresenting;

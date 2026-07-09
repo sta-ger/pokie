@@ -1,4 +1,4 @@
-import {RandomNumberGenerating} from "pokie";
+import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
 import crypto from "crypto";
 
 export class SecureRandomNumberGenerator implements RandomNumberGenerating {

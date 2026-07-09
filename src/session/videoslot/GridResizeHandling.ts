@@ -1,4 +1,4 @@
-import {VideoSlotSessionHandling} from "pokie";
+import type {VideoSlotSessionHandling} from "./VideoSlotSessionHandling.js";
 
 // What "the grid resizes" means for a given game — grow every round, grow only after a loss,
 // shrink back after a bonus, resize based on a collected token count, stay fixed, etc. — is a

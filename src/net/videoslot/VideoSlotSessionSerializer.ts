@@ -1,20 +1,20 @@
-import {
-    GameSessionSerializer,
-    GameSessionSerializing,
+import {GameSessionSerializer} from "../GameSessionSerializer.js";
+import type {GameSessionSerializing} from "../GameSessionSerializing.js";
+import type {
     VideoSlotInitialNetworkData,
     WinEvaluationResultNetworkData,
     VideoSlotRoundNetworkData,
-    VideoSlotSessionHandling,
-    VideoSlotSessionSerializing,
-    WinningClusterDescribing,
     WinningClusterNetworkData,
-    WinningScatterDescribing,
     WinningScatterNetworkData,
-    WinningValueDescribing,
     WinningValueNetworkData,
-    WinningWayDescribing,
     WinningWayNetworkData,
-} from "pokie";
+} from "./VideoSlotNetworkData.js";
+import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
+import type {VideoSlotSessionSerializing} from "./VideoSlotSessionSerializing.js";
+import type {WinningClusterDescribing} from "../../session/videoslot/WinningClusterDescribing.js";
+import type {WinningScatterDescribing} from "../../session/videoslot/WinningScatterDescribing.js";
+import type {WinningValueDescribing} from "../../session/videoslot/WinningValueDescribing.js";
+import type {WinningWayDescribing} from "../../session/videoslot/WinningWayDescribing.js";
 import {WinEvaluationResult} from "../../session/videoslot/winevaluation/WinEvaluationResult.js";
 
 export class VideoSlotSessionSerializer<T extends string | number | symbol = string>

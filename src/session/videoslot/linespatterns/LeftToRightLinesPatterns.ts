@@ -1,4 +1,4 @@
-import {LinesPatternsDescribing} from "pokie";
+import type {LinesPatternsDescribing} from "./LinesPatternsDescribing.js";
 
 export class LeftToRightLinesPatterns implements LinesPatternsDescribing {
     private readonly patterns: number[][];

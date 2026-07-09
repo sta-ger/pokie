@@ -1,4 +1,4 @@
-import {LinesDefinitionsDescribing} from "pokie";
+import type {LinesDefinitionsDescribing} from "./LinesDefinitionsDescribing.js";
 
 export class LinesDefinitionsFor3x3 implements LinesDefinitionsDescribing {
     private readonly definitions: Record<string, number[]> = {

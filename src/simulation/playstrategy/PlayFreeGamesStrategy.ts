@@ -1,4 +1,5 @@
-import {NextSessionRoundPlayableDetermining, VideoSlotWithFreeGamesSessionHandling} from "pokie";
+import type {NextSessionRoundPlayableDetermining} from "./NextSessionRoundPlayableDetermining.js";
+import type {VideoSlotWithFreeGamesSessionHandling} from "../../session/videoslot/VideoSlotWithFreeGamesSessionHandling.js";
 
 export class PlayFreeGamesStrategy implements NextSessionRoundPlayableDetermining {
     private exactNumberOfFreeGames?: number;

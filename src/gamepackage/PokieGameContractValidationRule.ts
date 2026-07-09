@@ -1,4 +1,7 @@
-import {isPokieGame, PokieGameManifest, ValidationIssue, ValidationRule} from "pokie";
+import {isPokieGame} from "./isPokieGame.js";
+import type {PokieGameManifest} from "./PokieGameManifest.js";
+import type {ValidationIssue} from "../validation/ValidationIssue.js";
+import type {ValidationRule} from "../validation/ValidationRule.js";
 
 export class PokieGameContractValidationRule implements ValidationRule<unknown> {
     public validate(target: unknown): ValidationIssue[] {

@@ -1,10 +1,8 @@
-import {
-    SymbolsCombinationDescribing,
-    SymbolsCombinationsAnalyzer,
-    ValueWinCalculating,
-    WinningValue,
-    WinningValueDescribing,
-} from "pokie";
+import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
+import {SymbolsCombinationsAnalyzer} from "../combinations/SymbolsCombinationsAnalyzer.js";
+import type {ValueWinCalculating} from "./ValueWinCalculating.js";
+import {WinningValue} from "../WinningValue.js";
+import type {WinningValueDescribing} from "../WinningValueDescribing.js";
 
 // A distinct win shape from lines/scatters/clusters: some symbols carry their own bet-multiplier
 // value (e.g. differently-weighted variants of the same conceptual symbol, each worth a different

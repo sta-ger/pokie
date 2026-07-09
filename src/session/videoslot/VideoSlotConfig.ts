@@ -1,16 +1,14 @@
-import {
-    GameSessionConfig,
-    HorizontalLines,
-    LeftToRightLinesPatterns,
-    LinesDefinitionsDescribing,
-    LinesPatternsDescribing,
-    Paytable,
-    PaytableRepresenting,
-    ReelsSymbolsSequencesGenerating,
-    ReelsSymbolsSequencesGenerator,
-    SymbolsSequenceDescribing,
-    VideoSlotConfigRepresenting,
-} from "pokie";
+import {GameSessionConfig} from "../GameSessionConfig.js";
+import {HorizontalLines} from "./linesdefinitions/HorizontalLines.js";
+import {LeftToRightLinesPatterns} from "./linespatterns/LeftToRightLinesPatterns.js";
+import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
+import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
+import {Paytable} from "./paytable/Paytable.js";
+import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
+import type {ReelsSymbolsSequencesGenerating} from "./combinations/ReelsSymbolsSequencesGenerating.js";
+import {ReelsSymbolsSequencesGenerator} from "./combinations/ReelsSymbolsSequencesGenerator.js";
+import type {SymbolsSequenceDescribing} from "./combinations/SymbolsSequenceDescribing.js";
+import type {VideoSlotConfigRepresenting} from "./VideoSlotConfigRepresenting.js";
 
 export class VideoSlotConfig<T extends string | number | symbol = string> implements VideoSlotConfigRepresenting<T> {
     private readonly baseConfig: GameSessionConfig;

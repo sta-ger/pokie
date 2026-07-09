@@ -1,4 +1,4 @@
-import {WinAmountDetermining} from "pokie";
+import type {WinAmountDetermining} from "../WinAmountDetermining.js";
 
 export interface WinningLineDescribing<T extends string | number | symbol = string> extends WinAmountDetermining {
     getDefinition(): number[];

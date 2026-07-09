@@ -1,11 +1,9 @@
-import {
-    LinesDefinitionsDescribing,
-    LinesPatternsDescribing,
-    PaytableRepresenting,
-    SymbolsSequenceDescribing,
-    VideoSlotConfig,
-    VideoSlotWithFreeGamesConfigRepresenting,
-} from "pokie";
+import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
+import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
+import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
+import type {SymbolsSequenceDescribing} from "./combinations/SymbolsSequenceDescribing.js";
+import {VideoSlotConfig} from "./VideoSlotConfig.js";
+import type {VideoSlotWithFreeGamesConfigRepresenting} from "./VideoSlotWithFreeGamesConfigRepresenting.js";
 
 export class VideoSlotWithFreeGamesConfig<T extends string | number | symbol = string>
 implements VideoSlotWithFreeGamesConfigRepresenting<T> {

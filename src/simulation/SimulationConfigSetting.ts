@@ -1,4 +1,5 @@
-import {BetForNextSimulationRoundSetting, NextSessionRoundPlayableDetermining} from "pokie";
+import type {BetForNextSimulationRoundSetting} from "./BetForNextSimulationRoundSetting.js";
+import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
 
 export interface SimulationConfigSetting {
     setNumberOfRounds(value: number): void;

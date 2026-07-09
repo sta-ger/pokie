@@ -1,11 +1,9 @@
-import {
-    ScatterWinCalculating,
-    SymbolsCombinationDescribing,
-    SymbolsCombinationsAnalyzer,
-    VideoSlotConfigDescribing,
-    WinningScatter,
-    WinningScatterDescribing,
-} from "pokie";
+import type {ScatterWinCalculating} from "./ScatterWinCalculating.js";
+import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
+import {SymbolsCombinationsAnalyzer} from "../combinations/SymbolsCombinationsAnalyzer.js";
+import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
+import {WinningScatter} from "../WinningScatter.js";
+import type {WinningScatterDescribing} from "../WinningScatterDescribing.js";
 
 export class ScatterWinCalculator<T extends string | number | symbol = string> implements ScatterWinCalculating<T> {
     private readonly config: VideoSlotConfigDescribing<T>;
@@ -26,7 +24,11 @@ export class ScatterWinCalculator<T extends string | number | symbol = string> i
                     symbolsCombination.toMatrix(),
                     curScatterSymbolId,
                 );
-                const winAmount = this.getWinAmountForSymbol(bet, curScatterSymbolId, curScatterSymbolsPositions.length);
+                const winAmount = this.getWinAmountForSymbol(
+                    bet,
+                    curScatterSymbolId,
+                    curScatterSymbolsPositions.length,
+                );
                 if (winAmount > 0) {
                     winningScatters[curScatterSymbolId] = new WinningScatter<T>(
                         curScatterSymbolId,

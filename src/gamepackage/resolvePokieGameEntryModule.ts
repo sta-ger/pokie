@@ -1,4 +1,5 @@
-import {isPokieGame, readPokiePackageConfig} from "pokie";
+import {isPokieGame} from "./isPokieGame.js";
+import {readPokiePackageConfig} from "./readPokiePackageConfig.js";
 import path from "path";
 
 export type ResolvedPokieGameEntryModule = {
@@ -19,7 +20,8 @@ export async function resolvePokieGameEntryModule(packageRoot: string): Promise<
     // default` — so importing a tsc-compiled entry module here can yield `entryModule.default.default`
     // instead of `entryModule.default`. Unwrap one more level in that case.
     const nestedDefault = (firstLevelCandidate as Record<string, unknown> | null)?.default;
-    const candidate = isPokieGame(firstLevelCandidate) || !isPokieGame(nestedDefault) ? firstLevelCandidate : nestedDefault;
+    const candidate =
+        isPokieGame(firstLevelCandidate) || !isPokieGame(nestedDefault) ? firstLevelCandidate : nestedDefault;
 
     return {entryPath, candidate};
 }

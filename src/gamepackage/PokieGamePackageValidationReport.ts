@@ -1,4 +1,4 @@
-import {ValidationIssue} from "pokie";
+import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
 export type PokieGamePackageValidationReport = {
     packageRoot: string;

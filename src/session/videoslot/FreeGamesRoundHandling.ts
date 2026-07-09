@@ -1,4 +1,4 @@
-import {VideoSlotWithFreeGamesSessionHandling} from "pokie";
+import type {VideoSlotWithFreeGamesSessionHandling} from "./VideoSlotWithFreeGamesSessionHandling.js";
 
 // The bank/retrigger bookkeeping around a single played round of a free-games bonus
 // (accumulate wins during the run, pay out on completion, extend the run on a retrigger)

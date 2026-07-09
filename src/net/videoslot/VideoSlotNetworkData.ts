@@ -1,4 +1,4 @@
-import {GameInitialNetworkData, GameRoundNetworkData} from "pokie";
+import type {GameInitialNetworkData, GameRoundNetworkData} from "../GameNetworkData.js";
 
 export type VideoSlotInitialNetworkData<T extends string | number | symbol = string> = {
     availableSymbols: T[];

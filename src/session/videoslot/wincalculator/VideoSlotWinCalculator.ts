@@ -1,26 +1,24 @@
-import {
-    ClusterWinCalculating,
-    LineWinCalculating,
-    LineWinCalculator,
-    ScatterWinCalculating,
-    ScatterWinCalculator,
-    SymbolsCombinationDescribing,
-    ValidationResult,
-    ValueWinCalculating,
-    VideoSlotConfigDescribing,
-    VideoSlotWinCalculating,
-    WaysWinCalculating,
-    WinningClusterDescribing,
-    WinningCluster,
-    WinningLineDescribing,
-    WinningLine,
-    WinningScatter,
-    WinningScatterDescribing,
-    WinningValue,
-    WinningValueDescribing,
-    WinningWay,
-    WinningWayDescribing,
-} from "pokie";
+import type {ClusterWinCalculating} from "./ClusterWinCalculating.js";
+import type {LineWinCalculating} from "./LineWinCalculating.js";
+import {LineWinCalculator} from "./LineWinCalculator.js";
+import type {ScatterWinCalculating} from "./ScatterWinCalculating.js";
+import {ScatterWinCalculator} from "./ScatterWinCalculator.js";
+import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
+import {ValidationResult} from "../../../validation/ValidationResult.js";
+import type {ValueWinCalculating} from "./ValueWinCalculating.js";
+import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
+import type {VideoSlotWinCalculating} from "./VideoSlotWinCalculating.js";
+import type {WaysWinCalculating} from "./WaysWinCalculating.js";
+import type {WinningClusterDescribing} from "../WinningClusterDescribing.js";
+import {WinningCluster} from "../WinningCluster.js";
+import type {WinningLineDescribing} from "../WinningLineDescribing.js";
+import {WinningLine} from "../WinningLine.js";
+import {WinningScatter} from "../WinningScatter.js";
+import type {WinningScatterDescribing} from "../WinningScatterDescribing.js";
+import {WinningValue} from "../WinningValue.js";
+import type {WinningValueDescribing} from "../WinningValueDescribing.js";
+import {WinningWay} from "../WinningWay.js";
+import type {WinningWayDescribing} from "../WinningWayDescribing.js";
 import {ClusterWinComponent} from "../winevaluation/ClusterWinComponent.js";
 import {ClusterWinEvaluator} from "../winevaluation/ClusterWinEvaluator.js";
 import {ErrorOnIncompatibleWinAggregationPolicy} from "../winevaluation/ErrorOnIncompatibleWinAggregationPolicy.js";
@@ -82,7 +80,9 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
 
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): void {
         if (this.config.getAvailableBets().some((availableBet) => availableBet === bet)) {
-            this.winEvaluationResult = this.pipeline.evaluate(new WinEvaluationContext<T>(bet, symbolsCombination, this.config));
+            this.winEvaluationResult = this.pipeline.evaluate(
+                new WinEvaluationContext<T>(bet, symbolsCombination, this.config),
+            );
         } else {
             throw new Error(`Bet ${bet} is not specified at paytable`);
         }
@@ -152,26 +152,36 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     }
 
     public getLinesWinning(): number {
-        return this.getWinEvaluationResult().getLineWins().reduce((sum, component) => sum + component.getWinAmount(), 0);
+        return this.getWinEvaluationResult()
+            .getLineWins()
+            .reduce((sum, component) => sum + component.getWinAmount(), 0);
     }
 
     public getScattersWinning(): number {
         // Object.values() on a Record keyed by a generic type parameter loses its value type,
         // so it's cast back to a string-keyed view (safe: JS object keys are always strings/symbols
         // at runtime regardless of T).
-        return this.getWinEvaluationResult().getScatterWins().reduce((sum, component) => sum + component.getWinAmount(), 0);
+        return this.getWinEvaluationResult()
+            .getScatterWins()
+            .reduce((sum, component) => sum + component.getWinAmount(), 0);
     }
 
     public getClustersWinning(): number {
-        return this.getWinEvaluationResult().getClusterWins().reduce((sum, component) => sum + component.getWinAmount(), 0);
+        return this.getWinEvaluationResult()
+            .getClusterWins()
+            .reduce((sum, component) => sum + component.getWinAmount(), 0);
     }
 
     public getValuesWinning(): number {
-        return this.getWinEvaluationResult().getValueWins().reduce((sum, component) => sum + component.getWinAmount(), 0);
+        return this.getWinEvaluationResult()
+            .getValueWins()
+            .reduce((sum, component) => sum + component.getWinAmount(), 0);
     }
 
     public getWaysWinning(): number {
-        return this.getWinEvaluationResult().getWaysWins().reduce((sum, component) => sum + component.getWinAmount(), 0);
+        return this.getWinEvaluationResult()
+            .getWaysWins()
+            .reduce((sum, component) => sum + component.getWinAmount(), 0);
     }
 
     public getWinEvaluationPipeline(): WinEvaluationPipeline<T> {
@@ -185,10 +195,7 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         ];
         if (this.clusterWinCalculator) {
             evaluators.push(
-                new ClusterWinEvaluator<T>(
-                    this.clusterWinCalculator,
-                    this.options.minimumClusterSize ?? 5,
-                ),
+                new ClusterWinEvaluator<T>(this.clusterWinCalculator, this.options.minimumClusterSize ?? 5),
             );
         }
         if (this.valueWinCalculator) {
@@ -230,6 +237,11 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
 
     private toWinningWay(component: WaysWinComponent<T>): WinningWayDescribing<T> {
         const way = component.getWinningWay();
-        return new WinningWay<T>(way.getSymbolId(), way.getSymbolsPositions(), way.getWaysCount(), component.getWinAmount());
+        return new WinningWay<T>(
+            way.getSymbolId(),
+            way.getSymbolsPositions(),
+            way.getWaysCount(),
+            component.getWinAmount(),
+        );
     }
 }

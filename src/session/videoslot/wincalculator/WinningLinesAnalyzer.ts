@@ -1,4 +1,5 @@
-import {SymbolsCombinationsAnalyzer, WinningLineDescribing} from "pokie";
+import {SymbolsCombinationsAnalyzer} from "../combinations/SymbolsCombinationsAnalyzer.js";
+import type {WinningLineDescribing} from "../WinningLineDescribing.js";
 
 export class WinningLinesAnalyzer {
     public static allLinesHaveSameSymbolId<T extends string | number | symbol = string>(

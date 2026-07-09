@@ -1,11 +1,9 @@
-import {
-    ClusterDetector,
-    ClusterWinCalculating,
-    SymbolsCombinationDescribing,
-    VideoSlotConfigDescribing,
-    WinningCluster,
-    WinningClusterDescribing,
-} from "pokie";
+import {ClusterDetector} from "../combinations/ClusterDetector.js";
+import type {ClusterWinCalculating} from "./ClusterWinCalculating.js";
+import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
+import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
+import {WinningCluster} from "../WinningCluster.js";
+import type {WinningClusterDescribing} from "../WinningClusterDescribing.js";
 
 // Pay-anywhere-by-adjacency win style used by cluster-pay slots: unlike LineWinCalculator
 // (fixed paylines) or ScatterWinCalculator (counts a symbol anywhere on the grid, no
@@ -18,7 +16,11 @@ export class ClusterWinCalculator<T extends string | number | symbol = string> i
     private readonly minimumClusterSize: number;
     private readonly clusterDetector: ClusterDetector;
 
-    constructor(config: VideoSlotConfigDescribing<T>, minimumClusterSize = 5, clusterDetector: ClusterDetector = new ClusterDetector()) {
+    constructor(
+        config: VideoSlotConfigDescribing<T>,
+        minimumClusterSize = 5,
+        clusterDetector: ClusterDetector = new ClusterDetector(),
+    ) {
         this.config = config;
         this.minimumClusterSize = minimumClusterSize;
         this.clusterDetector = clusterDetector;

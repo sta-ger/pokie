@@ -1,4 +1,4 @@
-import {ValidationIssueSeverity} from "pokie";
+import type {ValidationIssueSeverity} from "./ValidationIssueSeverity.js";
 
 export type ValidationIssue = {
     code: string;

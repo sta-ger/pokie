@@ -1,22 +1,20 @@
-import {
-    GameSession,
-    GameSessionHandling,
-    LinesDefinitionsDescribing,
-    LinesPatternsDescribing,
-    PaytableRepresenting,
-    SymbolsCombination,
-    SymbolsCombinationDescribing,
-    SymbolsCombinationsGenerating,
-    SymbolsCombinationsGenerator,
-    SymbolsSequenceDescribing,
-    VideoSlotConfig,
-    VideoSlotConfigRepresenting,
-    VideoSlotSessionHandling,
-    VideoSlotWinCalculating,
-    VideoSlotWinCalculator,
-    WinningLineDescribing,
-    WinningScatterDescribing,
-} from "pokie";
+import {GameSession} from "../GameSession.js";
+import type {GameSessionHandling} from "../GameSessionHandling.js";
+import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
+import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
+import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
+import {SymbolsCombination} from "./combinations/SymbolsCombination.js";
+import type {SymbolsCombinationDescribing} from "./combinations/SymbolsCombinationDescribing.js";
+import type {SymbolsCombinationsGenerating} from "./combinations/SymbolsCombinationsGenerating.js";
+import {SymbolsCombinationsGenerator} from "./combinations/SymbolsCombinationsGenerator.js";
+import type {SymbolsSequenceDescribing} from "./combinations/SymbolsSequenceDescribing.js";
+import {VideoSlotConfig} from "./VideoSlotConfig.js";
+import type {VideoSlotConfigRepresenting} from "./VideoSlotConfigRepresenting.js";
+import type {VideoSlotSessionHandling} from "./VideoSlotSessionHandling.js";
+import type {VideoSlotWinCalculating} from "./wincalculator/VideoSlotWinCalculating.js";
+import {VideoSlotWinCalculator} from "./wincalculator/VideoSlotWinCalculator.js";
+import type {WinningLineDescribing} from "./WinningLineDescribing.js";
+import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
 import {LegacyWinEvaluationResultAdapter} from "./winevaluation/LegacyWinEvaluationResultAdapter.js";
 import {WinEvaluationResult} from "./winevaluation/WinEvaluationResult.js";
 
@@ -89,7 +87,9 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public getWinAmount(): number {
-        return this.supportsWinEvaluationResult() ? this.getWinEvaluationResult().getTotalWin() : this.winCalculator.getWinAmount();
+        return this.supportsWinEvaluationResult()
+            ? this.getWinEvaluationResult().getTotalWin()
+            : this.winCalculator.getWinAmount();
     }
 
     public getLinesWinning(): number {

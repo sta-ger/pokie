@@ -1,11 +1,9 @@
-import {
-    PseudorandomNumberGenerator,
-    RandomNumberGenerating,
-    SymbolsCombination,
-    SymbolsCombinationDescribing,
-    SymbolsCombinationsGenerating,
-    VideoSlotConfigDescribing,
-} from "pokie";
+import {PseudorandomNumberGenerator} from "./PseudorandomNumberGenerator.js";
+import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
+import {SymbolsCombination} from "./SymbolsCombination.js";
+import type {SymbolsCombinationDescribing} from "./SymbolsCombinationDescribing.js";
+import type {SymbolsCombinationsGenerating} from "./SymbolsCombinationsGenerating.js";
+import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
 
 export class SymbolsCombinationsGenerator<T extends string | number | symbol = string>
 implements SymbolsCombinationsGenerating<T> {

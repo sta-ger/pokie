@@ -1,4 +1,6 @@
-import {SimulationReport, SimulationReportBuilding, SimulationReportInput} from "pokie";
+import type {SimulationReport} from "./SimulationReport.js";
+import type {SimulationReportBuilding} from "./SimulationReportBuilding.js";
+import type {SimulationReportInput} from "./SimulationReportInput.js";
 
 export class SimulationReportBuilder implements SimulationReportBuilding {
     public build(input: SimulationReportInput): SimulationReport {

@@ -1,12 +1,10 @@
-import {
-    WinEvaluationResult,
-    WinAmountDetermining,
-    WinningClusterDescribing,
-    WinningLineDescribing,
-    WinningScatterDescribing,
-    WinningValueDescribing,
-    WinningWayDescribing,
-} from "pokie";
+import {WinEvaluationResult} from "./winevaluation/WinEvaluationResult.js";
+import type {WinAmountDetermining} from "../WinAmountDetermining.js";
+import type {WinningClusterDescribing} from "./WinningClusterDescribing.js";
+import type {WinningLineDescribing} from "./WinningLineDescribing.js";
+import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
+import type {WinningValueDescribing} from "./WinningValueDescribing.js";
+import type {WinningWayDescribing} from "./WinningWayDescribing.js";
 
 export interface VideoSlotWinDetermining<T extends string | number | symbol = string> extends WinAmountDetermining {
     getWinEvaluationResult?(): WinEvaluationResult<T>;

@@ -1,4 +1,4 @@
-import {WinningScatterDescribing} from "pokie";
+import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
 
 export class WinningScatter<T extends string | number | symbol = string> implements WinningScatterDescribing<T> {
     private readonly symbolId: T;

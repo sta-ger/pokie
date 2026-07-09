@@ -1,9 +1,7 @@
-import {
-    AbstractVideoSlotSessionDecorator,
-    GridResizeHandling,
-    ResizableSymbolsCombinationsGenerator,
-    VideoSlotSessionHandling,
-} from "pokie";
+import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
+import type {GridResizeHandling} from "./GridResizeHandling.js";
+import {ResizableSymbolsCombinationsGenerator} from "./combinations/ResizableSymbolsCombinationsGenerator.js";
+import type {VideoSlotSessionHandling} from "./VideoSlotSessionHandling.js";
 
 // Wraps a session built around a ResizableSymbolsCombinationsGenerator (the same shared instance
 // must be passed to both the base session's construction and here — mirrors how
@@ -11,8 +9,9 @@ import {
 // and, after each round, asks the injected GridResizeHandling what the next round's per-reel
 // heights should be. getReelsHeights isn't part of VideoSlotSessionHandling — callers already hold
 // this concrete type, since they had to construct the shared generator themselves.
-export class VideoSlotWithResizableGridSession<T extends string | number | symbol = string>
-    extends AbstractVideoSlotSessionDecorator<T> {
+export class VideoSlotWithResizableGridSession<
+    T extends string | number | symbol = string,
+> extends AbstractVideoSlotSessionDecorator<T> {
     private readonly generator: ResizableSymbolsCombinationsGenerator<T>;
     private readonly gridResizeHandling: GridResizeHandling<T>;
 

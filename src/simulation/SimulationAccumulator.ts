@@ -1,4 +1,5 @@
-import {ConfidenceIntervalCalculator, SimulationStatistics} from "pokie";
+import {ConfidenceIntervalCalculator} from "./ConfidenceIntervalCalculator.js";
+import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
     private rounds = 0;
@@ -107,7 +108,11 @@ export class SimulationAccumulator {
             averagePayout,
             averagePayoutConfidenceInterval95,
             rtp,
-            rtpConfidenceInterval95: ConfidenceIntervalCalculator.calculate95(rtp, returnStandardDeviation, this.rounds),
+            rtpConfidenceInterval95: ConfidenceIntervalCalculator.calculate95(
+                rtp,
+                returnStandardDeviation,
+                this.rounds,
+            ),
             volatility: payoutStandardDeviation,
             payoutStandardDeviation,
             returnStandardDeviation,

@@ -1,4 +1,6 @@
-import {NextSessionRoundPlayableDetermining, VideoSlotSessionHandling, WinningLinesAnalyzer} from "pokie";
+import type {NextSessionRoundPlayableDetermining} from "./NextSessionRoundPlayableDetermining.js";
+import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
+import {WinningLinesAnalyzer} from "../../session/videoslot/wincalculator/WinningLinesAnalyzer.js";
 
 export class PlayUntilSymbolWinStrategy<T extends string | number | symbol = string>
 implements NextSessionRoundPlayableDetermining {

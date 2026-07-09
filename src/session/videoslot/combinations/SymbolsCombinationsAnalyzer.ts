@@ -1,4 +1,5 @@
-import {LinesDefinitionsDescribing, SymbolsSequenceDescribing} from "pokie";
+import type {LinesDefinitionsDescribing} from "../linesdefinitions/LinesDefinitionsDescribing.js";
+import type {SymbolsSequenceDescribing} from "./SymbolsSequenceDescribing.js";
 
 export class SymbolsCombinationsAnalyzer {
     public static getSymbolsForDefinition<T extends string | number | symbol = string>(
@@ -309,8 +310,12 @@ export class SymbolsCombinationsAnalyzer {
                 linesDefinitions.getLineDefinition(lineId),
             );
             return (
-                SymbolsCombinationsAnalyzer.getMatchingPattern(symbolsLine, patterns, wildSymbols, wildSubstitutions) !==
-                null
+                SymbolsCombinationsAnalyzer.getMatchingPattern(
+                    symbolsLine,
+                    patterns,
+                    wildSymbols,
+                    wildSubstitutions,
+                ) !== null
             );
         });
         ids.sort();

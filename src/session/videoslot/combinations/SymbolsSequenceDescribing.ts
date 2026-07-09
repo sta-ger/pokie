@@ -1,4 +1,4 @@
-import {ConvertableToArray} from "pokie";
+import type {ConvertableToArray} from "../../ConvertableToArray.js";
 
 export interface SymbolsSequenceDescribing<T extends string | number | symbol = string> extends ConvertableToArray<T> {
     getIndex(index: number): number;

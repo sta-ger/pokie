@@ -1,14 +1,12 @@
-import {
-    LinesDefinitionsDescribing,
-    LinesPatternsDescribing,
-    PaytableRepresenting,
-    SymbolsCombinationDescribing,
-    SymbolsSequenceDescribing,
-    WinEvaluationResult,
-    VideoSlotSessionHandling,
-    WinningLineDescribing,
-    WinningScatterDescribing,
-} from "pokie";
+import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
+import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
+import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
+import type {SymbolsCombinationDescribing} from "./combinations/SymbolsCombinationDescribing.js";
+import type {SymbolsSequenceDescribing} from "./combinations/SymbolsSequenceDescribing.js";
+import {WinEvaluationResult} from "./winevaluation/WinEvaluationResult.js";
+import type {VideoSlotSessionHandling} from "./VideoSlotSessionHandling.js";
+import type {WinningLineDescribing} from "./WinningLineDescribing.js";
+import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
 
 // A pure passthrough base for classes that wrap a VideoSlotSessionHandling and only need to
 // change a handful of its methods (e.g. VideoSlotWithFreeGamesSession overriding play()).

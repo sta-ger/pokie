@@ -1,4 +1,5 @@
-import {LeftToRightLinesPatterns, LinesPatternsDescribing} from "pokie";
+import {LeftToRightLinesPatterns} from "./LeftToRightLinesPatterns.js";
+import type {LinesPatternsDescribing} from "./LinesPatternsDescribing.js";
 
 export class RightToLeftLinesPatterns extends LeftToRightLinesPatterns implements LinesPatternsDescribing {
     private readonly rightToLeftPatterns: number[][];

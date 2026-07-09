@@ -1,11 +1,9 @@
-import {
-    LineWinCalculating,
-    SymbolsCombinationDescribing,
-    SymbolsCombinationsAnalyzer,
-    VideoSlotConfigDescribing,
-    WinningLine,
-    WinningLineDescribing,
-} from "pokie";
+import type {LineWinCalculating} from "./LineWinCalculating.js";
+import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
+import {SymbolsCombinationsAnalyzer} from "../combinations/SymbolsCombinationsAnalyzer.js";
+import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
+import {WinningLine} from "../WinningLine.js";
+import type {WinningLineDescribing} from "../WinningLineDescribing.js";
 
 export class LineWinCalculator<T extends string | number | symbol = string> implements LineWinCalculating<T> {
     private readonly config: VideoSlotConfigDescribing<T>;

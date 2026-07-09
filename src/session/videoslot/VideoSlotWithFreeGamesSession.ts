@@ -1,19 +1,17 @@
-import {
-    AbstractVideoSlotSessionDecorator,
-    FreeGamesRoundHandler,
-    FreeGamesRoundHandling,
-    PaytableRepresenting,
-    SymbolsCombinationsGenerating,
-    SymbolsCombinationsGenerator,
-    VideoSlotSession,
-    VideoSlotSessionHandling,
-    VideoSlotWinCalculating,
-    VideoSlotWinCalculator,
-    VideoSlotWithFreeGamesConfig,
-    VideoSlotWithFreeGamesConfigRepresenting,
-    VideoSlotWithFreeGamesSessionHandling,
-    WinningScatterDescribing,
-} from "pokie";
+import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
+import {FreeGamesRoundHandler} from "./FreeGamesRoundHandler.js";
+import type {FreeGamesRoundHandling} from "./FreeGamesRoundHandling.js";
+import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
+import type {SymbolsCombinationsGenerating} from "./combinations/SymbolsCombinationsGenerating.js";
+import {SymbolsCombinationsGenerator} from "./combinations/SymbolsCombinationsGenerator.js";
+import {VideoSlotSession} from "./VideoSlotSession.js";
+import type {VideoSlotSessionHandling} from "./VideoSlotSessionHandling.js";
+import type {VideoSlotWinCalculating} from "./wincalculator/VideoSlotWinCalculating.js";
+import {VideoSlotWinCalculator} from "./wincalculator/VideoSlotWinCalculator.js";
+import {VideoSlotWithFreeGamesConfig} from "./VideoSlotWithFreeGamesConfig.js";
+import type {VideoSlotWithFreeGamesConfigRepresenting} from "./VideoSlotWithFreeGamesConfigRepresenting.js";
+import type {VideoSlotWithFreeGamesSessionHandling} from "./VideoSlotWithFreeGamesSessionHandling.js";
+import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
 
 export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = string>
     extends AbstractVideoSlotSessionDecorator<T>

@@ -1,12 +1,10 @@
-import {
-    PseudorandomNumberGenerator,
-    RandomNumberGenerating,
-    SymbolsCombination,
-    SymbolsCombinationDescribing,
-    SymbolsCombinationsGenerating,
-    SymbolsSequenceDescribing,
-    VideoSlotConfigDescribing,
-} from "pokie";
+import {PseudorandomNumberGenerator} from "./PseudorandomNumberGenerator.js";
+import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
+import {SymbolsCombination} from "./SymbolsCombination.js";
+import type {SymbolsCombinationDescribing} from "./SymbolsCombinationDescribing.js";
+import type {SymbolsCombinationsGenerating} from "./SymbolsCombinationsGenerating.js";
+import type {SymbolsSequenceDescribing} from "./SymbolsSequenceDescribing.js";
+import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
 
 // A sibling of SymbolsCombinationsGenerator for games where each reel's visible symbol count is
 // drawn per round from its own weighted distribution (reelsHeightWeights[reelId] — an ordinary

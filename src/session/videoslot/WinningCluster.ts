@@ -1,4 +1,4 @@
-import {WinningClusterDescribing} from "pokie";
+import type {WinningClusterDescribing} from "./WinningClusterDescribing.js";
 
 export class WinningCluster<T extends string | number | symbol = string> implements WinningClusterDescribing<T> {
     private readonly symbolId: T;

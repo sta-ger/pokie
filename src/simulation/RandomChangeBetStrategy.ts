@@ -1,4 +1,5 @@
-import {BetForNextSimulationRoundSetting, GameSessionHandling} from "pokie";
+import type {BetForNextSimulationRoundSetting} from "./BetForNextSimulationRoundSetting.js";
+import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 
 export class RandomChangeBetStrategy implements BetForNextSimulationRoundSetting {
     public setBetForNextRound(session: GameSessionHandling): void {

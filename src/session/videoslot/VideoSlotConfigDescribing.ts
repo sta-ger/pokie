@@ -1,10 +1,8 @@
-import {
-    AvailableBetsDescribing,
-    LinesDefinitionsDescribing,
-    LinesPatternsDescribing,
-    PaytableRepresenting,
-    SymbolsSequenceDescribing,
-} from "pokie";
+import type {AvailableBetsDescribing} from "../AvailableBetsDescribing.js";
+import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
+import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
+import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
+import type {SymbolsSequenceDescribing} from "./combinations/SymbolsSequenceDescribing.js";
 
 export interface VideoSlotConfigDescribing<T extends string | number | symbol = string>
     extends AvailableBetsDescribing {

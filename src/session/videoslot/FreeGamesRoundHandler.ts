@@ -1,7 +1,7 @@
-import {FreeGamesRoundHandling, VideoSlotWithFreeGamesSessionHandling} from "pokie";
+import type {FreeGamesRoundHandling} from "./FreeGamesRoundHandling.js";
+import type {VideoSlotWithFreeGamesSessionHandling} from "./VideoSlotWithFreeGamesSessionHandling.js";
 
-export class FreeGamesRoundHandler<T extends string | number | symbol = string>
-implements FreeGamesRoundHandling<T> {
+export class FreeGamesRoundHandler<T extends string | number | symbol = string> implements FreeGamesRoundHandling<T> {
     public beforeRoundPlayed(session: VideoSlotWithFreeGamesSessionHandling<T>): void {
         if (session.getFreeGamesNum() === session.getFreeGamesSum()) {
             session.setFreeGamesBank(0);

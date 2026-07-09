@@ -1,4 +1,5 @@
-import {ValidationIssue, ValidationIssueSeverity} from "pokie";
+import type {ValidationIssue} from "./ValidationIssue.js";
+import type {ValidationIssueSeverity} from "./ValidationIssueSeverity.js";
 
 export class ValidationResult {
     private readonly issues: ValidationIssue[];

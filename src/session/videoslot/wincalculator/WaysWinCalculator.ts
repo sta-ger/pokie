@@ -1,11 +1,9 @@
-import {
-    SymbolsCombinationDescribing,
-    VideoSlotConfigDescribing,
-    WaysAnalyzer,
-    WaysWinCalculating,
-    WinningWay,
-    WinningWayDescribing,
-} from "pokie";
+import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
+import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
+import {WaysAnalyzer} from "../combinations/WaysAnalyzer.js";
+import type {WaysWinCalculating} from "./WaysWinCalculating.js";
+import {WinningWay} from "../WinningWay.js";
+import type {WinningWayDescribing} from "../WinningWayDescribing.js";
 
 // Multiplicative ways-to-win (243-ways-style) evaluation: for every payable symbol, pays
 // paytable(symbolId, reelsMatched, bet) * waysCount, where waysCount is the product of how many
@@ -43,7 +41,8 @@ export class WaysWinCalculator<T extends string | number | symbol = string> impl
                 this.config.getWildSubstitutions?.(),
             );
             if (reelsMatched > 0) {
-                const winAmount = this.config.getPaytable().getWinAmountForSymbol(symbolId, reelsMatched, bet) * waysCount;
+                const winAmount =
+                    this.config.getPaytable().getWinAmountForSymbol(symbolId, reelsMatched, bet) * waysCount;
                 if (winAmount > 0) {
                     winningWays[symbolId] = new WinningWay<T>(symbolId, positions, waysCount, winAmount);
                 }

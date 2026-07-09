@@ -1,4 +1,7 @@
-import {PokieGame, PokieGameContractValidationRule, resolvePokieGameEntryModule, ValidationResult} from "pokie";
+import type {PokieGame} from "./PokieGame.js";
+import {PokieGameContractValidationRule} from "./PokieGameContractValidationRule.js";
+import {resolvePokieGameEntryModule} from "./resolvePokieGameEntryModule.js";
+import {ValidationResult} from "../validation/ValidationResult.js";
 
 export async function loadPokieGame(packageRoot: string): Promise<PokieGame> {
     const {entryPath, candidate} = await resolvePokieGameEntryModule(packageRoot);

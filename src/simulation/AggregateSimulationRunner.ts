@@ -1,4 +1,6 @@
-import {GameSessionHandling, NextSessionRoundPlayableDetermining, SimulationAccumulator} from "pokie";
+import type {GameSessionHandling} from "../session/GameSessionHandling.js";
+import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
+import {SimulationAccumulator} from "./SimulationAccumulator.js";
 
 export class AggregateSimulationRunner {
     private readonly session: GameSessionHandling;

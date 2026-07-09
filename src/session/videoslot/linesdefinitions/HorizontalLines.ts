@@ -1,4 +1,4 @@
-import {LinesDefinitionsDescribing} from "pokie";
+import type {LinesDefinitionsDescribing} from "./LinesDefinitionsDescribing.js";
 
 export class HorizontalLines implements LinesDefinitionsDescribing {
     private readonly definitions: Record<string, number[]> = {};

@@ -1,4 +1,4 @@
-import {PokieGame} from "pokie";
+import type {PokieGame} from "./PokieGame.js";
 
 export function isPokieGame(value: unknown): value is PokieGame {
     if (typeof value !== "object" || value === null) {

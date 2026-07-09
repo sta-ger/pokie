@@ -1,9 +1,7 @@
-import {
-    FreeGamesStateDetermining,
-    FreeGamesStateSetting,
-    GameSessionHandling,
-    WonFreeGamesNumberDetermining,
-} from "pokie";
+import type {FreeGamesStateDetermining} from "./FreeGamesStateDetermining.js";
+import type {FreeGamesStateSetting} from "./FreeGamesStateSetting.js";
+import type {GameSessionHandling} from "./GameSessionHandling.js";
+import type {WonFreeGamesNumberDetermining} from "./WonFreeGamesNumberDetermining.js";
 
 export interface GameWithFreeGamesSessionHandling
     extends GameSessionHandling,

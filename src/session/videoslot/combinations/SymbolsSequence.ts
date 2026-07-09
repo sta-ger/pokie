@@ -1,4 +1,4 @@
-import {SymbolsSequenceRepresenting} from "pokie";
+import type {SymbolsSequenceRepresenting} from "./SymbolsSequenceRepresenting.js";
 
 export class SymbolsSequence<T extends string | number | symbol = string> implements SymbolsSequenceRepresenting<T> {
     private sequence: T[];

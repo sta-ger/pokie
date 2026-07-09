@@ -1,4 +1,4 @@
-import {SymbolsCombinationDescribing} from "pokie";
+import type {SymbolsCombinationDescribing} from "./SymbolsCombinationDescribing.js";
 
 export interface SymbolsCombinationsGenerating<T extends string | number | symbol = string> {
     generateSymbolsCombination(): SymbolsCombinationDescribing<T>;

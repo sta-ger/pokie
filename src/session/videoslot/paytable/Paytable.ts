@@ -1,4 +1,4 @@
-import {PaytableRepresenting} from "pokie";
+import type {PaytableRepresenting} from "./PaytableRepresenting.js";
 
 export class Paytable<T extends string | number | symbol = string> implements PaytableRepresenting<T> {
     private paytableMap: Record<number, Record<T, Record<number, number>>>;

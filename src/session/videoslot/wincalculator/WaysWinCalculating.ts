@@ -1,4 +1,5 @@
-import {SymbolsCombinationDescribing, WinningWayDescribing} from "pokie";
+import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
+import type {WinningWayDescribing} from "../WinningWayDescribing.js";
 
 export interface WaysWinCalculating<T extends string | number | symbol = string> {
     calculateWinningWays(

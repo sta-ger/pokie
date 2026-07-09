@@ -1,9 +1,8 @@
-import {
+import type {
     GameWithFreeGamesInitialNetworkData,
     GameWithFreeGamesRoundNetworkData,
-    VideoSlotInitialNetworkData,
-    VideoSlotRoundNetworkData,
-} from "pokie";
+} from "../GameWithFreeGamesNetworkData.js";
+import type {VideoSlotInitialNetworkData, VideoSlotRoundNetworkData} from "./VideoSlotNetworkData.js";
 
 export type VideoSlotWithFreeGamesInitialNetworkData<T extends string | number | symbol = string> = {
     /** empty **/

@@ -1,10 +1,8 @@
-import {
-    AsyncSimulationHandling,
-    BetForNextSimulationRoundSetting,
-    GameSessionHandling,
-    NextSessionRoundPlayableDetermining,
-    SimulationConfigRepresenting,
-} from "pokie";
+import type {AsyncSimulationHandling} from "./AsyncSimulationHandling.js";
+import type {BetForNextSimulationRoundSetting} from "./BetForNextSimulationRoundSetting.js";
+import type {GameSessionHandling} from "../session/GameSessionHandling.js";
+import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
+import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.js";
 
 export class Simulation implements AsyncSimulationHandling {
     private readonly session: GameSessionHandling;

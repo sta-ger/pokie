@@ -1,4 +1,6 @@
-import {GameSessionConfigRepresenting, VideoSlotConfigDescribing, VideoSlotConfigSetting} from "pokie";
+import type {GameSessionConfigRepresenting} from "../GameSessionConfigRepresenting.js";
+import type {VideoSlotConfigDescribing} from "./VideoSlotConfigDescribing.js";
+import type {VideoSlotConfigSetting} from "./VideoSlotConfigSetting.js";
 
 export interface VideoSlotConfigRepresenting<T extends string | number | symbol = string>
     extends GameSessionConfigRepresenting,

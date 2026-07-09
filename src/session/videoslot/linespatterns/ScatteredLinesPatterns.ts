@@ -1,4 +1,4 @@
-import {LinesPatternsDescribing} from "pokie";
+import type {LinesPatternsDescribing} from "./LinesPatternsDescribing.js";
 
 export class ScatteredLinesPatterns implements LinesPatternsDescribing {
     private readonly patterns: number[][];

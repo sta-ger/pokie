@@ -1,4 +1,6 @@
-import {ReelsSymbolsSequencesGenerating, SymbolsSequence, SymbolsSequenceDescribing} from "pokie";
+import type {ReelsSymbolsSequencesGenerating} from "./ReelsSymbolsSequencesGenerating.js";
+import {SymbolsSequence} from "./SymbolsSequence.js";
+import type {SymbolsSequenceDescribing} from "./SymbolsSequenceDescribing.js";
 
 export class ReelsSymbolsSequencesGenerator<T extends string | number | symbol = string>
 implements ReelsSymbolsSequencesGenerating<T> {

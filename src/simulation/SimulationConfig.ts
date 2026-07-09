@@ -1,8 +1,6 @@
-import {
-    BetForNextSimulationRoundSetting,
-    SimulationConfigRepresenting,
-    NextSessionRoundPlayableDetermining,
-} from "pokie";
+import type {BetForNextSimulationRoundSetting} from "./BetForNextSimulationRoundSetting.js";
+import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.js";
+import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
 
 export class SimulationConfig implements SimulationConfigRepresenting {
     public static readonly DEFAULT_NUMBER_OF_ROUNDS: number = 1000;

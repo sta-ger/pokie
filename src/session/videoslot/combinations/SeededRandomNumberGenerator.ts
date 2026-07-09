@@ -1,4 +1,4 @@
-import {RandomNumberGenerating} from "pokie";
+import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
 
 // Deterministic PRNG (mulberry32) for reproducible spins — same seed always produces the same
 // sequence of draws. Useful for replaying/debugging a specific round, regression tests, and
