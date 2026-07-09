@@ -1,4 +1,4 @@
-import {isPokieGame, PokieGame, readPokiePackageConfig} from "pokie";
+import {PokieGame, PokieGameContractValidationRule, readPokiePackageConfig, ValidationResult} from "pokie";
 import path from "path";
 
 export async function loadPokieGame(packageRoot: string): Promise<PokieGame> {
@@ -10,12 +10,17 @@ export async function loadPokieGame(packageRoot: string): Promise<PokieGame> {
     const entryModule = (await import(entryPath)) as Record<string, unknown>;
     const candidate = entryModule.default ?? entryModule;
 
-    if (!isPokieGame(candidate)) {
+    const validation = new ValidationResult(new PokieGameContractValidationRule().validate(candidate));
+    if (validation.hasErrors()) {
+        const issues = validation
+            .getIssues()
+            .map((issue) => `  - ${issue.code}: ${issue.message}`)
+            .join("\n");
         throw new Error(
             `Entry module "${entryPath}" (from "pokie.entry" in "${packageRoot}/package.json") does not export a valid ` +
-                "PokieGame. Export an object implementing getManifest() and createSession() as the module's default export.",
+                `PokieGame:\n${issues}`,
         );
     }
 
-    return candidate;
+    return candidate as PokieGame;
 }

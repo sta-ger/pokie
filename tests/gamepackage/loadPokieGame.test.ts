@@ -33,6 +33,22 @@ describe("loadPokieGame", () => {
         await expect(loadPokieGame(path.join(fixturesRoot, "invalid-export-game"))).rejects.toThrow(/does not export a valid/);
     });
 
+    it("throws a descriptive error listing every failing check when the entry module's manifest is invalid", async () => {
+        let caughtError: unknown;
+        try {
+            await loadPokieGame(path.join(fixturesRoot, "invalid-manifest-game"));
+        } catch (error) {
+            caughtError = error;
+        }
+
+        expect(caughtError).toBeInstanceOf(Error);
+        const message = (caughtError as Error).message;
+        expect(message).toContain("does not export a valid");
+        expect(message).toContain("pokie-game-manifest-invalid-id");
+        expect(message).toContain("pokie-game-manifest-invalid-version");
+        expect(message).not.toContain("pokie-game-manifest-invalid-name");
+    });
+
     it("throws when package.json has no pokie.entry field", async () => {
         await expect(loadPokieGame(path.join(fixturesRoot, "missing-entry-game"))).rejects.toThrow(/pokie\.entry/);
     });

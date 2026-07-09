@@ -49,7 +49,7 @@ field:
     "name": "crazy-fruits",
     "version": "1.0.0",
     "dependencies": {
-        "pokie": "^1.2.1"
+        "pokie": "^1.3.0"
     },
     "pokie": {
         "entry": "./dist/index.js"
@@ -100,13 +100,15 @@ session.play();
 session.getWinAmount();
 ```
 
-It rejects if `package.json` has no `pokie.entry` field, or if the entry module's default export does not
-implement `PokieGame` (missing `getManifest()`/`createSession()`).
+It rejects if `package.json` has no `pokie.entry` field, or if the entry module's default export fails
+`PokieGameContractValidationRule` — missing `getManifest()`/`createSession()`, `getManifest()` throwing, or a
+manifest with a missing/empty `id`, `name`, or `version`. The rejection error lists every failing check by code
+(e.g. `pokie-game-manifest-invalid-version`), not just the first one.
 
 ## Validating a loaded export
 
 `isPokieGame(value)` is a plain type guard — useful for a quick runtime check without importing the validation
-machinery:
+machinery. It's a shallower check than what `loadPokieGame` runs internally (shape only, not manifest content):
 
 ```ts
 import {isPokieGame} from "pokie";
