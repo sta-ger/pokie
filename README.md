@@ -9,9 +9,33 @@ Introducing **POKIE**, a server-side video slot game logic framework for JavaScr
 
 `npm install pokie`
 
-> **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure. Use
-> `SecureRandomNumberGenerator` for real-money/regulated games. See
+> **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure.
+> `SecureRandomNumberGenerator` gives a stronger, production-like, security-sensitive RNG primitive built on
+> Node's `crypto.randomInt`, but it's a building block, not a certification — real-money/regulated games still need
+> independent RNG certification and regulatory/compliance sign-off, which is outside POKIE's scope. See
 > [Reels & Symbol Sequences](docs/reels-and-sequences.md).
+
+## What's included
+
+POKIE goes well beyond classic paylines:
+
+- **Win styles** — classic line wins, scatter wins, ways/megaways-style, cluster (grid) wins, and per-symbol value
+  pays, individually or [mixed](docs/paytable-and-wins.md) under an explicit aggregation policy.
+- **Cascading wins** — a deterministic win/remove/collapse/refill resolver (`CascadingSpinResolver`) with a
+  max-step guard, for tumble/cascade mechanics.
+- **Free games / free spins** and **resizable/growing grids** as first-class session types.
+- **Simulation** — full per-round `Simulation` plus aggregate-only primitives (`AggregateSimulationRunner`,
+  `SimulationAccumulator`) with RTP, hit frequency, volatility, and 95% confidence intervals, for runs too large
+  to keep every round in memory.
+- **Deterministic/seeded RNG** (`SeededRandomNumberGenerator`) for reproducible simulation, replay, and
+  regression tests, alongside the default and cryptographically-secure RNG options.
+- **Network serialization** — `net/` serializers turning session state into plain-data DTOs for a game client.
+- **Validation primitives** around the win evaluation pipeline, surfacing incompatible-evaluator or misconfigured
+  setups as structured issues instead of silent runtime surprises.
+
+See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
+megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
+verifiable/seeded-RNG spin).
 
 ## Usage
 
@@ -72,6 +96,35 @@ simulationConfig.setPlayStrategy(new PlayUntilSymbolWinStrategy("A"));
 
 const simulation = new Simulation(session, simulationConfig);
 simulation.run(); // the simulation will be stopped on any winning combination with symbol "A"
+```
+
+Running a large number of rounds without keeping every round in memory — just the running statistics.
+
+```js
+import {AggregateSimulationRunner, VideoSlotSession} from "pokie";
+
+const runner = new AggregateSimulationRunner(new VideoSlotSession(), 1_000_000);
+const stats = runner.run().getStatistics();
+
+stats.rtp; // return-to-player across all 1,000,000 rounds
+stats.rtpConfidenceInterval95; // {low, high}
+stats.hitCount; // number of winning rounds
+```
+
+### Seeded RNG
+
+`SeededRandomNumberGenerator` produces the same sequence of draws for the same seed — useful for
+simulation/replay/debugging and regression tests that need a repeatable outcome. It's not a production-grade RNG.
+For a stronger, security-sensitive entropy source, POKIE also provides `SecureRandomNumberGenerator` — but note
+that real-money/regulated play still requires independent RNG certification and compliance work outside POKIE.
+
+```js
+import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator, VideoSlotConfig} from "pokie";
+
+const config = new VideoSlotConfig();
+const generator = new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(12345));
+
+generator.generateSymbolsCombination(); // same seed always reproduces the same combination
 ```
 
 ## Documentation

@@ -173,8 +173,10 @@ interface RandomNumberGenerating { getRandomInt(min: number, max: number): numbe
 
 - **`PseudorandomNumberGenerator`** (the default) — `Math.random()`-based, not cryptographically secure. **Don't use
   this for real-money/regulated games** — see the warning in [Getting Started](getting-started.md).
-- **`SecureRandomNumberGenerator`** — uses Node's `crypto.randomInt`. Not used anywhere by default; opt in for
-  real-money/regulated gameplay by passing it explicitly:
+- **`SecureRandomNumberGenerator`** — uses Node's `crypto.randomInt` for a stronger, production-like entropy source
+  than the default. Not used anywhere by default; opt in by passing it explicitly. It's a building block, not a
+  certification — real-money/regulated games still need independent RNG certification and compliance sign-off
+  outside POKIE:
 
   ```ts
   import {SymbolsCombinationsGenerator, SecureRandomNumberGenerator} from "pokie";
