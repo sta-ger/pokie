@@ -377,9 +377,99 @@ Exit code is `0` when `valid` is `true` and `1` when it's `false` — no thrown/
 so scripting against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<packageRoot>`,
 an unknown option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate ...` error.
 
+## `pokie serve <packageRoot>` (experimental)
+
+**Experimental.** Starts a local HTTP server over a single loaded [game package](game-packages.md), so you can
+create sessions and spin them over plain JSON HTTP while developing a game. This is a **local/dev reference
+server, not a casino backend or RGS** — no wallet, no real money, no authentication, and no operator/integration
+logic of any kind. Sessions are kept in an in-memory `Map` for the lifetime of the process; nothing is persisted,
+and everything is lost on restart.
+
+```
+pokie serve ./crazy-fruits --port 4000 --host 127.0.0.1
+```
+
+```
+POKIE dev server (experimental) listening on http://127.0.0.1:4000
+This is a local/dev reference server for a single game package — not a casino backend or RGS.
+```
+
+Options:
+
+- `--port <number>` — port to listen on (default `3000`). Pass `0` to let the OS assign a free port.
+- `--host <string>` — host/interface to bind (default `127.0.0.1`).
+
+The command loads `<packageRoot>` with `loadPokieGame` and starts listening; it does not return until the process
+is killed (e.g. `Ctrl+C`) — that's expected for a server.
+
+### `GET /health`
+
+`200 {"status": "ok"}` — always, once the server is up.
+
+### `GET /game`
+
+`200 <PokieGameManifest>` — the loaded game's `getManifest()` output as-is (`id`, `name`, `version`, and
+`description`/`author` if the game provides them).
+
+### `POST /sessions`
+
+Creates a new in-memory session via `game.createSession(context)` and returns its initial state:
+
+```ts
+{
+    sessionId: string;
+    game: {id: string; name: string; version: string};
+    bet: number;
+    credits: number;
+    screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
+}
+```
+
+An optional JSON body `{"seed": string | number}` is forwarded as `context.seed` — same best-effort caveat as
+[`pokie sim --seed`](#pokie-sim-packageroot): only game packages that actually thread `context.seed` into their own
+RNG setup honor it.
+
+### `POST /sessions/:sessionId/spin`
+
+Calls `session.play()` on the stored session and returns its new state:
+
+```ts
+{
+    sessionId: string;
+    game: {id: string; name: string; version: string};
+    bet: number;
+    win: number;
+    credits: number;
+    screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
+}
+```
+
+`404 {"error": "..."}` for an unknown `sessionId`.
+
+### Failure modes
+
+- Missing `<packageRoot>`, an unknown option, a non-numeric `--port`, or a missing `--host` value throw a
+  `Usage: pokie serve ...` error before the server starts (same as every other command).
+- An invalid `packageRoot` throws the same descriptive error `loadPokieGame` would throw directly — see
+  [Game Packages](game-packages.md).
+- Once the server is running, errors are JSON HTTP responses (`400`/`404`/`500` with `{"error": "..."}`), not
+  thrown/exit codes — `pokie serve` is a long-running process, not a one-shot command.
+
+The reusable server sits behind `src/server` (`PokieDevServer`, implementing `PokieDevServerHandling`) — the same
+"thin CLI wrapper over a reusable class" shape as [`pokie replay`](#pokie-replay-packageroot):
+
+```ts
+import {loadPokieGame, PokieDevServer, PokieDevServerHandling} from "pokie";
+
+const game = await loadPokieGame("./crazy-fruits");
+const server: PokieDevServerHandling = new PokieDevServer(game, {host: "127.0.0.1", port: 4000});
+const address = await server.start(); // {host, port} — port is the OS-assigned one if 0 was requested
+// ...
+await server.stop();
+```
+
 ## What's next
 
-`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`, and `pokie replay` are
-the first of a planned set of subcommands built on the same [game package](game-packages.md) primitives
-(`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`). `pokie serve` (a local server adapter) is
-still planned. It doesn't exist yet — running it today just prints the CLI's usage/command list.
+`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`, `pokie replay`, and
+`pokie serve` are the first of a planned set of subcommands built on the same [game package](game-packages.md)
+primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`).

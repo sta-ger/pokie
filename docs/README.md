@@ -41,8 +41,10 @@ an account, currency, or compliance system is left to the integrating backend.
     a minimal game package; `pokie sim <packageRoot>`, which runs a simulation against one and reports
     RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without
     playing it; `pokie report <simulationReportJson>`, which renders a `pokie sim --out` report as Markdown or
-    HTML; `pokie diff <leftReportJson> <rightReportJson>`, which compares two `pokie sim --out` reports; and
-    `pokie replay <packageRoot>`, which best-effort replays one round (by seed + round index) as a JSON artifact.
+    HTML; `pokie diff <leftReportJson> <rightReportJson>`, which compares two `pokie sim --out` reports;
+    `pokie replay <packageRoot>`, which best-effort replays one round (by seed + round index) as a JSON artifact;
+    and `pokie serve <packageRoot>` (experimental), which starts a local/dev JSON HTTP server over a package —
+    not a casino backend or RGS.
 
 ## Core concepts at a glance
 

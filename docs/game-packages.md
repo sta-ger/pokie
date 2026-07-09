@@ -4,8 +4,7 @@
 
 POKIE itself only defines game *logic* (sessions, win calculation, simulation). A **game package** is the
 convention for shipping a concrete game — symbols, paytable, config, session wiring — as a standalone npm package
-that a future CLI, simulator, validator, or server adapter can load without knowing anything about that game
-in advance.
+that a CLI, simulator, validator, or server adapter can load without knowing anything about that game in advance.
 
 A game package is a regular npm package that depends on `pokie` and exports one object implementing the
 `PokieGame` contract from a `pokie.entry` file declared in its `package.json`.
@@ -134,6 +133,6 @@ if (result.hasErrors()) {
 ```
 
 `loadPokieGame`, `isPokieGame`, and `PokieGameContractValidationRule` are the building blocks the `pokie create`/
-`pokie init`/`pokie sim`/`pokie validate`/`pokie report` [CLI](cli.md) commands are built on — `pokie validate` in
-particular wraps this same contract check in `PokieGamePackageValidator`, returning a structured report instead of
-throwing. A future server adapter is expected to be built on these primitives too.
+`pokie init`/`pokie sim`/`pokie validate`/`pokie report`/`pokie serve` [CLI](cli.md) commands are built on —
+`pokie validate` in particular wraps this same contract check in `PokieGamePackageValidator`, returning a
+structured report instead of throwing.

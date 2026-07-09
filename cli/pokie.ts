@@ -8,6 +8,7 @@ import {DiffCommand} from "./commands/DiffCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
+import {ServeCommand} from "./commands/ServeCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
 
@@ -24,7 +25,6 @@ function printUsage(commands: CliCommandHandling[]): void {
     for (const command of commands) {
         console.log(`  ${command.getName().padEnd(10)} ${command.getDescription()}`);
     }
-    console.log("\nMore commands (serve) are planned.");
 }
 
 async function run(): Promise<number> {
@@ -34,6 +34,7 @@ async function run(): Promise<number> {
         new InitCommand(readOwnVersion()),
         new ReplayCommand(),
         new ReportCommand(),
+        new ServeCommand(),
         new SimCommand(),
         new ValidateCommand(),
     ];
