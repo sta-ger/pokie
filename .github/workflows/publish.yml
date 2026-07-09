@@ -22,10 +22,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Default GITHUB_TOKEN checkout can't push back to a protected branch; this uses the
-          # token explicitly so the version-bump commit/tag pushed below is authenticated the same way.
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -45,8 +41,8 @@ jobs:
       # Defaults to a patch bump on a plain push to master; workflow_dispatch's "bump" input
       # overrides it for an explicit minor/major release. The "[skip ci]" in the commit message is
       # load-bearing: GitHub does not trigger workflow runs for a push whose head commit message
-      # contains it, which is what stops this workflow (and ci.yml) from re-triggering on the
-      # version-bump commit it's about to push.
+      # contains it, which is what stops this workflow from re-triggering on the version-bump
+      # commit it's about to push.
       - name: Bump version
         run: |
           npm version "${{ github.event.inputs.bump || 'patch' }}" -m "chore: release v%s [skip ci]"
