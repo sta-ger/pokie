@@ -4,6 +4,7 @@ import path from "path";
 import {fileURLToPath} from "url";
 import {CliCommandHandling} from "./CliCommandHandling.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
+import {DiffCommand} from "./commands/DiffCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
@@ -28,6 +29,7 @@ function printUsage(commands: CliCommandHandling[]): void {
 async function run(): Promise<number> {
     const commands: CliCommandHandling[] = [
         new CreateCommand(readOwnVersion()),
+        new DiffCommand(),
         new InitCommand(readOwnVersion()),
         new ReportCommand(),
         new SimCommand(),

@@ -1,3 +1,6 @@
+export * from "./diff/SimulationReportDiff.js";
+export * from "./diff/SimulationReportDiffer.js";
+export * from "./diff/SimulationReportDiffing.js";
 export * from "./gamepackage/PokieGame.js";
 export * from "./gamepackage/PokieGameContext.js";
 export * from "./gamepackage/PokieGameContractValidationRule.js";

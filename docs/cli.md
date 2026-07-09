@@ -179,6 +179,88 @@ Failure modes:
 - Valid JSON that doesn't look like a `SimulationReport` (missing `game`/`rtp`/`rounds`/... fields) throws
   `"<path>" does not look like a pokie sim report ...`.
 
+## `pokie diff <leftReportJson> <rightReportJson>`
+
+Compares two JSON reports produced by [`pokie sim --out`](#pokie-sim-packageroot) and reports what changed —
+handy for seeing how a paytable/config change moved the game's math between runs.
+
+```
+pokie sim ./crazy-fruits --rounds 100000 --seed demo --out before.json
+# ...change the game's config...
+pokie sim ./crazy-fruits --rounds 100000 --seed demo --out after.json
+pokie diff before.json after.json
+```
+
+Compares, at minimum: game id/name/version, requested rounds, actual rounds, seed, total bet, total win, RTP,
+hit frequency, max win, duration, and spins per second.
+
+Options:
+
+- `--format json` — print the JSON diff to stdout instead of the default human-readable summary.
+- `--out <file>` — also write the JSON diff to `<file>`. Independent of `--format`: the summary/JSON is always
+  printed to the console; `--out` additionally saves the JSON diff to disk.
+
+The human-readable summary looks like:
+
+```
+Diff: Crazy Fruits (id: "crazy-fruits")
+  seed            demo -> demo2
+  requested rounds 10000 -> 10000 (0, 0.00%)
+  rounds          9800 -> 9850 (+50, +0.51%)
+  total bet       9800.00 -> 9850.00 (+50.00, +0.51%)
+  total win       9331.40 -> 9400.00 (+68.60, +0.74%)
+  rtp             95.22% -> 95.43% (+0.21 pp, +0.22%)
+  hit frequency   24.10% -> 24.50% (+0.40 pp, +1.66%)
+  max win         120.50 -> 130.00 (+9.50, +7.88%)
+  duration        1234ms -> 1300ms (+66ms, +5.35%)
+  spins/s         7942 -> 7900 (-42, -0.53%)
+```
+
+A `Warnings:` section is appended whenever RTP, hit frequency, or max win moved by a noticeable amount (by
+default: RTP or hit frequency by more than 1 percentage point, or max win by more than 10%) — the signal that
+usually matters most after a paytable/config change.
+
+The JSON diff shape:
+
+```ts
+{
+    game: {left: {id, name, version}; right: {id, name, version}; changed: boolean};
+    seed: {left: string | null; right: string | null; changed: boolean};
+    requestedRounds: {left: number; right: number; delta: number; percentDelta: number | null};
+    rounds: {left: number; right: number; delta: number; percentDelta: number | null};
+    totalBet: {left: number; right: number; delta: number; percentDelta: number | null};
+    totalWin: {left: number; right: number; delta: number; percentDelta: number | null};
+    rtp: {left: number; right: number; delta: number; percentDelta: number | null};
+    hitFrequency: {left: number; right: number; delta: number; percentDelta: number | null};
+    maxWin: {left: number; right: number; delta: number; percentDelta: number | null};
+    durationMs: {left: number; right: number; delta: number; percentDelta: number | null};
+    spinsPerSecond: {left: number; right: number; delta: number; percentDelta: number | null};
+    warnings: string[];
+}
+```
+
+Every numeric field is a `{left, right, delta, percentDelta}` tuple — `percentDelta` is `null` when `left` is
+`0` (a relative percent change is undefined there), not `Infinity`/`NaN`.
+
+The reusable diffing API behind the command lives in `src/diff`:
+
+```ts
+import {SimulationReportDiffer, SimulationReportDiffing} from "pokie";
+
+const differ: SimulationReportDiffing = new SimulationReportDiffer();
+const diff = differ.diff(leftReport, rightReport); // leftReport/rightReport: SimulationReport
+```
+
+`SimulationReportDiffer`'s constructor optionally takes the three warning thresholds (RTP delta, hit frequency
+delta, max win percent delta), in that order, if the defaults don't fit a particular game.
+
+Failure modes:
+
+- Missing `<leftReportJson>`/`<rightReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw
+  a `Usage: pokie diff ...` error.
+- Each report path is read/parsed/validated the same way as [`pokie report`](#pokie-report-simulationreportjson) —
+  the same "could not read"/"not valid JSON"/"does not look like a pokie sim report" errors apply to either side.
+
 ## `pokie validate <packageRoot>`
 
 Loads a [game package](game-packages.md) and checks it against the `PokieGame` contract, without playing it —
@@ -224,7 +306,7 @@ an unknown option, `--out`/`--format` without a value) throw the usual `Usage: p
 
 ## What's next
 
-`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, and `pokie report` are the first of a planned set of
-subcommands built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
-`PokieGameContractValidationRule`). `pokie serve` (a local server adapter) is still planned. It doesn't exist yet —
-running it today just prints the CLI's usage/command list.
+`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, and `pokie diff` are the first of a
+planned set of subcommands built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
+`isPokieGame`, `PokieGameContractValidationRule`). `pokie serve` (a local server adapter) is still planned. It
+doesn't exist yet — running it today just prints the CLI's usage/command list.

@@ -40,8 +40,8 @@ an account, currency, or compliance system is left to the integrating backend.
 13. **[CLI](cli.md)** — `pokie create <name>` (new directory) and `pokie init` (existing project), which scaffold
     a minimal game package; `pokie sim <packageRoot>`, which runs a simulation against one and reports
     RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without
-    playing it; and `pokie report <simulationReportJson>`, which renders a `pokie sim --out` report as Markdown or
-    HTML.
+    playing it; `pokie report <simulationReportJson>`, which renders a `pokie sim --out` report as Markdown or
+    HTML; and `pokie diff <leftReportJson> <rightReportJson>`, which compares two `pokie sim --out` reports.
 
 ## Core concepts at a glance
 
@@ -59,6 +59,7 @@ an account, currency, or compliance system is left to the integrating backend.
 | Scaffolding a new game package | `pokie create <name>` / `pokie init` CLI |
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |
 | Rendering a sim report as Markdown/HTML | `pokie report <simulationReportJson>` |
+| Comparing two sim reports (e.g. before/after a config change) | `pokie diff <leftReportJson> <rightReportJson>` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.
