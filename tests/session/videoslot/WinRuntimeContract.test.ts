@@ -485,10 +485,13 @@ describe("WinRuntimeContract", () => {
         expect(session.getWinAmount()).toBe(123);
         expect(session.getCreditsAmount()).toBe(initialCredits - session.getBet() + 123);
         expect(session.getWinEvaluationResult().getTotalWin()).toBe(123);
+        expect(session.getWinEvaluationResult().getLineWins()).toHaveLength(1);
+        expect(session.getWinEvaluationResult().getWinningPositions()).toEqual([[0, 0]]);
 
         const payload = new VideoSlotSessionSerializer().getRoundData(session);
         expect(payload.totalWin).toBe(123);
         expect(payload.winEvaluationResult?.totalWin).toBe(123);
+        expect(payload.winningPositions).toEqual([[0, 0]]);
     });
 
     test("serializer derives legacy cluster/value/ways fields from canonical win evaluation result", () => {

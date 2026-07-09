@@ -35,8 +35,7 @@ export class Simulation implements AsyncSimulationHandling {
 
     public run(): void {
         let i: number;
-        this.doPlay();
-        for (i = 0; i < this.numberOfRounds - 1; i++) {
+        for (i = 0; i < this.numberOfRounds; i++) {
             if (this.canPlayNextGame()) {
                 this.doPlay();
             } else {
