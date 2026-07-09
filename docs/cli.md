@@ -468,6 +468,42 @@ const address = await server.start(); // {host, port} — port is the OS-assigne
 await server.stop();
 ```
 
+## Workflow
+
+A typical end-to-end loop, from a fresh directory to a running dev server, chaining every subcommand above:
+
+```
+pokie create crazy-fruits
+cd crazy-fruits && npm install && npm run build && cd ..
+
+pokie validate ./crazy-fruits
+
+pokie sim ./crazy-fruits --rounds 100000 --seed before --out before.json
+pokie report before.json --format markdown --out before.md
+
+# ...tweak the game's paytable/config...
+
+pokie sim ./crazy-fruits --rounds 100000 --seed before --out after.json
+pokie diff before.json after.json
+
+pokie replay ./crazy-fruits --seed before --round 42 --out replay.json
+
+pokie serve ./crazy-fruits --port 4000
+```
+
+Each step builds on the same `<packageRoot>`:
+
+- [`validate`](#pokie-validate-packageroot) needs a built package (`pokie create`/`pokie init` +
+  `npm install && npm run build`) — it checks the contract before anything else runs.
+- [`sim --out`](#pokie-sim-packageroot) produces the JSON report that
+  [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftreportjson-rightreportjson)
+  compares — run `sim` twice (before/after a config change, same `--seed`) to get two reports worth diffing.
+- [`replay`](#pokie-replay-packageroot) is independent of `sim`'s output files, but reproducibility across all
+  three of `sim`/`diff`/`replay` depends on the same caveat: the game package must actually thread `context.seed`
+  into a deterministic RNG for `--seed` to mean anything (see [Limitations](#limitations) below).
+- [`serve`](#pokie-serve-packageroot-experimental) is normally the last, interactive step, not part of a scripted
+  pipeline — it only needs the same built package and runs until stopped.
+
 ## What's next
 
 `pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`, `pokie replay`, and
