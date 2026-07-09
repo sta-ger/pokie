@@ -5,6 +5,7 @@ import {fileURLToPath} from "url";
 import {CliCommandHandling} from "./CliCommandHandling.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
+import {ReportCommand} from "./commands/ReportCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
 
@@ -21,13 +22,14 @@ function printUsage(commands: CliCommandHandling[]): void {
     for (const command of commands) {
         console.log(`  ${command.getName().padEnd(10)} ${command.getDescription()}`);
     }
-    console.log("\nMore commands (report, serve) are planned.");
+    console.log("\nMore commands (serve) are planned.");
 }
 
 async function run(): Promise<number> {
     const commands: CliCommandHandling[] = [
         new CreateCommand(readOwnVersion()),
         new InitCommand(readOwnVersion()),
+        new ReportCommand(),
         new SimCommand(),
         new ValidateCommand(),
     ];

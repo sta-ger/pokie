@@ -136,6 +136,49 @@ Failure modes:
   `PokieGame`) throws the same descriptive error `loadPokieGame` would throw directly — see
   [Game Packages](game-packages.md).
 
+## `pokie report <simulationReportJson>`
+
+Renders a JSON report produced by [`pokie sim --out`](#pokie-sim-packageroot) as a human-readable Markdown or
+HTML document.
+
+```
+pokie sim ./crazy-fruits --rounds 10000 --out sim.json
+pokie report sim.json --format html --out report.html
+```
+
+Options:
+
+- `--format markdown|html` — output format (default `markdown`).
+- `--out <file>` — also write the rendered report to `<file>`. Independent of `--format`: the rendered report is
+  always printed to the console; `--out` additionally saves it to disk.
+
+The rendered report includes, at minimum: game id/name/version, requested rounds, actual rounds, seed, total bet,
+total win, RTP, hit frequency, max win, duration, and spins per second. The HTML output is plain semantic HTML
+(a heading and a table) — no charts.
+
+The reusable rendering API behind the command lives in `src/reporting`:
+
+```ts
+import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReportRendering} from "pokie";
+
+const renderer: SimulationReportRendering = new MarkdownSimulationReportRenderer();
+const markdown = renderer.render(report); // report: SimulationReport, e.g. from JSON.parse(fs.readFileSync(...))
+```
+
+`MarkdownSimulationReportRenderer` and `HtmlSimulationReportRenderer` both implement `SimulationReportRendering`
+(`render(report: SimulationReport): string`), so a custom renderer (e.g. plain text, a different HTML layout) can
+be swapped in without touching `ReportCommand`.
+
+Failure modes:
+
+- Missing `<simulationReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw a
+  `Usage: pokie report ...` error.
+- A `<simulationReportJson>` that can't be read (missing file, permissions) throws
+  `Could not read simulation report at "<path>": <reason>`.
+- A `<simulationReportJson>` that isn't valid JSON throws `"<path>" is not valid JSON: <reason>`.
+- Valid JSON that doesn't look like a `SimulationReport` (missing `game`/`rtp`/`rounds`/... fields) throws
+  `"<path>" does not look like a pokie sim report ...`.
+
 ## `pokie validate <packageRoot>`
 
 Loads a [game package](game-packages.md) and checks it against the `PokieGame` contract, without playing it —
@@ -181,8 +224,7 @@ an unknown option, `--out`/`--format` without a value) throw the usual `Usage: p
 
 ## What's next
 
-`pokie create`, `pokie init`, `pokie sim`, and `pokie validate` are the first of a planned set of subcommands built
-on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
-`PokieGameContractValidationRule`). `pokie report` (richer RTP/volatility reporting) and `pokie serve` (a local
-server adapter) are still planned. Neither exists yet — running them today just prints the CLI's usage/command
-list.
+`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, and `pokie report` are the first of a planned set of
+subcommands built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
+`PokieGameContractValidationRule`). `pokie serve` (a local server adapter) is still planned. It doesn't exist yet —
+running it today just prints the CLI's usage/command list.
