@@ -37,7 +37,8 @@ POKIE goes well beyond classic paylines:
   without knowing about it in advance.
 - **[CLI](docs/cli.md)** — `npx pokie create <name>` scaffolds a brand-new game package, `npx pokie init`
   scaffolds an existing npm project in place, both minimal, buildable, and loadable; `npx pokie sim <packageRoot>`
-  runs a simulation against a package and reports RTP/hit-frequency/max-win, optionally as a JSON file.
+  runs a simulation against a package and reports RTP/hit-frequency/max-win; `npx pokie validate <packageRoot>`
+  checks a package's contract without playing it — all optionally as a JSON file/machine-readable output.
 
 See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
 megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
@@ -150,7 +151,14 @@ npm i pokie
 npx pokie init
 ```
 
-See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate.
+Then check a package's contract without playing it:
+
+```
+pokie validate ./crazy-fruits
+```
+
+See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate and what `pokie sim`/`pokie validate`
+report.
 
 ## Documentation
 

@@ -3,5 +3,5 @@ export interface CliCommandHandling {
 
     getDescription(): string;
 
-    run(args: string[]): Promise<void>;
+    run(args: string[]): Promise<void | number>;
 }

@@ -6,6 +6,7 @@ import {CliCommandHandling} from "./CliCommandHandling.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
+import {ValidateCommand} from "./commands/ValidateCommand.js";
 
 function readOwnVersion(): string {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -20,11 +21,16 @@ function printUsage(commands: CliCommandHandling[]): void {
     for (const command of commands) {
         console.log(`  ${command.getName().padEnd(10)} ${command.getDescription()}`);
     }
-    console.log("\nMore commands (validate, report, serve) are planned.");
+    console.log("\nMore commands (report, serve) are planned.");
 }
 
 async function run(): Promise<number> {
-    const commands: CliCommandHandling[] = [new CreateCommand(readOwnVersion()), new InitCommand(readOwnVersion()), new SimCommand()];
+    const commands: CliCommandHandling[] = [
+        new CreateCommand(readOwnVersion()),
+        new InitCommand(readOwnVersion()),
+        new SimCommand(),
+        new ValidateCommand(),
+    ];
     const [commandName] = process.argv.slice(2);
     const command = commands.find((candidate) => candidate.getName() === commandName);
 
@@ -34,8 +40,8 @@ async function run(): Promise<number> {
     }
 
     try {
-        await command.run(process.argv.slice(3));
-        return 0;
+        const exitCode = await command.run(process.argv.slice(3));
+        return exitCode ?? 0;
     } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
         return 1;

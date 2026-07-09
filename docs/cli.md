@@ -136,10 +136,53 @@ Failure modes:
   `PokieGame`) throws the same descriptive error `loadPokieGame` would throw directly — see
   [Game Packages](game-packages.md).
 
+## `pokie validate <packageRoot>`
+
+Loads a [game package](game-packages.md) and checks it against the `PokieGame` contract, without playing it —
+`package.json`'s `pokie.entry`, the entry module's export shape, and the manifest returned by `getManifest()`
+(non-empty `id`/`name`/`version`).
+
+```
+pokie validate ./crazy-fruits
+```
+
+```
+Validating "Crazy Fruits" (id: "crazy-fruits", v0.1.0) at "./crazy-fruits"
+  valid           yes
+
+No issues found.
+```
+
+Options:
+
+- `--format json` — print the JSON report to stdout instead of the default human-readable summary.
+- `--out <file>` — write the JSON report to `<file>`. Independent of `--format json`: combine both to see the
+  report and save it in the same run.
+
+The JSON report shape:
+
+```ts
+{
+    packageRoot: string;
+    valid: boolean;
+    game: {id: string; name: string; version: string} | null;  // null if the manifest couldn't be read at all
+    errors: ValidationIssue[];
+    warnings: ValidationIssue[];
+    suggestions: string[];      // deduped `issue.suggestion` text pulled from any error/warning that has one
+}
+```
+
+`game` is populated whenever `getManifest()` could be called and returned an object, even if some of its fields
+failed validation (e.g. an empty `id`) — so you can see what the package *does* report, not just that it's wrong.
+
+Exit code is `0` when `valid` is `true` and `1` when it's `false` — no thrown/printed error on top of the report,
+so scripting against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<packageRoot>`,
+an unknown option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate ...` error.
+
 ## What's next
 
-`pokie create`, `pokie init`, and `pokie sim` are the first of a planned set of subcommands built on the same
-[game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`):
-`pokie validate` (check the contract without playing) and `pokie report` (richer RTP/volatility reporting) and
-`pokie serve` (a local server adapter) are still planned. None of these exist yet — running them today just prints
-the CLI's usage/command list.
+`pokie create`, `pokie init`, `pokie sim`, and `pokie validate` are the first of a planned set of subcommands built
+on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
+`PokieGameContractValidationRule`). `pokie report` (richer RTP/volatility reporting) and `pokie serve` (a local
+server adapter) are still planned. Neither exists yet — running them today just prints the CLI's usage/command
+list.
