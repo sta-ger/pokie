@@ -5,6 +5,7 @@ import {fileURLToPath} from "url";
 import {CliCommandHandling} from "./CliCommandHandling.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
+import {SimCommand} from "./commands/SimCommand.js";
 
 function readOwnVersion(): string {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -19,11 +20,11 @@ function printUsage(commands: CliCommandHandling[]): void {
     for (const command of commands) {
         console.log(`  ${command.getName().padEnd(10)} ${command.getDescription()}`);
     }
-    console.log("\nMore commands (sim, validate, report, serve) are planned.");
+    console.log("\nMore commands (validate, report, serve) are planned.");
 }
 
 async function run(): Promise<number> {
-    const commands: CliCommandHandling[] = [new CreateCommand(readOwnVersion()), new InitCommand(readOwnVersion())];
+    const commands: CliCommandHandling[] = [new CreateCommand(readOwnVersion()), new InitCommand(readOwnVersion()), new SimCommand()];
     const [commandName] = process.argv.slice(2);
     const command = commands.find((candidate) => candidate.getName() === commandName);
 

@@ -84,10 +84,62 @@ game.createSession().play();
 From here, replace the generated `src/index.ts` with your own symbols, paytable, and session wiring — see
 [Getting Started](getting-started.md) and [Game Session & Configuration](game-session.md).
 
+## `pokie sim <packageRoot>`
+
+Loads a [game package](game-packages.md) with `loadPokieGame` and runs an [aggregate simulation](simulation.md)
+(`AggregateSimulationRunner`) against it, then reports RTP/hit-frequency/max-win statistics.
+
+```
+pokie sim ./crazy-fruits --rounds 10000 --seed demo --out report.json
+```
+
+Options:
+
+- `--rounds <number>` — how many rounds to play (default `1000`, `SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS`).
+- `--seed <string>` — forwarded as `context.seed` to `game.createSession(context)`. **Best-effort, not guaranteed**:
+  POKIE has no built-in way to seed an arbitrary loaded game — it's up to the game package's own `createSession`
+  to read `context.seed` and thread it into a `SeededRandomNumberGenerator`. A game that ignores `context` will
+  simply run unseeded, seed or no seed. Note also that `VideoSlotConfig`'s *default* reel-strip generator shuffles
+  with an unseeded `Math.random()` at construction time, independently of any RNG passed to
+  `SymbolsCombinationsGenerator` — a game package needs fixed (non-shuffled) symbol sequences, e.g. via
+  `config.setSymbolsSequences(...)`, for `--seed` to make a whole run reproducible, not just individual reel stops.
+- `--out <file>` — write the JSON report to `<file>`.
+- `--format json` — print the JSON report to stdout instead of the default human-readable summary. Independent of
+  `--out`: combine both to see the report and save it in the same run.
+
+The session's credit balance is set to `Number.MAX_SAFE_INTEGER` before the run starts — `pokie sim` measures
+RTP/volatility, not risk of ruin, so `--rounds` is never cut short by the session running out of credits.
+
+The JSON report shape:
+
+```ts
+{
+    game: {id: string; name: string; version: string};
+    requestedRounds: number;
+    rounds: number;           // rounds actually played — can be less than requestedRounds if the game
+                               // itself stops early (canPlayNextGame() returning false)
+    seed: string | null;
+    totalBet: number;
+    totalWin: number;
+    rtp: number;               // 0-1, e.g. 0.9532 for 95.32%
+    hitFrequency: number;      // 0-1
+    maxWin: number;
+    durationMs: number;
+    spinsPerSecond: number;
+}
+```
+
+Failure modes:
+
+- Missing `<packageRoot>`, an unknown option, or a non-positive `--rounds` throw a `Usage: pokie sim ...` error.
+- An invalid `packageRoot` (no `package.json`, no `pokie.entry`, or an entry module that doesn't export a valid
+  `PokieGame`) throws the same descriptive error `loadPokieGame` would throw directly — see
+  [Game Packages](game-packages.md).
+
 ## What's next
 
-`pokie create` and `pokie init` are the first of a planned set of subcommands built on the same
+`pokie create`, `pokie init`, and `pokie sim` are the first of a planned set of subcommands built on the same
 [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`):
-`pokie sim` (run a simulation against the package), `pokie validate` (check the contract without playing),
-`pokie report` (RTP/volatility reporting), and `pokie serve` (a local server adapter). None of these exist yet —
-running them today just prints the CLI's usage/command list.
+`pokie validate` (check the contract without playing) and `pokie report` (richer RTP/volatility reporting) and
+`pokie serve` (a local server adapter) are still planned. None of these exist yet — running them today just prints
+the CLI's usage/command list.

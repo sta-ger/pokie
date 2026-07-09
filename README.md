@@ -36,7 +36,8 @@ POKIE goes well beyond classic paylines:
   `loadPokieGame` loader, so an external game can be loaded by a future CLI, simulator, validator, or server
   without knowing about it in advance.
 - **[CLI](docs/cli.md)** — `npx pokie create <name>` scaffolds a brand-new game package, `npx pokie init`
-  scaffolds an existing npm project in place, both minimal, buildable, and loadable.
+  scaffolds an existing npm project in place, both minimal, buildable, and loadable; `npx pokie sim <packageRoot>`
+  runs a simulation against a package and reports RTP/hit-frequency/max-win, optionally as a JSON file.
 
 See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
 megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
