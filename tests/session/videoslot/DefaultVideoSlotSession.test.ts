@@ -14,7 +14,9 @@ import {
 } from "../DefaultGameSessionTestCases.js";
 import {
     testDefaultVideoSlotSessionHasProperInitialValues,
+    testInsufficientCreditsBlocksPlay,
     testPlayUntilWin,
+    testZeroStakePlaysRegardlessOfCredits,
 } from "./DefaultVideoSlotSessionTestCases.js";
 
 describe("DefaultVideoSlotSession", () => {
@@ -86,5 +88,29 @@ describe("DefaultVideoSlotSession", () => {
             new GameSession(conf),
         );
         testPlayUntilWin(sess, conf);
+    });
+
+    it("does not play a round when credits are insufficient for the bet", () => {
+        const conf = new VideoSlotConfig();
+        const sess = new VideoSlotSession(
+            conf,
+            new SymbolsCombinationsGenerator(conf),
+            new VideoSlotWinCalculator(conf),
+            new GameSession(conf),
+        );
+        testInsufficientCreditsBlocksPlay(sess);
+    });
+
+    it("plays a zero-stake round regardless of credits", () => {
+        const conf = new VideoSlotConfig();
+        conf.setAvailableBets([0, 1, 2, 3, 4, 5]);
+        const sess = new VideoSlotSession(
+            conf,
+            new SymbolsCombinationsGenerator(conf),
+            new VideoSlotWinCalculator(conf),
+            new GameSession(conf),
+        );
+        sess.setBet(0);
+        testZeroStakePlaysRegardlessOfCredits(sess);
     });
 });

@@ -117,6 +117,13 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public play(): void {
+        // GameSession.play() silently no-ops the debit on insufficient credits — check the same
+        // precondition here too, so a round that couldn't be paid for never generates a screen,
+        // computes a win, or pays one out. Callers should check canPlayNextGame() themselves, but
+        // this keeps the invariant true even when they don't.
+        if (!this.canPlayNextGame()) {
+            return;
+        }
         this.baseSession.play();
         this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
         this.winCalculator.calculateWin(this.getBet(), this.symbolsCombination);

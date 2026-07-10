@@ -20,9 +20,11 @@ import {
     testCanPlayNextGameDuringFreeGames,
     testDefaultVideoSlotWithFreeGamesSession,
     testFreeGamesGettersSetters,
+    testInsufficientCreditsBlocksNormalSpin,
     testPlayFreeGames,
     testPlayUntilWinFreeGames,
     testSessionStateCaptureAndRestore,
+    testUnfinishedFreeRoundPlaysDespiteInsufficientCredits,
 } from "./DefaultVideoSlotWithFreeGamesSessionTestCases.js";
 
 describe("VideoSlotWithFreeGamesSession", () => {
@@ -140,5 +142,25 @@ describe("VideoSlotWithFreeGamesSession", () => {
             new VideoSlotWinCalculator(conf),
         );
         testSessionStateCaptureAndRestore(session, otherSession);
+    });
+
+    it("does not play a normal spin when credits are insufficient for the bet", () => {
+        const conf = createConfigForTestPlayFreeGames();
+        const session = new VideoSlotWithFreeGamesSession(
+            conf,
+            new SymbolsCombinationsGenerator(conf),
+            new VideoSlotWinCalculator(conf),
+        );
+        testInsufficientCreditsBlocksNormalSpin(session);
+    });
+
+    it("plays an unfinished free round despite insufficient real-money credits", () => {
+        const conf = createConfigForTestPlayFreeGames();
+        const session = new VideoSlotWithFreeGamesSession(
+            conf,
+            new SymbolsCombinationsGenerator(conf),
+            new VideoSlotWinCalculator(conf),
+        );
+        testUnfinishedFreeRoundPlaysDespiteInsufficientCredits(session);
     });
 });

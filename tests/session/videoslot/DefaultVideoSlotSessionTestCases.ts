@@ -16,6 +16,36 @@ export const testDefaultVideoSlotSessionHasProperInitialValues = (
     expect(Object.keys(session.getWinningScatters()).length).toEqual(0);
 };
 
+export const testInsufficientCreditsBlocksPlay = (session: VideoSlotSessionHandling): void => {
+    session.setCreditsAmount(session.getBet() - 1); // balance below the bet
+    expect(session.canPlayNextGame()).toBe(false);
+
+    const creditsBefore = session.getCreditsAmount();
+    const combinationBefore = session.getSymbolsCombination();
+    const winAmountBefore = session.getWinAmount();
+
+    session.play();
+
+    expect(session.getCreditsAmount()).toEqual(creditsBefore); // stake was never deducted
+    expect(session.getSymbolsCombination()).toBe(combinationBefore); // no new screen was generated
+    expect(session.getWinAmount()).toEqual(winAmountBefore); // no win was computed or paid out
+    expect(Object.keys(session.getWinningLines()).length).toEqual(0);
+    expect(Object.keys(session.getWinningScatters()).length).toEqual(0);
+};
+
+export const testZeroStakePlaysRegardlessOfCredits = (session: VideoSlotSessionHandling): void => {
+    session.setCreditsAmount(0);
+    expect(session.getBet()).toEqual(0);
+    expect(session.canPlayNextGame()).toBe(true); // 0 credits is still >= a 0 bet
+
+    const combinationBefore = session.getSymbolsCombination();
+
+    session.play();
+
+    expect(session.getSymbolsCombination()).not.toBe(combinationBefore); // a real round was played
+    expect(session.getCreditsAmount()).toEqual(session.getWinAmount()); // 0 stake deducted, only a win (if any) added
+};
+
 export const testPlayUntilWin = (session: VideoSlotSessionHandling, config: VideoSlotConfigRepresenting): void => {
     let lastBet = 0;
     let lastCredits = 0;

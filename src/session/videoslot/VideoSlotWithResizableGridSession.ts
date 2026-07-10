@@ -26,6 +26,11 @@ export class VideoSlotWithResizableGridSession<
     }
 
     public override play(): void {
+        // If the round couldn't be paid for, baseSession.play() is already a no-op — don't resize
+        // the grid off the back of a round that never happened.
+        if (!this.canPlayNextGame()) {
+            return;
+        }
         this.baseSession.play();
         this.generator.setReelsHeights(
             this.gridResizeHandling.getNextReelsHeights(this.baseSession, this.generator.getReelsHeights()),

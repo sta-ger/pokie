@@ -46,6 +46,17 @@ export const testDefaultSessionWithWrongInitialBet = (
     expect(session.getBet()).toEqual(config.getAvailableBets()[0]);
 };
 
+export const testDefaultSessionDoesNotPlayWithoutEnoughCredits = (session: GameSessionHandling): void => {
+    session.setBet(10);
+    session.setCreditsAmount(5); // balance below the bet
+    expect(session.canPlayNextGame()).toBe(false);
+
+    session.play();
+
+    expect(session.getCreditsAmount()).toEqual(5); // stake was never deducted
+    expect(session.canPlayNextGame()).toBe(false);
+};
+
 export const testDefaultSessionPlaysWhileEnoughCredits = (session: GameSessionHandling): void => {
     session.setBet(10);
     session.play();

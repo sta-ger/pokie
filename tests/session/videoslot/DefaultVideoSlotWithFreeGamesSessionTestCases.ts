@@ -59,9 +59,44 @@ export const testCanPlayNextGameDuringFreeGames = (session: VideoSlotWithFreeGam
     expect(session.canPlayNextGame()).toBe(true); // base session's own canPlayNextGame() with sufficient credits
 };
 
+export const testInsufficientCreditsBlocksNormalSpin = (session: VideoSlotWithFreeGamesSessionHandling): void => {
+    session.setCreditsAmount(session.getBet() - 1); // balance below the bet, no free round in progress
+    expect(session.getFreeGamesSum()).toBe(0);
+    expect(session.canPlayNextGame()).toBe(false);
+
+    const creditsBefore = session.getCreditsAmount();
+    const combinationBefore = session.getSymbolsCombination();
+
+    session.play();
+
+    expect(session.getCreditsAmount()).toBe(creditsBefore); // stake was never deducted
+    expect(session.getSymbolsCombination()).toBe(combinationBefore); // no new screen was generated
+    expect(session.getFreeGamesSum()).toBe(0); // no stale scatter state got reprocessed into a retrigger
+    expect(session.getFreeGamesNum()).toBe(0);
+};
+
+export const testUnfinishedFreeRoundPlaysDespiteInsufficientCredits = (
+    session: VideoSlotWithFreeGamesSessionHandling,
+): void => {
+    session.setFreeGamesSum(3);
+    session.setFreeGamesNum(1); // mid an unfinished free-games round
+    session.setCreditsAmount(session.getBet() - 1); // real balance below the nominal bet
+    expect(session.canPlayNextGame()).toBe(true); // the free round overrides the balance check
+
+    const creditsBefore = session.getCreditsAmount();
+    const combinationBefore = session.getSymbolsCombination();
+
+    session.play();
+
+    expect(session.getSymbolsCombination()).not.toBe(combinationBefore); // the free spin was actually played
+    expect(session.getFreeGamesNum()).toBe(2); // counted as played
+    expect(session.getCreditsAmount()).toBe(creditsBefore); // no stake charged against the real balance
+    expect(session.getFreeGamesBank()).toBe(session.getWinAmount()); // any win banked, not paid out mid-round
+};
+
 export const testPlayUntilWinFreeGames = (session: VideoSlotWithFreeGamesSessionHandling): void => {
     while (session.getFreeGamesSum() === 0) {
-        session.setCreditsAmount(Number.MIN_SAFE_INTEGER);
+        session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
         session.play();
     }
     expect(session.getFreeGamesNum()).toBe(0);

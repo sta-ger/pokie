@@ -101,8 +101,23 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public override play(): void {
+        // Mirrors the insufficient-funds guard in VideoSlotSession.play(), but using this class's
+        // own canPlayNextGame() override (true regardless of balance while a free round is
+        // unfinished) — a plain paid spin with insufficient credits must bail out here, before
+        // beforeRoundPlayed/afterRoundPlayed ever run, so stale win/scatter state from a previous
+        // round can't be reprocessed into a spurious retrigger.
+        if (!this.canPlayNextGame()) {
+            return;
+        }
         this.freeGamesRoundHandler.beforeRoundPlayed(this);
         const creditsBeforePlay = this.getCreditsAmount();
+        // baseSession is a plain VideoSlotSession/GameSession with no notion of free rounds, so its
+        // own canPlayNextGame() would refuse to play a free spin funded by an insufficient real
+        // balance. Front it with just enough credits to clear that check; afterRoundPlayed always
+        // restores the real creditsBeforePlay for an unfinished free round, so this never leaks.
+        if (this.hasUnfinishedFreeGames() && !this.baseSession.canPlayNextGame()) {
+            this.baseSession.setCreditsAmount(this.baseSession.getBet());
+        }
         this.baseSession.play();
         this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
     }

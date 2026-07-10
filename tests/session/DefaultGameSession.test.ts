@@ -2,6 +2,7 @@ import {GameSession, GameSessionConfig} from "pokie";
 import {
     createCustomConfigForTestProperInitialValues,
     createCustomConfigForWrongBetTest,
+    testDefaultSessionDoesNotPlayWithoutEnoughCredits,
     testDefaultSessionHasProperInitialValues,
     testDefaultSessionHasProperInitialValuesWithCustomConfig,
     testDefaultSessionPlaysWhileEnoughCredits,
@@ -31,5 +32,11 @@ describe("GenericGameSession", () => {
         const conf = new GameSessionConfig();
         const sess = new GameSession(conf);
         testDefaultSessionPlaysWhileEnoughCredits(sess);
+    });
+
+    it("does not play without enough credits", () => {
+        const conf = new GameSessionConfig();
+        const sess = new GameSession(conf);
+        testDefaultSessionDoesNotPlayWithoutEnoughCredits(sess);
     });
 });
