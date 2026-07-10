@@ -1,7 +1,7 @@
 import {PokieGameManifest} from "pokie";
-import {InitCommand} from "../../../cli/commands/InitCommand";
-import {GamePackageScaffolding} from "../../../cli/scaffold/GamePackageScaffolding";
-import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult";
+import {InitCommand} from "../../../cli/commands/InitCommand.js";
+import {GamePackageScaffolding} from "../../../cli/scaffold/GamePackageScaffolding.js";
+import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 
 function createStubScaffolder(result: ScaffoldResult): GamePackageScaffolding & {scaffoldedRoot?: string} {
     return {

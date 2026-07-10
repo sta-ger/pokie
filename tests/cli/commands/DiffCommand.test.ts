@@ -2,8 +2,8 @@ import {SimulationReport} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {DiffCommand} from "../../../cli/commands/DiffCommand";
-import {SimCommand} from "../../../cli/commands/SimCommand";
+import {DiffCommand} from "../../../cli/commands/DiffCommand.js";
+import {SimCommand} from "../../../cli/commands/SimCommand.js";
 
 const left: SimulationReport = {
     game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},

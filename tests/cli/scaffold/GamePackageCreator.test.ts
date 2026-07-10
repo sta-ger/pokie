@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {GamePackageCreator} from "../../../cli/scaffold/GamePackageCreator";
+import {GamePackageCreator} from "../../../cli/scaffold/GamePackageCreator.js";
 
 describe("GamePackageCreator", () => {
     let parentDir: string;

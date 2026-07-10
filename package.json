@@ -28,7 +28,8 @@
         "build-client": "tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/",
         "build-cli": "tsc --project tsconfig.cli.json && npm run build-client && shx chmod +x dist/cli/pokie.js",
         "prebuild": "npm run lint",
-        "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs && npm run build-cli"
+        "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs && npm run build-cli",
+        "prepack": "npm run build"
     },
     "repository": {
         "type": "git",

@@ -2,7 +2,7 @@ import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameManifest, Replay
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ReplayCommand} from "../../../cli/commands/ReplayCommand";
+import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 
 function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
     let credits = 1000;

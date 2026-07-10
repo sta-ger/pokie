@@ -2,7 +2,7 @@ import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameManifest, Simula
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {SimCommand} from "../../../cli/commands/SimCommand";
+import {SimCommand} from "../../../cli/commands/SimCommand.js";
 
 function createFakeSession(): GameSessionHandling {
     let credits = 1000;

@@ -8,7 +8,7 @@ import {
     PokieGameManifest,
 } from "pokie";
 import path from "path";
-import {ServeCommand} from "../../../cli/commands/ServeCommand";
+import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {

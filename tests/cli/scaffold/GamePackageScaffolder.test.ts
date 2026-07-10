@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {GamePackageScaffolder} from "../../../cli/scaffold/GamePackageScaffolder";
+import {GamePackageScaffolder} from "../../../cli/scaffold/GamePackageScaffolder.js";
 
 function createEmptyNpmProject(name = "crazy-fruits", version = "1.0.0"): string {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-init-test-"));

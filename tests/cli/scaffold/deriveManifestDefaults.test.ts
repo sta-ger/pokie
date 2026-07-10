@@ -1,4 +1,4 @@
-import {deriveManifestDefaults} from "../../../cli/scaffold/deriveManifestDefaults";
+import {deriveManifestDefaults} from "../../../cli/scaffold/deriveManifestDefaults.js";
 
 describe("deriveManifestDefaults", () => {
     it("derives id, a title-cased name, and a PascalCase class name from a plain package name", () => {

@@ -9,12 +9,12 @@ import {
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {DiffCommand} from "../../cli/commands/DiffCommand";
-import {ReplayCommand} from "../../cli/commands/ReplayCommand";
-import {ReportCommand} from "../../cli/commands/ReportCommand";
-import {ServeCommand} from "../../cli/commands/ServeCommand";
-import {SimCommand} from "../../cli/commands/SimCommand";
-import {ValidateCommand} from "../../cli/commands/ValidateCommand";
+import {DiffCommand} from "../../cli/commands/DiffCommand.js";
+import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
+import {ReportCommand} from "../../cli/commands/ReportCommand.js";
+import {ServeCommand} from "../../cli/commands/ServeCommand.js";
+import {SimCommand} from "../../cli/commands/SimCommand.js";
+import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
 // End-to-end happy path for the v1.3 tool foundation: validate -> sim -> report -> diff -> replay -> serve,
 // run as real commands against the same built game package (the "create"/"init" fixtures elsewhere already

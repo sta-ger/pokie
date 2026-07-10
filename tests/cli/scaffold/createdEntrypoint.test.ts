@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import * as ts from "typescript";
-import {GamePackageCreator} from "../../../cli/scaffold/GamePackageCreator";
+import {GamePackageCreator} from "../../../cli/scaffold/GamePackageCreator.js";
 
 describe("a pokie create-scaffolded entry module", () => {
     let parentDir: string;

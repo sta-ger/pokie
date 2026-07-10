@@ -2,7 +2,7 @@ import {PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGameP
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ValidateCommand} from "../../../cli/commands/ValidateCommand";
+import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
 
 function createStubValidator(report: PokieGamePackageValidationReport): PokieGamePackageValidating & {calledWith?: string} {
     return {

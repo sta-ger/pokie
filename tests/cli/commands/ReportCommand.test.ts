@@ -2,8 +2,8 @@ import {SimulationReport} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ReportCommand} from "../../../cli/commands/ReportCommand";
-import {SimCommand} from "../../../cli/commands/SimCommand";
+import {ReportCommand} from "../../../cli/commands/ReportCommand.js";
+import {SimCommand} from "../../../cli/commands/SimCommand.js";
 
 const report: SimulationReport = {
     game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
