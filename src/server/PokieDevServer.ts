@@ -2,6 +2,8 @@ import crypto from "crypto";
 import http, {IncomingMessage, ServerResponse} from "http";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieGameContext} from "../gamepackage/PokieGameContext.js";
+import type {BuildableFromSessionState} from "../session/BuildableFromSessionState.js";
+import type {ConvertableToSessionState} from "../session/ConvertableToSessionState.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {PokieDevServerAddress} from "./PokieDevServerAddress.js";
 import type {PokieDevServerHandling} from "./PokieDevServerHandling.js";
@@ -23,13 +25,15 @@ type SessionWithScreen = GameSessionHandling & {
 // The first experimental "pokie serve": a local/dev reference HTTP server over a single loaded
 // PokieGame. Deliberately has no real-money, auth, RGS, or operator logic — see docs/cli.md.
 //
-// Game state (bet/win/screen) goes through a replaceable SessionRepository — InMemorySessionRepository
-// by default, or a FileSessionRepository so it survives a restart. Credits go through a separate
-// WalletPort (InMemoryWallet by default) and are deliberately never part of the persisted session
-// state. `liveSessions` is neither of those: it's a process-local cache of already-constructed
-// GameSessionHandling objects, needed because play() has to run against a real session object, not
-// a plain state snapshot — a cache miss (e.g. after a restart) reconstructs one from the repository's
-// state via `game.createSession()`.
+// Game state (bet/win/screen, plus a game's own opaque featureState — see ConvertableToSessionState/
+// BuildableFromSessionState below) goes through a replaceable SessionRepository —
+// InMemorySessionRepository by default, or a FileSessionRepository so it survives a restart. Credits
+// go through a separate WalletPort (InMemoryWallet by default) and are deliberately never part of the
+// persisted session state. `liveSessions` is neither of those: it's a process-local cache of
+// already-constructed GameSessionHandling objects, needed because play() has to run against a real
+// session object, not a plain state snapshot — a cache miss (e.g. after a restart) reconstructs one
+// from the repository's state via `game.createSession()`, then restores its featureState if the game
+// implements BuildableFromSessionState (snapshot-only fallback if it doesn't).
 export class PokieDevServer implements PokieDevServerHandling {
     private readonly game: PokieGame;
     private readonly host: string;
@@ -145,12 +149,20 @@ export class PokieDevServer implements PokieDevServerHandling {
         const session = this.game.createSession(context);
         const sessionId = crypto.randomUUID();
         this.liveSessions.set(sessionId, session);
-        await this.wallet.setBalance(sessionId, session.getCreditsAmount());
+
+        // The wallet is the sole source of truth for a new session's starting balance (its
+        // InMemoryWallet.initialBalance, or whatever a custom WalletPort.getBalance() returns for an
+        // id it's never seen) — the session's own default credits are never written back into it.
+        session.setCreditsAmount(await this.wallet.getBalance(sessionId));
 
         const state: PokieSessionState = {context, bet: session.getBet(), win: session.getWinAmount()};
         const screen = this.captureScreen(session);
         if (screen !== null) {
             state.screen = screen;
+        }
+        const featureState = this.captureFeatureState(session);
+        if (featureState !== undefined) {
+            state.featureState = featureState;
         }
         await this.sessionRepository.save(sessionId, state);
 
@@ -169,6 +181,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         if (!session) {
             session = this.game.createSession(state.context);
             session.setBet(state.bet);
+            this.restoreFeatureState(session, state.featureState);
             this.liveSessions.set(sessionId, session);
         }
 
@@ -181,6 +194,10 @@ export class PokieDevServer implements PokieDevServerHandling {
         const screen = this.captureScreen(session);
         if (screen !== null) {
             newState.screen = screen;
+        }
+        const featureState = this.captureFeatureState(session);
+        if (featureState !== undefined) {
+            newState.featureState = featureState;
         }
         await this.sessionRepository.save(sessionId, newState);
 
@@ -230,6 +247,32 @@ export class PokieDevServer implements PokieDevServerHandling {
 
     private hasSymbolsCombination(session: GameSessionHandling): session is SessionWithScreen {
         return typeof (session as Partial<SessionWithScreen>).getSymbolsCombination === "function";
+    }
+
+    private captureFeatureState(session: GameSessionHandling): unknown {
+        if (!this.canCaptureSessionState(session)) {
+            return undefined;
+        }
+        return session.toSessionState();
+    }
+
+    private restoreFeatureState(session: GameSessionHandling, featureState: unknown): void {
+        if (featureState === undefined || !this.canRestoreSessionState(session)) {
+            return;
+        }
+        session.fromSessionState(featureState);
+    }
+
+    private canCaptureSessionState(
+        session: GameSessionHandling,
+    ): session is GameSessionHandling & ConvertableToSessionState {
+        return typeof (session as Partial<ConvertableToSessionState>).toSessionState === "function";
+    }
+
+    private canRestoreSessionState(
+        session: GameSessionHandling,
+    ): session is GameSessionHandling & BuildableFromSessionState {
+        return typeof (session as Partial<BuildableFromSessionState>).fromSessionState === "function";
     }
 
     private async readSeedContext(req: IncomingMessage): Promise<PokieGameContext | undefined> {

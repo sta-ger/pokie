@@ -1,7 +1,10 @@
 import {
+    BuildableFromSessionState,
+    ConvertableToSessionState,
     FileSessionRepository,
     GameSessionHandling,
     InMemorySessionRepository,
+    InMemoryWallet,
     loadPokieGame,
     PokieDevServer,
     PokieGame,
@@ -46,6 +49,65 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
     };
 }
 
+type FreeGamesState = {freeSpinsRemaining: number};
+
+type FakeFreeGamesSession = GameSessionHandling &
+    ConvertableToSessionState<FreeGamesState> &
+    BuildableFromSessionState<FreeGamesState> & {
+        grantFreeSpins(count: number): void;
+    };
+
+// A minimal stand-in for a game with an in-progress bonus round (e.g. VideoSlotWithFreeGamesSession's
+// free-games state): once granted, free spins pay out without charging a bet, decrementing until none
+// remain. Implements ConvertableToSessionState/BuildableFromSessionState so PokieDevServer can persist
+// and restore that "still mid-feature" state across a simulated restart.
+function createFakeFreeGamesSession(): FakeFreeGamesSession {
+    let credits = 0;
+    const bet = 5;
+    let winAmount = 0;
+    let freeSpinsRemaining = 0;
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: () => undefined,
+        getAvailableBets: () => [bet],
+        canPlayNextGame: () => true,
+        play: () => {
+            if (freeSpinsRemaining > 0) {
+                freeSpinsRemaining--;
+                winAmount = 20;
+            } else {
+                winAmount = 0;
+                credits -= bet;
+            }
+        },
+        getWinAmount: () => winAmount,
+        toSessionState: () => ({freeSpinsRemaining}),
+        fromSessionState(value: FreeGamesState) {
+            freeSpinsRemaining = value.freeSpinsRemaining;
+            return this;
+        },
+        grantFreeSpins: (count: number) => {
+            freeSpinsRemaining = count;
+        },
+    };
+}
+
+function createFakeFreeGamesGame(manifest: PokieGameManifest): PokieGame & {lastSession?: FakeFreeGamesSession} {
+    return {
+        getManifest: () => manifest,
+        createSession() {
+            const session = createFakeFreeGamesSession();
+            this.lastSession = session;
+            return session;
+        },
+    };
+}
+
 async function postJson(url: string, body?: unknown): Promise<{status: number; body: Record<string, unknown>}> {
     const response = await fetch(url, {
         method: "POST",
@@ -68,7 +130,10 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
 
     beforeEach(async () => {
         game = createFakeGame(manifest);
-        server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+        // The fake session's own internal default credits (1000) is irrelevant to what the server
+        // reports — see the "replaceable session storage" describe block below — so these tests
+        // configure a matching wallet balance explicitly rather than relying on that coincidence.
+        server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, wallet: new InMemoryWallet(1000)});
         const address = await server.start();
         baseUrl = `http://${address.host}:${address.port}`;
     });
@@ -230,8 +295,72 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
 
         expect(status).toBe(404);
         expect(typeof body.error).toBe("string");
+    });
+
+    it("defaults new sessions to a 0 balance when no wallet is configured, regardless of the session's own default credits", async () => {
+        const game = createFakeGame(manifest); // createFakeSession() defaults its own internal credits to 1000
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const {body} = await postJson(`${baseUrl}/sessions`);
+
+        expect(body.credits).toBe(0);
 
         await server.stop();
+    });
+
+    it("honors an explicitly configured wallet initial balance instead of the session's own default credits", async () => {
+        const game = createFakeGame(manifest); // createFakeSession() defaults its own internal credits to 1000
+        const server = new PokieDevServer(game, {
+            host: "127.0.0.1",
+            port: 0,
+            wallet: new InMemoryWallet(250),
+        });
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const {body} = await postJson(`${baseUrl}/sessions`);
+
+        expect(body.credits).toBe(250);
+
+        await server.stop();
+    });
+
+    it("restores an unfinished feature state (a bonus round mid-play) after a simulated restart", async () => {
+        const game = createFakeFreeGamesGame(manifest);
+        const sharedRepository = new InMemorySessionRepository();
+
+        const serverA = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: sharedRepository});
+        const addressA = await serverA.start();
+        const baseUrlA = `http://${addressA.host}:${addressA.port}`;
+
+        const created = await postJson(`${baseUrlA}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        // Put the just-created live session into "3 free spins remaining" before spinning, so the
+        // spin below both consumes one of them (no bet charged) and persists the remaining count.
+        game.lastSession?.grantFreeSpins(3);
+        const spun = await postJson(`${baseUrlA}/sessions/${sessionId}/spin`);
+        expect(spun.status).toBe(200);
+        expect(spun.body.win).toBe(20);
+
+        await serverA.stop();
+
+        // serverB reconstructs a brand-new fake session (freeSpinsRemaining defaults back to 0) —
+        // only if PokieDevServer restores the persisted featureState onto it does this spin still
+        // behave like an in-progress free-games round (win, no bet charged) instead of a normal one.
+        const serverB = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: sharedRepository});
+        const addressB = await serverB.start();
+        const baseUrlB = `http://${addressB.host}:${addressB.port}`;
+
+        const spunAfterRestart = await postJson(`${baseUrlB}/sessions/${sessionId}/spin`);
+
+        expect(spunAfterRestart.status).toBe(200);
+        expect(spunAfterRestart.body.win).toBe(20);
+        expect(spunAfterRestart.body.credits).toBe(spun.body.credits);
+
+        await serverB.stop();
     });
 });
 

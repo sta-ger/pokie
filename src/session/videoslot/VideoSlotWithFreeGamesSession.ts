@@ -1,4 +1,6 @@
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
+import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
+import type {ConvertableToSessionState} from "../ConvertableToSessionState.js";
 import {FreeGamesRoundHandler} from "./FreeGamesRoundHandler.js";
 import type {FreeGamesRoundHandling} from "./FreeGamesRoundHandling.js";
 import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
@@ -11,11 +13,15 @@ import {VideoSlotWinCalculator} from "./wincalculator/VideoSlotWinCalculator.js"
 import {VideoSlotWithFreeGamesConfig} from "./VideoSlotWithFreeGamesConfig.js";
 import type {VideoSlotWithFreeGamesConfigRepresenting} from "./VideoSlotWithFreeGamesConfigRepresenting.js";
 import type {VideoSlotWithFreeGamesSessionHandling} from "./VideoSlotWithFreeGamesSessionHandling.js";
+import type {VideoSlotWithFreeGamesSessionState} from "./VideoSlotWithFreeGamesSessionState.js";
 import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
 
 export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = string>
     extends AbstractVideoSlotSessionDecorator<T>
-    implements VideoSlotWithFreeGamesSessionHandling<T> {
+    implements
+        VideoSlotWithFreeGamesSessionHandling<T>,
+        ConvertableToSessionState<VideoSlotWithFreeGamesSessionState>,
+        BuildableFromSessionState<VideoSlotWithFreeGamesSessionState> {
     private readonly config: VideoSlotWithFreeGamesConfigRepresenting<T>;
     private readonly freeGamesRoundHandler: FreeGamesRoundHandling<T>;
     private freeGamesNum = 0;
@@ -75,6 +81,17 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
 
     public setFreeGamesBank(value: number): void {
         this.freeBank = value;
+    }
+
+    public toSessionState(): VideoSlotWithFreeGamesSessionState {
+        return {freeGamesNum: this.freeGamesNum, freeGamesSum: this.freeGamesSum, freeGamesBank: this.freeBank};
+    }
+
+    public fromSessionState(value: VideoSlotWithFreeGamesSessionState): this {
+        this.freeGamesNum = value.freeGamesNum;
+        this.freeGamesSum = value.freeGamesSum;
+        this.freeBank = value.freeGamesBank;
+        return this;
     }
 
     public override play(): void {

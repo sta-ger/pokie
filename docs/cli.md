@@ -507,8 +507,8 @@ lightweight restore step:
 ### Session storage & wallet
 
 `PokieDevServer` never keeps game state only in a live session object — every `POST /sessions` and
-`POST .../spin` writes a serializable `PokieSessionState` (`{context?, bet, win, screen?}`, no credits) through a
-`SessionRepository`:
+`POST .../spin` writes a serializable `PokieSessionState` (`{context?, bet, win, screen?, featureState?}`, no
+credits) through a `SessionRepository`:
 
 ```ts
 export interface SessionRepository {
@@ -523,6 +523,26 @@ export interface SessionRepository {
   `pokie serve` restart. A missing or corrupted file is treated as an unknown session (`404`), not a crash. Session
   ids are hashed into filenames, so an untrusted `sessionId` can't be used for path traversal.
 
+`featureState` is where a game's own internal state beyond bet/win/screen lives — e.g. an in-progress free-games
+round. It's populated through an optional, feature-detected pair of interfaces a `GameSessionHandling`
+implementation can implement:
+
+```ts
+export interface ConvertableToSessionState<T = unknown> {
+    toSessionState(): T;
+}
+
+export interface BuildableFromSessionState<T = unknown> {
+    fromSessionState(value: T): this;
+}
+```
+
+`VideoSlotWithFreeGamesSession` implements both (its free-games num/sum/bank). A game that implements neither gets
+a **snapshot-only fallback**: `PokieDevServer` still restores bet/win/screen after a restart, it just can't put a
+reconstructed session back into whatever mid-feature state it was in — the same caveat plain `VideoSlotSession`
+and any other game without this contract already had. Implementing it is entirely optional and additive; existing
+games and the standalone `VideoSlotSession` behave exactly as before whether or not they implement it.
+
 Credits are handled separately through a `WalletPort`, and are **deliberately not part of `PokieSessionState`** —
 a restart always resets balances even when a `FileSessionRepository` keeps the game state:
 
@@ -533,8 +553,11 @@ export interface WalletPort {
 }
 ```
 
-`InMemoryWallet` is the default (and only built-in) implementation — an unknown `sessionId` defaults to a
-configurable `initialBalance` (`0` unless you pass one to the constructor).
+`InMemoryWallet` is the default (and only built-in) implementation. Its constructor's `initialBalance` (`0` by
+default) is the **single, unambiguous source** of a new session's starting balance: `PokieDevServer` reads it via
+`getBalance()` for a not-yet-seen `sessionId` and applies it onto the freshly created session — it never writes
+that session's own default credits back into the wallet. So a session's balance only ever becomes something other
+than `initialBalance` after a `setBalance()` call (i.e. after an actual spin).
 
 Both are constructor options on `PokieDevServer`, additive to the existing `{host, port}` options:
 
@@ -552,9 +575,10 @@ const server = new PokieDevServer(game, {
 
 A live `GameSessionHandling` object is still needed to actually run `play()` — `PokieDevServer` keeps a
 process-local cache of already-constructed sessions for that, separate from `SessionRepository`. On a cache miss
-(e.g. right after a restart), it reconstructs one via `game.createSession(state.context)` plus `state.bet` before
-spinning; a game's other internal state (RNG stream position, round counters not exposed through
-`GameSessionHandling`) starts fresh in that case, same caveat as `--seed` reproducibility elsewhere in this CLI.
+(e.g. right after a restart), it reconstructs one via `game.createSession(state.context)` plus `state.bet`, then
+restores `state.featureState` onto it via `fromSessionState()` if the game implements `BuildableFromSessionState`,
+before spinning. Anything not covered by bet/win/screen/featureState — RNG stream position, for instance — still
+starts fresh in that case, same caveat as `--seed` reproducibility elsewhere in this CLI.
 
 ### Failure modes
 

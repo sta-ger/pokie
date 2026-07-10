@@ -1,8 +1,11 @@
 import {
+    BuildableFromSessionState,
+    ConvertableToSessionState,
     SymbolsSequence,
     VideoSlotWithFreeGamesConfig,
-    VideoSlotWithFreeGamesSessionHandling,
     VideoSlotWithFreeGamesConfigRepresenting,
+    VideoSlotWithFreeGamesSessionHandling,
+    VideoSlotWithFreeGamesSessionState,
 } from "pokie";
 
 export const testDefaultVideoSlotWithFreeGamesSession = (session: VideoSlotWithFreeGamesSessionHandling): void => {
@@ -18,6 +21,27 @@ export const testFreeGamesGettersSetters = (session: VideoSlotWithFreeGamesSessi
     expect(session.getFreeGamesSum()).toBe(10);
     expect(session.getFreeGamesNum()).toBe(5);
     expect(session.getFreeGamesBank()).toBe(100);
+};
+
+export const testSessionStateCaptureAndRestore = (
+    session: VideoSlotWithFreeGamesSessionHandling &
+        ConvertableToSessionState<VideoSlotWithFreeGamesSessionState> &
+        BuildableFromSessionState<VideoSlotWithFreeGamesSessionState>,
+    otherSession: VideoSlotWithFreeGamesSessionHandling &
+        BuildableFromSessionState<VideoSlotWithFreeGamesSessionState>,
+): void => {
+    session.setFreeGamesNum(3);
+    session.setFreeGamesSum(10);
+    session.setFreeGamesBank(250);
+
+    const state = session.toSessionState();
+    expect(state).toEqual({freeGamesNum: 3, freeGamesSum: 10, freeGamesBank: 250});
+
+    otherSession.fromSessionState(state);
+
+    expect(otherSession.getFreeGamesNum()).toBe(3);
+    expect(otherSession.getFreeGamesSum()).toBe(10);
+    expect(otherSession.getFreeGamesBank()).toBe(250);
 };
 
 export const testPlayUntilWinFreeGames = (session: VideoSlotWithFreeGamesSessionHandling): void => {
