@@ -71,6 +71,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         const method = req.method ?? "GET";
         const url = new URL(req.url ?? "/", "http://localhost");
         const spinSessionId = this.matchSpinRoute(url.pathname);
+        const sessionId = this.matchSessionRoute(url.pathname);
 
         if (method === "GET" && url.pathname === "/health") {
             this.sendJson(res, 200, {status: "ok"});
@@ -87,6 +88,11 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
+        if (method === "GET" && sessionId !== undefined) {
+            this.handleGetSession(sessionId, res);
+            return;
+        }
+
         if (method === "POST" && spinSessionId !== undefined) {
             this.handleSpin(spinSessionId, res);
             return;
@@ -98,6 +104,14 @@ export class PokieDevServer implements PokieDevServerHandling {
     private matchSpinRoute(pathname: string): string | undefined {
         const segments = pathname.split("/").filter((segment) => segment.length > 0);
         if (segments.length === 3 && segments[0] === "sessions" && segments[2] === "spin") {
+            return decodeURIComponent(segments[1]);
+        }
+        return undefined;
+    }
+
+    private matchSessionRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (segments.length === 2 && segments[0] === "sessions") {
             return decodeURIComponent(segments[1]);
         }
         return undefined;
@@ -127,6 +141,16 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         session.play();
+        this.sendJson(res, 200, this.buildSessionResponse(sessionId, session, session.getWinAmount()));
+    }
+
+    private handleGetSession(sessionId: string, res: ServerResponse): void {
+        const session = this.sessions.get(sessionId);
+        if (!session) {
+            this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
+            return;
+        }
+
         this.sendJson(res, 200, this.buildSessionResponse(sessionId, session, session.getWinAmount()));
     }
 

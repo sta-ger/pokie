@@ -125,6 +125,38 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         expect(typeof body.error).toBe("string");
     });
 
+    it("restores session state on GET /sessions/:sessionId, before and after a spin", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const restoredBeforeSpin = await getJson(`${baseUrl}/sessions/${sessionId}`);
+        expect(restoredBeforeSpin.status).toBe(200);
+        expect(restoredBeforeSpin.body.sessionId).toBe(sessionId);
+        expect(restoredBeforeSpin.body.game).toEqual({id: manifest.id, name: manifest.name, version: manifest.version});
+        expect(restoredBeforeSpin.body.bet).toBe(5);
+        expect(restoredBeforeSpin.body.win).toBe(0);
+        expect(restoredBeforeSpin.body.credits).toBe(1000);
+
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+        expect(spun.body.win).toBe(0);
+        expect(spun.body.credits).toBe(995);
+
+        const restoredAfterSpin = await getJson(`${baseUrl}/sessions/${sessionId}`);
+        expect(restoredAfterSpin.status).toBe(200);
+        expect(restoredAfterSpin.body.sessionId).toBe(sessionId);
+        expect(restoredAfterSpin.body.bet).toBe(5);
+        expect(restoredAfterSpin.body.win).toBe(0);
+        expect(restoredAfterSpin.body.credits).toBe(995);
+        expect(restoredAfterSpin.body.screen).toEqual([["round-1"]]);
+    });
+
+    it("returns 404 for GET /sessions/:sessionId with an unknown sessionId", async () => {
+        const {status, body} = await getJson(`${baseUrl}/sessions/does-not-exist`);
+
+        expect(status).toBe(404);
+        expect(typeof body.error).toBe("string");
+    });
+
     it("returns 404 for an unknown route", async () => {
         const {status, body} = await getJson(`${baseUrl}/unknown`);
 

@@ -466,6 +466,43 @@ Calls `session.play()` on the stored session and returns its new state:
 
 `404 {"error": "..."}` for an unknown `sessionId`.
 
+### `GET /sessions/:sessionId`
+
+Returns the current state of an in-memory session without playing a round — the same `PokieDevSessionResponse`
+shape as `POST /sessions` and `POST /sessions/:sessionId/spin`, always including `win` (like the spin response,
+since the session already tracks it via `getWinAmount()`):
+
+```ts
+{
+    sessionId: string;
+    game: {id: string; name: string; version: string};
+    bet: number;
+    win: number;      // session.getWinAmount() as it currently stands — 0 before the first spin
+    credits: number;
+    screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
+}
+```
+
+`404 {"error": "..."}` for an unknown `sessionId`.
+
+This is a **restore/reload** endpoint, not a new capability — it reads the same in-memory session
+`POST /sessions`/`POST .../spin` already mutate, it doesn't play a round or change any state. There's still no
+persistence: once the process restarts, every session is gone and every `sessionId` 404s.
+
+#### Client reload flow
+
+A frontend that wants to survive a page reload without losing its session can use `GET /sessions/:sessionId` as a
+lightweight restore step:
+
+1. On first load, `POST /sessions` and keep the returned `sessionId` (e.g. in `localStorage`).
+2. On every reload, call `GET /sessions/:sessionId` with the stored id.
+3. If it responds `200`, use the returned state (bet/credits/screen/win) to resume where the client left off.
+4. If it responds `404` — the process restarted and the session no longer exists — discard the stored id and fall
+   back to step 1 (`POST /sessions` again).
+
+This is still a dev/reference flow: sessions live only in the server process's memory, so a `pokie serve` restart
+always means every stored `sessionId` becomes stale and every client falls back to creating a new session.
+
 ### Failure modes
 
 - Missing `<packageRoot>`, an unknown option, a non-numeric `--port`, or a missing `--host` value throw a
