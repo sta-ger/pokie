@@ -81,6 +81,28 @@ export function transactionalWalletPortContractTests(name: string, createWallet:
             await expect(wallet.getBalance("session-1")).resolves.toBe(500);
         });
 
+        it("debit reapplies for real when its transactionId was previously reversed, rather than silently no-op'ing", async () => {
+            const wallet = createWallet();
+            await wallet.setBalance("session-1", 500);
+            await wallet.debit("session-1", "txn-1", 200);
+            await wallet.reverse("session-1", "txn-1");
+
+            // "txn-1" now has no effect on the balance (500). Reusing it must charge for real again,
+            // not be treated as an idempotent replay of the now-reversed original debit.
+            await expect(wallet.debit("session-1", "txn-1", 300)).resolves.toBe(200);
+            await expect(wallet.getBalance("session-1")).resolves.toBe(200);
+        });
+
+        it("credit reapplies for real when its transactionId was previously reversed, rather than silently no-op'ing", async () => {
+            const wallet = createWallet();
+            await wallet.setBalance("session-1", 500);
+            await wallet.credit("session-1", "txn-1", 200);
+            await wallet.reverse("session-1", "txn-1");
+
+            await expect(wallet.credit("session-1", "txn-1", 300)).resolves.toBe(800);
+            await expect(wallet.getBalance("session-1")).resolves.toBe(800);
+        });
+
         it("reverse rejects an unknown transactionId", async () => {
             const wallet = createWallet();
             await wallet.setBalance("session-1", 500);

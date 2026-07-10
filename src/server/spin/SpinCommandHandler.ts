@@ -4,6 +4,7 @@ import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import {InMemoryIdempotencyRepository} from "../idempotency/InMemoryIdempotencyRepository.js";
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
 import {capturePokieSessionState} from "../session/capturePokieSessionState.js";
+import {determineStakeAmount} from "../session/determineStakeAmount.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import {restoreFeatureState} from "../session/restoreFeatureState.js";
 import type {SessionRepository} from "../session/SessionRepository.js";
@@ -14,7 +15,8 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 // Orchestrates a single spin end-to-end: replay an idempotent retry, load the persisted session
 // state (reconstructing a live session on a cache miss, e.g. after a restart), gate on
 // canPlayNextGame(), run play(), settle the wallet as two separate transactions (a stake debit and
-// a win credit), and persist the new state.
+// a win credit), and persist the new state together with the idempotency result as one committed
+// outcome.
 //
 // Every command for a given sessionId — whether the same requestId retried concurrently or two
 // genuinely different spins racing — is serialized through a per-session queue (see enqueue()), so
@@ -23,24 +25,35 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 // "in-flight" cache: the second call is simply queued behind the first, and by the time its own
 // turn runs, the first's result is already in idempotencyRepository for it to find.
 //
-// Wallet settlement: the stake is debited *before* play(), using whatever session.getBet() reports
-// — unless the current balance is already less than that, in which case canPlayNextGame() must
-// have let the spin through for some other reason (e.g. an in-progress free-games round bypassing
-// the balance check — see VideoSlotWithFreeGamesSession/FreeGamesRoundHandler), so the stake is
-// debited as 0 instead of failing the spin. The win is credited *after* play(), for whatever amount
-// reconciles the wallet to the session's own final credits — i.e. balanceBeforePlay - stakeDebited +
+// Wallet settlement: the stake is debited *before* play(), using determineStakeAmount() (0 for a
+// session that reports it's mid free-round via the optional StakeAmountDetermining contract, else
+// getBet() — see that function's own doc comment for why the wallet balance itself is never used to
+// infer "this must be free"). The win is credited *after* play(), for whatever amount reconciles
+// the wallet to the session's own final credits — i.e. balanceBeforePlay - stakeDebited +
 // winCredited === session.getCreditsAmount() after play(). That reconciliation is what keeps this
 // correct even for a session with its own internal accounting quirks (e.g. a free-games round that
 // banks a win across several spins instead of paying it out immediately): whatever delta the
-// session actually produced beyond the stake we chose to charge is exactly what gets credited, so
-// the two independently-chosen numbers (stake, then win) always add up to the truth, regardless of
-// what stake amount was actually right for this specific game's rules.
+// session actually produced beyond the stake we charged is exactly what gets credited.
 //
-// If anything after play() fails — the debit/credit itself, or persisting the new state — every
-// wallet transaction already applied for this attempt is individually reversed by its own
-// transactionId (see TransactionalWalletPort.reverse), and the live session is evicted from the
-// cache rather than left mutated-but-unpersisted, so the next command for this sessionId
-// reconstructs cleanly from the last state SessionRepository actually has.
+// Every wallet transaction for an attempt gets its own id, `{roundId}:{attemptId}:debit`/`:credit`
+// — `roundId` is the requestId (or a fresh id when none was given), for traceability back to the
+// logical command; `attemptId` is freshly minted every time this method actually runs, so a retried
+// command (same requestId) that follows a compensated/reversed prior attempt always gets brand-new
+// transaction ids rather than reusing the reversed ones. (TransactionalWalletAdapter/InMemoryWallet
+// also tolerate reusing a reversed id — see their own comments — but attemptId keeps that a
+// backstop rather than something this handler leans on.)
+//
+// If anything fails after entering the mutating phase — a wallet call, persisting the new session
+// state, or persisting the idempotency result — every wallet transaction already applied for this
+// attempt is individually reversed by its own transactionId, any already-persisted session state is
+// restored to what it was before this attempt, and the live session is evicted from the cache. That
+// makes the whole attempt's durable side effects (wallet + SessionRepository + idempotencyRepository)
+// all-or-nothing from the next command's point of view: a retry always sees either the complete
+// result of a prior successful attempt, or a clean pre-attempt state to spin fresh against — never a
+// state/result split where one was written and the other wasn't. A backend that can offer real
+// cross-store transactions (e.g. one SessionRepository/IdempotencyRepository pair backed by the same
+// database) can still do better than this compensating-write approach, but this is what the
+// framework guarantees generically.
 export class SpinCommandHandler implements SpinCommandHandling {
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
@@ -112,11 +125,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
-        const result = await this.playAndSettle(sessionId, session, state, balanceBeforePlay, requestId);
-        if (requestId !== undefined) {
-            await this.idempotencyRepository.save(sessionId, requestId, result);
-        }
-        return result;
+        return this.playAndSettle(sessionId, session, state, balanceBeforePlay, requestId);
     }
 
     private async playAndSettle(
@@ -126,22 +135,15 @@ export class SpinCommandHandler implements SpinCommandHandling {
         balanceBeforePlay: number,
         requestId: string | undefined,
     ): Promise<SpinCommandResult> {
-        // A stable, per-round pair of transaction ids: deterministic from requestId (so a wallet
-        // that itself sees the same transactionId twice — e.g. a retried command that raced past
-        // idempotencyRepository somehow — stays idempotent too), or a fresh id per attempt when the
-        // caller didn't supply a requestId at all (no idempotency is expected across those calls).
         const roundId = requestId ?? crypto.randomUUID();
-        const debitTransactionId = `${roundId}:debit`;
-        const creditTransactionId = `${roundId}:credit`;
+        const attemptId = crypto.randomUUID();
+        const debitTransactionId = `${roundId}:${attemptId}:debit`;
+        const creditTransactionId = `${roundId}:${attemptId}:credit`;
 
-        // The stake this round would charge — 0 if the balance is already below it, since
-        // canPlayNextGame() (already checked) must have allowed the spin anyway (e.g. an
-        // in-progress free-games round). See the class doc comment for why the credit side below
-        // still ends up correct regardless of whether this guess undercharges or overcharges.
-        const nominalBet = session.getBet();
-        const stakeAmount = nominalBet <= balanceBeforePlay ? nominalBet : 0;
+        const stakeAmount = determineStakeAmount(session, session.getBet());
 
         const appliedTransactionIds: string[] = [];
+        let sessionStateSaved = false;
         try {
             await this.wallet.debit(sessionId, debitTransactionId, stakeAmount);
             appliedTransactionIds.push(debitTransactionId);
@@ -159,12 +161,33 @@ export class SpinCommandHandler implements SpinCommandHandling {
 
             const newState = capturePokieSessionState(state.context, session);
             await this.sessionRepository.save(sessionId, newState);
+            sessionStateSaved = true;
 
-            return {status: "played", sessionId, state: newState, credits: newBalance, win};
+            const result: SpinCommandResult = {status: "played", sessionId, state: newState, credits: newBalance, win};
+
+            if (requestId !== undefined) {
+                await this.idempotencyRepository.save(sessionId, requestId, result);
+            }
+
+            return result;
         } catch (error) {
+            if (sessionStateSaved) {
+                await this.restoreSessionState(sessionId, state);
+            }
             await this.reverseApplied(sessionId, appliedTransactionIds);
             this.liveSessions.delete(sessionId);
             throw error;
+        }
+    }
+
+    // Best-effort compensating write, undoing this attempt's own sessionRepository.save() when a
+    // later step (persisting the idempotency result) fails — see the class doc comment.
+    private async restoreSessionState(sessionId: string, state: PokieSessionState): Promise<void> {
+        try {
+            await this.sessionRepository.save(sessionId, state);
+        } catch {
+            // The error that triggered this restore is what the caller of handle() sees; a failure
+            // to restore shouldn't replace or hide it.
         }
     }
 

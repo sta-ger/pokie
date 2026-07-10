@@ -15,10 +15,12 @@ type TransactionRecord = {
 // automatically (see isTransactionalWalletPort) — a wallet that already implements
 // TransactionalWalletPort natively (e.g. InMemoryWallet) is used as-is instead.
 //
-// The transaction ledger (which (sessionId, transactionId) pairs were already applied, and what
+// The transaction ledger (which (sessionId, transactionId) pairs are currently applied, and what
 // they did) lives only in this adapter instance, in memory — it's what makes debit/credit
 // idempotent per transactionId and reverse() possible at all on top of a wallet that itself only
-// ever saw plain setBalance() overwrites.
+// ever saw plain setBalance() overwrites. A transactionId is idempotent only while its record is
+// still in effect: once reverse() marks it reversed, debit/credit is willing to apply that same id
+// again as a brand new transaction — see debit()'s own comment for why that matters.
 export class TransactionalWalletAdapter implements TransactionalWalletPort {
     private readonly wallet: WalletPort;
     private readonly transactions = new Map<string, TransactionRecord>();
@@ -38,7 +40,12 @@ export class TransactionalWalletAdapter implements TransactionalWalletPort {
     public async debit(sessionId: string, transactionId: string, amount: number): Promise<number> {
         const key = this.keyFor(sessionId, transactionId);
         const existing = this.transactions.get(key);
-        if (existing) {
+        // Only a still-applied transaction short-circuits as an idempotent replay. One that was
+        // since reversed no longer has any effect on the balance, so a fresh call reusing its id
+        // (e.g. a retried command after its first attempt was compensated) must be allowed to apply
+        // for real again — otherwise it would silently no-op, leaving the wallet and whatever the
+        // caller persists elsewhere (e.g. session state) diverging.
+        if (existing && !existing.reversed) {
             return this.wallet.getBalance(sessionId);
         }
 
@@ -55,7 +62,7 @@ export class TransactionalWalletAdapter implements TransactionalWalletPort {
     public async credit(sessionId: string, transactionId: string, amount: number): Promise<number> {
         const key = this.keyFor(sessionId, transactionId);
         const existing = this.transactions.get(key);
-        if (existing) {
+        if (existing && !existing.reversed) {
             return this.wallet.getBalance(sessionId);
         }
 

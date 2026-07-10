@@ -9,6 +9,7 @@ import {
     PokieDevServer,
     PokieGame,
     PokieGameManifest,
+    StakeAmountDetermining,
     VideoSlotWithFreeGamesSession,
     WalletPort,
 } from "pokie";
@@ -55,16 +56,19 @@ type FreeGamesState = {freeSpinsRemaining: number};
 
 type FakeFreeGamesSession = GameSessionHandling &
     ConvertableToSessionState<FreeGamesState> &
-    BuildableFromSessionState<FreeGamesState> & {
+    BuildableFromSessionState<FreeGamesState> &
+    StakeAmountDetermining & {
         grantFreeSpins(count: number): void;
     };
 
 // A minimal stand-in for a game with an in-progress bonus round (e.g. VideoSlotWithFreeGamesSession's
 // free-games state): once granted, free spins pay out without charging a bet, decrementing until none
 // remain. Implements ConvertableToSessionState/BuildableFromSessionState so PokieDevServer can persist
-// and restore that "still mid-feature" state across a simulated restart.
-function createFakeFreeGamesSession(): FakeFreeGamesSession {
-    let credits = 0;
+// and restore that "still mid-feature" state across a simulated restart, and StakeAmountDetermining so
+// PokieDevServer never has to infer "this is a free spin" from the wallet balance (see
+// determineStakeAmount's own doc comment).
+function createFakeFreeGamesSession(initialCredits = 0): FakeFreeGamesSession {
+    let credits = initialCredits;
     const bet = 5;
     let winAmount = 0;
     let freeSpinsRemaining = 0;
@@ -78,6 +82,7 @@ function createFakeFreeGamesSession(): FakeFreeGamesSession {
         setBet: () => undefined,
         getAvailableBets: () => [bet],
         canPlayNextGame: () => true,
+        getStakeAmount: () => (freeSpinsRemaining > 0 ? 0 : bet),
         play: () => {
             if (freeSpinsRemaining > 0) {
                 freeSpinsRemaining--;
@@ -465,6 +470,31 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         expect(spunAfterRestart.body.credits).toBe(0);
 
         await serverB.stop();
+    });
+
+    it("keeps a real VideoSlotWithFreeGamesSession's unfinished free-games round free of charge even at a balance comfortably above the bet", async () => {
+        // Balance (1000) is far more than enough to cover the bet: this proves the free spin isn't
+        // charged because VideoSlotWithFreeGamesSession explicitly reports it via
+        // StakeAmountDetermining, not because the wallet balance happened to be too low to charge.
+        const game = createRealFreeGamesGame(manifest);
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, wallet: new InMemoryWallet(1000)});
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+        expect(created.body.credits).toBe(1000);
+
+        game.lastSession?.setFreeGamesSum(3);
+        game.lastSession?.setFreeGamesNum(0);
+        game.lastSession?.setFreeGamesBank(0);
+
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+
+        expect(spun.status).toBe(200);
+        expect(spun.body.credits).toBe(1000); // unchanged: no bet charged despite ample balance
+
+        await server.stop();
     });
 
     it("blocks a spin when canPlayNextGame() returns false, leaving session/repository/wallet state unchanged", async () => {

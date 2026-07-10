@@ -645,16 +645,18 @@ export interface TransactionalWalletPort extends WalletPort {
 ```
 
 `debit`/`credit` take a caller-chosen `transactionId` and should be idempotent per `(sessionId, transactionId)` —
-repeating one that already applied must not mutate the balance again. `reverse` compensates the *specific*
+repeating one that's still in effect must not mutate the balance again. `reverse` compensates the *specific*
 transaction recorded under `transactionId` (crediting back a debit, debiting back a credit) instead of asking the
 caller to separately track and pass an amount to undo, and must itself be idempotent (reversing twice is a
-no-op). `InMemoryWallet` implements this natively. A caller-supplied plain `WalletPort` (including your own
-pre-existing custom implementation, predating this interface entirely) is transparently wrapped by
-`PokieDevServer` in a `TransactionalWalletAdapter`, which keeps its own in-memory transaction ledger on top of
-`getBalance`/`setBalance` to provide the same idempotent-debit/credit/reverse behavior — nothing about an
-existing custom `WalletPort` needs to change. `isTransactionalWalletPort()` is the feature-detection
-`PokieDevServer` uses to skip wrapping a wallet that's already transactional. A custom `TransactionalWalletPort`
-(or a plain `WalletPort` you want to check through the adapter) can be verified with:
+no-op) — and once reversed, that same `transactionId` stops counting as "already applied": a later call reusing
+it (e.g. a retried command after its first attempt was compensated) is applied for real again rather than
+silently treated as a no-op replay of the transaction that no longer has any effect. `InMemoryWallet` implements
+this natively. A caller-supplied plain `WalletPort` (including your own pre-existing custom implementation,
+predating this interface entirely) is transparently wrapped by `PokieDevServer` in a `TransactionalWalletAdapter`,
+which keeps its own in-memory transaction ledger on top of `getBalance`/`setBalance` to provide the same
+behavior — nothing about an existing custom `WalletPort` needs to change. `isTransactionalWalletPort()` is the
+feature-detection `PokieDevServer` uses to skip wrapping a wallet that's already transactional. A custom
+`TransactionalWalletPort` (or a plain `WalletPort` you want to check through the adapter) can be verified with:
 
 ```ts
 import {transactionalWalletPortContractTests, TransactionalWalletAdapter} from "pokie";
@@ -663,24 +665,46 @@ transactionalWalletPortContractTests("MyWalletPort (adapted)", () => new Transac
 ```
 
 For each spin, the stake is debited **before** `play()` and the win is credited **after**, as two separate
-transactions (`{requestId-or-generated-id}:debit` / `:credit`, so both are stably tied to the spin's `requestId`
-when one was given, and tagged with which operation they are):
+transactions. Each gets its own id, `{roundId}:{attemptId}:debit` / `:credit` — `roundId` is the spin's
+`requestId` (or a generated id when none was given), tying a transaction back to the logical command for
+traceability; `attemptId` is freshly generated every time `SpinCommandHandler` actually executes a spin, so a
+retried command that follows a reversed prior attempt always gets brand-new transaction ids rather than reusing
+the reversed ones — the logical request id and the per-attempt transaction ids are deliberately different things:
 
-- **Stake**: `session.getBet()`, unless the wallet's current balance is already less than that — in which case
-  `canPlayNextGame()` must have let the spin through for some other reason (e.g. an in-progress free-games round
-  bypassing the balance check entirely — see `VideoSlotWithFreeGamesSession`/`FreeGamesRoundHandler`), so the
-  stake is debited as **zero** instead of failing the spin.
+- **Stake**: `session.getBet()`, unless the session implements the optional `StakeAmountDetermining` contract
+  below, in which case `getStakeAmount()` decides instead. The wallet balance itself is never used to infer "this
+  must be a free spin" — a session's `canPlayNextGame()` can legitimately return `true` at any balance for reasons
+  that have nothing to do with a free round, so balance alone isn't a safe signal either way.
 - **Win**: whatever reconciles the wallet to the session's own final credits after `play()` — i.e.
   `balanceBeforePlay - stakeDebited + winCredited` always equals `session.getCreditsAmount()` post-`play()`. This
   is what keeps the numbers correct even when a session's own accounting doesn't match a naive bet/win split
   (e.g. a free-games round that banks several spins' wins and only pays them out once the round finishes):
   whatever the session's own credits moved by, beyond the stake actually charged, is exactly what gets credited.
 
-If anything after `play()` fails — the debit/credit call itself, or persisting the new state — every wallet
-transaction already applied for that attempt is individually reversed by its own `transactionId`, and the live
-session is evicted from `SpinCommandHandler`'s cache rather than left mutated-but-unpersisted, so the next
-command for that `sessionId` reconstructs cleanly from the last state `SessionRepository` actually has instead of
-continuing a tainted in-memory object.
+```ts
+export interface StakeAmountDetermining {
+    getStakeAmount(): number;
+}
+```
+
+Optional and feature-detected, same pattern as `ConvertableToSessionState`/`BuildableFromSessionState`. A session
+implementing it is asked what its *next* `play()` will actually charge — `VideoSlotWithFreeGamesSession`
+implements it, returning `0` while an unfinished free-games round is in progress (the same condition its own
+`canPlayNextGame()` uses to let a spin through regardless of balance) and `getBet()` otherwise, so a free spin
+debits zero **at any wallet balance**, not just a low one. A session that doesn't implement this interface is
+simply assumed to always charge its full `getBet()`.
+
+If anything fails after entering the mutating phase — a wallet call, persisting the new session state, or
+persisting the idempotency result — every wallet transaction already applied for that attempt is individually
+reversed by its own `transactionId`, any already-persisted session state is restored to what it was before the
+attempt, and the live session is evicted from `SpinCommandHandler`'s cache. That makes the whole attempt's durable
+side effects (wallet + `SessionRepository` + `idempotencyRepository`) all-or-nothing from the next command's point
+of view: a retry always finds either the complete result of a prior successful attempt, or a clean pre-attempt
+state to spin fresh against — never a state/result split where one was written and the other wasn't. This is a
+compensating-write guarantee, not a real cross-store database transaction — a backend that can offer one (e.g. a
+single `SessionRepository`/`IdempotencyRepository` pair backed by the same database, committing both writes
+together) can still do strictly better, but this is what the framework guarantees generically for the built-in,
+independently-pluggable repositories.
 
 #### Idempotency and concurrency
 

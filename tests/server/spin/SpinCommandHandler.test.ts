@@ -1,5 +1,6 @@
 import {
     GameSessionHandling,
+    IdempotencyRepository,
     InMemoryIdempotencyRepository,
     InMemorySessionRepository,
     InMemoryWallet,
@@ -8,6 +9,8 @@ import {
     PokieSessionState,
     SessionRepository,
     SpinCommandHandler,
+    SpinCommandResult,
+    StakeAmountDetermining,
     TransactionalWalletPort,
 } from "pokie";
 
@@ -67,10 +70,12 @@ function createInstrumentedFakeGame(): {game: PokieGame; stats: FakeGameStats} {
 
 // A free-games-style session standing in for VideoSlotWithFreeGamesSession: canPlayNextGame() is
 // unconditionally true, and a spin while free spins remain neither charges the bet nor folds its
-// win into credits (banked elsewhere, only settled once the free round finishes) — the scenario
-// "free spin must debit zero" exists for.
-function createFakeFreeGamesSession(): GameSessionHandling {
-    let credits = 0;
+// win into credits (banked elsewhere, only settled once the free round finishes). Implements
+// StakeAmountDetermining explicitly — the scenario "free spin must debit zero" exists for — so it
+// works identically regardless of the wallet's balance (see determineStakeAmount's own doc comment
+// for why balance alone must never be what decides this).
+function createFakeFreeGamesSession(initialCredits = 0): GameSessionHandling & StakeAmountDetermining {
+    let credits = initialCredits;
     const bet = 5;
     let winAmount = 0;
     let freeSpinsRemaining = 3;
@@ -84,6 +89,7 @@ function createFakeFreeGamesSession(): GameSessionHandling {
         setBet: () => undefined,
         getAvailableBets: () => [bet],
         canPlayNextGame: () => true,
+        getStakeAmount: () => (freeSpinsRemaining > 0 ? 0 : bet),
         play: () => {
             if (freeSpinsRemaining > 0) {
                 freeSpinsRemaining--;
@@ -287,8 +293,8 @@ describe("SpinCommandHandler", () => {
         expect(wallet.debitCalls[0].transactionId).not.toBe(wallet.creditCalls[0].transactionId);
     });
 
-    it("debits zero for a free spin (balance below the nominal bet, but canPlayNextGame() still true)", async () => {
-        const game: PokieGame = {getManifest: () => manifest, createSession: () => createFakeFreeGamesSession()};
+    it("debits zero for a free spin at a balance below the nominal bet", async () => {
+        const game: PokieGame = {getManifest: () => manifest, createSession: () => createFakeFreeGamesSession(0)};
         const sessionRepository = new InMemorySessionRepository();
         const wallet = new RecordingTransactionalWallet();
         const handler = new SpinCommandHandler(game, sessionRepository, wallet);
@@ -299,6 +305,24 @@ describe("SpinCommandHandler", () => {
         expect(result).toMatchObject({status: "played", win: 20, credits: 0});
         expect(wallet.debitCalls).toHaveLength(1);
         expect(wallet.debitCalls[0].amount).toBe(0);
+    });
+
+    it("debits zero for a free spin even at a balance comfortably above the nominal bet (not inferred from balance)", async () => {
+        // The balance (1000) is far more than enough to cover the nominal bet (5): under the old
+        // "insufficient balance implies free" heuristic this would have been wrongly charged. Only
+        // the explicit StakeAmountDetermining signal must decide this.
+        const game: PokieGame = {getManifest: () => manifest, createSession: () => createFakeFreeGamesSession(1000)};
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+        await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+
+        const result = await handler.handle("session-1");
+
+        expect(result).toMatchObject({status: "played", win: 20, credits: 1000});
+        expect(wallet.debitCalls).toHaveLength(1);
+        expect(wallet.debitCalls[0].amount).toBe(0);
+        await expect(wallet.getBalance("session-1")).resolves.toBe(1000);
     });
 
     it("touches nothing when the wallet's debit itself throws", async () => {
@@ -366,6 +390,76 @@ describe("SpinCommandHandler", () => {
 
         expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
         expect(stats.createSessionCalls).toBe(2);
+        await expect(wallet.getBalance("session-1")).resolves.toBe(995);
+    });
+
+    it("applies a genuinely new attempt on retry after debit/credit → reverse, instead of silently no-op'ing", async () => {
+        const {game, stats} = createInstrumentedFakeGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        let failNextSave = true;
+        const flakyRepository: SessionRepository = {
+            load: (sessionId) => sessionRepository.load(sessionId),
+            save: (sessionId, newState) => {
+                if (failNextSave) {
+                    failNextSave = false;
+                    return Promise.reject(new Error("disk full"));
+                }
+                return sessionRepository.save(sessionId, newState);
+            },
+        };
+        const handler = new SpinCommandHandler(game, flakyRepository, wallet, new InMemoryIdempotencyRepository());
+        await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+
+        await expect(handler.handle("session-1", "request-1")).rejects.toThrow("disk full");
+
+        await expect(wallet.getBalance("session-1")).resolves.toBe(1000); // fully reversed
+        expect(wallet.debitCalls).toHaveLength(1);
+        expect(wallet.reverseCalls).toHaveLength(2); // both the debit and the (zero) credit reversed
+
+        const retry = await handler.handle("session-1", "request-1");
+
+        expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
+        // A genuinely new attempt happened — not the old bug where reusing a reversed transactionId
+        // silently no-op'd, leaving the session state updated but the wallet untouched.
+        expect(wallet.debitCalls).toHaveLength(2);
+        expect(wallet.debitCalls[1].transactionId).not.toBe(wallet.debitCalls[0].transactionId);
+        expect(wallet.creditCalls).toHaveLength(2);
+        expect(wallet.creditCalls[1].transactionId).not.toBe(wallet.creditCalls[0].transactionId);
+        await expect(wallet.getBalance("session-1")).resolves.toBe(995);
+        expect(stats.createSessionCalls).toBe(2); // evicted after the failed attempt, reconstructed fresh
+    });
+
+    it("restores session state and wallet balance when persisting the idempotency result fails after a successful spin", async () => {
+        const {game, stats} = createInstrumentedFakeGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        let failNextSave = true;
+        const flakyIdempotencyRepository: IdempotencyRepository<SpinCommandResult> = {
+            load: () => Promise.resolve(undefined),
+            save: () => {
+                if (failNextSave) {
+                    failNextSave = false;
+                    return Promise.reject(new Error("idempotency store unavailable"));
+                }
+                return Promise.resolve();
+            },
+        };
+        const handler = new SpinCommandHandler(game, sessionRepository, wallet, flakyIdempotencyRepository);
+        await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+
+        await expect(handler.handle("session-1", "request-1")).rejects.toThrow("idempotency store unavailable");
+
+        // No window where the session/wallet look like a completed spin but the idempotency
+        // repository has no matching record: both are restored to their pre-attempt values.
+        await expect(wallet.getBalance("session-1")).resolves.toBe(1000);
+        await expect(sessionRepository.load("session-1")).resolves.toMatchObject({bet: 5, win: 0});
+        expect(stats.playCalls).toBe(1); // play() DID run before the idempotency write failed
+
+        const retry = await handler.handle("session-1", "request-1");
+
+        expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
+        expect(stats.createSessionCalls).toBe(2); // evicted after the failed attempt, reconstructed fresh
         await expect(wallet.getBalance("session-1")).resolves.toBe(995);
     });
 });

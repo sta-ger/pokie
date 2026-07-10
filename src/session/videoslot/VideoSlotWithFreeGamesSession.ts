@@ -1,6 +1,7 @@
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
 import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../ConvertableToSessionState.js";
+import type {StakeAmountDetermining} from "../StakeAmountDetermining.js";
 import {FreeGamesRoundHandler} from "./FreeGamesRoundHandler.js";
 import type {FreeGamesRoundHandling} from "./FreeGamesRoundHandling.js";
 import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
@@ -21,7 +22,8 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     implements
         VideoSlotWithFreeGamesSessionHandling<T>,
         ConvertableToSessionState<VideoSlotWithFreeGamesSessionState>,
-        BuildableFromSessionState<VideoSlotWithFreeGamesSessionState> {
+        BuildableFromSessionState<VideoSlotWithFreeGamesSessionState>,
+        StakeAmountDetermining {
     private readonly config: VideoSlotWithFreeGamesConfigRepresenting<T>;
     private readonly freeGamesRoundHandler: FreeGamesRoundHandling<T>;
     private freeGamesNum = 0;
@@ -95,8 +97,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public override canPlayNextGame(): boolean {
-        const hasUnfinishedFreeGames = this.freeGamesSum > 0 && this.freeGamesNum < this.freeGamesSum;
-        return hasUnfinishedFreeGames || this.baseSession.canPlayNextGame();
+        return this.hasUnfinishedFreeGames() || this.baseSession.canPlayNextGame();
     }
 
     public override play(): void {
@@ -106,11 +107,23 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
     }
 
+    // StakeAmountDetermining: a spin consuming an unfinished free-games round never charges a real
+    // stake — see FreeGamesRoundHandler, which restores credits to their pre-play value for exactly
+    // that case. Same condition canPlayNextGame() uses to let such a spin through regardless of
+    // balance, kept as one source of truth.
+    public getStakeAmount(): number {
+        return this.hasUnfinishedFreeGames() ? 0 : this.getBet();
+    }
+
     public getFreeGamesForScatters(symbolId: T, numberOfSymbols: number): number {
         return this.config.getFreeGamesForScatters(symbolId, numberOfSymbols);
     }
 
     public override getPaytable(): PaytableRepresenting<T> {
         return this.config.getPaytable();
+    }
+
+    private hasUnfinishedFreeGames(): boolean {
+        return this.freeGamesSum > 0 && this.freeGamesNum < this.freeGamesSum;
     }
 }
