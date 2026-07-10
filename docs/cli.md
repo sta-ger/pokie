@@ -401,9 +401,12 @@ an unknown option, `--out`/`--format` without a value) throw the usual `Usage: p
 
 **Experimental.** Starts a local HTTP server over a single loaded [game package](game-packages.md), so you can
 create sessions and spin them over plain JSON HTTP while developing a game. This is a **local/dev reference
-server, not a casino backend or RGS** — no wallet, no real money, no authentication, and no operator/integration
-logic of any kind. Sessions are kept in an in-memory `Map` for the lifetime of the process; nothing is persisted,
-and everything is lost on restart.
+server, not a casino backend or RGS** — no real-money wallet, no authentication, and no operator/integration
+logic of any kind. Game state (bet/win/screen) goes through a replaceable `SessionRepository`, and credits go
+through a separate `WalletPort` — see [Session storage & wallet](#session-storage--wallet) below. The CLI itself
+always runs with the defaults (`InMemorySessionRepository`, `InMemoryWallet`), so a `pokie serve` restart still
+loses every session; embed `PokieDevServer` directly (see below) to plug in a `FileSessionRepository` or your own
+`WalletPort`.
 
 ```
 pokie serve ./crazy-fruits --port 4000 --host 127.0.0.1
@@ -485,9 +488,10 @@ since the session already tracks it via `getWinAmount()`):
 
 `404 {"error": "..."}` for an unknown `sessionId`.
 
-This is a **restore/reload** endpoint, not a new capability — it reads the same in-memory session
-`POST /sessions`/`POST .../spin` already mutate, it doesn't play a round or change any state. There's still no
-persistence: once the process restarts, every session is gone and every `sessionId` 404s.
+This is a **restore/reload** endpoint, not a new capability — it reads the persisted `SessionRepository` state
+`POST /sessions`/`POST .../spin` already write, it doesn't play a round or change any state. With the default
+`InMemorySessionRepository` (what the CLI always uses), that state doesn't survive a restart, so every stored
+`sessionId` 404s after one. With a `FileSessionRepository` (see below), it does.
 
 #### Client reload flow
 
@@ -497,11 +501,60 @@ lightweight restore step:
 1. On first load, `POST /sessions` and keep the returned `sessionId` (e.g. in `localStorage`).
 2. On every reload, call `GET /sessions/:sessionId` with the stored id.
 3. If it responds `200`, use the returned state (bet/credits/screen/win) to resume where the client left off.
-4. If it responds `404` — the process restarted and the session no longer exists — discard the stored id and fall
-   back to step 1 (`POST /sessions` again).
+4. If it responds `404` — the session's state is gone (process restarted with the in-memory default, or the
+   sessionId was never valid) — discard the stored id and fall back to step 1 (`POST /sessions` again).
 
-This is still a dev/reference flow: sessions live only in the server process's memory, so a `pokie serve` restart
-always means every stored `sessionId` becomes stale and every client falls back to creating a new session.
+### Session storage & wallet
+
+`PokieDevServer` never keeps game state only in a live session object — every `POST /sessions` and
+`POST .../spin` writes a serializable `PokieSessionState` (`{context?, bet, win, screen?}`, no credits) through a
+`SessionRepository`:
+
+```ts
+export interface SessionRepository {
+    save(sessionId: string, state: PokieSessionState): Promise<void>;
+    load(sessionId: string): Promise<PokieSessionState | undefined>;
+}
+```
+
+- `InMemorySessionRepository` — the default, a `Map` for the lifetime of the process (same behavior as before
+  storage became replaceable).
+- `FileSessionRepository` — one JSON file per session under a directory you choose, so state survives a
+  `pokie serve` restart. A missing or corrupted file is treated as an unknown session (`404`), not a crash. Session
+  ids are hashed into filenames, so an untrusted `sessionId` can't be used for path traversal.
+
+Credits are handled separately through a `WalletPort`, and are **deliberately not part of `PokieSessionState`** —
+a restart always resets balances even when a `FileSessionRepository` keeps the game state:
+
+```ts
+export interface WalletPort {
+    getBalance(sessionId: string): Promise<number>;
+    setBalance(sessionId: string, balance: number): Promise<void>;
+}
+```
+
+`InMemoryWallet` is the default (and only built-in) implementation — an unknown `sessionId` defaults to a
+configurable `initialBalance` (`0` unless you pass one to the constructor).
+
+Both are constructor options on `PokieDevServer`, additive to the existing `{host, port}` options:
+
+```ts
+import {FileSessionRepository, InMemoryWallet, loadPokieGame, PokieDevServer} from "pokie";
+
+const game = await loadPokieGame("./crazy-fruits");
+const server = new PokieDevServer(game, {
+    host: "127.0.0.1",
+    port: 4000,
+    sessionRepository: new FileSessionRepository("./sessions"),
+    wallet: new InMemoryWallet(1000),
+});
+```
+
+A live `GameSessionHandling` object is still needed to actually run `play()` — `PokieDevServer` keeps a
+process-local cache of already-constructed sessions for that, separate from `SessionRepository`. On a cache miss
+(e.g. right after a restart), it reconstructs one via `game.createSession(state.context)` plus `state.bet` before
+spinning; a game's other internal state (RNG stream position, round counters not exposed through
+`GameSessionHandling`) starts fresh in that case, same caveat as `--seed` reproducibility elsewhere in this CLI.
 
 ### Failure modes
 

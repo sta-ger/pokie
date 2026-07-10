@@ -1,4 +1,14 @@
-import {GameSessionHandling, loadPokieGame, PokieDevServer, PokieGame, PokieGameManifest} from "pokie";
+import {
+    FileSessionRepository,
+    GameSessionHandling,
+    InMemorySessionRepository,
+    loadPokieGame,
+    PokieDevServer,
+    PokieGame,
+    PokieGameManifest,
+} from "pokie";
+import fs from "fs";
+import os from "os";
 import path from "path";
 
 function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
@@ -165,6 +175,66 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
     });
 });
 
+describe("PokieDevServer (replaceable session storage: DI, restart, unknown sessions)", () => {
+    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+    it("restores session state through a shared SessionRepository across independent server instances (simulated restart)", async () => {
+        const game = createFakeGame(manifest);
+        const sharedRepository = new InMemorySessionRepository();
+
+        const serverA = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: sharedRepository});
+        const addressA = await serverA.start();
+        const baseUrlA = `http://${addressA.host}:${addressA.port}`;
+
+        const created = await postJson(`${baseUrlA}/sessions`);
+        const sessionId = created.body.sessionId as string;
+        const spun = await postJson(`${baseUrlA}/sessions/${sessionId}/spin`);
+        expect(spun.status).toBe(200);
+
+        await serverA.stop();
+
+        // serverB has its own empty liveSessions cache and its own default InMemoryWallet — only
+        // sessionRepository is shared, simulating a process restart against durable storage.
+        const serverB = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: sharedRepository});
+        const addressB = await serverB.start();
+        const baseUrlB = `http://${addressB.host}:${addressB.port}`;
+
+        const restored = await getJson(`${baseUrlB}/sessions/${sessionId}`);
+        expect(restored.status).toBe(200);
+        expect(restored.body.bet).toBe(spun.body.bet);
+        expect(restored.body.win).toBe(spun.body.win);
+        expect(restored.body.screen).toEqual(spun.body.screen);
+        // Credits are explicitly not part of the persisted state: a fresh default InMemoryWallet
+        // means the balance resets even though the game state (bet/win/screen) survived.
+        expect(restored.body.credits).toBe(0);
+
+        const spunAgain = await postJson(`${baseUrlB}/sessions/${sessionId}/spin`);
+        expect(spunAgain.status).toBe(200);
+        expect(typeof spunAgain.body.win).toBe("number");
+        expect(typeof spunAgain.body.credits).toBe("number");
+
+        await serverB.stop();
+    });
+
+    it("returns 404 on GET for an unknown sessionId with a custom SessionRepository", async () => {
+        const game = createFakeGame(manifest);
+        const server = new PokieDevServer(game, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new InMemorySessionRepository(),
+        });
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const {status, body} = await getJson(`${baseUrl}/sessions/does-not-exist`);
+
+        expect(status).toBe(404);
+        expect(typeof body.error).toBe("string");
+
+        await server.stop();
+    });
+});
+
 describe("PokieDevServer (integration, real loadPokieGame + fixture game package)", () => {
     const fixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game");
     let server: PokieDevServer;
@@ -200,5 +270,95 @@ describe("PokieDevServer (integration, real loadPokieGame + fixture game package
         expect(typeof spun.body.win).toBe("number");
         expect(typeof spun.body.credits).toBe("number");
         expect(Array.isArray(spun.body.screen)).toBe(true);
+    });
+});
+
+describe("PokieDevServer (integration, FileSessionRepository across a simulated restart)", () => {
+    const fixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game");
+    let directory: string;
+
+    beforeEach(() => {
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-devserver-filerepo-test-"));
+    });
+
+    afterEach(() => {
+        fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it("restores a session's bet/win/screen after stopping one server and starting another over the same directory", async () => {
+        const gameA = await loadPokieGame(fixtureRoot);
+        const serverA = new PokieDevServer(gameA, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new FileSessionRepository(directory),
+        });
+        const addressA = await serverA.start();
+        const baseUrlA = `http://${addressA.host}:${addressA.port}`;
+
+        const created = await postJson(`${baseUrlA}/sessions`, {seed: "restart-demo"});
+        const sessionId = created.body.sessionId as string;
+        const spun = await postJson(`${baseUrlA}/sessions/${sessionId}/spin`);
+        expect(spun.status).toBe(200);
+
+        await serverA.stop();
+
+        const gameB = await loadPokieGame(fixtureRoot);
+        const serverB = new PokieDevServer(gameB, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new FileSessionRepository(directory),
+        });
+        const addressB = await serverB.start();
+        const baseUrlB = `http://${addressB.host}:${addressB.port}`;
+
+        const restored = await getJson(`${baseUrlB}/sessions/${sessionId}`);
+        expect(restored.status).toBe(200);
+        expect(restored.body.bet).toBe(spun.body.bet);
+        expect(restored.body.win).toBe(spun.body.win);
+        expect(restored.body.screen).toEqual(spun.body.screen);
+
+        await serverB.stop();
+    });
+
+    it("returns 404 for an unknown sessionId with a FileSessionRepository", async () => {
+        const game = await loadPokieGame(fixtureRoot);
+        const server = new PokieDevServer(game, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new FileSessionRepository(directory),
+        });
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const {status, body} = await getJson(`${baseUrl}/sessions/does-not-exist`);
+
+        expect(status).toBe(404);
+        expect(typeof body.error).toBe("string");
+
+        await server.stop();
+    });
+
+    it("returns 404 instead of 500 when a session's persisted file is corrupted", async () => {
+        const game = await loadPokieGame(fixtureRoot);
+        const server = new PokieDevServer(game, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new FileSessionRepository(directory),
+        });
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const [fileName] = fs.readdirSync(directory);
+        fs.writeFileSync(path.join(directory, fileName), "{not valid json", "utf-8");
+
+        const {status, body} = await getJson(`${baseUrl}/sessions/${sessionId}`);
+
+        expect(status).toBe(404);
+        expect(typeof body.error).toBe("string");
+
+        await server.stop();
     });
 });

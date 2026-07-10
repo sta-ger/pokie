@@ -7,6 +7,11 @@ import type {PokieDevServerAddress} from "./PokieDevServerAddress.js";
 import type {PokieDevServerHandling} from "./PokieDevServerHandling.js";
 import type {PokieDevServerOptions} from "./PokieDevServerOptions.js";
 import type {PokieDevSessionResponse} from "./PokieDevSessionResponse.js";
+import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js";
+import type {PokieSessionState} from "./session/PokieSessionState.js";
+import type {SessionRepository} from "./session/SessionRepository.js";
+import {InMemoryWallet} from "./wallet/InMemoryWallet.js";
+import type {WalletPort} from "./wallet/WalletPort.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3000;
@@ -16,19 +21,30 @@ type SessionWithScreen = GameSessionHandling & {
 };
 
 // The first experimental "pokie serve": a local/dev reference HTTP server over a single loaded
-// PokieGame, with sessions kept in memory for the lifetime of the process. Deliberately has no
-// wallet, real-money, auth, RGS, or operator logic — see docs/cli.md.
+// PokieGame. Deliberately has no real-money, auth, RGS, or operator logic — see docs/cli.md.
+//
+// Game state (bet/win/screen) goes through a replaceable SessionRepository — InMemorySessionRepository
+// by default, or a FileSessionRepository so it survives a restart. Credits go through a separate
+// WalletPort (InMemoryWallet by default) and are deliberately never part of the persisted session
+// state. `liveSessions` is neither of those: it's a process-local cache of already-constructed
+// GameSessionHandling objects, needed because play() has to run against a real session object, not
+// a plain state snapshot — a cache miss (e.g. after a restart) reconstructs one from the repository's
+// state via `game.createSession()`.
 export class PokieDevServer implements PokieDevServerHandling {
     private readonly game: PokieGame;
     private readonly host: string;
     private readonly port: number;
-    private readonly sessions = new Map<string, GameSessionHandling>();
+    private readonly sessionRepository: SessionRepository;
+    private readonly wallet: WalletPort;
+    private readonly liveSessions = new Map<string, GameSessionHandling>();
     private server: http.Server | undefined;
 
     constructor(game: PokieGame, options: PokieDevServerOptions = {}) {
         this.game = game;
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
+        this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository();
+        this.wallet = options.wallet ?? new InMemoryWallet();
     }
 
     public start(): Promise<PokieDevServerAddress> {
@@ -89,12 +105,12 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         if (method === "GET" && sessionId !== undefined) {
-            this.handleGetSession(sessionId, res);
+            await this.handleGetSession(sessionId, res);
             return;
         }
 
         if (method === "POST" && spinSessionId !== undefined) {
-            this.handleSpin(spinSessionId, res);
+            await this.handleSpin(spinSessionId, res);
             return;
         }
 
@@ -128,46 +144,79 @@ export class PokieDevServer implements PokieDevServerHandling {
 
         const session = this.game.createSession(context);
         const sessionId = crypto.randomUUID();
-        this.sessions.set(sessionId, session);
+        this.liveSessions.set(sessionId, session);
+        await this.wallet.setBalance(sessionId, session.getCreditsAmount());
 
-        this.sendJson(res, 201, this.buildSessionResponse(sessionId, session));
+        const state: PokieSessionState = {context, bet: session.getBet(), win: session.getWinAmount()};
+        const screen = this.captureScreen(session);
+        if (screen !== null) {
+            state.screen = screen;
+        }
+        await this.sessionRepository.save(sessionId, state);
+
+        const credits = await this.wallet.getBalance(sessionId);
+        this.sendJson(res, 201, this.buildSessionResponse(sessionId, state, credits));
     }
 
-    private handleSpin(sessionId: string, res: ServerResponse): void {
-        const session = this.sessions.get(sessionId);
-        if (!session) {
+    private async handleSpin(sessionId: string, res: ServerResponse): Promise<void> {
+        const state = await this.sessionRepository.load(sessionId);
+        if (!state) {
             this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
             return;
         }
 
+        let session = this.liveSessions.get(sessionId);
+        if (!session) {
+            session = this.game.createSession(state.context);
+            session.setBet(state.bet);
+            this.liveSessions.set(sessionId, session);
+        }
+
+        session.setCreditsAmount(await this.wallet.getBalance(sessionId));
         session.play();
-        this.sendJson(res, 200, this.buildSessionResponse(sessionId, session, session.getWinAmount()));
+        const win = session.getWinAmount();
+        await this.wallet.setBalance(sessionId, session.getCreditsAmount());
+
+        const newState: PokieSessionState = {context: state.context, bet: session.getBet(), win};
+        const screen = this.captureScreen(session);
+        if (screen !== null) {
+            newState.screen = screen;
+        }
+        await this.sessionRepository.save(sessionId, newState);
+
+        const credits = await this.wallet.getBalance(sessionId);
+        this.sendJson(res, 200, this.buildSessionResponse(sessionId, newState, credits, win));
     }
 
-    private handleGetSession(sessionId: string, res: ServerResponse): void {
-        const session = this.sessions.get(sessionId);
-        if (!session) {
+    private async handleGetSession(sessionId: string, res: ServerResponse): Promise<void> {
+        const state = await this.sessionRepository.load(sessionId);
+        if (!state) {
             this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
             return;
         }
 
-        this.sendJson(res, 200, this.buildSessionResponse(sessionId, session, session.getWinAmount()));
+        const credits = await this.wallet.getBalance(sessionId);
+        this.sendJson(res, 200, this.buildSessionResponse(sessionId, state, credits, state.win));
     }
 
-    private buildSessionResponse(sessionId: string, session: GameSessionHandling, win?: number): PokieDevSessionResponse {
+    private buildSessionResponse(
+        sessionId: string,
+        state: PokieSessionState,
+        credits: number,
+        win?: number,
+    ): PokieDevSessionResponse {
         const manifest = this.game.getManifest();
         const response: PokieDevSessionResponse = {
             sessionId,
             game: {id: manifest.id, name: manifest.name, version: manifest.version},
-            bet: session.getBet(),
-            credits: session.getCreditsAmount(),
+            bet: state.bet,
+            credits,
         };
         if (win !== undefined) {
             response.win = win;
         }
-        const screen = this.captureScreen(session);
-        if (screen !== null) {
-            response.screen = screen;
+        if (state.screen !== undefined) {
+            response.screen = state.screen;
         }
         return response;
     }
