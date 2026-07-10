@@ -454,7 +454,9 @@ RNG setup honor it.
 
 ### `POST /sessions/:sessionId/spin`
 
-Calls `session.play()` on the stored session and returns its new state:
+Applies the session's current wallet balance, checks `session.canPlayNextGame()`, and only then calls
+`session.play()` on the (possibly just-reconstructed, see [Session storage & wallet](#session-storage--wallet))
+session, returning its new state:
 
 ```ts
 {
@@ -467,7 +469,11 @@ Calls `session.play()` on the stored session and returns its new state:
 }
 ```
 
-`404 {"error": "..."}` for an unknown `sessionId`.
+`404 {"error": "..."}` for an unknown `sessionId`. `400 {"error": "..."}` if `canPlayNextGame()` returns `false`
+(e.g. insufficient credits for the current bet) — `play()` is never called in that case, and the session's
+game state, `SessionRepository` entry, and `WalletPort` balance are all left exactly as they were. A game whose
+`canPlayNextGame()` ignores balance while an in-progress feature (e.g. a free-games round) is active still spins
+normally even at a 0 balance — the gate only ever reflects what `canPlayNextGame()` itself returns.
 
 ### `GET /sessions/:sessionId`
 

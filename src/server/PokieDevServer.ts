@@ -199,6 +199,13 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         session.setCreditsAmount(await this.wallet.getBalance(sessionId));
+        if (!session.canPlayNextGame()) {
+            this.sendJson(res, 400, {
+                error: `Session "${sessionId}" cannot play the next round (canPlayNextGame() returned false).`,
+            });
+            return;
+        }
+
         session.play();
         const win = session.getWinAmount();
         await this.wallet.setBalance(sessionId, session.getCreditsAmount());

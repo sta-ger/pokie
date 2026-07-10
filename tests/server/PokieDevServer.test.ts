@@ -273,10 +273,12 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         // means the balance resets even though the game state (bet/win/screen) survived.
         expect(restored.body.credits).toBe(0);
 
+        // The reconstructed session (credits: 0, bet: 5) correctly can't play the next round anymore
+        // — this also proves the spin path's own cache-miss reconstruction ran (GET never reconstructs
+        // a live session at all), and that the new canPlayNextGame() gate applies to it just the same.
         const spunAgain = await postJson(`${baseUrlB}/sessions/${sessionId}/spin`);
-        expect(spunAgain.status).toBe(200);
-        expect(typeof spunAgain.body.win).toBe("number");
-        expect(typeof spunAgain.body.credits).toBe("number");
+        expect(spunAgain.status).toBe(400);
+        expect(typeof spunAgain.body.error).toBe("string");
 
         await serverB.stop();
     });
@@ -361,6 +363,52 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         expect(spunAfterRestart.body.credits).toBe(spun.body.credits);
 
         await serverB.stop();
+    });
+
+    it("blocks a spin when canPlayNextGame() returns false, leaving session/repository/wallet state unchanged", async () => {
+        const game = createFakeGame(manifest); // canPlayNextGame(): credits >= bet, bet is 5
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, wallet: new InMemoryWallet(2)});
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+        expect(created.body.credits).toBe(2);
+
+        const blocked = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+
+        expect(blocked.status).toBe(400);
+        expect(typeof blocked.body.error).toBe("string");
+
+        // Nothing about the session should have moved: same bet/win/screen/credits as right after
+        // creation — no play(), no repository write, no wallet write happened for the blocked spin.
+        const afterBlocked = await getJson(`${baseUrl}/sessions/${sessionId}`);
+        expect(afterBlocked.body.bet).toBe(created.body.bet);
+        expect(afterBlocked.body.win).toBe(0);
+        expect(afterBlocked.body.credits).toBe(2);
+        expect(afterBlocked.body.screen).toEqual(created.body.screen);
+
+        await server.stop();
+    });
+
+    it("still spins a session with a 0 balance when canPlayNextGame() returns true (e.g. an active free-games feature)", async () => {
+        const game = createFakeFreeGamesGame(manifest);
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+        expect(created.body.credits).toBe(0); // the fake free-games session's own default credits
+
+        game.lastSession?.grantFreeSpins(3);
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+
+        expect(spun.status).toBe(200);
+        expect(spun.body.win).toBe(20);
+        expect(spun.body.credits).toBe(0); // free spin: no bet charged, balance stays at 0
+
+        await server.stop();
     });
 });
 
