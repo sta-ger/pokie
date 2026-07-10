@@ -2,25 +2,22 @@ import crypto from "crypto";
 import http, {IncomingMessage, ServerResponse} from "http";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieGameContext} from "../gamepackage/PokieGameContext.js";
-import type {BuildableFromSessionState} from "../session/BuildableFromSessionState.js";
-import type {ConvertableToSessionState} from "../session/ConvertableToSessionState.js";
-import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {PokieDevServerAddress} from "./PokieDevServerAddress.js";
 import type {PokieDevServerHandling} from "./PokieDevServerHandling.js";
 import type {PokieDevServerOptions} from "./PokieDevServerOptions.js";
 import type {PokieDevSessionResponse} from "./PokieDevSessionResponse.js";
+import {InMemoryIdempotencyRepository} from "./idempotency/InMemoryIdempotencyRepository.js";
+import {capturePokieSessionState} from "./session/capturePokieSessionState.js";
 import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js";
 import type {PokieSessionState} from "./session/PokieSessionState.js";
 import type {SessionRepository} from "./session/SessionRepository.js";
+import {SpinCommandHandler} from "./spin/SpinCommandHandler.js";
+import type {SpinCommandHandling} from "./spin/SpinCommandHandling.js";
 import {InMemoryWallet} from "./wallet/InMemoryWallet.js";
 import type {WalletPort} from "./wallet/WalletPort.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3000;
-
-type SessionWithScreen = GameSessionHandling & {
-    getSymbolsCombination(): {toMatrix(transposed?: boolean): unknown[][]};
-};
 
 // The first experimental "pokie serve": a local/dev reference HTTP server over a single loaded
 // PokieGame. Deliberately has no real-money, auth, RGS, or operator logic — see docs/cli.md.
@@ -29,11 +26,14 @@ type SessionWithScreen = GameSessionHandling & {
 // BuildableFromSessionState below) goes through a replaceable SessionRepository —
 // InMemorySessionRepository by default, or a FileSessionRepository so it survives a restart. Credits
 // go through a separate WalletPort (InMemoryWallet by default) and are deliberately never part of the
-// persisted session state. `liveSessions` is neither of those: it's a process-local cache of
-// already-constructed GameSessionHandling objects, needed because play() has to run against a real
-// session object, not a plain state snapshot — a cache miss (e.g. after a restart) reconstructs one
-// from the repository's state via `game.createSession()`, then restores its featureState if the game
-// implements BuildableFromSessionState (snapshot-only fallback if it doesn't).
+// persisted session state.
+//
+// A live GameSessionHandling object — needed to actually run play() against, not just a state
+// snapshot — is cached and reconstructed by SpinCommandHandler, which owns the spin endpoint's whole
+// orchestration (idempotency, canPlayNextGame() gate, play(), wallet settlement, persistence). This
+// server's own job is HTTP request/response translation plus session creation (POST /sessions),
+// which primes SpinCommandHandler's live-session cache with the freshly constructed session so the
+// very next spin against it reuses that exact object instead of reconstructing one from state.
 export class PokieDevServer implements PokieDevServerHandling {
     private readonly game: PokieGame;
     private readonly host: string;
@@ -46,7 +46,7 @@ export class PokieDevServer implements PokieDevServerHandling {
     // an explicitly constructed `new InMemoryWallet(initialBalance)`) is never seeded this way — it
     // stays the sole source of a new session's starting balance, see handleCreateSession.
     private readonly usesDefaultWallet: boolean;
-    private readonly liveSessions = new Map<string, GameSessionHandling>();
+    private readonly spinCommandHandler: SpinCommandHandling;
     private server: http.Server | undefined;
 
     constructor(game: PokieGame, options: PokieDevServerOptions = {}) {
@@ -56,6 +56,12 @@ export class PokieDevServer implements PokieDevServerHandling {
         this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository();
         this.usesDefaultWallet = options.wallet === undefined;
         this.wallet = options.wallet ?? new InMemoryWallet();
+        this.spinCommandHandler = new SpinCommandHandler(
+            this.game,
+            this.sessionRepository,
+            this.wallet,
+            options.idempotencyRepository ?? new InMemoryIdempotencyRepository(),
+        );
     }
 
     public start(): Promise<PokieDevServerAddress> {
@@ -121,7 +127,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         if (method === "POST" && spinSessionId !== undefined) {
-            await this.handleSpin(spinSessionId, res);
+            await this.handleSpin(spinSessionId, req, res);
             return;
         }
 
@@ -155,7 +161,7 @@ export class PokieDevServer implements PokieDevServerHandling {
 
         const session = this.game.createSession(context);
         const sessionId = crypto.randomUUID();
-        this.liveSessions.set(sessionId, session);
+        this.spinCommandHandler.primeSession(sessionId, session);
 
         if (this.usesDefaultWallet) {
             // No wallet was configured: seed the default InMemoryWallet from this session's own
@@ -168,61 +174,35 @@ export class PokieDevServer implements PokieDevServerHandling {
             session.setCreditsAmount(await this.wallet.getBalance(sessionId));
         }
 
-        const state: PokieSessionState = {context, bet: session.getBet(), win: session.getWinAmount()};
-        const screen = this.captureScreen(session);
-        if (screen !== null) {
-            state.screen = screen;
-        }
-        const featureState = this.captureFeatureState(session);
-        if (featureState !== undefined) {
-            state.featureState = featureState;
-        }
+        const state = capturePokieSessionState(context, session);
         await this.sessionRepository.save(sessionId, state);
 
         const credits = await this.wallet.getBalance(sessionId);
         this.sendJson(res, 201, this.buildSessionResponse(sessionId, state, credits));
     }
 
-    private async handleSpin(sessionId: string, res: ServerResponse): Promise<void> {
-        const state = await this.sessionRepository.load(sessionId);
-        if (!state) {
+    private async handleSpin(sessionId: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
+        let requestId: string | undefined;
+        try {
+            requestId = await this.readSpinRequestId(req);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.spinCommandHandler.handle(sessionId, requestId);
+
+        if (result.status === "not-found") {
             this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
             return;
         }
 
-        let session = this.liveSessions.get(sessionId);
-        if (!session) {
-            session = this.game.createSession(state.context);
-            session.setBet(state.bet);
-            this.restoreFeatureState(session, state.featureState);
-            this.liveSessions.set(sessionId, session);
-        }
-
-        session.setCreditsAmount(await this.wallet.getBalance(sessionId));
-        if (!session.canPlayNextGame()) {
-            this.sendJson(res, 400, {
-                error: `Session "${sessionId}" cannot play the next round (canPlayNextGame() returned false).`,
-            });
+        if (result.status === "blocked") {
+            this.sendJson(res, 400, {error: result.reason});
             return;
         }
 
-        session.play();
-        const win = session.getWinAmount();
-        await this.wallet.setBalance(sessionId, session.getCreditsAmount());
-
-        const newState: PokieSessionState = {context: state.context, bet: session.getBet(), win};
-        const screen = this.captureScreen(session);
-        if (screen !== null) {
-            newState.screen = screen;
-        }
-        const featureState = this.captureFeatureState(session);
-        if (featureState !== undefined) {
-            newState.featureState = featureState;
-        }
-        await this.sessionRepository.save(sessionId, newState);
-
-        const credits = await this.wallet.getBalance(sessionId);
-        this.sendJson(res, 200, this.buildSessionResponse(sessionId, newState, credits, win));
+        this.sendJson(res, 200, this.buildSessionResponse(result.sessionId, result.state, result.credits, result.win));
     }
 
     private async handleGetSession(sessionId: string, res: ServerResponse): Promise<void> {
@@ -258,43 +238,6 @@ export class PokieDevServer implements PokieDevServerHandling {
         return response;
     }
 
-    private captureScreen(session: GameSessionHandling): unknown[][] | null {
-        if (!this.hasSymbolsCombination(session)) {
-            return null;
-        }
-        return session.getSymbolsCombination().toMatrix();
-    }
-
-    private hasSymbolsCombination(session: GameSessionHandling): session is SessionWithScreen {
-        return typeof (session as Partial<SessionWithScreen>).getSymbolsCombination === "function";
-    }
-
-    private captureFeatureState(session: GameSessionHandling): unknown {
-        if (!this.canCaptureSessionState(session)) {
-            return undefined;
-        }
-        return session.toSessionState();
-    }
-
-    private restoreFeatureState(session: GameSessionHandling, featureState: unknown): void {
-        if (featureState === undefined || !this.canRestoreSessionState(session)) {
-            return;
-        }
-        session.fromSessionState(featureState);
-    }
-
-    private canCaptureSessionState(
-        session: GameSessionHandling,
-    ): session is GameSessionHandling & ConvertableToSessionState {
-        return typeof (session as Partial<ConvertableToSessionState>).toSessionState === "function";
-    }
-
-    private canRestoreSessionState(
-        session: GameSessionHandling,
-    ): session is GameSessionHandling & BuildableFromSessionState {
-        return typeof (session as Partial<BuildableFromSessionState>).fromSessionState === "function";
-    }
-
     private async readSeedContext(req: IncomingMessage): Promise<PokieGameContext | undefined> {
         const raw = await this.readBody(req);
         if (!raw) {
@@ -319,6 +262,32 @@ export class PokieDevServer implements PokieDevServerHandling {
             throw new Error('"seed" must be a string or number.');
         }
         return {seed};
+    }
+
+    private async readSpinRequestId(req: IncomingMessage): Promise<string | undefined> {
+        const raw = await this.readBody(req);
+        if (!raw) {
+            return undefined;
+        }
+
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(raw);
+        } catch {
+            throw new Error("Request body is not valid JSON.");
+        }
+        if (parsed === null || typeof parsed !== "object") {
+            return undefined;
+        }
+
+        const {requestId} = parsed as {requestId?: unknown};
+        if (requestId === undefined) {
+            return undefined;
+        }
+        if (typeof requestId !== "string") {
+            throw new Error('"requestId" must be a string.');
+        }
+        return requestId;
     }
 
     private readBody(req: IncomingMessage): Promise<string> {

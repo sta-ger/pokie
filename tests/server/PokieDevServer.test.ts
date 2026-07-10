@@ -207,6 +207,35 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         expect(second.body.screen).toEqual([["round-2"]]);
     });
 
+    it("returns the same result for a repeated requestId on POST /sessions/:sessionId/spin, without spinning again", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const first = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {requestId: "retry-1"});
+        expect(first.status).toBe(200);
+        expect(first.body.win).toBe(0);
+        expect(first.body.credits).toBe(995);
+        expect(first.body.screen).toEqual([["round-1"]]);
+
+        const replay = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {requestId: "retry-1"});
+        expect(replay.body).toEqual(first.body);
+
+        // A distinct requestId spins for real, proving the replay above didn't just coincidentally match.
+        const nextRequest = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {requestId: "retry-2"});
+        expect(nextRequest.body.win).toBe(15);
+        expect(nextRequest.body.credits).toBe(1005);
+    });
+
+    it("returns 400 when the spin request body's requestId is not a string", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const {status, body} = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {requestId: 42});
+
+        expect(status).toBe(400);
+        expect(typeof body.error).toBe("string");
+    });
+
     it("returns 404 for an unknown sessionId", async () => {
         const {status, body} = await postJson(`${baseUrl}/sessions/does-not-exist/spin`);
 

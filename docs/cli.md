@@ -454,9 +454,10 @@ RNG setup honor it.
 
 ### `POST /sessions/:sessionId/spin`
 
-Applies the session's current wallet balance, checks `session.canPlayNextGame()`, and only then calls
-`session.play()` on the (possibly just-reconstructed, see [Session storage & wallet](#session-storage--wallet))
-session, returning its new state:
+Delegates to `SpinCommandHandler` (see [Spin orchestration & idempotency](#spin-orchestration--idempotency)
+below), which applies the session's current wallet balance, checks `session.canPlayNextGame()`, and only then
+calls `session.play()` on the (possibly just-reconstructed, see
+[Session storage & wallet](#session-storage--wallet)) session, returning its new state:
 
 ```ts
 {
@@ -469,11 +470,17 @@ session, returning its new state:
 }
 ```
 
+An optional JSON body `{"requestId": string}` makes the call idempotent: a repeated request with the same
+`sessionId`/`requestId` pair returns the exact same response instead of spinning (and charging the wallet) again
+— see [Spin orchestration & idempotency](#spin-orchestration--idempotency). Omit it (or send no body) to always
+spin for real, the original behavior.
+
 `404 {"error": "..."}` for an unknown `sessionId`. `400 {"error": "..."}` if `canPlayNextGame()` returns `false`
 (e.g. insufficient credits for the current bet) — `play()` is never called in that case, and the session's
 game state, `SessionRepository` entry, and `WalletPort` balance are all left exactly as they were. A game whose
 `canPlayNextGame()` ignores balance while an in-progress feature (e.g. a free-games round) is active still spins
-normally even at a 0 balance — the gate only ever reflects what `canPlayNextGame()` itself returns.
+normally even at a 0 balance — the gate only ever reflects what `canPlayNextGame()` itself returns. `400
+{"error": "..."}` too if a `requestId` is sent but isn't a string.
 
 ### `GET /sessions/:sessionId`
 
@@ -556,7 +563,25 @@ a restart always resets balances even when a `FileSessionRepository` keeps the g
 export interface WalletPort {
     getBalance(sessionId: string): Promise<number>;
     setBalance(sessionId: string, balance: number): Promise<void>;
+    debit(sessionId: string, amount: number): Promise<number>;
+    credit(sessionId: string, amount: number): Promise<number>;
+    rollback(sessionId: string, amount: number): Promise<number>;
 }
+```
+
+`getBalance`/`setBalance` are the original plain read/full-overwrite pair. `debit`/`credit`/`rollback` are
+additive — a small transactional API `SpinCommandHandler` uses to settle a spin instead of a blind `setBalance`
+overwrite (see [Spin orchestration & idempotency](#spin-orchestration--idempotency)): `debit` must reject (e.g.
+throwing `WalletInsufficientFundsError`, what `InMemoryWallet` throws) and leave the balance unchanged when
+`amount` exceeds the current balance; `credit` adds `amount`; `rollback` compensates an earlier `debit` of the
+same `amount` (same postcondition as `credit`, kept as its own method so a ledger-backed implementation can
+record it distinctly from an ordinary win payout). A custom `WalletPort` implementation can verify its own
+behavior against `InMemoryWallet`'s using the exported `walletPortContractTests` Jest suite:
+
+```ts
+import {walletPortContractTests} from "pokie";
+
+walletPortContractTests("MyWalletPort", () => new MyWalletPort());
 ```
 
 `InMemoryWallet` is the default (and only built-in) implementation, and `PokieDevServer` treats it differently
@@ -575,7 +600,8 @@ depending on whether you configured one:
 Either way, a session's balance only changes from its starting value after an actual spin (`setBalance()` is
 always called after `play()`).
 
-Both are constructor options on `PokieDevServer`, additive to the existing `{host, port}` options:
+Both are constructor options on `PokieDevServer`, additive to the existing `{host, port}` options (as is
+`idempotencyRepository`, see below):
 
 ```ts
 import {FileSessionRepository, InMemoryWallet, loadPokieGame, PokieDevServer} from "pokie";
@@ -589,12 +615,51 @@ const server = new PokieDevServer(game, {
 });
 ```
 
-A live `GameSessionHandling` object is still needed to actually run `play()` — `PokieDevServer` keeps a
-process-local cache of already-constructed sessions for that, separate from `SessionRepository`. On a cache miss
-(e.g. right after a restart), it reconstructs one via `game.createSession(state.context)` plus `state.bet`, then
-restores `state.featureState` onto it via `fromSessionState()` if the game implements `BuildableFromSessionState`,
-before spinning. Anything not covered by bet/win/screen/featureState — RNG stream position, for instance — still
-starts fresh in that case, same caveat as `--seed` reproducibility elsewhere in this CLI.
+A live `GameSessionHandling` object is still needed to actually run `play()` — this is kept in a process-local
+cache owned by `SpinCommandHandler` (see below), separate from `SessionRepository`. `PokieDevServer` primes it
+with the freshly constructed session on every `POST /sessions`. On a cache miss (e.g. right after a restart), it
+reconstructs one via `game.createSession(state.context)` plus `state.bet`, then restores `state.featureState`
+onto it via `fromSessionState()` if the game implements `BuildableFromSessionState`, before spinning. Anything not
+covered by bet/win/screen/featureState — RNG stream position, for instance — still starts fresh in that case,
+same caveat as `--seed` reproducibility elsewhere in this CLI.
+
+### Spin orchestration & idempotency
+
+`POST /sessions/:sessionId/spin` is implemented by `SpinCommandHandler`, a reusable, transport-agnostic class
+(`SpinCommandResult` has no HTTP status codes) that owns the whole spin: replay an idempotent retry, load/
+reconstruct the session, gate on `canPlayNextGame()`, run `play()`, settle the wallet, and persist the new state:
+
+```ts
+export interface SpinCommandHandling {
+    primeSession(sessionId: string, session: GameSessionHandling): void;
+    handle(sessionId: string, requestId?: string): Promise<SpinCommandResult>;
+}
+```
+
+Wallet settlement is **delta-based**, not "always debit `getBet()`, always credit `getWinAmount()`": a session
+decides its own real charge for a spin — e.g. `VideoSlotWithFreeGamesSession` never charges a bet while a
+free-games round is unfinished (see `FreeGamesRoundHandler`), restoring credits to their pre-play value
+internally — so the only generically correct way to know what actually happened is to compare a session's
+credits before and after `play()`. A negative delta is charged via `wallet.debit()`, a positive one via
+`wallet.credit()`; if persisting the new session state then fails, that wallet mutation is rolled back via
+`wallet.rollback()`/`wallet.debit()` so the wallet and `SessionRepository` never drift apart.
+
+Idempotency is a separate, additive `IdempotencyRepository`, keyed by `(sessionId, requestId)`:
+
+```ts
+export interface IdempotencyRepository<T = unknown> {
+    load(sessionId: string, requestId: string): Promise<T | undefined>;
+    save(sessionId: string, requestId: string, result: T): Promise<void>;
+}
+```
+
+`InMemoryIdempotencyRepository` is the default (a `Map` for the lifetime of the process, same tradeoff as
+`InMemorySessionRepository`/`InMemoryWallet`), overridable via the `idempotencyRepository` constructor option.
+When `POST /sessions/:sessionId/spin`'s body includes a `requestId`, `SpinCommandHandler.handle()` checks this
+repository first and, on a hit, returns the stored result without touching the session, wallet, or
+`SessionRepository` again. A successful spin (`status: "played"`) is the only outcome ever stored — a `blocked`
+(`canPlayNextGame()` false) or `not-found` result made no state changes to begin with, so there's nothing to
+protect against replaying. Omitting `requestId` skips idempotency entirely, spinning for real every time.
 
 ### Failure modes
 
