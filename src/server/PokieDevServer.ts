@@ -40,6 +40,12 @@ export class PokieDevServer implements PokieDevServerHandling {
     private readonly port: number;
     private readonly sessionRepository: SessionRepository;
     private readonly wallet: WalletPort;
+    // True only when the caller didn't pass a `wallet` option, i.e. this.wallet is our own default
+    // InMemoryWallet. In that case a fresh session's own getCreditsAmount() seeds its wallet balance,
+    // preserving pokie serve's original out-of-box behavior. A caller-supplied WalletPort (including
+    // an explicitly constructed `new InMemoryWallet(initialBalance)`) is never seeded this way — it
+    // stays the sole source of a new session's starting balance, see handleCreateSession.
+    private readonly usesDefaultWallet: boolean;
     private readonly liveSessions = new Map<string, GameSessionHandling>();
     private server: http.Server | undefined;
 
@@ -48,6 +54,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
         this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository();
+        this.usesDefaultWallet = options.wallet === undefined;
         this.wallet = options.wallet ?? new InMemoryWallet();
     }
 
@@ -150,10 +157,16 @@ export class PokieDevServer implements PokieDevServerHandling {
         const sessionId = crypto.randomUUID();
         this.liveSessions.set(sessionId, session);
 
-        // The wallet is the sole source of truth for a new session's starting balance (its
-        // InMemoryWallet.initialBalance, or whatever a custom WalletPort.getBalance() returns for an
-        // id it's never seen) — the session's own default credits are never written back into it.
-        session.setCreditsAmount(await this.wallet.getBalance(sessionId));
+        if (this.usesDefaultWallet) {
+            // No wallet was configured: seed the default InMemoryWallet from this session's own
+            // starting credits, same as pokie serve's original out-of-box behavior.
+            await this.wallet.setBalance(sessionId, session.getCreditsAmount());
+        } else {
+            // A wallet was explicitly configured: it's the sole source of truth for a new session's
+            // starting balance (its initialBalance, or whatever a custom WalletPort.getBalance()
+            // returns for an id it's never seen) — the session's own default credits never overwrite it.
+            session.setCreditsAmount(await this.wallet.getBalance(sessionId));
+        }
 
         const state: PokieSessionState = {context, bet: session.getBet(), win: session.getWinAmount()};
         const screen = this.captureScreen(session);

@@ -130,10 +130,10 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
 
     beforeEach(async () => {
         game = createFakeGame(manifest);
-        // The fake session's own internal default credits (1000) is irrelevant to what the server
-        // reports — see the "replaceable session storage" describe block below — so these tests
-        // configure a matching wallet balance explicitly rather than relying on that coincidence.
-        server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, wallet: new InMemoryWallet(1000)});
+        // No wallet configured: the default InMemoryWallet seeds a new session's balance from the
+        // fake session's own default credits (1000) — see the "replaceable session storage" describe
+        // block below for the explicit-wallet-vs-default-wallet distinction this relies on.
+        server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
         const address = await server.start();
         baseUrl = `http://${address.host}:${address.port}`;
     });
@@ -297,7 +297,7 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         expect(typeof body.error).toBe("string");
     });
 
-    it("defaults new sessions to a 0 balance when no wallet is configured, regardless of the session's own default credits", async () => {
+    it("seeds the default wallet from the session's own starting credits when no wallet is configured", async () => {
         const game = createFakeGame(manifest); // createFakeSession() defaults its own internal credits to 1000
         const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
         const address = await server.start();
@@ -305,7 +305,7 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
 
         const {body} = await postJson(`${baseUrl}/sessions`);
 
-        expect(body.credits).toBe(0);
+        expect(body.credits).toBe(1000);
 
         await server.stop();
     });

@@ -553,11 +553,21 @@ export interface WalletPort {
 }
 ```
 
-`InMemoryWallet` is the default (and only built-in) implementation. Its constructor's `initialBalance` (`0` by
-default) is the **single, unambiguous source** of a new session's starting balance: `PokieDevServer` reads it via
-`getBalance()` for a not-yet-seen `sessionId` and applies it onto the freshly created session — it never writes
-that session's own default credits back into the wallet. So a session's balance only ever becomes something other
-than `initialBalance` after a `setBalance()` call (i.e. after an actual spin).
+`InMemoryWallet` is the default (and only built-in) implementation, and `PokieDevServer` treats it differently
+depending on whether you configured one:
+
+- **No `wallet` option passed** — `PokieDevServer` uses its own default `InMemoryWallet`, and seeds each new
+  session's balance from that session's own `getCreditsAmount()` at creation time. This preserves `pokie serve`'s
+  original out-of-box behavior: the balance you see is whatever the loaded game package's own config already
+  defaults to.
+- **`wallet` passed explicitly** — that `WalletPort` (an `InMemoryWallet(initialBalance)` or your own
+  implementation) becomes the sole source of a new session's starting balance instead: `PokieDevServer` reads it
+  via `getBalance()` for the not-yet-seen `sessionId` and applies it onto the freshly created session, rather than
+  the other way around. A session's own default credits never get written back into an explicitly configured
+  wallet.
+
+Either way, a session's balance only changes from its starting value after an actual spin (`setBalance()` is
+always called after `play()`).
 
 Both are constructor options on `PokieDevServer`, additive to the existing `{host, port}` options:
 
