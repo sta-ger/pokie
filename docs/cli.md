@@ -45,6 +45,93 @@ From here, replace the generated `src/<GameName>Session.ts`/`src/<GameName>Game.
 paytable, and session wiring — see [Getting Started](getting-started.md) and
 [Game Session & Configuration](game-session.md).
 
+## `pokie build <config.json>`
+
+Generates a working [game package](game-packages.md) from a `GameBlueprint` JSON config — reels/rows, symbols,
+paylines, paytable, and reel strips/weights for a standard line-pay video slot. Unlike `pokie create`/`pokie init`,
+the output is plain JavaScript with no compile step: it's immediately loadable by every other command below.
+
+```
+pokie build crazy-fruits.blueprint.json
+cd crazy-fruits
+npm install
+```
+
+`pokie build <config.json>` validates the blueprint first (see below) and, if it has no errors, creates
+`./<manifest.id>` (or `--out <dir>`) and writes:
+
+- `package.json` — name/version from `manifest`, a `pokie` dependency, `start`/`server`/`client` scripts, and
+  `pokie.entry` pointing at `./src/generated/index.js`;
+- `src/generated/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig` with the
+  given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a `VideoSlotSession`, with
+  `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Re-run `pokie build` to regenerate this
+  file after changing the blueprint — it's generated output, not meant to be hand-edited.
+
+It fails if the output directory already exists — pick a different `--out` or remove the directory first.
+
+Options:
+
+- `--out <dir>` — write the package to `<dir>` instead of `./<manifest.id>`.
+
+### The `GameBlueprint` format
+
+```ts
+{
+    manifest: {id: string; name: string; version: string; description?: string; author?: string};
+    reels: number;
+    rows: number;
+    symbols: string[];
+    wilds?: string[];        // must be a subset of "symbols"
+    scatters?: string[];     // must be a subset of "symbols"
+    // Row index (0-based) per reel, one array per payline. Omit for the engine's default: one
+    // horizontal line per row (VideoSlotConfig's own default via HorizontalLines).
+    paylines?: number[][];
+    // symbolId -> matchCount -> bet multiplier, applied across every configured bet.
+    paytable: Record<string, Record<string, number>>;
+    // One strip (an ordered array of symbol ids) per reel. Takes precedence over symbolWeights.
+    reelStrips?: string[][];
+    // symbolId -> relative count, applied uniformly (independently shuffled) to every reel. Ignored
+    // when reelStrips is present. Omit both for the engine's built-in default weighting.
+    symbolWeights?: Record<string, number>;
+    availableBets?: number[];
+}
+```
+
+A minimal example (5x3, 3 symbols, no wilds/scatters, default paylines and reel weighting):
+
+```json
+{
+    "manifest": {"id": "crazy-fruits", "name": "Crazy Fruits", "version": "0.1.0"},
+    "reels": 5,
+    "rows": 3,
+    "symbols": ["A", "K", "Q"],
+    "paytable": {
+        "A": {"3": 5, "4": 10, "5": 20},
+        "K": {"3": 4, "4": 8, "5": 16},
+        "Q": {"3": 3, "4": 6, "5": 12}
+    }
+}
+```
+
+### Validation
+
+Every field above is checked before anything is generated: `manifest.id`/`name`/`version` must be non-empty
+strings; `reels`/`rows` must be positive integers; `symbols` must be a non-empty array of unique non-empty
+strings; `wilds`/`scatters`/`paytable` keys/`reelStrips` symbols/`symbolWeights` keys must all reference symbols
+actually listed in `symbols`; `paytable` match-counts must be integers between 2 and `reels`, with positive
+multipliers; `paylines` entries must have exactly `reels` row indexes, each within `[0, rows)`; `reelStrips` must
+have exactly one strip per reel; `availableBets` must be positive numbers.
+
+A paytable entry for a wild symbol's own id is flagged as a **warning**, not an error — the engine resolves an
+all-wild line to no winning symbol id, so such an entry is never actually looked up (a wild's win always comes
+from whatever symbol it substitutes for). Setting both `reelStrips` and `symbolWeights` is also a warning:
+`reelStrips` wins, `symbolWeights` is ignored.
+
+Failure modes:
+
+- Missing `<config.json>` or an unknown option throw a `Usage: pokie build ...` error.
+- A blueprint with any error-level issue prints every error and exits `1` without generating anything.
+
 ## `pokie init`
 
 Turns an existing npm project into a minimal POKIE-compatible game package.
@@ -953,6 +1040,7 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`, `pokie replay`,
-`pokie serve`, `pokie client`, and `pokie dev` are the first of a planned set of subcommands built on the same
-[game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`).
+`pokie build`, `pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`,
+`pokie replay`, `pokie serve`, `pokie client`, and `pokie dev` are the first of a planned set of subcommands built
+on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
+`PokieGameContractValidationRule`).
