@@ -694,17 +694,37 @@ implements it, returning `0` while an unfinished free-games round is in progress
 debits zero **at any wallet balance**, not just a low one. A session that doesn't implement this interface is
 simply assumed to always charge its full `getBet()`.
 
+#### Failure handling is best-effort compensation, not a transaction
+
 If anything fails after entering the mutating phase — a wallet call, persisting the new session state, or
-persisting the idempotency result — every wallet transaction already applied for that attempt is individually
-reversed by its own `transactionId`, any already-persisted session state is restored to what it was before the
-attempt, and the live session is evicted from `SpinCommandHandler`'s cache. That makes the whole attempt's durable
-side effects (wallet + `SessionRepository` + `idempotencyRepository`) all-or-nothing from the next command's point
-of view: a retry always finds either the complete result of a prior successful attempt, or a clean pre-attempt
-state to spin fresh against — never a state/result split where one was written and the other wasn't. This is a
-compensating-write guarantee, not a real cross-store database transaction — a backend that can offer one (e.g. a
-single `SessionRepository`/`IdempotencyRepository` pair backed by the same database, committing both writes
-together) can still do strictly better, but this is what the framework guarantees generically for the built-in,
-independently-pluggable repositories.
+persisting the idempotency result — `SpinCommandHandler` *attempts* to undo whatever it already did for that
+attempt: every wallet transaction already applied is individually reversed by its own `transactionId`, any
+already-persisted session state is restored to what it was before the attempt, and the live session is evicted
+from the handler's cache. When every one of those compensating steps succeeds, a retry finds either the complete
+result of a prior successful attempt or a clean pre-attempt state to spin fresh against.
+
+That's **best-effort, process-local compensation** — not a cross-store database transaction, and not a strict
+guarantee. Two concrete ways it can fall short:
+
+- **Process crash.** If the process dies (or is killed) between two of the awaited calls this handler makes — e.g.
+  right after debiting/crediting the wallet but before persisting the new session state, or right after
+  persisting the session state but before persisting the idempotency result — no catch block ever runs, so
+  nothing gets compensated. The wallet, `SessionRepository`, and `idempotencyRepository` can be left durably
+  diverged (e.g. a debited wallet whose session state was never updated) until something else reconciles them.
+  The built-in in-memory/file reference repositories lose everything on a crash anyway, so nothing survives to
+  diverge for them — but a real durable/persistent `WalletPort`, `SessionRepository`, or `IdempotencyRepository`
+  does not get this protection for free just by being used with `SpinCommandHandler`.
+- **Compensation failure.** The reversal/restore calls themselves can fail (e.g. the same outage that made the
+  original call fail is still ongoing). That failure is swallowed, so it doesn't replace or hide the original
+  error `handle()` rejects with — but it also means the compensation silently didn't happen: the wallet and/or
+  `SessionRepository` can be left reflecting a partially-applied attempt.
+
+A production deployment that needs real durable atomicity across the wallet, `SessionRepository`, and
+`idempotencyRepository` — one that survives a process crash or a failed compensating write — is responsible for
+providing it itself, typically by implementing `WalletPort`/`SessionRepository`/`IdempotencyRepository` (or a
+subset of them sharing state) over one transactional store and committing the relevant writes together at that
+layer. `SpinCommandHandler`'s own compensation is a correctness improvement over doing nothing on failure; it is
+not a substitute for that.
 
 #### Idempotency and concurrency
 

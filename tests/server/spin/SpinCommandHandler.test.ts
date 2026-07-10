@@ -117,15 +117,17 @@ async function createSpinnableSession(
 type TransactionCall = {sessionId: string; transactionId: string; amount: number};
 
 // A TransactionalWalletPort that records every debit/credit/reverse call (for asserting they
-// happened as separate, correctly-tagged operations) and can be told to fail the next debit or
-// credit exactly once (for the wallet-failure/eviction tests) — backed by a real InMemoryWallet so
-// balances still behave correctly whenever a call isn't forced to fail.
+// happened as separate, correctly-tagged operations), can be told to fail the next debit or credit
+// exactly once (for the wallet-failure/eviction tests), and can be told to fail every reverse call
+// (for the best-effort-compensation tests) — backed by a real InMemoryWallet so balances still
+// behave correctly whenever a call isn't forced to fail.
 class RecordingTransactionalWallet implements TransactionalWalletPort {
     public readonly debitCalls: TransactionCall[] = [];
     public readonly creditCalls: TransactionCall[] = [];
     public readonly reverseCalls: {sessionId: string; transactionId: string}[] = [];
     public failNextDebit = false;
     public failNextCredit = false;
+    public failReverse = false;
     private readonly inner = new InMemoryWallet();
 
     public getBalance(sessionId: string): Promise<number> {
@@ -156,6 +158,9 @@ class RecordingTransactionalWallet implements TransactionalWalletPort {
 
     public reverse(sessionId: string, transactionId: string): Promise<number> {
         this.reverseCalls.push({sessionId, transactionId});
+        if (this.failReverse) {
+            return Promise.reject(new Error("wallet reverse failed"));
+        }
         return this.inner.reverse(sessionId, transactionId);
     }
 }
@@ -461,5 +466,77 @@ describe("SpinCommandHandler", () => {
         expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
         expect(stats.createSessionCalls).toBe(2); // evicted after the failed attempt, reconstructed fresh
         await expect(wallet.getBalance("session-1")).resolves.toBe(995);
+    });
+
+    it("still surfaces the original failure when the wallet's own reverse() also fails (compensation is best-effort)", async () => {
+        const game = createFakeGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        wallet.failReverse = true;
+        let failNextSave = true;
+        const flakyRepository: SessionRepository = {
+            load: (sessionId) => sessionRepository.load(sessionId),
+            save: (sessionId, newState) => {
+                if (failNextSave) {
+                    failNextSave = false;
+                    return Promise.reject(new Error("disk full"));
+                }
+                return sessionRepository.save(sessionId, newState);
+            },
+        };
+        const handler = new SpinCommandHandler(game, flakyRepository, wallet);
+        await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+
+        // The ORIGINAL failure (persisting the new state) is what the caller sees — not whatever
+        // wallet.reverse() itself failed with — even though compensation was attempted and failed.
+        await expect(handler.handle("session-1")).rejects.toThrow("disk full");
+
+        expect(wallet.reverseCalls.length).toBeGreaterThan(0); // compensation WAS attempted...
+        // ...but since every reverse() call failed, the debit that already applied is never undone:
+        // the wallet is left at 995, not restored to the pre-attempt 1000. This is the concrete,
+        // observable cost of "best-effort" compensation, unlike the other reverse-on-failure tests
+        // in this file where reverse() succeeds and the balance is fully restored.
+        await expect(wallet.getBalance("session-1")).resolves.toBe(995);
+    });
+
+    it("still surfaces the original failure when the compensating session-state restore also fails (compensation is best-effort)", async () => {
+        const {game} = createInstrumentedFakeGame();
+        const realSessionRepository = new InMemorySessionRepository();
+        const wallet = new RecordingTransactionalWallet();
+        let saveCount = 0;
+        const flakyRepository: SessionRepository = {
+            load: (sessionId) => realSessionRepository.load(sessionId),
+            save: (sessionId, newState) => {
+                saveCount++;
+                // 1st save() is the real spin write (must succeed for this scenario); 2nd is the
+                // compensating restore triggered by the idempotency failure below (forced to fail).
+                if (saveCount === 2) {
+                    return Promise.reject(new Error("disk full during restore"));
+                }
+                return realSessionRepository.save(sessionId, newState);
+            },
+        };
+        let failNextIdempotencySave = true;
+        const flakyIdempotencyRepository: IdempotencyRepository<SpinCommandResult> = {
+            load: () => Promise.resolve(undefined),
+            save: () => {
+                if (failNextIdempotencySave) {
+                    failNextIdempotencySave = false;
+                    return Promise.reject(new Error("idempotency store unavailable"));
+                }
+                return Promise.resolve();
+            },
+        };
+        const handler = new SpinCommandHandler(game, flakyRepository, wallet, flakyIdempotencyRepository);
+        await createSpinnableSessionOn(realSessionRepository, wallet, "session-1", 1000);
+
+        // The ORIGINAL failure (the idempotency write) is what the caller sees, even though the
+        // compensating restore of session state also failed.
+        await expect(handler.handle("session-1", "request-1")).rejects.toThrow("idempotency store unavailable");
+
+        // Best-effort, not a guarantee: since the restore itself failed, SessionRepository is left
+        // holding the NEW (post-spin) state — recognizable by its screen — instead of being rolled
+        // back to the pre-spin one with no screen at all.
+        await expect(realSessionRepository.load("session-1")).resolves.toMatchObject({screen: [["round-1"]]});
     });
 });

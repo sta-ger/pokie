@@ -36,7 +36,8 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 // session actually produced beyond the stake we charged is exactly what gets credited.
 //
 // Every wallet transaction for an attempt gets its own id, `{roundId}:{attemptId}:debit`/`:credit`
-// — `roundId` is the requestId (or a fresh id when none was given), for traceability back to the
+// — `roundId` is the requestId (note: NOT stable across retries of the same requestId, only within
+// one attempt — see TransactionalWalletPort's own doc comment), for traceability back to the
 // logical command; `attemptId` is freshly minted every time this method actually runs, so a retried
 // command (same requestId) that follows a compensated/reversed prior attempt always gets brand-new
 // transaction ids rather than reusing the reversed ones. (TransactionalWalletAdapter/InMemoryWallet
@@ -44,16 +45,31 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 // backstop rather than something this handler leans on.)
 //
 // If anything fails after entering the mutating phase — a wallet call, persisting the new session
-// state, or persisting the idempotency result — every wallet transaction already applied for this
-// attempt is individually reversed by its own transactionId, any already-persisted session state is
-// restored to what it was before this attempt, and the live session is evicted from the cache. That
-// makes the whole attempt's durable side effects (wallet + SessionRepository + idempotencyRepository)
-// all-or-nothing from the next command's point of view: a retry always sees either the complete
-// result of a prior successful attempt, or a clean pre-attempt state to spin fresh against — never a
-// state/result split where one was written and the other wasn't. A backend that can offer real
-// cross-store transactions (e.g. one SessionRepository/IdempotencyRepository pair backed by the same
-// database) can still do better than this compensating-write approach, but this is what the
-// framework guarantees generically.
+// state, or persisting the idempotency result — this handler *attempts* to undo whatever it already
+// did for this attempt: every wallet transaction already applied is individually reversed by its own
+// transactionId, any already-persisted session state is restored to what it was before this attempt,
+// and the live session is evicted from the cache (see reverseApplied()/restoreSessionState()). This
+// is a **best-effort, process-local compensation**, not a strict cross-store transaction guarantee —
+// it only helps the retry that follows a failure this same process caught and ran a catch block for:
+//   - **Process crash risk**: if the process dies (or is killed) between two of these awaited calls
+//     — e.g. right after the wallet debit/credit but before persisting the new session state, or
+//     right after persisting the session state but before persisting the idempotency result — no
+//     catch block ever runs, so nothing gets compensated. Wallet, SessionRepository, and
+//     idempotencyRepository can be left durably diverged (e.g. a debited wallet whose session state
+//     was never updated) until something else reconciles them; the in-memory default repositories
+//     lose everything on a crash anyway (so nothing survives to diverge), but a durable/persistent
+//     SessionRepository, wallet, or IdempotencyRepository does not get this protection for free.
+//   - **Compensation-failure risk**: reverseApplied()/restoreSessionState() themselves can fail
+//     (e.g. the same outage that made the original call fail is still ongoing) — that failure is
+//     swallowed so it doesn't replace or hide the original error the caller of handle() sees, but it
+//     also means the compensation silently did not happen: the wallet and/or SessionRepository can be
+//     left reflecting a partially-applied attempt.
+// A production deployment that needs real durable atomicity across the wallet, SessionRepository,
+// and idempotencyRepository — surviving a process crash or a failed compensating write — is
+// responsible for providing it itself, typically by implementing WalletPort/SessionRepository/
+// IdempotencyRepository (or a subset sharing state) over one transactional store and committing the
+// relevant writes together at that layer; this handler's own compensation is a correctness
+// improvement over doing nothing, not a substitute for that.
 export class SpinCommandHandler implements SpinCommandHandling {
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
@@ -180,14 +196,17 @@ export class SpinCommandHandler implements SpinCommandHandling {
         }
     }
 
-    // Best-effort compensating write, undoing this attempt's own sessionRepository.save() when a
-    // later step (persisting the idempotency result) fails — see the class doc comment.
+    // Best-effort, process-local compensating write, undoing this attempt's own
+    // sessionRepository.save() when a later step (persisting the idempotency result) fails — see the
+    // class doc comment for the full risk discussion (process crash, compensation failure).
     private async restoreSessionState(sessionId: string, state: PokieSessionState): Promise<void> {
         try {
             await this.sessionRepository.save(sessionId, state);
         } catch {
             // The error that triggered this restore is what the caller of handle() sees; a failure
-            // to restore shouldn't replace or hide it.
+            // to restore shouldn't replace or hide it. SessionRepository is left holding the new
+            // (post-spin) state instead of being rolled back — a real, observable divergence this
+            // best-effort compensation could not prevent in that case.
         }
     }
 
@@ -198,7 +217,9 @@ export class SpinCommandHandler implements SpinCommandHandling {
             } catch {
                 // Best-effort compensation: the error that triggered this reversal is what the
                 // caller of handle() sees (rethrown by playAndSettle's caller); a failure to
-                // compensate shouldn't replace or hide it.
+                // compensate shouldn't replace or hide it. The wallet is left reflecting this
+                // attempt's partial application instead of being fully reversed — see the class doc
+                // comment.
             }
         }
     }
