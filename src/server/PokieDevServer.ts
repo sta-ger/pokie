@@ -14,6 +14,8 @@ import type {SessionRepository} from "./session/SessionRepository.js";
 import {SpinCommandHandler} from "./spin/SpinCommandHandler.js";
 import type {SpinCommandHandling} from "./spin/SpinCommandHandling.js";
 import {InMemoryWallet} from "./wallet/InMemoryWallet.js";
+import {isTransactionalWalletPort} from "./wallet/isTransactionalWalletPort.js";
+import {TransactionalWalletAdapter} from "./wallet/TransactionalWalletAdapter.js";
 import type {WalletPort} from "./wallet/WalletPort.js";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -56,10 +58,18 @@ export class PokieDevServer implements PokieDevServerHandling {
         this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository();
         this.usesDefaultWallet = options.wallet === undefined;
         this.wallet = options.wallet ?? new InMemoryWallet();
+        // SpinCommandHandler always settles a spin through a TransactionalWalletPort. this.wallet
+        // itself stays a plain WalletPort (the type PokieDevServerOptions has always exposed, so a
+        // caller's existing custom implementation keeps compiling and working unchanged) — if it
+        // doesn't already implement the transactional API natively (InMemoryWallet does), it's
+        // wrapped in an adapter that gives it one via an in-memory transaction ledger.
+        const transactionalWallet = isTransactionalWalletPort(this.wallet)
+            ? this.wallet
+            : new TransactionalWalletAdapter(this.wallet);
         this.spinCommandHandler = new SpinCommandHandler(
             this.game,
             this.sessionRepository,
-            this.wallet,
+            transactionalWallet,
             options.idempotencyRepository ?? new InMemoryIdempotencyRepository(),
         );
     }

@@ -1,4 +1,5 @@
-import {WalletInsufficientFundsError} from "./WalletInsufficientFundsError.js";
+import {TransactionalWalletAdapter} from "./TransactionalWalletAdapter.js";
+import type {TransactionalWalletPort} from "./TransactionalWalletPort.js";
 import type {WalletPort} from "./WalletPort.js";
 
 // Default WalletPort: ephemeral by design, same as the dev server's original standalone
@@ -15,12 +16,19 @@ import type {WalletPort} from "./WalletPort.js";
 //   opposite at session-creation time: it calls setBalance(sessionId, session.getCreditsAmount()),
 //   seeding this wallet from the session's own starting credits, to preserve pokie serve's original
 //   out-of-box behavior. See PokieDevServer.handleCreateSession for the actual branching.
-export class InMemoryWallet implements WalletPort {
+//
+// Also implements TransactionalWalletPort — not by tracking a second, separate ledger, but by
+// composing a TransactionalWalletAdapter over itself (the same adapter PokieDevServer reaches for
+// to give a caller's own plain WalletPort transactional behavior). It's the same shim either way;
+// InMemoryWallet just doesn't make a caller wrap it manually.
+export class InMemoryWallet implements WalletPort, TransactionalWalletPort {
     private readonly balances = new Map<string, number>();
     private readonly initialBalance: number;
+    private readonly transactional: TransactionalWalletPort;
 
     constructor(initialBalance = 0) {
         this.initialBalance = initialBalance;
+        this.transactional = new TransactionalWalletAdapter(this);
     }
 
     public getBalance(sessionId: string): Promise<number> {
@@ -32,23 +40,15 @@ export class InMemoryWallet implements WalletPort {
         return Promise.resolve();
     }
 
-    public async debit(sessionId: string, amount: number): Promise<number> {
-        const balance = await this.getBalance(sessionId);
-        if (amount > balance) {
-            throw new WalletInsufficientFundsError(sessionId, amount, balance);
-        }
-        const newBalance = balance - amount;
-        await this.setBalance(sessionId, newBalance);
-        return newBalance;
+    public debit(sessionId: string, transactionId: string, amount: number): Promise<number> {
+        return this.transactional.debit(sessionId, transactionId, amount);
     }
 
-    public async credit(sessionId: string, amount: number): Promise<number> {
-        const newBalance = (await this.getBalance(sessionId)) + amount;
-        await this.setBalance(sessionId, newBalance);
-        return newBalance;
+    public credit(sessionId: string, transactionId: string, amount: number): Promise<number> {
+        return this.transactional.credit(sessionId, transactionId, amount);
     }
 
-    public rollback(sessionId: string, amount: number): Promise<number> {
-        return this.credit(sessionId, amount);
+    public reverse(sessionId: string, transactionId: string): Promise<number> {
+        return this.transactional.reverse(sessionId, transactionId);
     }
 }

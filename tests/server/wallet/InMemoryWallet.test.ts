@@ -34,9 +34,8 @@ describe("InMemoryWallet", () => {
         const wallet = new InMemoryWallet();
         await wallet.setBalance("session-1", 100);
 
-        await expect(wallet.debit("session-1", 150)).rejects.toThrow(WalletInsufficientFundsError);
         try {
-            await wallet.debit("session-1", 150);
+            await wallet.debit("session-1", "txn-1", 150);
             throw new Error("expected debit to throw");
         } catch (error) {
             expect(error).toBeInstanceOf(WalletInsufficientFundsError);
@@ -50,6 +49,6 @@ describe("InMemoryWallet", () => {
     it("defaults an unknown sessionId's balance to the configured initial balance before a debit", async () => {
         const wallet = new InMemoryWallet(1000);
 
-        await expect(wallet.debit("does-not-exist", 400)).resolves.toBe(600);
+        await expect(wallet.debit("does-not-exist", "txn-1", 400)).resolves.toBe(600);
     });
 });

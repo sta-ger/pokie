@@ -10,6 +10,7 @@ import {
     PokieGame,
     PokieGameManifest,
     VideoSlotWithFreeGamesSession,
+    WalletPort,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -368,6 +369,49 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         const {body} = await postJson(`${baseUrl}/sessions`);
 
         expect(body.credits).toBe(250);
+
+        await server.stop();
+    });
+
+    it("adapts a legacy WalletPort (getBalance/setBalance only) into a working transactional spin flow", async () => {
+        // Predates debit/credit/reverse entirely — stands in for a consumer's own pre-existing
+        // custom WalletPort. PokieDevServer must wrap it in a TransactionalWalletAdapter itself;
+        // this test only ever calls the original two-method WalletPort contract.
+        class LegacyMapWallet implements WalletPort {
+            private readonly balances = new Map<string, number>();
+            private readonly initialBalance: number;
+
+            constructor(initialBalance: number) {
+                this.initialBalance = initialBalance;
+            }
+
+            public getBalance(sessionId: string): Promise<number> {
+                return Promise.resolve(this.balances.get(sessionId) ?? this.initialBalance);
+            }
+
+            public setBalance(sessionId: string, balance: number): Promise<void> {
+                this.balances.set(sessionId, balance);
+                return Promise.resolve();
+            }
+        }
+
+        const game = createFakeGame(manifest); // createFakeSession(): bet 5, round 1 win 0, round 2 win 15
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, wallet: new LegacyMapWallet(1000)});
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+        expect(created.body.credits).toBe(1000);
+
+        const first = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+        expect(first.status).toBe(200);
+        expect(first.body.credits).toBe(995); // debited through the adapter over the legacy wallet
+
+        const second = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+        expect(second.status).toBe(200);
+        expect(second.body.win).toBe(15);
+        expect(second.body.credits).toBe(1005); // credited through the adapter over the legacy wallet
 
         await server.stop();
     });
