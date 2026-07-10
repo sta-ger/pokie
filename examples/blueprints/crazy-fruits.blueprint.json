@@ -1,0 +1,23 @@
+{
+    "manifest": {
+        "id": "crazy-fruits",
+        "name": "Crazy Fruits",
+        "version": "0.1.0",
+        "description": "A pokie build example: 5x3, wilds, scatters, weighted reels."
+    },
+    "reels": 5,
+    "rows": 3,
+    "symbols": ["A", "K", "Q", "J", "10", "W", "S"],
+    "wilds": ["W"],
+    "scatters": ["S"],
+    "paytable": {
+        "A": {"3": 5, "4": 10, "5": 20},
+        "K": {"3": 4, "4": 8, "5": 16},
+        "Q": {"3": 3, "4": 6, "5": 12},
+        "J": {"3": 2, "4": 4, "5": 8},
+        "10": {"3": 1, "4": 2, "5": 4},
+        "S": {"2": 2, "3": 5, "4": 20, "5": 100}
+    },
+    "symbolWeights": {"A": 8, "K": 8, "Q": 8, "J": 8, "10": 8, "W": 3, "S": 2},
+    "availableBets": [1, 2, 5, 10]
+}

@@ -10,39 +10,22 @@ import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
-// End-to-end happy path for "pokie build": a hand-authored GameBlueprint JSON, generated into a
-// package with BuildCommand, then run through the same commands' worth of the rest of the CLI
-// foundation as Workflow.integration.test.ts covers for "pokie create" output — the point of "pokie
-// build" is that its output needs no separate compile step to already satisfy all of them.
+// End-to-end happy path for "pokie build": the actual example blueprint shipped in
+// examples/blueprints/ (see also examples/blueprints/README.md), generated into a package with
+// BuildCommand, then run through the same commands' worth of the rest of the CLI foundation as
+// Workflow.integration.test.ts covers for "pokie create" output — the point of "pokie build" is
+// that its output needs no separate compile step to already satisfy all of them. Exercising the
+// shipped example here (rather than an inline duplicate) keeps the example and the docs/cli.md
+// workflow section it demonstrates from silently drifting out of sync with what actually works.
 describe("CLI workflow (integration): pokie build output passes validate/sim/report/replay/serve/dev", () => {
-    const blueprint = {
-        manifest: {id: "build-workflow-game", name: "Build Workflow Game", version: "1.0.0"},
-        reels: 5,
-        rows: 3,
-        symbols: ["A", "K", "Q", "J", "10", "W", "S"],
-        wilds: ["W"],
-        scatters: ["S"],
-        paytable: {
-            A: {3: 5, 4: 10, 5: 20},
-            K: {3: 4, 4: 8, 5: 16},
-            Q: {3: 3, 4: 6, 5: 12},
-            J: {3: 2, 4: 4, 5: 8},
-            "10": {3: 1, 4: 2, 5: 4},
-            S: {2: 2, 3: 5, 4: 20, 5: 100},
-        },
-        symbolWeights: {A: 8, K: 8, Q: 8, J: 8, "10": 8, W: 3, S: 2},
-        availableBets: [1, 2, 5, 10],
-    };
+    const blueprintPath = path.join(__dirname, "..", "..", "examples", "blueprints", "crazy-fruits.blueprint.json");
 
     let workDir: string;
     let outDir: string;
-    let blueprintPath: string;
 
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-workflow-test-"));
         outDir = path.join(workDir, "built-game");
-        blueprintPath = path.join(workDir, "blueprint.json");
-        fs.writeFileSync(blueprintPath, JSON.stringify(blueprint, null, 4));
         jest.spyOn(console, "log").mockImplementation(() => undefined);
     });
 
@@ -61,19 +44,19 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(validateExitCode).toBe(0);
 
         const simFile = path.join(workDir, "sim.json");
-        await new SimCommand().run([outDir, "--rounds", "300", "--seed", "build-workflow", "--out", simFile]);
+        await new SimCommand().run([outDir, "--rounds", "300", "--seed", "demo", "--out", simFile]);
         const report = JSON.parse(fs.readFileSync(simFile, "utf-8")) as SimulationReport;
-        expect(report.game).toEqual({id: "build-workflow-game", name: "Build Workflow Game", version: "1.0.0"});
+        expect(report.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
         expect(report.rounds).toBe(300);
 
         const reportFile = path.join(workDir, "sim.md");
         await new ReportCommand().run([simFile, "--format", "markdown", "--out", reportFile]);
-        expect(fs.readFileSync(reportFile, "utf-8")).toContain("# Simulation Report: Build Workflow Game");
+        expect(fs.readFileSync(reportFile, "utf-8")).toContain("# Simulation Report: Crazy Fruits");
 
         const replayFile = path.join(workDir, "replay.json");
-        await new ReplayCommand().run([outDir, "--seed", "build-workflow", "--round", "5", "--out", replayFile]);
+        await new ReplayCommand().run([outDir, "--seed", "demo", "--round", "5", "--out", replayFile]);
         const replay = JSON.parse(fs.readFileSync(replayFile, "utf-8")) as ReplayDescriptor;
-        expect(replay.game).toEqual({id: "build-workflow-game", name: "Build Workflow Game", version: "1.0.0"});
+        expect(replay.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
         expect(replay.round).toBe(5);
 
         let server: PokieDevServerHandling | undefined;
@@ -88,9 +71,10 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
 
             const gameResponse = await fetch(`http://127.0.0.1:${port}/game`);
             expect(await gameResponse.json()).toEqual({
-                id: "build-workflow-game",
-                name: "Build Workflow Game",
-                version: "1.0.0",
+                id: "crazy-fruits",
+                name: "Crazy Fruits",
+                version: "0.1.0",
+                description: "A pokie build example: 5x3, wilds, scatters, weighted reels.",
             });
 
             const sessionResponse = await fetch(`http://127.0.0.1:${port}/sessions`, {method: "POST"});

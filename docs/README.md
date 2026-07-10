@@ -37,7 +37,9 @@ an account, currency, or compliance system is left to the integrating backend.
     hit frequency, and volatility.
 12. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
     `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
-13. **[CLI](cli.md)** — `pokie create <name>` (new directory) and `pokie init` (existing project), which scaffold
+13. **[CLI](cli.md)** — `pokie build <config.json>`, which generates a working game package straight from a JSON
+    `GameBlueprint` (reels, symbols, paylines, paytable, reel strips/weights), no compile step required; `pokie
+    create <name>` (new directory) and `pokie init` (existing project), which scaffold
     a minimal game package; `pokie sim <packageRoot>`, which runs a simulation against one and reports
     RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without
     playing it; `pokie report <simulationReportJson>`, which renders a `pokie sim --out` report as Markdown or
@@ -61,6 +63,7 @@ an account, currency, or compliance system is left to the integrating backend.
 | Sending round results to a client | `net/` serializers, wired into `pokie serve` via `PokieGame.getSessionSerializer()` |
 | A sequence of stages within one round (cascades, multi-pick bonuses, ...) | `MultiStageRoundSessionSerializer`, `CascadeSessionSerializer` |
 | Loading an external game package by convention | `PokieGame`, `loadPokieGame` |
+| Generating a game package straight from a JSON blueprint (no compile step) | `pokie build <config.json>` CLI |
 | Scaffolding a new game package | `pokie create <name>` / `pokie init` CLI |
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |
 | Rendering a sim report as Markdown/HTML | `pokie report <simulationReportJson>` |

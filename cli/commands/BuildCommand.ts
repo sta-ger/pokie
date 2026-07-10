@@ -14,6 +14,8 @@ type BuildOptions = {
 };
 
 const USAGE = "Usage: pokie build <config.json> [--out <dir>]";
+const BLUEPRINT_HINT =
+    "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.";
 
 export class BuildCommand implements CliCommandHandling {
     private readonly loadBlueprint: (filePath: string) => unknown;
@@ -57,6 +59,7 @@ export class BuildCommand implements CliCommandHandling {
                 for (const issue of errors) {
                     console.error(`  - ${issue.code}: ${issue.message}`);
                 }
+                console.error(`\n${BLUEPRINT_HINT}`);
                 return Promise.resolve(1);
             }
 
@@ -66,8 +69,13 @@ export class BuildCommand implements CliCommandHandling {
                 console.log(`  created  ${file}`);
             }
             console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") built in "${result.projectRoot}".`);
-            console.log(`Next: cd ${result.projectRoot} && npm install`);
-            console.log(`Then: pokie validate ${result.projectRoot}`);
+            console.log(`\nNext:`);
+            console.log(`  cd ${result.projectRoot} && npm install`);
+            console.log(`  pokie validate ${result.projectRoot}`);
+            console.log(`  pokie sim ${result.projectRoot} --rounds 10000 --seed demo --out sim.json`);
+            console.log(`  pokie report sim.json`);
+            console.log(`  pokie replay ${result.projectRoot} --seed demo --round 1`);
+            console.log(`  pokie dev ${result.projectRoot}`);
 
             return Promise.resolve(0);
         } catch (error) {
@@ -78,7 +86,7 @@ export class BuildCommand implements CliCommandHandling {
     private parseArgs(args: string[]): BuildOptions {
         const [configPath, ...rest] = args;
         if (!configPath) {
-            throw new Error(USAGE);
+            throw new Error(`${USAGE}\n${BLUEPRINT_HINT}`);
         }
 
         let outDir: string | undefined;

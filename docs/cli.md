@@ -52,7 +52,7 @@ paylines, paytable, and reel strips/weights for a standard line-pay video slot. 
 the output is plain JavaScript with no compile step: it's immediately loadable by every other command below.
 
 ```
-pokie build crazy-fruits.blueprint.json
+pokie build examples/blueprints/crazy-fruits.blueprint.json
 cd crazy-fruits
 npm install
 ```
@@ -66,8 +66,6 @@ npm install
   given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a `VideoSlotSession`, with
   `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Re-run `pokie build` to regenerate this
   file after changing the blueprint — it's generated output, not meant to be hand-edited.
-
-It fails if the output directory already exists — pick a different `--out` or remove the directory first.
 
 Options:
 
@@ -113,6 +111,12 @@ A minimal example (5x3, 3 symbols, no wilds/scatters, default paylines and reel 
 }
 ```
 
+A complete example using every optional field (wilds, scatters, `symbolWeights`, `availableBets`) lives at
+[`examples/blueprints/crazy-fruits.blueprint.json`](../examples/blueprints/crazy-fruits.blueprint.json) in this
+repository — see [`examples/blueprints/README.md`](../examples/blueprints/README.md) for how to try it directly
+from a checkout. It's also what the workflow below and `pokie build`'s own smoke test
+(`tests/cli/BuildWorkflow.integration.test.ts`) both run, so it's guaranteed to actually work, not just parse.
+
 ### Validation
 
 Every field above is checked before anything is generated: `manifest.id`/`name`/`version` must be non-empty
@@ -127,10 +131,48 @@ all-wild line to no winning symbol id, so such an entry is never actually looked
 from whatever symbol it substitutes for). Setting both `reelStrips` and `symbolWeights` is also a warning:
 `reelStrips` wins, `symbolWeights` is ignored.
 
+Every error is printed with its code and message, followed by a one-line pointer back to this section
+(`<config.json> is a GameBlueprint ... — see docs/cli.md#pokie-build-configjson for the format.`), so a failed
+`pokie build` always tells you where to look next, not just what's wrong.
+
 Failure modes:
 
-- Missing `<config.json>` or an unknown option throw a `Usage: pokie build ...` error.
-- A blueprint with any error-level issue prints every error and exits `1` without generating anything.
+- Missing `<config.json>` or an unknown option throw a `Usage: pokie build <config.json> [--out <dir>]` error
+  (plus the same doc pointer as above).
+- A blueprint with any error-level issue prints every error plus the doc pointer and exits `1` without generating
+  anything.
+- The output directory (`./<manifest.id>` or `--out <dir>`) already existing throws — pick a different `--out` or
+  remove the directory first.
+
+### Workflow: `build` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
+
+The minimal loop from a blueprint to a running local server, chaining every command this file documents. Unlike
+the [`create`/`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
+output is loadable immediately after `npm install`:
+
+```
+pokie build examples/blueprints/crazy-fruits.blueprint.json
+cd crazy-fruits && npm install && cd ..
+
+pokie validate ./crazy-fruits
+
+pokie sim ./crazy-fruits --rounds 100000 --seed demo --out sim.json
+pokie report sim.json
+
+pokie replay ./crazy-fruits --seed demo --round 42
+
+pokie dev ./crazy-fruits
+```
+
+`pokie build`'s own success output prints exactly this sequence (with real paths substituted in) as its "Next:"
+lines, so you don't have to come back to this doc to remember the order.
+
+Each step is the same command documented elsewhere in this file, with the same options/failure modes —
+[`validate`](#pokie-validate-packageroot), [`sim`](#pokie-sim-packageroot)/[`report`](#pokie-report-simulationreportjson),
+[`replay`](#pokie-replay-packageroot), and [`serve`](#pokie-serve-packageroot-experimental)/
+[`dev`](#pokie-dev-packageroot-experimental) work identically whether the package came from `pokie build`,
+`pokie create`, or `pokie init` — none of them care how a package was produced, only that it satisfies the
+[game package](game-packages.md) contract.
 
 ## `pokie init`
 

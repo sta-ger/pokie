@@ -53,6 +53,7 @@ describe("BuildCommand", () => {
         const command = new BuildCommand("1.3.0");
 
         await expect(command.run([])).rejects.toThrow(/Usage: pokie build <config.json>/);
+        await expect(command.run([])).rejects.toThrow(/GameBlueprint/);
     });
 
     it("throws a descriptive error for an unknown option", async () => {
@@ -88,6 +89,7 @@ describe("BuildCommand", () => {
         expect(exitCode).toBe(1);
         expect(generator.calledWith).toBeUndefined();
         expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("docs/cli.md#pokie-build-configjson"));
     });
 
     it("still generates when validation reports only warnings", async () => {
@@ -124,5 +126,23 @@ describe("BuildCommand", () => {
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("package.json"));
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("src/generated/index.js"));
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('built in "/tmp/crazy-fruits"'));
+    });
+
+    it("prints the full build -> validate -> sim -> report -> replay -> dev workflow as next steps", async () => {
+        const command = new BuildCommand(
+            "1.3.0",
+            () => rawBlueprint,
+            createStubValidator([]),
+            createStubGenerator(generatedResult),
+        );
+
+        await command.run(["config.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("pokie validate /tmp/crazy-fruits");
+        expect(printed).toContain("pokie sim /tmp/crazy-fruits");
+        expect(printed).toContain("pokie report sim.json");
+        expect(printed).toContain("pokie replay /tmp/crazy-fruits");
+        expect(printed).toContain("pokie dev /tmp/crazy-fruits");
     });
 });

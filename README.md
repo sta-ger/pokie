@@ -35,9 +35,12 @@ POKIE goes well beyond classic paylines:
 - **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
   `loadPokieGame` loader, so an external game can be loaded by a CLI, simulator, validator, or server without
   knowing about it in advance.
-- **[CLI](docs/cli.md)** — `npx pokie create <name>` scaffolds a brand-new game package, `npx pokie init`
-  scaffolds an existing npm project in place, both minimal, buildable, and loadable; `npx pokie sim <packageRoot>`
-  runs a simulation against a package and reports RTP/hit-frequency/max-win; `npx pokie validate <packageRoot>`
+- **[CLI](docs/cli.md)** — `npx pokie build <config.json>` generates a working game package straight from a JSON
+  `GameBlueprint` (reels, symbols, paylines, paytable, reel strips/weights), no compile step required (see
+  [`examples/blueprints`](examples/blueprints)); `npx pokie create <name>` scaffolds a brand-new game package,
+  `npx pokie init` scaffolds an existing npm project in place, both minimal, buildable, and loadable; `npx pokie
+  sim <packageRoot>` runs a simulation against a package and reports RTP/hit-frequency/max-win; `npx pokie
+  validate <packageRoot>`
   checks a package's contract without playing it; `npx pokie report <simulationReportJson>` renders a `pokie sim`
   report (including reproducibility info, warnings, and recommendations) as Markdown/HTML; `npx pokie diff
   <leftReportJson> <rightReportJson>` compares two `pokie sim` reports
