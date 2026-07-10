@@ -4,7 +4,7 @@ import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import {InMemoryIdempotencyRepository} from "../idempotency/InMemoryIdempotencyRepository.js";
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
-import {capturePokieSessionState} from "../session/capturePokieSessionState.js";
+import {captureRoundPokieSessionState} from "../session/captureRoundPokieSessionState.js";
 import {determineStakeAmount} from "../session/determineStakeAmount.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "../session/resolveGameSessionSerializer.js";
@@ -184,7 +184,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
                     : await this.wallet.debit(sessionId, creditTransactionId, -creditAmount);
             appliedTransactionIds.push(creditTransactionId);
 
-            const newState = capturePokieSessionState(state.context, session, this.sessionSerializer);
+            const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer);
             await this.sessionRepository.save(sessionId, newState);
             sessionStateSaved = true;
 

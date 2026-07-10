@@ -8,7 +8,7 @@ import type {PokieDevServerHandling} from "./PokieDevServerHandling.js";
 import type {PokieDevServerOptions} from "./PokieDevServerOptions.js";
 import type {PokieDevSessionResponse} from "./PokieDevSessionResponse.js";
 import {InMemoryIdempotencyRepository} from "./idempotency/InMemoryIdempotencyRepository.js";
-import {capturePokieSessionState} from "./session/capturePokieSessionState.js";
+import {captureInitialPokieSessionState} from "./session/captureInitialPokieSessionState.js";
 import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js";
 import type {PokieSessionState} from "./session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "./session/resolveGameSessionSerializer.js";
@@ -34,7 +34,12 @@ const DEFAULT_PORT = 3000;
 //
 // Response payload: if the loaded PokieGame implements the optional getSessionSerializer(), its
 // net/ serializer's rich, game-specific output is used instead of this server's own narrow default
-// DTO — see PokieDevSessionResponse, capturePokieSessionState.ts, and buildSessionResponse().
+// DTO — see PokieDevSessionResponse and buildSessionResponse(). That rich payload is split in two:
+// POST /sessions returns the serializer's getInitialData() output (captured once, at creation — see
+// captureInitialPokieSessionState.ts), POST /sessions/:id/spin returns getRoundData()'s output for
+// that round (captured after every play() — see captureRoundPokieSessionState.ts), and
+// GET /sessions/:id returns the two merged (see mergeSerializedPayloads()) so a client reloading the
+// page can fully restore its UI from one response.
 // CORS headers are sent unconditionally on every response so a browser-based client served from a
 // different origin (see `pokie client`) can read them.
 //
@@ -206,11 +211,11 @@ export class PokieDevServer implements PokieDevServerHandling {
             session.setCreditsAmount(await this.wallet.getBalance(sessionId));
         }
 
-        const state = capturePokieSessionState(context, session, this.sessionSerializer);
+        const state = captureInitialPokieSessionState(context, session, this.sessionSerializer);
         await this.sessionRepository.save(sessionId, state);
 
         const credits = await this.wallet.getBalance(sessionId);
-        this.sendJson(res, 201, this.buildSessionResponse(sessionId, state, credits));
+        this.sendJson(res, 201, this.buildSessionResponse(sessionId, state, credits, undefined, state.initialPayload));
     }
 
     private async handleSpin(sessionId: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -234,7 +239,11 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
-        this.sendJson(res, 200, this.buildSessionResponse(result.sessionId, result.state, result.credits, result.win));
+        this.sendJson(
+            res,
+            200,
+            this.buildSessionResponse(result.sessionId, result.state, result.credits, result.win, result.state.roundPayload),
+        );
     }
 
     private async handleGetSession(sessionId: string, res: ServerResponse): Promise<void> {
@@ -245,25 +254,42 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         const credits = await this.wallet.getBalance(sessionId);
-        this.sendJson(res, 200, this.buildSessionResponse(sessionId, state, credits, state.win));
+        this.sendJson(res, 200, this.buildSessionResponse(sessionId, state, credits, state.win, this.mergeSerializedPayloads(state)));
+    }
+
+    // GET /sessions/:id needs everything a client would need to fully restore its UI, so it merges
+    // the session's own `initialPayload` (descriptive data — paytable, availableSymbols, ... —
+    // captured once at creation) with its latest `roundPayload` (the actual last-round outcome),
+    // round data winning on any overlapping key since it's the fresher of the two. Returns
+    // undefined — not `{}` — when neither is present, so buildSessionResponse still takes the
+    // legacy path for a game without a serializer instead of wrongly treating an empty object as a
+    // "rich" payload.
+    private mergeSerializedPayloads(state: PokieSessionState): Record<string, unknown> | undefined {
+        if (state.initialPayload === undefined && state.roundPayload === undefined) {
+            return undefined;
+        }
+        return {...state.initialPayload, ...state.roundPayload};
     }
 
     private buildSessionResponse(
         sessionId: string,
         state: PokieSessionState,
         credits: number,
-        win?: number,
+        win: number | undefined,
+        serializedPayload: Record<string, unknown> | undefined,
     ): PokieDevSessionResponse {
         const manifest = this.game.getManifest();
         const game = {id: manifest.id, name: manifest.name, version: manifest.version};
 
-        // Rich path: the loaded game provided a serializer (see PokieGame.getSessionSerializer),
-        // and its full output was captured at the moment it was actually correct to compute — see
-        // capturePokieSessionState.ts and PokieSessionState.serializedPayload's own doc comment for
-        // why this is a read, not a re-serialization. `credits` is always the authoritative wallet
-        // balance, overriding whatever the serializer itself computed from session.getCreditsAmount().
-        if (state.serializedPayload !== undefined) {
-            return {...state.serializedPayload, sessionId, game, credits};
+        // Rich path: the loaded game provided a serializer (see PokieGame.getSessionSerializer).
+        // `serializedPayload` is whichever of initialPayload/roundPayload/their merge the caller
+        // determined is right for this endpoint (session creation/spin/restore respectively) — see
+        // captureInitialPokieSessionState.ts/captureRoundPokieSessionState.ts and this class's own
+        // handleCreateSession/handleSpin/handleGetSession. `credits` is always the authoritative
+        // wallet balance, overriding whatever the serializer itself computed from
+        // session.getCreditsAmount().
+        if (serializedPayload !== undefined) {
+            return {...serializedPayload, sessionId, game, credits};
         }
 
         // Legacy/default path: unchanged from before this game ever had the option of a serializer.

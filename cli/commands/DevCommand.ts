@@ -84,27 +84,53 @@ export class DevCommand implements CliCommandHandling {
         const options = this.parseArgs(args);
         const game = await this.loadGame(options.packageRoot);
 
-        const apiServer = this.createApiServer(game, {host: options.host, port: options.port});
-        const apiAddress = await apiServer.start();
+        // If any step from here on throws — the client server failing to bind its port, or the API
+        // never becoming healthy — every server already started for this run must still be stopped
+        // before the error propagates, so a failed `pokie dev` never leaves a listener orphaned on
+        // its port for the next attempt to collide with.
+        const startedServers: Array<{stop(): Promise<void>}> = [];
+        try {
+            const apiServer = this.createApiServer(game, {host: options.host, port: options.port});
+            const apiAddress = await apiServer.start();
+            startedServers.push(apiServer);
 
-        const clientServer = this.createClientServer(this.clientRoot, {
-            host: options.clientHost,
-            port: options.clientPort,
-            apiAddress,
-        });
-        const clientAddress = await clientServer.start();
+            const clientServer = this.createClientServer(this.clientRoot, {
+                host: options.clientHost,
+                port: options.clientPort,
+                apiAddress,
+            });
+            const clientAddress = await clientServer.start();
+            startedServers.push(clientServer);
 
-        await this.waitForHealthImpl(`http://${apiAddress.host}:${apiAddress.port}/health`);
+            await this.waitForHealthImpl(`http://${apiAddress.host}:${apiAddress.port}/health`);
 
-        console.log(`POKIE dev server (experimental) listening on http://${apiAddress.host}:${apiAddress.port}`);
-        console.log(`POKIE client preview listening on http://${clientAddress.host}:${clientAddress.port}`);
-        console.log("This is a local/dev reference setup for a single game package — not a casino backend or RGS.");
+            console.log(`POKIE dev server (experimental) listening on http://${apiAddress.host}:${apiAddress.port}`);
+            console.log(`POKIE client preview listening on http://${clientAddress.host}:${clientAddress.port}`);
+            console.log("This is a local/dev reference setup for a single game package — not a casino backend or RGS.");
 
-        if (!options.noOpen) {
-            this.openBrowserImpl(`http://${clientAddress.host}:${clientAddress.port}`);
+            if (!options.noOpen) {
+                this.openBrowserImpl(`http://${clientAddress.host}:${clientAddress.port}`);
+            }
+
+            this.registerShutdown(apiServer, clientServer);
+        } catch (error) {
+            await this.stopAll(startedServers);
+            throw error;
         }
+    }
 
-        this.registerShutdown(apiServer, clientServer);
+    // Best-effort: stops every already-started server in reverse start order, swallowing any
+    // individual stop() failure so one server's shutdown error can't prevent the others from being
+    // stopped, and so the *original* startup error (the reason stopAll was called at all) is always
+    // what actually propagates out of run() — see the catch block in run().
+    private async stopAll(servers: Array<{stop(): Promise<void>}>): Promise<void> {
+        for (const server of servers.reverse()) {
+            try {
+                await server.stop();
+            } catch {
+                // Best-effort cleanup; the original startup error is what the caller of run() sees.
+            }
+        }
     }
 
     private registerShutdown(apiServer: PokieDevServerHandling, clientServer: PokieClientServerHandling): void {

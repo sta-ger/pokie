@@ -9,12 +9,15 @@ export type PokieSessionState = {
     // returned, restored via BuildableFromSessionState.fromSessionState() on the next reconstruction.
     // Absent for games that implement neither (snapshot-only fallback: bet/win/screen still restore).
     featureState?: unknown;
-    // Present only when the loaded PokieGame implements the optional getSessionSerializer() — the
-    // full getInitialData(session) output from that serializer, captured at session creation and
-    // again after every spin (see capturePokieSessionState.ts). PokieDevServer's GET /sessions/:id
-    // reads this straight back out of storage rather than re-serializing a reconstructed session:
-    // a freshly reconstructed session only restores `featureState` (a game's own bespoke feature
-    // state, e.g. free-games counters), never round-outcome data like the last screen/win/cascade
-    // result, so re-running the serializer on it would silently produce a fresh, wrong payload.
-    serializedPayload?: Record<string, unknown>;
+    // Present only when the loaded PokieGame implements the optional getSessionSerializer() —
+    // captured once, at session creation, from that serializer's getInitialData(session) (see
+    // captureInitialPokieSessionState.ts). Carried forward unchanged on every subsequent spin (see
+    // captureRoundPokieSessionState.ts) — a session's descriptive data (paytable, availableSymbols,
+    // linesDefinitions, ...) doesn't change between rounds, so it's never recomputed after creation.
+    initialPayload?: Record<string, unknown>;
+    // Present only when the loaded PokieGame implements getSessionSerializer() AND at least one spin
+    // has happened — that serializer's getRoundData(session) output from the *last* spin (see
+    // captureRoundPokieSessionState.ts). Replaced on every spin; never present on a freshly created
+    // session's own state.
+    roundPayload?: Record<string, unknown>;
 };

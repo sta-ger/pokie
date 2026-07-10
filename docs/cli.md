@@ -466,7 +466,9 @@ depends on whether the loaded game implements the optional `PokieGame.getSession
   game returning `new VideoSlotSessionSerializer()` (what `pokie create`/`pokie init` scaffold by default), that
   means `bet`, `availableBets`, `reelsSymbols`, `availableSymbols`, `paytable`, `linesDefinitions`, and more — see
   [Network Serialization](serialization.md) for the full shape, including the `MultiStageRoundSessionSerializer`/
-  `CascadeSessionSerializer` payload for multi-stage/cascade mechanics.
+  `CascadeSessionSerializer` payload for multi-stage/cascade mechanics. This is `getInitialData()`'s output only —
+  any field a serializer produces *exclusively* from `getRoundData()` (see below) is absent here, since no round
+  has been played yet.
 
 An optional JSON body `{"seed": string | number}` is forwarded as `context.seed` — same best-effort caveat as
 [`pokie sim --seed`](#pokie-sim-packageroot): only game packages that actually thread `context.seed` into their own
@@ -477,19 +479,24 @@ RNG setup honor it.
 Delegates to `SpinCommandHandler` (see [Spin orchestration & idempotency](#spin-orchestration--idempotency)
 below), which applies the session's current wallet balance, checks `session.canPlayNextGame()`, and only then
 calls `session.play()` on the (possibly just-reconstructed, see
-[Session storage & wallet](#session-storage--wallet)) session, returning its new state — the same
-serializer-dependent shape as `POST /sessions` above:
+[Session storage & wallet](#session-storage--wallet)) session, returning its new state:
 
-```ts
-{
-    sessionId: string;
-    game: {id: string; name: string; version: string};
-    bet: number;
-    win: number;
-    credits: number;
-    screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
-}
-```
+- **No `getSessionSerializer()`**:
+  ```ts
+  {
+      sessionId: string;
+      game: {id: string; name: string; version: string};
+      bet: number;
+      win: number;
+      credits: number;
+      screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
+  }
+  ```
+- **`getSessionSerializer()` implemented**: `{sessionId, game, credits, ...serializer.getRoundData(session)}` —
+  the serializer's *round* output for the spin that just happened, not `getInitialData()`. Any field only present
+  in `getInitialData()`'s output (e.g. `availableSymbols`, `paytable` — descriptive data that doesn't change
+  between rounds) is **not** repeated here; a client that needs both keeps what `POST /sessions` gave it and
+  merges in each spin's response, or re-fetches everything at once via `GET /sessions/:sessionId` below.
 
 An optional JSON body `{"requestId": string}` makes the call idempotent: a repeated request with the same
 `sessionId`/`requestId` pair returns the exact same response instead of spinning (and charging the wallet) again
@@ -505,9 +512,10 @@ normally even at a 0 balance — the gate only ever reflects what `canPlayNextGa
 
 ### `GET /sessions/:sessionId`
 
-Returns the current state of an in-memory session without playing a round — the same `PokieDevSessionResponse`
-shape as `POST /sessions` and `POST /sessions/:sessionId/spin`, always including `win` (like the spin response,
-since the session already tracks it via `getWinAmount()`):
+Returns the current state of an in-memory session without playing a round — for a game with no
+`getSessionSerializer()`, the same `PokieDevSessionResponse` shape as `POST /sessions` and
+`POST /sessions/:sessionId/spin`, always including `win` (like the spin response, since the session already
+tracks it via `getWinAmount()`):
 
 ```ts
 {
@@ -527,12 +535,19 @@ This is a **restore/reload** endpoint, not a new capability — it reads the per
 `InMemorySessionRepository` (what the CLI always uses), that state doesn't survive a restart, so every stored
 `sessionId` 404s after one. With a `FileSessionRepository` (see below), it does.
 
-For a game implementing `getSessionSerializer()`, this returns the exact rich payload captured the last time
-`capturePokieSessionState` ran (at session creation, or after the last spin) — **not** a freshly re-serialized
-session. A freshly reconstructed session only restores a game's own bespoke `featureState` (e.g. free-games
-counters via `ConvertableToSessionState`/`BuildableFromSessionState`), never round-outcome data like the last
-screen/win/cascade result, so re-running the serializer on a reconstructed session would silently produce a
-wrong payload; reading back what was actually captured avoids that entirely.
+For a game implementing `getSessionSerializer()`, this returns `{sessionId, game, credits, ...initialPayload,
+...roundPayload}` — the session's `getInitialData()` output from creation (see `POST /sessions` above) **merged
+with** its `getRoundData()` output from the last spin (see `POST /sessions/:sessionId/spin` above), round data
+winning on any overlapping key. This is the one endpoint that returns everything a client needs to fully rebuild
+its UI in a single call — neither `POST /sessions` nor `POST .../spin` alone does, by design (see
+[Session storage & wallet](#session-storage--wallet) below). Before any spin has happened, `roundPayload` isn't
+set yet, so the response is just `{sessionId, game, credits, ...initialPayload}`.
+
+This reads back exactly what was captured at session creation and after the last spin — **not** a freshly
+re-serialized session. A freshly reconstructed session only restores a game's own bespoke `featureState` (e.g.
+free-games counters via `ConvertableToSessionState`/`BuildableFromSessionState`), never round-outcome data like
+the last screen/win/cascade result, so re-running the serializer on a reconstructed session would silently
+produce a wrong payload; reading back what was actually captured avoids that entirely.
 
 #### Client reload flow
 
@@ -549,7 +564,7 @@ lightweight restore step:
 
 `PokieDevServer` never keeps game state only in a live session object — every `POST /sessions` and
 `POST .../spin` writes a serializable `PokieSessionState` (`{context?, bet, win, screen?, featureState?,
-serializedPayload?}`, no credits) through a `SessionRepository`:
+initialPayload?, roundPayload?}`, no credits) through a `SessionRepository`:
 
 ```ts
 export interface SessionRepository {
@@ -584,13 +599,14 @@ reconstructed session back into whatever mid-feature state it was in — the sam
 and any other game without this contract already had. Implementing it is entirely optional and additive; existing
 games and the standalone `VideoSlotSession` behave exactly as before whether or not they implement it.
 
-`serializedPayload` is the `getSessionSerializer()` counterpart — present only for a game implementing it, holding
-the full `getInitialData(session)` output captured at session creation and again after every spin. `GET
-/sessions/:sessionId` reads it straight back out of storage rather than re-serializing a reconstructed session
-(see that endpoint's own note above for why). Captured via `getInitialData` (not the thinner `getRoundData`)
-on *every* capture, not just creation, so whatever was last persisted is always complete enough to fully restore
-a client's UI from — more bytes per spin than a hand-tuned payload would use, but it keeps restore-after-reload
-correct with one code path instead of two.
+`initialPayload`/`roundPayload` are the `getSessionSerializer()` counterparts — present only for a game
+implementing it. `initialPayload` holds `getInitialData(session)`'s output, captured exactly once, at session
+creation; it's never recomputed on a spin, since a session's own descriptive data (paytable, availableSymbols,
+...) doesn't change between rounds. `roundPayload` holds `getRoundData(session)`'s output, captured fresh after
+every spin and replaced each time — it's the actual outcome of the most recent round, not accumulated across
+spins. `GET /sessions/:sessionId` reads both straight back out of storage and merges them (see that endpoint's
+own note above) rather than re-serializing a reconstructed session, which would silently produce a wrong payload
+(see the note there for why).
 
 Credits are handled separately through a `WalletPort`, and are **deliberately not part of `PokieSessionState`** —
 a restart always resets balances even when a `FileSessionRepository` keeps the game state:

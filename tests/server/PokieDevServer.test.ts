@@ -3,6 +3,7 @@ import {
     ConvertableToSessionState,
     FileSessionRepository,
     GameSessionHandling,
+    GameSessionSerializing,
     InMemorySessionRepository,
     InMemoryWallet,
     loadPokieGame,
@@ -49,6 +50,29 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
             this.createdWith = context;
             return createFakeSession();
         },
+    };
+}
+
+// A custom serializer whose getRoundData() includes a field ("lastSymbolsCombination") that
+// getInitialData() never does — proof that PokieDevServer keeps initial/round payloads genuinely
+// separate rather than always exposing the union of both, except where GET /sessions/:id
+// deliberately merges them for a full post-reload restore (see mergeSerializedPayloads()).
+function createCustomSerializerWithRoundOnlyField(): GameSessionSerializing {
+    return {
+        getInitialData: (session) => ({credits: session.getCreditsAmount(), bet: session.getBet(), availableBets: session.getAvailableBets()}),
+        getRoundData: (session) => ({
+            credits: session.getCreditsAmount(),
+            bet: session.getBet(),
+            lastSymbolsCombination: (session as ReturnType<typeof createFakeSession>).getSymbolsCombination().toMatrix(),
+        }),
+    };
+}
+
+function createFakeGameWithCustomSerializer(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => createFakeSession(),
+        getSessionSerializer: () => createCustomSerializerWithRoundOnlyField(),
     };
 }
 
@@ -670,6 +694,50 @@ describe("PokieDevServer (integration, real loadPokieGame + fixture game package
         expect(restored.body.reelsSymbols).toEqual(spun.body.reelsSymbols);
         expect(restored.body.totalWin).toBe(spun.body.totalWin);
         expect(restored.body.credits).toBe(spun.body.credits);
+    });
+});
+
+describe("PokieDevServer (fake game with a custom serializer whose getRoundData() has a round-only field)", () => {
+    let server: PokieDevServer;
+    let baseUrl: string;
+
+    beforeEach(async () => {
+        const game = createFakeGameWithCustomSerializer({id: "round-only-field-game", name: "Round Only Field Game", version: "1.0.0"});
+        server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+        const address = await server.start();
+        baseUrl = `http://${address.host}:${address.port}`;
+    });
+
+    afterEach(async () => {
+        await server.stop();
+    });
+
+    it("POST /sessions never includes the round-only field, since getInitialData() never produces it", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+
+        expect(created.status).toBe(201);
+        expect("lastSymbolsCombination" in created.body).toBe(false);
+    });
+
+    it("POST /sessions/:id/spin includes the round-only field, from getRoundData()", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+
+        expect(spun.status).toBe(200);
+        expect(spun.body.lastSymbolsCombination).toEqual([["round-1"]]);
+    });
+
+    it("GET /sessions/:id still includes the round-only field after a restore", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+
+        const restored = await getJson(`${baseUrl}/sessions/${sessionId}`);
+
+        expect(restored.status).toBe(200);
+        expect(restored.body.lastSymbolsCombination).toEqual(spun.body.lastSymbolsCombination);
     });
 });
 

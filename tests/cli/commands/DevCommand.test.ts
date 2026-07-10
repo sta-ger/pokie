@@ -233,6 +233,66 @@ describe("DevCommand", () => {
 
         logSpy.mockRestore();
     });
+
+    it("stops the already-started API server if the client server fails to start", async () => {
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
+        const clientServerStartError = new Error("client server failed to bind its port");
+
+        const command = new DevCommand(() => Promise.resolve(createFakeGame(manifest)), () => apiServer, {
+            createClientServer: () =>
+                ({
+                    start: () => Promise.reject(clientServerStartError),
+                    stop: () => Promise.resolve(),
+                }) as unknown as PokieClientServerHandling,
+            waitForHealth: () => Promise.resolve(),
+            openBrowser: () => undefined,
+            clientRoot: "/fake/client/root",
+            process: new FakeProcess() as unknown as NodeJS.Process,
+        });
+
+        await expect(command.run(["./crazy-fruits", "--no-open"])).rejects.toThrow(clientServerStartError);
+
+        expect(apiServer.stopCalls).toBe(1);
+    });
+
+    it("stops both already-started servers if waitForHealth times out", async () => {
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
+        const clientServer = createStubServer<PokieClientServerHandling>({host: "127.0.0.1", port: 3100});
+        const healthTimeoutError = new Error("timed out waiting for health check");
+
+        const command = new DevCommand(() => Promise.resolve(createFakeGame(manifest)), () => apiServer, {
+            createClientServer: () => clientServer,
+            waitForHealth: () => Promise.reject(healthTimeoutError),
+            openBrowser: () => undefined,
+            clientRoot: "/fake/client/root",
+            process: new FakeProcess() as unknown as NodeJS.Process,
+        });
+
+        await expect(command.run(["./crazy-fruits", "--no-open"])).rejects.toThrow(healthTimeoutError);
+
+        expect(apiServer.stopCalls).toBe(1);
+        expect(clientServer.stopCalls).toBe(1);
+    });
+
+    it("still propagates the original startup error even if the cleanup stop() calls also fail", async () => {
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000}, () =>
+            Promise.reject(new Error("api stop also failed")),
+        );
+        const healthTimeoutError = new Error("timed out waiting for health check");
+
+        const command = new DevCommand(() => Promise.resolve(createFakeGame(manifest)), () => apiServer, {
+            createClientServer: () =>
+                createStubServer<PokieClientServerHandling>({host: "127.0.0.1", port: 3100}, () =>
+                    Promise.reject(new Error("client stop also failed")),
+                ),
+            waitForHealth: () => Promise.reject(healthTimeoutError),
+            openBrowser: () => undefined,
+            clientRoot: "/fake/client/root",
+            process: new FakeProcess() as unknown as NodeJS.Process,
+        });
+
+        await expect(command.run(["./crazy-fruits", "--no-open"])).rejects.toThrow(healthTimeoutError);
+    });
 });
 
 describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieClientServer + fixture)", () => {
