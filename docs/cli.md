@@ -711,9 +711,12 @@ guarantee. Two concrete ways it can fall short:
   persisting the session state but before persisting the idempotency result — no catch block ever runs, so
   nothing gets compensated. The wallet, `SessionRepository`, and `idempotencyRepository` can be left durably
   diverged (e.g. a debited wallet whose session state was never updated) until something else reconciles them.
-  The built-in in-memory/file reference repositories lose everything on a crash anyway, so nothing survives to
-  diverge for them — but a real durable/persistent `WalletPort`, `SessionRepository`, or `IdempotencyRepository`
-  does not get this protection for free just by being used with `SpinCommandHandler`.
+  The built-in `InMemoryWallet` and `InMemoryIdempotencyRepository` lose everything on a crash anyway, so nothing
+  survives on their side to diverge — but `FileSessionRepository` writes to disk and *does* survive a crash, so
+  its persisted session state can easily end up ahead of (diverged from) an in-memory wallet/idempotency store
+  that reset to nothing on restart. A real durable/persistent `WalletPort` or `IdempotencyRepository` doesn't get
+  this protection for free just by being used with `SpinCommandHandler`, and pairing `FileSessionRepository` with
+  the in-memory wallet/idempotency defaults is exactly this scenario, not a hypothetical one.
 - **Compensation failure.** The reversal/restore calls themselves can fail (e.g. the same outage that made the
   original call fail is still ongoing). That failure is swallowed, so it doesn't replace or hide the original
   error `handle()` rejects with — but it also means the compensation silently didn't happen: the wallet and/or

@@ -36,12 +36,13 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 // session actually produced beyond the stake we charged is exactly what gets credited.
 //
 // Every wallet transaction for an attempt gets its own id, `{roundId}:{attemptId}:debit`/`:credit`
-// — `roundId` is the requestId (note: NOT stable across retries of the same requestId, only within
-// one attempt — see TransactionalWalletPort's own doc comment), for traceability back to the
-// logical command; `attemptId` is freshly minted every time this method actually runs, so a retried
-// command (same requestId) that follows a compensated/reversed prior attempt always gets brand-new
-// transaction ids rather than reusing the reversed ones. (TransactionalWalletAdapter/InMemoryWallet
-// also tolerate reusing a reversed id — see their own comments — but attemptId keeps that a
+// — `roundId` is the requestId (or a fresh id when none was given), stable across every retry of
+// that same logical request, for traceability back to the logical command; `attemptId` is freshly
+// minted every time this method actually runs, so it's what makes each attempt's wallet transaction
+// ids unique — a retried command (same requestId, hence same roundId) that follows a
+// compensated/reversed prior attempt always gets brand-new transaction ids rather than reusing the
+// reversed ones. (TransactionalWalletAdapter/InMemoryWallet also tolerate reusing a reversed id —
+// see their own comments — but attemptId keeps that a
 // backstop rather than something this handler leans on.)
 //
 // If anything fails after entering the mutating phase — a wallet call, persisting the new session
@@ -56,9 +57,13 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 //     right after persisting the session state but before persisting the idempotency result — no
 //     catch block ever runs, so nothing gets compensated. Wallet, SessionRepository, and
 //     idempotencyRepository can be left durably diverged (e.g. a debited wallet whose session state
-//     was never updated) until something else reconciles them; the in-memory default repositories
-//     lose everything on a crash anyway (so nothing survives to diverge), but a durable/persistent
-//     SessionRepository, wallet, or IdempotencyRepository does not get this protection for free.
+//     was never updated) until something else reconciles them. The default InMemoryWallet and
+//     InMemoryIdempotencyRepository lose everything on a crash anyway, so nothing survives on their
+//     side to diverge — but FileSessionRepository writes to disk and *does* survive a crash, so its
+//     persisted session state can easily end up ahead of an in-memory wallet/idempotency store that
+//     reset to nothing on restart; pairing FileSessionRepository with the in-memory wallet/idempotency
+//     defaults is exactly this scenario, not a hypothetical one. A durable/persistent WalletPort or
+//     IdempotencyRepository does not get this protection for free either.
 //   - **Compensation-failure risk**: reverseApplied()/restoreSessionState() themselves can fail
 //     (e.g. the same outage that made the original call fail is still ongoing) — that failure is
 //     swallowed so it doesn't replace or hide the original error the caller of handle() sees, but it
