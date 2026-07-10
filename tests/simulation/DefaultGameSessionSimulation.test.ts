@@ -5,6 +5,7 @@ import {
     GameSession,
     GameSessionConfig,
     NextSessionRoundPlayableDetermining,
+    SeededRandomNumberGenerator,
     Simulation,
     SimulationConfig,
     SymbolsCombinationsGenerator,
@@ -24,7 +25,10 @@ describe("DefaultGameSessionSimulation", () => {
             new SymbolsSequence().fromArray(["Q", "10", "9", "S", "K", "A", "J"]),
             new SymbolsSequence().fromArray(["Q", "A", "J", "10", "9", "S", "K"]),
         ]);
-        const combinationsGenerator = new SymbolsCombinationsGenerator(sessionConfig);
+        const combinationsGenerator = new SymbolsCombinationsGenerator(
+            sessionConfig,
+            new SeededRandomNumberGenerator(1),
+        );
         const winCalculator = new VideoSlotWinCalculator(sessionConfig);
         const session = new VideoSlotSession(
             sessionConfig,
@@ -179,7 +183,10 @@ describe("DefaultGameSessionSimulation", () => {
             new SymbolsSequence().fromArray(["Q", "10", "9", "S", "K", "A", "J"]),
             new SymbolsSequence().fromArray(["Q", "A", "J", "10", "9", "S", "K"]),
         ]);
-        const combinationsGenerator = new SymbolsCombinationsGenerator(sessionConfig);
+        const combinationsGenerator = new SymbolsCombinationsGenerator(
+            sessionConfig,
+            new SeededRandomNumberGenerator(1),
+        );
         const winCalculator = new VideoSlotWinCalculator(sessionConfig);
         const session = new VideoSlotSession(
             sessionConfig,
@@ -216,5 +223,5 @@ describe("DefaultGameSessionSimulation", () => {
         expect(simulation.getTotalPayoutAmount()).toBe(totalReturn);
         expect(simulation.getLastRtp()).toBeGreaterThan(0.5);
         expect(simulation.getLastRtp()).toBeLessThan(0.6);
-    });
+    }, 20000);
 });

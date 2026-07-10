@@ -63,6 +63,8 @@ an account, currency, or compliance system is left to the integrating backend.
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |
 | Rendering a sim report as Markdown/HTML | `pokie report <simulationReportJson>` |
 | Comparing two sim reports (e.g. before/after a config change) | `pokie diff <leftReportJson> <rightReportJson>` |
+| Best-effort replay of a single round (by seed + round index) | `pokie replay <packageRoot>` |
+| Local/dev JSON HTTP server over a package (experimental) | `pokie serve <packageRoot>` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.

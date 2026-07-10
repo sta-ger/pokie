@@ -133,6 +133,6 @@ if (result.hasErrors()) {
 ```
 
 `loadPokieGame`, `isPokieGame`, and `PokieGameContractValidationRule` are the building blocks the `pokie create`/
-`pokie init`/`pokie sim`/`pokie validate`/`pokie report`/`pokie serve` [CLI](cli.md) commands are built on —
-`pokie validate` in particular wraps this same contract check in `PokieGamePackageValidator`, returning a
-structured report instead of throwing.
+`pokie init`/`pokie sim`/`pokie validate`/`pokie report`/`pokie diff`/`pokie replay`/`pokie serve` [CLI](cli.md)
+commands are built on — `pokie validate` in particular wraps this same contract check in
+`PokieGamePackageValidator`, returning a structured report instead of throwing.
