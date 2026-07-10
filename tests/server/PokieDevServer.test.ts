@@ -9,6 +9,7 @@ import {
     PokieDevServer,
     PokieGame,
     PokieGameManifest,
+    VideoSlotWithFreeGamesSession,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -102,6 +103,19 @@ function createFakeFreeGamesGame(manifest: PokieGameManifest): PokieGame & {last
         getManifest: () => manifest,
         createSession() {
             const session = createFakeFreeGamesSession();
+            this.lastSession = session;
+            return session;
+        },
+    };
+}
+
+function createRealFreeGamesGame(
+    manifest: PokieGameManifest,
+): PokieGame & {lastSession?: VideoSlotWithFreeGamesSession} {
+    return {
+        getManifest: () => manifest,
+        createSession() {
+            const session = new VideoSlotWithFreeGamesSession();
             this.lastSession = session;
             return session;
         },
@@ -329,38 +343,53 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         await server.stop();
     });
 
-    it("restores an unfinished feature state (a bonus round mid-play) after a simulated restart", async () => {
-        const game = createFakeFreeGamesGame(manifest);
+    it("keeps a real VideoSlotWithFreeGamesSession's unfinished free-games round going at a 0 wallet balance, across a simulated restart", async () => {
+        const game = createRealFreeGamesGame(manifest);
         const sharedRepository = new InMemorySessionRepository();
 
-        const serverA = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: sharedRepository});
+        const serverA = new PokieDevServer(game, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: sharedRepository,
+            wallet: new InMemoryWallet(0),
+        });
         const addressA = await serverA.start();
         const baseUrlA = `http://${addressA.host}:${addressA.port}`;
 
         const created = await postJson(`${baseUrlA}/sessions`);
         const sessionId = created.body.sessionId as string;
+        expect(created.body.credits).toBe(0);
 
-        // Put the just-created live session into "3 free spins remaining" before spinning, so the
-        // spin below both consumes one of them (no bet charged) and persists the remaining count.
-        game.lastSession?.grantFreeSpins(3);
+        // Force the just-created live session into an unfinished free-games round (1 of 3 played)
+        // directly via its own setters, rather than relying on an actual scatter win, so the test
+        // stays deterministic regardless of the session's randomly generated reel combinations.
+        game.lastSession?.setFreeGamesSum(3);
+        game.lastSession?.setFreeGamesNum(0);
+        game.lastSession?.setFreeGamesBank(0);
+
         const spun = await postJson(`${baseUrlA}/sessions/${sessionId}/spin`);
-        expect(spun.status).toBe(200);
-        expect(spun.body.win).toBe(20);
+        expect(spun.status).toBe(200); // canPlayNextGame() is true despite 0 credits: free games are unfinished
+        expect(spun.body.credits).toBe(0); // free spin: bet is never charged while free games are in progress
 
         await serverA.stop();
 
-        // serverB reconstructs a brand-new fake session (freeSpinsRemaining defaults back to 0) —
-        // only if PokieDevServer restores the persisted featureState onto it does this spin still
-        // behave like an in-progress free-games round (win, no bet charged) instead of a normal one.
-        const serverB = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: sharedRepository});
+        // serverB reconstructs a brand-new VideoSlotWithFreeGamesSession (freeGamesNum/Sum/Bank default
+        // back to 0) — only if PokieDevServer restores the persisted featureState onto it does its
+        // canPlayNextGame() still see an unfinished round and let this spin through despite the fresh
+        // wallet's 0 balance (the server's own canPlayNextGame() gate is unchanged and still applies).
+        const serverB = new PokieDevServer(game, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: sharedRepository,
+            wallet: new InMemoryWallet(0),
+        });
         const addressB = await serverB.start();
         const baseUrlB = `http://${addressB.host}:${addressB.port}`;
 
         const spunAfterRestart = await postJson(`${baseUrlB}/sessions/${sessionId}/spin`);
 
         expect(spunAfterRestart.status).toBe(200);
-        expect(spunAfterRestart.body.win).toBe(20);
-        expect(spunAfterRestart.body.credits).toBe(spun.body.credits);
+        expect(spunAfterRestart.body.credits).toBe(0);
 
         await serverB.stop();
     });

@@ -94,6 +94,11 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         return this;
     }
 
+    public override canPlayNextGame(): boolean {
+        const hasUnfinishedFreeGames = this.freeGamesSum > 0 && this.freeGamesNum < this.freeGamesSum;
+        return hasUnfinishedFreeGames || this.baseSession.canPlayNextGame();
+    }
+
     public override play(): void {
         this.freeGamesRoundHandler.beforeRoundPlayed(this);
         const creditsBeforePlay = this.getCreditsAmount();

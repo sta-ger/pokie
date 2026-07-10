@@ -17,6 +17,7 @@ import {
 } from "./DefaultVideoSlotSessionTestCases.js";
 import {
     createConfigForTestPlayFreeGames,
+    testCanPlayNextGameDuringFreeGames,
     testDefaultVideoSlotWithFreeGamesSession,
     testFreeGamesGettersSetters,
     testPlayFreeGames,
@@ -114,6 +115,16 @@ describe("VideoSlotWithFreeGamesSession", () => {
             new VideoSlotWinCalculator(conf),
         );
         testPlayFreeGames(session, conf);
+    });
+
+    it("can play the next game during an unfinished free-games round regardless of credits", () => {
+        const conf = createConfigForTestPlayFreeGames();
+        const session = new VideoSlotWithFreeGamesSession(
+            conf,
+            new SymbolsCombinationsGenerator(conf),
+            new VideoSlotWinCalculator(conf),
+        );
+        testCanPlayNextGameDuringFreeGames(session);
     });
 
     it("should capture and restore free games state via toSessionState/fromSessionState", () => {

@@ -44,6 +44,21 @@ export const testSessionStateCaptureAndRestore = (
     expect(otherSession.getFreeGamesBank()).toBe(250);
 };
 
+export const testCanPlayNextGameDuringFreeGames = (session: VideoSlotWithFreeGamesSessionHandling): void => {
+    session.setCreditsAmount(session.getBet() - 1); // insufficient credits, no free games in progress
+    expect(session.canPlayNextGame()).toBe(false); // delegates to the base session
+
+    session.setFreeGamesSum(3);
+    session.setFreeGamesNum(1); // unfinished: 1 of 3 free games played
+    expect(session.canPlayNextGame()).toBe(true); // true regardless of the still-insufficient credits
+
+    session.setFreeGamesNum(3); // free games round finished (num === sum)
+    expect(session.canPlayNextGame()).toBe(false); // no longer "unfinished" — back to delegating to the base session
+
+    session.setCreditsAmount(session.getBet());
+    expect(session.canPlayNextGame()).toBe(true); // base session's own canPlayNextGame() with sufficient credits
+};
+
 export const testPlayUntilWinFreeGames = (session: VideoSlotWithFreeGamesSessionHandling): void => {
     while (session.getFreeGamesSum() === 0) {
         session.setCreditsAmount(Number.MIN_SAFE_INTEGER);
