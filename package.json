@@ -25,7 +25,8 @@
         "test": "jest",
         "build-esm": "npm run generate-barrels && tsc --project tsconfig.prod.json",
         "build-cjs": "npm run generate-barrels && tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js",
-        "build-cli": "tsc --project tsconfig.cli.json && shx chmod +x dist/cli/pokie.js",
+        "build-client": "tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/",
+        "build-cli": "tsc --project tsconfig.cli.json && npm run build-client && shx chmod +x dist/cli/pokie.js",
         "prebuild": "npm run lint",
         "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs && npm run build-cli"
     },

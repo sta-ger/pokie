@@ -1,11 +1,13 @@
 import crypto from "crypto";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
+import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import {InMemoryIdempotencyRepository} from "../idempotency/InMemoryIdempotencyRepository.js";
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
 import {capturePokieSessionState} from "../session/capturePokieSessionState.js";
 import {determineStakeAmount} from "../session/determineStakeAmount.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
+import {resolveGameSessionSerializer} from "../session/resolveGameSessionSerializer.js";
 import {restoreFeatureState} from "../session/restoreFeatureState.js";
 import type {SessionRepository} from "../session/SessionRepository.js";
 import type {TransactionalWalletPort} from "../wallet/TransactionalWalletPort.js";
@@ -80,6 +82,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
     private readonly sessionRepository: SessionRepository;
     private readonly wallet: TransactionalWalletPort;
     private readonly idempotencyRepository: IdempotencyRepository<SpinCommandResult>;
+    private readonly sessionSerializer: GameSessionSerializing | undefined;
     private readonly liveSessions = new Map<string, GameSessionHandling>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
@@ -93,6 +96,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
         this.sessionRepository = sessionRepository;
         this.wallet = wallet;
         this.idempotencyRepository = idempotencyRepository;
+        this.sessionSerializer = resolveGameSessionSerializer(game);
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling): void {
@@ -180,7 +184,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
                     : await this.wallet.debit(sessionId, creditTransactionId, -creditAmount);
             appliedTransactionIds.push(creditTransactionId);
 
-            const newState = capturePokieSessionState(state.context, session);
+            const newState = capturePokieSessionState(state.context, session, this.sessionSerializer);
             await this.sessionRepository.save(sessionId, newState);
             sessionStateSaved = true;
 

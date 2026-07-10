@@ -188,6 +188,40 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         expect(body.win).toBeUndefined();
     });
 
+    it("sends CORS headers on every response, including errors — needed for a browser-based client on a different origin", async () => {
+        const okResponse = await fetch(`${baseUrl}/health`);
+        expect(okResponse.headers.get("access-control-allow-origin")).toBe("*");
+        expect(okResponse.headers.get("access-control-allow-methods")).toContain("POST");
+
+        const errorResponse = await fetch(`${baseUrl}/unknown`);
+        expect(errorResponse.status).toBe(404);
+        expect(errorResponse.headers.get("access-control-allow-origin")).toBe("*");
+    });
+
+    it("responds to an OPTIONS preflight request with 204 and CORS headers", async () => {
+        const response = await fetch(`${baseUrl}/sessions`, {method: "OPTIONS"});
+
+        expect(response.status).toBe(204);
+        expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    });
+
+    it("never includes rich-serializer-only fields when the loaded game has no getSessionSerializer (backward compat)", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+        const restored = await getJson(`${baseUrl}/sessions/${sessionId}`);
+
+        for (const response of [created, spun, restored]) {
+            expect(response.body.availableSymbols).toBeUndefined();
+            expect(response.body.paytable).toBeUndefined();
+            expect(response.body.reelsSymbols).toBeUndefined();
+            expect(response.body.stages).toBeUndefined();
+            expect(Object.keys(response.body).sort()).toEqual(
+                Object.keys(response.body).filter((key) => ["sessionId", "game", "bet", "win", "credits", "screen"].includes(key)).sort(),
+            );
+        }
+    });
+
     it("forwards an optional seed from the POST /sessions body as context", async () => {
         await postJson(`${baseUrl}/sessions`, {seed: "demo-seed"});
 
@@ -579,6 +613,63 @@ describe("PokieDevServer (integration, real loadPokieGame + fixture game package
         expect(typeof spun.body.win).toBe("number");
         expect(typeof spun.body.credits).toBe("number");
         expect(Array.isArray(spun.body.screen)).toBe(true);
+    });
+});
+
+describe("PokieDevServer (integration, real loadPokieGame + fixture game package with a serializer)", () => {
+    const fixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game-with-serializer");
+    let server: PokieDevServer;
+    let baseUrl: string;
+
+    beforeEach(async () => {
+        const game = await loadPokieGame(fixtureRoot);
+        server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+        const address = await server.start();
+        baseUrl = `http://${address.host}:${address.port}`;
+    });
+
+    afterEach(async () => {
+        await server.stop();
+    });
+
+    it("POST /sessions returns the full game-specific payload instead of the narrow default DTO", async () => {
+        const {status, body} = await postJson(`${baseUrl}/sessions`);
+
+        expect(status).toBe(201);
+        expect(body.sessionId).toEqual(expect.any(String));
+        expect(body.game).toEqual({id: "playable-game-with-serializer", name: "Playable Game With Serializer", version: "1.0.0"});
+        expect(typeof body.credits).toBe("number");
+        // Fields only VideoSlotSessionSerializer's getInitialData() produces — proof the rich path
+        // ran, not the legacy hand-rolled DTO.
+        expect(Array.isArray(body.availableSymbols)).toBe(true);
+        expect(typeof body.paytable).toBe("object");
+        expect(typeof body.linesDefinitions).toBe("object");
+        expect(Array.isArray(body.reelsSymbols)).toBe(true);
+    });
+
+    it("POST /sessions/:id/spin returns the rich payload too, with credits always the authoritative wallet balance", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+
+        expect(spun.status).toBe(200);
+        expect(Array.isArray(spun.body.reelsSymbols)).toBe(true);
+        expect(typeof spun.body.totalWin).toBe("number");
+        expect(spun.body.credits).toBe((created.body.credits as number) - (created.body.bet as number) + (spun.body.totalWin as number));
+    });
+
+    it("GET /sessions/:id restores the exact same rich payload captured at the last spin, without reconstructing a fresh round", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+
+        const restored = await getJson(`${baseUrl}/sessions/${sessionId}`);
+
+        expect(restored.status).toBe(200);
+        expect(restored.body.reelsSymbols).toEqual(spun.body.reelsSymbols);
+        expect(restored.body.totalWin).toBe(spun.body.totalWin);
+        expect(restored.body.credits).toBe(spun.body.credits);
     });
 });
 

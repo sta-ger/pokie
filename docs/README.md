@@ -43,8 +43,9 @@ an account, currency, or compliance system is left to the integrating backend.
     playing it; `pokie report <simulationReportJson>`, which renders a `pokie sim --out` report as Markdown or
     HTML; `pokie diff <leftReportJson> <rightReportJson>`, which compares two `pokie sim --out` reports;
     `pokie replay <packageRoot>`, which best-effort replays one round (by seed + round index) as a JSON artifact;
-    and `pokie serve <packageRoot>` (experimental), which starts a local/dev JSON HTTP server over a package —
-    not a casino backend or RGS.
+    `pokie serve <packageRoot>` (experimental), which starts a local/dev JSON HTTP server over a package — not a
+    casino backend or RGS; `pokie client <packageRoot>` (experimental), a universal browser preview UI talking to
+    a running `pokie serve`; and `pokie dev <packageRoot>` (experimental), which runs both together.
 
 ## Core concepts at a glance
 
@@ -57,7 +58,8 @@ an account, currency, or compliance system is left to the integrating backend.
 | Free spins / bonus rounds | `VideoSlotWithFreeGamesSession`, `VideoSlotWithFreeGamesConfig` |
 | Grids that grow/shrink between rounds | `VideoSlotWithResizableGridSession`, `GridResizeHandling` |
 | Bulk RTP testing, targeted scenario capture | `Simulation`, play strategies |
-| Sending round results to a client | `net/` serializers |
+| Sending round results to a client | `net/` serializers, wired into `pokie serve` via `PokieGame.getSessionSerializer()` |
+| A sequence of stages within one round (cascades, multi-pick bonuses, ...) | `MultiStageRoundSessionSerializer`, `CascadeSessionSerializer` |
 | Loading an external game package by convention | `PokieGame`, `loadPokieGame` |
 | Scaffolding a new game package | `pokie create <name>` / `pokie init` CLI |
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |
@@ -65,6 +67,8 @@ an account, currency, or compliance system is left to the integrating backend.
 | Comparing two sim reports (e.g. before/after a config change) | `pokie diff <leftReportJson> <rightReportJson>` |
 | Best-effort replay of a single round (by seed + round index) | `pokie replay <packageRoot>` |
 | Local/dev JSON HTTP server over a package (experimental) | `pokie serve <packageRoot>` |
+| Browser preview UI for a running `pokie serve` (experimental) | `pokie client <packageRoot>` |
+| `pokie serve` + `pokie client` together, with a browser auto-opened (experimental) | `pokie dev <packageRoot>` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.

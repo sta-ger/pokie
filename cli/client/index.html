@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>POKIE client preview</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<div id="app">
+    <header>
+        <h1 id="game-title">POKIE client preview</h1>
+        <p id="status">Connecting…</p>
+    </header>
+    <main>
+        <section id="round-view">
+            <div id="screen" class="screen"></div>
+            <dl class="stats">
+                <dt>Bet</dt>
+                <dd id="bet">—</dd>
+                <dt>Credits</dt>
+                <dd id="credits">—</dd>
+                <dt>Win</dt>
+                <dd id="win">—</dd>
+            </dl>
+            <button id="spin-button" type="button" disabled>Spin</button>
+        </section>
+        <section id="stages-section" hidden>
+            <h2>Round stages</h2>
+            <div class="stage-controls">
+                <button id="prev-stage" type="button">&larr; Prev</button>
+                <span id="stage-label"></span>
+                <button id="next-stage" type="button">Next &rarr;</button>
+            </div>
+            <div id="stage-screen" class="screen"></div>
+            <details>
+                <summary>Stage data</summary>
+                <pre id="stage-raw-json"></pre>
+            </details>
+        </section>
+        <section id="raw-section">
+            <details>
+                <summary>Raw response</summary>
+                <pre id="raw-json"></pre>
+            </details>
+        </section>
+    </main>
+</div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -8,6 +8,9 @@ export function buildPackageJsonPatch(pkg: PackageJsonLike, pokieVersion: string
         ...pkg,
         scripts: {
             build: "tsc",
+            start: "pokie dev .",
+            server: "pokie serve .",
+            client: "pokie client .",
             ...pkg.scripts,
         },
         dependencies: {

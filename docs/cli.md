@@ -19,11 +19,14 @@ npm run build
 
 `pokie create <name>` creates `./<name>` and writes:
 
-- `package.json` — name `<name>`, a `pokie` dependency, a `build` script, and `pokie.entry` pointing at
-  `./dist/index.js`;
+- `package.json` — name `<name>`, a `pokie` dependency, `build`/`start`/`server`/`client` scripts (see
+  [`pokie serve`](#pokie-serve-packageroot-experimental)/[`pokie client`](#pokie-client-packageroot-experimental)/
+  [`pokie dev`](#pokie-dev-packageroot-experimental) below), and `pokie.entry` pointing at `./dist/index.js`;
 - `tsconfig.json` (CommonJS output to `./dist`, source in `./src`);
 - `src/<GameName>Game.ts` — a `PokieGame` implementation (`<GameName>` is `<name>` converted to PascalCase, e.g.
-  `crazy-fruits` → `CrazyFruits`), with a manifest id/name derived from `<name>`;
+  `crazy-fruits` → `CrazyFruits`), with a manifest id/name derived from `<name>`, and a `getSessionSerializer()`
+  returning `new VideoSlotSessionSerializer()` so `pokie serve`/`pokie client`/`pokie dev` show the full
+  game-specific payload out of the box (see [Network Serialization](serialization.md));
 - `src/<GameName>Session.ts` — a factory returning a default `VideoSlotSession`;
 - `src/index.ts` — the entry module, re-exporting `<GameName>Game` as its default export.
 
@@ -55,12 +58,15 @@ npx pokie init
 Run inside the project directory. `pokie init` reads the project's `package.json` and:
 
 - adds/updates `pokie.entry` (pointing at `./dist/index.js`);
-- adds a `build` (`tsc`) script, without overwriting any script you already have;
+- adds `build`/`start`/`server`/`client` scripts (see
+  [`pokie serve`](#pokie-serve-packageroot-experimental)/[`pokie client`](#pokie-client-packageroot-experimental)/
+  [`pokie dev`](#pokie-dev-packageroot-experimental) below), without overwriting any script you already have;
 - adds `typescript` to `devDependencies` and `pokie` to `dependencies` if either is missing;
 - creates a minimal `tsconfig.json` (CommonJS output to `./dist`, source in `./src`);
 - creates `src/index.ts`, a working entry module exporting a `PokieGame` — `getManifest()` returns an id/name
   derived from the project's package name (and its version), `createSession()` returns a default
-  `VideoSlotSession`.
+  `VideoSlotSession`, and `getSessionSerializer()` returns `new VideoSlotSessionSerializer()` (see
+  [Network Serialization](serialization.md)).
 
 It never overwrites an existing `tsconfig.json` or `src/index.ts` — if either is already there, it's left alone
 and reported as skipped. `package.json` is always re-written with the merged fields above.
@@ -408,6 +414,11 @@ always runs with the defaults (`InMemorySessionRepository`, `InMemoryWallet`), s
 loses every session; embed `PokieDevServer` directly (see below) to plug in a `FileSessionRepository` or your own
 `WalletPort`.
 
+Every response — success and error alike — carries permissive CORS headers (`Access-Control-Allow-Origin: *`,
+`Access-Control-Allow-Methods: GET, POST, OPTIONS`, `Access-Control-Allow-Headers: Content-Type`), and `OPTIONS`
+requests get a bare `204`. This is what lets [`pokie client`](#pokie-client-packageroot-experimental) (a
+different origin/port by design) talk to this server's API at all.
+
 ```
 pokie serve ./crazy-fruits --port 4000 --host 127.0.0.1
 ```
@@ -436,17 +447,26 @@ is killed (e.g. `Ctrl+C`) — that's expected for a server.
 
 ### `POST /sessions`
 
-Creates a new in-memory session via `game.createSession(context)` and returns its initial state:
+Creates a new in-memory session via `game.createSession(context)` and returns its initial state. The exact shape
+depends on whether the loaded game implements the optional `PokieGame.getSessionSerializer()` (see
+[Game Packages](game-packages.md#the-contract) and [Network Serialization](serialization.md)):
 
-```ts
-{
-    sessionId: string;
-    game: {id: string; name: string; version: string};
-    bet: number;
-    credits: number;
-    screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
-}
-```
+- **No `getSessionSerializer()`** (the original, unchanged behavior for any existing game package):
+  ```ts
+  {
+      sessionId: string;
+      game: {id: string; name: string; version: string};
+      bet: number;
+      credits: number;
+      screen?: unknown[][]; // getSymbolsCombination().toMatrix() when the session exposes it, else omitted
+  }
+  ```
+- **`getSessionSerializer()` implemented**: `{sessionId, game, credits, ...serializer.getInitialData(session)}` —
+  `credits` is always the authoritative wallet balance, overriding whatever the serializer itself computed. For a
+  game returning `new VideoSlotSessionSerializer()` (what `pokie create`/`pokie init` scaffold by default), that
+  means `bet`, `availableBets`, `reelsSymbols`, `availableSymbols`, `paytable`, `linesDefinitions`, and more — see
+  [Network Serialization](serialization.md) for the full shape, including the `MultiStageRoundSessionSerializer`/
+  `CascadeSessionSerializer` payload for multi-stage/cascade mechanics.
 
 An optional JSON body `{"seed": string | number}` is forwarded as `context.seed` — same best-effort caveat as
 [`pokie sim --seed`](#pokie-sim-packageroot): only game packages that actually thread `context.seed` into their own
@@ -457,7 +477,8 @@ RNG setup honor it.
 Delegates to `SpinCommandHandler` (see [Spin orchestration & idempotency](#spin-orchestration--idempotency)
 below), which applies the session's current wallet balance, checks `session.canPlayNextGame()`, and only then
 calls `session.play()` on the (possibly just-reconstructed, see
-[Session storage & wallet](#session-storage--wallet)) session, returning its new state:
+[Session storage & wallet](#session-storage--wallet)) session, returning its new state — the same
+serializer-dependent shape as `POST /sessions` above:
 
 ```ts
 {
@@ -506,6 +527,13 @@ This is a **restore/reload** endpoint, not a new capability — it reads the per
 `InMemorySessionRepository` (what the CLI always uses), that state doesn't survive a restart, so every stored
 `sessionId` 404s after one. With a `FileSessionRepository` (see below), it does.
 
+For a game implementing `getSessionSerializer()`, this returns the exact rich payload captured the last time
+`capturePokieSessionState` ran (at session creation, or after the last spin) — **not** a freshly re-serialized
+session. A freshly reconstructed session only restores a game's own bespoke `featureState` (e.g. free-games
+counters via `ConvertableToSessionState`/`BuildableFromSessionState`), never round-outcome data like the last
+screen/win/cascade result, so re-running the serializer on a reconstructed session would silently produce a
+wrong payload; reading back what was actually captured avoids that entirely.
+
 #### Client reload flow
 
 A frontend that wants to survive a page reload without losing its session can use `GET /sessions/:sessionId` as a
@@ -520,8 +548,8 @@ lightweight restore step:
 ### Session storage & wallet
 
 `PokieDevServer` never keeps game state only in a live session object — every `POST /sessions` and
-`POST .../spin` writes a serializable `PokieSessionState` (`{context?, bet, win, screen?, featureState?}`, no
-credits) through a `SessionRepository`:
+`POST .../spin` writes a serializable `PokieSessionState` (`{context?, bet, win, screen?, featureState?,
+serializedPayload?}`, no credits) through a `SessionRepository`:
 
 ```ts
 export interface SessionRepository {
@@ -555,6 +583,14 @@ a **snapshot-only fallback**: `PokieDevServer` still restores bet/win/screen aft
 reconstructed session back into whatever mid-feature state it was in — the same caveat plain `VideoSlotSession`
 and any other game without this contract already had. Implementing it is entirely optional and additive; existing
 games and the standalone `VideoSlotSession` behave exactly as before whether or not they implement it.
+
+`serializedPayload` is the `getSessionSerializer()` counterpart — present only for a game implementing it, holding
+the full `getInitialData(session)` output captured at session creation and again after every spin. `GET
+/sessions/:sessionId` reads it straight back out of storage rather than re-serializing a reconstructed session
+(see that endpoint's own note above for why). Captured via `getInitialData` (not the thinner `getRoundData`)
+on *every* capture, not just creation, so whatever was last persisted is always complete enough to fully restore
+a client's UI from — more bytes per spin than a hand-tuned payload would use, but it keeps restore-after-reload
+correct with one code path instead of two.
 
 Credits are handled separately through a `WalletPort`, and are **deliberately not part of `PokieSessionState`** —
 a restart always resets balances even when a `FileSessionRepository` keeps the game state:
@@ -778,6 +814,89 @@ const address = await server.start(); // {host, port} — port is the OS-assigne
 await server.stop();
 ```
 
+## `pokie client <packageRoot>` (experimental)
+
+**Experimental.** Serves the universal browser preview UI: create a session, save its `sessionId`, restore it
+after a page reload, spin, and see credits/bet/win/screen update — plus playback for any
+`MultiStageRoundSessionSerializer`-based `stages` array (e.g. a cascade round) and a generic collapsible raw-JSON
+view for whatever it doesn't specifically recognize (see [Network Serialization](serialization.md)).
+
+**`pokie client` never starts an API server itself** — it's a static-file server only, expecting a separately
+running `pokie serve` (default `http://127.0.0.1:3000`). Use [`pokie dev`](#pokie-dev-packageroot-experimental)
+to run both together with zero configuration.
+
+```
+pokie serve ./crazy-fruits            # in one terminal
+pokie client ./crazy-fruits            # in another
+```
+
+```
+POKIE client preview (experimental) listening on http://127.0.0.1:3100
+Talking to a pokie serve API expected at http://127.0.0.1:3000 — start it separately (e.g. "pokie serve") or use "pokie dev" to run both together.
+```
+
+Options:
+
+- `--port <number>` — port to listen on (default `3100`). Pass `0` to let the OS assign a free port.
+- `--host <string>` — host/interface to bind (default `127.0.0.1`).
+- `--api-host <string>` / `--api-port <number>` — where to expect the `pokie serve` API (default
+  `127.0.0.1:3000`).
+
+`<packageRoot>` is required — for signature symmetry with `pokie serve`/`pokie dev`, and because the scaffolded
+`"client": "pokie client ."` script always passes one — but it's **never loaded**: the browser preview is entirely
+game-agnostic, so `pokie client` doesn't call `loadPokieGame` at all.
+
+The client's own configured API address is served from the same origin at `GET /config`
+(`{"apiBaseUrl": "http://host:port"}`), which is how the served page knows where to `fetch()` without any
+build-time configuration — `pokie dev` (below) sets this to the API port it actually bound, so the two always
+agree even when both are started with `--port 0`.
+
+The reusable server sits behind `src/server` (`PokieClientServer`, implementing `PokieClientServerHandling`),
+the same shape as `PokieDevServer`:
+
+```ts
+import {PokieClientServer, PokieClientServerHandling} from "pokie";
+
+const server: PokieClientServerHandling = new PokieClientServer("./dist/cli/client", {
+    host: "127.0.0.1",
+    port: 3100,
+    apiAddress: {host: "127.0.0.1", port: 3000},
+});
+const address = await server.start();
+// ...
+await server.stop();
+```
+
+## `pokie dev <packageRoot>` (experimental)
+
+**Experimental.** Runs [`pokie serve`](#pokie-serve-packageroot-experimental) and
+[`pokie client`](#pokie-client-packageroot-experimental) together — as two HTTP listeners in one process, not
+child processes — waits for the API's `GET /health` to actually respond, best-effort opens the default browser
+pointed at the client, and cleanly stops both servers on `Ctrl+C` (`SIGINT`/`SIGTERM`).
+
+```
+pokie dev ./crazy-fruits
+```
+
+```
+POKIE dev server (experimental) listening on http://127.0.0.1:3000
+POKIE client preview listening on http://127.0.0.1:3100
+This is a local/dev reference setup for a single game package — not a casino backend or RGS.
+```
+
+Options:
+
+- `--port <number>` / `--host <string>` — the API server's port/host (same defaults as `pokie serve`).
+- `--client-port <number>` / `--client-host <string>` — the client server's port/host (same defaults as
+  `pokie client`).
+- `--no-open` — don't try to open a browser.
+
+Opening the browser is entirely best-effort: it shells out to `open` (macOS), `start` (Windows), or `xdg-open`
+(everything else), and a failure there (no display, sandboxed environment, missing binary, ...) is swallowed —
+it never fails the command. Registering `SIGINT`/`SIGTERM` handlers to stop both servers means `pokie dev` also
+calls `process.exit()` itself once both `.stop()` calls settle (successfully or not) — Node won't exit
+automatically once a custom signal handler is registered.
+
 ## Workflow
 
 A typical end-to-end loop, from a fresh directory to a running dev server, chaining every subcommand above:
@@ -798,7 +917,7 @@ pokie diff before.json after.json
 
 pokie replay ./crazy-fruits --seed before --round 42 --out replay.json
 
-pokie serve ./crazy-fruits --port 4000
+pokie dev ./crazy-fruits
 ```
 
 Each step builds on the same `<packageRoot>`:
@@ -811,11 +930,13 @@ Each step builds on the same `<packageRoot>`:
 - [`replay`](#pokie-replay-packageroot) is independent of `sim`'s output files, but reproducibility across all
   three of `sim`/`diff`/`replay` depends on the same caveat: the game package must actually thread `context.seed`
   into a deterministic RNG for `--seed` to mean anything (see [Limitations](#limitations) below).
-- [`serve`](#pokie-serve-packageroot-experimental) is normally the last, interactive step, not part of a scripted
-  pipeline — it only needs the same built package and runs until stopped.
+- [`dev`](#pokie-dev-packageroot-experimental) (or `serve`/`client` run separately) is normally the last,
+  interactive step, not part of a scripted pipeline — it only needs the same built package and runs until
+  stopped. `pokie create`/`pokie init` already scaffold `npm run start`/`server`/`client` scripts wrapping these
+  three commands.
 
 ## What's next
 
-`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`, `pokie replay`, and
-`pokie serve` are the first of a planned set of subcommands built on the same [game package](game-packages.md)
-primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`).
+`pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`, `pokie replay`,
+`pokie serve`, `pokie client`, and `pokie dev` are the first of a planned set of subcommands built on the same
+[game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`).

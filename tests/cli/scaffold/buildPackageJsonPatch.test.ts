@@ -5,7 +5,12 @@ describe("buildPackageJsonPatch", () => {
         const patched = buildPackageJsonPatch({name: "crazy-fruits", version: "1.0.0"}, "1.2.1");
 
         expect(patched.pokie).toEqual({entry: "./dist/index.js"});
-        expect(patched.scripts).toEqual({build: "tsc"});
+        expect(patched.scripts).toEqual({
+            build: "tsc",
+            start: "pokie dev .",
+            server: "pokie serve .",
+            client: "pokie client .",
+        });
         expect(patched.dependencies).toEqual({pokie: "^1.2.1"});
         expect(patched.devDependencies).toEqual({typescript: "^5.0.4"});
         expect(patched.name).toBe("crazy-fruits");
@@ -16,7 +21,7 @@ describe("buildPackageJsonPatch", () => {
         const patched = buildPackageJsonPatch(
             {
                 name: "crazy-fruits",
-                scripts: {build: "webpack", test: "jest"},
+                scripts: {build: "webpack", test: "jest", start: "node server.js"},
                 dependencies: {pokie: "^1.0.0"},
                 devDependencies: {typescript: "^4.9.0"},
                 pokie: {entry: "./custom/entry.js"},
@@ -24,7 +29,13 @@ describe("buildPackageJsonPatch", () => {
             "1.2.1",
         );
 
-        expect(patched.scripts).toEqual({build: "webpack", test: "jest"});
+        expect(patched.scripts).toEqual({
+            build: "webpack",
+            test: "jest",
+            start: "node server.js",
+            server: "pokie serve .",
+            client: "pokie client .",
+        });
         expect(patched.dependencies).toEqual({pokie: "^1.0.0"});
         expect(patched.devDependencies).toEqual({typescript: "^4.9.0"});
         // pokie.entry is always managed/overwritten by init, unlike the other fields above.

@@ -107,6 +107,104 @@ Example `roundPayload`:
 `initialPayload` additionally includes `availableBets`, `availableSymbols`, `reelsNumber`, `reelsSymbolsNumber`,
 `paytable`, and `linesDefinitions` (e.g. `{"1": [1,1,1,1,1], "0": [0,0,0,0,0], ...}`).
 
+## Multi-stage rounds
+
+Some mechanics don't fit "one round, one screen, one win" — a cascade (tumble) round replays several
+remove-refill steps before settling, a pick-a-prize bonus reveals several picks, a ladder bonus climbs several
+levels. `MultiStageRoundSessionSerializer<TSession, TStage, TBaseRoundData, TBaseInitialData>` is the generic
+foundation for that shape — **not tied to video slots or cascades specifically**:
+
+```ts
+type MultiStageRoundNetworkData<TStage = unknown> = {
+    stages: TStage[];
+};
+
+abstract class MultiStageRoundSessionSerializer<TSession, TStage, TBaseRoundData, TBaseInitialData> {
+    constructor(baseSerializer: {getInitialData(session): TBaseInitialData; getRoundData(session): TBaseRoundData});
+
+    getInitialData(session: TSession): TBaseInitialData & MultiStageRoundNetworkData<TStage>;
+    getRoundData(session: TSession): TBaseRoundData & MultiStageRoundNetworkData<TStage>;
+
+    protected abstract getStages(session: TSession): TStage[];
+}
+```
+
+Same "inject a defaulted base serializer, spread its output" convention as every other serializer in this
+chain — it just also attaches `stages`, computed by whatever `getStages()` a concrete mechanic implements. A
+third-party game defines its own `TStage` shape and subclasses this directly for a mechanic this framework has
+never heard of (a pick bonus, a ladder, ...) without changing anything in `pokie` itself.
+
+### Cascading games
+
+`CascadeSessionSerializer<T>` is the ready-made `MultiStageRoundSessionSerializer` for cascade/tumble mechanics,
+built on top of `VideoSlotSessionSerializer`. There's no built-in "cascade session" class in this framework —
+`CascadingSpinResolver` (see [Paytable & Win Calculation](paytable-and-wins.md)) is a reusable utility a *custom*
+session wires into its own `play()`, keeping the resulting `CascadeResult`. The entire integration surface is one
+optional, feature-detected interface:
+
+```ts
+interface CascadeResultProviding<T = string> {
+    getCascadeResult(): CascadeResult<T>;
+}
+```
+
+Any session implementing `VideoSlotSessionHandling<T> & CascadeResultProviding<T>` works with
+`CascadeSessionSerializer` as-is:
+
+```ts
+import {CascadeSessionSerializer} from "pokie";
+
+const serializer = new CascadeSessionSerializer();
+const roundPayload = serializer.getRoundData(session); // session implements CascadeResultProviding
+```
+
+```ts
+type CascadeStepNetworkData<T = string> = {
+    screen: T[][];                                  // grid before this step's removals
+    winEvaluationResult: WinEvaluationResultNetworkData<T>;
+    removedPositions: number[][];
+    refillSymbols: T[][];
+    metadata: Record<string, unknown>;
+    rngInfo: Record<string, unknown>;
+    debugInfo: Record<string, unknown>;
+};
+
+type CascadeRoundNetworkData<T = string> = {
+    initialScreen: T[][];
+    finalScreen: T[][];
+    totalCascadeWin: number;
+    cascadeMetadata: Record<string, unknown>;
+    cascadeRngInfo: Record<string, unknown>;
+    cascadeDebugInfo: Record<string, unknown>;
+} & VideoSlotRoundNetworkData<T> & MultiStageRoundNetworkData<CascadeStepNetworkData<T>>;
+```
+
+Example `roundPayload` for a two-step cascade:
+
+```json
+{
+  "credits": 995, "bet": 5,
+  "reelsSymbols": [["K","A","A"],["Q","K","Q"],["J","K","Q"]],
+  "totalWin": 45,
+  "initialScreen": [["A","A","A"],["A","K","Q"],["A","K","Q"]],
+  "finalScreen": [["K","A","A"],["Q","K","Q"],["J","K","Q"]],
+  "totalCascadeWin": 45,
+  "cascadeMetadata": {"totalSteps": 1}, "cascadeRngInfo": {}, "cascadeDebugInfo": {"cascadeStepCount": 1},
+  "stages": [
+    {
+      "screen": [["A","A","A"],["A","K","Q"],["A","K","Q"]],
+      "winEvaluationResult": {"totalWin": 45, "winningPositions": [[0,0],[0,1],[0,2],[1,0],[2,0]], "lineWins": [], "scatterWins": [], "clusterWins": [], "valueWins": [], "waysWins": [], "metadata": {}},
+      "removedPositions": [[0,0],[0,1],[0,2],[1,0],[2,0]],
+      "refillSymbols": [["K"],["Q"],["J"]],
+      "metadata": {"cascadeStepIndex": 0}, "rngInfo": {}, "debugInfo": {"multiplierBreakdown": []}
+    }
+  ]
+}
+```
+
+`stages` is an **empty array, not omitted**, for a round with no cascades — a client can always safely check
+`stages.length` without a presence check first.
+
 ## Notes
 
 - **`winningLines`/`winningScatters`/`winningClusters`/`winningValues`/`winningWays` are genuinely conditional** —

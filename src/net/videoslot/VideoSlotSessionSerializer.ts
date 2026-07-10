@@ -2,13 +2,13 @@ import {GameSessionSerializer} from "../GameSessionSerializer.js";
 import type {GameSessionSerializing} from "../GameSessionSerializing.js";
 import type {
     VideoSlotInitialNetworkData,
-    WinEvaluationResultNetworkData,
     VideoSlotRoundNetworkData,
     WinningClusterNetworkData,
     WinningScatterNetworkData,
     WinningValueNetworkData,
     WinningWayNetworkData,
 } from "./VideoSlotNetworkData.js";
+import {serializeWinEvaluationResult} from "./serializeWinEvaluationResult.js";
 import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
 import type {VideoSlotSessionSerializing} from "./VideoSlotSessionSerializing.js";
 import type {WinningClusterDescribing} from "../../session/videoslot/WinningClusterDescribing.js";
@@ -61,7 +61,7 @@ implements VideoSlotSessionSerializing<T> {
             reelsSymbols: symbolsCombination.toMatrix(),
             totalWin: session.getWinAmount(),
             winningPositions: winEvaluationResult.getWinningPositions(),
-            winEvaluationResult: this.serializeWinEvaluationResult(winEvaluationResult),
+            winEvaluationResult: serializeWinEvaluationResult(winEvaluationResult),
         };
         if (Object.keys(winningLines).length > 0) {
             r.winningLines = Object.values(winningLines).reduce((acc, line) => {
@@ -147,47 +147,6 @@ implements VideoSlotSessionSerializing<T> {
             );
         }
         return r;
-    }
-
-    private serializeWinEvaluationResult(result: WinEvaluationResult<T>): WinEvaluationResultNetworkData<T> {
-        return {
-            totalWin: result.getTotalWin(),
-            winningPositions: result.getWinningPositions(),
-            lineWins: result.getLineWins().map((component) => {
-                const line = component.getWinningLine();
-                return {
-                    definition: line.getDefinition(),
-                    pattern: line.getPattern(),
-                    symbolId: line.getSymbolId(),
-                    lineId: line.getLineId(),
-                    symbolsPositions: line.getSymbolsPositions(),
-                    wildSymbolsPositions: line.getWildSymbolsPositions(),
-                    winAmount: component.getWinAmount(),
-                };
-            }),
-            scatterWins: result.getScatterWins().map((component) => ({
-                symbolId: component.getWinningScatter().getSymbolId(),
-                symbolsPositions: component.getWinningScatter().getSymbolsPositions(),
-                winAmount: component.getWinAmount(),
-            })),
-            clusterWins: result.getClusterWins().map((component) => ({
-                symbolId: component.getWinningCluster().getSymbolId(),
-                symbolsPositions: component.getWinningCluster().getSymbolsPositions(),
-                winAmount: component.getWinAmount(),
-            })),
-            valueWins: result.getValueWins().map((component) => ({
-                symbolId: component.getWinningValue().getSymbolId(),
-                symbolsPositions: component.getWinningValue().getSymbolsPositions(),
-                winAmount: component.getWinAmount(),
-            })),
-            waysWins: result.getWaysWins().map((component) => ({
-                symbolId: component.getWinningWay().getSymbolId(),
-                symbolsPositions: component.getWinningWay().getSymbolsPositions(),
-                waysCount: component.getWinningWay().getWaysCount(),
-                winAmount: component.getWinAmount(),
-            })),
-            metadata: result.getMetadata(),
-        };
     }
 
     private getDerivedWinningClusters(

@@ -2,6 +2,7 @@ import crypto from "crypto";
 import http, {IncomingMessage, ServerResponse} from "http";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieGameContext} from "../gamepackage/PokieGameContext.js";
+import type {GameSessionSerializing} from "../net/GameSessionSerializing.js";
 import type {PokieDevServerAddress} from "./PokieDevServerAddress.js";
 import type {PokieDevServerHandling} from "./PokieDevServerHandling.js";
 import type {PokieDevServerOptions} from "./PokieDevServerOptions.js";
@@ -10,6 +11,7 @@ import {InMemoryIdempotencyRepository} from "./idempotency/InMemoryIdempotencyRe
 import {capturePokieSessionState} from "./session/capturePokieSessionState.js";
 import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js";
 import type {PokieSessionState} from "./session/PokieSessionState.js";
+import {resolveGameSessionSerializer} from "./session/resolveGameSessionSerializer.js";
 import type {SessionRepository} from "./session/SessionRepository.js";
 import {SpinCommandHandler} from "./spin/SpinCommandHandler.js";
 import type {SpinCommandHandling} from "./spin/SpinCommandHandling.js";
@@ -30,6 +32,12 @@ const DEFAULT_PORT = 3000;
 // go through a separate WalletPort (InMemoryWallet by default) and are deliberately never part of the
 // persisted session state.
 //
+// Response payload: if the loaded PokieGame implements the optional getSessionSerializer(), its
+// net/ serializer's rich, game-specific output is used instead of this server's own narrow default
+// DTO — see PokieDevSessionResponse, capturePokieSessionState.ts, and buildSessionResponse().
+// CORS headers are sent unconditionally on every response so a browser-based client served from a
+// different origin (see `pokie client`) can read them.
+//
 // A live GameSessionHandling object — needed to actually run play() against, not just a state
 // snapshot — is cached and reconstructed by SpinCommandHandler, which owns the spin endpoint's whole
 // orchestration (idempotency, canPlayNextGame() gate, play(), wallet settlement, persistence). This
@@ -48,6 +56,7 @@ export class PokieDevServer implements PokieDevServerHandling {
     // an explicitly constructed `new InMemoryWallet(initialBalance)`) is never seeded this way — it
     // stays the sole source of a new session's starting balance, see handleCreateSession.
     private readonly usesDefaultWallet: boolean;
+    private readonly sessionSerializer: GameSessionSerializing | undefined;
     private readonly spinCommandHandler: SpinCommandHandling;
     private server: http.Server | undefined;
 
@@ -58,6 +67,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository();
         this.usesDefaultWallet = options.wallet === undefined;
         this.wallet = options.wallet ?? new InMemoryWallet();
+        this.sessionSerializer = resolveGameSessionSerializer(game);
         // SpinCommandHandler always settles a spin through a TransactionalWalletPort. this.wallet
         // itself stays a plain WalletPort (the type PokieDevServerOptions has always exposed, so a
         // caller's existing custom implementation keeps compiling and working unchanged) — if it
@@ -115,6 +125,18 @@ export class PokieDevServer implements PokieDevServerHandling {
         const url = new URL(req.url ?? "/", "http://localhost");
         const spinSessionId = this.matchSpinRoute(url.pathname);
         const sessionId = this.matchSessionRoute(url.pathname);
+
+        // Unconditional, on every response (including errors): a browser-based client — e.g.
+        // `pokie client`, served from a different origin/port by design (see docs/cli.md) — needs
+        // these to read this API's responses at all, not just JSON bodies that happen to succeed.
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        if (method === "OPTIONS") {
+            res.writeHead(204);
+            res.end();
+            return;
+        }
 
         if (method === "GET" && url.pathname === "/health") {
             this.sendJson(res, 200, {status: "ok"});
@@ -184,7 +206,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             session.setCreditsAmount(await this.wallet.getBalance(sessionId));
         }
 
-        const state = capturePokieSessionState(context, session);
+        const state = capturePokieSessionState(context, session, this.sessionSerializer);
         await this.sessionRepository.save(sessionId, state);
 
         const credits = await this.wallet.getBalance(sessionId);
@@ -233,12 +255,19 @@ export class PokieDevServer implements PokieDevServerHandling {
         win?: number,
     ): PokieDevSessionResponse {
         const manifest = this.game.getManifest();
-        const response: PokieDevSessionResponse = {
-            sessionId,
-            game: {id: manifest.id, name: manifest.name, version: manifest.version},
-            bet: state.bet,
-            credits,
-        };
+        const game = {id: manifest.id, name: manifest.name, version: manifest.version};
+
+        // Rich path: the loaded game provided a serializer (see PokieGame.getSessionSerializer),
+        // and its full output was captured at the moment it was actually correct to compute — see
+        // capturePokieSessionState.ts and PokieSessionState.serializedPayload's own doc comment for
+        // why this is a read, not a re-serialization. `credits` is always the authoritative wallet
+        // balance, overriding whatever the serializer itself computed from session.getCreditsAmount().
+        if (state.serializedPayload !== undefined) {
+            return {...state.serializedPayload, sessionId, game, credits};
+        }
+
+        // Legacy/default path: unchanged from before this game ever had the option of a serializer.
+        const response: PokieDevSessionResponse = {sessionId, game, bet: state.bet, credits};
         if (win !== undefined) {
             response.win = win;
         }

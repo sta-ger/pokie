@@ -3,7 +3,9 @@ import fs from "fs";
 import path from "path";
 import {fileURLToPath} from "url";
 import {CliCommandHandling} from "./CliCommandHandling.js";
+import {ClientCommand} from "./commands/ClientCommand.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
+import {DevCommand} from "./commands/DevCommand.js";
 import {DiffCommand} from "./commands/DiffCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
@@ -19,6 +21,14 @@ function readOwnVersion(): string {
     return pkg.version;
 }
 
+// Where the compiled cli/client assets live relative to this compiled file (dist/cli/pokie.js) —
+// computed once, here, and passed into ClientCommand/DevCommand, since resolving it needs
+// import.meta.url (see those commands' own comments on why they don't compute it themselves).
+function ownClientRoot(): string {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    return path.join(currentDir, "client");
+}
+
 function printUsage(commands: CliCommandHandling[]): void {
     console.log("Usage: pokie <command>\n");
     console.log("Commands:");
@@ -29,7 +39,9 @@ function printUsage(commands: CliCommandHandling[]): void {
 
 async function run(): Promise<number> {
     const commands: CliCommandHandling[] = [
+        new ClientCommand(undefined, ownClientRoot()),
         new CreateCommand(readOwnVersion()),
+        new DevCommand(undefined, undefined, {clientRoot: ownClientRoot()}),
         new DiffCommand(),
         new InitCommand(readOwnVersion()),
         new ReplayCommand(),

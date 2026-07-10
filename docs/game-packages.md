@@ -28,6 +28,7 @@ type PokieGameContext = {
 interface PokieGame {
     getManifest(): PokieGameManifest;
     createSession(context?: PokieGameContext): GameSessionHandling;
+    getSessionSerializer?(): GameSessionSerializing;
 }
 ```
 
@@ -37,6 +38,14 @@ interface PokieGame {
   passed to a `SeededRandomNumberGenerator` (see [Reels & Symbol Sequences](reels-and-sequences.md#rngs)) so the
   caller can reproduce a specific run; `context.options` is a free-form bag for anything else the game needs
   (RTP variant, bonus buy mode, etc.) — the game package defines and interprets its own option keys.
+- `getSessionSerializer?()` — **optional and additive**. When implemented, returns the [`net/` session
+  serializer](serialization.md) that knows how to turn this game's own session type into a rich, game-specific
+  JSON payload (e.g. `new VideoSlotSessionSerializer()`, or a custom `CascadeSessionSerializer`/
+  `MultiStageRoundSessionSerializer` subclass for a multi-stage mechanic). `pokie serve` uses it, when present,
+  instead of its own narrow default response shape — see [`pokie serve`'s session responses](cli.md#post-sessions)
+  and [Session storage & wallet](cli.md#session-storage--wallet). A game that doesn't implement this keeps getting
+  exactly the response shape it always has; this is not required for `loadPokieGame`/`pokie validate`/`pokie sim`/
+  any other command to work.
 
 ## Declaring the entrypoint
 
@@ -133,6 +142,6 @@ if (result.hasErrors()) {
 ```
 
 `loadPokieGame`, `isPokieGame`, and `PokieGameContractValidationRule` are the building blocks the `pokie create`/
-`pokie init`/`pokie sim`/`pokie validate`/`pokie report`/`pokie diff`/`pokie replay`/`pokie serve` [CLI](cli.md)
-commands are built on — `pokie validate` in particular wraps this same contract check in
+`pokie init`/`pokie sim`/`pokie validate`/`pokie report`/`pokie diff`/`pokie replay`/`pokie serve`/`pokie client`/
+`pokie dev` [CLI](cli.md) commands are built on — `pokie validate` in particular wraps this same contract check in
 `PokieGamePackageValidator`, returning a structured report instead of throwing.

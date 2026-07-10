@@ -1,0 +1,7 @@
+{
+    "name": "playable-game-with-serializer",
+    "version": "1.0.0",
+    "pokie": {
+        "entry": "./index.js"
+    }
+}
