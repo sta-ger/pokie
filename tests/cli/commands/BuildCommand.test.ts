@@ -211,6 +211,7 @@ describe("BuildCommand", () => {
 
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('Created starter blueprint "my-blueprint.json"');
+            expect(printed).toContain("pokie build my-blueprint.json --dry-run");
             expect(printed).toContain("pokie build my-blueprint.json --out <dir>");
         });
 

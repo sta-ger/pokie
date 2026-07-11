@@ -123,6 +123,7 @@ pokie build --init-blueprint my-game.blueprint.json
 Created starter blueprint "my-game.blueprint.json".
 
 Edit it by hand, then run:
+  pokie build my-game.blueprint.json --dry-run
   pokie build my-game.blueprint.json --out <dir>
 ```
 
@@ -132,6 +133,20 @@ minimum required to pass validation) so there's something concrete to edit for e
 [`GameBlueprintValidator`](#validation) with zero errors or warnings as written, and `pokie build <file> --out
 <dir>` works on it completely unedited — but the point is to open it in an editor, change the numbers/symbols/ids
 to your own game, and build that.
+
+The full starter-template workflow — scaffold, hand-edit, validate-only preview, then a real build:
+
+```
+pokie build --init-blueprint my-game.blueprint.json
+# ...edit my-game.blueprint.json by hand...
+pokie build my-game.blueprint.json --dry-run    # re-run after every edit until it looks right
+pokie build my-game.blueprint.json --out my-game
+```
+
+[`--dry-run`](#pokie-build-configjson) validates the edited blueprint and prints the same preview a real build
+would (game info, reels/rows, symbol/payline/bet counts, blueprint hash, expected files) without creating or
+touching `--out` — so a mistake in a hand-edit is caught immediately, with the same error messages a real build
+would print, before anything is generated.
 
 `--init-blueprint` only ever writes `<file>` itself: it doesn't launch the wizard, validate anything beyond what's
 needed to write the template, or call `GamePackageGenerator` — no package is generated, and nothing else on disk is

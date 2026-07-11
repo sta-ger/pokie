@@ -26,7 +26,9 @@ describe("CLI workflow (integration): pokie build --init-blueprint", () => {
         (console.log as jest.Mock).mockRestore();
     });
 
-    it("writes a starter blueprint that builds successfully as-is via pokie build <file> --out <dir>", async () => {
+    it("writes a starter blueprint that dry-runs cleanly and then builds successfully as-is via the full init -> dry-run -> build workflow", async () => {
+        const logSpy = console.log as jest.Mock;
+
         const initExitCode = await new BuildCommand("1.3.0").run(["--init-blueprint", blueprintFile]);
         expect(initExitCode).toBe(0);
         expect(fs.existsSync(blueprintFile)).toBe(true);
@@ -35,6 +37,20 @@ describe("CLI workflow (integration): pokie build --init-blueprint", () => {
         expect(raw.endsWith("\n")).toBe(true);
         const parsed = JSON.parse(raw); // throws if the written file isn't valid, formatted JSON
         expect(parsed.manifest.id).toBe("starter-slot");
+
+        const initPrinted = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(initPrinted).toContain(`pokie build ${blueprintFile} --dry-run`);
+        expect(initPrinted).toContain(`pokie build ${blueprintFile} --out <dir>`);
+        logSpy.mockClear();
+
+        const dryRunExitCode = await new BuildCommand("1.3.0").run([blueprintFile, "--out", outDir, "--dry-run"]);
+        expect(dryRunExitCode).toBe(0);
+        expect(fs.existsSync(outDir)).toBe(false);
+
+        const dryRunPrinted = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(dryRunPrinted).toContain("Dry run");
+        expect(dryRunPrinted).toContain('game             Starter Slot (id: "starter-slot", v0.1.0)');
+        logSpy.mockClear();
 
         const buildExitCode = await new BuildCommand("1.3.0").run([blueprintFile, "--out", outDir]);
         expect(buildExitCode).toBe(0);

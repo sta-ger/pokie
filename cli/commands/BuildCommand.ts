@@ -110,6 +110,7 @@ export class BuildCommand implements CliCommandHandling {
 
         console.log(`Created starter blueprint "${file}".`);
         console.log(`\nEdit it by hand, then run:`);
+        console.log(`  pokie build ${file} --dry-run`);
         console.log(`  pokie build ${file} --out <dir>`);
 
         return 0;
