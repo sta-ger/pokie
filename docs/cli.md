@@ -90,14 +90,22 @@ npm install
   list of files this run generated (`files` — also what a later `pokie build` reads to recognize this directory
   as safe to rebuild, see below), and the blueprint's own `manifest`. The same summary (minus the timestamp and
   the full hash's `sha256:` prefix repetition) is echoed as the header comment in `index.js`, so either file is
-  enough to tell what a generated package was built from. Unlike `build-info.json`, `index.js`'s header omits the
-  timestamp on purpose: re-running `pokie build` on an unchanged blueprint regenerates a byte-identical
-  `index.js`, so a rebuild only actually changes `build-info.json` (its timestamp) — see
+  enough to tell what a generated package was built from. Re-running `pokie build` on an unchanged blueprint
+  with the same `pokie` version regenerates every file byte-identically, including `build-info.json`'s own
+  timestamp (reused from the previous run rather than restamped) — see
   [Rebuilding an existing `--out` directory](#rebuilding-an-existing---out-directory).
+
+After generation, `pokie build` prints a build summary to stdout: package root, game id/name/version, blueprint
+hash, source path (when known), the files it wrote, and a `status` line — `generated` for a real build, or an
+explicit `unchanged` message when the rebuild above turned out to be a no-op.
 
 Options:
 
 - `--out <dir>` — write the package to `<dir>` instead of `./<manifest.id>`.
+- `--dry-run` — validate the blueprint and print a preview (game id/name/version, reels x rows, symbol count,
+  payline count, bets, blueprint hash, and the files a real build would generate) without creating or touching
+  the `--out` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
+  errors, `0` if it's valid (warnings included).
 
 ### The `GameBlueprint` format
 
@@ -234,9 +242,11 @@ written by `pokie build`) *and* already has a file at one of the four generated 
 rather than guessing. Files elsewhere in the directory (anything not at one of those four paths — your own docs,
 `node_modules`, a lockfile, `.git`) are never touched either way and never cause a conflict.
 
-Rebuilding the *same* blueprint reproduces `index.js` byte-for-byte (see the `build-info.json` bullet above) and
-the same `blueprintHash`/`files` in `build-info.json` — only `build-info.json`'s `generatedAt` timestamp changes,
-so a diff between two rebuilds of an unchanged blueprint is just that one line.
+Rebuilding the *same* blueprint with the same `pokie` version reproduces every generated file byte-for-byte,
+`build-info.json` included (see the `build-info.json` bullet above) — a rebuild of an unchanged blueprint is a
+true no-op, not just a smaller diff. The build summary's `status` line calls this out explicitly as `unchanged`.
+Want to check this without writing anything at all? `pokie build <config.json> --dry-run` validates and prints
+the same blueprint hash a real build would produce, with no `--out` directory created or touched.
 
 ### Interactive mode (`pokie build` with no arguments)
 

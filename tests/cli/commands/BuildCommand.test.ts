@@ -45,6 +45,18 @@ function createStubPrompt(): PromptAdapting & {closed: boolean} {
 }
 
 const rawBlueprint = {manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}};
+const fullBlueprint: GameBlueprint = {
+    manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    reels: 5,
+    rows: 3,
+    symbols: ["A", "K", "Q", "J"],
+    paytable: {A: {3: 5, 4: 10, 5: 20}},
+    paylines: [
+        [0, 0, 0, 0, 0],
+        [1, 1, 1, 1, 1],
+    ],
+    availableBets: [1, 2, 5],
+};
 const wizardBlueprint: GameBlueprint = {
     manifest: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
     reels: 5,
@@ -262,6 +274,77 @@ describe("BuildCommand", () => {
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("status           unchanged — deterministic rebuild");
+    });
+
+    it("--dry-run validates without calling the generator or writing anything", async () => {
+        const validator = createStubValidator([]);
+        const generator = createStubGenerator(generatedResult);
+        const command = new BuildCommand("1.3.0", () => fullBlueprint, validator, generator);
+
+        const exitCode = await command.run(["config.json", "--dry-run"]);
+
+        expect(exitCode).toBe(0);
+        expect(validator.calledWith).toBe(fullBlueprint);
+        expect(generator.calledWith).toBeUndefined();
+    });
+
+    it("--dry-run prints a blueprint summary: game, reels x rows, symbols, paylines, bets, hash, and expected files", async () => {
+        const command = new BuildCommand("1.3.0", () => fullBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
+
+        await command.run(["config.json", "--dry-run"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("Dry run");
+        expect(printed).toContain('game             Crazy Fruits (id: "crazy-fruits", v0.1.0)');
+        expect(printed).toContain("reels x rows     5 x 3");
+        expect(printed).toContain("symbols          4");
+        expect(printed).toContain("paylines         2");
+        expect(printed).toContain("bets             1, 2, 5");
+        expect(printed).toContain("blueprint hash   sha256:");
+        expect(printed).toContain("would generate   README.md, package.json, src/generated/build-info.json, src/generated/index.js");
+    });
+
+    it("--dry-run reports default paylines/bets when the blueprint omits them", async () => {
+        const minimalBlueprint: GameBlueprint = {
+            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            reels: 3,
+            rows: 3,
+            symbols: ["A", "B"],
+            paytable: {A: {3: 5}},
+        };
+        const command = new BuildCommand("1.3.0", () => minimalBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
+
+        await command.run(["config.json", "--dry-run"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("paylines         default");
+        expect(printed).toContain("bets             default");
+    });
+
+    it("--dry-run still prints warnings and exits 0 when validation reports only warnings", async () => {
+        const validator = createStubValidator([{code: "blueprint-paytable-wild-symbol", severity: "warning", message: "heads up"}]);
+        const generator = createStubGenerator(generatedResult);
+        const command = new BuildCommand("1.3.0", () => fullBlueprint, validator, generator);
+
+        const exitCode = await command.run(["config.json", "--dry-run"]);
+
+        expect(exitCode).toBe(0);
+        expect(generator.calledWith).toBeUndefined();
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("heads up"));
+        expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("Dry run");
+    });
+
+    it("--dry-run returns 1 and does not print a dry-run summary when validation reports errors", async () => {
+        const validator = createStubValidator([{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}]);
+        const generator = createStubGenerator(generatedResult);
+        const command = new BuildCommand("1.3.0", () => fullBlueprint, validator, generator);
+
+        const exitCode = await command.run(["config.json", "--dry-run"]);
+
+        expect(exitCode).toBe(1);
+        expect(generator.calledWith).toBeUndefined();
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
+        expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).not.toContain("Dry run");
     });
 
     it("prints the full build -> validate -> sim -> report -> replay -> dev workflow as next steps", async () => {

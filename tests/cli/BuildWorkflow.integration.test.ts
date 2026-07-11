@@ -146,4 +146,19 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(second).toBe(0);
         expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("status           unchanged — deterministic rebuild");
     });
+
+    it("--dry-run validates and previews the real example blueprint without creating --out at all", async () => {
+        const logSpy = console.log as jest.Mock;
+
+        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir, "--dry-run"]);
+
+        expect(exitCode).toBe(0);
+        expect(fs.existsSync(outDir)).toBe(false);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("Dry run");
+        expect(printed).toContain('game             Crazy Fruits (id: "crazy-fruits", v0.1.0)');
+        expect(printed).toContain("blueprint hash   sha256:");
+        expect(printed).toContain("would generate   README.md, package.json, src/generated/build-info.json, src/generated/index.js");
+    });
 });
