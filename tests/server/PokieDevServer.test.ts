@@ -827,6 +827,130 @@ describe("PokieDevServer (public/internal response split)", () => {
         });
     });
 
+    // Table-driven: every one of these `debug` values (or its absence) must leave every one of the
+    // three endpoints public-only, and only "1"/"true" must turn `internal` on — proving all three
+    // endpoints share the exact same, strict parsing (isInternalDataRequested), not three
+    // independently-drifting implementations.
+    describe("`debug` query parameter parsing is exact and consistent across all three endpoints", () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+        let sessionId: string;
+
+        beforeEach(async () => {
+            const game = createFakeGame(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+            const created = await postJson(`${baseUrl}/sessions`);
+            sessionId = created.body.sessionId as string;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        const publicOnlyDebugValues = ["0", "false", "", "yes", "TRUE", "True"];
+
+        it.each(publicOnlyDebugValues)('POST /sessions never includes `internal` for "?debug=%s"', async (value) => {
+            const {body} = await postJson(`${baseUrl}/sessions?debug=${value}`);
+            expect("internal" in body).toBe(false);
+        });
+
+        it.each(publicOnlyDebugValues)('POST /sessions/:id/spin never includes `internal` for "?debug=%s"', async (value) => {
+            const {body} = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=${value}`);
+            expect("internal" in body).toBe(false);
+        });
+
+        it.each(publicOnlyDebugValues)('GET /sessions/:id never includes `internal` for "?debug=%s"', async (value) => {
+            const {body} = await getJson(`${baseUrl}/sessions/${sessionId}?debug=${value}`);
+            expect("internal" in body).toBe(false);
+        });
+
+        it("stays public-only when an unrelated query parameter is present instead of `debug`", async () => {
+            const created = await postJson(`${baseUrl}/sessions?seed=demo`);
+            expect("internal" in created.body).toBe(false);
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?foo=bar`);
+            expect("internal" in spun.body).toBe(false);
+
+            const restored = await getJson(`${baseUrl}/sessions/${sessionId}?foo=bar`);
+            expect("internal" in restored.body).toBe(false);
+        });
+
+        it("turns `internal` on for all three endpoints when `?debug=1`/`?debug=true` is present alongside another parameter", async () => {
+            const created = await postJson(`${baseUrl}/sessions?foo=bar&debug=1`);
+            expect(created.body.internal).toBeDefined();
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=true&foo=bar`);
+            expect(spun.body.internal).toBeDefined();
+
+            const restored = await getJson(`${baseUrl}/sessions/${sessionId}?debug=1`);
+            expect(restored.body.internal).toBeDefined();
+        });
+    });
+
+    describe("idempotent spin replay preserves correct, request-specific public/internal behavior", () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+        let sessionId: string;
+
+        beforeEach(async () => {
+            const game = createFakeGame(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+            const created = await postJson(`${baseUrl}/sessions`);
+            sessionId = created.body.sessionId as string;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("adds `internal` on a debug replay of a spin that was originally made without debug, without spinning again", async () => {
+            const original = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {requestId: "req-1"});
+            expect("internal" in original.body).toBe(false);
+
+            const replay = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`, {requestId: "req-1"});
+
+            // Same committed outcome as the original — the public fields are identical, proving this
+            // is a replay (no second spin), not a fresh one.
+            expect(replay.body.win).toBe(original.body.win);
+            expect(replay.body.credits).toBe(original.body.credits);
+            expect(replay.body.screen).toEqual(original.body.screen);
+
+            const internal = replay.body.internal as Record<string, unknown>;
+            expect(internal).toBeDefined();
+            expect(internal.stateAfter).toBeDefined();
+            expect(internal.stateBefore).toBeDefined();
+            expect(internal.requestId).toBe("req-1");
+        });
+
+        it("stays public-only on a replay without debug, even though the original spin was made with debug", async () => {
+            const original = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`, {requestId: "req-2"});
+            expect(original.body.internal).toBeDefined();
+
+            const replay = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {requestId: "req-2"});
+
+            expect("internal" in replay.body).toBe(false);
+            expect(replay.body.win).toBe(original.body.win);
+            expect(replay.body.credits).toBe(original.body.credits);
+        });
+
+        it("a distinct requestId's debug replay reflects its own spin, not an earlier one's", async () => {
+            const first = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`, {requestId: "req-a"});
+            const second = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`, {requestId: "req-b"});
+
+            expect((first.body.internal as Record<string, unknown>).requestId).toBe("req-a");
+            expect((second.body.internal as Record<string, unknown>).requestId).toBe("req-b");
+
+            // Replaying the first requestId again still reports req-a, not req-b's outcome.
+            const replayFirst = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`, {requestId: "req-a"});
+            expect((replayFirst.body.internal as Record<string, unknown>).requestId).toBe("req-a");
+            expect(replayFirst.body.credits).toBe(first.body.credits);
+        });
+    });
+
     describe("custom serializer with public-only data (no debug hooks implemented)", () => {
         let server: PokieDevServer;
         let baseUrl: string;

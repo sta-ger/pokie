@@ -1036,7 +1036,10 @@ it).
 
 Every `GET`/`POST` response above (`POST /sessions`, `POST /sessions/:sessionId/spin`, `GET /sessions/:sessionId`) is
 public-only by default — exactly the shapes documented above, unchanged. Adding `?debug=1` (or `?debug=true`) to any
-of the three adds one extra field, `internal`, never present otherwise:
+of the three adds one extra field, `internal`, never present otherwise. The match is exact and strict: `?debug=0`,
+`?debug=false`, `?debug=` (empty), any other value, an unrelated query parameter (e.g. `?seed=demo`), or no query
+string at all all leave the response public-only — there is no fuzzy/truthy parsing, only the two literal strings
+`"1"`/`"true"` turn it on, and all three endpoints check it the exact same way.
 
 ```ts
 {
@@ -1082,9 +1085,17 @@ contract and an example.
 `initialPayload`/`roundPayload` — round data wins on any overlapping key.
 
 No option exists to make `internal` the *default* — every endpoint is public-only unless a specific request opts
-in. `pokie client`/`pokie dev` never pass `?debug=1` themselves, so the browser preview always talks to the public
-API exactly as before this feature existed; passing `?debug=1` by hand (e.g. via `curl` or a browser devtools
-request) is how a game author inspects the internal data while developing.
+in. `pokie client`/`pokie dev` never pass `?debug=1` themselves (see `cli/client/apiClient.ts` — every request URL
+it builds is a plain `/sessions`/`/sessions/:id`/`/sessions/:id/spin`, no query string), so the browser preview
+always talks to the public API exactly as before this feature existed; passing `?debug=1` by hand (e.g. via `curl`
+or a browser devtools request) is how a game author inspects the internal data while developing.
+
+This also applies to an idempotent replay (see [Idempotency and concurrency](#idempotency-and-concurrency) below):
+`internal` is decided fresh, per request, from that request's own `?debug=` value — not from whatever the original
+spin that produced the cached result was called with. Replaying the same `sessionId`/`requestId` with `?debug=1`
+returns the same already-committed outcome (state, win, credits — nothing spins again) *plus* `internal` describing
+that original spin; replaying it without `?debug=1` returns the exact same public body whether or not the original
+call happened to include `?debug=1`.
 
 ### Session storage & wallet
 

@@ -125,4 +125,25 @@ describe("apiClient", () => {
             await expect(spin(fetchImpl, "http://api.test", "s1")).rejects.toThrow(/HTTP 500/);
         });
     });
+
+    // `pokie client`/`pokie dev` must never accidentally opt into the server's internal/debug payload
+    // (see PokieDevServer's public/internal response split, docs/cli.md "pokie serve") — this browser
+    // client has no debug UI at all, so none of its requests should ever carry `?debug=`.
+    it("never requests the server's internal/debug payload (no `debug` query parameter on any call)", async () => {
+        const {fetchImpl, calls} = createFakeFetch(() => ({
+            ok: true,
+            status: 200,
+            body: {sessionId: "s1", game: {id: "g", name: "G", version: "1.0.0"}, credits: 1000, win: 0},
+        }));
+
+        await createSession(fetchImpl, "http://api.test", "demo-seed");
+        await getSession(fetchImpl, "http://api.test", "s1");
+        await spin(fetchImpl, "http://api.test", "s1", "req-1");
+
+        expect(calls).toHaveLength(3);
+        for (const call of calls) {
+            expect(call.url).not.toContain("debug");
+            expect(new URL(call.url).search).toBe("");
+        }
+    });
 });
