@@ -237,6 +237,44 @@ describe("SimulationReportDiffer", () => {
             expect(diff.breakdown!.components.freeGames.contribution).toEqual({left: 0, right: 0.142, delta: 0.142, percentDelta: null});
         });
 
+        it("handles a category set that changed entirely — one removed, one added, arbitrary custom names", () => {
+            // left had a "freeGames" feature; right's build swapped it out for a "bonus" mechanic — an
+            // entirely different, non-built-in category name (not base/freeGames at all).
+            const leftWithBreakdown: SimulationReport = {
+                ...left,
+                breakdown: {
+                    components: {
+                        base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, contribution: 0.81, hitFrequency: 0.2, maxWin: 90},
+                        freeGames: {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.42, contribution: 0.1422, hitFrequency: 0.6, maxWin: 120.5},
+                    },
+                },
+            };
+            const rightWithBreakdown: SimulationReport = {
+                ...right,
+                breakdown: {
+                    components: {
+                        base: {rounds: 8850, totalBet: 8850, totalWin: 8500, rtp: 0.96, contribution: 0.8629, hitFrequency: 0.4, maxWin: 5},
+                        bonus: {rounds: 1000, totalBet: 1000, totalWin: 900, rtp: 0.9, contribution: 0.0914, hitFrequency: 1, maxWin: 3},
+                    },
+                },
+            };
+
+            const diff = new SimulationReportDiffer().diff(leftWithBreakdown, rightWithBreakdown);
+
+            expect(Object.keys(diff.breakdown!.components).sort()).toEqual(["base", "bonus", "freeGames"]);
+            // freeGames existed only on the left — removed in right.
+            expect(diff.breakdown!.components.freeGames.left).not.toBeNull();
+            expect(diff.breakdown!.components.freeGames.right).toBeNull();
+            expect(diff.breakdown!.components.freeGames.rounds).toEqual({left: 980, right: 0, delta: -980, percentDelta: -100});
+            // bonus exists only on the right — added in right.
+            expect(diff.breakdown!.components.bonus.left).toBeNull();
+            expect(diff.breakdown!.components.bonus.right).not.toBeNull();
+            expect(diff.breakdown!.components.bonus.rounds).toEqual({left: 0, right: 1000, delta: 1000, percentDelta: null});
+            // base existed on both sides and is compared normally.
+            expect(diff.breakdown!.components.base.left).not.toBeNull();
+            expect(diff.breakdown!.components.base.right).not.toBeNull();
+        });
+
         it("warns when a category's RTP changes by more than the RTP delta threshold", () => {
             const leftWithBreakdown: SimulationReport = {
                 ...left,

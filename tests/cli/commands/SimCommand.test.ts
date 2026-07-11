@@ -280,3 +280,50 @@ describe("SimCommand (integration, real game with a free-games feature)", () => 
         expect(base.totalWin + freeGames.totalWin).toBeCloseTo(report.totalWin, 10);
     });
 });
+
+describe("SimCommand (integration, real game with an explicit custom category)", () => {
+    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-bonus-round");
+    let outDir: string;
+
+    beforeEach(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-custom-category-test-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(outDir, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("produces a JSON report with an arbitrary custom category (not base/freeGames)", async () => {
+        const command = new SimCommand(loadPokieGame);
+        const outFile = path.join(outDir, "report.json");
+
+        await command.run([fixtureRoot, "--rounds", "1000", "--out", outFile]);
+
+        const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
+        expect(report.breakdown).toBeDefined();
+
+        const {base, bonus} = report.breakdown!.components;
+        expect(bonus).toBeDefined();
+        expect(bonus.rounds).toBeGreaterThan(0);
+        expect(base.rounds + bonus.rounds).toBe(report.rounds);
+        expect(base.totalWin + bonus.totalWin).toBeCloseTo(report.totalWin, 10);
+        // Contributions across every category always sum to the overall rtp.
+        expect(base.contribution + bonus.contribution).toBeCloseTo(report.rtp, 10);
+    });
+
+    it("renders the custom category in the markdown/html breakdown table via pokie report", async () => {
+        const outFile = path.join(outDir, "report.json");
+        await new SimCommand(loadPokieGame).run([fixtureRoot, "--rounds", "1000", "--out", outFile]);
+
+        const {ReportCommand} = await import("../../../cli/commands/ReportCommand.js");
+        const markdownOut = path.join(outDir, "report.md");
+        await new ReportCommand().run([outFile, "--out", markdownOut]);
+
+        const markdown = fs.readFileSync(markdownOut, "utf-8");
+        expect(markdown).toContain("## Breakdown");
+        expect(markdown).toContain("| bonus |");
+        expect(markdown).toContain("| base |");
+    });
+});

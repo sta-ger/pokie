@@ -495,18 +495,24 @@ a `sim.json` produced by an older `pokie` (or handwritten JSON without them) sti
 populates all three on every report it produces.
 
 `breakdown` is a later v1.3 addition, also purely additive and optional: a feature-level RTP breakdown split by
-category (at minimum `"base"`, plus `"freeGames"` when the game has a free-games feature). It's built by
-`AggregateSimulationRunner` feature-detecting the optional `StakeAmountDetermining` contract on the session — the
-same contract `SpinCommandHandler` already uses server-side to tell a charged base-game round from an unfinished
-free-games round that charges nothing (see [Free Games](free-games.md) and
-[Spin orchestration & idempotency](#spin-orchestration--idempotency)). Concretely: a round is put in `"freeGames"`
-when, right before it's played, `session.getStakeAmount() === 0` (an unfinished free-games round that won't charge
-anything); every other round is `"base"`. If the session doesn't implement `StakeAmountDetermining` at all, `pokie
-sim` simply omits `breakdown` from the report — it never guesses a category from incidental data like balance, and
-it doesn't nag about the absence either: most games don't have a free-games feature, and that's not a problem worth
-flagging on every single report forever. A game with a bonus mechanic that doesn't fit the base/free-games split can
-inject a custom `SimulationRoundCategoryDetermining` as `AggregateSimulationRunner`'s 4th constructor argument
-instead of relying on the default `StakeBasedSimulationRoundCategoryDeterminer`.
+category. `components` is a plain `Record<string, ...>` — there's no fixed category list. Out of the box, a game
+gets:
+
+- `"base"` / `"freeGames"`, inferred from the optional `StakeAmountDetermining` contract on the session — the same
+  contract `SpinCommandHandler` already uses server-side to tell a charged base-game round from an unfinished
+  free-games round that charges nothing (see [Free Games](free-games.md) and
+  [Spin orchestration & idempotency](#spin-orchestration--idempotency)). Concretely: a round is `"freeGames"` when,
+  right before it's played, `session.getStakeAmount() === 0`; every other round is `"base"`.
+- Any other category name (`"bonus"`, `"respins"`, `"holdAndWin"`, `"jackpot"`, ...) a session declares directly by
+  implementing the optional `SimulationCategoryDetermining` contract (`getSimulationCategory(): string`), which
+  takes priority over the base/freeGames inference whenever it returns a valid answer. See
+  [Simulation → Feature-level breakdown](simulation.md#feature-level-breakdown-simulationroundcategorydetermining)
+  for the full mechanism, the category-name validation rules, and how to plug in an entirely custom
+  `SimulationRoundCategoryDetermining` for AggregateSimulationRunner's 4th constructor argument.
+
+If a session implements neither contract, `pokie sim` simply omits `breakdown` from the report — it never guesses a
+category from incidental data like balance, and it doesn't nag about the absence either: most games don't have a
+free-games (or other special) feature, and that's not a problem worth flagging on every single report forever.
 
 Each category's `rtp` and `contribution` answer different questions, and it's easy to misread one for the other:
 `rtp` is that category's own payback ratio *in isolation* (`totalWin / totalBet` using only that category's own

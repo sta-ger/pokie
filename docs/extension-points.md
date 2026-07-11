@@ -27,6 +27,8 @@ collaborators you need to change. All parameters below are optional with a worki
 | How cascade refills are supplied | `CascadeRefillProviding<T>` | `CascadingSpinResolver`'s 3rd constructor arg (**required**) | [Paytable & Win Calculation](paytable-and-wins.md#cascade-status) |
 | Play-strategy gating for simulations | `NextSessionRoundPlayableDetermining` | `SimulationConfig.setPlayStrategy(...)` | [Simulation](simulation.md#play-strategies-nextsessionroundplayabledetermining) |
 | Bet size per simulated round | `BetForNextSimulationRoundSetting` | `SimulationConfig.setChangeBetStrategy(...)` | [Simulation](simulation.md#bet-changing-strategy) |
+| Feature-level breakdown category per simulated round | `SimulationRoundCategoryDetermining` | `AggregateSimulationRunner`'s 4th constructor arg | [Simulation](simulation.md#feature-level-breakdown-simulationroundcategorydetermining) |
+| Declaring a round's breakdown category from the session itself | `SimulationCategoryDetermining` | implement on any `GameSessionHandling` (feature-detected) | [Simulation](simulation.md#declaring-a-category-explicitly-simulationcategorydetermining) |
 | What a serializer's base layer contributes | `GameSessionSerializing` / `VideoSlotSessionSerializing` | the next serializer up's constructor arg | [Network Serialization](serialization.md) |
 
 ## `AbstractVideoSlotSessionDecorator` — writing your own session decorator without the boilerplate

@@ -191,3 +191,122 @@ stats.volatility;
 stats.averagePayoutConfidenceInterval95;
 stats.rtpConfidenceInterval95;
 ```
+
+## Feature-level breakdown (`SimulationRoundCategoryDetermining`)
+
+`AggregateSimulationRunner` can additionally attribute each round to a **category** (`"base"`, `"freeGames"`,
+`"bonus"`, or anything else a game wants) — this is what powers the `breakdown` field on `pokie sim`'s
+[JSON report](cli.md#pokie-sim-packageroot). Categorization is entirely pluggable:
+
+```ts
+interface SimulationRoundCategoryDetermining {
+    supportsRoundCategorization(session: GameSessionHandling): boolean; // can this round be categorized at all?
+    categorizeRound(session: GameSessionHandling): string;              // the category, only called if supported
+}
+```
+
+`AggregateSimulationRunner`'s 4th constructor argument accepts one; when omitted it defaults to:
+
+```ts
+new FallbackSimulationRoundCategoryDeterminer([
+    new ExplicitSimulationRoundCategoryDeterminer(),        // 1st: ask the session directly
+    new StakeBasedSimulationRoundCategoryDeterminer(),      // 2nd: infer base/freeGames from StakeAmountDetermining
+])
+```
+
+`FallbackSimulationRoundCategoryDeterminer` tries each determiner in order and uses the first one that supports
+the round — so a session that answers explicitly always wins, a session that only implements
+`StakeAmountDetermining` (see [Free Games](free-games.md)) still gets the base/freeGames split it always has, and
+a session that implements neither is simply left uncategorized (`getBreakdownStatistics()` returns `undefined`),
+exactly as before this existed. Nothing about this default changes behavior for an existing game package — it's
+purely additive.
+
+### Declaring a category explicitly (`SimulationCategoryDetermining`)
+
+A session can skip the base/freeGames inference entirely and just say what category the round belongs to, by
+implementing one optional method — the same feature-detected-interface pattern as `StakeAmountDetermining`:
+
+```ts
+interface SimulationCategoryDetermining {
+    getSimulationCategory(): string;
+}
+```
+
+```ts
+import type {GameSessionHandling, SimulationCategoryDetermining} from "pokie";
+
+class MySession implements GameSessionHandling, SimulationCategoryDetermining {
+    private inBonusRound = false;
+
+    // ...
+
+    getSimulationCategory(): string {
+        return this.inBonusRound ? "bonus" : "base";
+    }
+}
+```
+
+It's called once per round, right before that round is played, and doesn't have to classify every round —
+returning `""` (or any invalid value, see below) for a round means "I have no opinion here," which lets the next
+determiner in the chain (stake-based inference, by default) decide instead. A session that implements
+`getSimulationCategory()` and always returns a valid string effectively opts out of the base/freeGames inference
+altogether.
+
+### Category name rules (`SimulationCategoryNameNormalizer`)
+
+A category name ends up as a JSON object key and a table row label in `pokie sim`/`report`/`diff` output, so it's
+validated/normalized before use, not accepted as-is:
+
+- Trimmed of surrounding whitespace.
+- Must be non-empty after trimming.
+- Must be at most `SimulationCategoryNameNormalizer.MAX_LENGTH` (64) characters.
+- Must match `/^[A-Za-z][A-Za-z0-9_-]*$/` — starts with a letter, then letters/digits/hyphens/underscores (so
+  `"bonus"`, `"freeGames"`, `"hold-and-win"`, `"bonus_buy2"` are all fine; `"2bonus"`, `"bonus round"`, `""` are
+  not).
+
+An invalid or empty category is never used and never throws — `ExplicitSimulationRoundCategoryDeterminer` simply
+reports it doesn't support that round, so `FallbackSimulationRoundCategoryDeterminer` moves on to the next
+determiner. A misbehaving session can't crash a long simulation run over a bad category string; at worst, that
+round ends up in `"base"` (via stake-based inference) or outside the breakdown entirely (if nothing else supports
+it either) — it still plays and counts toward the overall totals either way, it just isn't attributed to a
+specific `breakdown` category.
+
+### Custom categorization strategies
+
+A game with a mechanic that doesn't fit "ask the session directly, else base/freeGames" — say, deriving the
+category from something external to the session — can supply its own `SimulationRoundCategoryDetermining` (or its
+own list wrapped in `FallbackSimulationRoundCategoryDeterminer`) as `AggregateSimulationRunner`'s 4th argument,
+same as a custom `NextSessionRoundPlayableDetermining` play strategy is its 3rd:
+
+```ts
+import {AggregateSimulationRunner, FallbackSimulationRoundCategoryDeterminer, StakeBasedSimulationRoundCategoryDeterminer} from "pokie";
+
+class MyJackpotAwareDeterminer implements SimulationRoundCategoryDetermining {
+    supportsRoundCategorization(session: GameSessionHandling): boolean {
+        /* ... */
+    }
+    categorizeRound(session: GameSessionHandling): string {
+        return "jackpot";
+    }
+}
+
+const runner = new AggregateSimulationRunner(
+    session,
+    1_000_000,
+    undefined, // no play strategy
+    new FallbackSimulationRoundCategoryDeterminer([new MyJackpotAwareDeterminer(), new StakeBasedSimulationRoundCategoryDeterminer()]),
+);
+```
+
+### Reading the breakdown
+
+```ts
+const runner = new AggregateSimulationRunner(session, 1_000_000);
+const accumulator = runner.run();
+
+runner.getBreakdownStatistics();
+// undefined, or Record<string, {rounds, totalBet, totalWin, rtp, hitFrequency, maxWin}> keyed by category
+```
+
+`pokie sim` takes this, adds a `contribution` field per category (share of the report's overall RTP — see
+[`pokie sim`](cli.md#pokie-sim-packageroot)), and puts the result on `SimulationReport.breakdown`.

@@ -113,4 +113,81 @@ describe("AggregateSimulationRunner breakdown", () => {
         expect(Object.keys(breakdown!)).toEqual(["everythingIsBonus"]);
         expect(breakdown!.everythingIsBonus.rounds).toBe(10);
     });
+
+    describe("explicit SimulationCategoryDetermining (default determiner composition)", () => {
+        // Round index r (0-indexed) drives everything, same trick as createFreeGamesAwareSession above:
+        //   - r < 3  -> explicitly declared "bonus" (a custom category no stake-based inference knows about)
+        //   - r >= 3 -> the session stops declaring a category at all, and doesn't implement
+        //               StakeAmountDetermining either — proves the explicit contract is genuinely optional
+        //               per-round: those rounds still play normally and count toward the overall totals,
+        //               they just aren't attributed to any breakdown category (no determiner supports them).
+        function createExplicitCategorySession(rounds: number): GameSessionHandling {
+            let round = 0;
+            let pendingWin = 0;
+            return {
+                getCreditsAmount: () => Number.MAX_SAFE_INTEGER,
+                setCreditsAmount: () => undefined,
+                getBet: () => 1,
+                setBet: () => undefined,
+                getAvailableBets: () => [1],
+                canPlayNextGame: () => round < rounds,
+                getSimulationCategory: () => (round < 3 ? "bonus" : ""),
+                play: () => {
+                    pendingWin = round === 0 ? 7 : 0;
+                    round++;
+                },
+                getWinAmount: () => pendingWin,
+            } as unknown as GameSessionHandling;
+        }
+
+        test("uses the session's explicit category without any custom determiner being injected", () => {
+            const runner = new AggregateSimulationRunner(createExplicitCategorySession(10), 10);
+
+            const statistics = runner.run().getStatistics();
+            const breakdown = runner.getBreakdownStatistics();
+
+            expect(breakdown).toBeDefined();
+            expect(Object.keys(breakdown!)).toEqual(["bonus"]);
+            expect(breakdown!.bonus.rounds).toBe(3);
+            expect(breakdown!.bonus.totalWin).toBe(7);
+            // The other 7 rounds still played and count toward overall totals — they're just outside
+            // any breakdown category since nothing in the default chain supports them.
+            expect(statistics.rounds).toBe(10);
+        });
+
+        // A session can implement BOTH the explicit contract and StakeAmountDetermining — explicit wins
+        // whenever it returns a valid category; stake-based inference only decides rounds the explicit
+        // contract has no opinion on (returns "" for).
+        function createExplicitWithStakeFallbackSession(rounds: number): GameSessionHandling {
+            let round = 0;
+            return {
+                getCreditsAmount: () => Number.MAX_SAFE_INTEGER,
+                setCreditsAmount: () => undefined,
+                getBet: () => 1,
+                setBet: () => undefined,
+                getAvailableBets: () => [1],
+                canPlayNextGame: () => round < rounds,
+                // Explicit "bonus" only on round 0; every other round falls through to stake-based, which
+                // reports "freeGames" on round 1 and "base" on round 2.
+                getSimulationCategory: () => (round === 0 ? "bonus" : ""),
+                getStakeAmount: () => (round === 1 ? 0 : 1),
+                play: () => {
+                    round++;
+                },
+                getWinAmount: () => 0,
+            } as unknown as GameSessionHandling;
+        }
+
+        test("falls through to stake-based inference for rounds the explicit contract has no opinion on", () => {
+            const runner = new AggregateSimulationRunner(createExplicitWithStakeFallbackSession(3), 3);
+
+            runner.run();
+            const breakdown = runner.getBreakdownStatistics();
+
+            expect(Object.keys(breakdown!).sort()).toEqual(["base", "bonus", "freeGames"]);
+            expect(breakdown!.bonus.rounds).toBe(1);
+            expect(breakdown!.freeGames.rounds).toBe(1);
+            expect(breakdown!.base.rounds).toBe(1);
+        });
+    });
 });

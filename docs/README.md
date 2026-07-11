@@ -26,8 +26,9 @@ an account, currency, or compliance system is left to the integrating backend.
    games (bonus) round is tracked and paid out.
 7. **[Resizable Grid](resizable-grid.md)** — `VideoSlotWithResizableGridSession` and per-reel height changes between
    rounds, for features that grow or shrink the grid.
-8. **[Simulation](simulation.md)** — `Simulation`/`SimulationConfig`, RTP/volatility/hit-frequency statistics, and
-   play strategies for driving targeted or bulk simulation runs.
+8. **[Simulation](simulation.md)** — `Simulation`/`SimulationConfig`, RTP/volatility/hit-frequency statistics, play
+   strategies for driving targeted or bulk simulation runs, and the pluggable base/freeGames/custom-category
+   feature-level breakdown behind `pokie sim`'s `breakdown` field.
 9. **[Network Serialization](serialization.md)** — turning a session's state into plain-data payloads for a game
    client.
 10. **[Extension Points](extension-points.md)** — every injectable collaborator in the library, in one table, plus

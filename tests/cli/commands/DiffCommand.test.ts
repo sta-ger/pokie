@@ -309,3 +309,33 @@ describe("DiffCommand (integration, real pokie sim output)", () => {
         expect(diff.game.changed).toBe(false);
     });
 });
+
+describe("DiffCommand (integration, real reports with an arbitrary custom category)", () => {
+    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-bonus-round");
+    let outDir: string;
+
+    beforeEach(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-diff-custom-category-test-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(outDir, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("diffs the non-base/freeGames 'bonus' category between two real reports", async () => {
+        const leftFile = path.join(outDir, "left.json");
+        const rightFile = path.join(outDir, "right.json");
+        await new SimCommand().run([fixtureRoot, "--rounds", "500", "--out", leftFile]);
+        await new SimCommand().run([fixtureRoot, "--rounds", "1000", "--out", rightFile]);
+
+        const diffOut = path.join(outDir, "diff.json");
+        await new DiffCommand().run([leftFile, rightFile, "--out", diffOut]);
+
+        const diff = JSON.parse(fs.readFileSync(diffOut, "utf-8"));
+        expect(diff.breakdown.components.bonus).toBeDefined();
+        expect(diff.breakdown.components.bonus.rounds.left).toBeGreaterThan(0);
+        expect(diff.breakdown.components.bonus.rounds.right).toBeGreaterThan(diff.breakdown.components.bonus.rounds.left);
+    });
+});

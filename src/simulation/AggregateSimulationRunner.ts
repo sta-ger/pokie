@@ -1,9 +1,22 @@
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
+import {ExplicitSimulationRoundCategoryDeterminer} from "./ExplicitSimulationRoundCategoryDeterminer.js";
+import {FallbackSimulationRoundCategoryDeterminer} from "./FallbackSimulationRoundCategoryDeterminer.js";
 import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
 import type {SimulationBreakdownComponent} from "./SimulationBreakdownComponent.js";
 import type {SimulationRoundCategoryDetermining} from "./SimulationRoundCategoryDetermining.js";
 import {SimulationAccumulator} from "./SimulationAccumulator.js";
 import {StakeBasedSimulationRoundCategoryDeterminer} from "./StakeBasedSimulationRoundCategoryDeterminer.js";
+
+// A session's own explicit SimulationCategoryDetermining answer (e.g. "bonus", "respins") always
+// takes priority when present; StakeBasedSimulationRoundCategoryDeterminer's base/freeGames inference
+// is only a fallback for rounds (or whole sessions) the explicit contract doesn't cover. Sessions that
+// implement neither are unaffected either way — this default is 100% backward compatible.
+function createDefaultRoundCategoryDeterminer(): SimulationRoundCategoryDetermining {
+    return new FallbackSimulationRoundCategoryDeterminer([
+        new ExplicitSimulationRoundCategoryDeterminer(),
+        new StakeBasedSimulationRoundCategoryDeterminer(),
+    ]);
+}
 
 type CategoryTotals = {
     rounds: number;
@@ -25,7 +38,7 @@ export class AggregateSimulationRunner {
         session: GameSessionHandling,
         rounds: number,
         playStrategy?: NextSessionRoundPlayableDetermining,
-        roundCategoryDeterminer: SimulationRoundCategoryDetermining = new StakeBasedSimulationRoundCategoryDeterminer(),
+        roundCategoryDeterminer: SimulationRoundCategoryDetermining = createDefaultRoundCategoryDeterminer(),
     ) {
         this.session = session;
         this.rounds = rounds;

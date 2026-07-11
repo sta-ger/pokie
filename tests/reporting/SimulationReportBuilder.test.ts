@@ -533,6 +533,30 @@ describe("SimulationReportBuilder", () => {
                 expect(report.warnings!.some((warning) => warning.includes("never produced a win"))).toBe(false);
                 expect(report.warnings!.some((warning) => warning.includes("ever appeared"))).toBe(false);
             });
+
+            test("evaluates multiple arbitrary non-base categories independently — not just base/freeGames", () => {
+                const builder = new SimulationReportBuilder();
+
+                const report = builder.build({
+                    manifest,
+                    requestedRounds: 1000,
+                    seed: "demo",
+                    statistics: statisticsWithRounds(1000),
+                    durationMs: 10,
+                    breakdown: {
+                        base: {rounds: 700, totalBet: 700, totalWin: 600, rtp: 0.857, hitFrequency: 0.2, maxWin: 8},
+                        // "respins" triggered plenty and won — should stay quiet.
+                        respins: {rounds: 250, totalBet: 250, totalWin: 300, rtp: 1.2, hitFrequency: 0.5, maxWin: 6},
+                        // "holdAndWin" triggered enough to be a meaningful sample but never won — should warn.
+                        holdAndWin: {rounds: 50, totalBet: 50, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
+                    },
+                });
+
+                expect(report.warnings!.some((warning) => warning.includes('"respins"'))).toBe(false);
+                expect(report.warnings!.some((warning) => warning.includes('"holdAndWin" triggered 50 times but never produced a win'))).toBe(true);
+                expect(report.breakdown!.components.respins).toBeDefined();
+                expect(report.breakdown!.components.holdAndWin).toBeDefined();
+            });
         });
     });
 });
