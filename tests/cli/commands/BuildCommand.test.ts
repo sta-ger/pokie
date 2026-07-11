@@ -1,5 +1,8 @@
 import {GameBlueprint, GameBlueprintValidating, GamePackageGenerating, GeneratedGamePackage, ValidationIssue} from "pokie";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
+import {GameBlueprintWizarding} from "../../../cli/wizard/GameBlueprintWizarding.js";
+import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";
+import {WizardResult} from "../../../cli/wizard/WizardResult.js";
 
 function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating & {calledWith?: unknown} {
     return {
@@ -21,7 +24,34 @@ function createStubGenerator(
     };
 }
 
+function createStubWizard(result: WizardResult | null | Error): GameBlueprintWizarding {
+    return {
+        run() {
+            return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+        },
+    };
+}
+
+function createStubPrompt(): PromptAdapting & {closed: boolean} {
+    return {
+        closed: false,
+        ask() {
+            return Promise.resolve(null);
+        },
+        close() {
+            this.closed = true;
+        },
+    };
+}
+
 const rawBlueprint = {manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}};
+const wizardBlueprint: GameBlueprint = {
+    manifest: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
+    reels: 5,
+    rows: 3,
+    symbols: ["A", "K"],
+    paytable: {A: {3: 5}},
+};
 const generatedResult: GeneratedGamePackage = {
     projectRoot: "/tmp/crazy-fruits",
     manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
@@ -49,11 +79,63 @@ describe("BuildCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
-    it("throws when run without a config path", async () => {
-        const command = new BuildCommand("1.3.0");
+    it("launches the wizard when run without a config path, validating and generating from its result", async () => {
+        const wizard = createStubWizard({blueprint: wizardBlueprint, outDir: "custom-out"});
+        const prompt = createStubPrompt();
+        const validator = createStubValidator([]);
+        const generator = createStubGenerator(generatedResult);
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, validator, generator, wizard, () => prompt);
 
-        await expect(command.run([])).rejects.toThrow(/Usage: pokie build <config.json>/);
-        await expect(command.run([])).rejects.toThrow(/GameBlueprint/);
+        const exitCode = await command.run([]);
+
+        expect(exitCode).toBe(0);
+        expect(validator.calledWith).toBe(wizardBlueprint);
+        expect(generator.calledWith).toEqual({blueprint: wizardBlueprint, cwd: process.cwd(), outDir: "custom-out"});
+        expect(prompt.closed).toBe(true);
+    });
+
+    it("prints a cancellation message and returns 1 without generating when the wizard is cancelled", async () => {
+        const wizard = createStubWizard(null);
+        const prompt = createStubPrompt();
+        const generator = createStubGenerator(generatedResult);
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), generator, wizard, () => prompt);
+
+        const exitCode = await command.run([]);
+
+        expect(exitCode).toBe(1);
+        expect(generator.calledWith).toBeUndefined();
+        expect(prompt.closed).toBe(true);
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("cancelled"));
+    });
+
+    it("still reports blueprint errors from a wizard result, without generating", async () => {
+        const wizard = createStubWizard({blueprint: wizardBlueprint});
+        const prompt = createStubPrompt();
+        const validator = createStubValidator([{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}]);
+        const generator = createStubGenerator(generatedResult);
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, validator, generator, wizard, () => prompt);
+
+        const exitCode = await command.run([]);
+
+        expect(exitCode).toBe(1);
+        expect(generator.calledWith).toBeUndefined();
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
+    });
+
+    it("closes the prompt even if the wizard rejects", async () => {
+        const wizard = createStubWizard(new Error("boom"));
+        const prompt = createStubPrompt();
+        const command = new BuildCommand(
+            "1.3.0",
+            () => rawBlueprint,
+            createStubValidator([]),
+            createStubGenerator(generatedResult),
+            wizard,
+            () => prompt,
+        );
+
+        await expect(command.run([])).rejects.toThrow("boom");
+        expect(prompt.closed).toBe(true);
     });
 
     it("throws a descriptive error for an unknown option", async () => {

@@ -45,11 +45,23 @@ From here, replace the generated `src/<GameName>Session.ts`/`src/<GameName>Game.
 paytable, and session wiring — see [Getting Started](getting-started.md) and
 [Game Session & Configuration](game-session.md).
 
-## `pokie build <config.json>`
+## `pokie build [config.json]`
 
-Generates a working [game package](game-packages.md) from a `GameBlueprint` JSON config — reels/rows, symbols,
-paylines, paytable, and reel strips/weights for a standard line-pay video slot. Unlike `pokie create`/`pokie init`,
-the output is plain JavaScript with no compile step: it's immediately loadable by every other command below.
+Generates a working [game package](game-packages.md) from a `GameBlueprint` — reels/rows, symbols, paylines,
+paytable, and reel strips/weights for a standard line-pay video slot. Unlike `pokie create`/`pokie init`, the
+output is plain JavaScript with no compile step: it's immediately loadable by every other command below.
+
+There are two ways to provide the blueprint:
+
+- **config-driven** — `pokie build <config.json>` reads it from a JSON file (this section);
+- **interactive** — `pokie build` with no arguments launches a wizard that asks for the same fields on the
+  terminal (see [Interactive mode](#interactive-mode-pokie-build-with-no-arguments) below).
+
+Both produce the exact same `GameBlueprint` shape, go through the exact same validation
+([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
+the resulting package supports the exact same
+[`build -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---validate---sim---report---replay---servedev) —
+the wizard is just another way to assemble the same input, not a different code path.
 
 ```
 pokie build examples/blueprints/crazy-fruits.blueprint.json
@@ -162,10 +174,12 @@ Every error is printed with its code and message, followed by a one-line pointer
 
 Failure modes:
 
-- Missing `<config.json>` or an unknown option throw a `Usage: pokie build <config.json> [--out <dir>]` error
-  (plus the same doc pointer as above).
+- Missing `<config.json>` launches the [interactive wizard](#interactive-mode-pokie-build-with-no-arguments)
+  instead of failing — see that section for its own cancellation/invalid-input handling. An unknown option (given
+  alongside a config path) throws a `Usage: pokie build <config.json> [--out <dir>]` error (plus the same doc
+  pointer as above).
 - A blueprint with any error-level issue prints every error plus the doc pointer and exits `1` without generating
-  anything.
+  anything — whether the blueprint came from `<config.json>` or the wizard.
 - The output directory (`./<manifest.id>` or `--out <dir>`) already existing as a *file* (not a directory)
   throws — pick a different `--out` or remove it first.
 - The output directory already existing and containing a file `pokie build` did not generate — at any of
@@ -191,6 +205,41 @@ rather than guessing. Files elsewhere in the directory (anything not at one of t
 Rebuilding the *same* blueprint reproduces `index.js` byte-for-byte (see the `build-info.json` bullet above) and
 the same `blueprintHash`/`files` in `build-info.json` — only `build-info.json`'s `generatedAt` timestamp changes,
 so a diff between two rebuilds of an unchanged blueprint is just that one line.
+
+### Interactive mode (`pokie build` with no arguments)
+
+```
+pokie build
+```
+
+Runs a wizard on the terminal that asks, in order, for: game id/name/version; reels/rows; symbols; available
+bets; paylines; paytable; reel weighting (symbol weights or explicit reel strips); and the output directory.
+Each answer that has a sensible default (name, version, reels, rows, available bets, paylines, output directory)
+can be left blank to accept it — the prompt shows the default in `[brackets]`. The wizard is deliberately minimal:
+it asks for the same fields `pokie build <config.json>` needs for a line-pay video slot and nothing more (no
+wilds/scatters yet) — add those by hand-editing the generated blueprint's config-driven equivalent, or wait for a
+future wizard pass.
+
+The wizard assembles a plain `GameBlueprint` object — the same shape a `<config.json>` file has — and hands it to
+the exact same [`GameBlueprintValidator`](#validation)/[`GamePackageGenerator`](#pokie-build-configjson) the
+config-driven path uses, so everything in the sections above (the field format, validation rules, `--out`-style
+output directory prompt, rebuild behavior) applies identically; the wizard has no validation or generation logic
+of its own, only input parsing for each prompt.
+
+Per-question input handling:
+
+- An answer that doesn't parse (e.g. non-numeric reels, a duplicate symbol id, a malformed `matchCount:multiplier`
+  pair) prints a one-line reason and re-asks the same question — it never silently drops or guesses at bad input.
+- Pressing **Ctrl+C** at any prompt cancels the wizard gracefully: it prints `Build cancelled.` and exits with a
+  non-zero status without writing anything, rather than a stack trace.
+- The paytable and reel-strip prompts are asked once per symbol/reel (so the number of prompts scales with how
+  many symbols/reels you configured earlier in the same run).
+- Reel weighting is a single choice up front — `w` for symbol weights (one combined `symbol:count` line), `s` for
+  explicit reel strips (one line per reel), or blank for the engine's built-in default weighting — mirroring the
+  blueprint's own `reelStrips`/`symbolWeights` mutual exclusivity.
+
+Once the wizard completes, it prints the same "created files" / "Next:" summary as the config-driven path,
+including the ready-to-run `validate -> sim -> report -> replay -> serve`/`dev` commands below.
 
 ### Workflow: `build` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
 

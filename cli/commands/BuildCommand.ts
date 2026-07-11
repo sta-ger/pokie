@@ -7,6 +7,10 @@ import {
     loadGameBlueprint,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
+import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
+import {PromptAdapting} from "../wizard/PromptAdapting.js";
+import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
 
 type BuildOptions = {
     configPath: string;
@@ -21,16 +25,22 @@ export class BuildCommand implements CliCommandHandling {
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly validator: GameBlueprintValidating;
     private readonly generator: GamePackageGenerating;
+    private readonly wizard: GameBlueprintWizarding;
+    private readonly createPrompt: () => PromptAdapting;
 
     constructor(
         pokieVersion: string,
         loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         generator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
+        wizard: GameBlueprintWizarding = new GameBlueprintWizard(),
+        createPrompt: () => PromptAdapting = () => new ReadlinePromptAdapter(),
     ) {
         this.loadBlueprint = loadBlueprint;
         this.validator = validator;
         this.generator = generator;
+        this.wizard = wizard;
+        this.createPrompt = createPrompt;
     }
 
     public getName(): string {
@@ -38,49 +48,73 @@ export class BuildCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable).";
+        return (
+            "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
+            "or interactively via a wizard when run with no config path."
+        );
     }
 
     public run(args: string[]): Promise<number> {
+        if (args.length === 0) {
+            return this.runWizard();
+        }
+
         try {
             const options = this.parseArgs(args);
-
             const blueprint = this.loadBlueprint(options.configPath);
-            const issues = this.validator.validate(blueprint);
-            const errors = issues.filter((issue) => issue.severity === "error");
-            const warnings = issues.filter((issue) => issue.severity !== "error");
-
-            for (const issue of warnings) {
-                console.log(`  warning  ${issue.code}: ${issue.message}`);
-            }
-
-            if (errors.length > 0) {
-                console.error(`Blueprint "${options.configPath}" has ${errors.length} error(s):`);
-                for (const issue of errors) {
-                    console.error(`  - ${issue.code}: ${issue.message}`);
-                }
-                console.error(`\n${BLUEPRINT_HINT}`);
-                return Promise.resolve(1);
-            }
-
-            const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), options.outDir, options.configPath);
-
-            for (const file of result.createdFiles) {
-                console.log(`  created  ${file}`);
-            }
-            console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") built in "${result.projectRoot}".`);
-            console.log(`\nNext:`);
-            console.log(`  cd ${result.projectRoot} && npm install`);
-            console.log(`  pokie validate ${result.projectRoot}`);
-            console.log(`  pokie sim ${result.projectRoot} --rounds 10000 --seed demo --out sim.json`);
-            console.log(`  pokie report sim.json`);
-            console.log(`  pokie replay ${result.projectRoot} --seed demo --round 1`);
-            console.log(`  pokie dev ${result.projectRoot}`);
-
-            return Promise.resolve(0);
+            return Promise.resolve(this.buildFromBlueprint(blueprint, options.outDir, options.configPath));
         } catch (error) {
             return Promise.reject(error);
         }
+    }
+
+    private async runWizard(): Promise<number> {
+        const prompt = this.createPrompt();
+        try {
+            const result = await this.wizard.run(prompt);
+            if (result === null) {
+                console.log("\nBuild cancelled.");
+                return 1;
+            }
+            return this.buildFromBlueprint(result.blueprint, result.outDir, undefined);
+        } finally {
+            prompt.close();
+        }
+    }
+
+    private buildFromBlueprint(blueprint: unknown, outDir: string | undefined, sourcePath: string | undefined): number {
+        const issues = this.validator.validate(blueprint);
+        const errors = issues.filter((issue) => issue.severity === "error");
+        const warnings = issues.filter((issue) => issue.severity !== "error");
+
+        for (const issue of warnings) {
+            console.log(`  warning  ${issue.code}: ${issue.message}`);
+        }
+
+        if (errors.length > 0) {
+            console.error(`Blueprint${sourcePath ? ` "${sourcePath}"` : ""} has ${errors.length} error(s):`);
+            for (const issue of errors) {
+                console.error(`  - ${issue.code}: ${issue.message}`);
+            }
+            console.error(`\n${BLUEPRINT_HINT}`);
+            return 1;
+        }
+
+        const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), outDir, sourcePath);
+
+        for (const file of result.createdFiles) {
+            console.log(`  created  ${file}`);
+        }
+        console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") built in "${result.projectRoot}".`);
+        console.log(`\nNext:`);
+        console.log(`  cd ${result.projectRoot} && npm install`);
+        console.log(`  pokie validate ${result.projectRoot}`);
+        console.log(`  pokie sim ${result.projectRoot} --rounds 10000 --seed demo --out sim.json`);
+        console.log(`  pokie report sim.json`);
+        console.log(`  pokie replay ${result.projectRoot} --seed demo --round 1`);
+        console.log(`  pokie dev ${result.projectRoot}`);
+
+        return 0;
     }
 
     private parseArgs(args: string[]): BuildOptions {
