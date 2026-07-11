@@ -1,6 +1,8 @@
 import type {GameBlueprintValidating} from "./GameBlueprintValidating.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
+const SUSPICIOUS_REELS_OR_ROWS_THRESHOLD = 10;
+
 export class GameBlueprintValidator implements GameBlueprintValidating {
     public validate(blueprint: unknown): ValidationIssue[] {
         if (typeof blueprint !== "object" || blueprint === null || Array.isArray(blueprint)) {
@@ -18,12 +20,24 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const reelsValid = typeof reels === "number" && Number.isInteger(reels) && reels >= 1;
         if (!reelsValid) {
             issues.push({code: "blueprint-reels-invalid", severity: "error", message: '"reels" must be a positive integer.'});
+        } else if ((reels as number) > SUSPICIOUS_REELS_OR_ROWS_THRESHOLD) {
+            issues.push({
+                code: "blueprint-reels-suspicious",
+                severity: "warning",
+                message: `"reels" is ${reels}, which is unusually large for a line-pay video slot (most use 3-7 reels) — double-check this is intentional.`,
+            });
         }
 
         const rows = b.rows;
         const rowsValid = typeof rows === "number" && Number.isInteger(rows) && rows >= 1;
         if (!rowsValid) {
             issues.push({code: "blueprint-rows-invalid", severity: "error", message: '"rows" must be a positive integer.'});
+        } else if ((rows as number) > SUSPICIOUS_REELS_OR_ROWS_THRESHOLD) {
+            issues.push({
+                code: "blueprint-rows-suspicious",
+                severity: "warning",
+                message: `"rows" is ${rows}, which is unusually large for a line-pay video slot (most use 3-7 rows) — double-check this is intentional.`,
+            });
         }
 
         const symbols = b.symbols;
@@ -43,12 +57,13 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const symbolSet = new Set(symbolList);
 
         const wilds = this.validateSymbolSubset(b.wilds, "wilds", symbolSet, symbolsValid, issues);
-        this.validateSymbolSubset(b.scatters, "scatters", symbolSet, symbolsValid, issues);
+        const scatters = this.validateSymbolSubset(b.scatters, "scatters", symbolSet, symbolsValid, issues);
+        this.validateWildScatterOverlap(wilds, scatters, issues);
 
-        this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, reels, reelsValid, issues);
+        const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, reels, reelsValid, issues);
         this.validatePaylines(b.paylines, reels, reelsValid, rows, rowsValid, issues);
-        this.validateReelStrips(b.reelStrips, symbolSet, symbolsValid, reels, reelsValid, issues);
-        this.validateSymbolWeights(b.symbolWeights, symbolSet, symbolsValid, issues);
+        const reelStripSymbols = this.validateReelStrips(b.reelStrips, symbolSet, symbolsValid, reels, reelsValid, rows, rowsValid, issues);
+        const weightSymbols = this.validateSymbolWeights(b.symbolWeights, symbolSet, symbolsValid, issues);
 
         if (b.reelStrips !== undefined && b.symbolWeights !== undefined) {
             issues.push({
@@ -57,6 +72,9 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 message: 'Both "reelStrips" and "symbolWeights" are set; "reelStrips" takes precedence and "symbolWeights" is ignored.',
             });
         }
+
+        this.validateReachability(paytableSymbols, wilds, scatters, reelStripSymbols, weightSymbols, issues);
+        this.validateEverySymbolHasAPayout(symbolList, symbolsValid, paytableSymbols, wilds, scatters, issues);
 
         if (b.availableBets !== undefined) {
             const availableBets = b.availableBets;
@@ -69,6 +87,12 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     code: "blueprint-availablebets-invalid",
                     severity: "error",
                     message: '"availableBets", if present, must be a non-empty array of positive numbers.',
+                });
+            } else if (new Set(availableBets).size !== availableBets.length) {
+                issues.push({
+                    code: "blueprint-availablebets-duplicate",
+                    severity: "warning",
+                    message: '"availableBets" contains duplicate values.',
                 });
             }
         }
@@ -118,6 +142,14 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
 
         const list = value as string[];
+        if (new Set(list).size !== list.length) {
+            issues.push({
+                code: `blueprint-${field}-duplicate`,
+                severity: "error",
+                message: `"${field}" must not contain the same symbol id more than once.`,
+            });
+        }
+
         if (symbolsValid) {
             for (const symbolId of list) {
                 if (!symbolSet.has(symbolId)) {
@@ -132,6 +164,19 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         return list;
     }
 
+    private validateWildScatterOverlap(wilds: string[], scatters: string[], issues: ValidationIssue[]): void {
+        const scatterSet = new Set(scatters);
+        const overlap = new Set(wilds.filter((symbolId) => scatterSet.has(symbolId)));
+        for (const symbolId of overlap) {
+            issues.push({
+                code: "blueprint-wilds-scatters-overlap",
+                severity: "error",
+                message: `"${symbolId}" is listed in both "wilds" and "scatters" — a symbol cannot be both at once, and the reel generator would place it on the reels twice over.`,
+                suggestion: `Remove "${symbolId}" from either "wilds" or "scatters".`,
+            });
+        }
+    }
+
     private validatePaytable(
         paytable: unknown,
         symbolSet: Set<string>,
@@ -140,14 +185,14 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         reels: unknown,
         reelsValid: boolean,
         issues: ValidationIssue[],
-    ): void {
+    ): string[] {
         if (typeof paytable !== "object" || paytable === null || Array.isArray(paytable)) {
             issues.push({
                 code: "blueprint-paytable-missing",
                 severity: "error",
                 message: '"paytable" must be an object mapping symbol ids to {matchCount: betMultiplier}.',
             });
-            return;
+            return [];
         }
 
         const paytableRecord = paytable as Record<string, unknown>;
@@ -183,24 +228,46 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 continue;
             }
 
+            const validPayouts: {times: number; multiplier: number}[] = [];
             for (const [times, multiplier] of Object.entries(payouts as Record<string, unknown>)) {
                 const timesNumber = Number(times);
-                if (!Number.isInteger(timesNumber) || timesNumber < 2 || (reelsValid && timesNumber > (reels as number))) {
+                const timesValid = Number.isInteger(timesNumber) && timesNumber >= 2 && (!reelsValid || timesNumber <= (reels as number));
+                if (!timesValid) {
                     issues.push({
                         code: "blueprint-paytable-invalid-times",
                         severity: "error",
                         message: `"paytable.${symbolId}" has an invalid match-count key "${times}" (expected an integer between 2 and "reels").`,
                     });
                 }
-                if (typeof multiplier !== "number" || multiplier <= 0) {
+                const multiplierValid = typeof multiplier === "number" && multiplier > 0;
+                if (!multiplierValid) {
                     issues.push({
                         code: "blueprint-paytable-invalid-multiplier",
                         severity: "error",
                         message: `"paytable.${symbolId}.${times}" must be a positive number.`,
                     });
                 }
+                if (timesValid && multiplierValid) {
+                    validPayouts.push({times: timesNumber, multiplier: multiplier as number});
+                }
+            }
+
+            validPayouts.sort((a, b) => a.times - b.times);
+            for (let i = 1; i < validPayouts.length; i++) {
+                const previous = validPayouts[i - 1];
+                const current = validPayouts[i];
+                if (current.multiplier < previous.multiplier) {
+                    issues.push({
+                        code: "blueprint-paytable-non-monotonic",
+                        severity: "warning",
+                        message: `"paytable.${symbolId}" pays less for ${current.times} matches (${current.multiplier}x) than for ${previous.times} matches (${previous.multiplier}x); matching more symbols usually shouldn't pay less.`,
+                        suggestion: `Double-check "paytable.${symbolId}" — higher match counts are typically worth at least as much as lower ones.`,
+                    });
+                }
             }
         }
+
+        return paytableSymbols;
     }
 
     private validatePaylines(
@@ -224,6 +291,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             return;
         }
 
+        const seenLines = new Map<string, number>();
         paylines.forEach((line, index) => {
             const valid =
                 Array.isArray(line) &&
@@ -237,6 +305,19 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     severity: "error",
                     message: `"paylines[${index}]" must have exactly "reels" row indexes, each between 0 and "rows" - 1.`,
                 });
+                return;
+            }
+
+            const key = JSON.stringify(line);
+            const firstIndex = seenLines.get(key);
+            if (firstIndex !== undefined) {
+                issues.push({
+                    code: "blueprint-paylines-duplicate",
+                    severity: "warning",
+                    message: `"paylines[${index}]" is identical to "paylines[${firstIndex}]"; a duplicate payline pays out twice for what is physically the same line.`,
+                });
+            } else {
+                seenLines.set(key, index);
             }
         });
     }
@@ -247,10 +328,12 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         symbolsValid: boolean,
         reels: unknown,
         reelsValid: boolean,
+        rows: unknown,
+        rowsValid: boolean,
         issues: ValidationIssue[],
-    ): void {
+    ): Set<string> | undefined {
         if (reelStrips === undefined) {
-            return;
+            return undefined;
         }
 
         if (!Array.isArray(reelStrips) || (reelsValid && reelStrips.length !== reels)) {
@@ -259,9 +342,13 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 severity: "error",
                 message: '"reelStrips", if present, must contain exactly one strip (array of symbol ids) per reel.',
             });
-            return;
         }
 
+        if (!Array.isArray(reelStrips)) {
+            return undefined;
+        }
+
+        const stripSymbols = new Set<string>();
         reelStrips.forEach((strip, index) => {
             const valid =
                 Array.isArray(strip) &&
@@ -273,8 +360,23 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     severity: "error",
                     message: `"reelStrips[${index}]" must be a non-empty array of known symbol ids.`,
                 });
+                if (Array.isArray(strip)) {
+                    strip.filter((s): s is string => typeof s === "string").forEach((s) => stripSymbols.add(s));
+                }
+                return;
+            }
+
+            strip.forEach((s) => stripSymbols.add(s));
+            if (rowsValid && strip.length < (rows as number)) {
+                issues.push({
+                    code: "blueprint-reelstrip-too-short",
+                    severity: "warning",
+                    message: `"reelStrips[${index}]" has only ${strip.length} symbol(s), fewer than "rows" (${rows}); a strip shorter than "rows" wraps around and is guaranteed to repeat a symbol within a single spin on that reel.`,
+                });
             }
         });
+
+        return stripSymbols;
     }
 
     private validateSymbolWeights(
@@ -282,9 +384,9 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         symbolSet: Set<string>,
         symbolsValid: boolean,
         issues: ValidationIssue[],
-    ): void {
+    ): Set<string> | undefined {
         if (symbolWeights === undefined) {
-            return;
+            return undefined;
         }
 
         if (typeof symbolWeights !== "object" || symbolWeights === null || Array.isArray(symbolWeights)) {
@@ -293,10 +395,12 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 severity: "error",
                 message: '"symbolWeights", if present, must be an object mapping symbol ids to positive counts.',
             });
-            return;
+            return undefined;
         }
 
+        const weightSymbols = new Set<string>();
         for (const [symbolId, weight] of Object.entries(symbolWeights as Record<string, unknown>)) {
+            weightSymbols.add(symbolId);
             if (symbolsValid && !symbolSet.has(symbolId)) {
                 issues.push({
                     code: "blueprint-symbolweights-unknown-symbol",
@@ -309,6 +413,64 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     code: "blueprint-symbolweights-invalid-weight",
                     severity: "error",
                     message: `"symbolWeights.${symbolId}" must be a positive integer.`,
+                });
+            }
+        }
+        return weightSymbols;
+    }
+
+    // "reelStrips" (when present) fully replaces the engine's default reel generator, and
+    // "symbolWeights" (when reelStrips is absent) does too — so a symbol that a blueprint pays out on,
+    // or marks as wild/scatter, but never places in the explicit reel data can physically never land.
+    // Without either field the built-in generator seeds every declared symbol on every reel, so there's
+    // nothing to check.
+    private validateReachability(
+        paytableSymbols: string[],
+        wilds: string[],
+        scatters: string[],
+        reelStripSymbols: Set<string> | undefined,
+        weightSymbols: Set<string> | undefined,
+        issues: ValidationIssue[],
+    ): void {
+        const reachable = reelStripSymbols ?? weightSymbols;
+        if (reachable === undefined) {
+            return;
+        }
+        const source = reelStripSymbols !== undefined ? "reelStrips" : "symbolWeights";
+
+        const referenced = new Set<string>([...paytableSymbols, ...wilds, ...scatters]);
+        for (const symbolId of referenced) {
+            if (!reachable.has(symbolId)) {
+                issues.push({
+                    code: source === "reelStrips" ? "blueprint-reelstrips-missing-symbol" : "blueprint-symbolweights-missing-symbol",
+                    severity: "error",
+                    message: `"${symbolId}" is referenced by "paytable"/"wilds"/"scatters" but never appears in "${source}", so it can never land on the reels — any payout for it is impossible to win.`,
+                    suggestion: `Add "${symbolId}" to "${source}", or remove references to it from "paytable"/"wilds"/"scatters".`,
+                });
+            }
+        }
+    }
+
+    private validateEverySymbolHasAPayout(
+        symbolList: string[],
+        symbolsValid: boolean,
+        paytableSymbols: string[],
+        wilds: string[],
+        scatters: string[],
+        issues: ValidationIssue[],
+    ): void {
+        if (!symbolsValid) {
+            return;
+        }
+        const paytableSet = new Set(paytableSymbols);
+        const specialSet = new Set([...wilds, ...scatters]);
+        for (const symbolId of symbolList) {
+            if (!specialSet.has(symbolId) && !paytableSet.has(symbolId)) {
+                issues.push({
+                    code: "blueprint-symbol-missing-payout",
+                    severity: "warning",
+                    message: `Symbol "${symbolId}" is listed in "symbols" but has no "paytable" entry and isn't a wild or scatter, so it can never produce a win.`,
+                    suggestion: `Add a "paytable.${symbolId}" entry, or remove "${symbolId}" from "symbols" if it's intentionally unused.`,
                 });
             }
         }

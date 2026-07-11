@@ -121,15 +121,24 @@ from a checkout. It's also what the workflow below and `pokie build`'s own smoke
 
 Every field above is checked before anything is generated: `manifest.id`/`name`/`version` must be non-empty
 strings; `reels`/`rows` must be positive integers; `symbols` must be a non-empty array of unique non-empty
-strings; `wilds`/`scatters`/`paytable` keys/`reelStrips` symbols/`symbolWeights` keys must all reference symbols
-actually listed in `symbols`; `paytable` match-counts must be integers between 2 and `reels`, with positive
-multipliers; `paylines` entries must have exactly `reels` row indexes, each within `[0, rows)`; `reelStrips` must
-have exactly one strip per reel; `availableBets` must be positive numbers.
+strings; `wilds`/`scatters` must be arrays of unique symbol ids with no overlap between the two; `wilds`/`scatters`/
+`paytable` keys/`reelStrips` symbols/`symbolWeights` keys must all reference symbols actually listed in `symbols`;
+`paytable` match-counts must be integers between 2 and `reels`, with positive multipliers; `paylines` entries must
+have exactly `reels` row indexes, each within `[0, rows)`; `reelStrips` must have exactly one strip per reel;
+`availableBets` must be positive numbers.
 
-A paytable entry for a wild symbol's own id is flagged as a **warning**, not an error — the engine resolves an
-all-wild line to no winning symbol id, so such an entry is never actually looked up (a wild's win always comes
-from whatever symbol it substitutes for). Setting both `reelStrips` and `symbolWeights` is also a warning:
-`reelStrips` wins, `symbolWeights` is ignored.
+Since `reelStrips` (or, absent that, `symbolWeights`) fully replaces the engine's default reel generator, every
+symbol referenced by `paytable`/`wilds`/`scatters` must also actually appear in it — otherwise that payout, wild,
+or scatter can physically never land, which is flagged as an error, not a warning.
+
+A number of further checks catch configs that parse fine but are almost certainly mistakes, so they're reported as
+**warnings** rather than errors (they don't block generation): a paytable entry for a wild symbol's own id (an
+all-wild line resolves to no winning symbol id, so the entry is never looked up); setting both `reelStrips` and
+`symbolWeights` (`reelStrips` wins, `symbolWeights` is ignored); duplicate `paylines` entries or duplicate
+`availableBets` values; a `reelStrips` entry shorter than `rows` (guaranteed to repeat a symbol within a single
+spin due to wrapping); a `paytable` entry that pays less for more matching symbols than for fewer; a non-wild,
+non-scatter symbol in `symbols` with no `paytable` entry at all (it can never win anything); and `reels`/`rows`
+values above 10 (unusually large for a line-pay video slot).
 
 Every error is printed with its code and message, followed by a one-line pointer back to this section
 (`<config.json> is a GameBlueprint ... — see docs/cli.md#pokie-build-configjson for the format.`), so a failed

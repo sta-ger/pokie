@@ -15,6 +15,9 @@ function validBlueprint(): GameBlueprint {
         ],
         paytable: {
             A: {3: 5, 4: 10, 5: 20},
+            K: {3: 4, 4: 8, 5: 16},
+            Q: {3: 3, 4: 6, 5: 12},
+            J: {3: 2, 4: 4, 5: 8},
             S: {3: 2, 4: 5, 5: 10},
         },
         reelStrips: undefined,
@@ -154,5 +157,102 @@ describe("GameBlueprintValidator", () => {
         const blueprint = {...validBlueprint(), availableBets: [1, 0, -5]};
 
         expect(codesOf(validator.validate(blueprint))).toContain("blueprint-availablebets-invalid");
+    });
+
+    it("flags duplicate values in availableBets", () => {
+        const blueprint = {...validBlueprint(), availableBets: [1, 2, 2, 5]};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-availablebets-duplicate")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("flags duplicate ids within wilds/scatters", () => {
+        expect(codesOf(validator.validate({...validBlueprint(), wilds: ["W", "W"]}))).toContain(
+            "blueprint-wilds-duplicate",
+        );
+        expect(codesOf(validator.validate({...validBlueprint(), scatters: ["S", "S"]}))).toContain(
+            "blueprint-scatters-duplicate",
+        );
+    });
+
+    it("flags a symbol listed as both a wild and a scatter", () => {
+        const blueprint = {...validBlueprint(), scatters: ["W", "S"]};
+
+        expect(codesOf(validator.validate(blueprint))).toContain("blueprint-wilds-scatters-overlap");
+    });
+
+    it("flags a paytable entry that pays less for more matches than for fewer matches", () => {
+        const blueprint = {...validBlueprint(), paytable: {...validBlueprint().paytable, A: {3: 10, 4: 5, 5: 20}}};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-paytable-non-monotonic")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("flags a duplicate payline", () => {
+        const blueprint = {
+            ...validBlueprint(),
+            paylines: [
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+            ],
+        };
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-paylines-duplicate")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("flags a reel strip shorter than rows as suspicious (guaranteed repeats)", () => {
+        const blueprint = {
+            ...validBlueprint(),
+            reelStrips: [
+                ["A", "K"],
+                ["Q", "J"],
+                ["W", "S"],
+                ["A", "K"],
+                ["Q", "J"],
+            ],
+        };
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-reelstrip-too-short")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("flags a paytable/wild/scatter symbol that never appears in explicit reelStrips", () => {
+        const blueprint = {
+            ...validBlueprint(),
+            reelStrips: new Array(5).fill(["A", "K", "Q", "W", "S"]), // missing "J", which has a paytable entry
+        };
+
+        expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstrips-missing-symbol");
+    });
+
+    it("flags a paytable/wild/scatter symbol that never appears in explicit symbolWeights", () => {
+        const blueprint = {
+            ...validBlueprint(),
+            symbolWeights: {A: 10, K: 10, Q: 10, J: 10, W: 3}, // missing "S", the scatter
+        };
+
+        expect(codesOf(validator.validate(blueprint))).toContain("blueprint-symbolweights-missing-symbol");
+    });
+
+    it("flags a non-wild/scatter symbol with no paytable entry", () => {
+        const blueprint = {...validBlueprint(), paytable: {A: {3: 5}}};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-symbol-missing-payout")?.severity).toBe("warning");
+    });
+
+    it("flags unusually large reels/rows counts as suspicious, not as an error", () => {
+        const blueprint = {...validBlueprint(), reels: 12, rows: 11} as Partial<GameBlueprint>;
+        Reflect.deleteProperty(blueprint, "paylines");
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-reels-suspicious")?.severity).toBe("warning");
+        expect(issues.find((issue) => issue.code === "blueprint-rows-suspicious")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
     });
 });
