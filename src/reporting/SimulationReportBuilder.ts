@@ -1,6 +1,6 @@
 import type {SimulationBreakdownComponent} from "../simulation/SimulationBreakdownComponent.js";
 import type {SimulationReport, SimulationReportReproducibility} from "./SimulationReport.js";
-import type {SimulationReportBreakdown} from "./SimulationReportBreakdown.js";
+import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from "./SimulationReportBreakdown.js";
 import type {SimulationReportBuilding} from "./SimulationReportBuilding.js";
 import type {SimulationReportInput} from "./SimulationReportInput.js";
 
@@ -8,6 +8,13 @@ type CoreMetrics = Omit<SimulationReport, "reproducibility" | "warnings" | "reco
 
 export class SimulationReportBuilder implements SimulationReportBuilding {
     public static readonly LOW_ROUNDS_WARNING_THRESHOLD: number = 10000;
+    // A non-base category that appeared with fewer rounds than this never triggers the "zero win"
+    // warning below, even if every one of those rounds happened to lose — an all-zero streak that
+    // short is common variance, not a signal. At 20 rounds, even a generously high 30% per-round hit
+    // rate for the category still has only a ~0.08% chance of losing every single time (0.7^20), so a
+    // warning past this threshold is unlikely to be a false positive for any game with an intentional
+    // feature.
+    public static readonly MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING: number = 20;
     private static readonly BASE_CATEGORY = "base";
 
     public build(input: SimulationReportInput): SimulationReport {
@@ -28,7 +35,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             spinsPerSecond,
         };
 
-        const breakdown = this.buildBreakdown(input.breakdown);
+        const breakdown = this.buildBreakdown(input.breakdown, core.totalBet);
         const warnings = this.buildWarnings(core, breakdown);
 
         return {
@@ -36,7 +43,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             breakdown,
             reproducibility: this.buildReproducibility(core, packageRoot),
             warnings,
-            recommendations: this.buildRecommendations(core, breakdown),
+            recommendations: this.buildRecommendations(core),
         };
     }
 
@@ -92,18 +99,45 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             );
         }
 
-        if (breakdown && this.hasSuspiciouslyZeroFeatureContribution(breakdown)) {
-            warnings.push(
-                "Feature-level breakdown is available, but no non-base category (e.g. free games) contributed " +
-                    "any win in this run — this may mean the feature never triggered, or its win is being " +
-                    "misattributed to the base category.",
-            );
+        if (breakdown) {
+            warnings.push(...this.buildBreakdownWarnings(core, breakdown));
         }
 
         return warnings;
     }
 
-    private buildRecommendations(core: CoreMetrics, breakdown: SimulationReportBreakdown | undefined): string[] {
+    // No warning/recommendation is ever raised for the *absence* of a breakdown itself — most games
+    // simply don't have a free-games feature, and that's not a problem worth flagging on every single
+    // report forever (see docs/cli.md). Only a breakdown that IS present but looks off gets flagged,
+    // and only when the sample size makes that a safe call (see MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING).
+    private buildBreakdownWarnings(core: CoreMetrics, breakdown: SimulationReportBreakdown): string[] {
+        const warnings: string[] = [];
+        const featureCategories = Object.keys(breakdown.components).filter((category) => category !== SimulationReportBuilder.BASE_CATEGORY);
+
+        if (featureCategories.length === 0) {
+            if (core.rounds >= SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
+                warnings.push(
+                    `Feature-level breakdown is available, but no non-base category (e.g. "freeGames") ever appeared ` +
+                        `in ${core.rounds} rounds — the feature may not be triggering.`,
+                );
+            }
+            return warnings;
+        }
+
+        featureCategories.forEach((category) => {
+            const component = breakdown.components[category];
+            if (component.rounds >= SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING && component.totalWin === 0) {
+                warnings.push(
+                    `"${category}" triggered ${component.rounds} times but never produced a win — check whether its ` +
+                        `win is being misattributed to the base category.`,
+                );
+            }
+        });
+
+        return warnings;
+    }
+
+    private buildRecommendations(core: CoreMetrics): string[] {
         const recommendations: string[] = [];
 
         if (!this.hasSeed(core)) {
@@ -119,30 +153,25 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         recommendations.push('Use "pokie diff" to compare this report against a previous run after changing the game\'s math.');
         recommendations.push("Save this report as JSON via --out to keep a record you can diff or replay against later.");
 
-        if (!breakdown) {
-            recommendations.push(
-                "No feature-level RTP breakdown is available for this game — implement the optional " +
-                    "StakeAmountDetermining contract (or inject a custom SimulationRoundCategoryDetermining) on the " +
-                    "session to get a base vs. free-games breakdown.",
-            );
-        }
-
         return recommendations;
     }
 
-    private buildBreakdown(components: Record<string, SimulationBreakdownComponent> | undefined): SimulationReportBreakdown | undefined {
+    private buildBreakdown(
+        components: Record<string, SimulationBreakdownComponent> | undefined,
+        overallTotalBet: number,
+    ): SimulationReportBreakdown | undefined {
         if (!components || Object.keys(components).length === 0) {
             return undefined;
         }
-        return {components};
-    }
 
-    private hasSuspiciouslyZeroFeatureContribution(breakdown: SimulationReportBreakdown): boolean {
-        const featureCategories = Object.keys(breakdown.components).filter((category) => category !== SimulationReportBuilder.BASE_CATEGORY);
-        if (featureCategories.length === 0) {
-            return true;
-        }
-        const featureTotalWin = featureCategories.reduce((sum, category) => sum + breakdown.components[category].totalWin, 0);
-        return featureTotalWin === 0;
+        const withContribution: Record<string, SimulationReportBreakdownComponent> = {};
+        Object.entries(components).forEach(([category, component]) => {
+            withContribution[category] = {
+                ...component,
+                contribution: overallTotalBet > 0 ? component.totalWin / overallTotalBet : 0,
+            };
+        });
+
+        return {components: withContribution};
     }
 }

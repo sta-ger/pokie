@@ -158,6 +158,7 @@ export class SimCommand implements CliCommandHandling {
             Object.entries(report.breakdown.components).forEach(([category, component]) => {
                 console.log(
                     `  ${category.padEnd(14)}rounds ${component.rounds}, rtp ${(component.rtp * 100).toFixed(2)}%, ` +
+                        `contribution ${(component.contribution * 100).toFixed(2)} pp, ` +
                         `hit frequency ${(component.hitFrequency * 100).toFixed(2)}%, max win ${component.maxWin.toFixed(2)}`,
                 );
             });

@@ -147,29 +147,48 @@ describe("SimulationReportDiffer", () => {
     });
 
     describe("breakdown", () => {
-        it("ignores breakdown (leaves diff.breakdown undefined) when neither report has one — old-shape compatibility", () => {
+        it("ignores breakdown (leaves diff.breakdown undefined, no warning) when neither report has one — old-shape compatibility", () => {
             const diff = new SimulationReportDiffer().diff(left, right);
 
             expect(diff.breakdown).toBeUndefined();
+            expect(diff.warnings.some((warning) => warning.includes("breakdown"))).toBe(false);
         });
 
-        it("ignores breakdown when only one side has it (comparing an old report to a new one)", () => {
+        it("leaves diff.breakdown undefined but warns clearly when only the right report has it", () => {
             const rightWithBreakdown: SimulationReport = {
                 ...right,
-                breakdown: {components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9400, rtp: 0.9543, hitFrequency: 0.245, maxWin: 130}}},
+                breakdown: {
+                    components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9400, rtp: 0.9543, contribution: 0.9543, hitFrequency: 0.245, maxWin: 130}},
+                },
             };
 
-            expect(new SimulationReportDiffer().diff(left, rightWithBreakdown).breakdown).toBeUndefined();
-            expect(new SimulationReportDiffer().diff(rightWithBreakdown, left).breakdown).toBeUndefined();
+            const diff = new SimulationReportDiffer().diff(left, rightWithBreakdown);
+
+            expect(diff.breakdown).toBeUndefined();
+            expect(diff.warnings).toContain("Feature-level breakdown comparison skipped — the left report has no breakdown data.");
         });
 
-        it("compares matching categories on both sides when both reports have a breakdown", () => {
+        it("leaves diff.breakdown undefined but warns clearly when only the left report has it", () => {
+            const leftWithBreakdown: SimulationReport = {
+                ...left,
+                breakdown: {
+                    components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, contribution: 0.9522, hitFrequency: 0.241, maxWin: 120.5}},
+                },
+            };
+
+            const diff = new SimulationReportDiffer().diff(leftWithBreakdown, right);
+
+            expect(diff.breakdown).toBeUndefined();
+            expect(diff.warnings).toContain("Feature-level breakdown comparison skipped — the right report has no breakdown data.");
+        });
+
+        it("compares matching categories on both sides when both reports have a breakdown, including contribution", () => {
             const leftWithBreakdown: SimulationReport = {
                 ...left,
                 breakdown: {
                     components: {
-                        base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, hitFrequency: 0.2, maxWin: 90},
-                        freeGames: {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.4218367346938776, hitFrequency: 0.6, maxWin: 120.5},
+                        base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, contribution: 0.81, hitFrequency: 0.2, maxWin: 90},
+                        freeGames: {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.4218367346938776, contribution: 0.14218367346938776, hitFrequency: 0.6, maxWin: 120.5},
                     },
                 },
             };
@@ -177,8 +196,8 @@ describe("SimulationReportDiffer", () => {
                 ...right,
                 breakdown: {
                     components: {
-                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.9040451977401129, hitFrequency: 0.21, maxWin: 95},
-                        freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, hitFrequency: 0.61, maxWin: 130},
+                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.9040451977401129, contribution: 0.8121827411167513, hitFrequency: 0.21, maxWin: 95},
+                        freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, contribution: 0.1421319796954315, hitFrequency: 0.61, maxWin: 130},
                     },
                 },
             };
@@ -189,19 +208,23 @@ describe("SimulationReportDiffer", () => {
             expect(diff.breakdown!.components.base.rounds).toEqual({left: 8820, right: 8850, delta: 30, percentDelta: diff.breakdown!.components.base.rounds.percentDelta});
             expect(diff.breakdown!.components.base.totalWin.delta).toBeCloseTo(62, 5);
             expect(diff.breakdown!.components.freeGames.totalWin.delta).toBeCloseTo(6.6, 5);
+            expect(diff.breakdown!.components.base.contribution.delta).toBeCloseTo(0.0021827411167513, 10);
+            expect(diff.breakdown!.components.freeGames.contribution.left).toBeCloseTo(0.14218367346938776, 10);
         });
 
         it("treats a category missing on one side as zero (left: null, right values only)", () => {
             const leftWithBreakdown: SimulationReport = {
                 ...left,
-                breakdown: {components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, hitFrequency: 0.241, maxWin: 120.5}}},
+                breakdown: {
+                    components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, contribution: 0.9522, hitFrequency: 0.241, maxWin: 120.5}},
+                },
             };
             const rightWithBreakdown: SimulationReport = {
                 ...right,
                 breakdown: {
                     components: {
-                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.904, hitFrequency: 0.21, maxWin: 95},
-                        freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, hitFrequency: 0.61, maxWin: 130},
+                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.904, contribution: 0.812, hitFrequency: 0.21, maxWin: 95},
+                        freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, contribution: 0.142, hitFrequency: 0.61, maxWin: 130},
                     },
                 },
             };
@@ -211,16 +234,21 @@ describe("SimulationReportDiffer", () => {
             expect(diff.breakdown!.components.freeGames.left).toBeNull();
             expect(diff.breakdown!.components.freeGames.right).not.toBeNull();
             expect(diff.breakdown!.components.freeGames.rounds).toEqual({left: 0, right: 1000, delta: 1000, percentDelta: null});
+            expect(diff.breakdown!.components.freeGames.contribution).toEqual({left: 0, right: 0.142, delta: 0.142, percentDelta: null});
         });
 
         it("warns when a category's RTP changes by more than the RTP delta threshold", () => {
             const leftWithBreakdown: SimulationReport = {
                 ...left,
-                breakdown: {components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, hitFrequency: 0.241, maxWin: 120.5}}},
+                breakdown: {
+                    components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, contribution: 0.9522, hitFrequency: 0.241, maxWin: 120.5}},
+                },
             };
             const rightWithBreakdown: SimulationReport = {
                 ...right,
-                breakdown: {components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9850, rtp: 1.0, hitFrequency: 0.245, maxWin: 130}}},
+                breakdown: {
+                    components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9850, rtp: 1.0, contribution: 1.0, hitFrequency: 0.245, maxWin: 130}},
+                },
             };
 
             const diff = new SimulationReportDiffer().diff(leftWithBreakdown, rightWithBreakdown);

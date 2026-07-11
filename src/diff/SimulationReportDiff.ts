@@ -14,6 +14,7 @@ export type SimulationReportBreakdownComponentDiff = {
     totalBet: SimulationReportMetricDiff;
     totalWin: SimulationReportMetricDiff;
     rtp: SimulationReportMetricDiff;
+    contribution: SimulationReportMetricDiff;
     hitFrequency: SimulationReportMetricDiff;
     maxWin: SimulationReportMetricDiff;
 };

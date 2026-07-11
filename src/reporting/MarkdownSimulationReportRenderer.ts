@@ -21,11 +21,18 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
         ];
 
         if (report.breakdown) {
-            lines.push("", "## Breakdown", "", "| Category | Rounds | Total bet | Total win | RTP | Hit frequency | Max win |", "| --- | --- | --- | --- | --- | --- | --- |");
+            lines.push(
+                "",
+                "## Breakdown",
+                "",
+                "| Category | Rounds | Total bet | Total win | RTP | Contribution | Hit frequency | Max win |",
+                "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            );
             Object.entries(report.breakdown.components).forEach(([category, component]) => {
                 lines.push(
                     `| ${category} | ${component.rounds} | ${component.totalBet.toFixed(2)} | ${component.totalWin.toFixed(2)} | ` +
-                        `${(component.rtp * 100).toFixed(2)}% | ${(component.hitFrequency * 100).toFixed(2)}% | ${component.maxWin.toFixed(2)} |`,
+                        `${(component.rtp * 100).toFixed(2)}% | ${(component.contribution * 100).toFixed(2)} pp | ` +
+                        `${(component.hitFrequency * 100).toFixed(2)}% | ${component.maxWin.toFixed(2)} |`,
                 );
             });
         }

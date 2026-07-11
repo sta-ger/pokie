@@ -182,6 +182,7 @@ export class DiffCommand implements CliCommandHandling {
                 console.log(`    rounds          ${this.formatMetric(componentDiff.rounds, 0)}`);
                 console.log(`    total win       ${this.formatMetric(componentDiff.totalWin, 2)}`);
                 console.log(`    rtp             ${this.formatPercentMetric(componentDiff.rtp)}`);
+                console.log(`    contribution    ${this.formatPercentMetric(componentDiff.contribution)}`);
                 console.log(`    hit frequency   ${this.formatPercentMetric(componentDiff.hitFrequency)}`);
             });
         }

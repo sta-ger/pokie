@@ -48,7 +48,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             maxWin,
             durationMs: this.metricDiff(left.durationMs, right.durationMs),
             spinsPerSecond: this.metricDiff(left.spinsPerSecond, right.spinsPerSecond),
-            warnings: this.buildWarnings(rtp, hitFrequency, maxWin, breakdown),
+            warnings: this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown),
             breakdown,
         };
     }
@@ -64,6 +64,8 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         hitFrequency: SimulationReportMetricDiff,
         maxWin: SimulationReportMetricDiff,
         breakdown: SimulationReportBreakdownDiff | undefined,
+        leftBreakdown: SimulationReportBreakdown | undefined,
+        rightBreakdown: SimulationReportBreakdown | undefined,
     ): string[] {
         const warnings: string[] = [];
 
@@ -96,9 +98,27 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
                     );
                 }
             });
+        } else {
+            const availabilityNote = this.buildBreakdownAvailabilityNote(leftBreakdown, rightBreakdown);
+            if (availabilityNote) {
+                warnings.push(availabilityNote);
+            }
         }
 
         return warnings;
+    }
+
+    // Diffing a category-by-category breakdown only makes sense when BOTH reports have one. Two old
+    // reports (or two reports from a game that doesn't categorize rounds) is the common case and isn't
+    // worth mentioning — but exactly one side having a breakdown is more likely a mismatch the caller
+    // didn't intend (e.g. diffing a report from before this game added free games against one from
+    // after), so that specific case gets a warning explaining why "Breakdown:" is missing.
+    private buildBreakdownAvailabilityNote(left: SimulationReportBreakdown | undefined, right: SimulationReportBreakdown | undefined): string | undefined {
+        if (!!left === !!right) {
+            return undefined;
+        }
+        const sideWithout = left ? "right" : "left";
+        return `Feature-level breakdown comparison skipped — the ${sideWithout} report has no breakdown data.`;
     }
 
     private diffBreakdown(left: SimulationReportBreakdown | undefined, right: SimulationReportBreakdown | undefined): SimulationReportBreakdownDiff | undefined {
@@ -126,6 +146,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             totalBet: this.metricDiff(left?.totalBet ?? 0, right?.totalBet ?? 0),
             totalWin: this.metricDiff(left?.totalWin ?? 0, right?.totalWin ?? 0),
             rtp: this.metricDiff(left?.rtp ?? 0, right?.rtp ?? 0),
+            contribution: this.metricDiff(left?.contribution ?? 0, right?.contribution ?? 0),
             hitFrequency: this.metricDiff(left?.hitFrequency ?? 0, right?.hitFrequency ?? 0),
             maxWin: this.metricDiff(left?.maxWin ?? 0, right?.maxWin ?? 0),
         };

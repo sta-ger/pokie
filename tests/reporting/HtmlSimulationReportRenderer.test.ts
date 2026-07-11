@@ -130,19 +130,29 @@ describe("HtmlSimulationReportRenderer", () => {
         expect(html).not.toContain("Breakdown");
     });
 
-    it("renders a Breakdown section with one table row per category, escaped", () => {
+    it("renders a Breakdown section with one table row per category, including contribution, escaped", () => {
         const html = new HtmlSimulationReportRenderer().render({
             ...report,
             breakdown: {
                 components: {
-                    base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, hitFrequency: 0.2, maxWin: 90},
-                    "<bonus>": {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.4218367346938776, hitFrequency: 0.6, maxWin: 120.5},
+                    base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, contribution: 0.81, hitFrequency: 0.2, maxWin: 90},
+                    "<bonus>": {
+                        rounds: 980,
+                        totalBet: 980,
+                        totalWin: 1393.4,
+                        rtp: 1.4218367346938776,
+                        contribution: 0.14218367346938776,
+                        hitFrequency: 0.6,
+                        maxWin: 120.5,
+                    },
                 },
             },
         });
 
         expect(html).toContain("<h2>Breakdown</h2>");
-        expect(html).toContain("<td>base</td><td>8820</td><td>8820.00</td><td>7938.00</td><td>90.00%</td><td>20.00%</td><td>90.00</td>");
-        expect(html).toContain("<td>&lt;bonus&gt;</td><td>980</td><td>980.00</td><td>1393.40</td><td>142.18%</td><td>60.00%</td><td>120.50</td>");
+        expect(html).toContain("<td>base</td><td>8820</td><td>8820.00</td><td>7938.00</td><td>90.00%</td><td>81.00 pp</td><td>20.00%</td><td>90.00</td>");
+        expect(html).toContain(
+            "<td>&lt;bonus&gt;</td><td>980</td><td>980.00</td><td>1393.40</td><td>142.18%</td><td>14.22 pp</td><td>60.00%</td><td>120.50</td>",
+        );
     });
 });

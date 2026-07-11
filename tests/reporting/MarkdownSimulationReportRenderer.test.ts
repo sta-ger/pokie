@@ -109,19 +109,27 @@ describe("MarkdownSimulationReportRenderer", () => {
         expect(markdown).not.toContain("## Breakdown");
     });
 
-    it("renders a Breakdown section with one row per category", () => {
+    it("renders a Breakdown section with one row per category, including RTP and contribution", () => {
         const markdown = new MarkdownSimulationReportRenderer().render({
             ...report,
             breakdown: {
                 components: {
-                    base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, hitFrequency: 0.2, maxWin: 90},
-                    freeGames: {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.4218367346938776, hitFrequency: 0.6, maxWin: 120.5},
+                    base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, contribution: 0.81, hitFrequency: 0.2, maxWin: 90},
+                    freeGames: {
+                        rounds: 980,
+                        totalBet: 980,
+                        totalWin: 1393.4,
+                        rtp: 1.4218367346938776,
+                        contribution: 0.14218367346938776,
+                        hitFrequency: 0.6,
+                        maxWin: 120.5,
+                    },
                 },
             },
         });
 
         expect(markdown).toContain("## Breakdown");
-        expect(markdown).toContain("| base | 8820 | 8820.00 | 7938.00 | 90.00% | 20.00% | 90.00 |");
-        expect(markdown).toContain("| freeGames | 980 | 980.00 | 1393.40 | 142.18% | 60.00% | 120.50 |");
+        expect(markdown).toContain("| base | 8820 | 8820.00 | 7938.00 | 90.00% | 81.00 pp | 20.00% | 90.00 |");
+        expect(markdown).toContain("| freeGames | 980 | 980.00 | 1393.40 | 142.18% | 14.22 pp | 60.00% | 120.50 |");
     });
 });

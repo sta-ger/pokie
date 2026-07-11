@@ -340,28 +340,41 @@ describe("SimulationReportBuilder", () => {
     });
 
     describe("breakdown", () => {
+        function statisticsWithRounds(rounds: number) {
+            const accumulator = new SimulationAccumulator();
+            for (let i = 0; i < rounds; i++) {
+                accumulator.addRound(1, 0);
+            }
+            return accumulator.getStatistics();
+        }
+
         test("old-shape compatibility: report.breakdown is undefined when no breakdown input is given", () => {
             const report = buildHealthyReport();
 
             expect(report.breakdown).toBeUndefined();
         });
 
-        test("recommends implementing categorization when no breakdown input is given", () => {
+        test("never recommends implementing categorization when breakdown is absent — most games simply don't have the feature", () => {
             const report = buildHealthyReport();
 
-            expect(report.recommendations!.some((recommendation) => recommendation.includes("StakeAmountDetermining"))).toBe(true);
+            expect(report.recommendations!.some((recommendation) => recommendation.toLowerCase().includes("breakdown"))).toBe(false);
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("StakeAmountDetermining"))).toBe(false);
         });
 
-        test("wraps a non-empty breakdown input into report.breakdown.components unchanged", () => {
+        test("never warns about the absence of breakdown either", () => {
+            const report = buildHealthyReport();
+
+            expect(report.warnings!.some((warning) => warning.toLowerCase().includes("breakdown"))).toBe(false);
+        });
+
+        test("wraps a non-empty breakdown input into report.breakdown.components, adding a computed contribution", () => {
             const builder = new SimulationReportBuilder();
-            const accumulator = new SimulationAccumulator();
-            accumulator.addRound(1, 0);
 
             const report = builder.build({
                 manifest,
                 requestedRounds: 1,
                 seed: "demo",
-                statistics: accumulator.getStatistics(),
+                statistics: statisticsWithRounds(10),
                 durationMs: 10,
                 breakdown: {
                     base: {rounds: 8, totalBet: 8, totalWin: 4, rtp: 0.5, hitFrequency: 0.25, maxWin: 4},
@@ -369,24 +382,49 @@ describe("SimulationReportBuilder", () => {
                 },
             });
 
+            // core.totalBet is 10 (statisticsWithRounds(10) bets 1 per round) — contribution is each
+            // category's totalWin divided by that OVERALL totalBet, not the category's own totalBet.
             expect(report.breakdown).toEqual({
                 components: {
-                    base: {rounds: 8, totalBet: 8, totalWin: 4, rtp: 0.5, hitFrequency: 0.25, maxWin: 4},
-                    freeGames: {rounds: 2, totalBet: 2, totalWin: 6, rtp: 3, hitFrequency: 1, maxWin: 6},
+                    base: {rounds: 8, totalBet: 8, totalWin: 4, rtp: 0.5, contribution: 0.4, hitFrequency: 0.25, maxWin: 4},
+                    freeGames: {rounds: 2, totalBet: 2, totalWin: 6, rtp: 3, contribution: 0.6, hitFrequency: 1, maxWin: 6},
                 },
             });
         });
 
-        test("treats an empty breakdown input the same as no breakdown at all", () => {
+        test("contributions across every category sum to the report's overall rtp when breakdown totals are consistent with the statistics", () => {
             const builder = new SimulationReportBuilder();
             const accumulator = new SimulationAccumulator();
-            accumulator.addRound(1, 0);
+            for (let i = 0; i < 8; i++) {
+                accumulator.addRound(1, 0.5); // 8 base rounds, bet 8 total, win 4 total
+            }
+            for (let i = 0; i < 2; i++) {
+                accumulator.addRound(1, 3); // 2 freeGames rounds, bet 2 total, win 6 total
+            }
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 10,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                breakdown: {
+                    base: {rounds: 8, totalBet: 8, totalWin: 4, rtp: 0.5, hitFrequency: 1, maxWin: 0.5},
+                    freeGames: {rounds: 2, totalBet: 2, totalWin: 6, rtp: 3, hitFrequency: 1, maxWin: 3},
+                },
+            });
+
+            expect(report.breakdown!.components.base.contribution + report.breakdown!.components.freeGames.contribution).toBeCloseTo(report.rtp, 10);
+        });
+
+        test("treats an empty breakdown input the same as no breakdown at all", () => {
+            const builder = new SimulationReportBuilder();
 
             const report = builder.build({
                 manifest,
                 requestedRounds: 1,
                 seed: "demo",
-                statistics: accumulator.getStatistics(),
+                statistics: statisticsWithRounds(1),
                 durationMs: 10,
                 breakdown: {},
             });
@@ -394,84 +432,107 @@ describe("SimulationReportBuilder", () => {
             expect(report.breakdown).toBeUndefined();
         });
 
-        test("does not recommend implementing categorization when a breakdown is present", () => {
-            const builder = new SimulationReportBuilder();
-            const accumulator = new SimulationAccumulator();
-            for (let i = 0; i < 9999; i++) {
-                accumulator.addRound(1, 0);
-            }
-            accumulator.addRound(1, 5);
+        describe("no non-base category ever appeared", () => {
+            test("warns when this happens over a large sample (rounds >= LOW_ROUNDS_WARNING_THRESHOLD)", () => {
+                const builder = new SimulationReportBuilder();
 
-            const report = builder.build({
-                manifest,
-                requestedRounds: 10000,
-                seed: "demo",
-                statistics: accumulator.getStatistics(),
-                durationMs: 1000,
-                breakdown: {
-                    base: {rounds: 9000, totalBet: 9000, totalWin: 8000, rtp: 0.89, hitFrequency: 0.2, maxWin: 5},
-                    freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1000, rtp: 1, hitFrequency: 0.5, maxWin: 5},
-                },
+                const report = builder.build({
+                    manifest,
+                    requestedRounds: SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD,
+                    seed: "demo",
+                    statistics: statisticsWithRounds(SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD),
+                    durationMs: 1000,
+                    breakdown: {base: {rounds: SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD, totalBet: 10000, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0}},
+                });
+
+                expect(report.warnings!.some((warning) => warning.includes('no non-base category (e.g. "freeGames") ever appeared'))).toBe(true);
             });
 
-            expect(report.recommendations!.some((recommendation) => recommendation.includes("StakeAmountDetermining"))).toBe(false);
+            test("does NOT warn over a small sample — avoids a false positive for a rare feature that just hasn't triggered yet", () => {
+                const builder = new SimulationReportBuilder();
+
+                const report = builder.build({
+                    manifest,
+                    requestedRounds: 100,
+                    seed: "demo",
+                    statistics: statisticsWithRounds(100),
+                    durationMs: 10,
+                    breakdown: {base: {rounds: 100, totalBet: 100, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0}},
+                });
+
+                expect(report.warnings!.some((warning) => warning.includes("ever appeared"))).toBe(false);
+            });
         });
 
-        test("warns when breakdown is present but no non-base category has any rounds", () => {
-            const builder = new SimulationReportBuilder();
-            const accumulator = new SimulationAccumulator();
-            accumulator.addRound(1, 0);
+        describe("a non-base category triggered but never won", () => {
+            test("warns once the category has enough rounds to make an all-zero streak unlikely by chance", () => {
+                const builder = new SimulationReportBuilder();
 
-            const report = builder.build({
-                manifest,
-                requestedRounds: 1,
-                seed: "demo",
-                statistics: accumulator.getStatistics(),
-                durationMs: 10,
-                breakdown: {base: {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0}},
+                const report = builder.build({
+                    manifest,
+                    requestedRounds: 1000,
+                    seed: "demo",
+                    statistics: statisticsWithRounds(1000),
+                    durationMs: 10,
+                    breakdown: {
+                        base: {rounds: 950, totalBet: 950, totalWin: 800, rtp: 0.842, hitFrequency: 0.2, maxWin: 8},
+                        freeGames: {
+                            rounds: SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING,
+                            totalBet: SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING,
+                            totalWin: 0,
+                            rtp: 0,
+                            hitFrequency: 0,
+                            maxWin: 0,
+                        },
+                    },
+                });
+
+                expect(report.warnings!.some((warning) => warning.includes('"freeGames" triggered 20 times but never produced a win'))).toBe(true);
             });
 
-            expect(report.warnings!.some((warning) => warning.includes("no non-base category"))).toBe(true);
-        });
+            test("does NOT warn below the sample-size threshold — a short all-zero streak is normal variance, not a signal", () => {
+                const builder = new SimulationReportBuilder();
 
-        test("warns when breakdown is present and a non-base category exists but contributed 0 win", () => {
-            const builder = new SimulationReportBuilder();
-            const accumulator = new SimulationAccumulator();
-            accumulator.addRound(1, 0);
+                const report = builder.build({
+                    manifest,
+                    requestedRounds: 100,
+                    seed: "demo",
+                    statistics: statisticsWithRounds(100),
+                    durationMs: 10,
+                    breakdown: {
+                        base: {rounds: 95, totalBet: 95, totalWin: 80, rtp: 0.842, hitFrequency: 0.2, maxWin: 8},
+                        freeGames: {
+                            rounds: SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING - 1,
+                            totalBet: SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING - 1,
+                            totalWin: 0,
+                            rtp: 0,
+                            hitFrequency: 0,
+                            maxWin: 0,
+                        },
+                    },
+                });
 
-            const report = builder.build({
-                manifest,
-                requestedRounds: 1,
-                seed: "demo",
-                statistics: accumulator.getStatistics(),
-                durationMs: 10,
-                breakdown: {
-                    base: {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
-                    freeGames: {rounds: 0, totalBet: 0, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
-                },
+                expect(report.warnings!.some((warning) => warning.includes("never produced a win"))).toBe(false);
             });
 
-            expect(report.warnings!.some((warning) => warning.includes("no non-base category"))).toBe(true);
-        });
+            test("does not warn when the non-base category has a win", () => {
+                const builder = new SimulationReportBuilder();
 
-        test("does not warn about suspiciously zero feature contribution when a non-base category has a win", () => {
-            const builder = new SimulationReportBuilder();
-            const accumulator = new SimulationAccumulator();
-            accumulator.addRound(1, 0);
+                const report = builder.build({
+                    manifest,
+                    requestedRounds: 1000,
+                    seed: "demo",
+                    statistics: statisticsWithRounds(1000),
+                    durationMs: 10,
+                    breakdown: {
+                        base: {rounds: 950, totalBet: 950, totalWin: 800, rtp: 0.842, hitFrequency: 0.2, maxWin: 8},
+                        freeGames: {rounds: 50, totalBet: 50, totalWin: 60, rtp: 1.2, hitFrequency: 0.4, maxWin: 5},
+                    },
+                });
 
-            const report = builder.build({
-                manifest,
-                requestedRounds: 1,
-                seed: "demo",
-                statistics: accumulator.getStatistics(),
-                durationMs: 10,
-                breakdown: {
-                    base: {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
-                    freeGames: {rounds: 1, totalBet: 1, totalWin: 5, rtp: 5, hitFrequency: 1, maxWin: 5},
-                },
+                expect(report.warnings!.some((warning) => warning.includes("never produced a win"))).toBe(false);
+                expect(report.warnings!.some((warning) => warning.includes("ever appeared"))).toBe(false);
             });
-
-            expect(report.warnings!.some((warning) => warning.includes("no non-base category"))).toBe(false);
         });
     });
 });

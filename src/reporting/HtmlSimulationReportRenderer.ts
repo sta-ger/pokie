@@ -50,11 +50,14 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             return [];
         }
 
-        const headerRow = "            <tr><th>Category</th><th>Rounds</th><th>Total bet</th><th>Total win</th><th>RTP</th><th>Hit frequency</th><th>Max win</th></tr>";
+        const headerRow =
+            "            <tr><th>Category</th><th>Rounds</th><th>Total bet</th><th>Total win</th><th>RTP</th>" +
+            "<th>Contribution</th><th>Hit frequency</th><th>Max win</th></tr>";
         const rows = Object.entries(report.breakdown.components).map(([category, component]) => {
             return (
                 `            <tr><td>${this.escapeHtml(category)}</td><td>${component.rounds}</td><td>${component.totalBet.toFixed(2)}</td>` +
                 `<td>${component.totalWin.toFixed(2)}</td><td>${(component.rtp * 100).toFixed(2)}%</td>` +
+                `<td>${(component.contribution * 100).toFixed(2)} pp</td>` +
                 `<td>${(component.hitFrequency * 100).toFixed(2)}%</td><td>${component.maxWin.toFixed(2)}</td></tr>`
             );
         });

@@ -195,10 +195,12 @@ describe("DiffCommand", () => {
             logSpy.mockRestore();
         });
 
-        it("prints no Breakdown section when only one report has one", async () => {
+        it("prints no Breakdown section but a clear Warnings note when only one report has one", async () => {
             const rightWithBreakdown: SimulationReport = {
                 ...right,
-                breakdown: {components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9400, rtp: 0.98, hitFrequency: 0.245, maxWin: 250}}},
+                breakdown: {
+                    components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9400, rtp: 0.98, contribution: 0.98, hitFrequency: 0.245, maxWin: 250}},
+                },
             };
             const command = new DiffCommand(
                 createStubReadFile({"left.json": JSON.stringify(left), "right.json": JSON.stringify(rightWithBreakdown)}),
@@ -209,17 +211,18 @@ describe("DiffCommand", () => {
 
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).not.toContain("Breakdown:");
+            expect(printed).toContain("Feature-level breakdown comparison skipped — the left report has no breakdown data.");
 
             logSpy.mockRestore();
         });
 
-        it("prints a Breakdown section with per-category lines when both reports have one", async () => {
+        it("prints a Breakdown section with per-category lines, including contribution, when both reports have one", async () => {
             const leftWithBreakdown: SimulationReport = {
                 ...left,
                 breakdown: {
                     components: {
-                        base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, hitFrequency: 0.2, maxWin: 90},
-                        freeGames: {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.4218367346938776, hitFrequency: 0.6, maxWin: 120.5},
+                        base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, contribution: 0.81, hitFrequency: 0.2, maxWin: 90},
+                        freeGames: {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.4218367346938776, contribution: 0.14218367346938776, hitFrequency: 0.6, maxWin: 120.5},
                     },
                 },
             };
@@ -227,8 +230,8 @@ describe("DiffCommand", () => {
                 ...right,
                 breakdown: {
                     components: {
-                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.904, hitFrequency: 0.21, maxWin: 95},
-                        freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, hitFrequency: 0.61, maxWin: 130},
+                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.904, contribution: 0.812, hitFrequency: 0.21, maxWin: 95},
+                        freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, contribution: 0.142, hitFrequency: 0.61, maxWin: 130},
                     },
                 },
             };
@@ -243,18 +246,23 @@ describe("DiffCommand", () => {
             expect(printed).toContain("Breakdown:");
             expect(printed).toContain("base");
             expect(printed).toContain("freeGames");
+            expect(printed).toContain("contribution");
 
             logSpy.mockRestore();
         });
 
-        it("includes breakdown in the JSON diff when --format json is given and both reports have one", async () => {
+        it("includes breakdown (with contribution) in the JSON diff when --format json is given and both reports have one", async () => {
             const leftWithBreakdown: SimulationReport = {
                 ...left,
-                breakdown: {components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, hitFrequency: 0.241, maxWin: 120.5}}},
+                breakdown: {
+                    components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, contribution: 0.9522, hitFrequency: 0.241, maxWin: 120.5}},
+                },
             };
             const rightWithBreakdown: SimulationReport = {
                 ...right,
-                breakdown: {components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9400, rtp: 0.98, hitFrequency: 0.245, maxWin: 250}}},
+                breakdown: {
+                    components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9400, rtp: 0.98, contribution: 0.98, hitFrequency: 0.245, maxWin: 250}},
+                },
             };
             const command = new DiffCommand(
                 createStubReadFile({"left.json": JSON.stringify(leftWithBreakdown), "right.json": JSON.stringify(rightWithBreakdown)}),
@@ -265,6 +273,7 @@ describe("DiffCommand", () => {
 
             const parsed = JSON.parse(logSpy.mock.calls[0][0]);
             expect(parsed.breakdown.components.base.rounds).toEqual({left: 9800, right: 9850, delta: 50, percentDelta: parsed.breakdown.components.base.rounds.percentDelta});
+            expect(parsed.breakdown.components.base.contribution).toEqual({left: 0.9522, right: 0.98, delta: parsed.breakdown.components.base.contribution.delta, percentDelta: parsed.breakdown.components.base.contribution.percentDelta});
 
             logSpy.mockRestore();
         });
