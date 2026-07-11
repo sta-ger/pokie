@@ -2,6 +2,17 @@ import type {GameBlueprintValidating} from "./GameBlueprintValidating.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
 const SUSPICIOUS_REELS_OR_ROWS_THRESHOLD = 10;
+// Below this many matching symbols, a non-scatter (line-pay) payout hits so often it behaves more
+// like a scatter than a line win — most line-pay symbols start paying at 3-of-a-kind.
+const FREQUENT_LOW_MATCH_COUNT = 2;
+// A non-scatter symbol's payout at its own lowest configured match count (its "entry tier", usually
+// 3-of-a-kind) above this multiplier is unusually generous — most line-pay symbols save bigger
+// multipliers for higher match counts, not their most frequent one.
+const SUSPICIOUS_ENTRY_TIER_MULTIPLIER = 10;
+// A symbol making up more than this share of a reel's weighting will visibly dominate the reels.
+const DOMINANT_SYMBOL_WEIGHT_SHARE = 0.4;
+
+type SymbolPayout = {times: number; multiplier: number};
 
 export class GameBlueprintValidator implements GameBlueprintValidating {
     public validate(blueprint: unknown): ValidationIssue[] {
@@ -75,6 +86,9 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
 
         this.validateReachability(paytableSymbols, wilds, scatters, reelStripSymbols, weightSymbols, issues);
         this.validateEverySymbolHasAPayout(symbolList, symbolsValid, paytableSymbols, wilds, scatters, issues);
+
+        const regularPayouts = this.validatePaytableQuality(b.paytable, wilds, scatters, reels, reelsValid, issues);
+        this.validateWeightingQuality(b.reelStrips, b.symbolWeights, wilds, scatters, regularPayouts, issues);
 
         if (b.availableBets !== undefined) {
             const availableBets = b.availableBets;
@@ -471,6 +485,199 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     severity: "warning",
                     message: `Symbol "${symbolId}" is listed in "symbols" but has no "paytable" entry and isn't a wild or scatter, so it can never produce a win.`,
                     suggestion: `Add a "paytable.${symbolId}" entry, or remove "${symbolId}" from "symbols" if it's intentionally unused.`,
+                });
+            }
+        }
+    }
+
+    // Design-quality smells on top of validatePaytable's shape checks — every entry considered here
+    // already passed shape validation (invalid times/multipliers are silently skipped, since those are
+    // already reported as errors elsewhere). Wild symbols are skipped entirely (their paytable entries
+    // are dead data, already flagged by validatePaytable). Scatters are skipped too: their economics are
+    // deliberately different (they conventionally start at 2-of-a-kind and pay much bigger multipliers
+    // for a rare full-screen hit), so entry-tier/base-payout checks tuned for line-pay symbols don't apply.
+    // Returns the per-symbol valid payouts for every considered (non-wild, non-scatter) symbol, so
+    // validateWeightingQuality can cross-reference payout against reel weighting without re-parsing.
+    private validatePaytableQuality(
+        paytable: unknown,
+        wilds: string[],
+        scatters: string[],
+        reels: unknown,
+        reelsValid: boolean,
+        issues: ValidationIssue[],
+    ): Map<string, SymbolPayout[]> {
+        const regularPayouts = new Map<string, SymbolPayout[]>();
+        if (typeof paytable !== "object" || paytable === null || Array.isArray(paytable)) {
+            return regularPayouts;
+        }
+
+        const wildSet = new Set(wilds);
+        const scatterSet = new Set(scatters);
+
+        for (const [symbolId, payouts] of Object.entries(paytable as Record<string, unknown>)) {
+            if (wildSet.has(symbolId) || typeof payouts !== "object" || payouts === null || Array.isArray(payouts)) {
+                continue;
+            }
+
+            const validPayouts: SymbolPayout[] = [];
+            for (const [times, multiplier] of Object.entries(payouts as Record<string, unknown>)) {
+                const timesNumber = Number(times);
+                const timesValid =
+                    Number.isInteger(timesNumber) && timesNumber >= 2 && (!reelsValid || timesNumber <= (reels as number));
+                const multiplierValid = typeof multiplier === "number" && multiplier > 0;
+                if (timesValid && multiplierValid) {
+                    validPayouts.push({times: timesNumber, multiplier});
+                }
+            }
+            if (validPayouts.length === 0 || scatterSet.has(symbolId)) {
+                continue;
+            }
+            validPayouts.sort((a, b) => a.times - b.times);
+
+            const entryTier = validPayouts[0];
+            if (entryTier.times === FREQUENT_LOW_MATCH_COUNT) {
+                issues.push({
+                    code: "blueprint-paytable-frequent-low-match",
+                    severity: "warning",
+                    message: `"paytable.${symbolId}" pays on just ${FREQUENT_LOW_MATCH_COUNT} matching symbols; for a non-scatter symbol that's very frequent (most line-pay symbols start at 3-of-a-kind) and will inflate hit frequency and RTP.`,
+                    suggestion: `Remove the "${FREQUENT_LOW_MATCH_COUNT}" entry from "paytable.${symbolId}", or move "${symbolId}" to "scatters" if it's meant to pay regardless of position.`,
+                });
+            }
+
+            if (!validPayouts.some((payout) => payout.times === 3) && (!reelsValid || (reels as number) >= 3)) {
+                issues.push({
+                    code: "blueprint-paytable-missing-base-payout",
+                    severity: "warning",
+                    message: `"paytable.${symbolId}" has no 3-of-a-kind payout (only ${validPayouts.map((payout) => payout.times).join(", ")}); most line-pay symbols pay starting at 3 matches.`,
+                    suggestion: `Add a "paytable.${symbolId}.3" entry, or confirm "${symbolId}" is intentionally rarer than a normal 3-of-a-kind win.`,
+                });
+            }
+
+            if (entryTier.multiplier > SUSPICIOUS_ENTRY_TIER_MULTIPLIER) {
+                issues.push({
+                    code: "blueprint-paytable-generous-entry-payout",
+                    severity: "warning",
+                    message: `"paytable.${symbolId}.${entryTier.times}" pays ${entryTier.multiplier}x bet, which is unusually generous for a symbol's lowest match count — double-check this isn't a data-entry mistake.`,
+                    suggestion: `Most line-pay symbols pay under ${SUSPICIOUS_ENTRY_TIER_MULTIPLIER}x bet at their lowest match count, saving bigger multipliers for higher match counts.`,
+                });
+            }
+
+            regularPayouts.set(symbolId, validPayouts);
+        }
+
+        if (regularPayouts.size >= 2) {
+            const topPayouts = new Set([...regularPayouts.values()].map((payouts) => Math.max(...payouts.map((p) => p.multiplier))));
+            if (topPayouts.size === 1) {
+                issues.push({
+                    code: "blueprint-paytable-no-tiering",
+                    severity: "warning",
+                    message: `Every non-scatter symbol with a payout pays the same top multiplier (${[...topPayouts][0]}x) — there's no low-pay/high-pay distinction, which is unusual for a line-pay slot.`,
+                    suggestion: "Give higher-value symbols a bigger payout than filler symbols, or merge symbols that pay identically into one.",
+                });
+            }
+        }
+
+        return regularPayouts;
+    }
+
+    // A symbol's "effective weight" on the reels, from whichever of reelStrips/symbolWeights is active
+    // (reelStrips takes precedence, mirroring validateReachability) — occurrence count across every
+    // strip for reelStrips, the weight value itself for symbolWeights. Best-effort: reads through
+    // shape errors already reported elsewhere the same way validateReelStrips's own stripSymbols does.
+    private computeEffectiveWeights(reelStrips: unknown, symbolWeights: unknown): {weights: Map<string, number>; source: string} | undefined {
+        if (Array.isArray(reelStrips)) {
+            const counts = new Map<string, number>();
+            for (const strip of reelStrips) {
+                if (!Array.isArray(strip)) {
+                    continue;
+                }
+                for (const symbolId of strip) {
+                    if (typeof symbolId === "string") {
+                        counts.set(symbolId, (counts.get(symbolId) ?? 0) + 1);
+                    }
+                }
+            }
+            return counts.size > 0 ? {weights: counts, source: "reelStrips"} : undefined;
+        }
+
+        if (typeof symbolWeights === "object" && symbolWeights !== null && !Array.isArray(symbolWeights)) {
+            const weights = new Map<string, number>();
+            for (const [symbolId, weight] of Object.entries(symbolWeights as Record<string, unknown>)) {
+                if (typeof weight === "number" && Number.isInteger(weight) && weight > 0) {
+                    weights.set(symbolId, weight);
+                }
+            }
+            return weights.size > 0 ? {weights, source: "symbolWeights"} : undefined;
+        }
+
+        return undefined;
+    }
+
+    // Design-quality smells on the reel weighting itself: a symbol so common it dominates the reels, a
+    // wild landing at least as often as an average regular symbol (wilds substitute for everything, so
+    // should be rarer), and a higher-paying symbol that isn't rarer than a lower-paying one (the exact
+    // mismatch that quietly inflates RTP well past what the paytable alone suggests — equal weighting
+    // across symbols with different payouts is the most common way to trip this).
+    private validateWeightingQuality(
+        reelStrips: unknown,
+        symbolWeights: unknown,
+        wilds: string[],
+        scatters: string[],
+        regularPayouts: Map<string, SymbolPayout[]>,
+        issues: ValidationIssue[],
+    ): void {
+        const effective = this.computeEffectiveWeights(reelStrips, symbolWeights);
+        if (effective === undefined) {
+            return;
+        }
+        const {weights, source} = effective;
+
+        const total = [...weights.values()].reduce((sum, weight) => sum + weight, 0);
+        for (const [symbolId, weight] of weights) {
+            if (weight / total > DOMINANT_SYMBOL_WEIGHT_SHARE) {
+                issues.push({
+                    code: "blueprint-weighting-dominant-symbol",
+                    severity: "warning",
+                    message: `"${symbolId}" makes up ${Math.round((weight / total) * 100)}% of "${source}" — it will dominate the reels and crowd out other symbols.`,
+                    suggestion: `Lower "${symbolId}"'s share of "${source}" relative to the other symbols.`,
+                });
+            }
+        }
+
+        const regularWeights = [...weights.entries()].filter(([symbolId]) => !wilds.includes(symbolId) && !scatters.includes(symbolId));
+        if (regularWeights.length > 0) {
+            const averageRegularWeight = regularWeights.reduce((sum, [, weight]) => sum + weight, 0) / regularWeights.length;
+            for (const wildSymbolId of wilds) {
+                const wildWeight = weights.get(wildSymbolId);
+                if (wildWeight !== undefined && wildWeight >= averageRegularWeight) {
+                    issues.push({
+                        code: "blueprint-weighting-wild-too-common",
+                        severity: "warning",
+                        message: `Wild symbol "${wildSymbolId}" has weight ${wildWeight} in "${source}", at least as common as the average regular symbol (${averageRegularWeight.toFixed(1)}) — wilds substitute for everything, so landing this often will inflate hit frequency and RTP well beyond what the paytable alone suggests.`,
+                        suggestion: `Make "${wildSymbolId}" rarer than the regular symbols in "${source}".`,
+                    });
+                }
+            }
+        }
+
+        const tieredSymbols = [...regularPayouts.entries()]
+            .filter(([symbolId]) => weights.has(symbolId))
+            .map(([symbolId, payouts]) => ({
+                symbolId,
+                weight: weights.get(symbolId) as number,
+                topPayout: Math.max(...payouts.map((payout) => payout.multiplier)),
+            }))
+            .sort((a, b) => b.topPayout - a.topPayout);
+
+        for (let i = 1; i < tieredSymbols.length; i++) {
+            const higher = tieredSymbols[i - 1];
+            const lower = tieredSymbols[i];
+            if (higher.topPayout > lower.topPayout && higher.weight >= lower.weight) {
+                issues.push({
+                    code: "blueprint-weighting-pay-mismatch",
+                    severity: "warning",
+                    message: `"${higher.symbolId}" pays more than "${lower.symbolId}" (${higher.topPayout}x vs ${lower.topPayout}x at a full line) but isn't rarer in "${source}" (weight ${higher.weight} vs ${lower.weight}) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.`,
+                    suggestion: `Lower "${higher.symbolId}"'s weight relative to "${lower.symbolId}" in "${source}", or rebalance the paytable so payout roughly tracks rarity.`,
                 });
             }
         }

@@ -255,4 +255,103 @@ describe("GameBlueprintValidator", () => {
         expect(issues.find((issue) => issue.code === "blueprint-rows-suspicious")?.severity).toBe("warning");
         expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
     });
+
+    it("warns about a non-scatter payout at 2 matching symbols as unusually frequent", () => {
+        const blueprint = {...validBlueprint(), paytable: {...validBlueprint().paytable, A: {2: 3, 3: 5, 4: 10, 5: 20}}};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-paytable-frequent-low-match")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("warns about a non-scatter symbol with no 3-of-a-kind payout", () => {
+        const blueprint = {...validBlueprint(), paytable: {...validBlueprint().paytable, A: {4: 10, 5: 20}}};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-paytable-missing-base-payout")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("warns about an unusually generous entry-tier payout", () => {
+        const blueprint = {...validBlueprint(), paytable: {...validBlueprint().paytable, A: {3: 50, 4: 60, 5: 70}}};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-paytable-generous-entry-payout")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("warns when every non-scatter symbol pays the same top multiplier (no low/high-pay tiering)", () => {
+        const blueprint = {
+            ...validBlueprint(),
+            paytable: {
+                A: {3: 5, 4: 8, 5: 20},
+                K: {3: 5, 4: 8, 5: 20},
+                Q: {3: 5, 4: 8, 5: 20},
+                J: {3: 5, 4: 8, 5: 20},
+                S: {3: 2, 4: 5, 5: 10},
+            },
+        };
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-paytable-no-tiering")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("does not apply line-pay entry/tiering checks to scatter symbols", () => {
+        const blueprint = {...validBlueprint(), paytable: {...validBlueprint().paytable, S: {2: 50, 4: 70, 5: 100}}};
+
+        expect(codesOf(validator.validate(blueprint))).toEqual(
+            expect.not.arrayContaining([
+                "blueprint-paytable-frequent-low-match",
+                "blueprint-paytable-missing-base-payout",
+                "blueprint-paytable-generous-entry-payout",
+            ]),
+        );
+    });
+
+    it("warns when a single symbol dominates symbolWeights", () => {
+        const blueprint = {...validBlueprint(), symbolWeights: {A: 1, K: 1, Q: 1, J: 1, W: 1, S: 50}};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-weighting-dominant-symbol")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("warns when a single symbol dominates explicit reelStrips", () => {
+        const blueprint = {...validBlueprint(), reelStrips: new Array(5).fill(["A", "A", "A", "A", "K", "Q", "J", "W", "S"])};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-weighting-dominant-symbol")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("warns when a wild is at least as common as the average regular symbol", () => {
+        const blueprint = {...validBlueprint(), symbolWeights: {A: 10, K: 10, Q: 10, J: 10, W: 10, S: 2}};
+
+        const issues = validator.validate(blueprint);
+        expect(issues.find((issue) => issue.code === "blueprint-weighting-wild-too-common")?.severity).toBe("warning");
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("warns when a higher-paying symbol isn't rarer than a lower-paying one", () => {
+        const blueprint = {...validBlueprint(), symbolWeights: {A: 10, K: 10, Q: 10, J: 10, W: 3, S: 2}};
+
+        const issues = validator.validate(blueprint);
+        const mismatches = issues.filter((issue) => issue.code === "blueprint-weighting-pay-mismatch");
+        expect(mismatches.length).toBeGreaterThan(0);
+        expect(mismatches.every((issue) => issue.severity === "warning")).toBe(true);
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+    });
+
+    it("does not warn about weighting when payout is properly tiered by rarity", () => {
+        const blueprint = {...validBlueprint(), symbolWeights: {A: 2, K: 4, Q: 6, J: 8, W: 1, S: 1}};
+
+        expect(codesOf(validator.validate(blueprint))).toEqual(
+            expect.not.arrayContaining([
+                "blueprint-weighting-dominant-symbol",
+                "blueprint-weighting-wild-too-common",
+                "blueprint-weighting-pay-mismatch",
+            ]),
+        );
+    });
 });

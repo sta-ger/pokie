@@ -168,6 +168,38 @@ spin due to wrapping); a `paytable` entry that pays less for more matching symbo
 non-scatter symbol in `symbols` with no `paytable` entry at all (it can never win anything); and `reels`/`rows`
 values above 10 (unusually large for a line-pay video slot).
 
+#### Math-quality warnings
+
+A further set of warnings look for blueprints that parse and generate fine but are likely to produce an
+unrealistic RTP — the exact kind of mistake that's easy to make by hand and only obvious after running
+[`pokie sim`](#pokie-sim-packageroot). All of these are static, cheap checks on the blueprint's own numbers (not a
+simulation) and only apply to non-scatter, non-wild symbols with at least one payout — scatters are exempt, since
+their economics (paying from 2-of-a-kind, much bigger multipliers) are legitimately different:
+
+- **Frequent low-match payouts** (`blueprint-paytable-frequent-low-match`) — a payout at 2 matching symbols. Most
+  line-pay symbols start at 3-of-a-kind; paying from 2 hits very often and inflates hit frequency and RTP.
+- **Missing base payout** (`blueprint-paytable-missing-base-payout`) — payouts defined only for 4/5-of-a-kind but
+  not 3, when `reels` is at least 3.
+- **Generous entry-tier payout** (`blueprint-paytable-generous-entry-payout`) — a symbol's lowest configured
+  match-count pays more than 10x bet, unusually generous for what's normally the most frequently-hit tier.
+- **No low/high-pay tiering** (`blueprint-paytable-no-tiering`) — every symbol with a payout tops out at the exact
+  same multiplier, so there's no differentiation between filler and premium symbols.
+- **A symbol dominates the reels** (`blueprint-weighting-dominant-symbol`) — one symbol makes up more than 40% of
+  `symbolWeights` (or, counting occurrences across every strip, `reelStrips`), crowding out the rest.
+- **A wild is too common** (`blueprint-weighting-wild-too-common`) — a wild symbol's weight is at least as high as
+  the average of the regular symbols. Wilds substitute for everything, so landing this often inflates RTP well
+  beyond what the paytable alone suggests.
+- **Payout doesn't track rarity** (`blueprint-weighting-pay-mismatch`) — a higher-paying symbol isn't rarer (in
+  `symbolWeights`/`reelStrips`) than a lower-paying one. This is the most common way a blueprint's RTP quietly runs
+  away: identical weights across symbols with different payouts (every symbol equally likely, but some worth much
+  more) mean the high-value symbol lands just as often as the low-value one — see
+  [`examples/blueprints/crazy-fruits.blueprint.json`](../examples/blueprints/crazy-fruits.blueprint.json)'s own
+  `symbolWeights`/`paytable` for what a fix looks like (low-pay symbols weighted heavier, high-pay symbols rarer).
+
+None of these check the actual math (that's what [`pokie sim`](#pokie-sim-packageroot) is for) — they flag shapes
+that are very likely to be a mistake, so run `pokie sim --rounds 100000` on anything they flag before trusting the
+math either way.
+
 Every error is printed with its code and message, followed by a one-line pointer back to this section
 (`<config.json> is a GameBlueprint ... — see docs/cli.md#pokie-build-configjson for the format.`), so a failed
 `pokie build` always tells you where to look next, not just what's wrong.
