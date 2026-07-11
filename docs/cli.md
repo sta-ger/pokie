@@ -1026,6 +1026,66 @@ lightweight restore step:
 4. If it responds `404` — the session's state is gone (process restarted with the in-memory default, or the
    sessionId was never valid) — discard the stored id and fall back to step 1 (`POST /sessions` again).
 
+### Public vs. internal/debug responses
+
+**POKIE is not an RGS.** There is no compliance-grade audit trail, no operator/regulator reporting, and no wallet
+custody guarantee anywhere in this framework — see the top of this section. What `pokie serve` *does* provide,
+starting in v1.3, is an explicit split between what a response sends by default (public, client-safe data) and what
+it can optionally include for local development/debugging (internal data — never sent unless a request asks for
+it).
+
+Every `GET`/`POST` response above (`POST /sessions`, `POST /sessions/:sessionId/spin`, `GET /sessions/:sessionId`) is
+public-only by default — exactly the shapes documented above, unchanged. Adding `?debug=1` (or `?debug=true`) to any
+of the three adds one extra field, `internal`, never present otherwise:
+
+```ts
+{
+    // ...the same public response documented above...
+    internal?: {
+        stateAfter: PokieSessionState;    // the session's raw, persisted state (see below)
+        stateBefore?: PokieSessionState;  // only present on a spin response — the state right before it
+        debugData?: Record<string, unknown>; // see below — only present if the serializer provides it
+        requestId?: string;               // only present on a spin response made with a requestId
+    };
+}
+```
+
+`stateAfter`/`stateBefore` are the actual `PokieSessionState` objects `SessionRepository` persists (see
+[Session storage & wallet](#session-storage--wallet) below) — `context`, `bet`, `win`, `screen`, `featureState`,
+`initialPayload`/`roundPayload`, unfiltered. This is meaningfully more than the public response ever exposes: e.g.
+`context` (the seed a session was created with) is never part of a public response at all.
+
+`debugData` is populated only when the loaded game's serializer (`PokieGame.getSessionSerializer()`) implements the
+optional debug hooks on `GameSessionSerializing`:
+
+```ts
+export interface GameSessionSerializing {
+    getInitialData(session): GameInitialNetworkData;
+    getRoundData(session): GameRoundNetworkData;
+    // Optional — implement to expose internal/debug-only data (RNG info, reel stops, evaluator
+    // traces, anything else worth inspecting locally) without ever putting it in the public response.
+    getInitialDebugData?(session): Record<string, unknown>;
+    getRoundDebugData?(session): Record<string, unknown>;
+}
+```
+
+A serializer that implements neither hook (every built-in serializer — `GameSessionSerializer`,
+`VideoSlotSessionSerializer`, `VideoSlotWithFreeGamesSessionSerializer`, `CascadeSessionSerializer` — is unchanged
+by this feature and implements neither) simply has no `debugData` — `internal.stateAfter`/`stateBefore` are still
+present under `?debug=1`, but there's nothing else to add. A game package with no serializer at all (the legacy
+fallback) behaves the same way. Implementing the hooks is entirely additive and optional, same pattern as
+`ConvertableToSessionState`/`BuildableFromSessionState`/`StakeAmountDetermining` elsewhere in this server — see
+[Network Serialization](serialization.md#internaldebug-data-getinitialdebugdatagetrounddebugdata) for the full
+contract and an example.
+
+`GET /sessions/:sessionId` merges `initialDebugPayload`/`roundDebugPayload` the same way it merges the public
+`initialPayload`/`roundPayload` — round data wins on any overlapping key.
+
+No option exists to make `internal` the *default* — every endpoint is public-only unless a specific request opts
+in. `pokie client`/`pokie dev` never pass `?debug=1` themselves, so the browser preview always talks to the public
+API exactly as before this feature existed; passing `?debug=1` by hand (e.g. via `curl` or a browser devtools
+request) is how a game author inspects the internal data while developing.
+
 ### Session storage & wallet
 
 `PokieDevServer` never keeps game state only in a live session object — every `POST /sessions` and

@@ -191,6 +191,44 @@ describe("SpinCommandHandler", () => {
         await expect(sessionRepository.load("session-1")).resolves.toMatchObject({bet: 5, win: 0});
     });
 
+    it("includes previousState (the state right before this spin) on a played result", async () => {
+        const game = createFakeGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new InMemoryWallet();
+        const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+        await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+        const stateBeforeSpin = await sessionRepository.load("session-1");
+
+        const result = await handler.handle("session-1");
+
+        expect(result.status).toBe("played");
+        if (result.status === "played") {
+            expect(result.previousState).toEqual(stateBeforeSpin);
+            expect(result.state).not.toEqual(stateBeforeSpin);
+        }
+    });
+
+    it("echoes the requestId on a played result when one was given, and omits it otherwise", async () => {
+        const game = createFakeGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new InMemoryWallet();
+        const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+        await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+        const withRequestId = await handler.handle("session-1", "req-1");
+        expect(withRequestId.status).toBe("played");
+        if (withRequestId.status === "played") {
+            expect(withRequestId.requestId).toBe("req-1");
+        }
+
+        await createSpinnableSession(sessionRepository, wallet, "session-2", 1000);
+        const withoutRequestId = await handler.handle("session-2");
+        expect(withoutRequestId.status).toBe("played");
+        if (withoutRequestId.status === "played") {
+            expect(withoutRequestId.requestId).toBeUndefined();
+        }
+    });
+
     it("returns not-found for an unknown sessionId without touching the wallet", async () => {
         const game = createFakeGame();
         const sessionRepository = new InMemorySessionRepository();

@@ -20,4 +20,14 @@ export type PokieSessionState = {
     // captureRoundPokieSessionState.ts). Replaced on every spin; never present on a freshly created
     // session's own state.
     roundPayload?: Record<string, unknown>;
+    // Present only when the serializer implements the optional
+    // GameSessionSerializing.getInitialDebugData(). Captured once at session creation and carried
+    // forward unchanged, same lifecycle as initialPayload above. Never part of a public response —
+    // see PokieDevServer's public/internal split.
+    initialDebugPayload?: Record<string, unknown>;
+    // Present only when the serializer implements the optional
+    // GameSessionSerializing.getRoundDebugData() AND at least one spin has happened. Replaced on
+    // every spin, same lifecycle as roundPayload above. Never part of a public response — see
+    // PokieDevServer's public/internal split.
+    roundDebugPayload?: Record<string, unknown>;
 };

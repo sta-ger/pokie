@@ -66,6 +66,7 @@ export * from "./server/PokieDevServerAddress.js";
 export * from "./server/PokieDevServerHandling.js";
 export * from "./server/PokieDevServerOptions.js";
 export * from "./server/PokieDevSessionResponse.js";
+export * from "./server/PokieInternalSessionData.js";
 export * from "./server/idempotency/IdempotencyRepository.js";
 export * from "./server/idempotency/InMemoryIdempotencyRepository.js";
 export * from "./server/session/FileSessionRepository.js";

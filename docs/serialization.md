@@ -205,6 +205,41 @@ Example `roundPayload` for a two-step cascade:
 `stages` is an **empty array, not omitted**, for a round with no cascades — a client can always safely check
 `stages.length` without a presence check first.
 
+## Internal/debug data (`getInitialDebugData`/`getRoundDebugData`)
+
+Everything documented above — `getInitialData()`/`getRoundData()`'s output, on every serializer in this file — is
+**public, client-safe data**: it's what `pokie serve` sends by default (see
+[`pokie serve` → Public vs. internal/debug responses](cli.md#public-vs-internal-debug-responses)). `GameSessionSerializing`
+additionally has two optional, feature-detected methods for data that should never reach a client by default —
+RNG seeds, individual reel stops, evaluator traces, anything worth inspecting locally but not worth shipping:
+
+```ts
+export interface GameSessionSerializing {
+    getInitialData(session): GameInitialNetworkData;
+    getRoundData(session): GameRoundNetworkData;
+    getInitialDebugData?(session): Record<string, unknown>;
+    getRoundDebugData?(session): Record<string, unknown>;
+}
+```
+
+Neither is implemented by any serializer this package ships (`GameSessionSerializer`, `VideoSlotSessionSerializer`,
+`VideoSlotWithFreeGamesSessionSerializer`, `CascadeSessionSerializer`) — implementing them is entirely opt-in for a
+custom serializer:
+
+```ts
+class MySessionSerializer extends VideoSlotSessionSerializer {
+    override getRoundDebugData(session: MySession): Record<string, unknown> {
+        return {rngSeed: session.getLastRngSeed(), reelStops: session.getLastReelStops()};
+    }
+}
+```
+
+`pokie serve` captures whatever these return the same way it captures `getInitialData()`/`getRoundData()`'s own
+output (see `captureInitialPokieSessionState`/`captureRoundPokieSessionState`), but only ever surfaces it under a
+response's `internal.debugData` — and only when a request explicitly asks for it (`?debug=1`). It is never merged
+into the public response, regardless of what a serializer's own `getInitialData()`/`getRoundData()` output already
+contains.
+
 ## Notes
 
 - **`winningLines`/`winningScatters`/`winningClusters`/`winningValues`/`winningWays` are genuinely conditional** —
@@ -221,3 +256,11 @@ Example `roundPayload` for a two-step cascade:
   clients that flatten/iterate the values without needing the parent key, at the cost of redundancy.
 - **`linesDefinitions`/`paytable` are initial-only** — cache them from `getInitialData` on session start; they're
   never repeated in `getRoundData`.
+- **`CascadeSessionSerializer`'s `rngInfo`/`debugInfo`/`cascadeRngInfo`/`cascadeDebugInfo` fields are still part of
+  the *public* payload**, despite their names — they're plain fields on `getRoundData()`/`getInitialData()`'s own
+  output (populated from `CascadeResult`/`CascadeStep`'s own optional constructor arguments, which default to `{}`
+  when a session never populates them), not the new opt-in [internal/debug
+  data](#internaldebug-data-getinitialdebugdatagetrounddebugdata) above. A cascade-based game that wants to keep
+  genuinely internal data (an actual RNG seed, say) out of the public response should populate it via the new
+  `getInitialDebugData`/`getRoundDebugData` hooks instead of `CascadeResult`'s `rngInfo`/`debugInfo` constructor
+  arguments.

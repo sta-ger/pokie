@@ -188,9 +188,16 @@ export class SpinCommandHandler implements SpinCommandHandling {
             await this.sessionRepository.save(sessionId, newState);
             sessionStateSaved = true;
 
-            const result: SpinCommandResult = {status: "played", sessionId, state: newState, credits: newBalance, win};
-
+            const result: SpinCommandResult = {
+                status: "played",
+                sessionId,
+                state: newState,
+                previousState: state,
+                credits: newBalance,
+                win,
+            };
             if (requestId !== undefined) {
+                result.requestId = requestId;
                 await this.idempotencyRepository.save(sessionId, requestId, result);
             }
 

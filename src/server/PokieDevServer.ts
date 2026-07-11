@@ -7,6 +7,7 @@ import type {PokieDevServerAddress} from "./PokieDevServerAddress.js";
 import type {PokieDevServerHandling} from "./PokieDevServerHandling.js";
 import type {PokieDevServerOptions} from "./PokieDevServerOptions.js";
 import type {PokieDevSessionResponse} from "./PokieDevSessionResponse.js";
+import type {PokieInternalSessionData} from "./PokieInternalSessionData.js";
 import {InMemoryIdempotencyRepository} from "./idempotency/InMemoryIdempotencyRepository.js";
 import {captureInitialPokieSessionState} from "./session/captureInitialPokieSessionState.js";
 import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js";
@@ -49,6 +50,16 @@ const DEFAULT_PORT = 3000;
 // server's own job is HTTP request/response translation plus session creation (POST /sessions),
 // which primes SpinCommandHandler's live-session cache with the freshly constructed session so the
 // very next spin against it reuses that exact object instead of reconstructing one from state.
+//
+// Public/internal response split: every endpoint below returns a public-only PokieDevSessionResponse
+// by default — client-safe data only, exactly what buildSessionResponse() has always built. A
+// request can explicitly opt into an additional `internal` field (`?debug=1`/`?debug=true` — see
+// isInternalDataRequested()) carrying audit/dev-only data never sent otherwise: the session's raw
+// PokieSessionState before/after the round, and, when the loaded game's serializer implements the
+// optional getInitialDebugData()/getRoundDebugData() (see GameSessionSerializing), its debug-only
+// payload — RNG info, reel stops, evaluator traces, whatever the game author chose to expose. POKIE
+// is still not an RGS: this is a dev-friendly window into otherwise-hidden state, not an audit trail
+// guarantee — see PokieInternalSessionData.
 export class PokieDevServer implements PokieDevServerHandling {
     private readonly game: PokieGame;
     private readonly host: string;
@@ -153,22 +164,32 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
+        const includeInternal = this.isInternalDataRequested(url);
+
         if (method === "POST" && url.pathname === "/sessions") {
-            await this.handleCreateSession(req, res);
+            await this.handleCreateSession(req, res, includeInternal);
             return;
         }
 
         if (method === "GET" && sessionId !== undefined) {
-            await this.handleGetSession(sessionId, res);
+            await this.handleGetSession(sessionId, res, includeInternal);
             return;
         }
 
         if (method === "POST" && spinSessionId !== undefined) {
-            await this.handleSpin(spinSessionId, req, res);
+            await this.handleSpin(spinSessionId, req, res, includeInternal);
             return;
         }
 
         this.sendJson(res, 404, {error: `Not found: ${method} ${url.pathname}`});
+    }
+
+    // Explicit opt-in only: `?debug=1`/`?debug=true` on any of the three session endpoints below.
+    // Anything else (absent, empty, any other value) keeps the response public-only — see
+    // PokieDevSessionResponse/PokieInternalSessionData for what that split actually contains.
+    private isInternalDataRequested(url: URL): boolean {
+        const value = url.searchParams.get("debug");
+        return value === "1" || value === "true";
     }
 
     private matchSpinRoute(pathname: string): string | undefined {
@@ -187,7 +208,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         return undefined;
     }
 
-    private async handleCreateSession(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    private async handleCreateSession(req: IncomingMessage, res: ServerResponse, includeInternal: boolean): Promise<void> {
         let context: PokieGameContext | undefined;
         try {
             context = await this.readSeedContext(req);
@@ -215,10 +236,14 @@ export class PokieDevServer implements PokieDevServerHandling {
         await this.sessionRepository.save(sessionId, state);
 
         const credits = await this.wallet.getBalance(sessionId);
-        this.sendJson(res, 201, this.buildSessionResponse(sessionId, state, credits, undefined, state.initialPayload));
+        const response = this.buildSessionResponse(sessionId, state, credits, undefined, state.initialPayload);
+        if (includeInternal) {
+            response.internal = this.buildInternalSessionData(state, undefined, undefined);
+        }
+        this.sendJson(res, 201, response);
     }
 
-    private async handleSpin(sessionId: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
+    private async handleSpin(sessionId: string, req: IncomingMessage, res: ServerResponse, includeInternal: boolean): Promise<void> {
         let requestId: string | undefined;
         try {
             requestId = await this.readSpinRequestId(req);
@@ -239,14 +264,14 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
-        this.sendJson(
-            res,
-            200,
-            this.buildSessionResponse(result.sessionId, result.state, result.credits, result.win, result.state.roundPayload),
-        );
+        const response = this.buildSessionResponse(result.sessionId, result.state, result.credits, result.win, result.state.roundPayload);
+        if (includeInternal) {
+            response.internal = this.buildInternalSessionData(result.state, result.previousState, result.requestId);
+        }
+        this.sendJson(res, 200, response);
     }
 
-    private async handleGetSession(sessionId: string, res: ServerResponse): Promise<void> {
+    private async handleGetSession(sessionId: string, res: ServerResponse, includeInternal: boolean): Promise<void> {
         const state = await this.sessionRepository.load(sessionId);
         if (!state) {
             this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
@@ -254,7 +279,11 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         const credits = await this.wallet.getBalance(sessionId);
-        this.sendJson(res, 200, this.buildSessionResponse(sessionId, state, credits, state.win, this.mergeSerializedPayloads(state)));
+        const response = this.buildSessionResponse(sessionId, state, credits, state.win, this.mergeSerializedPayloads(state));
+        if (includeInternal) {
+            response.internal = this.buildInternalSessionData(state, undefined, undefined);
+        }
+        this.sendJson(res, 200, response);
     }
 
     // GET /sessions/:id needs everything a client would need to fully restore its UI, so it merges
@@ -269,6 +298,41 @@ export class PokieDevServer implements PokieDevServerHandling {
             return undefined;
         }
         return {...state.initialPayload, ...state.roundPayload};
+    }
+
+    // The debug-payload counterpart to mergeSerializedPayloads() above — same merge, over
+    // initialDebugPayload/roundDebugPayload instead. Only ever read when a request explicitly asked
+    // for internal data (see isInternalDataRequested/buildInternalSessionData); never merged into the
+    // public response.
+    private mergeSerializedDebugPayloads(state: PokieSessionState): Record<string, unknown> | undefined {
+        if (state.initialDebugPayload === undefined && state.roundDebugPayload === undefined) {
+            return undefined;
+        }
+        return {...state.initialDebugPayload, ...state.roundDebugPayload};
+    }
+
+    // Builds the internal/debug companion to a public response — only ever called when a request
+    // explicitly opted in via isInternalDataRequested(). `previousState`/`requestId` are only ever
+    // given on a spin response (session creation and GET have neither a "before" state nor a
+    // requestId of their own) — see PokieInternalSessionData's own doc comment for what each field
+    // means.
+    private buildInternalSessionData(
+        state: PokieSessionState,
+        previousState: PokieSessionState | undefined,
+        requestId: string | undefined,
+    ): PokieInternalSessionData {
+        const internal: PokieInternalSessionData = {stateAfter: state};
+        if (previousState !== undefined) {
+            internal.stateBefore = previousState;
+        }
+        const debugData = this.mergeSerializedDebugPayloads(state);
+        if (debugData !== undefined) {
+            internal.debugData = debugData;
+        }
+        if (requestId !== undefined) {
+            internal.requestId = requestId;
+        }
+        return internal;
     }
 
     private buildSessionResponse(

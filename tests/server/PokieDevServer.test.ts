@@ -741,6 +741,183 @@ describe("PokieDevServer (fake game with a custom serializer whose getRoundData(
     });
 });
 
+// A custom serializer implementing the optional getInitialDebugData()/getRoundDebugData() hooks —
+// proof that the server's public/internal split is driven entirely by this explicit, feature-detected
+// contract (see GameSessionSerializing) rather than any heuristic over field names. "publicField" is
+// also present in getInitialData()/getRoundData()'s own output — client-safe by definition, so it
+// stays in every response — while "rngSeed"/"reelStops" only ever appear under the optional debug
+// hooks, so they must never leak into a public response, only into `internal.debugData` when a
+// request explicitly opts in.
+function createCustomSerializerWithDebugData(): GameSessionSerializing {
+    return {
+        getInitialData: (session) => ({
+            credits: session.getCreditsAmount(),
+            bet: session.getBet(),
+            availableBets: session.getAvailableBets(),
+            publicField: "initial",
+        }),
+        getRoundData: (session) => ({credits: session.getCreditsAmount(), bet: session.getBet(), publicField: "round"}),
+        getInitialDebugData: () => ({rngSeed: "seed-initial"}),
+        getRoundDebugData: () => ({rngSeed: "seed-round", reelStops: [1, 2, 3]}),
+    };
+}
+
+function createFakeGameWithDebugSerializer(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => createFakeSession(),
+        getSessionSerializer: () => createCustomSerializerWithDebugData(),
+    };
+}
+
+describe("PokieDevServer (public/internal response split)", () => {
+    const manifest: PokieGameManifest = {id: "split-game", name: "Split Game", version: "1.0.0"};
+
+    describe("legacy game package (no getSessionSerializer): internal data is state-only", () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = createFakeGame(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("never includes `internal` by default on any of the three endpoints", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+            const restored = await getJson(`${baseUrl}/sessions/${sessionId}`);
+
+            for (const response of [created, spun, restored]) {
+                expect("internal" in response.body).toBe(false);
+            }
+        });
+
+        it("includes `internal.stateAfter` (but no debugData) when `?debug=1` is explicitly requested", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+
+            expect(created.body.internal).toBeDefined();
+            const internal = created.body.internal as Record<string, unknown>;
+            expect(internal.stateAfter).toBeDefined();
+            expect(internal.stateBefore).toBeUndefined();
+            expect(internal.debugData).toBeUndefined();
+        });
+
+        it("includes `internal.stateBefore` on a spin response when `?debug=true` is requested", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=true`);
+
+            const internal = spun.body.internal as Record<string, unknown>;
+            expect(internal.stateBefore).toBeDefined();
+            expect(internal.stateAfter).toBeDefined();
+        });
+
+        it("ignores any `debug` value other than \"1\"/\"true\" and stays public-only", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=yes`);
+
+            expect("internal" in created.body).toBe(false);
+        });
+    });
+
+    describe("custom serializer with public-only data (no debug hooks implemented)", () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = createFakeGameWithCustomSerializer(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("still omits `internal.debugData` under `?debug=1` since the serializer implements no debug hooks", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const internal = spun.body.internal as Record<string, unknown>;
+            expect(internal.debugData).toBeUndefined();
+            expect(internal.stateAfter).toBeDefined();
+        });
+    });
+
+    describe("custom serializer implementing getInitialDebugData()/getRoundDebugData()", () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = createFakeGameWithDebugSerializer(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("never leaks debug-only fields (rngSeed/reelStops) into the default public response", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+            const restored = await getJson(`${baseUrl}/sessions/${sessionId}`);
+
+            for (const response of [created, spun, restored]) {
+                expect("internal" in response.body).toBe(false);
+                expect("rngSeed" in response.body).toBe(false);
+                expect("reelStops" in response.body).toBe(false);
+                // The serializer's own public fields still come through unfiltered, same as any
+                // other serializer with no debug hooks at all.
+                expect(response.body.publicField).toBeDefined();
+            }
+        });
+
+        it("surfaces the serializer's debug hook output under `internal.debugData` only when `?debug=1` is requested", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+            const createdInternal = created.body.internal as Record<string, unknown>;
+            expect((createdInternal.debugData as Record<string, unknown>).rngSeed).toBe("seed-initial");
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+            const spunInternal = spun.body.internal as Record<string, unknown>;
+            const spunDebugData = spunInternal.debugData as Record<string, unknown>;
+            expect(spunDebugData.rngSeed).toBe("seed-round");
+            expect(spunDebugData.reelStops).toEqual([1, 2, 3]);
+
+            // GET /sessions/:id merges the initial and round debug payloads, same as it does for the
+            // public initialPayload/roundPayload — round data wins on the overlapping "rngSeed" key.
+            const restored = await getJson(`${baseUrl}/sessions/${sessionId}?debug=1`);
+            const restoredDebugData = (restored.body.internal as Record<string, unknown>).debugData as Record<string, unknown>;
+            expect(restoredDebugData.rngSeed).toBe("seed-round");
+            expect(restoredDebugData.reelStops).toEqual([1, 2, 3]);
+        });
+
+        it("echoes the spin's requestId under `internal.requestId` when one was given, and omits it otherwise", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const withRequestId = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`, {requestId: "req-1"});
+            expect((withRequestId.body.internal as Record<string, unknown>).requestId).toBe("req-1");
+
+            const withoutRequestId = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+            expect("requestId" in (withoutRequestId.body.internal as Record<string, unknown>)).toBe(false);
+        });
+    });
+});
+
 describe("PokieDevServer (integration, FileSessionRepository across a simulated restart)", () => {
     const fixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game");
     let directory: string;
