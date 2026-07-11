@@ -38,7 +38,12 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
         expect(buildExitCode).toBe(0);
         expect(fs.existsSync(path.join(outDir, "package.json"))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "README.md"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+
+        const buildInfo = JSON.parse(fs.readFileSync(path.join(outDir, "src", "generated", "build-info.json"), "utf-8"));
+        expect(buildInfo.source).toBe(blueprintPath);
+        expect(buildInfo.game.id).toBe("crazy-fruits");
 
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);

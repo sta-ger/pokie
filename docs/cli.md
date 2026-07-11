@@ -60,12 +60,23 @@ npm install
 `pokie build <config.json>` validates the blueprint first (see below) and, if it has no errors, creates
 `./<manifest.id>` (or `--out <dir>`) and writes:
 
-- `package.json` — name/version from `manifest`, a `pokie` dependency, `start`/`server`/`client` scripts, and
-  `pokie.entry` pointing at `./src/generated/index.js`;
+- `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
+  omitted), a `pokie` dependency, `start`/`server`/`client` scripts, and `pokie.entry` pointing at
+  `./src/generated/index.js`;
+- `README.md` — a short orientation doc for the generated package itself: what each file is, that
+  `src/generated/` is generated output and shouldn't be hand-edited, and the `build -> validate -> sim -> report ->
+  replay -> serve`/`dev` workflow below;
 - `src/generated/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig` with the
   given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a `VideoSlotSession`, with
-  `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Re-run `pokie build` to regenerate this
-  file after changing the blueprint — it's generated output, not meant to be hand-edited.
+  `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. The file is organized into labeled
+  sections (blueprint data, config assembly, `PokieGame` exports) with a header comment summarizing the build
+  metadata below. Re-run `pokie build` to regenerate this file after changing the blueprint — it's generated
+  output, not meant to be hand-edited;
+- `src/generated/build-info.json` — provenance for the generated output: the `GameBlueprint` schema version, the
+  `pokie` version that generated it, an ISO 8601 generation timestamp, a `sha256` hash of the source blueprint
+  (so an unchanged blueprint reproduces the same hash across re-runs), the source file path (when known), and the
+  blueprint's own `manifest`. The same summary (minus the full hash's `sha256:` prefix repetition) is echoed as
+  the header comment in `index.js`, so either file is enough to tell what a generated package was built from.
 
 Options:
 

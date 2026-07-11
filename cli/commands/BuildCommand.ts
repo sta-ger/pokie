@@ -63,7 +63,7 @@ export class BuildCommand implements CliCommandHandling {
                 return Promise.resolve(1);
             }
 
-            const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), options.outDir);
+            const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), options.outDir, options.configPath);
 
             for (const file of result.createdFiles) {
                 console.log(`  created  ${file}`);

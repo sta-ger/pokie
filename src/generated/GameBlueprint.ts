@@ -1,3 +1,8 @@
+// Bumped only if the GameBlueprint JSON shape itself changes in a way older tooling couldn't parse.
+// Stamped into generated output (see GameBuildInfo) so a generated package records which shape of
+// blueprint it was built from; it is not read back from blueprint JSON files.
+export const GAME_BLUEPRINT_SCHEMA_VERSION = 1;
+
 export type GameBlueprintManifest = {
     id: string;
     name: string;

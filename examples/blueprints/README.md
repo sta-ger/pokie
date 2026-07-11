@@ -14,3 +14,8 @@ npx pokie build examples/blueprints/crazy-fruits.blueprint.json --out /tmp/crazy
 cd /tmp/crazy-fruits && npm install
 npx pokie validate .
 ```
+
+The generated package includes its own `README.md` (what each file is, and the rest of the
+`build -> validate -> sim -> report -> replay -> serve`/`dev` workflow) and a `src/generated/build-info.json`
+recording what it was built from — see [`pokie build <config.json>`](../../docs/cli.md#pokie-build-configjson)
+for what's in each.
