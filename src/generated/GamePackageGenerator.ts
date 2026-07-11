@@ -76,6 +76,8 @@ export class GamePackageGenerator implements GamePackageGenerating {
             projectRoot,
             manifest: blueprint.manifest,
             createdFiles: [...GENERATED_PACKAGE_FILES],
+            buildInfo,
+            unchanged: previousBuildInfo !== undefined && buildInfo.generatedAt === previousBuildInfo.generatedAt,
         };
     }
 

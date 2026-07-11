@@ -102,9 +102,24 @@ export class BuildCommand implements CliCommandHandling {
 
         const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), outDir, sourcePath);
 
+        console.log("Build summary:");
         for (const file of result.createdFiles) {
-            console.log(`  created  ${file}`);
+            console.log(`  created          ${file}`);
         }
+        console.log(`  package root     ${result.projectRoot}`);
+        console.log(`  game             ${result.manifest.name} (id: "${result.manifest.id}", v${result.manifest.version})`);
+        console.log(`  blueprint hash   ${result.buildInfo.blueprintHash}`);
+        if (result.buildInfo.source) {
+            console.log(`  source           ${result.buildInfo.source}`);
+        }
+        console.log(
+            `  status           ${
+                result.unchanged
+                    ? "unchanged — deterministic rebuild (blueprint, pokie version, and source all match the previous build)"
+                    : "generated"
+            }`,
+        );
+
         console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") built in "${result.projectRoot}".`);
         console.log(`\nNext:`);
         console.log(`  cd ${result.projectRoot} && npm install`);

@@ -56,6 +56,15 @@ const generatedResult: GeneratedGamePackage = {
     projectRoot: "/tmp/crazy-fruits",
     manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
     createdFiles: ["package.json", "src/generated/index.js"],
+    buildInfo: {
+        schemaVersion: 1,
+        generatedBy: "pokie build",
+        pokieVersion: "1.3.0",
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        blueprintHash: "sha256:abc123",
+        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    },
+    unchanged: false,
 };
 
 describe("BuildCommand", () => {
@@ -208,6 +217,51 @@ describe("BuildCommand", () => {
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("package.json"));
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("src/generated/index.js"));
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('built in "/tmp/crazy-fruits"'));
+    });
+
+    it("prints a build summary with package root, game id/name/version, and blueprint hash", async () => {
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
+
+        await command.run(["config.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("Build summary:");
+        expect(printed).toContain("package root     /tmp/crazy-fruits");
+        expect(printed).toContain('game             Crazy Fruits (id: "crazy-fruits", v0.1.0)');
+        expect(printed).toContain("blueprint hash   sha256:abc123");
+        expect(printed).toContain("status           generated");
+    });
+
+    it("prints the source path in the build summary when the blueprint has one", async () => {
+        const generator = createStubGenerator({
+            ...generatedResult,
+            buildInfo: {...generatedResult.buildInfo, source: "config.json"},
+        });
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), generator);
+
+        await command.run(["config.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("source           config.json");
+    });
+
+    it("omits the source line from the build summary when the blueprint has no source path", async () => {
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
+
+        await command.run(["config.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).not.toContain("source           ");
+    });
+
+    it("prints an explicit unchanged/deterministic-rebuild status when the generator reports a no-op rebuild", async () => {
+        const generator = createStubGenerator({...generatedResult, unchanged: true});
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), generator);
+
+        await command.run(["config.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("status           unchanged — deterministic rebuild");
     });
 
     it("prints the full build -> validate -> sim -> report -> replay -> dev workflow as next steps", async () => {

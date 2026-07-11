@@ -132,4 +132,18 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             fs.rmSync(clientRoot, {recursive: true, force: true});
         }
     });
+
+    it("reports an unchanged/deterministic-rebuild status when re-run on the same blueprint into the same --out", async () => {
+        const logSpy = console.log as jest.Mock;
+
+        const first = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
+        expect(first).toBe(0);
+        expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("status           generated");
+
+        logSpy.mockClear();
+
+        const second = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
+        expect(second).toBe(0);
+        expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("status           unchanged — deterministic rebuild");
+    });
 });
