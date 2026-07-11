@@ -165,6 +165,78 @@ describe("BuildCommand", () => {
         await expect(command.run(["config.json", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
     });
 
+    describe("--init-blueprint", () => {
+        const starterBlueprint: GameBlueprint = {
+            manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
+            reels: 5,
+            rows: 3,
+            symbols: ["A", "K", "Q", "J"],
+            paytable: {A: {3: 5}},
+        };
+
+        function createCommand(fileExists: boolean, writeFile: jest.Mock, wizard?: GameBlueprintWizarding) {
+            return new BuildCommand(
+                "1.3.0",
+                () => rawBlueprint,
+                createStubValidator([]),
+                createStubGenerator(generatedResult),
+                wizard ?? createStubWizard(new Error("the wizard must not run for --init-blueprint")),
+                () => createStubPrompt(),
+                () => starterBlueprint,
+                () => fileExists,
+                writeFile,
+            );
+        }
+
+        it("writes the starter blueprint and prints the next-step hint, without running the wizard or generating a package", async () => {
+            const generator = createStubGenerator(generatedResult);
+            const writeFile = jest.fn();
+            const command = new BuildCommand(
+                "1.3.0",
+                () => rawBlueprint,
+                createStubValidator([]),
+                generator,
+                createStubWizard(new Error("the wizard must not run for --init-blueprint")),
+                () => createStubPrompt(),
+                () => starterBlueprint,
+                () => false,
+                writeFile,
+            );
+
+            const exitCode = await command.run(["--init-blueprint", "my-blueprint.json"]);
+
+            expect(exitCode).toBe(0);
+            expect(writeFile).toHaveBeenCalledWith("my-blueprint.json", `${JSON.stringify(starterBlueprint, null, 4)}\n`);
+            expect(generator.calledWith).toBeUndefined();
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain('Created starter blueprint "my-blueprint.json"');
+            expect(printed).toContain("pokie build my-blueprint.json --out <dir>");
+        });
+
+        it("throws a clear error instead of silently overwriting an existing file", async () => {
+            const writeFile = jest.fn();
+            const command = createCommand(true, writeFile);
+
+            await expect(command.run(["--init-blueprint", "my-blueprint.json"])).rejects.toThrow(
+                /"my-blueprint\.json" already exists/,
+            );
+            expect(writeFile).not.toHaveBeenCalled();
+        });
+
+        it("throws a usage error when no file path is given", async () => {
+            const command = createCommand(false, jest.fn());
+
+            await expect(command.run(["--init-blueprint"])).rejects.toThrow(/Usage: pokie build --init-blueprint <file>/);
+        });
+
+        it("throws a usage error on an unexpected extra argument", async () => {
+            const command = createCommand(false, jest.fn());
+
+            await expect(command.run(["--init-blueprint", "my-blueprint.json", "extra"])).rejects.toThrow(/Unknown option "extra"/);
+        });
+    });
+
     it("throws a descriptive error when --out is given no value", async () => {
         const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
 

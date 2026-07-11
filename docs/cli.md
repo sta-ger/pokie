@@ -51,11 +51,14 @@ Generates a working [game package](game-packages.md) from a `GameBlueprint` — 
 paytable, and reel strips/weights for a standard line-pay video slot. Unlike `pokie create`/`pokie init`, the
 output is plain JavaScript with no compile step: it's immediately loadable by every other command below.
 
-There are two ways to provide the blueprint:
+There are three ways to provide the blueprint:
 
 - **config-driven** — `pokie build <config.json>` reads it from a JSON file (this section);
 - **interactive** — `pokie build` with no arguments launches a wizard that asks for the same fields on the
-  terminal (see [Interactive mode](#interactive-mode-pokie-build-with-no-arguments) below).
+  terminal (see [Interactive mode](#interactive-mode-pokie-build-with-no-arguments) below);
+- **starter template** — `pokie build --init-blueprint <file>` writes a small, hand-editable example
+  `GameBlueprint` to `<file>` instead of building anything, for editing by hand and feeding back into the
+  config-driven path above (see [Starter template](#starter-template-pokie-build---init-blueprint-file) below).
 
 Both produce the exact same `GameBlueprint` shape, go through the exact same validation
 ([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
@@ -106,6 +109,34 @@ Options:
   payline count, bets, blueprint hash, and the files a real build would generate) without creating or touching
   the `--out` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
   errors, `0` if it's valid (warnings included).
+
+### Starter template (`pokie build --init-blueprint <file>`)
+
+For editing by hand rather than writing a `GameBlueprint` from scratch or answering the [interactive
+wizard](#interactive-mode-pokie-build-with-no-arguments)'s prompts:
+
+```
+pokie build --init-blueprint my-game.blueprint.json
+```
+
+```
+Created starter blueprint "my-game.blueprint.json".
+
+Edit it by hand, then run:
+  pokie build my-game.blueprint.json --out <dir>
+```
+
+Writes a small-but-complete, formatted `GameBlueprint` JSON file to `<file>` — game id/name/version, reels/rows,
+symbols, available bets, paylines, a paytable, and symbol weights, all filled with valid example values (not the
+minimum required to pass validation) so there's something concrete to edit for every field. It passes
+[`GameBlueprintValidator`](#validation) with zero errors or warnings as written, and `pokie build <file> --out
+<dir>` works on it completely unedited — but the point is to open it in an editor, change the numbers/symbols/ids
+to your own game, and build that.
+
+`--init-blueprint` only ever writes `<file>` itself: it doesn't launch the wizard, validate anything beyond what's
+needed to write the template, or call `GamePackageGenerator` — no package is generated, and nothing else on disk is
+touched. If `<file>` already exists, it's left untouched and the command exits with an error instead of silently
+overwriting it — remove or rename the existing file first, or pick a different `<file>`.
 
 ### The `GameBlueprint` format
 

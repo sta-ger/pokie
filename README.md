@@ -38,9 +38,10 @@ POKIE goes well beyond classic paylines:
 - **[CLI](docs/cli.md)** — `npx pokie build <config.json>` generates a working game package straight from a JSON
   `GameBlueprint` (reels, symbols, paylines, paytable, reel strips/weights), no compile step required (see
   [`examples/blueprints`](examples/blueprints)); `npx pokie build` with no config path launches an interactive
-  wizard that asks for the same fields on the terminal instead; `npx pokie inspect <packageRoot>` prints a
-  package's provenance (game, blueprint hash, source, `pokie` version) without running it; `npx pokie create <name>`
-  scaffolds a brand-new game package,
+  wizard that asks for the same fields on the terminal instead; `npx pokie build --init-blueprint <file>` writes a
+  small, hand-editable example `GameBlueprint` to `<file>` instead of building anything; `npx pokie inspect
+  <packageRoot>` prints a package's provenance (game, blueprint hash, source, `pokie` version) without running it;
+  `npx pokie create <name>` scaffolds a brand-new game package,
   `npx pokie init` scaffolds an existing npm project in place, both minimal, buildable, and loadable; `npx pokie
   sim <packageRoot>` runs a simulation against a package and reports RTP/hit-frequency/max-win; `npx pokie
   validate <packageRoot>`

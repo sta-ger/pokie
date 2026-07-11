@@ -2,6 +2,9 @@
 
 Hand-authored `pokie build` inputs — see [`pokie build <config.json>`](../../docs/cli.md#pokie-build-configjson)
 for the full format and the minimal `build -> inspect -> validate -> sim -> report -> replay -> serve/dev` workflow.
+Starting a new one from scratch? `pokie build --init-blueprint <file>` writes an editable starter template — see
+[Starter template](../../docs/cli.md#starter-template-pokie-build---init-blueprint-file) — instead of hand-authoring
+the whole shape shown below.
 
 - `crazy-fruits.blueprint.json` — 5x3, wilds, scatters, and weighted reels; omits `paylines`/`reelStrips` on
   purpose to show the engine's own defaults (one horizontal line per row, the built-in weighted reel generator)

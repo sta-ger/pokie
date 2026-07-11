@@ -1,3 +1,4 @@
+import fs from "fs";
 import {
     buildGameBuildInfo,
     GameBlueprint,
@@ -7,6 +8,7 @@ import {
     GamePackageGenerator,
     loadGameBlueprint,
 } from "pokie";
+import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
 import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
@@ -22,6 +24,7 @@ type BuildOptions = {
 const USAGE = "Usage: pokie build <config.json> [--out <dir>] [--dry-run]";
 const BLUEPRINT_HINT =
     "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.";
+const INIT_BLUEPRINT_USAGE = "Usage: pokie build --init-blueprint <file>";
 
 export class BuildCommand implements CliCommandHandling {
     private readonly pokieVersion: string;
@@ -30,6 +33,9 @@ export class BuildCommand implements CliCommandHandling {
     private readonly generator: GamePackageGenerating;
     private readonly wizard: GameBlueprintWizarding;
     private readonly createPrompt: () => PromptAdapting;
+    private readonly createStarterBlueprint: () => GameBlueprint;
+    private readonly fileExists: (filePath: string) => boolean;
+    private readonly writeFile: (filePath: string, contents: string) => void;
 
     constructor(
         pokieVersion: string,
@@ -38,6 +44,9 @@ export class BuildCommand implements CliCommandHandling {
         generator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
         wizard: GameBlueprintWizarding = new GameBlueprintWizard(),
         createPrompt: () => PromptAdapting = () => new ReadlinePromptAdapter(),
+        createStarterBlueprint: () => GameBlueprint = createStarterGameBlueprint,
+        fileExists: (filePath: string) => boolean = (filePath) => fs.existsSync(filePath),
+        writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
@@ -45,6 +54,9 @@ export class BuildCommand implements CliCommandHandling {
         this.generator = generator;
         this.wizard = wizard;
         this.createPrompt = createPrompt;
+        this.createStarterBlueprint = createStarterBlueprint;
+        this.fileExists = fileExists;
+        this.writeFile = writeFile;
     }
 
     public getName(): string {
@@ -54,8 +66,8 @@ export class BuildCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
-            "or interactively via a wizard when run with no config path. --dry-run validates and previews without " +
-            "writing anything."
+            "interactively via a wizard when run with no config path, or write an editable starter blueprint via " +
+            "--init-blueprint <file>. --dry-run validates and previews without writing anything."
         );
     }
 
@@ -65,12 +77,42 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         try {
+            if (args[0] === "--init-blueprint") {
+                return Promise.resolve(this.runInitBlueprint(args.slice(1)));
+            }
+
             const options = this.parseArgs(args);
             const blueprint = this.loadBlueprint(options.configPath);
             return Promise.resolve(this.buildFromBlueprint(blueprint, options.outDir, options.configPath, options.dryRun));
         } catch (error) {
             return Promise.reject(error);
         }
+    }
+
+    // Writes a small-but-complete, hand-editable GameBlueprint JSON template to `<file>` — no wizard
+    // prompts, no GamePackageGenerator call, nothing else touched. Point "pokie build <file> --out
+    // <dir>" at the edited result once it looks right; see createStarterGameBlueprint.ts for what the
+    // template contains and why it's guaranteed to pass GameBlueprintValidator as-is.
+    private runInitBlueprint(rest: string[]): number {
+        const [file, ...extra] = rest;
+        if (!file) {
+            throw new Error(INIT_BLUEPRINT_USAGE);
+        }
+        if (extra.length > 0) {
+            throw new Error(`Unknown option "${extra[0]}". ${INIT_BLUEPRINT_USAGE}`);
+        }
+        if (this.fileExists(file)) {
+            throw new Error(`"${file}" already exists. Choose a different path, or remove/edit the existing file first.`);
+        }
+
+        const blueprint = this.createStarterBlueprint();
+        this.writeFile(file, `${JSON.stringify(blueprint, null, 4)}\n`);
+
+        console.log(`Created starter blueprint "${file}".`);
+        console.log(`\nEdit it by hand, then run:`);
+        console.log(`  pokie build ${file} --out <dir>`);
+
+        return 0;
     }
 
     private async runWizard(): Promise<number> {
