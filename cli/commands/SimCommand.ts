@@ -55,7 +55,8 @@ export class SimCommand implements CliCommandHandling {
         session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
         const startedAt = Date.now();
-        const statistics = new AggregateSimulationRunner(session, options.rounds).run().getStatistics();
+        const runner = new AggregateSimulationRunner(session, options.rounds);
+        const statistics = runner.run().getStatistics();
         const durationMs = Date.now() - startedAt;
 
         const report = this.reportBuilder.build({
@@ -65,6 +66,7 @@ export class SimCommand implements CliCommandHandling {
             statistics,
             durationMs,
             packageRoot: options.packageRoot,
+            breakdown: runner.getBreakdownStatistics(),
         });
 
         if (options.out) {
@@ -150,5 +152,15 @@ export class SimCommand implements CliCommandHandling {
         console.log(`  hit frequency   ${(report.hitFrequency * 100).toFixed(2)}%`);
         console.log(`  max win         ${report.maxWin.toFixed(2)}`);
         console.log(`  duration        ${report.durationMs}ms (${report.spinsPerSecond} spins/s)`);
+
+        if (report.breakdown) {
+            console.log("\nBreakdown:");
+            Object.entries(report.breakdown.components).forEach(([category, component]) => {
+                console.log(
+                    `  ${category.padEnd(14)}rounds ${component.rounds}, rtp ${(component.rtp * 100).toFixed(2)}%, ` +
+                        `hit frequency ${(component.hitFrequency * 100).toFixed(2)}%, max win ${component.maxWin.toFixed(2)}`,
+                );
+            });
+        }
     }
 }

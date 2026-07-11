@@ -1,5 +1,6 @@
 import type {SimulationReport} from "../reporting/SimulationReport.js";
-import type {SimulationReportDiff, SimulationReportMetricDiff} from "./SimulationReportDiff.js";
+import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from "../reporting/SimulationReportBreakdown.js";
+import type {SimulationReportBreakdownComponentDiff, SimulationReportBreakdownDiff, SimulationReportDiff, SimulationReportMetricDiff} from "./SimulationReportDiff.js";
 import type {SimulationReportDiffing} from "./SimulationReportDiffing.js";
 
 export class SimulationReportDiffer implements SimulationReportDiffing {
@@ -25,6 +26,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         const rtp = this.metricDiff(left.rtp, right.rtp);
         const hitFrequency = this.metricDiff(left.hitFrequency, right.hitFrequency);
         const maxWin = this.metricDiff(left.maxWin, right.maxWin);
+        const breakdown = this.diffBreakdown(left.breakdown, right.breakdown);
 
         return {
             game: {
@@ -46,7 +48,8 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             maxWin,
             durationMs: this.metricDiff(left.durationMs, right.durationMs),
             spinsPerSecond: this.metricDiff(left.spinsPerSecond, right.spinsPerSecond),
-            warnings: this.buildWarnings(rtp, hitFrequency, maxWin),
+            warnings: this.buildWarnings(rtp, hitFrequency, maxWin, breakdown),
+            breakdown,
         };
     }
 
@@ -56,7 +59,12 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         return {left, right, delta, percentDelta};
     }
 
-    private buildWarnings(rtp: SimulationReportMetricDiff, hitFrequency: SimulationReportMetricDiff, maxWin: SimulationReportMetricDiff): string[] {
+    private buildWarnings(
+        rtp: SimulationReportMetricDiff,
+        hitFrequency: SimulationReportMetricDiff,
+        maxWin: SimulationReportMetricDiff,
+        breakdown: SimulationReportBreakdownDiff | undefined,
+    ): string[] {
         const warnings: string[] = [];
 
         if (Math.abs(rtp.delta) >= this.rtpDeltaWarningThreshold) {
@@ -79,7 +87,48 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             warnings.push(`Max win changed by ${this.formatSigned(maxWin.percentDelta, 2)}% (${maxWin.left.toFixed(2)} -> ${maxWin.right.toFixed(2)})`);
         }
 
+        if (breakdown) {
+            Object.entries(breakdown.components).forEach(([category, componentDiff]) => {
+                if (Math.abs(componentDiff.rtp.delta) >= this.rtpDeltaWarningThreshold) {
+                    warnings.push(
+                        `"${category}" RTP changed by ${this.formatSigned(componentDiff.rtp.delta * 100, 2)} percentage points ` +
+                            `(${(componentDiff.rtp.left * 100).toFixed(2)}% -> ${(componentDiff.rtp.right * 100).toFixed(2)}%)`,
+                    );
+                }
+            });
+        }
+
         return warnings;
+    }
+
+    private diffBreakdown(left: SimulationReportBreakdown | undefined, right: SimulationReportBreakdown | undefined): SimulationReportBreakdownDiff | undefined {
+        if (!left || !right) {
+            return undefined;
+        }
+
+        const categories = new Set([...Object.keys(left.components), ...Object.keys(right.components)]);
+        const components: Record<string, SimulationReportBreakdownComponentDiff> = {};
+        categories.forEach((category) => {
+            components[category] = this.diffBreakdownComponent(left.components[category], right.components[category]);
+        });
+
+        return {components};
+    }
+
+    private diffBreakdownComponent(
+        left: SimulationReportBreakdownComponent | undefined,
+        right: SimulationReportBreakdownComponent | undefined,
+    ): SimulationReportBreakdownComponentDiff {
+        return {
+            left: left ?? null,
+            right: right ?? null,
+            rounds: this.metricDiff(left?.rounds ?? 0, right?.rounds ?? 0),
+            totalBet: this.metricDiff(left?.totalBet ?? 0, right?.totalBet ?? 0),
+            totalWin: this.metricDiff(left?.totalWin ?? 0, right?.totalWin ?? 0),
+            rtp: this.metricDiff(left?.rtp ?? 0, right?.rtp ?? 0),
+            hitFrequency: this.metricDiff(left?.hitFrequency ?? 0, right?.hitFrequency ?? 0),
+            maxWin: this.metricDiff(left?.maxWin ?? 0, right?.maxWin ?? 0),
+        };
     }
 
     private formatSigned(value: number, decimals: number): string {

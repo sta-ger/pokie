@@ -181,6 +181,94 @@ describe("DiffCommand", () => {
 
         (console.log as jest.Mock).mockRestore();
     });
+
+    describe("breakdown", () => {
+        it("prints no Breakdown section when neither report has one (old-shape compatibility)", async () => {
+            const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(left), "right.json": JSON.stringify(right)}));
+            const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+            await command.run(["left.json", "right.json"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).not.toContain("Breakdown:");
+
+            logSpy.mockRestore();
+        });
+
+        it("prints no Breakdown section when only one report has one", async () => {
+            const rightWithBreakdown: SimulationReport = {
+                ...right,
+                breakdown: {components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9400, rtp: 0.98, hitFrequency: 0.245, maxWin: 250}}},
+            };
+            const command = new DiffCommand(
+                createStubReadFile({"left.json": JSON.stringify(left), "right.json": JSON.stringify(rightWithBreakdown)}),
+            );
+            const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+            await command.run(["left.json", "right.json"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).not.toContain("Breakdown:");
+
+            logSpy.mockRestore();
+        });
+
+        it("prints a Breakdown section with per-category lines when both reports have one", async () => {
+            const leftWithBreakdown: SimulationReport = {
+                ...left,
+                breakdown: {
+                    components: {
+                        base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, hitFrequency: 0.2, maxWin: 90},
+                        freeGames: {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.4218367346938776, hitFrequency: 0.6, maxWin: 120.5},
+                    },
+                },
+            };
+            const rightWithBreakdown: SimulationReport = {
+                ...right,
+                breakdown: {
+                    components: {
+                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.904, hitFrequency: 0.21, maxWin: 95},
+                        freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, hitFrequency: 0.61, maxWin: 130},
+                    },
+                },
+            };
+            const command = new DiffCommand(
+                createStubReadFile({"left.json": JSON.stringify(leftWithBreakdown), "right.json": JSON.stringify(rightWithBreakdown)}),
+            );
+            const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+            await command.run(["left.json", "right.json"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("Breakdown:");
+            expect(printed).toContain("base");
+            expect(printed).toContain("freeGames");
+
+            logSpy.mockRestore();
+        });
+
+        it("includes breakdown in the JSON diff when --format json is given and both reports have one", async () => {
+            const leftWithBreakdown: SimulationReport = {
+                ...left,
+                breakdown: {components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, hitFrequency: 0.241, maxWin: 120.5}}},
+            };
+            const rightWithBreakdown: SimulationReport = {
+                ...right,
+                breakdown: {components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9400, rtp: 0.98, hitFrequency: 0.245, maxWin: 250}}},
+            };
+            const command = new DiffCommand(
+                createStubReadFile({"left.json": JSON.stringify(leftWithBreakdown), "right.json": JSON.stringify(rightWithBreakdown)}),
+            );
+            const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+            await command.run(["left.json", "right.json", "--format", "json"]);
+
+            const parsed = JSON.parse(logSpy.mock.calls[0][0]);
+            expect(parsed.breakdown.components.base.rounds).toEqual({left: 9800, right: 9850, delta: 50, percentDelta: parsed.breakdown.components.base.rounds.percentDelta});
+
+            logSpy.mockRestore();
+        });
+    });
 });
 
 describe("DiffCommand (integration, real pokie sim output)", () => {

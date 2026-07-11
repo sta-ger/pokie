@@ -1,0 +1,7 @@
+{
+    "name": "playable-game-with-free-games",
+    "version": "1.0.0",
+    "pokie": {
+        "entry": "./index.js"
+    }
+}

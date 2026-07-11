@@ -475,6 +475,16 @@ The JSON report shape:
     };
     warnings?: string[];         // e.g. no seed given, low rounds, 0 hit frequency/maxWin/totalBet, early stop
     recommendations?: string[];  // simple next-step hints, e.g. use --seed, raise --rounds, run pokie diff/--out
+    breakdown?: {
+        components: Record<string, {         // keyed by category, e.g. "base", "freeGames"
+            rounds: number;
+            totalBet: number;
+            totalWin: number;
+            rtp: number;
+            hitFrequency: number;
+            maxWin: number;
+        }>;
+    };
 }
 ```
 
@@ -482,6 +492,20 @@ The JSON report shape:
 a `sim.json` produced by an older `pokie` (or handwritten JSON without them) still validates and renders fine with
 [`pokie report`](#pokie-report-simulationreportjson), it just won't have these sections. `pokie sim` itself always
 populates all three on every report it produces.
+
+`breakdown` is a later v1.3 addition, also purely additive and optional: a feature-level RTP breakdown split by
+category (at minimum `"base"`, plus `"freeGames"` when the game has a free-games feature). It's built by
+`AggregateSimulationRunner` feature-detecting the optional `StakeAmountDetermining` contract on the session — the
+same contract `SpinCommandHandler` already uses server-side to tell a charged base-game round from an unfinished
+free-games round that charges nothing (see [Free Games](free-games.md) and
+[Spin orchestration & idempotency](#spin-orchestration--idempotency)). If the session doesn't implement that
+contract, `pokie sim` simply omits `breakdown` from the report (and adds a recommendation suggesting it) — it never
+guesses a category from incidental data like balance. A game with a bonus mechanic that doesn't fit the
+base/free-games split can inject a custom `SimulationRoundCategoryDetermining` as `AggregateSimulationRunner`'s 4th
+constructor argument instead of relying on the default `StakeBasedSimulationRoundCategoryDeterminer`.
+
+`pokie sim` also adds a warning when `breakdown` is present but every non-`"base"` category contributed 0 win —
+usually a sign the feature never triggered during this run (or its win is being misattributed to `"base"`).
 
 Failure modes:
 
@@ -512,9 +536,11 @@ total win, RTP, hit frequency, max win, duration, and spins per second. The HTML
 
 When the report has a `reproducibility` block, a **Reproducibility** section follows with the game, seed,
 requested/actual rounds, and a ready-to-run `pokie sim` command. When `warnings`/`recommendations` are non-empty,
-matching **Warnings**/**Recommendations** sections list them. All three sections are omitted when the report
-doesn't have the corresponding field (e.g. an older `sim.json` from before v1.3) or the array is empty — a
-report can always be rendered, whether it has these fields or not.
+matching **Warnings**/**Recommendations** sections list them. When the report has a `breakdown` block, a
+**Breakdown** section lists rounds/total bet/total win/RTP/hit frequency/max win per category (e.g. `base`,
+`freeGames`) as a table. All sections are omitted when the report doesn't have the corresponding field (e.g. an
+older `sim.json` from before v1.3, or a game whose session doesn't support round categorization) or the array is
+empty — a report can always be rendered, whether it has these fields or not.
 
 The reusable rendering API behind the command lives in `src/reporting`:
 
@@ -552,7 +578,8 @@ pokie diff before.json after.json
 ```
 
 Compares, at minimum: game id/name/version, requested rounds, actual rounds, seed, total bet, total win, RTP,
-hit frequency, max win, duration, and spins per second.
+hit frequency, max win, duration, and spins per second. Also compares the feature-level `breakdown` (see
+[`pokie sim`](#pokie-sim-packageroot)) when both reports have one.
 
 Options:
 
@@ -596,11 +623,30 @@ The JSON diff shape:
     durationMs: {left: number; right: number; delta: number; percentDelta: number | null};
     spinsPerSecond: {left: number; right: number; delta: number; percentDelta: number | null};
     warnings: string[];
+    breakdown?: {
+        components: Record<string, {   // keyed by category, e.g. "base", "freeGames"
+            left: {rounds, totalBet, totalWin, rtp, hitFrequency, maxWin} | null;
+            right: {rounds, totalBet, totalWin, rtp, hitFrequency, maxWin} | null;
+            rounds: {left: number; right: number; delta: number; percentDelta: number | null};
+            totalBet: {left: number; right: number; delta: number; percentDelta: number | null};
+            totalWin: {left: number; right: number; delta: number; percentDelta: number | null};
+            rtp: {left: number; right: number; delta: number; percentDelta: number | null};
+            hitFrequency: {left: number; right: number; delta: number; percentDelta: number | null};
+            maxWin: {left: number; right: number; delta: number; percentDelta: number | null};
+        }>;
+    };
 }
 ```
 
 Every numeric field is a `{left, right, delta, percentDelta}` tuple — `percentDelta` is `null` when `left` is
 `0` (a relative percent change is undefined there), not `Infinity`/`NaN`.
+
+`breakdown` is only populated when **both** reports have one — an older report (or one from a game whose session
+doesn't support round categorization) is never diffed against a newer one's breakdown, it's simply left out, same
+as [`pokie report`](#pokie-report-simulationreportjson) simply omits the **Breakdown** section for such a report.
+A category present on only one side is compared against zero for that side (`left`/`right` is `null`, the missing
+side's numeric fields read as `0`). `Warnings:`/`warnings` also picks up a per-category entry (`"<category>" RTP
+changed by ...`) whenever a category's RTP moved by more than the RTP delta threshold.
 
 The reusable diffing API behind the command lives in `src/diff`:
 

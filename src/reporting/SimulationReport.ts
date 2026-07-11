@@ -1,3 +1,5 @@
+import type {SimulationReportBreakdown} from "./SimulationReportBreakdown.js";
+
 export type SimulationReportReproducibility = {
     game: {id: string; name: string; version: string};
     seed: string | null;
@@ -21,4 +23,5 @@ export type SimulationReport = {
     reproducibility?: SimulationReportReproducibility;
     warnings?: string[];
     recommendations?: string[];
+    breakdown?: SimulationReportBreakdown;
 };

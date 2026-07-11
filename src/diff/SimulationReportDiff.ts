@@ -1,8 +1,28 @@
+import type {SimulationReportBreakdownComponent} from "../reporting/SimulationReportBreakdown.js";
+
 export type SimulationReportMetricDiff = {
     left: number;
     right: number;
     delta: number;
     percentDelta: number | null;
+};
+
+export type SimulationReportBreakdownComponentDiff = {
+    left: SimulationReportBreakdownComponent | null;
+    right: SimulationReportBreakdownComponent | null;
+    rounds: SimulationReportMetricDiff;
+    totalBet: SimulationReportMetricDiff;
+    totalWin: SimulationReportMetricDiff;
+    rtp: SimulationReportMetricDiff;
+    hitFrequency: SimulationReportMetricDiff;
+    maxWin: SimulationReportMetricDiff;
+};
+
+// Only populated when both sides of the diff have a "breakdown" field — an older report (or one
+// from a game that doesn't categorize rounds) simply leaves this undefined, it's never diffed
+// against a report that does have it.
+export type SimulationReportBreakdownDiff = {
+    components: Record<string, SimulationReportBreakdownComponentDiff>;
 };
 
 export type SimulationReportDiff = {
@@ -26,4 +46,5 @@ export type SimulationReportDiff = {
     durationMs: SimulationReportMetricDiff;
     spinsPerSecond: SimulationReportMetricDiff;
     warnings: string[];
+    breakdown?: SimulationReportBreakdownDiff;
 };

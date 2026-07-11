@@ -338,4 +338,140 @@ describe("SimulationReportBuilder", () => {
             expect(report.recommendations!.some((recommendation) => recommendation.includes("--out"))).toBe(true);
         });
     });
+
+    describe("breakdown", () => {
+        test("old-shape compatibility: report.breakdown is undefined when no breakdown input is given", () => {
+            const report = buildHealthyReport();
+
+            expect(report.breakdown).toBeUndefined();
+        });
+
+        test("recommends implementing categorization when no breakdown input is given", () => {
+            const report = buildHealthyReport();
+
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("StakeAmountDetermining"))).toBe(true);
+        });
+
+        test("wraps a non-empty breakdown input into report.breakdown.components unchanged", () => {
+            const builder = new SimulationReportBuilder();
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 1,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                breakdown: {
+                    base: {rounds: 8, totalBet: 8, totalWin: 4, rtp: 0.5, hitFrequency: 0.25, maxWin: 4},
+                    freeGames: {rounds: 2, totalBet: 2, totalWin: 6, rtp: 3, hitFrequency: 1, maxWin: 6},
+                },
+            });
+
+            expect(report.breakdown).toEqual({
+                components: {
+                    base: {rounds: 8, totalBet: 8, totalWin: 4, rtp: 0.5, hitFrequency: 0.25, maxWin: 4},
+                    freeGames: {rounds: 2, totalBet: 2, totalWin: 6, rtp: 3, hitFrequency: 1, maxWin: 6},
+                },
+            });
+        });
+
+        test("treats an empty breakdown input the same as no breakdown at all", () => {
+            const builder = new SimulationReportBuilder();
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 1,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                breakdown: {},
+            });
+
+            expect(report.breakdown).toBeUndefined();
+        });
+
+        test("does not recommend implementing categorization when a breakdown is present", () => {
+            const builder = new SimulationReportBuilder();
+            const accumulator = new SimulationAccumulator();
+            for (let i = 0; i < 9999; i++) {
+                accumulator.addRound(1, 0);
+            }
+            accumulator.addRound(1, 5);
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 10000,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 1000,
+                breakdown: {
+                    base: {rounds: 9000, totalBet: 9000, totalWin: 8000, rtp: 0.89, hitFrequency: 0.2, maxWin: 5},
+                    freeGames: {rounds: 1000, totalBet: 1000, totalWin: 1000, rtp: 1, hitFrequency: 0.5, maxWin: 5},
+                },
+            });
+
+            expect(report.recommendations!.some((recommendation) => recommendation.includes("StakeAmountDetermining"))).toBe(false);
+        });
+
+        test("warns when breakdown is present but no non-base category has any rounds", () => {
+            const builder = new SimulationReportBuilder();
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 1,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                breakdown: {base: {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0}},
+            });
+
+            expect(report.warnings!.some((warning) => warning.includes("no non-base category"))).toBe(true);
+        });
+
+        test("warns when breakdown is present and a non-base category exists but contributed 0 win", () => {
+            const builder = new SimulationReportBuilder();
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 1,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                breakdown: {
+                    base: {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
+                    freeGames: {rounds: 0, totalBet: 0, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
+                },
+            });
+
+            expect(report.warnings!.some((warning) => warning.includes("no non-base category"))).toBe(true);
+        });
+
+        test("does not warn about suspiciously zero feature contribution when a non-base category has a win", () => {
+            const builder = new SimulationReportBuilder();
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 1,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                breakdown: {
+                    base: {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
+                    freeGames: {rounds: 1, totalBet: 1, totalWin: 5, rtp: 5, hitFrequency: 1, maxWin: 5},
+                },
+            });
+
+            expect(report.warnings!.some((warning) => warning.includes("no non-base category"))).toBe(false);
+        });
+    });
 });

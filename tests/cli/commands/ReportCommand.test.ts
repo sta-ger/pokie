@@ -162,6 +162,7 @@ describe("ReportCommand", () => {
         expect(printed).not.toContain("## Reproducibility");
         expect(printed).not.toContain("## Warnings");
         expect(printed).not.toContain("## Recommendations");
+        expect(printed).not.toContain("## Breakdown");
         expect(printed).toContain("<h1>Simulation Report: Crazy Fruits</h1>");
 
         logSpy.mockRestore();
@@ -197,5 +198,38 @@ describe("ReportCommand (integration, real pokie sim output)", () => {
         expect(markdown).toContain("**Actual rounds**: 100");
         expect(html).toContain("<h1>Simulation Report: Playable Game</h1>");
         expect(html).toContain("<td>100</td>");
+    });
+});
+
+describe("ReportCommand (integration, base vs. freeGames breakdown from a real free-games game)", () => {
+    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-free-games");
+    let outDir: string;
+
+    beforeEach(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-report-breakdown-test-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(outDir, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("renders a Breakdown section with both base and freeGames rows for a game with a free-games feature", async () => {
+        const simReportFile = path.join(outDir, "sim.json");
+        await new SimCommand().run([fixtureRoot, "--rounds", "5000", "--seed", "demo", "--out", simReportFile]);
+
+        const simReport = JSON.parse(fs.readFileSync(simReportFile, "utf-8")) as SimulationReport;
+        expect(simReport.breakdown).toBeDefined();
+        expect(simReport.breakdown!.components.base.rounds).toBeGreaterThan(0);
+        expect(simReport.breakdown!.components.freeGames.rounds).toBeGreaterThan(0);
+
+        const markdownOut = path.join(outDir, "report.md");
+        await new ReportCommand().run([simReportFile, "--out", markdownOut]);
+        const markdown = fs.readFileSync(markdownOut, "utf-8");
+
+        expect(markdown).toContain("## Breakdown");
+        expect(markdown).toContain("| base |");
+        expect(markdown).toContain("| freeGames |");
     });
 });

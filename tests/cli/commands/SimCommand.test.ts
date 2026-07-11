@@ -118,6 +118,81 @@ describe("SimCommand", () => {
 
         logSpy.mockRestore();
     });
+
+    it("has no breakdown field when the session doesn't implement getStakeAmount", async () => {
+        const writeFile = jest.fn();
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./crazy-fruits", "--rounds", "30", "--out", "report.json"]);
+
+        const [, contents] = writeFile.mock.calls[0];
+        const report = JSON.parse(contents) as SimulationReport;
+        expect(report.breakdown).toBeUndefined();
+
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    function createFreeGamesAwareFakeGame(theManifest: PokieGameManifest): PokieGame {
+        return {
+            getManifest: () => theManifest,
+            createSession() {
+                let credits = 1000;
+                const bet = 1;
+                let round = 0;
+                let pendingWin = 0;
+                return {
+                    getCreditsAmount: () => credits,
+                    setCreditsAmount: (value: number) => {
+                        credits = value;
+                    },
+                    getBet: () => bet,
+                    setBet: () => undefined,
+                    getAvailableBets: () => [1],
+                    canPlayNextGame: () => true,
+                    getStakeAmount: () => (round % 5 === 4 ? 0 : bet),
+                    play: () => {
+                        pendingWin = round % 10 === 0 ? 10 : 0;
+                        round++;
+                        credits = credits - (round % 5 === 0 ? 0 : bet) + pendingWin;
+                    },
+                    getWinAmount: () => pendingWin,
+                } as unknown as GameSessionHandling;
+            },
+        };
+    }
+
+    it("writes a base/freeGames breakdown when the session implements StakeAmountDetermining", async () => {
+        const writeFile = jest.fn();
+        const command = new SimCommand(() => Promise.resolve(createFreeGamesAwareFakeGame(manifest)), writeFile);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./crazy-fruits", "--rounds", "50", "--out", "report.json"]);
+
+        const [, contents] = writeFile.mock.calls[0];
+        const report = JSON.parse(contents) as SimulationReport;
+
+        expect(report.breakdown).toBeDefined();
+        expect(report.breakdown!.components.base.rounds).toBe(40);
+        expect(report.breakdown!.components.freeGames.rounds).toBe(10);
+        expect(report.breakdown!.components.base.totalWin).toBeGreaterThan(0);
+
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("prints a Breakdown section in the summary when the session implements StakeAmountDetermining", async () => {
+        const command = new SimCommand(() => Promise.resolve(createFreeGamesAwareFakeGame(manifest)));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./crazy-fruits", "--rounds", "50"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("Breakdown:");
+        expect(printed).toContain("base");
+        expect(printed).toContain("freeGames");
+
+        logSpy.mockRestore();
+    });
 });
 
 describe("SimCommand (integration, real loadPokieGame + fixture game package)", () => {
@@ -171,5 +246,37 @@ describe("SimCommand (integration, real loadPokieGame + fixture game package)", 
         const command = new SimCommand(loadPokieGame);
 
         await expect(command.run([path.join(outDir, "does-not-exist")])).rejects.toThrow(/package\.json/);
+    });
+});
+
+describe("SimCommand (integration, real game with a free-games feature)", () => {
+    const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game-with-free-games");
+    let outDir: string;
+
+    beforeEach(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-breakdown-test-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(outDir, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("produces a JSON report with a base vs freeGames breakdown", async () => {
+        const command = new SimCommand(loadPokieGame);
+        const outFile = path.join(outDir, "report.json");
+
+        await command.run([fixtureRoot, "--rounds", "5000", "--seed", "demo", "--out", outFile]);
+
+        const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
+        expect(report.breakdown).toBeDefined();
+
+        const {base, freeGames} = report.breakdown!.components;
+        expect(base.rounds).toBeGreaterThan(0);
+        expect(freeGames.rounds).toBeGreaterThan(0);
+        expect(base.rounds + freeGames.rounds).toBe(report.rounds);
+        expect(base.totalBet + freeGames.totalBet).toBeCloseTo(report.totalBet, 10);
+        expect(base.totalWin + freeGames.totalWin).toBeCloseTo(report.totalWin, 10);
     });
 });

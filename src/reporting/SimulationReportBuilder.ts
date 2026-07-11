@@ -1,11 +1,14 @@
+import type {SimulationBreakdownComponent} from "../simulation/SimulationBreakdownComponent.js";
 import type {SimulationReport, SimulationReportReproducibility} from "./SimulationReport.js";
+import type {SimulationReportBreakdown} from "./SimulationReportBreakdown.js";
 import type {SimulationReportBuilding} from "./SimulationReportBuilding.js";
 import type {SimulationReportInput} from "./SimulationReportInput.js";
 
-type CoreMetrics = Omit<SimulationReport, "reproducibility" | "warnings" | "recommendations">;
+type CoreMetrics = Omit<SimulationReport, "reproducibility" | "warnings" | "recommendations" | "breakdown">;
 
 export class SimulationReportBuilder implements SimulationReportBuilding {
     public static readonly LOW_ROUNDS_WARNING_THRESHOLD: number = 10000;
+    private static readonly BASE_CATEGORY = "base";
 
     public build(input: SimulationReportInput): SimulationReport {
         const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot} = input;
@@ -25,13 +28,15 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             spinsPerSecond,
         };
 
-        const warnings = this.buildWarnings(core);
+        const breakdown = this.buildBreakdown(input.breakdown);
+        const warnings = this.buildWarnings(core, breakdown);
 
         return {
             ...core,
+            breakdown,
             reproducibility: this.buildReproducibility(core, packageRoot),
             warnings,
-            recommendations: this.buildRecommendations(core),
+            recommendations: this.buildRecommendations(core, breakdown),
         };
     }
 
@@ -55,7 +60,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         };
     }
 
-    private buildWarnings(core: CoreMetrics): string[] {
+    private buildWarnings(core: CoreMetrics, breakdown: SimulationReportBreakdown | undefined): string[] {
         const warnings: string[] = [];
 
         if (!this.hasSeed(core)) {
@@ -87,10 +92,18 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             );
         }
 
+        if (breakdown && this.hasSuspiciouslyZeroFeatureContribution(breakdown)) {
+            warnings.push(
+                "Feature-level breakdown is available, but no non-base category (e.g. free games) contributed " +
+                    "any win in this run — this may mean the feature never triggered, or its win is being " +
+                    "misattributed to the base category.",
+            );
+        }
+
         return warnings;
     }
 
-    private buildRecommendations(core: CoreMetrics): string[] {
+    private buildRecommendations(core: CoreMetrics, breakdown: SimulationReportBreakdown | undefined): string[] {
         const recommendations: string[] = [];
 
         if (!this.hasSeed(core)) {
@@ -106,6 +119,30 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         recommendations.push('Use "pokie diff" to compare this report against a previous run after changing the game\'s math.');
         recommendations.push("Save this report as JSON via --out to keep a record you can diff or replay against later.");
 
+        if (!breakdown) {
+            recommendations.push(
+                "No feature-level RTP breakdown is available for this game — implement the optional " +
+                    "StakeAmountDetermining contract (or inject a custom SimulationRoundCategoryDetermining) on the " +
+                    "session to get a base vs. free-games breakdown.",
+            );
+        }
+
         return recommendations;
+    }
+
+    private buildBreakdown(components: Record<string, SimulationBreakdownComponent> | undefined): SimulationReportBreakdown | undefined {
+        if (!components || Object.keys(components).length === 0) {
+            return undefined;
+        }
+        return {components};
+    }
+
+    private hasSuspiciouslyZeroFeatureContribution(breakdown: SimulationReportBreakdown): boolean {
+        const featureCategories = Object.keys(breakdown.components).filter((category) => category !== SimulationReportBuilder.BASE_CATEGORY);
+        if (featureCategories.length === 0) {
+            return true;
+        }
+        const featureTotalWin = featureCategories.reduce((sum, category) => sum + breakdown.components[category].totalWin, 0);
+        return featureTotalWin === 0;
     }
 }

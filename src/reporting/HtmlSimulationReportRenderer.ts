@@ -35,6 +35,7 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             tableRows,
             "            </tbody>",
             "        </table>",
+            ...this.renderBreakdownSection(report),
             ...this.renderReproducibilitySection(report),
             ...this.renderListSection("Warnings", report.warnings),
             ...this.renderListSection("Recommendations", report.recommendations),
@@ -42,6 +43,35 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             "</body>",
             "</html>",
         ].join("\n") + "\n";
+    }
+
+    private renderBreakdownSection(report: SimulationReport): string[] {
+        if (!report.breakdown) {
+            return [];
+        }
+
+        const headerRow = "            <tr><th>Category</th><th>Rounds</th><th>Total bet</th><th>Total win</th><th>RTP</th><th>Hit frequency</th><th>Max win</th></tr>";
+        const rows = Object.entries(report.breakdown.components).map(([category, component]) => {
+            return (
+                `            <tr><td>${this.escapeHtml(category)}</td><td>${component.rounds}</td><td>${component.totalBet.toFixed(2)}</td>` +
+                `<td>${component.totalWin.toFixed(2)}</td><td>${(component.rtp * 100).toFixed(2)}%</td>` +
+                `<td>${(component.hitFrequency * 100).toFixed(2)}%</td><td>${component.maxWin.toFixed(2)}</td></tr>`
+            );
+        });
+
+        return [
+            "        <section>",
+            "            <h2>Breakdown</h2>",
+            "            <table>",
+            "                <thead>",
+            headerRow,
+            "                </thead>",
+            "                <tbody>",
+            ...rows,
+            "                </tbody>",
+            "            </table>",
+            "        </section>",
+        ];
     }
 
     private renderReproducibilitySection(report: SimulationReport): string[] {

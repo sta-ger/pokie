@@ -20,6 +20,16 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Spins per second**: ${report.spinsPerSecond}`,
         ];
 
+        if (report.breakdown) {
+            lines.push("", "## Breakdown", "", "| Category | Rounds | Total bet | Total win | RTP | Hit frequency | Max win |", "| --- | --- | --- | --- | --- | --- | --- |");
+            Object.entries(report.breakdown.components).forEach(([category, component]) => {
+                lines.push(
+                    `| ${category} | ${component.rounds} | ${component.totalBet.toFixed(2)} | ${component.totalWin.toFixed(2)} | ` +
+                        `${(component.rtp * 100).toFixed(2)}% | ${(component.hitFrequency * 100).toFixed(2)}% | ${component.maxWin.toFixed(2)} |`,
+                );
+            });
+        }
+
         if (report.reproducibility) {
             const reproducibility = report.reproducibility;
             lines.push(

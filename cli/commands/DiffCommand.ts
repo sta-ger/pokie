@@ -175,6 +175,17 @@ export class DiffCommand implements CliCommandHandling {
         console.log(`  duration        ${this.formatMetric(diff.durationMs, 0, "ms")}`);
         console.log(`  spins/s         ${this.formatMetric(diff.spinsPerSecond, 0)}`);
 
+        if (diff.breakdown) {
+            console.log("\nBreakdown:");
+            Object.entries(diff.breakdown.components).forEach(([category, componentDiff]) => {
+                console.log(`  ${category}`);
+                console.log(`    rounds          ${this.formatMetric(componentDiff.rounds, 0)}`);
+                console.log(`    total win       ${this.formatMetric(componentDiff.totalWin, 2)}`);
+                console.log(`    rtp             ${this.formatPercentMetric(componentDiff.rtp)}`);
+                console.log(`    hit frequency   ${this.formatPercentMetric(componentDiff.hitFrequency)}`);
+            });
+        }
+
         if (diff.warnings.length > 0) {
             console.log("\nWarnings:");
             for (const warning of diff.warnings) {
