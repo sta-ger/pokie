@@ -87,6 +87,7 @@ describe("GamePackageGenerator", () => {
         expect(readme).toContain("# Crazy Fruits");
         expect(readme).toContain("src/generated/build-info.json");
         expect(readme).toContain("Do not hand-edit");
+        expect(readme).toContain("pokie inspect .");
         expect(readme).toContain("pokie validate .");
     });
 

@@ -347,7 +347,7 @@ describe("BuildCommand", () => {
         expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).not.toContain("Dry run");
     });
 
-    it("prints the full build -> validate -> sim -> report -> replay -> dev workflow as next steps", async () => {
+    it("prints the full build -> inspect -> validate -> sim -> report -> replay -> dev workflow as next steps", async () => {
         const command = new BuildCommand(
             "1.3.0",
             () => rawBlueprint,
@@ -358,6 +358,7 @@ describe("BuildCommand", () => {
         await command.run(["config.json"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("pokie inspect /tmp/crazy-fruits");
         expect(printed).toContain("pokie validate /tmp/crazy-fruits");
         expect(printed).toContain("pokie sim /tmp/crazy-fruits");
         expect(printed).toContain("pokie report sim.json");

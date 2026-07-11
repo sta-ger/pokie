@@ -30,6 +30,7 @@ contains files \`pokie build\` didn't generate.
 \`\`\`
 npm install
 
+npx pokie inspect .
 npx pokie validate .
 npx pokie sim . --rounds 10000 --seed demo --out sim.json
 npx pokie report sim.json

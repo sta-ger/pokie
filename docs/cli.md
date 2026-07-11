@@ -60,7 +60,7 @@ There are two ways to provide the blueprint:
 Both produce the exact same `GameBlueprint` shape, go through the exact same validation
 ([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
 the resulting package supports the exact same
-[`build -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---validate---sim---report---replay---servedev) —
+[`build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---inspect---validate---sim---report---replay---servedev) —
 the wizard is just another way to assemble the same input, not a different code path.
 
 ```
@@ -76,8 +76,8 @@ npm install
   omitted), a `pokie` dependency, `start`/`server`/`client` scripts, and `pokie.entry` pointing at
   `./src/generated/index.js`;
 - `README.md` — a short orientation doc for the generated package itself: what each file is, that
-  `src/generated/` is generated output and shouldn't be hand-edited, and the `build -> validate -> sim -> report ->
-  replay -> serve`/`dev` workflow below;
+  `src/generated/` is generated output and shouldn't be hand-edited, and the `build -> inspect -> validate -> sim ->
+  report -> replay -> serve`/`dev` workflow below;
 - `src/generated/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig` with the
   given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a `VideoSlotSession`, with
   `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. The file is organized into labeled
@@ -298,7 +298,7 @@ prompt, and the same reprompt-on-invalid-input and EOF-cancellation rules apply.
 Once the wizard completes, it prints the same "created files" / "Next:" summary as the config-driven path,
 including the ready-to-run `validate -> sim -> report -> replay -> serve`/`dev` commands below.
 
-### Workflow: `build` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
+### Workflow: `build` -> `inspect` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
 
 The minimal loop from a blueprint to a running local server, chaining every command this file documents. Unlike
 the [`create`/`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
@@ -307,6 +307,8 @@ output is loadable immediately after `npm install`:
 ```
 pokie build examples/blueprints/crazy-fruits.blueprint.json
 cd crazy-fruits && npm install && cd ..
+
+pokie inspect ./crazy-fruits
 
 pokie validate ./crazy-fruits
 
@@ -322,11 +324,14 @@ pokie dev ./crazy-fruits
 lines, so you don't have to come back to this doc to remember the order.
 
 Each step is the same command documented elsewhere in this file, with the same options/failure modes —
-[`validate`](#pokie-validate-packageroot), [`sim`](#pokie-sim-packageroot)/[`report`](#pokie-report-simulationreportjson),
+[`inspect`](#pokie-inspect-packageroot), [`validate`](#pokie-validate-packageroot),
+[`sim`](#pokie-sim-packageroot)/[`report`](#pokie-report-simulationreportjson),
 [`replay`](#pokie-replay-packageroot), and [`serve`](#pokie-serve-packageroot-experimental)/
 [`dev`](#pokie-dev-packageroot-experimental) work identically whether the package came from `pokie build`,
 `pokie create`, or `pokie init` — none of them care how a package was produced, only that it satisfies the
-[game package](game-packages.md) contract.
+[game package](game-packages.md) contract. `pokie sim --out` twice (before/after a tweak) also lets you
+[`pokie diff`](#pokie-diff-leftreportjson-rightreportjson) the two reports, same as the [`create`/`init`
+workflow](#workflow) below.
 
 ## `pokie init`
 
@@ -1270,7 +1275,7 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-`pokie build`, `pokie create`, `pokie init`, `pokie sim`, `pokie validate`, `pokie report`, `pokie diff`,
-`pokie replay`, `pokie serve`, `pokie client`, and `pokie dev` are the first of a planned set of subcommands built
-on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
+`pokie build`, `pokie create`, `pokie init`, `pokie inspect`, `pokie sim`, `pokie validate`, `pokie report`,
+`pokie diff`, `pokie replay`, `pokie serve`, `pokie client`, and `pokie dev` are the first of a planned set of
+subcommands built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
 `PokieGameContractValidationRule`).

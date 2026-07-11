@@ -133,6 +133,7 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") built in "${result.projectRoot}".`);
         console.log(`\nNext:`);
         console.log(`  cd ${result.projectRoot} && npm install`);
+        console.log(`  pokie inspect ${result.projectRoot}`);
         console.log(`  pokie validate ${result.projectRoot}`);
         console.log(`  pokie sim ${result.projectRoot} --rounds 10000 --seed demo --out sim.json`);
         console.log(`  pokie report sim.json`);
