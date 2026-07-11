@@ -37,12 +37,12 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             console.log("Building a GameBlueprint interactively. Press Ctrl+C at any time to cancel.\n");
 
             const manifest = await this.askManifest(prompt);
-            const reels = await this.askPositiveInt(prompt, `Number of reels [${DEFAULT_REELS}]: `, DEFAULT_REELS);
-            const rows = await this.askPositiveInt(prompt, `Number of rows [${DEFAULT_ROWS}]: `, DEFAULT_ROWS);
+            const reels = await this.askPositiveInt(prompt, `Number of reels (most games use 3-7) [${DEFAULT_REELS}]: `, DEFAULT_REELS);
+            const rows = await this.askPositiveInt(prompt, `Number of rows (most games use 3-7) [${DEFAULT_ROWS}]: `, DEFAULT_ROWS);
             const symbols = await this.askSymbols(prompt);
             const availableBets = await this.askAvailableBets(prompt);
             const paylines = await this.askPaylines(prompt, reels, rows);
-            const paytable = await this.askPaytable(prompt, symbols);
+            const paytable = await this.askPaytable(prompt, symbols, reels);
             const {reelStrips, symbolWeights} = await this.askReelWeighting(prompt, symbols, reels);
             const outDir = await this.askOutDir(prompt, manifest.id);
 
@@ -107,6 +107,13 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             if (new Set(symbols).size !== symbols.length) {
                 return new WizardParseError("Symbol ids must be unique.");
             }
+            // ":" is this wizard's own pair separator (used again later for paytable and reel-weighting
+            // prompts) — a symbol id containing it would be unparseable there. "," can't occur here: it's
+            // already split() on above, so no token can ever contain one.
+            const reserved = symbols.filter((symbol) => symbol.includes(":"));
+            if (reserved.length > 0) {
+                return new WizardParseError(`Symbol id(s) "${reserved.join(", ")}" can't contain ":".`);
+            }
             return symbols;
         });
     }
@@ -160,7 +167,11 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         );
     }
 
-    private async askPaytable(prompt: PromptAdapting, symbols: string[]): Promise<Record<string, Record<string, number>>> {
+    private async askPaytable(
+        prompt: PromptAdapting,
+        symbols: string[],
+        reels: number,
+    ): Promise<Record<string, Record<string, number>>> {
         console.log("\nPaytable — for each symbol, enter matchCount:multiplier pairs (e.g. 3:5,4:10,5:20), or Enter to skip it.");
 
         const paytable: Record<string, Record<string, number>> = {};
@@ -175,8 +186,12 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
                     const [timesRaw, multiplierRaw] = pair.split(":").map((part) => part.trim());
                     const times = Number(timesRaw);
                     const multiplier = Number(multiplierRaw);
-                    if (!Number.isInteger(times) || times < 2 || !Number.isFinite(multiplier) || multiplier <= 0) {
-                        return new WizardParseError(`Invalid pair "${pair}" — expected matchCount:multiplier, e.g. "3:5".`);
+                    const timesValid = Number.isInteger(times) && times >= 2 && times <= reels;
+                    if (!timesValid || !Number.isFinite(multiplier) || multiplier <= 0) {
+                        return new WizardParseError(
+                            `Invalid pair "${pair}" — expected matchCount:multiplier, matchCount between 2 and ${reels} ` +
+                                `(the number of reels), e.g. "3:5".`,
+                        );
                     }
                     entries[String(times)] = multiplier;
                 }
@@ -207,6 +222,8 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             },
         );
 
+        const knownSymbols = new Set(symbols);
+
         if (mode === "w") {
             const symbolWeights = await this.askUntilValid(
                 prompt,
@@ -224,6 +241,11 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
                         if (!symbol || !Number.isInteger(count) || count <= 0) {
                             return new WizardParseError(`Invalid pair "${pair}" — expected symbol:count, e.g. "A:8".`);
                         }
+                        if (!knownSymbols.has(symbol)) {
+                            return new WizardParseError(
+                                `Unknown symbol "${symbol}" — not one of the symbols entered earlier (${symbols.join(", ")}).`,
+                            );
+                        }
                         weights[symbol] = count;
                     }
                     return weights;
@@ -240,7 +262,17 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
                     `  Reel ${reelIndex + 1}/${reels} strip, comma-separated symbol ids: `,
                     (raw) => {
                         const stripSymbols = this.splitList(raw);
-                        return stripSymbols.length > 0 ? stripSymbols : new WizardParseError("Enter at least one symbol id.");
+                        if (stripSymbols.length === 0) {
+                            return new WizardParseError("Enter at least one symbol id.");
+                        }
+                        const unknown = stripSymbols.filter((symbol) => !knownSymbols.has(symbol));
+                        if (unknown.length > 0) {
+                            return new WizardParseError(
+                                `Unknown symbol(s) "${unknown.join(", ")}" — not among the symbols entered earlier ` +
+                                    `(${symbols.join(", ")}).`,
+                            );
+                        }
+                        return stripSymbols;
                     },
                 );
                 reelStrips.push(strip);

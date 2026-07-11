@@ -208,6 +208,99 @@ describe("GameBlueprintWizard", () => {
         expect(result?.blueprint.symbolWeights).toBeUndefined();
     });
 
+    it("reprompts when a paytable matchCount exceeds the chosen reel count", async () => {
+        const prompt = new FakePromptAdapting([
+            "crazy-fruits",
+            "",
+            "",
+            "3", // reels
+            "",
+            "A",
+            "-",
+            "",
+            "5:10", // paytable A attempt 1: matchCount 5 > reels 3 -> reprompt
+            "3:10", // paytable A attempt 2: valid
+            "",
+            "",
+        ]);
+
+        const result = await new GameBlueprintWizard().run(prompt);
+
+        expect(result?.blueprint.paytable).toEqual({A: {"3": 10}});
+    });
+
+    it("reprompts when symbol weights reference a symbol outside the declared symbol list", async () => {
+        const prompt = new FakePromptAdapting([
+            "crazy-fruits",
+            "",
+            "",
+            "",
+            "",
+            "A,B",
+            "-",
+            "",
+            "",
+            "",
+            "w",
+            "A:8,C:2", // "C" was never declared -> reprompt
+            "A:8,B:2",
+            "",
+        ]);
+
+        const result = await new GameBlueprintWizard().run(prompt);
+
+        expect(result?.blueprint.symbolWeights).toEqual({A: 8, B: 2});
+    });
+
+    it("reprompts when a reel strip references a symbol outside the declared symbol list", async () => {
+        const prompt = new FakePromptAdapting([
+            "crazy-fruits",
+            "",
+            "",
+            "2", // reels
+            "",
+            "A,B",
+            "-",
+            "",
+            "",
+            "",
+            "s",
+            "A,X", // "X" was never declared -> reprompt
+            "A,B",
+            "B,A",
+            "",
+        ]);
+
+        const result = await new GameBlueprintWizard().run(prompt);
+
+        expect(result?.blueprint.reelStrips).toEqual([
+            ["A", "B"],
+            ["B", "A"],
+        ]);
+    });
+
+    it("reprompts when a symbol id contains the reserved \":\" separator", async () => {
+        const prompt = new FakePromptAdapting([
+            "crazy-fruits",
+            "",
+            "",
+            "",
+            "",
+            "A,B:1", // "B:1" isn't parseable later (paytable/weights use ":" as a separator) -> reprompt
+            "A,B",
+            "-",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ]);
+
+        const result = await new GameBlueprintWizard().run(prompt);
+
+        expect(result?.blueprint.symbols).toEqual(["A", "B"]);
+    });
+
     it("resolves null when the user cancels on the very first question", async () => {
         const prompt = new FakePromptAdapting([null]);
 

@@ -223,20 +223,35 @@ future wizard pass.
 The wizard assembles a plain `GameBlueprint` object — the same shape a `<config.json>` file has — and hands it to
 the exact same [`GameBlueprintValidator`](#validation)/[`GamePackageGenerator`](#pokie-build-configjson) the
 config-driven path uses, so everything in the sections above (the field format, validation rules, `--out`-style
-output directory prompt, rebuild behavior) applies identically; the wizard has no validation or generation logic
-of its own, only input parsing for each prompt.
+output directory prompt, rebuild behavior) applies identically; the wizard has no *generation* logic of its own.
+It does do light, per-prompt input-shape checks (a number is a number, a symbol id isn't blank, ...), and a
+handful of these deliberately mirror `GameBlueprintValidator`'s own error-level rules — specifically the ones
+cheap to check immediately against fields already collected earlier in the same run (a paytable `matchCount`
+between 2 and the chosen reel count; a reel-weighting/reel-strip symbol that's actually one of the symbols entered
+earlier) — so a typo is caught and re-asked on the spot instead of only surfacing as a validator error after
+answering every remaining question. This is a convenience, not a second source of truth: the final answer is
+always whatever `GameBlueprintValidator` decides once the wizard hands off its result, same as for
+`<config.json>`.
 
 Per-question input handling:
 
 - An answer that doesn't parse (e.g. non-numeric reels, a duplicate symbol id, a malformed `matchCount:multiplier`
-  pair) prints a one-line reason and re-asks the same question — it never silently drops or guesses at bad input.
+  pair, a paytable `matchCount` outside `2..reels`, a reel-weighting symbol not among the symbols entered earlier)
+  prints a one-line reason and re-asks the same question — it never silently drops or guesses at bad input.
 - Pressing **Ctrl+C** at any prompt cancels the wizard gracefully: it prints `Build cancelled.` and exits with a
-  non-zero status without writing anything, rather than a stack trace.
+  non-zero status without writing anything, rather than a stack trace. So does closing/exhausting the input stream
+  (EOF) — e.g. a scripted/piped run that provides fewer answers than the wizard asks for.
 - The paytable and reel-strip prompts are asked once per symbol/reel (so the number of prompts scales with how
   many symbols/reels you configured earlier in the same run).
 - Reel weighting is a single choice up front — `w` for symbol weights (one combined `symbol:count` line), `s` for
   explicit reel strips (one line per reel), or blank for the engine's built-in default weighting — mirroring the
   blueprint's own `reelStrips`/`symbolWeights` mutual exclusivity.
+- Symbol ids can't contain `:` — the wizard's own prompts reuse it as a pair separator later on (paytable, symbol
+  weights), so a symbol id containing one would be unparseable there.
+
+Answers can also be piped/scripted (e.g. `printf '...\n...\n' | pokie build`, or piping a saved answers file) —
+each question is answered from the piped input in the same order it would be asked interactively, one line per
+prompt, and the same reprompt-on-invalid-input and EOF-cancellation rules apply.
 
 Once the wizard completes, it prints the same "created files" / "Next:" summary as the config-driven path,
 including the ready-to-run `validate -> sim -> report -> replay -> serve`/`dev` commands below.

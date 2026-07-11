@@ -66,4 +66,16 @@ describe("ReadlinePromptAdapter", () => {
         expect(await pending).toBeNull();
         expect(input.destroyed).toBe(false); // close() ends readline's interface, not the raw input stream
     });
+
+    it("does not throw when ask() is called again after close(), even mid-buffer", async () => {
+        const {adapter, input} = createAdapter();
+        const first = adapter.ask("Game id: ");
+        input.write("crazy-fruits\ntrailing-line\n"); // "trailing-line" has nowhere to go yet -> buffered
+        expect(await first).toBe("crazy-fruits");
+
+        adapter.close(); // regression: used to throw "readline was closed" from rl.prompt() below
+
+        await expect(adapter.ask("Anything else: ")).resolves.toBe("trailing-line");
+        await expect(adapter.ask("And after the buffer drains: ")).resolves.toBeNull();
+    });
 });
