@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {DevCommand} from "../../cli/commands/DevCommand.js";
+import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ServeCommand} from "../../cli/commands/ServeCommand.js";
@@ -47,6 +48,13 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
 
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);
+
+        const inspectExitCode = await new InspectCommand().run([outDir]);
+        expect(inspectExitCode).toBe(0);
+        const inspectPrinted = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
+        expect(inspectPrinted).toContain('game             Crazy Fruits (id: "crazy-fruits", v0.1.0)');
+        expect(inspectPrinted).toContain(`blueprint hash   ${buildInfo.blueprintHash}`);
+        expect(inspectPrinted).toContain(`source           ${blueprintPath}`);
 
         const simFile = path.join(workDir, "sim.json");
         await new SimCommand().run([outDir, "--rounds", "300", "--seed", "demo", "--out", simFile]);
