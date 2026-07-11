@@ -181,21 +181,55 @@ describe("GamePackageGenerator", () => {
         expect(readme).toContain("# Crazy Fruits Deluxe");
     });
 
-    it("regenerates a byte-identical index.js when rebuilding an unchanged blueprint (only build-info.json's timestamp differs)", () => {
+    it("regenerates byte-identical index.js and build-info.json when rebuilding an unchanged blueprint with the same pokie version", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint();
 
         const first = generator.generate(blueprint, cwd);
         const firstIndexJs = fs.readFileSync(path.join(first.projectRoot, "src", "generated", "index.js"), "utf-8");
-        const firstBuildInfo = JSON.parse(fs.readFileSync(path.join(first.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+        const firstBuildInfoRaw = fs.readFileSync(path.join(first.projectRoot, "src", "generated", "build-info.json"), "utf-8");
 
         const second = generator.generate(blueprint, cwd);
         const secondIndexJs = fs.readFileSync(path.join(second.projectRoot, "src", "generated", "index.js"), "utf-8");
-        const secondBuildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+        const secondBuildInfoRaw = fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8");
 
         expect(secondIndexJs).toBe(firstIndexJs);
-        expect(secondBuildInfo.blueprintHash).toBe(firstBuildInfo.blueprintHash);
-        expect(secondBuildInfo.files).toEqual(firstBuildInfo.files);
+        expect(secondBuildInfoRaw).toBe(firstBuildInfoRaw);
+    });
+
+    it("stamps a fresh build-info.json generatedAt when rebuilding after the blueprint actually changed", () => {
+        jest.useFakeTimers().setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+        try {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const firstBuildInfo = JSON.parse(fs.readFileSync(path.join(first.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+
+            jest.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
+            const second = generator.generate(buildBlueprint({rows: 4}), cwd);
+            const secondBuildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+
+            expect(secondBuildInfo.blueprintHash).not.toBe(firstBuildInfo.blueprintHash);
+            expect(secondBuildInfo.generatedAt).toBe("2026-01-01T00:00:01.000Z");
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it("stamps a fresh build-info.json generatedAt when rebuilding under a different pokie version, even with an unchanged blueprint", () => {
+        jest.useFakeTimers().setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+        try {
+            const blueprint = buildBlueprint();
+            new GamePackageGenerator("1.3.0").generate(blueprint, cwd);
+
+            jest.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
+            const second = new GamePackageGenerator("1.4.0").generate(blueprint, cwd);
+            const secondBuildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+
+            expect(secondBuildInfo.pokieVersion).toBe("1.4.0");
+            expect(secondBuildInfo.generatedAt).toBe("2026-01-01T00:00:01.000Z");
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it("builds into an existing but empty directory", () => {

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import {buildGameBuildInfo, GENERATED_PACKAGE_FILES} from "./buildGameBuildInfo.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
+import type {GameBuildInfo} from "./GameBuildInfo.js";
 import type {GamePackageGenerating} from "./GamePackageGenerating.js";
 import type {GeneratedGamePackage} from "./GeneratedGamePackage.js";
 import {renderGeneratedGameModule} from "./renderGeneratedGameModule.js";
@@ -30,13 +31,15 @@ export class GamePackageGenerator implements GamePackageGenerating {
         }
 
         const projectRoot = outDir !== undefined ? path.resolve(cwd, outDir) : path.join(cwd, id);
-        if (fs.existsSync(projectRoot)) {
+        const projectRootExists = fs.existsSync(projectRoot);
+        const previousBuildInfo = projectRootExists ? this.readPreviousBuildInfo(projectRoot) : undefined;
+        if (projectRootExists) {
             this.assertSafeToRebuild(projectRoot);
         }
 
         fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
 
-        const buildInfo = buildGameBuildInfo(blueprint, this.pokieVersion, sourcePath);
+        const buildInfo = buildGameBuildInfo(blueprint, this.pokieVersion, sourcePath, new Date(), GENERATED_PACKAGE_FILES, previousBuildInfo);
 
         const packageJson = {
             name: id,
@@ -112,19 +115,30 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // no build-info.json there, it doesn't parse, or it wasn't written by "pokie build" — in which case
     // every fixed output path found on disk is treated as a conflict.
     private readKnownGeneratedFiles(projectRoot: string): string[] {
+        const previous = this.readPreviousBuildInfo(projectRoot);
+        if (previous === undefined) {
+            return [];
+        }
+        return Array.isArray(previous.files) ? previous.files : GENERATED_PACKAGE_FILES;
+    }
+
+    // Returns the existing directory's own build-info.json, or undefined if there's none there, it
+    // doesn't parse, or it wasn't written by "pokie build". Feeds both readKnownGeneratedFiles (the
+    // rebuild-safety check) and buildGameBuildInfo (the generatedAt reuse-on-no-op-rebuild check).
+    private readPreviousBuildInfo(projectRoot: string): GameBuildInfo | undefined {
         const buildInfoPath = path.join(projectRoot, ...BUILD_INFO_RELATIVE_PATH.split("/"));
         if (!fs.existsSync(buildInfoPath)) {
-            return [];
+            return undefined;
         }
 
         try {
             const parsed = JSON.parse(fs.readFileSync(buildInfoPath, "utf-8"));
             if (!parsed || parsed.generatedBy !== "pokie build") {
-                return [];
+                return undefined;
             }
-            return Array.isArray(parsed.files) ? parsed.files : GENERATED_PACKAGE_FILES;
+            return parsed as GameBuildInfo;
         } catch {
-            return [];
+            return undefined;
         }
     }
 }

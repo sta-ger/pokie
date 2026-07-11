@@ -65,4 +65,46 @@ describe("buildGameBuildInfo", () => {
 
         expect(info.files).toEqual(["a.txt", "b.txt"]);
     });
+
+    it("reuses the previous run's generatedAt when blueprint, pokie version, and source all still match", () => {
+        const blueprint = buildBlueprint();
+        const previous = buildGameBuildInfo(blueprint, "1.3.0", "blueprints/crazy-fruits.blueprint.json", new Date("2026-01-02T03:04:05.000Z"));
+
+        const info = buildGameBuildInfo(
+            blueprint,
+            "1.3.0",
+            "blueprints/crazy-fruits.blueprint.json",
+            new Date("2026-06-01T00:00:00.000Z"),
+            undefined,
+            previous,
+        );
+
+        expect(info.generatedAt).toBe("2026-01-02T03:04:05.000Z");
+    });
+
+    it("stamps a fresh generatedAt when the blueprint changed since the previous run", () => {
+        const previous = buildGameBuildInfo(buildBlueprint(), "1.3.0", undefined, new Date("2026-01-02T03:04:05.000Z"));
+
+        const info = buildGameBuildInfo(buildBlueprint({rows: 4}), "1.3.0", undefined, new Date("2026-06-01T00:00:00.000Z"), undefined, previous);
+
+        expect(info.generatedAt).toBe("2026-06-01T00:00:00.000Z");
+    });
+
+    it("stamps a fresh generatedAt when the pokie version changed since the previous run", () => {
+        const blueprint = buildBlueprint();
+        const previous = buildGameBuildInfo(blueprint, "1.3.0", undefined, new Date("2026-01-02T03:04:05.000Z"));
+
+        const info = buildGameBuildInfo(blueprint, "1.4.0", undefined, new Date("2026-06-01T00:00:00.000Z"), undefined, previous);
+
+        expect(info.generatedAt).toBe("2026-06-01T00:00:00.000Z");
+    });
+
+    it("stamps a fresh generatedAt when the source path changed since the previous run", () => {
+        const blueprint = buildBlueprint();
+        const previous = buildGameBuildInfo(blueprint, "1.3.0", "a.json", new Date("2026-01-02T03:04:05.000Z"));
+
+        const info = buildGameBuildInfo(blueprint, "1.3.0", "b.json", new Date("2026-06-01T00:00:00.000Z"), undefined, previous);
+
+        expect(info.generatedAt).toBe("2026-06-01T00:00:00.000Z");
+    });
 });

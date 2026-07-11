@@ -10,21 +10,34 @@ export const GENERATED_PACKAGE_FILES = ["package.json", "README.md", "src/genera
 // Hashes the blueprint exactly as loaded (same object that gets embedded into the generated module),
 // so re-running "pokie build" on an unchanged blueprint reproduces the same hash — a cheap way to tell
 // "regenerated, nothing changed" apart from "regenerated, blueprint changed" without diffing JSON.
+//
+// "previous" is the prior run's own build-info.json (when rebuilding into an existing package). When
+// its blueprintHash/pokieVersion/source all still match this run, that means nothing that build-info.json
+// exists to describe has actually changed — so its "generatedAt" is reused verbatim instead of stamped
+// with "now". Without this, build-info.json (and only build-info.json; index.js already special-cases
+// this — see renderGeneratedGameModule) would show a spurious diff on every no-op rebuild.
 export function buildGameBuildInfo(
     blueprint: GameBlueprint,
     pokieVersion: string,
     sourcePath?: string,
     generatedAt: Date = new Date(),
     generatedFiles: string[] = GENERATED_PACKAGE_FILES,
+    previous: GameBuildInfo | undefined = undefined,
 ): GameBuildInfo {
-    const blueprintHash = crypto.createHash("sha256").update(JSON.stringify(blueprint)).digest("hex");
+    const blueprintHash = `sha256:${crypto.createHash("sha256").update(JSON.stringify(blueprint)).digest("hex")}`;
+
+    const isNoOpRebuild =
+        previous !== undefined &&
+        previous.blueprintHash === blueprintHash &&
+        previous.pokieVersion === pokieVersion &&
+        previous.source === sourcePath;
 
     return {
         schemaVersion: GAME_BLUEPRINT_SCHEMA_VERSION,
         generatedBy: "pokie build",
         pokieVersion,
-        generatedAt: generatedAt.toISOString(),
-        blueprintHash: `sha256:${blueprintHash}`,
+        generatedAt: isNoOpRebuild ? previous.generatedAt : generatedAt.toISOString(),
+        blueprintHash,
         ...(sourcePath !== undefined ? {source: sourcePath} : {}),
         files: [...generatedFiles].sort(),
         game: blueprint.manifest,
