@@ -1,3 +1,5 @@
+import {BASE_SIMULATION_CATEGORY} from "../simulation/SimulationCategoryNames.js";
+import {SimulationCategoryOrdering} from "../simulation/SimulationCategoryOrdering.js";
 import type {SimulationBreakdownComponent} from "../simulation/SimulationBreakdownComponent.js";
 import type {SimulationReport, SimulationReportReproducibility} from "./SimulationReport.js";
 import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from "./SimulationReportBreakdown.js";
@@ -15,7 +17,6 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
     // warning past this threshold is unlikely to be a false positive for any game with an intentional
     // feature.
     public static readonly MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING: number = 20;
-    private static readonly BASE_CATEGORY = "base";
 
     public build(input: SimulationReportInput): SimulationReport {
         const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot} = input;
@@ -112,7 +113,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
     // and only when the sample size makes that a safe call (see MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING).
     private buildBreakdownWarnings(core: CoreMetrics, breakdown: SimulationReportBreakdown): string[] {
         const warnings: string[] = [];
-        const featureCategories = Object.keys(breakdown.components).filter((category) => category !== SimulationReportBuilder.BASE_CATEGORY);
+        const featureCategories = Object.keys(breakdown.components).filter((category) => category !== BASE_SIMULATION_CATEGORY);
 
         if (featureCategories.length === 0) {
             if (core.rounds >= SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD) {
@@ -164,8 +165,12 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             return undefined;
         }
 
+        // Sorted ("base" first, then alphabetically) so the JSON key order — and everything reading it
+        // in that order (renderers, CLI summaries) — is the same every run, not whatever order rounds
+        // happened to be categorized in during simulation.
         const withContribution: Record<string, SimulationReportBreakdownComponent> = {};
-        Object.entries(components).forEach(([category, component]) => {
+        SimulationCategoryOrdering.sort(Object.keys(components)).forEach((category) => {
+            const component = components[category];
             withContribution[category] = {
                 ...component,
                 contribution: overallTotalBet > 0 ? component.totalWin / overallTotalBet : 0,

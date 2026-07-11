@@ -247,6 +247,8 @@ export * from "./simulation/Simulation.js";
 export * from "./simulation/SimulationAccumulator.js";
 export * from "./simulation/SimulationBreakdownComponent.js";
 export * from "./simulation/SimulationCategoryNameNormalizer.js";
+export * from "./simulation/SimulationCategoryNames.js";
+export * from "./simulation/SimulationCategoryOrdering.js";
 export * from "./simulation/SimulationConfig.js";
 export * from "./simulation/SimulationConfigDescribing.js";
 export * from "./simulation/SimulationConfigRepresenting.js";

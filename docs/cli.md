@@ -495,24 +495,30 @@ a `sim.json` produced by an older `pokie` (or handwritten JSON without them) sti
 populates all three on every report it produces.
 
 `breakdown` is a later v1.3 addition, also purely additive and optional: a feature-level RTP breakdown split by
-category. `components` is a plain `Record<string, ...>` — there's no fixed category list. Out of the box, a game
-gets:
+category. `components` is a plain `Record<string, ...>` — there's no fixed category list, and its key order is
+stable (`"base"` first when present, then alphabetically) regardless of which round was categorized first during
+simulation. Each round is categorized by a 3-step fallback chain, in this order:
 
-- `"base"` / `"freeGames"`, inferred from the optional `StakeAmountDetermining` contract on the session — the same
-  contract `SpinCommandHandler` already uses server-side to tell a charged base-game round from an unfinished
-  free-games round that charges nothing (see [Free Games](free-games.md) and
-  [Spin orchestration & idempotency](#spin-orchestration--idempotency)). Concretely: a round is `"freeGames"` when,
-  right before it's played, `session.getStakeAmount() === 0`; every other round is `"base"`.
-- Any other category name (`"bonus"`, `"respins"`, `"holdAndWin"`, `"jackpot"`, ...) a session declares directly by
-  implementing the optional `SimulationCategoryDetermining` contract (`getSimulationCategory(): string`), which
-  takes priority over the base/freeGames inference whenever it returns a valid answer. See
-  [Simulation → Feature-level breakdown](simulation.md#feature-level-breakdown-simulationroundcategorydetermining)
-  for the full mechanism, the category-name validation rules, and how to plug in an entirely custom
-  `SimulationRoundCategoryDetermining` for AggregateSimulationRunner's 4th constructor argument.
+1. **Explicit** — the session implements the optional `SimulationCategoryDetermining` contract
+   (`getSimulationCategory(): string`) and returns a valid category (`"bonus"`, `"respins"`, `"holdAndWin"`,
+   `"jackpot"`, anything — see [category name rules](simulation.md#category-name-rules-simulationcategorynamenormalizer))
+   for this particular round.
+2. **Stake-based** — otherwise, the session implements `StakeAmountDetermining` — the same contract
+   `SpinCommandHandler` already uses server-side to tell a charged base-game round from an unfinished free-games
+   round that charges nothing (see [Free Games](free-games.md) and
+   [Spin orchestration & idempotency](#spin-orchestration--idempotency)). The round is `"freeGames"` when, right
+   before it's played, `session.getStakeAmount() === 0`; `"base"` otherwise.
+3. **No breakdown** — otherwise, the round simply isn't attributed to any category (it still plays and counts
+   toward `totalBet`/`totalWin`/etc. as normal). If *every* round in the run falls through to this step, `pokie
+   sim` omits `breakdown` from the report entirely — it never guesses a category from incidental data like
+   balance, and it doesn't nag about the absence either: most games don't have a free-games (or other special)
+   feature, and that's not a problem worth flagging on every single report forever.
 
-If a session implements neither contract, `pokie sim` simply omits `breakdown` from the report — it never guesses a
-category from incidental data like balance, and it doesn't nag about the absence either: most games don't have a
-free-games (or other special) feature, and that's not a problem worth flagging on every single report forever.
+See [Simulation → Feature-level breakdown](simulation.md#feature-level-breakdown-simulationroundcategorydetermining)
+for the full mechanism, including how to plug in an entirely custom `SimulationRoundCategoryDetermining` as
+`AggregateSimulationRunner`'s 4th constructor argument. An invalid/empty category — from either the built-in
+explicit determiner or a custom one — is always safely treated as step 3 above, never used as-is; it can't crash a
+run or end up as a stray key in the JSON report.
 
 Each category's `rtp` and `contribution` answer different questions, and it's easy to misread one for the other:
 `rtp` is that category's own payback ratio *in isolation* (`totalWin / totalBet` using only that category's own
@@ -669,9 +675,23 @@ Every numeric field is a `{left, right, delta, percentDelta}` tuple — `percent
 `breakdown` is only populated when **both** reports have one — an older report (or one from a game whose session
 doesn't support round categorization) is never diffed against a newer one's breakdown, it's simply left out, same
 as [`pokie report`](#pokie-report-simulationreportjson) simply omits the **Breakdown** section for such a report.
-A category present on only one side is compared against zero for that side (`left`/`right` is `null`, the missing
-side's numeric fields read as `0`). `Warnings:`/`warnings` also picks up a per-category entry (`"<category>" RTP
-changed by ...`) whenever a category's RTP moved by more than the RTP delta threshold.
+Categories are the union of both sides' `components` keys, in the same stable order `pokie sim`/`report` use
+(`"base"` first, then alphabetically) — so an added or removed category slots into the same position it would if
+it had always been there, rather than showing up at the end.
+
+A category present on only one side is compared against zero for the missing side (`left`/`right` is `null`,
+numeric fields read as `0`), and `Warnings:`/`warnings` labels it explicitly instead of reporting a generic RTP
+change:
+
+- **Added** (only on the right): `"<category>" is a new category in the right report (rtp X%, contributing Y pp)`.
+- **Removed** (only on the left): `"<category>" is no longer present in the right report (was rtp X%, contributing Y pp)`.
+- **Present on both sides**: the existing `"<category>" RTP changed by ...` message, still gated by the RTP delta
+  threshold like the top-level `RTP changed by ...` warning.
+
+The added/removed messages always fire (a category structurally appearing or disappearing is worth knowing about
+regardless of magnitude) — unlike the "RTP changed" message, which only fires past the threshold. A `"freeGames"`
+category dropping from 200 rounds to 0 reads as `"freeGames" is no longer present in the right report (...)`, not
+as a misleading `"freeGames" RTP changed by -100 percentage points`.
 
 **Both reports missing a breakdown is silent** — that's the common case (two old reports, or two reports from a
 game with no free-games feature) and isn't worth a note every time. **Exactly one side having a breakdown** is

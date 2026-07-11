@@ -3,6 +3,7 @@ import {ExplicitSimulationRoundCategoryDeterminer} from "./ExplicitSimulationRou
 import {FallbackSimulationRoundCategoryDeterminer} from "./FallbackSimulationRoundCategoryDeterminer.js";
 import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
 import type {SimulationBreakdownComponent} from "./SimulationBreakdownComponent.js";
+import {SimulationCategoryNameNormalizer} from "./SimulationCategoryNameNormalizer.js";
 import type {SimulationRoundCategoryDetermining} from "./SimulationRoundCategoryDetermining.js";
 import {SimulationAccumulator} from "./SimulationAccumulator.js";
 import {StakeBasedSimulationRoundCategoryDeterminer} from "./StakeBasedSimulationRoundCategoryDeterminer.js";
@@ -60,13 +61,21 @@ export class AggregateSimulationRunner {
             }
             const bet = this.session.getBet();
             const supportsCategorization = this.roundCategoryDeterminer.supportsRoundCategorization(this.session);
-            const category = supportsCategorization ? this.roundCategoryDeterminer.categorizeRound(this.session) : undefined;
+            // Normalized/validated here, centrally, regardless of which determiner produced it — an
+            // injected custom SimulationRoundCategoryDetermining (see the extension point) gets the same
+            // safety net as the built-in ExplicitSimulationRoundCategoryDeterminer, so no determiner can
+            // put an empty/oversized/unsafe string directly into a breakdown key. An invalid category is
+            // treated exactly like "this determiner doesn't support this round" — the round still plays
+            // and counts toward the overall totals, it just isn't attributed to any breakdown category.
+            const category = supportsCategorization
+                ? SimulationCategoryNameNormalizer.normalize(this.roundCategoryDeterminer.categorizeRound(this.session))
+                : undefined;
 
             this.session.play();
             const payout = this.session.getWinAmount();
             accumulator.addRound(bet, payout);
 
-            if (supportsCategorization && category !== undefined) {
+            if (category !== undefined) {
                 categorizationSupported = true;
                 this.addToCategoryTotals(categoryTotals, category, bet, payout);
             }

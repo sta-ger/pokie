@@ -1,5 +1,6 @@
 import type {SimulationReport} from "../reporting/SimulationReport.js";
 import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from "../reporting/SimulationReportBreakdown.js";
+import {SimulationCategoryOrdering} from "../simulation/SimulationCategoryOrdering.js";
 import type {SimulationReportBreakdownComponentDiff, SimulationReportBreakdownDiff, SimulationReportDiff, SimulationReportMetricDiff} from "./SimulationReportDiff.js";
 import type {SimulationReportDiffing} from "./SimulationReportDiffing.js";
 
@@ -91,12 +92,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
 
         if (breakdown) {
             Object.entries(breakdown.components).forEach(([category, componentDiff]) => {
-                if (Math.abs(componentDiff.rtp.delta) >= this.rtpDeltaWarningThreshold) {
-                    warnings.push(
-                        `"${category}" RTP changed by ${this.formatSigned(componentDiff.rtp.delta * 100, 2)} percentage points ` +
-                            `(${(componentDiff.rtp.left * 100).toFixed(2)}% -> ${(componentDiff.rtp.right * 100).toFixed(2)}%)`,
-                    );
-                }
+                warnings.push(...this.buildBreakdownComponentWarnings(category, componentDiff));
             });
         } else {
             const availabilityNote = this.buildBreakdownAvailabilityNote(leftBreakdown, rightBreakdown);
@@ -106,6 +102,33 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         }
 
         return warnings;
+    }
+
+    // A category present on only one side isn't a "changed" category, it's an added or removed one —
+    // reporting that as e.g. "RTP changed by -100 percentage points" would read as the category's math
+    // getting worse, when really it just stopped being categorized (or is new). Framing those two cases
+    // explicitly avoids that, and — unlike the RTP-delta-threshold warning below — always fires: a
+    // category structurally appearing/disappearing is worth knowing about regardless of magnitude.
+    private buildBreakdownComponentWarnings(category: string, componentDiff: SimulationReportBreakdownComponentDiff): string[] {
+        if (componentDiff.left === null) {
+            return [
+                `"${category}" is a new category in the right report (rtp ${(componentDiff.rtp.right * 100).toFixed(2)}%, ` +
+                    `contributing ${(componentDiff.contribution.right * 100).toFixed(2)} pp)`,
+            ];
+        }
+        if (componentDiff.right === null) {
+            return [
+                `"${category}" is no longer present in the right report (was rtp ${(componentDiff.rtp.left * 100).toFixed(2)}%, ` +
+                    `contributing ${(componentDiff.contribution.left * 100).toFixed(2)} pp)`,
+            ];
+        }
+        if (Math.abs(componentDiff.rtp.delta) >= this.rtpDeltaWarningThreshold) {
+            return [
+                `"${category}" RTP changed by ${this.formatSigned(componentDiff.rtp.delta * 100, 2)} percentage points ` +
+                    `(${(componentDiff.rtp.left * 100).toFixed(2)}% -> ${(componentDiff.rtp.right * 100).toFixed(2)}%)`,
+            ];
+        }
+        return [];
     }
 
     // Diffing a category-by-category breakdown only makes sense when BOTH reports have one. Two old
@@ -126,7 +149,9 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             return undefined;
         }
 
-        const categories = new Set([...Object.keys(left.components), ...Object.keys(right.components)]);
+        // Sorted ("base" first, then alphabetically) so the category order is the same every diff,
+        // regardless of which side introduced a category first or what order simulation encountered it in.
+        const categories = SimulationCategoryOrdering.sort([...new Set([...Object.keys(left.components), ...Object.keys(right.components)])]);
         const components: Record<string, SimulationReportBreakdownComponentDiff> = {};
         categories.forEach((category) => {
             components[category] = this.diffBreakdownComponent(left.components[category], right.components[category]);

@@ -215,11 +215,22 @@ new FallbackSimulationRoundCategoryDeterminer([
 ```
 
 `FallbackSimulationRoundCategoryDeterminer` tries each determiner in order and uses the first one that supports
-the round — so a session that answers explicitly always wins, a session that only implements
-`StakeAmountDetermining` (see [Free Games](free-games.md)) still gets the base/freeGames split it always has, and
-a session that implements neither is simply left uncategorized (`getBreakdownStatistics()` returns `undefined`),
-exactly as before this existed. Nothing about this default changes behavior for an existing game package — it's
-purely additive.
+the round. Concretely, for each round about to be played, the default chain resolves in this order:
+
+1. **Explicit** — does the session implement `SimulationCategoryDetermining`, and does
+   `getSimulationCategory()` return a valid category (see [Category name rules](#category-name-rules-simulationcategorynamenormalizer)
+   below) for *this* round? If so, that's the category, full stop — nothing else is consulted.
+2. **Stake-based** — otherwise, does the session implement `StakeAmountDetermining`? If so, the round is
+   `"freeGames"` when `getStakeAmount() === 0`, `"base"` otherwise.
+3. **No breakdown** — otherwise (or if neither contract is implemented at all), this round isn't attributed to
+   any category. It still plays and counts toward the overall totals; `getBreakdownStatistics()` only ends up
+   `undefined` for the whole run if *no* round, ever, was categorized by *any* step above.
+
+A session implementing neither contract is completely unaffected by any of this — same as before this feature
+existed. A session implementing only `StakeAmountDetermining` gets exactly the base/freeGames split it always
+had. A session implementing `SimulationCategoryDetermining` can override that split per round, or opt out of it
+entirely by always returning a valid category. This default is purely additive; nothing about it changes
+behavior for an existing game package.
 
 ### Declaring a category explicitly (`SimulationCategoryDetermining`)
 
@@ -264,12 +275,32 @@ validated/normalized before use, not accepted as-is:
   `"bonus"`, `"freeGames"`, `"hold-and-win"`, `"bonus_buy2"` are all fine; `"2bonus"`, `"bonus round"`, `""` are
   not).
 
-An invalid or empty category is never used and never throws — `ExplicitSimulationRoundCategoryDeterminer` simply
-reports it doesn't support that round, so `FallbackSimulationRoundCategoryDeterminer` moves on to the next
-determiner. A misbehaving session can't crash a long simulation run over a bad category string; at worst, that
+An invalid or empty category is never used and never throws. This is enforced in two places, so it holds no
+matter how a category was produced:
+
+- `ExplicitSimulationRoundCategoryDeterminer` normalizes whatever `getSimulationCategory()` returns before
+  deciding whether it supports the round at all — an invalid answer just means "doesn't support this round," so
+  `FallbackSimulationRoundCategoryDeterminer` moves on to the next determiner.
+- `AggregateSimulationRunner` *itself* normalizes whatever category any `SimulationRoundCategoryDetermining` —
+  built-in or a hand-written custom one (see [Custom categorization strategies](#custom-categorization-strategies)
+  below) — hands back, before ever using it as a `breakdown` key. A custom determiner has no reason to know about
+  `SimulationCategoryNameNormalizer`; the runner guards against it regardless, so a badly-written determiner can't
+  put an empty/oversized/unsafe string directly into a JSON report.
+
+A misbehaving session or determiner can't crash a long simulation run over a bad category string; at worst, that
 round ends up in `"base"` (via stake-based inference) or outside the breakdown entirely (if nothing else supports
 it either) — it still plays and counts toward the overall totals either way, it just isn't attributed to a
 specific `breakdown` category.
+
+### Category ordering
+
+`SimulationReportBuilder` and `SimulationReportDiffer` both list `breakdown` categories in a **stable order** —
+`"base"` first when present, then everything else alphabetically (`SimulationCategoryOrdering.sort(...)`) — so
+`pokie sim`/`report`/`diff` show the same category order every run, regardless of which round happened to be
+categorized first during simulation, or which side of a diff introduced a category first. `pokie diff` unions
+both reports' category sets before sorting, so an added or removed category slots into the same alphabetical
+position it would if it had always been there. (`AggregateSimulationRunner.getBreakdownStatistics()` itself makes
+no ordering guarantee — sorting is applied only where category order is actually user-visible.)
 
 ### Custom categorization strategies
 

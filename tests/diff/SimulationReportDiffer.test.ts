@@ -261,7 +261,8 @@ describe("SimulationReportDiffer", () => {
 
             const diff = new SimulationReportDiffer().diff(leftWithBreakdown, rightWithBreakdown);
 
-            expect(Object.keys(diff.breakdown!.components).sort()).toEqual(["base", "bonus", "freeGames"]);
+            // base first, then alphabetically — a stable order regardless of which side introduced which key.
+            expect(Object.keys(diff.breakdown!.components)).toEqual(["base", "bonus", "freeGames"]);
             // freeGames existed only on the left — removed in right.
             expect(diff.breakdown!.components.freeGames.left).not.toBeNull();
             expect(diff.breakdown!.components.freeGames.right).toBeNull();
@@ -273,6 +274,52 @@ describe("SimulationReportDiffer", () => {
             // base existed on both sides and is compared normally.
             expect(diff.breakdown!.components.base.left).not.toBeNull();
             expect(diff.breakdown!.components.base.right).not.toBeNull();
+        });
+
+        it("clearly labels a removed category instead of reporting a misleading RTP drop", () => {
+            const leftWithBreakdown: SimulationReport = {
+                ...left,
+                breakdown: {
+                    components: {
+                        base: {rounds: 8820, totalBet: 8820, totalWin: 7938, rtp: 0.9, contribution: 0.81, hitFrequency: 0.2, maxWin: 90},
+                        freeGames: {rounds: 980, totalBet: 980, totalWin: 1393.4, rtp: 1.42, contribution: 0.1422, hitFrequency: 0.6, maxWin: 120.5},
+                    },
+                },
+            };
+            const rightWithBreakdown: SimulationReport = {
+                ...right,
+                breakdown: {
+                    components: {base: {rounds: 9850, totalBet: 9850, totalWin: 9000, rtp: 0.9137, contribution: 0.9137, hitFrequency: 0.4, maxWin: 5}},
+                },
+            };
+
+            const diff = new SimulationReportDiffer().diff(leftWithBreakdown, rightWithBreakdown);
+
+            expect(diff.warnings).toContain('"freeGames" is no longer present in the right report (was rtp 142.00%, contributing 14.22 pp)');
+            expect(diff.warnings.some((warning) => warning.includes('"freeGames" RTP changed by'))).toBe(false);
+        });
+
+        it("clearly labels a new category instead of reporting a misleading RTP gain from 0", () => {
+            const leftWithBreakdown: SimulationReport = {
+                ...left,
+                breakdown: {
+                    components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, contribution: 0.9522, hitFrequency: 0.241, maxWin: 120.5}},
+                },
+            };
+            const rightWithBreakdown: SimulationReport = {
+                ...right,
+                breakdown: {
+                    components: {
+                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.904, contribution: 0.8121, hitFrequency: 0.21, maxWin: 95},
+                        bonus: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, contribution: 0.1421, hitFrequency: 0.61, maxWin: 130},
+                    },
+                },
+            };
+
+            const diff = new SimulationReportDiffer().diff(leftWithBreakdown, rightWithBreakdown);
+
+            expect(diff.warnings).toContain('"bonus" is a new category in the right report (rtp 140.00%, contributing 14.21 pp)');
+            expect(diff.warnings.some((warning) => warning.includes('"bonus" RTP changed by'))).toBe(false);
         });
 
         it("warns when a category's RTP changes by more than the RTP delta threshold", () => {

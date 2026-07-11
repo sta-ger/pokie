@@ -216,6 +216,36 @@ describe("DiffCommand", () => {
             logSpy.mockRestore();
         });
 
+        it("clearly labels added/removed categories in the printed Warnings section, not as a misleading RTP swing", async () => {
+            const leftWithBreakdown: SimulationReport = {
+                ...left,
+                breakdown: {
+                    components: {base: {rounds: 9800, totalBet: 9800, totalWin: 9331.4, rtp: 0.9522, contribution: 0.9522, hitFrequency: 0.241, maxWin: 120.5}},
+                },
+            };
+            const rightWithBreakdown: SimulationReport = {
+                ...right,
+                breakdown: {
+                    components: {
+                        base: {rounds: 8850, totalBet: 8850, totalWin: 8000, rtp: 0.904, contribution: 0.8121, hitFrequency: 0.21, maxWin: 95},
+                        bonus: {rounds: 1000, totalBet: 1000, totalWin: 1400, rtp: 1.4, contribution: 0.1421, hitFrequency: 0.61, maxWin: 130},
+                    },
+                },
+            };
+            const command = new DiffCommand(
+                createStubReadFile({"left.json": JSON.stringify(leftWithBreakdown), "right.json": JSON.stringify(rightWithBreakdown)}),
+            );
+            const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+            await command.run(["left.json", "right.json"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain('"bonus" is a new category in the right report');
+            expect(printed).not.toContain('"bonus" RTP changed by');
+
+            logSpy.mockRestore();
+        });
+
         it("prints a Breakdown section with per-category lines, including contribution, when both reports have one", async () => {
             const leftWithBreakdown: SimulationReport = {
                 ...left,

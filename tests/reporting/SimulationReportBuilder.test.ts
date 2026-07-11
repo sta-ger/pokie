@@ -392,6 +392,26 @@ describe("SimulationReportBuilder", () => {
             });
         });
 
+        test("orders report.breakdown.components with base first, then alphabetically, regardless of input order", () => {
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 1,
+                seed: "demo",
+                statistics: statisticsWithRounds(10),
+                durationMs: 10,
+                breakdown: {
+                    respins: {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
+                    freeGames: {rounds: 1, totalBet: 1, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
+                    base: {rounds: 6, totalBet: 6, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
+                    bonus: {rounds: 2, totalBet: 2, totalWin: 0, rtp: 0, hitFrequency: 0, maxWin: 0},
+                },
+            });
+
+            expect(Object.keys(report.breakdown!.components)).toEqual(["base", "bonus", "freeGames", "respins"]);
+        });
+
         test("contributions across every category sum to the report's overall rtp when breakdown totals are consistent with the statistics", () => {
             const builder = new SimulationReportBuilder();
             const accumulator = new SimulationAccumulator();

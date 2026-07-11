@@ -190,4 +190,69 @@ describe("AggregateSimulationRunner breakdown", () => {
             expect(breakdown!.base.rounds).toBe(1);
         });
     });
+
+    // The default determiner chain only ever produces categories that already went through
+    // SimulationCategoryNameNormalizer (see ExplicitSimulationRoundCategoryDeterminer). But the 4th
+    // constructor argument accepts ANY SimulationRoundCategoryDetermining — a hand-written one has no
+    // reason to know about that normalizer, so the runner itself has to guard against it returning
+    // something unsafe, not just the built-in explicit determiner.
+    describe("central category normalization (applies to every determiner, not just the built-in explicit one)", () => {
+        function customDeterminer(category: string) {
+            return {
+                supportsRoundCategorization: () => true,
+                categorizeRound: () => category,
+            };
+        }
+
+        test("an empty category from a custom determiner is excluded from the breakdown, not used as a key", () => {
+            const runner = new AggregateSimulationRunner(createBaseOnlySession(5), 5, undefined, customDeterminer(""));
+
+            runner.run();
+
+            expect(runner.getBreakdownStatistics()).toBeUndefined();
+        });
+
+        test("a whitespace-only category from a custom determiner is excluded from the breakdown", () => {
+            const runner = new AggregateSimulationRunner(createBaseOnlySession(5), 5, undefined, customDeterminer("   "));
+
+            runner.run();
+
+            expect(runner.getBreakdownStatistics()).toBeUndefined();
+        });
+
+        test("an over-long category from a custom determiner is excluded from the breakdown", () => {
+            const tooLong = "a".repeat(65); // SimulationCategoryNameNormalizer.MAX_LENGTH is 64
+            const runner = new AggregateSimulationRunner(createBaseOnlySession(5), 5, undefined, customDeterminer(tooLong));
+
+            runner.run();
+
+            expect(runner.getBreakdownStatistics()).toBeUndefined();
+        });
+
+        test("a category with invalid characters from a custom determiner is excluded from the breakdown", () => {
+            const runner = new AggregateSimulationRunner(createBaseOnlySession(5), 5, undefined, customDeterminer("bonus round!"));
+
+            runner.run();
+
+            expect(runner.getBreakdownStatistics()).toBeUndefined();
+        });
+
+        test("still normalizes (trims) a valid-but-untrimmed category from a custom determiner", () => {
+            const runner = new AggregateSimulationRunner(createBaseOnlySession(5), 5, undefined, customDeterminer("  bonus  "));
+
+            runner.run();
+            const breakdown = runner.getBreakdownStatistics();
+
+            expect(Object.keys(breakdown!)).toEqual(["bonus"]);
+            expect(breakdown!.bonus.rounds).toBe(5);
+        });
+
+        test("the overall simulation still completes normally even when every round's category is invalid", () => {
+            const runner = new AggregateSimulationRunner(createBaseOnlySession(5), 5, undefined, customDeterminer(""));
+
+            const statistics = runner.run().getStatistics();
+
+            expect(statistics.rounds).toBe(5);
+        });
+    });
 });
