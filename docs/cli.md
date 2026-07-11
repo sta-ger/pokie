@@ -74,9 +74,14 @@ npm install
   output, not meant to be hand-edited;
 - `src/generated/build-info.json` — provenance for the generated output: the `GameBlueprint` schema version, the
   `pokie` version that generated it, an ISO 8601 generation timestamp, a `sha256` hash of the source blueprint
-  (so an unchanged blueprint reproduces the same hash across re-runs), the source file path (when known), and the
-  blueprint's own `manifest`. The same summary (minus the full hash's `sha256:` prefix repetition) is echoed as
-  the header comment in `index.js`, so either file is enough to tell what a generated package was built from.
+  (so an unchanged blueprint reproduces the same hash across re-runs), the source file path (when known), the
+  list of files this run generated (`files` — also what a later `pokie build` reads to recognize this directory
+  as safe to rebuild, see below), and the blueprint's own `manifest`. The same summary (minus the timestamp and
+  the full hash's `sha256:` prefix repetition) is echoed as the header comment in `index.js`, so either file is
+  enough to tell what a generated package was built from. Unlike `build-info.json`, `index.js`'s header omits the
+  timestamp on purpose: re-running `pokie build` on an unchanged blueprint regenerates a byte-identical
+  `index.js`, so a rebuild only actually changes `build-info.json` (its timestamp) — see
+  [Rebuilding an existing `--out` directory](#rebuilding-an-existing---out-directory).
 
 Options:
 
@@ -161,8 +166,31 @@ Failure modes:
   (plus the same doc pointer as above).
 - A blueprint with any error-level issue prints every error plus the doc pointer and exits `1` without generating
   anything.
-- The output directory (`./<manifest.id>` or `--out <dir>`) already existing throws — pick a different `--out` or
-  remove the directory first.
+- The output directory (`./<manifest.id>` or `--out <dir>`) already existing as a *file* (not a directory)
+  throws — pick a different `--out` or remove it first.
+- The output directory already existing and containing a file `pokie build` did not generate — at any of
+  `package.json`, `README.md`, `src/generated/index.js`, `src/generated/build-info.json` — throws, naming the
+  conflicting file(s), instead of silently overwriting them. See the next section for exactly when this does and
+  doesn't trigger.
+
+### Rebuilding an existing `--out` directory
+
+Re-running `pokie build <config.json> --out <dir>` into a directory from a previous `pokie build` run — after
+editing the blueprint, or just to pick up a newer `pokie` version — overwrites it in place instead of throwing.
+This is recognized via that directory's own `src/generated/build-info.json` (itself `pokie build` output): if it
+parses and its `generatedBy` is `"pokie build"`, every file its `files` list names is trusted and freely
+overwritten. An empty or entirely unrelated existing directory (no file at any of the four generated paths) is
+also fine to build into.
+
+What isn't overwritten silently: if the directory has no such `build-info.json` (or it fails to parse, or wasn't
+written by `pokie build`) *and* already has a file at one of the four generated paths — e.g. your own unrelated
+`package.json` sitting at that `--out` path — `pokie build` refuses and names exactly which path(s) conflict,
+rather than guessing. Files elsewhere in the directory (anything not at one of those four paths — your own docs,
+`node_modules`, a lockfile, `.git`) are never touched either way and never cause a conflict.
+
+Rebuilding the *same* blueprint reproduces `index.js` byte-for-byte (see the `build-info.json` bullet above) and
+the same `blueprintHash`/`files` in `build-info.json` — only `build-info.json`'s `generatedAt` timestamp changes,
+so a diff between two rebuilds of an unchanged blueprint is just that one line.
 
 ### Workflow: `build` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
 

@@ -15,10 +15,15 @@ no build step — through the standard POKIE game package contract.
 - \`src/generated/index.js\` — the \`PokieGame\` implementation: a \`VideoSlotConfig\` assembled from the
   blueprint (reels, symbols, paytable, paylines, reel strips/weights), wrapped in a \`VideoSlotSession\`.
 - \`src/generated/build-info.json\` — provenance for this generated output: schema version, the \`pokie\`
-  version that generated it, a timestamp, and a hash of the source blueprint.
+  version that generated it, a timestamp, a hash of the source blueprint, and the list of files this
+  build generated (used to recognize this directory as safe to rebuild — see below).
 
 **Do not hand-edit anything under \`src/generated/\`** — re-run \`pokie build <config.json> --out .\` to
-regenerate it after changing the blueprint. Manual edits are silently overwritten on the next run.
+regenerate it after changing the blueprint. Manual edits under \`src/generated/\` are overwritten on the
+next run; \`index.js\` itself is byte-identical across reruns of an unchanged blueprint, so only
+\`build-info.json\`'s timestamp actually changes. Re-running into this same directory is safe — it's
+recognized via this package's own \`build-info.json\` — but it refuses to run if the directory instead
+contains files \`pokie build\` didn't generate.
 
 ## Workflow
 

@@ -111,6 +111,17 @@ describe("GamePackageGenerator", () => {
         expect(buildInfo.blueprintHash).toBe(`sha256:${expectedHash}`);
     });
 
+    it("lists every file it generated in build-info.json's \"files\"", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+
+        const result = generator.generate(buildBlueprint(), cwd);
+        const buildInfo = JSON.parse(
+            fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"),
+        ) as GameBuildInfo;
+
+        expect(buildInfo.files!.sort()).toEqual(result.createdFiles.sort());
+    });
+
     it("omits build-info.json's \"source\" field when no sourcePath is given", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
@@ -122,7 +133,7 @@ describe("GamePackageGenerator", () => {
         expect(buildInfo.source).toBeUndefined();
     });
 
-    it("embeds the same build-info summary (schema version, hash, timestamp) as a header comment in index.js", () => {
+    it("embeds the same build-info summary (schema version, pokie version, hash) as a header comment in index.js, but not the timestamp", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
         const result = generator.generate(buildBlueprint(), cwd);
@@ -133,8 +144,9 @@ describe("GamePackageGenerator", () => {
 
         expect(indexJs).toContain("GENERATED FILE — do not hand-edit");
         expect(indexJs).toContain(`v${buildInfo.schemaVersion}`);
-        expect(indexJs).toContain(buildInfo.generatedAt);
+        expect(indexJs).toContain(buildInfo.pokieVersion);
         expect(indexJs).toContain(buildInfo.blueprintHash);
+        expect(indexJs).not.toContain(buildInfo.generatedAt);
     });
 
     it("honors --out (an explicit outDir) instead of deriving the directory from manifest.id", () => {
@@ -146,11 +158,100 @@ describe("GamePackageGenerator", () => {
         expect(fs.existsSync(path.join(cwd, "crazy-fruits"))).toBe(false);
     });
 
-    it("throws a descriptive error when the target directory already exists", () => {
+    it("rebuilds cleanly into a directory from a previous \"pokie build\" run of the same blueprint", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const first = generator.generate(buildBlueprint(), cwd);
+
+        expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
+
+        const second = generator.generate(buildBlueprint(), cwd);
+        expect(second.projectRoot).toBe(first.projectRoot);
+        expect(fs.existsSync(path.join(second.projectRoot, "package.json"))).toBe(true);
+    });
+
+    it("rebuilds cleanly after the blueprint changed, updating the generated content", () => {
         const generator = new GamePackageGenerator("1.3.0");
         generator.generate(buildBlueprint(), cwd);
 
-        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists/);
+        const result = generator.generate(buildBlueprint({manifest: {id: "crazy-fruits", name: "Crazy Fruits Deluxe", version: "0.2.0"}}), cwd);
+
+        const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
+        expect(pkg.version).toBe("0.2.0");
+        const readme = fs.readFileSync(path.join(result.projectRoot, "README.md"), "utf-8");
+        expect(readme).toContain("# Crazy Fruits Deluxe");
+    });
+
+    it("regenerates a byte-identical index.js when rebuilding an unchanged blueprint (only build-info.json's timestamp differs)", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint();
+
+        const first = generator.generate(blueprint, cwd);
+        const firstIndexJs = fs.readFileSync(path.join(first.projectRoot, "src", "generated", "index.js"), "utf-8");
+        const firstBuildInfo = JSON.parse(fs.readFileSync(path.join(first.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+
+        const second = generator.generate(blueprint, cwd);
+        const secondIndexJs = fs.readFileSync(path.join(second.projectRoot, "src", "generated", "index.js"), "utf-8");
+        const secondBuildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+
+        expect(secondIndexJs).toBe(firstIndexJs);
+        expect(secondBuildInfo.blueprintHash).toBe(firstBuildInfo.blueprintHash);
+        expect(secondBuildInfo.files).toEqual(firstBuildInfo.files);
+    });
+
+    it("builds into an existing but empty directory", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const projectRoot = path.join(cwd, "crazy-fruits");
+        fs.mkdirSync(projectRoot, {recursive: true});
+
+        expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
+        expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
+    });
+
+    it("builds into an existing directory that only contains unrelated files elsewhere (nothing at a generated path)", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const projectRoot = path.join(cwd, "crazy-fruits");
+        fs.mkdirSync(projectRoot, {recursive: true});
+        fs.writeFileSync(path.join(projectRoot, "LICENSE"), "MIT\n");
+
+        expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
+        expect(fs.existsSync(path.join(projectRoot, "LICENSE"))).toBe(true);
+    });
+
+    it("throws a descriptive error when the target path already exists and is not a directory", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const projectRoot = path.join(cwd, "crazy-fruits");
+        fs.writeFileSync(projectRoot, "not a directory");
+
+        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not a directory/);
+    });
+
+    it("throws naming the conflicting file when the target directory has its own unrelated package.json", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const projectRoot = path.join(cwd, "crazy-fruits");
+        fs.mkdirSync(projectRoot, {recursive: true});
+        fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "not-pokie-build-output"}));
+
+        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/did not generate: package\.json/);
+    });
+
+    it("throws when the target directory's build-info.json is corrupt JSON", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const projectRoot = path.join(cwd, "crazy-fruits");
+        fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
+        fs.writeFileSync(path.join(projectRoot, "package.json"), "{}");
+        fs.writeFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "{not valid json");
+
+        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/did not generate: package\.json/);
+    });
+
+    it("throws when the target directory's build-info.json wasn't written by \"pokie build\"", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const projectRoot = path.join(cwd, "crazy-fruits");
+        fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
+        fs.writeFileSync(path.join(projectRoot, "README.md"), "# hand-written\n");
+        fs.writeFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), JSON.stringify({generatedBy: "something-else"}));
+
+        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/did not generate: README\.md/);
     });
 
     it("rejects a manifest.id that looks like a path when no --out is given", () => {

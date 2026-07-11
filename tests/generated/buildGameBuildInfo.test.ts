@@ -51,4 +51,18 @@ describe("buildGameBuildInfo", () => {
 
         expect(a.blueprintHash).not.toBe(b.blueprintHash);
     });
+
+    it("defaults \"files\" to the fixed set of paths pokie build generates", () => {
+        const info = buildGameBuildInfo(buildBlueprint(), "1.3.0");
+
+        expect(info.files!.sort()).toEqual(
+            ["package.json", "README.md", "src/generated/index.js", "src/generated/build-info.json"].sort(),
+        );
+    });
+
+    it("records a given \"files\" list sorted, when provided", () => {
+        const info = buildGameBuildInfo(buildBlueprint(), "1.3.0", undefined, new Date(), ["b.txt", "a.txt"]);
+
+        expect(info.files).toEqual(["a.txt", "b.txt"]);
+    });
 });
