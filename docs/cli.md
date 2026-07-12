@@ -1526,10 +1526,22 @@ automatically once a custom signal handler is registered.
 
 ## `pokie` / `pokie studio` (experimental)
 
-**Experimental.** Running `pokie` with no arguments at all — or explicitly, `pokie studio` — launches **POKIE
-Studio**: a local web app (its own HTTP server plus a small browser-based frontend) that will eventually host a
-GUI for every command above. This first stage is the foundation only: an app shell, two modes, and a JSON API
-other tool GUIs can be built against — not GUIs for `create`/`build`/`sim`/etc. themselves yet.
+**Experimental.** Launches **POKIE Studio**: a local web app (its own HTTP server plus a small browser-based
+frontend) that will eventually host a GUI for every command above. This first stage is the foundation only: an
+app shell, two modes, and a JSON API other tool GUIs can be built against — not GUIs for `create`/`build`/`sim`/etc.
+themselves yet.
+
+Several invocations all launch it, resolved by `resolveCliInvocation` (`cli/resolveCliInvocation.ts`):
+
+- `pokie` (no arguments at all) — Studio in **Home** mode.
+- `pokie .` — Studio in **Project** mode for the current directory.
+- `pokie <path>` — Studio in **Project** mode for `<path>`, as long as `<path>` isn't itself one of the command
+  names below and actually exists (a typo'd command name is never silently treated as a path — see below).
+- `pokie studio` — Home mode, explicitly.
+- `pokie studio .` / `pokie studio <path>` — Project mode, explicitly.
+
+Every other `pokie <command> ...` invocation (`pokie sim ...`, `pokie serve ...`, etc.) is unaffected — a first
+argument that matches a known command name always dispatches to that command, never to Studio.
 
 ```
 pokie
@@ -1556,9 +1568,9 @@ Options:
 
 ### Project mode (stub)
 
-Opening or creating a project switches Studio into the **Project** mode/route, identified by that project's
-`projectRoot`. This stage only shows a placeholder — no tool GUI is wired up yet — but the mode and route already
-exist so a future `pokie .` (launching Studio directly into the current directory's project) and per-tool GUIs
+Opening or creating a project — or launching Studio directly with `pokie .`/`pokie <path>`/`pokie studio <path>`
+— switches Studio into the **Project** mode/route, identified by that project's `projectRoot`. This stage only
+shows a placeholder — no tool GUI is wired up yet — but the mode and route already exist so per-tool GUIs
 (`build`/`inspect`/`validate`/`sim`/`report`/`diff`/`replay`/`serve`) have a stable foundation to build on, via the
 `StudioToolHandling` extension point.
 

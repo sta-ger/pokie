@@ -30,10 +30,11 @@ export type StudioCommandDependencies = {
     process?: NodeJS.Process;
 };
 
-// `pokie` with no arguments (and `pokie studio` explicitly) both run this command — see
-// resolveCommandName.ts/cli/pokie.ts. This is the first minimal stage of POKIE Studio (see
-// docs/cli.md): starts StudioServer (app shell + JSON API), waits for it to be listening, and
-// best-effort opens a browser pointed at it, mirroring DevCommand's shape.
+// `pokie` with no arguments, `pokie .`/`pokie <path>`, and `pokie studio [.|<path>]` all run this
+// command — see resolveCliInvocation.ts/cli/pokie.ts for how each is resolved to it. This is the
+// first minimal stage of POKIE Studio (see docs/cli.md): starts StudioServer (app shell + JSON API),
+// waits for it to be listening, and best-effort opens a browser pointed at it, mirroring DevCommand's
+// shape.
 export class StudioCommand implements CliCommandHandling {
     private readonly createServer: (options: StudioServerOptions) => StudioServerHandling;
     private readonly openBrowserImpl: typeof openBrowser;

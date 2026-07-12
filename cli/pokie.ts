@@ -16,7 +16,7 @@ import {ServeCommand} from "./commands/ServeCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
-import {resolveCommandName} from "./resolveCommandName.js";
+import {resolveCliInvocation} from "./resolveCliInvocation.js";
 
 function readOwnVersion(): string {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -64,18 +64,30 @@ async function run(): Promise<number> {
         new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot()}),
         new ValidateCommand(),
     ];
-    // No arguments at all means "launch POKIE Studio" (resolveCommandName.ts) rather than the usage
-    // printout below — an explicit unrecognized command name still falls through to that printout.
-    const commandName = resolveCommandName(process.argv);
-    const command = commands.find((candidate) => candidate.getName() === commandName);
+    // No arguments at all, "pokie ." / "pokie <existing path>", and every explicit command name
+    // (including "studio" itself) are all resolved here rather than inline — see
+    // resolveCliInvocation's own doc comment for the full precedence. An unrecognized token that
+    // isn't an existing path either falls through to the usage printout below, same as before.
+    const invocation = resolveCliInvocation(
+        process.argv,
+        commands.map((candidate) => candidate.getName()),
+    );
+    if (!invocation) {
+        printUsage(commands);
+        return 1;
+    }
 
+    // Always found in practice: resolveCliInvocation only ever names "studio" (registered above) or
+    // a name it confirmed is one of the knownCommandNames it was given. The check stays explicit
+    // rather than a non-null assertion so this file makes no assumption about that invariant.
+    const command = commands.find((candidate) => candidate.getName() === invocation.commandName);
     if (!command) {
         printUsage(commands);
         return 1;
     }
 
     try {
-        const exitCode = await command.run(process.argv.slice(3));
+        const exitCode = await command.run(invocation.args);
         return exitCode ?? 0;
     } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
