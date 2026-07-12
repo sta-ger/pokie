@@ -62,6 +62,7 @@
                 <button id="tab-overview" type="button" class="tab" aria-current="page">Overview</button>
                 <button id="tab-validation" type="button" class="tab">Validation</button>
                 <button id="tab-simulation" type="button" class="tab">Simulation</button>
+                <button id="tab-reports" type="button" class="tab">Reports</button>
             </nav>
 
             <section id="project-overview">
@@ -200,6 +201,82 @@
                     </div>
 
                     <p id="simulation-report-reproducibility" hidden></p>
+                </div>
+
+                <button id="simulation-view-in-reports-button" type="button" hidden>View in Reports</button>
+            </section>
+
+            <section id="project-reports" hidden>
+                <div class="quick-actions">
+                    <button id="reports-refresh-button" type="button">Refresh</button>
+                </div>
+                <p id="reports-empty" hidden>No completed simulations yet.</p>
+                <p id="reports-error" hidden></p>
+                <ul id="reports-list"></ul>
+
+                <div id="report-detail" hidden>
+                    <h3>Report</h3>
+                    <p id="report-detail-empty" hidden>Select a report from the list above.</p>
+                    <p id="report-detail-loading" hidden>Loading…</p>
+                    <p id="report-detail-error" hidden></p>
+
+                    <div id="report-detail-actions" hidden>
+                        <a id="report-download-json" href="#" download>Download JSON</a>
+                        <a id="report-download-markdown" href="#" download>Download Markdown</a>
+                        <a id="report-download-html" href="#" download>Download HTML</a>
+                        <button id="report-back-to-simulation-button" type="button">Back to Simulation parameters</button>
+                    </div>
+
+                    <div id="report-detail-report" hidden>
+                        <dl class="project-info">
+                            <dt>Game</dt>
+                            <dd id="report-detail-game"></dd>
+                            <dt>Rounds</dt>
+                            <dd id="report-detail-rounds"></dd>
+                            <dt>Seed</dt>
+                            <dd id="report-detail-seed"></dd>
+                            <dt>Total bet</dt>
+                            <dd id="report-detail-total-bet"></dd>
+                            <dt>Total payout</dt>
+                            <dd id="report-detail-total-win"></dd>
+                            <dt>RTP</dt>
+                            <dd id="report-detail-rtp"></dd>
+                            <dt>Hit frequency</dt>
+                            <dd id="report-detail-hit-frequency"></dd>
+                            <dt>Volatility (std. deviation)</dt>
+                            <dd id="report-detail-volatility"></dd>
+                            <dt>RTP 95% confidence interval</dt>
+                            <dd id="report-detail-confidence-interval"></dd>
+                            <dt>Max win</dt>
+                            <dd id="report-detail-max-win"></dd>
+                            <dt>Duration</dt>
+                            <dd id="report-detail-duration"></dd>
+                        </dl>
+
+                        <div id="report-detail-breakdown-section" hidden>
+                            <h4>Breakdown</h4>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th>Rounds</th>
+                                        <th>RTP</th>
+                                        <th>Contribution</th>
+                                        <th>Hit freq.</th>
+                                        <th>Max win</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="report-detail-breakdown-body"></tbody>
+                            </table>
+                        </div>
+
+                        <div id="report-detail-warnings-section" hidden>
+                            <h4>Warnings</h4>
+                            <ul id="report-detail-warnings"></ul>
+                        </div>
+
+                        <p id="report-detail-reproducibility" hidden></p>
+                    </div>
                 </div>
             </section>
         </section>

@@ -1,12 +1,15 @@
 import {
+    buildReportDownloadUrl,
     cancelSimulation,
     closeProject,
     createProject,
     FetchLike,
     getContext,
     getProjectContext,
+    getReport,
     getSimulation,
     inspectProject,
+    listReports,
     listRecentProjects,
     openProject,
     startSimulation,
@@ -284,6 +287,105 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown simulation id "does-not-exist".'}}));
 
             await expect(cancelSimulation(fetchImpl, "does-not-exist")).rejects.toThrow('Unknown simulation id "does-not-exist".');
+        });
+    });
+
+    describe("listReports", () => {
+        it("GETs /api/project/reports and returns the list", async () => {
+            const entries = [
+                {
+                    id: "job-1",
+                    status: "completed",
+                    game: {id: "crazy-fruits", version: "0.1.0"},
+                    requestedRounds: 1000,
+                    actualRounds: 1000,
+                    rtp: 0.95,
+                    hitFrequency: 0.25,
+                    maxWin: 120,
+                    startedAt: "2026-01-01T00:00:00.000Z",
+                    completedAt: "2026-01-01T00:00:01.000Z",
+                    durationMs: 1000,
+                    hasWarnings: false,
+                },
+            ];
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: entries}));
+
+            const result = await listReports(fetchImpl);
+
+            expect(calls).toEqual([{url: "/api/project/reports", init: undefined}]);
+            expect(result).toEqual(entries);
+        });
+
+        it("returns an empty list when there are no completed simulations yet", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: []}));
+
+            expect(await listReports(fetchImpl)).toEqual([]);
+        });
+
+        it("throws the server's own error message when there is no active project", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "No active project."}}));
+
+            await expect(listReports(fetchImpl)).rejects.toThrow("No active project.");
+        });
+    });
+
+    describe("getReport", () => {
+        it("GETs /api/project/reports/:id and returns the SimulationReport", async () => {
+            const report = {
+                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                requestedRounds: 1000,
+                rounds: 1000,
+                seed: "demo",
+                totalBet: 1000,
+                totalWin: 950,
+                rtp: 0.95,
+                hitFrequency: 0.25,
+                maxWin: 120,
+                durationMs: 500,
+                spinsPerSecond: 2000,
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: report}));
+
+            const result = await getReport(fetchImpl, "job-1");
+
+            expect(calls).toEqual([{url: "/api/project/reports/job-1", init: undefined}]);
+            expect(result).toEqual(report);
+        });
+
+        it("encodes the id in the URL", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {}}));
+
+            await getReport(fetchImpl, "a/b");
+
+            expect(calls[0].url).toBe("/api/project/reports/a%2Fb");
+        });
+
+        it("throws the server's own error message for an unknown id", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown report id "does-not-exist".'}}));
+
+            await expect(getReport(fetchImpl, "does-not-exist")).rejects.toThrow('Unknown report id "does-not-exist".');
+        });
+
+        it("throws the server's own error message for a simulation with no report", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {error: 'Simulation "job-1" has no report (status: failed).'},
+            }));
+
+            await expect(getReport(fetchImpl, "job-1")).rejects.toThrow('Simulation "job-1" has no report (status: failed).');
+        });
+    });
+
+    describe("buildReportDownloadUrl", () => {
+        it("builds a URL for each format", () => {
+            expect(buildReportDownloadUrl("job-1", "json")).toBe("/api/project/reports/job-1/download?format=json");
+            expect(buildReportDownloadUrl("job-1", "markdown")).toBe("/api/project/reports/job-1/download?format=markdown");
+            expect(buildReportDownloadUrl("job-1", "html")).toBe("/api/project/reports/job-1/download?format=html");
+        });
+
+        it("encodes the id in the URL", () => {
+            expect(buildReportDownloadUrl("a/b", "json")).toBe("/api/project/reports/a%2Fb/download?format=json");
         });
     });
 });

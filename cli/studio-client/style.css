@@ -142,3 +142,10 @@ th:first-child,
 td:first-child {
     text-align: left;
 }
+
+#report-detail-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 1rem;
+}

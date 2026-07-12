@@ -6,6 +6,8 @@ import {
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
+    SimulationReport,
+    SimulationReportBuilding,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -933,6 +935,286 @@ describe("StudioServer", () => {
             await flushMacrotask();
 
             expect(simulationService.getStatus(createdBody.id)?.status).toBe("cancelled");
+        });
+    });
+
+    describe("Project Dashboard: Reports (GET /api/project/reports*)", () => {
+        const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+        async function openCrazyFruits(game: PokieGame): Promise<void> {
+            loadGame.mockResolvedValue(game);
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+        }
+
+        async function runToCompletion(rounds: number, seed?: string): Promise<string> {
+            const created = await post(`${baseUrl}/api/project/simulations`, seed === undefined ? {rounds} : {rounds, seed});
+            const {id} = created.body as {id: string};
+            await pollUntilTerminal(`${baseUrl}/api/project/simulations/${id}`);
+            return id;
+        }
+
+        it("returns 409 for GET /api/project/reports when there is no active project", async () => {
+            const {status, body} = await get(`${baseUrl}/api/project/reports`);
+
+            expect(status).toBe(409);
+            expect(body).toEqual({error: "No active project."});
+        });
+
+        it("returns an empty list when the project has no completed simulations yet", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const {status, body} = await get(`${baseUrl}/api/project/reports`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual([]);
+        });
+
+        it("lists a completed simulation with the required summary fields", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+            const id = await runToCompletion(30, "demo");
+
+            const {status, body} = await get(`${baseUrl}/api/project/reports`);
+
+            expect(status).toBe(200);
+            const entries = body as Array<Record<string, unknown>>;
+            expect(entries).toHaveLength(1);
+            expect(entries[0]).toMatchObject({
+                id,
+                status: "completed",
+                game: {id: "crazy-fruits", version: "0.1.0"},
+                requestedRounds: 30,
+                actualRounds: 30,
+                seed: "demo",
+            });
+            expect(typeof entries[0].rtp).toBe("number");
+            expect(typeof entries[0].hitFrequency).toBe("number");
+            expect(typeof entries[0].maxWin).toBe("number");
+            expect(typeof entries[0].startedAt).toBe("string");
+            expect(typeof entries[0].completedAt).toBe("string");
+            expect(typeof entries[0].durationMs).toBe("number");
+            expect(typeof entries[0].hasWarnings).toBe("boolean");
+        });
+
+        it("never lists a failed simulation (no report to summarize)", async () => {
+            loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            loadGame.mockRejectedValueOnce(new Error("boom"));
+            await runToCompletion(10);
+
+            const {body} = await get(`${baseUrl}/api/project/reports`);
+
+            expect(body).toEqual([]);
+        });
+
+        it("returns the full SimulationReport for a completed job", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+            const id = await runToCompletion(30, "demo");
+
+            const {status, body} = await get(`${baseUrl}/api/project/reports/${id}`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({game: manifest, rounds: 30, requestedRounds: 30, seed: "demo"});
+        });
+
+        it("returns 404 for an unknown report id", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const {status, body} = await get(`${baseUrl}/api/project/reports/does-not-exist`);
+
+            expect(status).toBe(404);
+            expect(body).toEqual({error: 'Unknown report id "does-not-exist".'});
+        });
+
+        it("returns 409 for a failed simulation (no report available)", async () => {
+            loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            loadGame.mockRejectedValueOnce(new Error("boom"));
+            const id = await runToCompletion(10);
+
+            const {status, body} = await get(`${baseUrl}/api/project/reports/${id}`);
+
+            expect(status).toBe(409);
+            expect(body).toEqual({error: `Simulation "${id}" has no report (status: failed).`});
+        });
+
+        it("returns 404 (not a leak) for a report id that belongs to a different project", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+            const idFromProjectA = await runToCompletion(10);
+
+            await post(`${baseUrl}/api/projects/close`);
+            loadGame.mockResolvedValue(createPlayableFakeGame({id: "other-game", name: "Other Game", version: "2.0.0"}));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./other-game"});
+
+            const {status, body} = await get(`${baseUrl}/api/project/reports/${idFromProjectA}`);
+
+            expect(status).toBe(404);
+            expect(body).toEqual({error: `Unknown report id "${idFromProjectA}".`});
+        });
+
+        describe("download (GET /api/project/reports/:id/download)", () => {
+            it("returns 400 for a missing/invalid format", async () => {
+                await openCrazyFruits(createPlayableFakeGame(manifest));
+                const id = await runToCompletion(10);
+
+                const missing = await fetch(`${baseUrl}/api/project/reports/${id}/download`);
+                expect(missing.status).toBe(400);
+
+                const invalid = await fetch(`${baseUrl}/api/project/reports/${id}/download?format=csv`);
+                expect(invalid.status).toBe(400);
+            });
+
+            it("returns 404 for an unknown report id", async () => {
+                await openCrazyFruits(createPlayableFakeGame(manifest));
+
+                const response = await fetch(`${baseUrl}/api/project/reports/does-not-exist/download?format=json`);
+
+                expect(response.status).toBe(404);
+            });
+
+            it("returns 409 for a simulation with no report", async () => {
+                loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
+                await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+                loadGame.mockRejectedValueOnce(new Error("boom"));
+                const id = await runToCompletion(10);
+
+                const response = await fetch(`${baseUrl}/api/project/reports/${id}/download?format=json`);
+
+                expect(response.status).toBe(409);
+            });
+
+            it("downloads a JSON artifact with correct headers and a parseable body", async () => {
+                await openCrazyFruits(createPlayableFakeGame(manifest));
+                const id = await runToCompletion(30, "demo");
+
+                const response = await fetch(`${baseUrl}/api/project/reports/${id}/download?format=json`);
+
+                expect(response.status).toBe(200);
+                expect(response.headers.get("content-type")).toContain("application/json");
+                expect(response.headers.get("content-disposition")).toBe(
+                    `attachment; filename="crazy-fruits-0.1.0-${id}.json"`,
+                );
+                const parsed = JSON.parse(await response.text());
+                expect(parsed).toMatchObject({game: manifest, rounds: 30, seed: "demo"});
+            });
+
+            it("downloads a Markdown artifact with correct headers and the key metrics", async () => {
+                await openCrazyFruits(createPlayableFakeGame(manifest));
+                const id = await runToCompletion(30, "demo");
+
+                const response = await fetch(`${baseUrl}/api/project/reports/${id}/download?format=markdown`);
+
+                expect(response.status).toBe(200);
+                expect(response.headers.get("content-type")).toContain("text/markdown");
+                expect(response.headers.get("content-disposition")).toBe(
+                    `attachment; filename="crazy-fruits-0.1.0-${id}.md"`,
+                );
+                const body = await response.text();
+                expect(body).toContain("# Simulation Report: Crazy Fruits");
+                expect(body).toContain("RTP");
+                expect(body).toContain("Hit frequency");
+            });
+
+            it("downloads a full HTML document with correct headers", async () => {
+                await openCrazyFruits(createPlayableFakeGame(manifest));
+                const id = await runToCompletion(30, "demo");
+
+                const response = await fetch(`${baseUrl}/api/project/reports/${id}/download?format=html`);
+
+                expect(response.status).toBe(200);
+                expect(response.headers.get("content-type")).toContain("text/html");
+                expect(response.headers.get("content-disposition")).toBe(
+                    `attachment; filename="crazy-fruits-0.1.0-${id}.html"`,
+                );
+                const body = await response.text();
+                expect(body).toContain("<!DOCTYPE html>");
+                expect(body).toContain("</html>");
+            });
+        });
+    });
+
+    describe("Project Dashboard: Reports edge cases (custom report shapes)", () => {
+        let reportsStudioRoot: string;
+        let reportsServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            reportsStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-reports-edge-test-"));
+            writeStudioAssets(reportsStudioRoot);
+        });
+
+        afterEach(async () => {
+            await reportsServer?.stop();
+            fs.rmSync(reportsStudioRoot, {recursive: true, force: true});
+        });
+
+        async function startServerWithReportBuilder(reportBuilder: SimulationReportBuilding): Promise<string> {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            const simulationService = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                reportBuilder,
+            );
+            reportsServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: reportsStudioRoot,
+                gamePackageCreator: createStubCreator(scaffoldResult),
+                loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
+                simulationService,
+                initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
+            });
+            const address = await reportsServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("lists and downloads an old-shape report (missing breakdown/warnings/recommendations/reproducibility) without error", async () => {
+            const minimalReport: SimulationReport = {
+                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                requestedRounds: 10,
+                rounds: 10,
+                seed: null,
+                totalBet: 10,
+                totalWin: 5,
+                rtp: 0.5,
+                hitFrequency: 0.2,
+                maxWin: 5,
+                durationMs: 10,
+                spinsPerSecond: 1000,
+                // Deliberately no breakdown/warnings/recommendations/reproducibility.
+            };
+            const projectBaseUrl = await startServerWithReportBuilder({build: () => minimalReport});
+
+            const created = await post(`${projectBaseUrl}/api/project/simulations`, {rounds: 10});
+            const {id} = created.body as {id: string};
+            await pollUntilTerminal(`${projectBaseUrl}/api/project/simulations/${id}`);
+
+            const list = await get(`${projectBaseUrl}/api/project/reports`);
+            expect(list.status).toBe(200);
+            expect((list.body as Array<{hasWarnings: boolean}>)[0].hasWarnings).toBe(false);
+
+            const detail = await get(`${projectBaseUrl}/api/project/reports/${id}`);
+            expect(detail.status).toBe(200);
+            expect(detail.body).toEqual(minimalReport);
+
+            for (const format of ["json", "markdown", "html"]) {
+                const response = await fetch(`${projectBaseUrl}/api/project/reports/${id}/download?format=${format}`);
+                expect(response.status).toBe(200);
+            }
+        });
+
+        it("returns a safe 500 (no stack trace) when the renderer throws on a malformed report", async () => {
+            const malformedReport = {} as SimulationReport; // missing even `game` — renderers will throw reading report.game.name
+            const projectBaseUrl = await startServerWithReportBuilder({build: () => malformedReport});
+
+            const created = await post(`${projectBaseUrl}/api/project/simulations`, {rounds: 10});
+            const {id} = created.body as {id: string};
+            await pollUntilTerminal(`${projectBaseUrl}/api/project/simulations/${id}`);
+
+            const response = await fetch(`${projectBaseUrl}/api/project/reports/${id}/download?format=markdown`);
+
+            expect(response.status).toBe(500);
+            const body = await response.json();
+            expect(typeof (body as {error: string}).error).toBe("string");
+            expect(JSON.stringify(body)).not.toContain("\\n    at ");
         });
     });
 });

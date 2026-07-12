@@ -7,7 +7,9 @@ import {InMemoryRecentProjectsRepository} from "./InMemoryRecentProjectsReposito
 import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {RecentProjectsRepository} from "./RecentProjectsRepository.js";
+import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
+import type {StudioSimulationStatus} from "./simulation/StudioSimulationStatus.js";
 import {validateSimulationRequest, SimulationRequestInput} from "./simulation/validateSimulationRequest.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
@@ -199,6 +201,21 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "GET" && url.pathname === "/api/project/reports") {
+            this.handleListReports(res);
+            return;
+        }
+
+        const reportRoute = this.matchReportRoute(url.pathname);
+        if (reportRoute !== undefined && method === "GET") {
+            if (reportRoute.download) {
+                this.handleDownloadReport(res, reportRoute.id, url);
+            } else {
+                this.handleGetReport(res, reportRoute.id);
+            }
+            return;
+        }
+
         const toolId = this.matchToolRoute(url.pathname);
         if (toolId !== undefined) {
             const handled = await this.tryToolHandlers(toolId, method, url, req);
@@ -233,6 +250,23 @@ export class StudioServer implements StudioServerHandling {
         const segments = pathname.split("/").filter((segment) => segment.length > 0);
         if (segments.length === 4 && segments[0] === "api" && segments[1] === "project" && segments[2] === "simulations") {
             return decodeURIComponent(segments[3]);
+        }
+        return undefined;
+    }
+
+    private matchReportRoute(pathname: string): {id: string; download: boolean} | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (segments.length === 4 && segments[0] === "api" && segments[1] === "project" && segments[2] === "reports") {
+            return {id: decodeURIComponent(segments[3]), download: false};
+        }
+        if (
+            segments.length === 5 &&
+            segments[0] === "api" &&
+            segments[1] === "project" &&
+            segments[2] === "reports" &&
+            segments[4] === "download"
+        ) {
+            return {id: decodeURIComponent(segments[3]), download: true};
         }
         return undefined;
     }
@@ -368,6 +402,66 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, job);
+    }
+
+    private handleListReports(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, this.simulationService.listReports(this.currentContext.projectRoot));
+    }
+
+    private handleGetReport(res: ServerResponse, id: string): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const result = this.simulationService.getReport(this.currentContext.projectRoot, id);
+        if (result.status === "not-found") {
+            this.sendJson(res, 404, {error: `Unknown report id "${id}".`});
+            return;
+        }
+        if (result.status === "not-ready") {
+            this.sendJson(res, 409, {error: this.describeReportNotReady(id, result.jobStatus)});
+            return;
+        }
+        this.sendJson(res, 200, result.report);
+    }
+
+    private handleDownloadReport(res: ServerResponse, id: string, url: URL): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const format = url.searchParams.get("format");
+        if (!isReportDownloadFormat(format)) {
+            this.sendJson(res, 400, {error: '"format" must be one of "json", "markdown", "html".'});
+            return;
+        }
+        const result = this.simulationService.getReport(this.currentContext.projectRoot, id);
+        if (result.status === "not-found") {
+            this.sendJson(res, 404, {error: `Unknown report id "${id}".`});
+            return;
+        }
+        if (result.status === "not-ready") {
+            this.sendJson(res, 409, {error: this.describeReportNotReady(id, result.jobStatus)});
+            return;
+        }
+
+        const download = buildSimulationReportDownload(result.report, id, format);
+        res.writeHead(200, {
+            "Content-Type": download.contentType,
+            "Content-Disposition": `attachment; filename="${download.filename}"`,
+        });
+        res.end(download.body);
+    }
+
+    private describeReportNotReady(id: string, jobStatus: StudioSimulationStatus): string {
+        if (jobStatus === "queued" || jobStatus === "running") {
+            return `Simulation "${id}" has not completed yet (status: ${jobStatus}).`;
+        }
+        return `Simulation "${id}" has no report (status: ${jobStatus}).`;
     }
 
     private async readJsonBody(req: IncomingMessage): Promise<unknown> {

@@ -1,8 +1,32 @@
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
+import type {ReportListView} from "./interpretReports.js";
 import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
-import type {RecentProjectEntry} from "./types.js";
+import type {RecentProjectEntry, StudioSimulationReportListEntry} from "./types.js";
 
-export type ProjectTab = "overview" | "validation" | "simulation";
+export type ProjectTab = "overview" | "validation" | "simulation" | "reports";
+
+// One report's worth of display fields — factored out so the exact same renderSimulationReport()
+// below can fill in both the Simulation tab's own "just completed" block and the Reports tab's
+// detail view, without duplicating the field-by-field rendering logic twice.
+export type SimulationReportElements = {
+    container: HTMLElement;
+    game: HTMLElement;
+    rounds: HTMLElement;
+    seed: HTMLElement;
+    totalBet: HTMLElement;
+    totalWin: HTMLElement;
+    rtp: HTMLElement;
+    hitFrequency: HTMLElement;
+    volatility: HTMLElement;
+    confidenceInterval: HTMLElement;
+    maxWin: HTMLElement;
+    duration: HTMLElement;
+    breakdownSection: HTMLElement;
+    breakdownBody: HTMLElement;
+    warningsSection: HTMLElement;
+    warningsList: HTMLElement;
+    reproducibility: HTMLElement;
+};
 
 export type Elements = {
     status: HTMLElement;
@@ -68,23 +92,24 @@ export type Elements = {
     simulationProgressText: HTMLElement;
     simulationCancelButton: HTMLButtonElement;
     simulationRerunButton: HTMLButtonElement;
-    simulationReport: HTMLElement;
-    simulationReportGame: HTMLElement;
-    simulationReportRounds: HTMLElement;
-    simulationReportSeed: HTMLElement;
-    simulationReportTotalBet: HTMLElement;
-    simulationReportTotalWin: HTMLElement;
-    simulationReportRtp: HTMLElement;
-    simulationReportHitFrequency: HTMLElement;
-    simulationReportVolatility: HTMLElement;
-    simulationReportConfidenceInterval: HTMLElement;
-    simulationReportMaxWin: HTMLElement;
-    simulationReportDuration: HTMLElement;
-    simulationReportBreakdownSection: HTMLElement;
-    simulationReportBreakdownBody: HTMLElement;
-    simulationReportWarningsSection: HTMLElement;
-    simulationReportWarningsList: HTMLElement;
-    simulationReportReproducibility: HTMLElement;
+    simulationViewInReportsButton: HTMLButtonElement;
+    simulationReport: SimulationReportElements;
+    tabReportsButton: HTMLButtonElement;
+    projectReportsSection: HTMLElement;
+    reportsRefreshButton: HTMLButtonElement;
+    reportsEmpty: HTMLElement;
+    reportsError: HTMLElement;
+    reportsList: HTMLElement;
+    reportDetail: HTMLElement;
+    reportDetailEmpty: HTMLElement;
+    reportDetailLoading: HTMLElement;
+    reportDetailError: HTMLElement;
+    reportDetailActions: HTMLElement;
+    reportDownloadJson: HTMLAnchorElement;
+    reportDownloadMarkdown: HTMLAnchorElement;
+    reportDownloadHtml: HTMLAnchorElement;
+    reportBackToSimulationButton: HTMLButtonElement;
+    reportDetailReport: SimulationReportElements;
 };
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -93,6 +118,31 @@ function requireElement<T extends HTMLElement>(id: string): T {
         throw new Error(`Missing #${id} in index.html.`);
     }
     return el as T;
+}
+
+// `prefix` itself is the report container's own id; every field below follows `${prefix}-<field>` —
+// used to build both the Simulation tab's "just completed" block (prefix "simulation-report") and
+// the Reports tab's detail view (prefix "report-detail") from the exact same id-naming convention.
+function querySimulationReportElements(prefix: string): SimulationReportElements {
+    return {
+        container: requireElement(prefix),
+        game: requireElement(`${prefix}-game`),
+        rounds: requireElement(`${prefix}-rounds`),
+        seed: requireElement(`${prefix}-seed`),
+        totalBet: requireElement(`${prefix}-total-bet`),
+        totalWin: requireElement(`${prefix}-total-win`),
+        rtp: requireElement(`${prefix}-rtp`),
+        hitFrequency: requireElement(`${prefix}-hit-frequency`),
+        volatility: requireElement(`${prefix}-volatility`),
+        confidenceInterval: requireElement(`${prefix}-confidence-interval`),
+        maxWin: requireElement(`${prefix}-max-win`),
+        duration: requireElement(`${prefix}-duration`),
+        breakdownSection: requireElement(`${prefix}-breakdown-section`),
+        breakdownBody: requireElement(`${prefix}-breakdown-body`),
+        warningsSection: requireElement(`${prefix}-warnings-section`),
+        warningsList: requireElement(`${prefix}-warnings`),
+        reproducibility: requireElement(`${prefix}-reproducibility`),
+    };
 }
 
 export function queryElements(): Elements {
@@ -160,23 +210,24 @@ export function queryElements(): Elements {
         simulationProgressText: requireElement("simulation-progress-text"),
         simulationCancelButton: requireElement("simulation-cancel-button"),
         simulationRerunButton: requireElement("simulation-rerun-button"),
-        simulationReport: requireElement("simulation-report"),
-        simulationReportGame: requireElement("simulation-report-game"),
-        simulationReportRounds: requireElement("simulation-report-rounds"),
-        simulationReportSeed: requireElement("simulation-report-seed"),
-        simulationReportTotalBet: requireElement("simulation-report-total-bet"),
-        simulationReportTotalWin: requireElement("simulation-report-total-win"),
-        simulationReportRtp: requireElement("simulation-report-rtp"),
-        simulationReportHitFrequency: requireElement("simulation-report-hit-frequency"),
-        simulationReportVolatility: requireElement("simulation-report-volatility"),
-        simulationReportConfidenceInterval: requireElement("simulation-report-confidence-interval"),
-        simulationReportMaxWin: requireElement("simulation-report-max-win"),
-        simulationReportDuration: requireElement("simulation-report-duration"),
-        simulationReportBreakdownSection: requireElement("simulation-report-breakdown-section"),
-        simulationReportBreakdownBody: requireElement("simulation-report-breakdown-body"),
-        simulationReportWarningsSection: requireElement("simulation-report-warnings-section"),
-        simulationReportWarningsList: requireElement("simulation-report-warnings"),
-        simulationReportReproducibility: requireElement("simulation-report-reproducibility"),
+        simulationViewInReportsButton: requireElement("simulation-view-in-reports-button"),
+        simulationReport: querySimulationReportElements("simulation-report"),
+        tabReportsButton: requireElement("tab-reports"),
+        projectReportsSection: requireElement("project-reports"),
+        reportsRefreshButton: requireElement("reports-refresh-button"),
+        reportsEmpty: requireElement("reports-empty"),
+        reportsError: requireElement("reports-error"),
+        reportsList: requireElement("reports-list"),
+        reportDetail: requireElement("report-detail"),
+        reportDetailEmpty: requireElement("report-detail-empty"),
+        reportDetailLoading: requireElement("report-detail-loading"),
+        reportDetailError: requireElement("report-detail-error"),
+        reportDetailActions: requireElement("report-detail-actions"),
+        reportDownloadJson: requireElement("report-download-json"),
+        reportDownloadMarkdown: requireElement("report-download-markdown"),
+        reportDownloadHtml: requireElement("report-download-html"),
+        reportBackToSimulationButton: requireElement("report-back-to-simulation-button"),
+        reportDetailReport: querySimulationReportElements("report-detail"),
     };
 }
 
@@ -230,6 +281,7 @@ export function renderProjectHeader(elements: Elements, header: ProjectHeaderVie
         elements.projectOverviewSection.hidden = true;
         elements.projectValidationSection.hidden = true;
         elements.projectSimulationSection.hidden = true;
+        elements.projectReportsSection.hidden = true;
     }
 
     if (header.status === "empty") {
@@ -263,9 +315,11 @@ export function showProjectTab(elements: Elements, tab: ProjectTab): void {
     elements.projectOverviewSection.hidden = tab !== "overview";
     elements.projectValidationSection.hidden = tab !== "validation";
     elements.projectSimulationSection.hidden = tab !== "simulation";
+    elements.projectReportsSection.hidden = tab !== "reports";
     elements.tabOverviewButton.setAttribute("aria-current", tab === "overview" ? "page" : "false");
     elements.tabValidationButton.setAttribute("aria-current", tab === "validation" ? "page" : "false");
     elements.tabSimulationButton.setAttribute("aria-current", tab === "simulation" ? "page" : "false");
+    elements.tabReportsButton.setAttribute("aria-current", tab === "reports" ? "page" : "false");
 }
 
 // Renders the full Inspect result block for every InspectionResultView state (loading/error/loaded
@@ -379,24 +433,26 @@ function formatConfidenceInterval(interval: {low: number; high: number} | undefi
     return `${(interval.low * 100).toFixed(2)}% – ${(interval.high * 100).toFixed(2)}%`;
 }
 
-export function renderSimulationReport(elements: Elements, view: SimulationReportView): void {
-    elements.simulationReport.hidden = false;
-    elements.simulationReportGame.textContent = `${view.game.name} (id: "${view.game.id}", v${view.game.version})`;
-    elements.simulationReportRounds.textContent =
+// Fills in one SimulationReportElements bag — used for both the Simulation tab's own inline "just
+// completed" block and the Reports tab's detail view (see querySimulationReportElements), so this
+// formatting logic exists in exactly one place.
+export function renderSimulationReport(elements: SimulationReportElements, view: SimulationReportView): void {
+    elements.container.hidden = false;
+    elements.game.textContent = `${view.game.name} (id: "${view.game.id}", v${view.game.version})`;
+    elements.rounds.textContent =
         view.rounds === view.requestedRounds ? String(view.rounds) : `${view.rounds} (requested ${view.requestedRounds})`;
-    elements.simulationReportSeed.textContent = view.seed ?? "(none)";
-    elements.simulationReportTotalBet.textContent = view.totalBet.toFixed(2);
-    elements.simulationReportTotalWin.textContent = view.totalWin.toFixed(2);
-    elements.simulationReportRtp.textContent = `${(view.rtp * 100).toFixed(2)}%`;
-    elements.simulationReportHitFrequency.textContent = `${(view.hitFrequency * 100).toFixed(2)}%`;
-    elements.simulationReportVolatility.textContent =
-        view.volatility === undefined ? "—" : view.volatility.toFixed(2);
-    elements.simulationReportConfidenceInterval.textContent = formatConfidenceInterval(view.rtpConfidenceInterval95);
-    elements.simulationReportMaxWin.textContent = view.maxWin.toFixed(2);
-    elements.simulationReportDuration.textContent = `${view.durationMs}ms (${view.spinsPerSecond} spins/s)`;
+    elements.seed.textContent = view.seed ?? "(none)";
+    elements.totalBet.textContent = view.totalBet.toFixed(2);
+    elements.totalWin.textContent = view.totalWin.toFixed(2);
+    elements.rtp.textContent = `${(view.rtp * 100).toFixed(2)}%`;
+    elements.hitFrequency.textContent = `${(view.hitFrequency * 100).toFixed(2)}%`;
+    elements.volatility.textContent = view.volatility === undefined ? "—" : view.volatility.toFixed(2);
+    elements.confidenceInterval.textContent = formatConfidenceInterval(view.rtpConfidenceInterval95);
+    elements.maxWin.textContent = view.maxWin.toFixed(2);
+    elements.duration.textContent = `${view.durationMs}ms (${view.spinsPerSecond} spins/s)`;
 
-    elements.simulationReportBreakdownSection.hidden = !view.breakdown || view.breakdown.length === 0;
-    elements.simulationReportBreakdownBody.textContent = "";
+    elements.breakdownSection.hidden = !view.breakdown || view.breakdown.length === 0;
+    elements.breakdownBody.textContent = "";
     for (const row of view.breakdown ?? []) {
         const tr = document.createElement("tr");
         const cells = [
@@ -412,19 +468,71 @@ export function renderSimulationReport(elements: Elements, view: SimulationRepor
             td.textContent = cellText;
             tr.appendChild(td);
         }
-        elements.simulationReportBreakdownBody.appendChild(tr);
+        elements.breakdownBody.appendChild(tr);
     }
 
-    elements.simulationReportWarningsSection.hidden = view.warnings.length === 0;
-    elements.simulationReportWarningsList.textContent = "";
+    elements.warningsSection.hidden = view.warnings.length === 0;
+    elements.warningsList.textContent = "";
     for (const warning of view.warnings) {
         const item = document.createElement("li");
         item.textContent = warning;
-        elements.simulationReportWarningsList.appendChild(item);
+        elements.warningsList.appendChild(item);
     }
 
-    elements.simulationReportReproducibility.hidden = view.reproducibilityCommand === undefined;
+    elements.reproducibility.hidden = view.reproducibilityCommand === undefined;
     if (view.reproducibilityCommand !== undefined) {
-        elements.simulationReportReproducibility.textContent = view.reproducibilityCommand;
+        elements.reproducibility.textContent = view.reproducibilityCommand;
+    }
+}
+
+export function renderReportsList(
+    elements: Elements,
+    view: ReportListView,
+    onSelect: (entry: StudioSimulationReportListEntry) => void,
+): void {
+    elements.reportsError.hidden = true;
+    elements.reportsEmpty.hidden = view.status !== "empty";
+    elements.reportsList.textContent = "";
+    if (view.status === "empty") {
+        return;
+    }
+
+    for (const entry of view.entries) {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        const startedAt = new Date(entry.startedAt).toLocaleString();
+        button.textContent =
+            `${entry.game.id} v${entry.game.version} — ${entry.actualRounds}/${entry.requestedRounds} rounds, ` +
+            `RTP ${(entry.rtp * 100).toFixed(2)}%, ${startedAt}` +
+            (entry.hasWarnings ? " (has warnings)" : "");
+        button.addEventListener("click", () => onSelect(entry));
+        item.appendChild(button);
+        elements.reportsList.appendChild(item);
+    }
+}
+
+export function renderReportsListError(elements: Elements, message: string): void {
+    elements.reportsError.hidden = false;
+    elements.reportsError.textContent = message;
+}
+
+export type ReportDetailView = {status: "empty"} | {status: "loading"} | {status: "error"; message: string} | {status: "loaded"};
+
+// Toggles which part of the Reports tab's detail panel is visible for every state. The "loaded"
+// case's actual field values are filled in separately by calling
+// renderSimulationReport(elements.reportDetailReport, ...) right after this — same split as
+// renderInspectionResult/renderSimulationProgress use for their own "loaded" cases.
+export function renderReportDetailState(elements: Elements, view: ReportDetailView): void {
+    elements.reportDetailEmpty.hidden = view.status !== "empty";
+    elements.reportDetailLoading.hidden = view.status !== "loading";
+    elements.reportDetailError.hidden = view.status !== "error";
+    elements.reportDetailActions.hidden = view.status !== "loaded";
+    if (view.status !== "loaded") {
+        elements.reportDetailReport.container.hidden = true;
+    }
+
+    if (view.status === "error") {
+        elements.reportDetailError.textContent = view.message;
     }
 }

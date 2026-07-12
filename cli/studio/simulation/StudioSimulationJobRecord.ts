@@ -14,6 +14,11 @@ export type StudioSimulationJobRecord = {
     rounds: number;
     seed?: string;
     startedAt: number;
+    // Set exactly once, the moment status first becomes terminal (completed/failed/cancelled) — see
+    // StudioSimulationService's fail()/cancelRecord()/completion path. Undefined while queued/running.
+    // Kept as its own field rather than derived from startedAt+durationMs so retention/listing never
+    // depends on that arithmetic coincidence holding.
+    completedAt?: number;
     roundsCompleted: number;
     durationMs: number;
     report?: SimulationReport;

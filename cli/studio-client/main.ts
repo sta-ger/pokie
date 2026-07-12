@@ -1,13 +1,16 @@
 import {
+    buildReportDownloadUrl,
     cancelSimulation,
     closeProject,
     createProject,
     FetchLike,
     getContext,
     getProjectContext,
+    getReport,
     getSimulation,
     inspectProject,
     listRecentProjects,
+    listReports,
     openProject,
     startSimulation,
     validateProject,
@@ -19,6 +22,9 @@ import {
     renderInspectionResult,
     renderProjectHeader,
     renderRecentProjects,
+    renderReportDetailState,
+    renderReportsList,
+    renderReportsListError,
     renderSimulationError,
     renderSimulationProgress,
     renderSimulationReport,
@@ -28,9 +34,10 @@ import {
     showView,
 } from "./dom.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
+import {describeReportsList} from "./interpretReports.js";
 import {describeSimulationProgress, describeSimulationReport, isSimulationActive} from "./interpretSimulation.js";
 import {currentRoute, navigate, onRouteChange, StudioRoute} from "./router.js";
-import type {ProjectDashboardContext, StudioContext, StudioSimulationJobView} from "./types.js";
+import type {ProjectDashboardContext, SimulationReport, StudioContext, StudioSimulationJobView} from "./types.js";
 
 // How long/often to re-check GET /api/project/context while it reports "loading" — only ever
 // happens right after Studio starts directly into Project mode (`pokie .`/`pokie <path>`), since
@@ -95,12 +102,51 @@ async function main(): Promise<void> {
     // per-project state.
     let currentSimulationId: string | undefined;
     let lastSimulationParams: {rounds: number; seed?: string} | undefined;
+    // The report currently shown in the Reports tab's detail view — kept so "Back to Simulation
+    // parameters" can read its rounds/seed without a second fetch.
+    let currentReportDetail: SimulationReport | undefined;
 
     const renderSimulationJob = (job: StudioSimulationJobView): void => {
         renderSimulationProgress(elements, describeSimulationProgress(job));
+        elements.simulationViewInReportsButton.hidden = job.status !== "completed";
         if (job.status === "completed" && job.report) {
-            renderSimulationReport(elements, describeSimulationReport(job.report, job.statistics));
+            renderSimulationReport(elements.simulationReport, describeSimulationReport(job.report, job.statistics));
         }
+    };
+
+    const refreshReports = (): void => {
+        listReports(fetchImpl)
+            .then((entries) => {
+                renderReportsList(elements, describeReportsList(entries), (entry) => selectReport(entry.id));
+            })
+            .catch((error: unknown) => {
+                renderReportsListError(elements, error instanceof Error ? error.message : String(error));
+            });
+    };
+
+    // Shared by clicking a Reports-list entry and the Simulation tab's own "View in Reports" bridge
+    // button — switches to the Reports tab, points the download links at `id`, and fetches/renders
+    // the full report.
+    const selectReport = (id: string): void => {
+        activeProjectTab = "reports";
+        showProjectTab(elements, "reports");
+        renderReportDetailState(elements, {status: "loading"});
+        elements.reportDownloadJson.href = buildReportDownloadUrl(id, "json");
+        elements.reportDownloadMarkdown.href = buildReportDownloadUrl(id, "markdown");
+        elements.reportDownloadHtml.href = buildReportDownloadUrl(id, "html");
+
+        getReport(fetchImpl, id)
+            .then((report) => {
+                currentReportDetail = report;
+                renderReportDetailState(elements, {status: "loaded"});
+                renderSimulationReport(elements.reportDetailReport, describeSimulationReport(report));
+            })
+            .catch((error: unknown) => {
+                renderReportDetailState(elements, {
+                    status: "error",
+                    message: error instanceof Error ? error.message : String(error),
+                });
+            });
     };
 
     const pollSimulation = (id: string): void => {
@@ -142,7 +188,11 @@ async function main(): Promise<void> {
             currentSimulationId = undefined;
             lastSimulationParams = undefined;
             renderSimulationProgress(elements, undefined);
-            elements.simulationReport.hidden = true;
+            elements.simulationReport.container.hidden = true;
+            elements.simulationViewInReportsButton.hidden = true;
+            currentReportDetail = undefined;
+            renderReportDetailState(elements, {status: "empty"});
+            refreshReports();
         }
     };
 
@@ -259,6 +309,32 @@ async function main(): Promise<void> {
     elements.tabSimulationButton.addEventListener("click", () => {
         activeProjectTab = "simulation";
         showProjectTab(elements, "simulation");
+    });
+
+    elements.tabReportsButton.addEventListener("click", () => {
+        activeProjectTab = "reports";
+        showProjectTab(elements, "reports");
+        refreshReports();
+    });
+
+    elements.reportsRefreshButton.addEventListener("click", () => {
+        refreshReports();
+    });
+
+    elements.reportBackToSimulationButton.addEventListener("click", () => {
+        if (currentReportDetail !== undefined) {
+            elements.simulationRoundsInput.value = String(currentReportDetail.requestedRounds);
+            elements.simulationSeedInput.value = currentReportDetail.seed ?? "";
+        }
+        activeProjectTab = "simulation";
+        showProjectTab(elements, "simulation");
+    });
+
+    elements.simulationViewInReportsButton.addEventListener("click", () => {
+        if (currentSimulationId !== undefined) {
+            selectReport(currentSimulationId);
+            refreshReports();
+        }
     });
 
     elements.inspectButton.addEventListener("click", () => {

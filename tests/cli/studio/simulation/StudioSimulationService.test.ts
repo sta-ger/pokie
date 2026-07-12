@@ -371,6 +371,148 @@ describe("StudioSimulationService", () => {
         expect(service.getStatus(first.job.id)?.status).toBe("cancelled");
         expect(service.getStatus(second.job.id)?.status).toBe("cancelled");
     });
+
+    describe("listReports / getReport", () => {
+        it("lists a completed simulation's report summary", async () => {
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createFakeGame(manifest)),
+            );
+            const result = service.start("/a", {rounds: 30, seed: "demo"});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            await waitForTerminal(service, result.job.id);
+
+            const entries = service.listReports("/a");
+
+            expect(entries).toHaveLength(1);
+            expect(entries[0]).toMatchObject({
+                id: result.job.id,
+                status: "completed",
+                game: {id: manifest.id, version: manifest.version},
+                requestedRounds: 30,
+                actualRounds: 30,
+                seed: "demo",
+            });
+            expect(typeof entries[0].rtp).toBe("number");
+            expect(typeof entries[0].hasWarnings).toBe("boolean");
+        });
+
+        it("never lists a failed or cancelled job (no report to summarize)", async () => {
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.reject(new Error("boom")),
+            );
+            const result = service.start("/a", {rounds: 10});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            await waitForTerminal(service, result.job.id);
+
+            expect(service.listReports("/a")).toEqual([]);
+        });
+
+        it("never lists another project's reports", async () => {
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createFakeGame(manifest)),
+            );
+            const result = service.start("/a", {rounds: 10});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            await waitForTerminal(service, result.job.id);
+
+            expect(service.listReports("/b")).toEqual([]);
+        });
+
+        it("returns the full report for a completed job", async () => {
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createFakeGame(manifest)),
+            );
+            const result = service.start("/a", {rounds: 10});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            const job = await waitForTerminal(service, result.job.id);
+
+            expect(service.getReport("/a", result.job.id)).toEqual({status: "ok", report: job.report});
+        });
+
+        it("returns not-found for an unknown id", () => {
+            const service = new StudioSimulationService();
+
+            expect(service.getReport("/a", "does-not-exist")).toEqual({status: "not-found"});
+        });
+
+        it("returns not-found (not a leak) when the id belongs to a different project", async () => {
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createFakeGame(manifest)),
+            );
+            const result = service.start("/a", {rounds: 10});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            await waitForTerminal(service, result.job.id);
+
+            expect(service.getReport("/b", result.job.id)).toEqual({status: "not-found"});
+        });
+
+        it("returns not-ready with the job's status for a queued/running simulation", () => {
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () =>
+                    new Promise(() => {
+                        // never resolves — keeps the job "queued"
+                    }),
+            );
+            const result = service.start("/a", {rounds: 10});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+
+            expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "queued"});
+        });
+
+        it("returns not-ready with the job's status for a failed simulation", async () => {
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.reject(new Error("boom")),
+            );
+            const result = service.start("/a", {rounds: 10});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            await waitForTerminal(service, result.job.id);
+
+            expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+        });
+
+        it("returns not-ready with the job's status for a cancelled simulation", async () => {
+            const gate = createControlledYield();
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createFakeGame(manifest)),
+                undefined,
+                10,
+                undefined,
+                gate.yieldToEventLoop,
+            );
+            const result = service.start("/a", {rounds: 25});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            await flushMacrotask();
+            service.cancel(result.job.id);
+            gate.release();
+            await flushMacrotask();
+
+            expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "cancelled"});
+        });
+    });
 });
 
 describe("StudioSimulationService (integration, real loadPokieGame + fixture game packages)", () => {

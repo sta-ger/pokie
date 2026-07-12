@@ -4,8 +4,10 @@ import type {
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
     RecentProjectEntry,
+    SimulationReport,
     StudioContext,
     StudioSimulationJobView,
+    StudioSimulationReportListEntry,
 } from "./types.js";
 
 // Same minimal Fetch subset as cli/client/apiClient.ts's FetchLike — kept structurally compatible
@@ -121,6 +123,31 @@ export async function cancelSimulation(fetchImpl: FetchLike, id: string): Promis
         throw new Error(await extractErrorMessage(response, "Failed to cancel simulation"));
     }
     return (await response.json()) as StudioSimulationJobView;
+}
+
+export async function listReports(fetchImpl: FetchLike): Promise<StudioSimulationReportListEntry[]> {
+    const response = await fetchImpl("/api/project/reports");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to list reports"));
+    }
+    return (await response.json()) as StudioSimulationReportListEntry[];
+}
+
+export async function getReport(fetchImpl: FetchLike, id: string): Promise<SimulationReport> {
+    const response = await fetchImpl(`/api/project/reports/${encodeURIComponent(id)}`);
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to load report"));
+    }
+    return (await response.json()) as SimulationReport;
+}
+
+export type ReportDownloadFormat = "json" | "markdown" | "html";
+
+// Downloads themselves are plain browser-native navigations (an <a href download> — the server sets
+// Content-Disposition: attachment, so no fetch/blob dance is needed); this only builds the URL those
+// links point at, consistently, in one place.
+export function buildReportDownloadUrl(id: string, format: ReportDownloadFormat): string {
+    return `/api/project/reports/${encodeURIComponent(id)}/download?format=${format}`;
 }
 
 async function extractErrorMessage(

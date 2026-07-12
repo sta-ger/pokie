@@ -14,6 +14,8 @@ import {mergeBreakdownComponents} from "./mergeBreakdownComponents.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
 import type {StudioSimulationJobView} from "./StudioSimulationJobView.js";
 import type {StudioSimulationRepository} from "./StudioSimulationRepository.js";
+import type {StudioSimulationReportListEntry} from "./StudioSimulationReportListEntry.js";
+import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 import {toStudioSimulationJobView} from "./toStudioSimulationJobView.js";
 import type {ValidatedSimulationRequest} from "./validateSimulationRequest.js";
 
@@ -22,6 +24,13 @@ const DEFAULT_CHUNK_SIZE = 1000;
 export type StudioSimulationStartResult =
     | {status: "created"; job: StudioSimulationJobView}
     | {status: "conflict"; activeJobId: string};
+
+export type GetSimulationReportResult =
+    | {status: "ok"; report: SimulationReport}
+    | {status: "not-found"}
+    // Either not terminal yet (queued/running) or terminal without a report (failed/cancelled) —
+    // `jobStatus` tells the caller which, so it can phrase a precise message either way.
+    | {status: "not-ready"; jobStatus: StudioSimulationStatus};
 
 // Drives AggregateSimulationRunner/SimulationAccumulator/SimulationReportBuilder — the exact same
 // simulation services `pokie sim` calls — directly, in chunks, so a long simulation never blocks the
@@ -120,6 +129,57 @@ export class StudioSimulationService {
         }
     }
 
+    // The Reports tab's list — only ever built from "completed" jobs (the only status with an actual
+    // report to summarize); a failed/cancelled job simply never appears here, though it's still
+    // tracked by the repository for retention purposes (see StudioSimulationRepository). Always
+    // scoped to one projectRoot — never includes another project's jobs.
+    public listReports(projectRoot: string): StudioSimulationReportListEntry[] {
+        const entries: StudioSimulationReportListEntry[] = [];
+        for (const record of this.repository.listTerminalByProjectRoot(projectRoot)) {
+            const entry = this.toReportListEntry(record);
+            if (entry) {
+                entries.push(entry);
+            }
+        }
+        return entries;
+    }
+
+    // "not-found" covers both a genuinely unknown id AND an id that belongs to a different project —
+    // deliberately indistinguishable from the caller's perspective, so this can never be used to probe
+    // whether some other project has a simulation with a given id.
+    public getReport(projectRoot: string, id: string): GetSimulationReportResult {
+        const record = this.repository.get(id);
+        if (!record || record.projectRoot !== projectRoot) {
+            return {status: "not-found"};
+        }
+        if (!record.report) {
+            return {status: "not-ready", jobStatus: record.status};
+        }
+        return {status: "ok", report: record.report};
+    }
+
+    private toReportListEntry(record: StudioSimulationJobRecord): StudioSimulationReportListEntry | undefined {
+        if (record.status !== "completed" || !record.report) {
+            return undefined;
+        }
+        const {report} = record;
+        return {
+            id: record.id,
+            status: "completed",
+            game: {id: report.game.id, version: report.game.version},
+            requestedRounds: report.requestedRounds,
+            actualRounds: report.rounds,
+            seed: record.seed,
+            rtp: report.rtp,
+            hitFrequency: report.hitFrequency,
+            maxWin: report.maxWin,
+            startedAt: new Date(record.startedAt).toISOString(),
+            completedAt: new Date(record.completedAt ?? record.startedAt).toISOString(),
+            durationMs: record.durationMs,
+            hasWarnings: (report.warnings?.length ?? 0) > 0,
+        };
+    }
+
     // Chunked rather than a single `new AggregateSimulationRunner(session, rounds).run()` call: that
     // runner is a tight synchronous loop with no yield points and no abort/progress hooks of its own,
     // so calling it once for the full round count would block this process's entire event loop for
@@ -216,17 +276,28 @@ export class StudioSimulationService {
             averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
             rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
         };
-        record.durationMs = this.now() - record.startedAt;
+        this.markTerminal(record);
     }
 
     private fail(record: StudioSimulationJobRecord, error: unknown): void {
         record.status = "failed";
         record.error = error instanceof Error ? error.message : String(error);
-        record.durationMs = this.now() - record.startedAt;
+        this.markTerminal(record);
     }
 
     private cancelRecord(record: StudioSimulationJobRecord): void {
         record.status = "cancelled";
+        this.markTerminal(record);
+    }
+
+    // Common tail for every path that lands a record in a terminal status: stamps durationMs/
+    // completedAt, then re-saves through the repository specifically so it gets a chance to enforce
+    // retention (see StudioSimulationRepository.save()'s own doc comment) — every other mutation in
+    // this class updates `record` in place without a second save() call, since the repository stores
+    // it by reference; this one call is the deliberate exception.
+    private markTerminal(record: StudioSimulationJobRecord): void {
         record.durationMs = this.now() - record.startedAt;
+        record.completedAt = record.startedAt + record.durationMs;
+        this.repository.save(record);
     }
 }
