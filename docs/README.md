@@ -6,9 +6,12 @@ reference: what every class/interface does, its constructor and methods, and how
 For installation and a quick taste of the API, see the [main README](../README.md). For end-to-end example games,
 see [pokie-examples](https://github.com/sta-ger/pokie-examples).
 
-**Scope:** POKIE is a game-logic library, not a casino backend — it doesn't ship an RGS, a wallet/ledger system, a
-network transport, or player/session persistence. It computes what a round's outcome and win are; wiring that into
-an account, currency, or compliance system is left to the integrating backend.
+**Scope:** POKIE is a game-logic library, not a casino backend — it doesn't ship an RGS, a real wallet/ledger
+system, or any compliance/audit guarantee. It computes what a round's outcome and win are; wiring that into an
+account, currency, or compliance system is left to the integrating backend. The one exception is `pokie serve`/
+`pokie dev` (see [CLI](cli.md), item 13 below): an explicitly **experimental, dev/reference-only** HTTP transport
+with a replaceable, in-memory-by-default `SessionRepository` and `WalletPort` — useful for local development and
+previewing a game, but neither a substitute for a real backend nor RGS-grade in any sense.
 
 ## Contents
 
