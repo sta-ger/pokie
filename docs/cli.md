@@ -1248,11 +1248,20 @@ instance, every command for a given `sessionId` is already serialized through `S
 own per-session queue (see [Idempotency and concurrency](#idempotency-and-concurrency) below), so its
 own load-then-save can never race against itself; a conflict there would mean something outside
 `SpinCommandHandler` wrote to the repository in between, which the built-in commands never do.
-`FileSessionRepository`'s own `saveVersioned()` re-reads the file immediately before writing to catch
-this, but does so without a file lock — it narrows, not closes, the cross-process read-then-write race
-(see that class's own doc comment); a deployment needing a hard guarantee there must provide real
-locking or a transactional store itself, same tradeoff as the wallet/idempotency durability discussion
-below.
+
+`FileSessionRepository` itself also serializes every `save()`/`saveVersioned()` for one `sessionId`
+through its own internal, in-process queue (independent of `SpinCommandHandler`'s), so two calls made
+directly against the *same* `FileSessionRepository` object — bypassing `SpinCommandHandler` entirely —
+can't interleave their read-then-write either; `fs.readFile`/`fs.writeFile` are async and yield to the
+event loop, so without that queue two such calls could both read the same version and both write,
+silently corrupting one write with the other. That queue is purely in-memory, though, so it only
+protects calls made through *that one instance*. It does nothing for two *separate*
+`FileSessionRepository` instances/processes sharing the same directory: `saveVersioned()` re-reads the
+file immediately before writing, which narrows that cross-process race, but doesn't close it — there's
+no OS-level file lock, so two processes reading the same expected version at nearly the same instant
+can still both pass the check before either writes, and the loser's write is silently lost. A
+deployment needing a hard guarantee across processes must provide real file locking or a transactional
+store itself, the same tradeoff as the wallet/idempotency durability discussion below.
 
 A plain, pre-existing custom `SessionRepository` (only `save()`/`load()`) keeps working exactly as
 before — no conflict detection, no `sessionVersion`, no `409`s — since it never implemented

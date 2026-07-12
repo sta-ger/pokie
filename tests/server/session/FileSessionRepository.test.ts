@@ -127,5 +127,56 @@ describe("FileSessionRepository", () => {
 
             await expect(repository.loadVersioned("session-1")).resolves.toBeUndefined();
         });
+
+        it("serializes two truly concurrent saveVersioned calls against the SAME instance for one sessionId: exactly one wins, nothing is lost", async () => {
+            // Regression test: fs.readFile/fs.writeFile are async and yield to the event loop, so
+            // without an in-process per-sessionId queue, two saveVersioned() calls fired via
+            // Promise.all here would both read the same current version and both write — silently
+            // corrupting each other's result with no conflict ever raised. This is exactly the
+            // property saveVersioned()'s whole contract depends on, so it must hold for calls made
+            // directly against one FileSessionRepository instance, not only through
+            // SpinCommandHandler's own per-session queue.
+            const repository = new FileSessionRepository(directory);
+            await repository.save("session-1", {bet: 1, win: 0}); // version 1
+
+            const [first, second] = await Promise.allSettled([
+                repository.saveVersioned("session-1", {bet: 1, win: 10}, 1),
+                repository.saveVersioned("session-1", {bet: 1, win: 20}, 1),
+            ]);
+
+            const statuses = [first.status, second.status].sort();
+            expect(statuses).toEqual(["fulfilled", "rejected"]);
+
+            const rejected = (first.status === "rejected" ? first : second) as PromiseRejectedResult;
+            expect(rejected.reason).toBeInstanceOf(SessionVersionConflictError);
+
+            // Exactly one write landed — version 2, with a recognizable winning value, not some
+            // interleaved/corrupted mix of both attempts.
+            const stored = await repository.loadVersioned("session-1");
+            expect(stored?.version).toBe(2);
+            expect([10, 20]).toContain((stored?.state as PokieSessionState).win);
+        });
+
+        it("serializes a concurrent save() and saveVersioned() against the SAME instance for one sessionId, preserving call order", async () => {
+            const repository = new FileSessionRepository(directory);
+            await repository.save("session-1", {bet: 1, win: 0}); // version 1
+
+            // Both calls enqueue synchronously in the order they're invoked here (before either's
+            // first `await` yields), so the queue's FIFO ordering makes this fully deterministic:
+            // save() (enqueued first) unconditionally bumps to version 2, then saveVersioned()
+            // (enqueued second, still asking for version 1) reads that already-bumped version 2 and
+            // conflicts — never the two interleaving and corrupting each other's write.
+            const [saveResult, saveVersionedResult] = await Promise.allSettled([
+                repository.save("session-1", {bet: 1, win: 30}),
+                repository.saveVersioned("session-1", {bet: 1, win: 40}, 1),
+            ]);
+
+            expect(saveResult.status).toBe("fulfilled");
+            expect(saveVersionedResult.status).toBe("rejected");
+            if (saveVersionedResult.status === "rejected") {
+                expect(saveVersionedResult.reason).toBeInstanceOf(SessionVersionConflictError);
+            }
+            await expect(repository.loadVersioned("session-1")).resolves.toEqual({state: {bet: 1, win: 30}, version: 2});
+        });
     });
 });
