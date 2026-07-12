@@ -1,6 +1,7 @@
 import {
     buildReplayDownloadUrl,
     buildReportDownloadUrl,
+    cancelReplay,
     cancelSimulation,
     closeProject,
     createProject,
@@ -394,43 +395,48 @@ describe("studio-client apiClient", () => {
     });
 
     describe("runReplay", () => {
-        it("POSTs round and seed and returns the created replay", () => {
-            const record = {
-                id: "replay-1",
-                projectRoot: "/a",
-                descriptor: {
-                    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
-                    seed: "demo",
-                    round: 42,
-                    totalBet: 42,
-                    totalWin: 10,
-                    screen: [["A"]],
-                    timestamp: 1735707845000,
-                    durationMs: 5,
-                },
-            };
-            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: record}));
+        it("POSTs round and seed and returns the created job", async () => {
+            const job = {id: "replay-1", status: "queued", round: 42, seed: "demo", startedAt: "2026-01-01T00:00:00.000Z", completedRounds: 0, durationMs: 0};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: job}));
 
-            return runReplay(fetchImpl, 42, "demo").then((result) => {
-                expect(calls).toEqual([
-                    {
-                        url: "/api/project/replays",
-                        init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({round: 42, seed: "demo"})},
-                    },
-                ]);
-                expect(result).toEqual(record);
-            });
+            const result = await runReplay(fetchImpl, 42, "demo");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/project/replays",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({round: 42, seed: "demo"})},
+                },
+            ]);
+            expect(result).toEqual({status: "created", job});
         });
 
         it("omits seed from the body when not given", async () => {
-            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {}}));
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {id: "replay-1", status: "queued"}}));
 
             await runReplay(fetchImpl, 42);
 
             expect(calls[0].init?.body).toBe(JSON.stringify({round: 42}));
         });
 
-        it("throws the server's own error message on failure", async () => {
+        it("returns a typed conflict (not a thrown error) when another replay is already active", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {error: "A replay is already running for this project.", activeJobId: "replay-0"},
+            }));
+
+            const result = await runReplay(fetchImpl, 42);
+
+            expect(result).toEqual({status: "conflict", activeJobId: "replay-0"});
+        });
+
+        it("throws for a 409 with no active project (no activeJobId)", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "No active project."}}));
+
+            await expect(runReplay(fetchImpl, 42)).rejects.toThrow("No active project.");
+        });
+
+        it("throws the server's own error message for an invalid round", async () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"round" must be a positive integer.'}}));
 
             await expect(runReplay(fetchImpl, 0)).rejects.toThrow('"round" must be a positive integer.');
@@ -438,14 +444,14 @@ describe("studio-client apiClient", () => {
     });
 
     describe("getReplay", () => {
-        it("GETs /api/project/replays/:id and returns the record", async () => {
-            const record = {id: "replay-1", projectRoot: "/a", descriptor: {round: 1}};
-            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: record}));
+        it("GETs /api/project/replays/:id and returns the job", async () => {
+            const job = {id: "replay-1", status: "completed", round: 1, startedAt: "2026-01-01T00:00:00.000Z", completedRounds: 1, durationMs: 5};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: job}));
 
             const result = await getReplay(fetchImpl, "replay-1");
 
             expect(calls).toEqual([{url: "/api/project/replays/replay-1", init: undefined}]);
-            expect(result).toEqual(record);
+            expect(result).toEqual(job);
         });
 
         it("encodes the id in the URL", async () => {
@@ -463,17 +469,38 @@ describe("studio-client apiClient", () => {
         });
     });
 
+    describe("cancelReplay", () => {
+        it("DELETEs /api/project/replays/:id and returns the updated job", async () => {
+            const job = {id: "replay-1", status: "cancelled", round: 1000, startedAt: "2026-01-01T00:00:00.000Z", completedRounds: 200, durationMs: 10};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: job}));
+
+            const result = await cancelReplay(fetchImpl, "replay-1");
+
+            expect(calls).toEqual([{url: "/api/project/replays/replay-1", init: {method: "DELETE"}}]);
+            expect(result).toEqual(job);
+        });
+
+        it("throws the server's own error message for an unknown id", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown replay id "does-not-exist".'}}));
+
+            await expect(cancelReplay(fetchImpl, "does-not-exist")).rejects.toThrow('Unknown replay id "does-not-exist".');
+        });
+    });
+
     describe("listReplays", () => {
         it("GETs /api/project/replays and returns the list", async () => {
             const entries = [
                 {
                     id: "replay-1",
+                    status: "completed",
                     game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
                     round: 42,
                     seed: "demo",
+                    completedRounds: 42,
                     totalBet: 42,
                     totalWin: 10,
-                    timestamp: 1735707845000,
+                    startedAt: "2026-01-01T00:00:00.000Z",
+                    completedAt: "2026-01-01T00:00:01.000Z",
                     durationMs: 5,
                 },
             ];

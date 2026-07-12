@@ -6,8 +6,8 @@ import type {
     RecentProjectEntry,
     SimulationReport,
     StudioContext,
+    StudioReplayJobView,
     StudioReplayListEntry,
-    StudioReplayRecordView,
     StudioSimulationJobView,
     StudioSimulationReportListEntry,
 } from "./types.js";
@@ -152,24 +152,50 @@ export function buildReportDownloadUrl(id: string, format: ReportDownloadFormat)
     return `/api/project/reports/${encodeURIComponent(id)}/download?format=${format}`;
 }
 
-export async function runReplay(fetchImpl: FetchLike, round: number, seed?: string): Promise<StudioReplayRecordView> {
+export type StartReplayResult =
+    | {status: "created"; job: StudioReplayJobView}
+    | {status: "conflict"; activeJobId: string};
+
+// Distinguishes the two different 409 cases the endpoint can return — same reasoning as
+// startSimulation: "another replay is already running for this project" (has an activeJobId,
+// returned here as a typed result) vs. "no active project" or any other failure (thrown as a plain
+// Error). The replay itself runs in the background (see StudioReplayExecutionService) — this call
+// always returns immediately with a "queued" job, never the finished result.
+export async function runReplay(fetchImpl: FetchLike, round: number, seed?: string): Promise<StartReplayResult> {
     const response = await fetchImpl("/api/project/replays", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(seed === undefined ? {round} : {round, seed}),
     });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to run replay"));
+
+    if (response.status === 409) {
+        const body = (await response.json()) as {activeJobId?: string; error?: string};
+        if (body.activeJobId !== undefined) {
+            return {status: "conflict", activeJobId: body.activeJobId};
+        }
+        throw new Error(body.error ?? "Failed to start replay (HTTP 409).");
     }
-    return (await response.json()) as StudioReplayRecordView;
+
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to start replay"));
+    }
+    return {status: "created", job: (await response.json()) as StudioReplayJobView};
 }
 
-export async function getReplay(fetchImpl: FetchLike, id: string): Promise<StudioReplayRecordView> {
+export async function getReplay(fetchImpl: FetchLike, id: string): Promise<StudioReplayJobView> {
     const response = await fetchImpl(`/api/project/replays/${encodeURIComponent(id)}`);
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to load replay"));
     }
-    return (await response.json()) as StudioReplayRecordView;
+    return (await response.json()) as StudioReplayJobView;
+}
+
+export async function cancelReplay(fetchImpl: FetchLike, id: string): Promise<StudioReplayJobView> {
+    const response = await fetchImpl(`/api/project/replays/${encodeURIComponent(id)}`, {method: "DELETE"});
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to cancel replay"));
+    }
+    return (await response.json()) as StudioReplayJobView;
 }
 
 export async function listReplays(fetchImpl: FetchLike): Promise<StudioReplayListEntry[]> {

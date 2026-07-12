@@ -1659,29 +1659,47 @@ process-local, in-memory limit (same as the simulation jobs themselves): restart
 #### Replay
 
 The **Replay** tab runs a [`pokie replay`](#pokie-replay-packageroot)-equivalent replay against the active
-project — reusing `ReplayRecorder`/`loadPokieGame` directly, never shelling out to `pokie replay` or reimplementing
-its logic. A form asks for a **round** (required, a positive integer) and an optional **seed**, same as
-`pokie replay --round/--seed`; running it executes synchronously and shows the result immediately — there's no
-queued/running state to poll, since `ReplayRecorder.record()` has no seek-to-round primitive and simply plays a
-fresh session forward to `round` within the one request.
+project — reusing `loadPokieGame`/`GameSessionHandling.play()` directly (the same primitives
+`ReplayRecorder` itself uses), never shelling out to `pokie replay` or reimplementing its logic. A form asks for a
+**round** (required, a positive integer) and an optional **seed**, same as `pokie replay --round/--seed`.
 
-The result shown includes: game id/name/version, round, seed, cumulative total bet, cumulative total payout, the
-final **screen** rendered as a simple grid (or a "no screen available" notice for a session that doesn't implement
-`getSymbolsCombination()` — the exact same feature-detection [`pokie replay`](#pokie-replay-packageroot) itself
-relies on), timestamp, and duration. A **Run again with the same parameters** button re-submits the exact same
-round/seed, and **Download JSON** downloads the full `ReplayDescriptor`. The tab also carries a standing notice
-that replay reproducibility is best-effort: a deterministic game reproduces exactly for the same seed/round, but a
-game whose outcome doesn't depend solely on the seed may not.
+Unlike the CLI's `ReplayRecorder`, which plays a fresh session forward to `round` in one uninterrupted synchronous
+loop, Studio runs the replay as a background job, in bounded chunks against one long-lived session — the exact
+same reason [Simulation](#simulation) is chunked: replaying a large `round` in a single call would block the whole
+HTTP server's event loop (no status poll, cancel request, or unrelated Inspect/Validate call could be served) for
+as long as it took. `POST /api/project/replays` therefore returns immediately (`202`) with a **queued** job; the
+tab then shows **queued** → **running** (with a live completed-rounds/requested-round progress line and elapsed
+duration) → **completed**/**failed**/**cancelled**. A **Cancel** button is available while queued/running, and
+once the job reaches a terminal state, a **Run again with the same parameters** button re-submits the exact same
+round/seed. Only one replay may be queued/running per project at a time — starting a second one while the first is
+still active returns a `409` naming the already-active job's id, rather than silently starting a competing run.
+Cancellation, like Simulation's, can only take effect between chunks, not mid-chunk. The session itself is created
+exactly once per job and reused across every chunk — never recreated, and its RNG/game state is never reset — so
+the sequence of rounds actually played, and therefore the resulting descriptor, is identical to what
+`ReplayRecorder`'s own uninterrupted loop would produce for the same seed/round; only the *scheduling* differs.
 
-A **Recent Replays** list shows every replay run this session for the active project (most recent first); clicking
-one re-fetches and re-displays its full result (and updates the round/seed fields and "Run again" target to match).
-Studio keeps at most the 20 most recent replays per project (oldest evicted first) — a process-local, in-memory
-limit, same as Reports: restarting Studio clears it, and a replay from one project becomes unreachable (a `404`,
-indistinguishable from an unknown id) once Studio switches to a different project.
+The completed result shown includes: game id/name/version, round, seed, cumulative total bet, cumulative total
+payout, the final **screen** rendered as a simple grid (or a "no screen available" notice for a session that
+doesn't implement `getSymbolsCombination()` — the exact same feature-detection [`pokie
+replay`](#pokie-replay-packageroot) itself relies on), timestamp, and duration. **Download JSON** downloads the
+full `ReplayDescriptor` — only available once the job is `"completed"`; a failed/cancelled job has no descriptor to
+download, same as a failed/cancelled simulation having no report. The tab also carries a standing notice that
+replay reproducibility is best-effort: a deterministic game reproduces exactly for the same seed/round, but a game
+whose outcome doesn't depend solely on the seed may not.
+
+A **Recent Replays** list shows every replay job for the active project regardless of status (including a
+still-running one, unlike Simulation's Reports list which only ever shows completed jobs), most-recently-started
+first; clicking one re-fetches its full state (resuming live polling if it's still queued/running) and updates the
+round/seed fields and "Run again" target to match. Studio keeps at most the 20 most recent *terminal*
+(completed/failed/cancelled) replays per project (oldest evicted first) — a queued/running job is never evicted,
+no matter how many terminal jobs pile up around it. This is a process-local, in-memory limit, same as Reports:
+restarting Studio clears it, and a replay from one project becomes unreachable (a `404`, indistinguishable from an
+unknown id) once Studio switches to a different project. Stopping Studio itself (`Ctrl+C`) cancels every
+still-active replay the same way it cancels every still-active simulation.
 
 Studio bounds `round` to an explicit safety ceiling (`MAX_STUDIO_REPLAY_ROUND`, 100,000) — `pokie replay` itself has
-no such limit, but replaying round *N* means playing a session forward *N* times in a tight synchronous loop inside
-a single HTTP request, so Studio caps how long one request can block the event loop.
+no such limit; this mostly bounds how long a single replay job can occupy its project's one-active-replay-at-a-time
+slot, now that the replay itself no longer blocks the server while it runs.
 
 ### API
 
@@ -1738,24 +1756,36 @@ client, even for a load/validation failure.
   id (sanitized — any character outside `[a-zA-Z0-9._-]` is replaced, so this is safe regardless of what a game's
   id/version happen to contain). `400 {"error": "..."}` for a missing/invalid `format`; the same `404`/`409` cases
   as the JSON endpoint above otherwise.
-- `POST /api/project/replays` `{"round": number, "seed"?: string}` — runs a replay for the active project and
-  returns immediately (`201`) with the full result: `{id, projectRoot, descriptor}`, where `descriptor` is the
-  `ReplayDescriptor` (same shape as [`pokie replay`](#pokie-replay-packageroot)'s own JSON, including `screen: null`
-  for a session without `getSymbolsCombination()`). `400 {"error": "..."}` for an invalid `round` (missing, not an
-  integer, less than 1, or above the safe Studio ceiling of 100,000 — see `MAX_STUDIO_REPLAY_ROUND`) or an invalid
-  `seed` (present but empty/not a string), or for a failure loading the game/running the replay itself (a safe
-  message, never a stack trace); `409 {"error": "No active project."}` in Home mode.
-- `GET /api/project/replays/:id` — that saved replay's full record, same shape as the `POST` response. `404
-  {"error": "..."}` for an unknown id **or** one that belongs to a different project (deliberately
-  indistinguishable from "unknown", same reasoning as Reports' detail endpoint above); `409
-  {"error": "No active project."}` in Home mode.
-- `GET /api/project/replays` — the active project's most recent replays, most-recent first: `{id, game: {id, name,
-  version}, round, seed, totalBet, totalWin, timestamp, durationMs}[]` (no `screen` — fetch the detail endpoint for
-  that). `409 {"error": "No active project."}` in Home mode.
-- `GET /api/project/replays/:id/download` — the same `ReplayDescriptor` as a downloadable JSON file: `Content-Type:
-  application/json; charset=utf-8` and `Content-Disposition: attachment; filename="..."` with a filename built from
-  the game id/version and replay id (sanitized the same way as Reports' download filenames). The same `404` case as
-  the detail endpoint above otherwise.
+- `POST /api/project/replays` `{"round": number, "seed"?: string}` — starts a replay for the active project and
+  returns immediately (`202`) with the new job in `"queued"` status; the replay itself runs in the background,
+  never blocking this request. `400 {"error": "..."}` for an invalid `round` (missing, not an integer, less than 1,
+  or above the safe Studio ceiling of 100,000 — see `MAX_STUDIO_REPLAY_ROUND`) or an invalid `seed` (present but
+  empty/not a string); `409 {"error": "No active project."}` in Home mode; `409 {"error": "...", "activeJobId":
+  "..."}` if a replay is already queued/running for this project — a retried/duplicated request can never spawn a
+  competing job or corrupt the one already in flight.
+- `GET /api/project/replays/:id` — that job's current state: `{id, status, round, seed?, startedAt,
+  completedRounds, durationMs, game?, descriptor?, error?}` — `status` is
+  `"queued"`/`"running"`/`"completed"`/`"failed"`/`"cancelled"`; `game` (id/name/version) is known as soon as the
+  package has loaded, before the round-playing loop even starts; `descriptor` (a full `ReplayDescriptor`, same
+  shape as [`pokie replay`](#pokie-replay-packageroot)'s own JSON, including `screen: null` for a session without
+  `getSymbolsCombination()`) is only present once `status` is `"completed"`; `error` (a safe message, never a stack
+  trace) only once `status` is `"failed"`. `404 {"error": "..."}` for an unknown id **or** one that belongs to a
+  different project (deliberately indistinguishable from "unknown", same reasoning as Reports' detail endpoint
+  above); `409 {"error": "No active project."}` in Home mode.
+- `DELETE /api/project/replays/:id` — requests cancellation of a queued/running replay (returns its current view —
+  the record only actually flips to `"cancelled"` once the chunk loop notices, on the next `GET`/poll); idempotent
+  on an already-terminal job (just returns it unchanged, not an error). `404 {"error": "..."}` for an unknown id or
+  one belonging to a different project.
+- `GET /api/project/replays` — the active project's most recent replay jobs regardless of status, most-recently-
+  started first: `{id, status, game?, round, seed?, completedRounds, totalBet?, totalWin?, startedAt, completedAt?,
+  durationMs, error?}[]` (no `screen` — fetch the detail endpoint for that). `409 {"error": "No active project."}`
+  in Home mode.
+- `GET /api/project/replays/:id/download` — the completed job's `ReplayDescriptor` as a downloadable JSON file:
+  `Content-Type: application/json; charset=utf-8` and `Content-Disposition: attachment; filename="..."` with a
+  filename built from the game id/version and replay id (sanitized the same way as Reports' download filenames).
+  `404 {"error": "..."}` for an unknown id or one belonging to a different project; `409 {"error": "..."}` if the
+  replay hasn't completed yet (still queued/running) or completed without a descriptor (failed/cancelled) — the
+  message names which.
 
 ## Workflow
 

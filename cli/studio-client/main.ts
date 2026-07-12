@@ -1,5 +1,6 @@
 import {
     buildReportDownloadUrl,
+    cancelReplay,
     cancelSimulation,
     closeProject,
     createProject,
@@ -19,7 +20,6 @@ import {
     validateProject,
 } from "./apiClient.js";
 import {
-    clearReplayError,
     Elements,
     ProjectTab,
     queryElements,
@@ -29,6 +29,7 @@ import {
     renderReplayError,
     renderReplayList,
     renderReplayListError,
+    renderReplayProgress,
     renderReplayResult,
     renderReportDetailState,
     renderReportsList,
@@ -42,11 +43,17 @@ import {
     showView,
 } from "./dom.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
-import {describeReplayList, describeReplayResult} from "./interpretReplay.js";
+import {describeReplayList, describeReplayProgress, describeReplayResult, isReplayActive, isReplayTerminal} from "./interpretReplay.js";
 import {describeReportsList} from "./interpretReports.js";
 import {describeSimulationProgress, describeSimulationReport, isSimulationActive} from "./interpretSimulation.js";
 import {currentRoute, navigate, onRouteChange, StudioRoute} from "./router.js";
-import type {ProjectDashboardContext, SimulationReport, StudioContext, StudioSimulationJobView} from "./types.js";
+import type {
+    ProjectDashboardContext,
+    SimulationReport,
+    StudioContext,
+    StudioReplayJobView,
+    StudioSimulationJobView,
+} from "./types.js";
 
 // How long/often to re-check GET /api/project/context while it reports "loading" — only ever
 // happens right after Studio starts directly into Project mode (`pokie .`/`pokie <path>`), since
@@ -60,6 +67,11 @@ const PROJECT_POLL_MAX_ATTEMPTS = 40;
 // actually takes; polling only stops once the job reaches a terminal status or the user navigates
 // away from the Project route.
 const SIMULATION_POLL_INTERVAL_MS = 500;
+
+// Same reasoning as SIMULATION_POLL_INTERVAL_MS — a replay now runs as a chunked background job (see
+// StudioReplayExecutionService), never blocking the request that started it, so this polls
+// GET /api/project/replays/:id until it reaches a terminal status.
+const REPLAY_POLL_INTERVAL_MS = 500;
 
 function routeForContext(context: StudioContext): StudioRoute {
     return context.mode === "project" ? "project" : "home";
@@ -115,9 +127,10 @@ async function main(): Promise<void> {
     // parameters" can read its rounds/seed without a second fetch.
     let currentReportDetail: SimulationReport | undefined;
 
-    // Replay executes synchronously within a single request (see StudioReplayService) — no
-    // job/polling state is needed, only the parameters of the last run/selected replay so "Run again"
-    // can repeat it.
+    // Tracked so the Cancel/re-run buttons and background polling know which job to act on — reset
+    // whenever a (new) project becomes active (see showProjectDashboard below), same as Simulation's
+    // own per-project state.
+    let currentReplayId: string | undefined;
     let lastReplayParams: {round: number; seed?: string} | undefined;
 
     const renderSimulationJob = (job: StudioSimulationJobView): void => {
@@ -163,6 +176,16 @@ async function main(): Promise<void> {
             });
     };
 
+    const renderReplayJob = (job: StudioReplayJobView): void => {
+        renderReplayProgress(elements, describeReplayProgress(job));
+        if (job.status === "completed") {
+            const result = describeReplayResult(job);
+            if (result) {
+                renderReplayResult(elements, result);
+            }
+        }
+    };
+
     const refreshReplays = (): void => {
         listReplays(fetchImpl)
             .then((entries) => {
@@ -173,16 +196,34 @@ async function main(): Promise<void> {
             });
     };
 
-    // Shared by clicking a Replay-list entry and the form's own "Run Replay" submit — both end with
-    // the exact same record shape (StudioReplayRecordView), so both render through describeReplayResult.
-    const selectReplay = (id: string): void => {
-        clearReplayError(elements);
+    const pollReplay = (id: string): void => {
         getReplay(fetchImpl, id)
-            .then((record) => {
-                lastReplayParams = {round: record.descriptor.round, seed: record.descriptor.seed ?? undefined};
-                elements.replayRoundInput.value = String(record.descriptor.round);
-                elements.replaySeedInput.value = record.descriptor.seed ?? "";
-                renderReplayResult(elements, describeReplayResult(record));
+            .then((job) => {
+                renderReplayJob(job);
+                if (isReplayActive(job) && currentRoute() === "project") {
+                    setTimeout(() => pollReplay(id), REPLAY_POLL_INTERVAL_MS);
+                } else if (isReplayTerminal(job)) {
+                    refreshReplays();
+                }
+            })
+            .catch((error: unknown) => {
+                renderReplayError(elements, error instanceof Error ? error.message : String(error));
+            });
+    };
+
+    // Selecting a Replay-list entry re-fetches its full job (so a still-running one resumes live
+    // polling instead of showing stale progress) and points the round/seed fields + "Run again" at it.
+    const selectReplay = (id: string): void => {
+        currentReplayId = id;
+        getReplay(fetchImpl, id)
+            .then((job) => {
+                lastReplayParams = {round: job.round, seed: job.seed};
+                elements.replayRoundInput.value = String(job.round);
+                elements.replaySeedInput.value = job.seed ?? "";
+                renderReplayJob(job);
+                if (isReplayActive(job)) {
+                    pollReplay(id);
+                }
             })
             .catch((error: unknown) => {
                 renderReplayError(elements, error instanceof Error ? error.message : String(error));
@@ -191,11 +232,18 @@ async function main(): Promise<void> {
 
     const runReplayAndRender = (round: number, seed?: string): void => {
         lastReplayParams = {round, seed};
-        clearReplayError(elements);
+        renderReplayProgress(elements, {status: "queued", completedRounds: 0, round, percent: 0, durationMs: 0});
+        elements.replayResult.hidden = true;
         runReplay(fetchImpl, round, seed)
-            .then((record) => {
-                renderReplayResult(elements, describeReplayResult(record));
-                refreshReplays();
+            .then((result) => {
+                if (result.status === "conflict") {
+                    currentReplayId = result.activeJobId;
+                    pollReplay(result.activeJobId);
+                    return;
+                }
+                currentReplayId = result.job.id;
+                renderReplayJob(result.job);
+                pollReplay(result.job.id);
             })
             .catch((error: unknown) => {
                 renderReplayError(elements, error instanceof Error ? error.message : String(error));
@@ -246,9 +294,10 @@ async function main(): Promise<void> {
             currentReportDetail = undefined;
             renderReportDetailState(elements, {status: "empty"});
             refreshReports();
+            currentReplayId = undefined;
             lastReplayParams = undefined;
-            clearReplayError(elements);
-            renderReplayResult(elements, undefined);
+            renderReplayProgress(elements, undefined);
+            elements.replayResult.hidden = true;
             refreshReplays();
         }
     };
@@ -400,6 +449,17 @@ async function main(): Promise<void> {
             return;
         }
         runReplayAndRender(lastReplayParams.round, lastReplayParams.seed);
+    });
+
+    elements.replayCancelButton.addEventListener("click", () => {
+        if (currentReplayId === undefined) {
+            return;
+        }
+        cancelReplay(fetchImpl, currentReplayId)
+            .then((job) => renderReplayJob(job))
+            .catch((error: unknown) => {
+                renderReplayError(elements, error instanceof Error ? error.message : String(error));
+            });
     });
 
     elements.reportBackToSimulationButton.addEventListener("click", () => {

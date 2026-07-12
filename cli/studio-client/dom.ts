@@ -1,5 +1,5 @@
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
-import type {ReplayListView, ReplayResultView} from "./interpretReplay.js";
+import type {ReplayListView, ReplayProgressView, ReplayResultView} from "./interpretReplay.js";
 import type {ReportListView} from "./interpretReports.js";
 import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
 import type {RecentProjectEntry, StudioReplayListEntry, StudioSimulationReportListEntry} from "./types.js";
@@ -119,6 +119,10 @@ export type Elements = {
     replayRunButton: HTMLButtonElement;
     replayIdle: HTMLElement;
     replayError: HTMLElement;
+    replayProgress: HTMLElement;
+    replayStatusText: HTMLElement;
+    replayProgressText: HTMLElement;
+    replayCancelButton: HTMLButtonElement;
     replayRerunButton: HTMLButtonElement;
     replayResult: HTMLElement;
     replayResultGame: HTMLElement;
@@ -262,6 +266,10 @@ export function queryElements(): Elements {
         replayRunButton: requireElement("replay-run-button"),
         replayIdle: requireElement("replay-idle"),
         replayError: requireElement("replay-error"),
+        replayProgress: requireElement("replay-progress"),
+        replayStatusText: requireElement("replay-status-text"),
+        replayProgressText: requireElement("replay-progress-text"),
+        replayCancelButton: requireElement("replay-cancel-button"),
         replayRerunButton: requireElement("replay-rerun-button"),
         replayResult: requireElement("replay-result"),
         replayResultGame: requireElement("replay-result-game"),
@@ -591,15 +599,47 @@ export function renderReportDetailState(elements: Elements, view: ReportDetailVi
     }
 }
 
-// `result` is undefined exactly for "idle" (no replay has been run this session yet) — purely a
-// frontend concept, same role as SimulationProgressView | undefined in renderSimulationProgress.
-export function renderReplayResult(elements: Elements, result: ReplayResultView | undefined): void {
-    elements.replayIdle.hidden = result !== undefined;
-    elements.replayResult.hidden = result === undefined;
-    elements.replayRerunButton.hidden = result === undefined;
-    if (result === undefined) {
+// `progress` is undefined exactly for "idle" (no replay has been run this session yet) — purely a
+// frontend concept before the first POST /api/project/replays. Every other state (queued/running/
+// completed/failed/cancelled) comes straight from the polled job. Mirrors renderSimulationProgress —
+// this only toggles idle/error/progress/cancel/rerun visibility; the completed result's own fields are
+// filled in separately by renderReplayResult (called by main.ts once status === "completed"), same
+// split as renderSimulationProgress/renderSimulationReport.
+export function renderReplayProgress(elements: Elements, progress: ReplayProgressView | undefined): void {
+    const active = progress !== undefined && (progress.status === "queued" || progress.status === "running");
+    const terminal = progress !== undefined && !active;
+
+    elements.replayIdle.hidden = progress !== undefined;
+    elements.replayError.hidden = progress?.status !== "failed";
+    elements.replayProgress.hidden = progress === undefined;
+    elements.replayCancelButton.hidden = !active;
+    elements.replayRerunButton.hidden = !terminal;
+
+    if (progress === undefined) {
         return;
     }
+
+    elements.replayStatusText.textContent = `Status: ${progress.status}`;
+    elements.replayProgressText.textContent =
+        `${progress.completedRounds} / ${progress.round} rounds (${progress.percent}%) — ${progress.durationMs}ms`;
+
+    if (progress.status === "failed") {
+        elements.replayError.textContent = progress.error ?? "Replay failed.";
+    }
+}
+
+// For an apiClient call itself failing (network error, an unexpected non-2xx) — distinct from the
+// job's own "failed" status, which renderReplayProgress already handles from polled data.
+export function renderReplayError(elements: Elements, message: string): void {
+    elements.replayError.hidden = false;
+    elements.replayError.textContent = message;
+}
+
+// Only ever called once a job's status is "completed" (see describeReplayResult) — fills in the
+// completed result's own fields; visibility of the surrounding idle/error/progress states is handled
+// separately by renderReplayProgress above.
+export function renderReplayResult(elements: Elements, result: ReplayResultView): void {
+    elements.replayResult.hidden = false;
 
     elements.replayResultGame.textContent = `${result.game.name} (id: "${result.game.id}", v${result.game.version})`;
     elements.replayResultRound.textContent = String(result.round);
@@ -625,19 +665,6 @@ export function renderReplayResult(elements: Elements, result: ReplayResultView 
     elements.replayDownloadJson.href = `/api/project/replays/${encodeURIComponent(result.id)}/download`;
 }
 
-// For an apiClient call itself failing (network error, an unexpected non-2xx, or the replay/load
-// error message returned by the API) — the Replay tab has no polling/background job, so every
-// failure surfaces here directly, unlike Simulation's separate job-status-vs-call-failure split.
-export function renderReplayError(elements: Elements, message: string): void {
-    elements.replayError.hidden = false;
-    elements.replayError.textContent = message;
-}
-
-export function clearReplayError(elements: Elements): void {
-    elements.replayError.hidden = true;
-    elements.replayError.textContent = "";
-}
-
 export function renderReplayList(
     elements: Elements,
     view: ReplayListView,
@@ -654,10 +681,14 @@ export function renderReplayList(
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
-        const timestamp = new Date(entry.timestamp).toLocaleString();
+        const startedAt = new Date(entry.startedAt).toLocaleString();
+        const outcome =
+            entry.status === "completed"
+                ? `bet ${entry.totalBet?.toFixed(2)} / win ${entry.totalWin?.toFixed(2)}`
+                : `${entry.completedRounds}/${entry.round} rounds`;
+        const game = entry.game ? `${entry.game.id} v${entry.game.version}` : "(loading game)";
         button.textContent =
-            `${entry.game.id} v${entry.game.version} — round ${entry.round}, seed ${entry.seed ?? "(none)"}, ` +
-            `bet ${entry.totalBet.toFixed(2)} / win ${entry.totalWin.toFixed(2)}, ${timestamp}`;
+            `[${entry.status}] ${game} — round ${entry.round}, seed ${entry.seed ?? "(none)"}, ${outcome}, ${startedAt}`;
         button.addEventListener("click", () => onSelect(entry));
         item.appendChild(button);
         elements.replayList.appendChild(item);

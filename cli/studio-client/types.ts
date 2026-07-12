@@ -155,23 +155,38 @@ export type ReplayDescriptor = {
     durationMs: number;
 };
 
-// The DTO POST /api/project/replays and GET /api/project/replays/:id return — see
-// cli/studio/replay/StudioReplayRecordView.ts's own doc comment.
-export type StudioReplayRecordView = {
+export type StudioReplayStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+
+// The typed DTO every /api/project/replays* endpoint returns — see
+// cli/studio/replay/StudioReplayJobView.ts's own doc comment. `descriptor` is only present once
+// `status` is "completed"; `error` only once `status` is "failed".
+export type StudioReplayJobView = {
     id: string;
-    projectRoot: string;
-    descriptor: ReplayDescriptor;
+    status: StudioReplayStatus;
+    round: number;
+    seed?: string;
+    startedAt: string;
+    completedRounds: number;
+    durationMs: number;
+    game?: {id: string; name: string; version: string};
+    descriptor?: ReplayDescriptor;
+    error?: string;
 };
 
 // One row of GET /api/project/replays — see cli/studio/replay/StudioReplayListEntry.ts's own doc
-// comment (no `screen`, kept out of the list summary).
+// comment (no `screen`, kept out of the list summary; every job for the project regardless of status,
+// unlike Simulation's Reports list which only ever shows completed jobs).
 export type StudioReplayListEntry = {
     id: string;
-    game: {id: string; name: string; version: string};
+    status: StudioReplayStatus;
+    game?: {id: string; name: string; version: string};
     round: number;
-    seed: string | null;
-    totalBet: number;
-    totalWin: number;
-    timestamp: number;
+    seed?: string;
+    completedRounds: number;
+    totalBet?: number;
+    totalWin?: number;
+    startedAt: string;
+    completedAt?: string;
     durationMs: number;
+    error?: string;
 };

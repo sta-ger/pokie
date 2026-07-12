@@ -15,7 +15,7 @@ import path from "path";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
-import {StudioReplayService} from "../../../cli/studio/replay/StudioReplayService.js";
+import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
@@ -122,7 +122,7 @@ function createFreeGamesAwareFakeGame(manifest: PokieGameManifest): PokieGame {
     };
 }
 
-// FNV-1a, same hashing trick tests/cli/studio/replay/StudioReplayService.test.ts and the
+// FNV-1a, same hashing trick tests/cli/studio/replay/StudioReplayExecutionService.test.ts and the
 // "playable-game" fixture both use to turn a seed string into a deterministic 32-bit int.
 function hashSeed(seed: string | undefined): number {
     let hash = 0x811c9dc5;
@@ -1295,9 +1295,12 @@ describe("StudioServer", () => {
         });
     });
 
-    describe("Project Dashboard: Replay (POST/GET /api/project/replays*)", () => {
+    describe("Project Dashboard: Replay (POST/GET/DELETE /api/project/replays*)", () => {
         const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
 
+        // Persistent (not "Once"): the replay's own StudioReplayExecutionService independently calls
+        // this same `loadGame` a second time (see StudioReplayExecutionService.run()), same reasoning
+        // as the Simulation describe block's own openCrazyFruits().
         async function openCrazyFruits(game: PokieGame): Promise<void> {
             loadGame.mockResolvedValue(game);
             await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
@@ -1317,7 +1320,7 @@ describe("StudioServer", () => {
             expect(body).toEqual({error: "No active project."});
         });
 
-        it("rejects an invalid round with 400", async () => {
+        it("rejects an invalid round with 400 and never creates a job", async () => {
             await openCrazyFruits(createSeedAwareFakeGame(manifest));
 
             const zero = await post(`${baseUrl}/api/project/replays`, {round: 0});
@@ -1326,6 +1329,8 @@ describe("StudioServer", () => {
 
             const nonInteger = await post(`${baseUrl}/api/project/replays`, {round: 4.2});
             expect(nonInteger.status).toBe(400);
+
+            expect((await get(`${baseUrl}/api/project/replays`)).body).toEqual([]);
         });
 
         it("rejects a round above the safety limit with 400", async () => {
@@ -1346,57 +1351,103 @@ describe("StudioServer", () => {
             expect(body).toEqual({error: '"seed" must be a non-empty string when given.'});
         });
 
-        it("runs a replay and returns the full descriptor", async () => {
+        // The core fix this slice is about: POST returns immediately with a queued job, regardless of
+        // how large `round` is — it never runs the replay itself inline. See the "stays responsive"
+        // test below for the end-to-end proof that other requests aren't blocked either.
+        it("returns 202 with a queued job immediately, before the replay itself has run", async () => {
             await openCrazyFruits(createSeedAwareFakeGame(manifest));
 
             const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
 
-            expect(status).toBe(201);
-            const record = body as {id: string; projectRoot: string; descriptor: {game: unknown; round: number; seed: string}};
-            expect(record.projectRoot).toBe(path.resolve("./crazy-fruits"));
-            expect(record.descriptor).toMatchObject({game: manifest, round: 5, seed: "demo"});
-            expect(typeof record.id).toBe("string");
+            expect(status).toBe(202);
+            const job = body as {id: string; status: string; round: number; seed: string; completedRounds: number};
+            expect(job.status).toBe("queued");
+            expect(job.round).toBe(5);
+            expect(job.seed).toBe("demo");
+            expect(job.completedRounds).toBe(0);
+            expect(typeof job.id).toBe("string");
+        });
+
+        it("runs a replay to completion and returns the full descriptor", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
+            const createdBody = created.body as {id: string};
+
+            const {status, body} = await pollUntilTerminal(`${baseUrl}/api/project/replays/${createdBody.id}`);
+
+            expect(status).toBe(200);
+            expect(body.status).toBe("completed");
+            expect(body.descriptor).toMatchObject({game: manifest, round: 5, seed: "demo"});
+            expect(body.completedRounds).toBe(5);
         });
 
         it("produces the exact same descriptor for the same seed/round (reproducibility)", async () => {
             await openCrazyFruits(createSeedAwareFakeGame(manifest));
 
-            const first = await post(`${baseUrl}/api/project/replays`, {round: 10, seed: "reproducible"});
-            const second = await post(`${baseUrl}/api/project/replays`, {round: 10, seed: "reproducible"});
+            const firstCreated = await post(`${baseUrl}/api/project/replays`, {round: 10, seed: "reproducible"});
+            const first = await pollUntilTerminal(`${baseUrl}/api/project/replays/${(firstCreated.body as {id: string}).id}`);
+            const secondCreated = await post(`${baseUrl}/api/project/replays`, {round: 10, seed: "reproducible"});
+            const second = await pollUntilTerminal(`${baseUrl}/api/project/replays/${(secondCreated.body as {id: string}).id}`);
 
-            const firstDescriptor = (first.body as {descriptor: Record<string, unknown>}).descriptor;
-            const secondDescriptor = (second.body as {descriptor: Record<string, unknown>}).descriptor;
-            expect(secondDescriptor).toEqual({...firstDescriptor, timestamp: secondDescriptor.timestamp});
+            const firstDescriptor = first.body.descriptor as Record<string, unknown>;
+            const secondDescriptor = second.body.descriptor as Record<string, unknown>;
+            expect(secondDescriptor).toEqual({...firstDescriptor, timestamp: secondDescriptor.timestamp, durationMs: secondDescriptor.durationMs});
         });
 
         it("still succeeds for a game that ignores the seed entirely", async () => {
             await openCrazyFruits(createPlayableFakeGame(manifest));
 
-            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 4, seed: "whatever"});
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 4, seed: "whatever"});
+            const {body} = await pollUntilTerminal(`${baseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
 
-            expect(status).toBe(201);
-            expect((body as {descriptor: {seed: string}}).descriptor.seed).toBe("whatever");
+            expect(body.status).toBe("completed");
+            expect((body.descriptor as {seed: string}).seed).toBe("whatever");
         });
 
         it("records screen: null for a session without getSymbolsCombination()", async () => {
             await openCrazyFruits(createFakeGameWithoutScreen(manifest));
 
-            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 3});
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 3});
+            const {body} = await pollUntilTerminal(`${baseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
 
-            expect(status).toBe(201);
-            expect((body as {descriptor: {screen: unknown}}).descriptor.screen).toBeNull();
+            expect(body.status).toBe("completed");
+            expect((body.descriptor as {screen: unknown}).screen).toBeNull();
         });
 
-        it("returns 400 with a safe message when loading the game fails", async () => {
+        it("fails the job with a safe message (no stack trace) when loading the game fails", async () => {
             loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
             await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
             loadGame.mockRejectedValueOnce(new Error("Cannot find module './dist/index.js'"));
 
-            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 3});
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 3});
+            const {body} = await pollUntilTerminal(`${baseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
 
-            expect(status).toBe(400);
-            expect(body).toEqual({error: "Cannot find module './dist/index.js'"});
+            expect(body.status).toBe("failed");
+            expect(body.error).toBe("Cannot find module './dist/index.js'");
             expect(JSON.stringify(body)).not.toContain("\\n    at ");
+        });
+
+        it("rejects a second POST for the same project with 409 while one is already queued/running", async () => {
+            loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            // The replay's own independent load never resolves — keeps the first job "queued" forever,
+            // so the conflict check below can never race.
+            loadGame.mockReturnValueOnce(
+                new Promise(() => {
+                    // never resolves
+                }),
+            );
+
+            const first = await post(`${baseUrl}/api/project/replays`, {round: 1000});
+            const firstBody = first.body as {id: string};
+            const second = await post(`${baseUrl}/api/project/replays`, {round: 500});
+
+            expect(second.status).toBe(409);
+            expect(second.body).toEqual({
+                error: "A replay is already running for this project.",
+                activeJobId: firstBody.id,
+            });
         });
 
         it("returns 404 for GET of an unknown replay id", async () => {
@@ -1408,18 +1459,28 @@ describe("StudioServer", () => {
             expect(body).toEqual({error: 'Unknown replay id "does-not-exist".'});
         });
 
+        it("returns 404 for DELETE of an unknown replay id", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const {status, body} = await del(`${baseUrl}/api/project/replays/does-not-exist`);
+
+            expect(status).toBe(404);
+            expect(body).toEqual({error: 'Unknown replay id "does-not-exist".'});
+        });
+
         it("lists a project's replays with the required summary fields", async () => {
             await openCrazyFruits(createSeedAwareFakeGame(manifest));
-            await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
+            await pollUntilTerminal(`${baseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
 
             const {status, body} = await get(`${baseUrl}/api/project/replays`);
 
             expect(status).toBe(200);
             const entries = body as Array<Record<string, unknown>>;
             expect(entries).toHaveLength(1);
-            expect(entries[0]).toMatchObject({game: manifest, round: 5, seed: "demo"});
+            expect(entries[0]).toMatchObject({status: "completed", game: manifest, round: 5, seed: "demo"});
             expect(typeof entries[0].totalBet).toBe("number");
-            expect(typeof entries[0].timestamp).toBe("number");
+            expect(typeof entries[0].startedAt).toBe("string");
         });
 
         it("returns an empty list when the project has no replays yet", async () => {
@@ -1431,17 +1492,47 @@ describe("StudioServer", () => {
             expect(body).toEqual([]);
         });
 
-        it("downloads a JSON artifact with correct headers and a parseable, matching body", async () => {
+        it("downloads a JSON artifact with correct headers and a parseable, matching body once completed", async () => {
             await openCrazyFruits(createSeedAwareFakeGame(manifest));
             const created = await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
-            const {id, descriptor} = created.body as {id: string; descriptor: unknown};
+            const {id} = created.body as {id: string};
+            const {body} = await pollUntilTerminal(`${baseUrl}/api/project/replays/${id}`);
 
             const response = await fetch(`${baseUrl}/api/project/replays/${id}/download`);
 
             expect(response.status).toBe(200);
             expect(response.headers.get("content-type")).toContain("application/json");
             expect(response.headers.get("content-disposition")).toBe(`attachment; filename="crazy-fruits-0.1.0-${id}.json"`);
-            expect(JSON.parse(await response.text())).toEqual(descriptor);
+            expect(JSON.parse(await response.text())).toEqual(body.descriptor);
+        });
+
+        it("returns 409 (not-ready) when downloading a replay that hasn't completed yet", async () => {
+            loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            loadGame.mockReturnValueOnce(
+                new Promise(() => {
+                    // never resolves — keeps the job "queued"
+                }),
+            );
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 10});
+            const {id} = created.body as {id: string};
+
+            const response = await fetch(`${baseUrl}/api/project/replays/${id}/download`);
+
+            expect(response.status).toBe(409);
+        });
+
+        it("returns 409 (not-ready) when downloading a failed replay", async () => {
+            loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            loadGame.mockRejectedValueOnce(new Error("boom"));
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 10});
+            const {id} = created.body as {id: string};
+            await pollUntilTerminal(`${baseUrl}/api/project/replays/${id}`);
+
+            const response = await fetch(`${baseUrl}/api/project/replays/${id}/download`);
+
+            expect(response.status).toBe(409);
         });
 
         it("returns 404 when downloading an unknown replay id", async () => {
@@ -1456,6 +1547,7 @@ describe("StudioServer", () => {
             await openCrazyFruits(createSeedAwareFakeGame(manifest));
             const created = await post(`${baseUrl}/api/project/replays`, {round: 3});
             const {id} = created.body as {id: string};
+            await pollUntilTerminal(`${baseUrl}/api/project/replays/${id}`);
 
             await post(`${baseUrl}/api/projects/close`);
             loadGame.mockResolvedValue(createSeedAwareFakeGame({id: "other-game", name: "Other Game", version: "2.0.0"}));
@@ -1472,6 +1564,7 @@ describe("StudioServer", () => {
             await openCrazyFruits(createSeedAwareFakeGame(manifest));
             const created = await post(`${baseUrl}/api/project/replays`, {round: 3});
             const {id} = created.body as {id: string};
+            await pollUntilTerminal(`${baseUrl}/api/project/replays/${id}`);
 
             await post(`${baseUrl}/api/projects/close`);
             loadGame.mockResolvedValue(createSeedAwareFakeGame({id: "another-game", name: "Another Game", version: "3.0.0"}));
@@ -1479,6 +1572,164 @@ describe("StudioServer", () => {
 
             const download = await fetch(`${baseUrl}/api/project/replays/${id}/download`);
             expect(download.status).toBe(404);
+        });
+    });
+
+    describe("Project Dashboard: Replay cancellation (controlled chunk pacing)", () => {
+        let projectStudioRoot: string;
+        let projectServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            projectStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-replay-cancel-test-"));
+            writeStudioAssets(projectStudioRoot);
+        });
+
+        afterEach(async () => {
+            await projectServer?.stop();
+            fs.rmSync(projectStudioRoot, {recursive: true, force: true});
+        });
+
+        function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendingCount: () => number; release: () => void} {
+            const pending: Array<() => void> = [];
+            return {
+                yieldToEventLoop: () =>
+                    new Promise<void>((resolve) => {
+                        pending.push(resolve);
+                    }),
+                pendingCount: () => pending.length,
+                release: () => {
+                    const resolve = pending.shift();
+                    resolve?.();
+                },
+            };
+        }
+
+        it("cancels a running replay via DELETE, stopping further progress", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            const gate = createControlledYield();
+            const replayService = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                10, // chunkSize
+                undefined,
+                gate.yieldToEventLoop,
+            );
+
+            projectServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: projectStudioRoot,
+                gamePackageCreator: createStubCreator(scaffoldResult),
+                loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
+                replayService,
+                initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
+            });
+            const address = await projectServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${projectBaseUrl}/api/project/replays`, {round: 25});
+            const createdBody = created.body as {id: string};
+            await flushMacrotask();
+            expect(gate.pendingCount()).toBe(1);
+
+            const cancelResponse = await del(`${projectBaseUrl}/api/project/replays/${createdBody.id}`);
+            expect(cancelResponse.status).toBe(200);
+
+            gate.release();
+            await flushMacrotask();
+
+            const {body} = await get(`${projectBaseUrl}/api/project/replays/${createdBody.id}`);
+            expect((body as {status: string}).status).toBe("cancelled");
+            expect((body as {completedRounds: number}).completedRounds).toBe(10);
+            expect((body as {descriptor?: unknown}).descriptor).toBeUndefined();
+        });
+
+        it("stopping the Studio server during an active replay resolves cleanly and cancels the job", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            const gate = createControlledYield();
+            const replayService = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                10,
+                undefined,
+                gate.yieldToEventLoop,
+            );
+
+            projectServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: projectStudioRoot,
+                gamePackageCreator: createStubCreator(scaffoldResult),
+                loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
+                replayService,
+                initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
+            });
+            const address = await projectServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${projectBaseUrl}/api/project/replays`, {round: 25});
+            const createdBody = created.body as {id: string};
+            await flushMacrotask();
+            expect(gate.pendingCount()).toBe(1);
+
+            const serverToStop = projectServer;
+            projectServer = undefined; // already being stopped — afterEach shouldn't stop it again
+            await expect(serverToStop.stop()).resolves.toBeUndefined();
+
+            // stop() only requests cancellation (aborts the controller) — the record transitions to
+            // "cancelled" once the paused chunk loop notices, same as a DELETE-triggered cancel.
+            gate.release();
+            await flushMacrotask();
+
+            expect(replayService.getStatus("/tmp/crazy-fruits", createdBody.id)?.status).toBe("cancelled");
+        });
+
+        // The concrete fix this slice is about: with the chunk loop paused mid-replay (simulating a
+        // very late round still in progress), the same HTTP server must still serve completely
+        // unrelated requests — health, Inspect, Validate — instead of the event loop being blocked for
+        // the replay's entire duration.
+        it("keeps serving GET /api/health, /api/project/inspect and /api/project/validate while a replay is running", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            const gate = createControlledYield();
+            const replayService = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                10,
+                undefined,
+                gate.yieldToEventLoop,
+            );
+            const inspectStub = jest.fn().mockReturnValue({packageRoot: "/tmp/crazy-fruits", valid: true, generated: false});
+            const validateStub = jest.fn().mockResolvedValue({packageRoot: "/tmp/crazy-fruits", valid: true, game: manifest, errors: [], warnings: [], suggestions: []});
+
+            projectServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: projectStudioRoot,
+                gamePackageCreator: createStubCreator(scaffoldResult),
+                loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
+                gamePackageInspector: {inspect: inspectStub},
+                gamePackageValidator: {validate: validateStub},
+                replayService,
+                initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
+            });
+            const address = await projectServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${projectBaseUrl}/api/project/replays`, {round: 99_999});
+            await flushMacrotask();
+            expect(gate.pendingCount()).toBe(1); // still paused mid-replay, nowhere near done
+
+            const health = await get(`${projectBaseUrl}/api/health`);
+            expect(health.status).toBe(200);
+            const inspect = await get(`${projectBaseUrl}/api/project/inspect`);
+            expect(inspect.status).toBe(200);
+            const validate = await get(`${projectBaseUrl}/api/project/validate`);
+            expect(validate.status).toBe(200);
+
+            // The replay itself genuinely hasn't progressed past the first chunk this whole time.
+            const stillRunning = await get(`${projectBaseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
+            expect((stillRunning.body as {status: string}).status).toBe("running");
+            expect((stillRunning.body as {completedRounds: number}).completedRounds).toBe(10);
         });
     });
 
@@ -1504,22 +1755,24 @@ describe("StudioServer", () => {
                 studioRoot: replayStudioRoot,
                 gamePackageCreator: createStubCreator(scaffoldResult),
                 initialContext: {mode: "project", projectRoot: fixtureRoot},
-                replayService: new StudioReplayService(new InMemoryStudioReplayRepository()),
+                replayService: new StudioReplayExecutionService(new InMemoryStudioReplayRepository()),
             });
             const address = await replayServer.start();
             const replayBaseUrl = `http://${address.host}:${address.port}`;
 
-            const first = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
-            const second = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+            const firstCreated = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+            const first = await pollUntilTerminal(`${replayBaseUrl}/api/project/replays/${(firstCreated.body as {id: string}).id}`);
+            const secondCreated = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+            const second = await pollUntilTerminal(`${replayBaseUrl}/api/project/replays/${(secondCreated.body as {id: string}).id}`);
 
-            expect(first.status).toBe(201);
-            expect((first.body as {descriptor: {game: unknown}}).descriptor.game).toEqual({
+            expect(first.body.status).toBe("completed");
+            expect((first.body.descriptor as {game: unknown}).game).toEqual({
                 id: "playable-game",
                 name: "Playable Game",
                 version: "1.0.0",
             });
-            const firstDescriptor = (first.body as {descriptor: Record<string, unknown>}).descriptor;
-            const secondDescriptor = (second.body as {descriptor: Record<string, unknown>}).descriptor;
+            const firstDescriptor = first.body.descriptor as Record<string, unknown>;
+            const secondDescriptor = second.body.descriptor as Record<string, unknown>;
             expect(secondDescriptor.totalBet).toBe(firstDescriptor.totalBet);
             expect(secondDescriptor.totalWin).toBe(firstDescriptor.totalWin);
             expect(secondDescriptor.screen).toEqual(firstDescriptor.screen);

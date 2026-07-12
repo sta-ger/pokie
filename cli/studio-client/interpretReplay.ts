@@ -1,8 +1,40 @@
-import type {ReplayDescriptor, StudioReplayListEntry, StudioReplayRecordView} from "./types.js";
+import type {ReplayDescriptor, StudioReplayJobView, StudioReplayListEntry} from "./types.js";
 
-// Pure view-model transforms for the Replay tab — same role as interpretSimulation.ts/interpretReports.ts:
-// main.ts/dom.ts consume these instead of branching on the raw descriptor/list shapes themselves, and
-// (being pure) these are unit-testable without a real DOM/jsdom.
+// Pure view-model transforms for the Replay tab — same role as interpretSimulation.ts: main.ts/dom.ts
+// consume these instead of branching on the raw job/list shapes themselves, and (being pure) these are
+// unit-testable without a real DOM/jsdom.
+
+export type ReplayProgressView = {
+    status: StudioReplayJobView["status"];
+    completedRounds: number;
+    round: number;
+    percent: number;
+    durationMs: number;
+    // Only ever set when status === "failed" — the job's own safe error message (see
+    // StudioReplayExecutionService), not an API-call failure (those are rendered separately by
+    // main.ts's own catch handling around each apiClient call).
+    error?: string;
+};
+
+export function describeReplayProgress(job: StudioReplayJobView): ReplayProgressView {
+    const percent = job.round > 0 ? Math.min(100, Math.round((job.completedRounds / job.round) * 100)) : 0;
+    return {
+        status: job.status,
+        completedRounds: job.completedRounds,
+        round: job.round,
+        percent,
+        durationMs: job.durationMs,
+        error: job.error,
+    };
+}
+
+export function isReplayActive(job: StudioReplayJobView): boolean {
+    return job.status === "queued" || job.status === "running";
+}
+
+export function isReplayTerminal(job: StudioReplayJobView): boolean {
+    return job.status === "completed" || job.status === "failed" || job.status === "cancelled";
+}
 
 export type ReplayResultView = {
     id: string;
@@ -19,10 +51,16 @@ export type ReplayResultView = {
     durationMs: number;
 };
 
-export function describeReplayResult(record: StudioReplayRecordView): ReplayResultView {
-    const descriptor: ReplayDescriptor = record.descriptor;
+// Only meaningful for a completed job (job.descriptor is defined) — callers only call this once
+// isReplayTerminal(job) && job.status === "completed", same as describeSimulationReport only ever
+// being called for a completed job's report.
+export function describeReplayResult(job: StudioReplayJobView): ReplayResultView | undefined {
+    if (!job.descriptor) {
+        return undefined;
+    }
+    const descriptor: ReplayDescriptor = job.descriptor;
     return {
-        id: record.id,
+        id: job.id,
         game: descriptor.game,
         round: descriptor.round,
         seed: descriptor.seed,
