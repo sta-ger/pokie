@@ -12,6 +12,7 @@ import {
     SpinCommandResult,
     StakeAmountDetermining,
     TransactionalWalletPort,
+    VersionedSessionRepository,
 } from "pokie";
 
 const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
@@ -163,6 +164,29 @@ class RecordingTransactionalWallet implements TransactionalWalletPort {
         }
         return this.inner.reverse(sessionId, transactionId);
     }
+}
+
+// Wraps a real, versioned InMemorySessionRepository so that its very first loadVersioned() call
+// (SpinCommandHandler's own load at the start of an attempt) also commits an out-of-band save for
+// that sessionId — simulating a concurrent writer (e.g. another PokieDevServer instance/process
+// sharing this same repository) landing its own spin in between this handler's load and save. The
+// handler still gets back the *original*, now-stale version, so its own later saveVersioned() call
+// is guaranteed to conflict against the version the "racing" write just bumped to.
+function createRacingSessionRepository(real: InMemorySessionRepository): VersionedSessionRepository {
+    let raced = false;
+    return {
+        load: (sessionId) => real.load(sessionId),
+        save: (sessionId, state) => real.save(sessionId, state),
+        loadVersioned: async (sessionId) => {
+            const versioned = await real.loadVersioned(sessionId);
+            if (versioned !== undefined && !raced) {
+                raced = true;
+                await real.saveVersioned(sessionId, versioned.state, versioned.version);
+            }
+            return versioned;
+        },
+        saveVersioned: (sessionId, state, expectedVersion) => real.saveVersioned(sessionId, state, expectedVersion),
+    };
 }
 
 async function createSpinnableSessionOn(
@@ -576,5 +600,128 @@ describe("SpinCommandHandler", () => {
         // holding the NEW (post-spin) state — recognizable by its screen — instead of being rolled
         // back to the pre-spin one with no screen at all.
         await expect(realSessionRepository.load("session-1")).resolves.toMatchObject({screen: [["round-1"]]});
+    });
+
+    describe("optimistic locking (versioned SessionRepository)", () => {
+        it("includes the new version on a played result when the repository supports versioning", async () => {
+            const game = createFakeGame();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000); // save() -> version 1
+
+            const result = await handler.handle("session-1");
+
+            expect(result).toMatchObject({status: "played", version: 2});
+        });
+
+        it("plays sequential spins normally against a versioned repository (no false conflicts)", async () => {
+            const game = createFakeGame();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const first = await handler.handle("session-1");
+            const second = await handler.handle("session-1");
+
+            expect(first).toMatchObject({status: "played", win: 0, version: 2});
+            expect(second).toMatchObject({status: "played", win: 15, version: 3});
+            await expect(wallet.getBalance("session-1")).resolves.toBe(1005);
+        });
+
+        it("returns a conflict — without corrupting stored state or leaving the wallet debited — when the session's version moves between load and save", async () => {
+            const game = createFakeGame();
+            const realRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            await createSpinnableSession(realRepository, wallet, "session-1", 1000);
+            const racingRepository = createRacingSessionRepository(realRepository);
+            const handler = new SpinCommandHandler(game, racingRepository, wallet);
+
+            const result = await handler.handle("session-1");
+
+            expect(result.status).toBe("conflict");
+            if (result.status === "conflict") {
+                expect(result.sessionId).toBe("session-1");
+                expect(result.reason).toContain("session-1");
+            }
+            // Fully reversed: the losing attempt's debit/credit left no lasting mark on the wallet.
+            await expect(wallet.getBalance("session-1")).resolves.toBe(1000);
+            // Exactly what the "concurrent writer" committed — untouched by the loser.
+            await expect(realRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
+        });
+
+        it("evicts the live session on conflict, so a retry reconstructs fresh against the winning writer's state", async () => {
+            const {game, stats} = createInstrumentedFakeGame();
+            const realRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            await createSpinnableSession(realRepository, wallet, "session-1", 1000);
+            const racingRepository = createRacingSessionRepository(realRepository);
+            const handler = new SpinCommandHandler(game, racingRepository, wallet);
+
+            await handler.handle("session-1");
+            expect(stats.createSessionCalls).toBe(1);
+
+            const retry = await handler.handle("session-1");
+
+            expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
+            expect(stats.createSessionCalls).toBe(2);
+        });
+
+        it("does not cache a conflicted attempt under its requestId, so a retry with the same requestId can still succeed", async () => {
+            const game = createFakeGame();
+            const realRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            await createSpinnableSession(realRepository, wallet, "session-1", 1000);
+            const racingRepository = createRacingSessionRepository(realRepository);
+            const handler = new SpinCommandHandler(game, racingRepository, wallet, new InMemoryIdempotencyRepository());
+
+            const first = await handler.handle("session-1", "request-1");
+            expect(first.status).toBe("conflict");
+
+            const retry = await handler.handle("session-1", "request-1");
+
+            expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
+        });
+
+        it("replays an already-committed requestId without ever consulting the version, even after the session has since moved on", async () => {
+            const game = createFakeGame();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet, new InMemoryIdempotencyRepository());
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const first = await handler.handle("session-1", "request-1");
+            // A second, distinct spin moves the version on further before the replay below.
+            await handler.handle("session-1");
+
+            const replay = await handler.handle("session-1", "request-1");
+
+            expect(replay).toEqual(first);
+        });
+
+        it("keeps working, with no conflict detection, when the configured repository only implements plain save()/load() (legacy fallback)", async () => {
+            const game = createFakeGame();
+            const backing = new Map<string, PokieSessionState>();
+            const plainRepository: SessionRepository = {
+                load: (sessionId) => Promise.resolve(backing.get(sessionId)),
+                save: (sessionId, state) => {
+                    backing.set(sessionId, state);
+                    return Promise.resolve();
+                },
+            };
+            const wallet = new InMemoryWallet();
+            await wallet.setBalance("session-1", 1000);
+            backing.set("session-1", {bet: 5, win: 0});
+            const handler = new SpinCommandHandler(game, plainRepository, wallet);
+
+            const first = await handler.handle("session-1");
+            const second = await handler.handle("session-1");
+
+            expect(first).toMatchObject({status: "played", win: 0});
+            expect((first as {version?: number}).version).toBeUndefined();
+            expect(second).toMatchObject({status: "played", win: 15});
+            await expect(wallet.getBalance("session-1")).resolves.toBe(1005);
+        });
     });
 });

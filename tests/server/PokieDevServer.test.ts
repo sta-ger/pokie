@@ -10,7 +10,10 @@ import {
     PokieDevServer,
     PokieGame,
     PokieGameManifest,
+    PokieSessionState,
+    SessionRepository,
     StakeAmountDetermining,
+    VersionedSessionRepository,
     VideoSlotWithFreeGamesSession,
     WalletPort,
 } from "pokie";
@@ -1127,6 +1130,98 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
 
         expect(status).toBe(404);
         expect(typeof body.error).toBe("string");
+
+        await server.stop();
+    });
+});
+
+// Wraps a real, versioned InMemorySessionRepository so its very first loadVersioned() call also
+// commits an out-of-band save for that sessionId — simulating a concurrent writer (e.g. another
+// PokieDevServer instance/process sharing this same repository) landing its own spin in between this
+// server's load and save. See tests/server/spin/SpinCommandHandler.test.ts's own copy of this helper
+// for the lower-level version of this same scenario.
+function createRacingSessionRepository(real: InMemorySessionRepository): VersionedSessionRepository {
+    let raced = false;
+    return {
+        load: (sessionId) => real.load(sessionId),
+        save: (sessionId, state) => real.save(sessionId, state),
+        loadVersioned: async (sessionId) => {
+            const versioned = await real.loadVersioned(sessionId);
+            if (versioned !== undefined && !raced) {
+                raced = true;
+                await real.saveVersioned(sessionId, versioned.state, versioned.version);
+            }
+            return versioned;
+        },
+        saveVersioned: (sessionId, state, expectedVersion) => real.saveVersioned(sessionId, state, expectedVersion),
+    };
+}
+
+describe("PokieDevServer (optimistic locking / session versioning)", () => {
+    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+    it("returns 409 with a clear error when a spin's session version goes stale before it can save", async () => {
+        const game = createFakeGame(manifest);
+        const realRepository = new InMemorySessionRepository();
+        const racingRepository = createRacingSessionRepository(realRepository);
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: racingRepository});
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const {status, body} = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+
+        expect(status).toBe(409);
+        expect(typeof body.error).toBe("string");
+
+        await server.stop();
+    });
+
+    it("exposes sessionVersion under internal/debug data when the configured repository supports versioning", async () => {
+        const game = createFakeGame(manifest);
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: new InMemorySessionRepository()});
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const created = await postJson(`${baseUrl}/sessions?debug=1`);
+        expect((created.body.internal as Record<string, unknown>).sessionVersion).toBe(1);
+
+        const sessionId = created.body.sessionId as string;
+        const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+        expect((spun.body.internal as Record<string, unknown>).sessionVersion).toBe(2);
+
+        const restored = await getJson(`${baseUrl}/sessions/${sessionId}?debug=1`);
+        expect((restored.body.internal as Record<string, unknown>).sessionVersion).toBe(2);
+
+        await server.stop();
+    });
+
+    it("keeps a plain SessionRepository (save/load only, no versioning) working exactly as before, with no sessionVersion or conflicts", async () => {
+        const game = createFakeGame(manifest);
+        const backing = new Map<string, PokieSessionState>();
+        const plainRepository: SessionRepository = {
+            load: (sessionId) => Promise.resolve(backing.get(sessionId)),
+            save: (sessionId, state) => {
+                backing.set(sessionId, state);
+                return Promise.resolve();
+            },
+        };
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: plainRepository});
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        const created = await postJson(`${baseUrl}/sessions?debug=1`);
+        expect("sessionVersion" in (created.body.internal as Record<string, unknown>)).toBe(false);
+        const sessionId = created.body.sessionId as string;
+
+        const first = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
+        expect(first.status).toBe(200);
+
+        const second = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+        expect(second.status).toBe(200);
+        expect("sessionVersion" in (second.body.internal as Record<string, unknown>)).toBe(false);
 
         await server.stop();
     });

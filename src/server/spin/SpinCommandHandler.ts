@@ -6,9 +6,11 @@ import {InMemoryIdempotencyRepository} from "../idempotency/InMemoryIdempotencyR
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
 import {captureRoundPokieSessionState} from "../session/captureRoundPokieSessionState.js";
 import {determineStakeAmount} from "../session/determineStakeAmount.js";
+import {isVersionedSessionRepository} from "../session/isVersionedSessionRepository.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "../session/resolveGameSessionSerializer.js";
 import {restoreFeatureState} from "../session/restoreFeatureState.js";
+import {SessionVersionConflictError} from "../session/SessionVersionConflictError.js";
 import type {SessionRepository} from "../session/SessionRepository.js";
 import type {TransactionalWalletPort} from "../wallet/TransactionalWalletPort.js";
 import type {SpinCommandHandling} from "./SpinCommandHandling.js";
@@ -77,6 +79,18 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 // IdempotencyRepository (or a subset sharing state) over one transactional store and committing the
 // relevant writes together at that layer; this handler's own compensation is a correctness
 // improvement over doing nothing, not a substitute for that.
+//
+// Optimistic locking: when sessionRepository additionally implements VersionedSessionRepository (see
+// isVersionedSessionRepository.ts — InMemorySessionRepository/FileSessionRepository both do), the
+// state loaded at the start of an attempt is saved back via saveVersioned() with the version it was
+// read at, instead of the plain unconditional save(). This mainly protects a repository *shared
+// across multiple SpinCommandHandler instances* (e.g. two PokieDevServer processes pointed at the
+// same FileSessionRepository directory) — within one instance, every command for a given sessionId
+// is already serialized through enqueue()/sessionQueues above, so its own load-then-save can never
+// race against itself. A version mismatch (someone else's save landed in between) surfaces as a
+// SessionVersionConflictError, caught in playAndSettle()'s catch block and turned into a "conflict"
+// SpinCommandResult after the same wallet-reversal/session-eviction compensation any other mid-flight
+// failure gets — never a silent overwrite of whatever the other attempt committed.
 export class SpinCommandHandler implements SpinCommandHandling {
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
@@ -132,7 +146,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             }
         }
 
-        const state = await this.sessionRepository.load(sessionId);
+        const {state, version} = await this.loadState(sessionId);
         if (!state) {
             return {status: "not-found", sessionId};
         }
@@ -150,13 +164,24 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
-        return this.playAndSettle(sessionId, session, state, balanceBeforePlay, requestId);
+        return this.playAndSettle(sessionId, session, state, version, balanceBeforePlay, requestId);
+    }
+
+    // Reads both the state and, when sessionRepository supports it, the version it was read at — a
+    // single call either way, never a redundant second read on the plain-repository path.
+    private async loadState(sessionId: string): Promise<{state: PokieSessionState | undefined; version: number | undefined}> {
+        if (isVersionedSessionRepository(this.sessionRepository)) {
+            const versioned = await this.sessionRepository.loadVersioned(sessionId);
+            return {state: versioned?.state, version: versioned?.version};
+        }
+        return {state: await this.sessionRepository.load(sessionId), version: undefined};
     }
 
     private async playAndSettle(
         sessionId: string,
         session: GameSessionHandling,
         state: PokieSessionState,
+        expectedVersion: number | undefined,
         balanceBeforePlay: number,
         requestId: string | undefined,
     ): Promise<SpinCommandResult> {
@@ -185,7 +210,13 @@ export class SpinCommandHandler implements SpinCommandHandling {
             appliedTransactionIds.push(creditTransactionId);
 
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer);
-            await this.sessionRepository.save(sessionId, newState);
+
+            let newVersion: number | undefined;
+            if (isVersionedSessionRepository(this.sessionRepository) && expectedVersion !== undefined) {
+                newVersion = await this.sessionRepository.saveVersioned(sessionId, newState, expectedVersion);
+            } else {
+                await this.sessionRepository.save(sessionId, newState);
+            }
             sessionStateSaved = true;
 
             const result: SpinCommandResult = {
@@ -196,6 +227,9 @@ export class SpinCommandHandler implements SpinCommandHandling {
                 credits: newBalance,
                 win,
             };
+            if (newVersion !== undefined) {
+                result.version = newVersion;
+            }
             if (requestId !== undefined) {
                 result.requestId = requestId;
                 await this.idempotencyRepository.save(sessionId, requestId, result);
@@ -208,6 +242,9 @@ export class SpinCommandHandler implements SpinCommandHandling {
             }
             await this.reverseApplied(sessionId, appliedTransactionIds);
             this.liveSessions.delete(sessionId);
+            if (error instanceof SessionVersionConflictError) {
+                return {status: "conflict", sessionId, reason: error.message};
+            }
             throw error;
         }
     }

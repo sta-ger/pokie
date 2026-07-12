@@ -20,4 +20,9 @@ export type PokieInternalSessionData = {
     // The requestId this spin was made (or replayed) with, when one was given — idempotency
     // metadata, only meaningful on a spin response.
     requestId?: string;
+    // The configured SessionRepository's own optimistic-locking revision for this session right after
+    // this response (see VersionedSessionRepository) — present only when that repository implements
+    // the additive versioned API (InMemorySessionRepository/FileSessionRepository do; a plain custom
+    // SessionRepository does not, and this stays absent rather than being guessed at).
+    sessionVersion?: number;
 };

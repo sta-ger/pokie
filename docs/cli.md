@@ -1049,6 +1049,8 @@ string at all all leave the response public-only — there is no fuzzy/truthy pa
         stateBefore?: PokieSessionState;  // only present on a spin response — the state right before it
         debugData?: Record<string, unknown>; // see below — only present if the serializer provides it
         requestId?: string;               // only present on a spin response made with a requestId
+        sessionVersion?: number;          // see "Optimistic locking" below — only present when the
+                                           // configured SessionRepository supports it
     };
 }
 ```
@@ -1115,6 +1117,9 @@ export interface SessionRepository {
 - `FileSessionRepository` — one JSON file per session under a directory you choose, so state survives a
   `pokie serve` restart. A missing or corrupted file is treated as an unknown session (`404`), not a crash. Session
   ids are hashed into filenames, so an untrusted `sessionId` can't be used for path traversal.
+
+Both also implement an additive optimistic-locking API, `VersionedSessionRepository` — see
+[Optimistic locking (session versioning)](#optimistic-locking-session-versioning) below.
 
 `featureState` is where a game's own internal state beyond bet/win/screen lives — e.g. an in-progress free-games
 round. It's populated through an optional, feature-detected pair of interfaces a `GameSessionHandling`
@@ -1206,6 +1211,53 @@ reconstructs one via `game.createSession(state.context)` plus `state.bet`, then 
 onto it via `fromSessionState()` if the game implements `BuildableFromSessionState`, before spinning. Anything not
 covered by bet/win/screen/featureState — RNG stream position, for instance — still starts fresh in that case,
 same caveat as `--seed` reproducibility elsewhere in this CLI.
+
+### Optimistic locking (session versioning)
+
+`SessionRepository` itself stays the plain, unversioned two-method contract documented above — nothing
+about it changed. Both built-in implementations, `InMemorySessionRepository` and
+`FileSessionRepository`, additionally implement a second, additive interface:
+
+```ts
+export interface VersionedSessionRepository extends SessionRepository {
+    loadVersioned(sessionId: string): Promise<{state: PokieSessionState; version: number} | undefined>;
+    saveVersioned(sessionId: string, state: PokieSessionState, expectedVersion: number): Promise<number>;
+}
+```
+
+Every `save()` (through either method) bumps a per-`sessionId` version counter, starting at 1 on the
+first save. `saveVersioned()` only writes when `expectedVersion` still matches the repository's current
+version, returning the new version on success; otherwise it rejects with a `SessionVersionConflictError`
+and leaves whatever's currently stored **completely untouched** — no partial write, no silent
+overwrite.
+
+`SpinCommandHandler` feature-detects this via `isVersionedSessionRepository()`: when the configured
+repository supports it, the state it loads at the start of an attempt is saved back through
+`saveVersioned()` with the version it was read at, instead of the plain unconditional `save()`. A
+version mismatch becomes a new `SpinCommandResult` outcome, `{status: "conflict", sessionId, reason}`
+— by the time it's returned, every wallet transaction this attempt applied has already been reversed
+and the live session evicted, the same compensation any other mid-flight failure gets (see
+[Failure handling is best-effort compensation, not a transaction](#failure-handling-is-best-effort-compensation-not-a-transaction)
+below). `PokieDevServer` maps this to `409 {"error": "..."}` on `POST /sessions/:sessionId/spin`. A
+conflicted attempt is never cached under its `requestId` either — a client retry with the same
+`requestId` runs for real against whatever is current, rather than replaying the failed attempt.
+
+This mainly matters for a repository **shared across multiple `PokieDevServer` instances or
+processes** — e.g. two servers pointed at the same `FileSessionRepository` directory. Within a single
+instance, every command for a given `sessionId` is already serialized through `SpinCommandHandler`'s
+own per-session queue (see [Idempotency and concurrency](#idempotency-and-concurrency) below), so its
+own load-then-save can never race against itself; a conflict there would mean something outside
+`SpinCommandHandler` wrote to the repository in between, which the built-in commands never do.
+`FileSessionRepository`'s own `saveVersioned()` re-reads the file immediately before writing to catch
+this, but does so without a file lock — it narrows, not closes, the cross-process read-then-write race
+(see that class's own doc comment); a deployment needing a hard guarantee there must provide real
+locking or a transactional store itself, same tradeoff as the wallet/idempotency durability discussion
+below.
+
+A plain, pre-existing custom `SessionRepository` (only `save()`/`load()`) keeps working exactly as
+before — no conflict detection, no `sessionVersion`, no `409`s — since it never implemented
+`VersionedSessionRepository` to begin with; implementing that interface is entirely additive and
+opt-in, same pattern as `TransactionalWalletPort`/`isTransactionalWalletPort()` for the wallet.
 
 ### Spin orchestration & idempotency
 
@@ -1351,8 +1403,9 @@ independently.
   `Usage: pokie serve ...` error before the server starts (same as every other command).
 - An invalid `packageRoot` throws the same descriptive error `loadPokieGame` would throw directly — see
   [Game Packages](game-packages.md).
-- Once the server is running, errors are JSON HTTP responses (`400`/`404`/`500` with `{"error": "..."}`), not
-  thrown/exit codes — `pokie serve` is a long-running process, not a one-shot command.
+- Once the server is running, errors are JSON HTTP responses (`400`/`404`/`409`/`500` with `{"error": "..."}`),
+  not thrown/exit codes — `pokie serve` is a long-running process, not a one-shot command. `409` is specific to
+  a spin's session version going stale — see [Optimistic locking](#optimistic-locking-session-versioning) above.
 
 The reusable server sits behind `src/server` (`PokieDevServer`, implementing `PokieDevServerHandling`) — the same
 "thin CLI wrapper over a reusable class" shape as [`pokie replay`](#pokie-replay-packageroot):

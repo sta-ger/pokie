@@ -11,6 +11,7 @@ import type {PokieInternalSessionData} from "./PokieInternalSessionData.js";
 import {InMemoryIdempotencyRepository} from "./idempotency/InMemoryIdempotencyRepository.js";
 import {captureInitialPokieSessionState} from "./session/captureInitialPokieSessionState.js";
 import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js";
+import {isVersionedSessionRepository} from "./session/isVersionedSessionRepository.js";
 import type {PokieSessionState} from "./session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "./session/resolveGameSessionSerializer.js";
 import type {SessionRepository} from "./session/SessionRepository.js";
@@ -59,7 +60,14 @@ const DEFAULT_PORT = 3000;
 // optional getInitialDebugData()/getRoundDebugData() (see GameSessionSerializing), its debug-only
 // payload — RNG info, reel stops, evaluator traces, whatever the game author chose to expose. POKIE
 // is still not an RGS: this is a dev-friendly window into otherwise-hidden state, not an audit trail
-// guarantee — see PokieInternalSessionData.
+// guarantee — see PokieInternalSessionData. When the configured sessionRepository additionally
+// implements VersionedSessionRepository, `internal.sessionVersion` also carries that repository's
+// own optimistic-locking revision for the session.
+//
+// A spin can also come back `409` instead of `200`/`400`/`404`: SpinCommandHandler's "conflict"
+// status, meaning a versioned sessionRepository rejected this attempt because the session's version
+// moved between load and save — see SpinCommandHandler's own doc comment for when this actually
+// happens (mainly a repository shared across multiple PokieDevServer instances/processes).
 export class PokieDevServer implements PokieDevServerHandling {
     private readonly game: PokieGame;
     private readonly host: string;
@@ -238,7 +246,13 @@ export class PokieDevServer implements PokieDevServerHandling {
         const credits = await this.wallet.getBalance(sessionId);
         const response = this.buildSessionResponse(sessionId, state, credits, undefined, state.initialPayload);
         if (includeInternal) {
-            response.internal = this.buildInternalSessionData(state, undefined, undefined);
+            // The save above always went through the plain save() (a fresh sessionId has no prior
+            // version to be conditional on), so the version it landed at is read back separately here
+            // — only under ?debug=1, never on the hot path.
+            const version = isVersionedSessionRepository(this.sessionRepository)
+                ? (await this.sessionRepository.loadVersioned(sessionId))?.version
+                : undefined;
+            response.internal = this.buildInternalSessionData(state, undefined, undefined, version);
         }
         this.sendJson(res, 201, response);
     }
@@ -264,15 +278,27 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
+        if (result.status === "conflict") {
+            // A versioned SessionRepository (see VersionedSessionRepository) rejected this attempt's
+            // save because the session's version moved between load and save — e.g. a concurrent
+            // attempt on another PokieDevServer instance sharing this repository committed first.
+            // Every wallet transaction this attempt applied was already reversed by SpinCommandHandler
+            // before returning this, so there's nothing to roll back here; the client should retry.
+            this.sendJson(res, 409, {error: result.reason});
+            return;
+        }
+
         const response = this.buildSessionResponse(result.sessionId, result.state, result.credits, result.win, result.state.roundPayload);
         if (includeInternal) {
-            response.internal = this.buildInternalSessionData(result.state, result.previousState, result.requestId);
+            response.internal = this.buildInternalSessionData(result.state, result.previousState, result.requestId, result.version);
         }
         this.sendJson(res, 200, response);
     }
 
     private async handleGetSession(sessionId: string, res: ServerResponse, includeInternal: boolean): Promise<void> {
-        const state = await this.sessionRepository.load(sessionId);
+        const supportsVersioning = isVersionedSessionRepository(this.sessionRepository);
+        const versioned = supportsVersioning ? await this.sessionRepository.loadVersioned(sessionId) : undefined;
+        const state = supportsVersioning ? versioned?.state : await this.sessionRepository.load(sessionId);
         if (!state) {
             this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
             return;
@@ -281,7 +307,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         const credits = await this.wallet.getBalance(sessionId);
         const response = this.buildSessionResponse(sessionId, state, credits, state.win, this.mergeSerializedPayloads(state));
         if (includeInternal) {
-            response.internal = this.buildInternalSessionData(state, undefined, undefined);
+            response.internal = this.buildInternalSessionData(state, undefined, undefined, versioned?.version);
         }
         this.sendJson(res, 200, response);
     }
@@ -320,6 +346,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         state: PokieSessionState,
         previousState: PokieSessionState | undefined,
         requestId: string | undefined,
+        sessionVersion: number | undefined,
     ): PokieInternalSessionData {
         const internal: PokieInternalSessionData = {stateAfter: state};
         if (previousState !== undefined) {
@@ -331,6 +358,9 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
         if (requestId !== undefined) {
             internal.requestId = requestId;
+        }
+        if (sessionVersion !== undefined) {
+            internal.sessionVersion = sessionVersion;
         }
         return internal;
     }
