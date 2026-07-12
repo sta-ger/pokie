@@ -974,7 +974,10 @@ spin for real, the original behavior.
 game state, `SessionRepository` entry, and `WalletPort` balance are all left exactly as they were. A game whose
 `canPlayNextGame()` ignores balance while an in-progress feature (e.g. a free-games round) is active still spins
 normally even at a 0 balance — the gate only ever reflects what `canPlayNextGame()` itself returns. `400
-{"error": "..."}` too if a `requestId` is sent but isn't a string.
+{"error": "..."}` too if a `requestId` is sent but isn't a string. `409 {"error": "..."}` if the configured
+`SessionRepository` supports [optimistic locking](#optimistic-locking-session-versioning) and this session's
+version moved between load and save — the wallet is left exactly as it was before this attempt (every
+transaction it applied is reversed), same as the `canPlayNextGame()` case above.
 
 ### `GET /sessions/:sessionId`
 
@@ -1231,6 +1234,12 @@ version, returning the new version on success; otherwise it rejects with a `Sess
 and leaves whatever's currently stored **completely untouched** — no partial write, no silent
 overwrite.
 
+A client can observe the current version through `internal.sessionVersion` on `POST /sessions`,
+`POST /sessions/:sessionId/spin`, and `GET /sessions/:sessionId` — present only under `?debug=1`/
+`?debug=true` and only when the configured repository is versioned, same opt-in as every other
+`internal` field (see [Public vs. internal/debug responses](#public-vs-internaldebug-responses)
+above).
+
 `SpinCommandHandler` feature-detects this via `isVersionedSessionRepository()`: when the configured
 repository supports it, the state it loads at the start of an attempt is saved back through
 `saveVersioned()` with the version it was read at, instead of the plain unconditional `save()`. A
@@ -1394,9 +1403,12 @@ export interface IdempotencyRepository<T = unknown> {
 `InMemorySessionRepository`/`InMemoryWallet`), overridable via the `idempotencyRepository` constructor option.
 When `POST /sessions/:sessionId/spin`'s body includes a `requestId`, `SpinCommandHandler.handle()` checks this
 repository first and, on a hit, returns the stored result without touching the session, wallet, or
-`SessionRepository` again. A successful spin (`status: "played"`) is the only outcome ever stored — a `blocked`
-(`canPlayNextGame()` false) or `not-found` result made no state changes to begin with, so there's nothing to
-protect against replaying. Omitting `requestId` skips idempotency entirely, spinning for real every time.
+`SessionRepository` again. A successful spin (`status: "played"`) is the only outcome ever stored — `blocked`
+(`canPlayNextGame()` false) and `not-found` made no state changes to begin with, so there's nothing to protect
+against replaying; `conflict` (see [Optimistic locking](#optimistic-locking-session-versioning) above) is the
+same way — its wallet transactions were already reversed before it's returned, so caching it would only make a
+retry replay a failed attempt instead of trying for real against the now-current version. Omitting `requestId`
+skips idempotency entirely, spinning for real every time.
 
 Every command for a given `sessionId` — the same `requestId` retried concurrently, or two genuinely different
 spins racing — is serialized through an internal per-session queue, so there's never more than one

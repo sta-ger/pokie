@@ -1110,6 +1110,51 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
         await server.stop();
     });
 
+    it("carries sessionVersion forward correctly across a simulated restart over a shared FileSessionRepository directory", async () => {
+        const gameA = await loadPokieGame(fixtureRoot);
+        const serverA = new PokieDevServer(gameA, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new FileSessionRepository(directory),
+        });
+        const addressA = await serverA.start();
+        const baseUrlA = `http://${addressA.host}:${addressA.port}`;
+
+        const created = await postJson(`${baseUrlA}/sessions?debug=1`);
+        const sessionId = created.body.sessionId as string;
+        expect((created.body.internal as Record<string, unknown>).sessionVersion).toBe(1);
+
+        const spun = await postJson(`${baseUrlA}/sessions/${sessionId}/spin?debug=1`);
+        expect((spun.body.internal as Record<string, unknown>).sessionVersion).toBe(2);
+
+        await serverA.stop();
+
+        // serverB is a separate PokieDevServer instance/FileSessionRepository object over the same
+        // directory (simulating a restart) — the version must carry forward from disk, not reset.
+        // Credits are deliberately NOT part of PokieSessionState (see "Session storage & wallet" in
+        // docs/cli.md), so an explicit, pre-funded wallet is needed here for the sessionId to be able
+        // to spin again on serverB — a fresh default wallet would see 0 credits for it and block the
+        // spin, unrelated to what this test is actually checking (sessionVersion carrying forward).
+        const gameB = await loadPokieGame(fixtureRoot);
+        const serverB = new PokieDevServer(gameB, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new FileSessionRepository(directory),
+            wallet: new InMemoryWallet(1000),
+        });
+        const addressB = await serverB.start();
+        const baseUrlB = `http://${addressB.host}:${addressB.port}`;
+
+        const restored = await getJson(`${baseUrlB}/sessions/${sessionId}?debug=1`);
+        expect((restored.body.internal as Record<string, unknown>).sessionVersion).toBe(2);
+
+        const spunAgain = await postJson(`${baseUrlB}/sessions/${sessionId}/spin?debug=1`);
+        expect(spunAgain.status).toBe(200);
+        expect((spunAgain.body.internal as Record<string, unknown>).sessionVersion).toBe(3);
+
+        await serverB.stop();
+    });
+
     it("returns 404 instead of 500 when a session's persisted file is corrupted", async () => {
         const game = await loadPokieGame(fixtureRoot);
         const server = new PokieDevServer(game, {

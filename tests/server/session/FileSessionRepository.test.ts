@@ -178,5 +178,24 @@ describe("FileSessionRepository", () => {
             }
             await expect(repository.loadVersioned("session-1")).resolves.toEqual({state: {bet: 1, win: 30}, version: 2});
         });
+
+        it("keeps different sessionIds' internal write queues (and versions) completely independent", async () => {
+            const repository = new FileSessionRepository(directory);
+            await repository.save("session-1", {bet: 1, win: 0}); // version 1
+            await repository.save("session-2", {bet: 2, win: 0}); // version 1, on its own queue/file
+
+            // Concurrent saveVersioned calls for two DIFFERENT sessionIds must not serialize against
+            // each other — each is keyed by its own sessionId in the internal write queue — and both
+            // must succeed independently.
+            const [result1, result2] = await Promise.allSettled([
+                repository.saveVersioned("session-1", {bet: 1, win: 5}, 1),
+                repository.saveVersioned("session-2", {bet: 2, win: 9}, 1),
+            ]);
+
+            expect(result1).toEqual({status: "fulfilled", value: 2});
+            expect(result2).toEqual({status: "fulfilled", value: 2});
+            await expect(repository.loadVersioned("session-1")).resolves.toEqual({state: {bet: 1, win: 5}, version: 2});
+            await expect(repository.loadVersioned("session-2")).resolves.toEqual({state: {bet: 2, win: 9}, version: 2});
+        });
     });
 });

@@ -91,5 +91,20 @@ describe("InMemorySessionRepository", () => {
             expect(stored?.version).toBe(2);
             expect([10, 20]).toContain((stored?.state as PokieSessionState).win);
         });
+
+        it("keeps different sessionIds' versions completely independent", async () => {
+            const repository = new InMemorySessionRepository();
+
+            await repository.save("session-1", {bet: 1, win: 0}); // version 1
+            await repository.save("session-1", {bet: 1, win: 1}); // version 2
+            await repository.save("session-2", {bet: 2, win: 0}); // version 1, unaffected by session-1's history
+
+            await expect(repository.loadVersioned("session-1")).resolves.toEqual({state: {bet: 1, win: 1}, version: 2});
+            await expect(repository.loadVersioned("session-2")).resolves.toEqual({state: {bet: 2, win: 0}, version: 1});
+
+            // A conflict on session-1 must not affect session-2's own, independent version.
+            await expect(repository.saveVersioned("session-1", {bet: 1, win: 99}, 1)).rejects.toThrow(SessionVersionConflictError);
+            await expect(repository.saveVersioned("session-2", {bet: 2, win: 5}, 1)).resolves.toBe(2);
+        });
     });
 });
