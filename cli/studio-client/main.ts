@@ -6,22 +6,30 @@ import {
     FetchLike,
     getContext,
     getProjectContext,
+    getReplay,
     getReport,
     getSimulation,
     inspectProject,
     listRecentProjects,
+    listReplays,
     listReports,
     openProject,
+    runReplay,
     startSimulation,
     validateProject,
 } from "./apiClient.js";
 import {
+    clearReplayError,
     Elements,
     ProjectTab,
     queryElements,
     renderInspectionResult,
     renderProjectHeader,
     renderRecentProjects,
+    renderReplayError,
+    renderReplayList,
+    renderReplayListError,
+    renderReplayResult,
     renderReportDetailState,
     renderReportsList,
     renderReportsListError,
@@ -34,6 +42,7 @@ import {
     showView,
 } from "./dom.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
+import {describeReplayList, describeReplayResult} from "./interpretReplay.js";
 import {describeReportsList} from "./interpretReports.js";
 import {describeSimulationProgress, describeSimulationReport, isSimulationActive} from "./interpretSimulation.js";
 import {currentRoute, navigate, onRouteChange, StudioRoute} from "./router.js";
@@ -106,6 +115,11 @@ async function main(): Promise<void> {
     // parameters" can read its rounds/seed without a second fetch.
     let currentReportDetail: SimulationReport | undefined;
 
+    // Replay executes synchronously within a single request (see StudioReplayService) — no
+    // job/polling state is needed, only the parameters of the last run/selected replay so "Run again"
+    // can repeat it.
+    let lastReplayParams: {round: number; seed?: string} | undefined;
+
     const renderSimulationJob = (job: StudioSimulationJobView): void => {
         renderSimulationProgress(elements, describeSimulationProgress(job));
         elements.simulationViewInReportsButton.hidden = job.status !== "completed";
@@ -146,6 +160,45 @@ async function main(): Promise<void> {
                     status: "error",
                     message: error instanceof Error ? error.message : String(error),
                 });
+            });
+    };
+
+    const refreshReplays = (): void => {
+        listReplays(fetchImpl)
+            .then((entries) => {
+                renderReplayList(elements, describeReplayList(entries), (entry) => selectReplay(entry.id));
+            })
+            .catch((error: unknown) => {
+                renderReplayListError(elements, error instanceof Error ? error.message : String(error));
+            });
+    };
+
+    // Shared by clicking a Replay-list entry and the form's own "Run Replay" submit — both end with
+    // the exact same record shape (StudioReplayRecordView), so both render through describeReplayResult.
+    const selectReplay = (id: string): void => {
+        clearReplayError(elements);
+        getReplay(fetchImpl, id)
+            .then((record) => {
+                lastReplayParams = {round: record.descriptor.round, seed: record.descriptor.seed ?? undefined};
+                elements.replayRoundInput.value = String(record.descriptor.round);
+                elements.replaySeedInput.value = record.descriptor.seed ?? "";
+                renderReplayResult(elements, describeReplayResult(record));
+            })
+            .catch((error: unknown) => {
+                renderReplayError(elements, error instanceof Error ? error.message : String(error));
+            });
+    };
+
+    const runReplayAndRender = (round: number, seed?: string): void => {
+        lastReplayParams = {round, seed};
+        clearReplayError(elements);
+        runReplay(fetchImpl, round, seed)
+            .then((record) => {
+                renderReplayResult(elements, describeReplayResult(record));
+                refreshReplays();
+            })
+            .catch((error: unknown) => {
+                renderReplayError(elements, error instanceof Error ? error.message : String(error));
             });
     };
 
@@ -193,6 +246,10 @@ async function main(): Promise<void> {
             currentReportDetail = undefined;
             renderReportDetailState(elements, {status: "empty"});
             refreshReports();
+            lastReplayParams = undefined;
+            clearReplayError(elements);
+            renderReplayResult(elements, undefined);
+            refreshReplays();
         }
     };
 
@@ -319,6 +376,30 @@ async function main(): Promise<void> {
 
     elements.reportsRefreshButton.addEventListener("click", () => {
         refreshReports();
+    });
+
+    elements.tabReplayButton.addEventListener("click", () => {
+        activeProjectTab = "replay";
+        showProjectTab(elements, "replay");
+        refreshReplays();
+    });
+
+    elements.replayListRefreshButton.addEventListener("click", () => {
+        refreshReplays();
+    });
+
+    elements.replayForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const round = Number(elements.replayRoundInput.value);
+        const seed = elements.replaySeedInput.value.trim();
+        runReplayAndRender(round, seed.length > 0 ? seed : undefined);
+    });
+
+    elements.replayRerunButton.addEventListener("click", () => {
+        if (lastReplayParams === undefined) {
+            return;
+        }
+        runReplayAndRender(lastReplayParams.round, lastReplayParams.seed);
     });
 
     elements.reportBackToSimulationButton.addEventListener("click", () => {

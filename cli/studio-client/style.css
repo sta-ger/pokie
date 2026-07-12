@@ -121,8 +121,18 @@ button:disabled {
     gap: 0.5rem;
 }
 
-#simulation-form input[type="number"] {
+#simulation-form input[type="number"],
+#replay-form input[type="number"] {
     flex: 0 0 6rem;
+}
+
+.notice {
+    opacity: 0.75;
+    font-size: 0.9rem;
+}
+
+.screen-table td {
+    text-align: center;
 }
 
 table {

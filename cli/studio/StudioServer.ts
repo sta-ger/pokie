@@ -7,6 +7,9 @@ import {InMemoryRecentProjectsRepository} from "./InMemoryRecentProjectsReposito
 import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {RecentProjectsRepository} from "./RecentProjectsRepository.js";
+import {buildReplayDownload} from "./replay/buildReplayDownload.js";
+import {StudioReplayService} from "./replay/StudioReplayService.js";
+import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import type {StudioSimulationStatus} from "./simulation/StudioSimulationStatus.js";
@@ -52,6 +55,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly gamePackageInspector: GamePackageInspecting;
     private readonly gamePackageValidator: PokieGamePackageValidating;
     private readonly simulationService: StudioSimulationService;
+    private readonly replayService: StudioReplayService;
     private readonly toolHandlers: StudioToolHandling[];
     private currentContext: StudioContext;
     // undefined exactly when currentContext.mode === "home" — kept as a separate field (rather than
@@ -71,6 +75,7 @@ export class StudioServer implements StudioServerHandling {
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
+        this.replayService = options.replayService ?? new StudioReplayService(undefined, this.loadGame);
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -216,6 +221,26 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/project/replays") {
+            await this.handleRunReplay(req, res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/replays") {
+            this.handleListReplays(res);
+            return;
+        }
+
+        const replayRoute = this.matchReplayRoute(url.pathname);
+        if (replayRoute !== undefined && method === "GET") {
+            if (replayRoute.download) {
+                this.handleDownloadReplay(res, replayRoute.id);
+            } else {
+                this.handleGetReplay(res, replayRoute.id);
+            }
+            return;
+        }
+
         const toolId = this.matchToolRoute(url.pathname);
         if (toolId !== undefined) {
             const handled = await this.tryToolHandlers(toolId, method, url, req);
@@ -264,6 +289,23 @@ export class StudioServer implements StudioServerHandling {
             segments[0] === "api" &&
             segments[1] === "project" &&
             segments[2] === "reports" &&
+            segments[4] === "download"
+        ) {
+            return {id: decodeURIComponent(segments[3]), download: true};
+        }
+        return undefined;
+    }
+
+    private matchReplayRoute(pathname: string): {id: string; download: boolean} | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (segments.length === 4 && segments[0] === "api" && segments[1] === "project" && segments[2] === "replays") {
+            return {id: decodeURIComponent(segments[3]), download: false};
+        }
+        if (
+            segments.length === 5 &&
+            segments[0] === "api" &&
+            segments[1] === "project" &&
+            segments[2] === "replays" &&
             segments[4] === "download"
         ) {
             return {id: decodeURIComponent(segments[3]), download: true};
@@ -462,6 +504,69 @@ export class StudioServer implements StudioServerHandling {
             return `Simulation "${id}" has not completed yet (status: ${jobStatus}).`;
         }
         return `Simulation "${id}" has no report (status: ${jobStatus}).`;
+    }
+
+    private async handleRunReplay(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateReplayRequest((body ?? {}) as ReplayRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.replayService.run(this.currentContext.projectRoot, validated);
+        if (result.status === "error") {
+            this.sendJson(res, 400, {error: result.error});
+            return;
+        }
+        this.sendJson(res, 201, result.record);
+    }
+
+    private handleListReplays(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, this.replayService.listReplays(this.currentContext.projectRoot));
+    }
+
+    private handleGetReplay(res: ServerResponse, id: string): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const record = this.replayService.getReplay(this.currentContext.projectRoot, id);
+        if (!record) {
+            this.sendJson(res, 404, {error: `Unknown replay id "${id}".`});
+            return;
+        }
+        this.sendJson(res, 200, record);
+    }
+
+    private handleDownloadReplay(res: ServerResponse, id: string): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const record = this.replayService.getReplay(this.currentContext.projectRoot, id);
+        if (!record) {
+            this.sendJson(res, 404, {error: `Unknown replay id "${id}".`});
+            return;
+        }
+
+        const download = buildReplayDownload(record.descriptor, id);
+        res.writeHead(200, {
+            "Content-Type": download.contentType,
+            "Content-Disposition": `attachment; filename="${download.filename}"`,
+        });
+        res.end(download.body);
     }
 
     private async readJsonBody(req: IncomingMessage): Promise<unknown> {

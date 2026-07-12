@@ -1,9 +1,10 @@
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
+import type {ReplayListView, ReplayResultView} from "./interpretReplay.js";
 import type {ReportListView} from "./interpretReports.js";
 import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
-import type {RecentProjectEntry, StudioSimulationReportListEntry} from "./types.js";
+import type {RecentProjectEntry, StudioReplayListEntry, StudioSimulationReportListEntry} from "./types.js";
 
-export type ProjectTab = "overview" | "validation" | "simulation" | "reports";
+export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay";
 
 // One report's worth of display fields — factored out so the exact same renderSimulationReport()
 // below can fill in both the Simulation tab's own "just completed" block and the Reports tab's
@@ -110,6 +111,31 @@ export type Elements = {
     reportDownloadHtml: HTMLAnchorElement;
     reportBackToSimulationButton: HTMLButtonElement;
     reportDetailReport: SimulationReportElements;
+    tabReplayButton: HTMLButtonElement;
+    projectReplaySection: HTMLElement;
+    replayForm: HTMLFormElement;
+    replayRoundInput: HTMLInputElement;
+    replaySeedInput: HTMLInputElement;
+    replayRunButton: HTMLButtonElement;
+    replayIdle: HTMLElement;
+    replayError: HTMLElement;
+    replayRerunButton: HTMLButtonElement;
+    replayResult: HTMLElement;
+    replayResultGame: HTMLElement;
+    replayResultRound: HTMLElement;
+    replayResultSeed: HTMLElement;
+    replayResultTotalBet: HTMLElement;
+    replayResultTotalWin: HTMLElement;
+    replayResultTimestamp: HTMLElement;
+    replayResultDuration: HTMLElement;
+    replayResultScreenSection: HTMLElement;
+    replayResultScreenBody: HTMLElement;
+    replayResultNoScreen: HTMLElement;
+    replayDownloadJson: HTMLAnchorElement;
+    replayListRefreshButton: HTMLButtonElement;
+    replayListEmpty: HTMLElement;
+    replayListError: HTMLElement;
+    replayList: HTMLElement;
 };
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -228,6 +254,31 @@ export function queryElements(): Elements {
         reportDownloadHtml: requireElement("report-download-html"),
         reportBackToSimulationButton: requireElement("report-back-to-simulation-button"),
         reportDetailReport: querySimulationReportElements("report-detail"),
+        tabReplayButton: requireElement("tab-replay"),
+        projectReplaySection: requireElement("project-replay"),
+        replayForm: requireElement("replay-form"),
+        replayRoundInput: requireElement("replay-round"),
+        replaySeedInput: requireElement("replay-seed"),
+        replayRunButton: requireElement("replay-run-button"),
+        replayIdle: requireElement("replay-idle"),
+        replayError: requireElement("replay-error"),
+        replayRerunButton: requireElement("replay-rerun-button"),
+        replayResult: requireElement("replay-result"),
+        replayResultGame: requireElement("replay-result-game"),
+        replayResultRound: requireElement("replay-result-round"),
+        replayResultSeed: requireElement("replay-result-seed"),
+        replayResultTotalBet: requireElement("replay-result-total-bet"),
+        replayResultTotalWin: requireElement("replay-result-total-win"),
+        replayResultTimestamp: requireElement("replay-result-timestamp"),
+        replayResultDuration: requireElement("replay-result-duration"),
+        replayResultScreenSection: requireElement("replay-result-screen-section"),
+        replayResultScreenBody: requireElement("replay-result-screen-body"),
+        replayResultNoScreen: requireElement("replay-result-no-screen"),
+        replayDownloadJson: requireElement("replay-download-json"),
+        replayListRefreshButton: requireElement("replay-list-refresh-button"),
+        replayListEmpty: requireElement("replay-list-empty"),
+        replayListError: requireElement("replay-list-error"),
+        replayList: requireElement("replay-list"),
     };
 }
 
@@ -282,6 +333,7 @@ export function renderProjectHeader(elements: Elements, header: ProjectHeaderVie
         elements.projectValidationSection.hidden = true;
         elements.projectSimulationSection.hidden = true;
         elements.projectReportsSection.hidden = true;
+        elements.projectReplaySection.hidden = true;
     }
 
     if (header.status === "empty") {
@@ -316,10 +368,12 @@ export function showProjectTab(elements: Elements, tab: ProjectTab): void {
     elements.projectValidationSection.hidden = tab !== "validation";
     elements.projectSimulationSection.hidden = tab !== "simulation";
     elements.projectReportsSection.hidden = tab !== "reports";
+    elements.projectReplaySection.hidden = tab !== "replay";
     elements.tabOverviewButton.setAttribute("aria-current", tab === "overview" ? "page" : "false");
     elements.tabValidationButton.setAttribute("aria-current", tab === "validation" ? "page" : "false");
     elements.tabSimulationButton.setAttribute("aria-current", tab === "simulation" ? "page" : "false");
     elements.tabReportsButton.setAttribute("aria-current", tab === "reports" ? "page" : "false");
+    elements.tabReplayButton.setAttribute("aria-current", tab === "replay" ? "page" : "false");
 }
 
 // Renders the full Inspect result block for every InspectionResultView state (loading/error/loaded
@@ -535,4 +589,82 @@ export function renderReportDetailState(elements: Elements, view: ReportDetailVi
     if (view.status === "error") {
         elements.reportDetailError.textContent = view.message;
     }
+}
+
+// `result` is undefined exactly for "idle" (no replay has been run this session yet) — purely a
+// frontend concept, same role as SimulationProgressView | undefined in renderSimulationProgress.
+export function renderReplayResult(elements: Elements, result: ReplayResultView | undefined): void {
+    elements.replayIdle.hidden = result !== undefined;
+    elements.replayResult.hidden = result === undefined;
+    elements.replayRerunButton.hidden = result === undefined;
+    if (result === undefined) {
+        return;
+    }
+
+    elements.replayResultGame.textContent = `${result.game.name} (id: "${result.game.id}", v${result.game.version})`;
+    elements.replayResultRound.textContent = String(result.round);
+    elements.replayResultSeed.textContent = result.seed ?? "(none)";
+    elements.replayResultTotalBet.textContent = result.totalBet.toFixed(2);
+    elements.replayResultTotalWin.textContent = result.totalWin.toFixed(2);
+    elements.replayResultTimestamp.textContent = new Date(result.timestamp).toLocaleString();
+    elements.replayResultDuration.textContent = `${result.durationMs}ms`;
+
+    elements.replayResultScreenSection.hidden = result.screen === undefined;
+    elements.replayResultNoScreen.hidden = result.screen !== undefined;
+    elements.replayResultScreenBody.textContent = "";
+    for (const row of result.screen ?? []) {
+        const tr = document.createElement("tr");
+        for (const cellText of row) {
+            const td = document.createElement("td");
+            td.textContent = cellText;
+            tr.appendChild(td);
+        }
+        elements.replayResultScreenBody.appendChild(tr);
+    }
+
+    elements.replayDownloadJson.href = `/api/project/replays/${encodeURIComponent(result.id)}/download`;
+}
+
+// For an apiClient call itself failing (network error, an unexpected non-2xx, or the replay/load
+// error message returned by the API) — the Replay tab has no polling/background job, so every
+// failure surfaces here directly, unlike Simulation's separate job-status-vs-call-failure split.
+export function renderReplayError(elements: Elements, message: string): void {
+    elements.replayError.hidden = false;
+    elements.replayError.textContent = message;
+}
+
+export function clearReplayError(elements: Elements): void {
+    elements.replayError.hidden = true;
+    elements.replayError.textContent = "";
+}
+
+export function renderReplayList(
+    elements: Elements,
+    view: ReplayListView,
+    onSelect: (entry: StudioReplayListEntry) => void,
+): void {
+    elements.replayListError.hidden = true;
+    elements.replayListEmpty.hidden = view.status !== "empty";
+    elements.replayList.textContent = "";
+    if (view.status === "empty") {
+        return;
+    }
+
+    for (const entry of view.entries) {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        const timestamp = new Date(entry.timestamp).toLocaleString();
+        button.textContent =
+            `${entry.game.id} v${entry.game.version} — round ${entry.round}, seed ${entry.seed ?? "(none)"}, ` +
+            `bet ${entry.totalBet.toFixed(2)} / win ${entry.totalWin.toFixed(2)}, ${timestamp}`;
+        button.addEventListener("click", () => onSelect(entry));
+        item.appendChild(button);
+        elements.replayList.appendChild(item);
+    }
+}
+
+export function renderReplayListError(elements: Elements, message: string): void {
+    elements.replayListError.hidden = false;
+    elements.replayListError.textContent = message;
 }

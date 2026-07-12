@@ -14,6 +14,8 @@ import os from "os";
 import path from "path";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
+import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
+import {StudioReplayService} from "../../../cli/studio/replay/StudioReplayService.js";
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
@@ -116,6 +118,81 @@ function createFreeGamesAwareFakeGame(manifest: PokieGameManifest): PokieGame {
                 },
                 getWinAmount: () => pendingWin,
             } as unknown as GameSessionHandling;
+        },
+    };
+}
+
+// FNV-1a, same hashing trick tests/cli/studio/replay/StudioReplayService.test.ts and the
+// "playable-game" fixture both use to turn a seed string into a deterministic 32-bit int.
+function hashSeed(seed: string | undefined): number {
+    let hash = 0x811c9dc5;
+    for (const char of String(seed ?? "")) {
+        hash ^= char.charCodeAt(0);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return hash >>> 0;
+}
+
+// Genuinely seed-dependent (same seed always plays out identically; a different seed plays out
+// differently) — used for the Replay reproducibility tests.
+function createSeedAwareFakeGame(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: (context) => {
+            const seedValue = hashSeed(context?.seed === undefined ? undefined : String(context.seed));
+            let credits = 1000;
+            let bet = 1;
+            let round = 0;
+            let winAmount = 0;
+            let screen: unknown[][] = [["-"]];
+            return {
+                getCreditsAmount: () => credits,
+                setCreditsAmount: (value: number) => {
+                    credits = value;
+                },
+                getBet: () => bet,
+                setBet: (value: number) => {
+                    bet = value;
+                },
+                getAvailableBets: () => [1],
+                canPlayNextGame: () => true,
+                play: () => {
+                    round++;
+                    const symbol = (seedValue + round) % 5;
+                    winAmount = symbol === 0 ? bet * 10 : 0;
+                    screen = [[`sym-${symbol}-round-${round}`]];
+                    credits = credits - bet + winAmount;
+                },
+                getWinAmount: () => winAmount,
+                getSymbolsCombination: () => ({toMatrix: () => screen}),
+            } as unknown as GameSessionHandling;
+        },
+    };
+}
+
+// No getSymbolsCombination() at all — screen should come back null.
+function createFakeGameWithoutScreen(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => {
+            let credits = 1000;
+            const bet = 1;
+            let winAmount = 0;
+            return {
+                getCreditsAmount: () => credits,
+                setCreditsAmount: (value: number) => {
+                    credits = value;
+                },
+                getBet: () => bet,
+                setBet: () => undefined,
+                getAvailableBets: () => [1],
+                canPlayNextGame: () => true,
+                play: () => {
+                    winAmount = 0;
+                    credits -= bet;
+                },
+                getWinAmount: () => winAmount,
+            };
         },
     };
 }
@@ -1215,6 +1292,237 @@ describe("StudioServer", () => {
             const body = await response.json();
             expect(typeof (body as {error: string}).error).toBe("string");
             expect(JSON.stringify(body)).not.toContain("\\n    at ");
+        });
+    });
+
+    describe("Project Dashboard: Replay (POST/GET /api/project/replays*)", () => {
+        const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+        async function openCrazyFruits(game: PokieGame): Promise<void> {
+            loadGame.mockResolvedValue(game);
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+        }
+
+        it("returns 409 for POST when there is no active project", async () => {
+            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 1});
+
+            expect(status).toBe(409);
+            expect(body).toEqual({error: "No active project."});
+        });
+
+        it("returns 409 for GET (list) when there is no active project", async () => {
+            const {status, body} = await get(`${baseUrl}/api/project/replays`);
+
+            expect(status).toBe(409);
+            expect(body).toEqual({error: "No active project."});
+        });
+
+        it("rejects an invalid round with 400", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const zero = await post(`${baseUrl}/api/project/replays`, {round: 0});
+            expect(zero.status).toBe(400);
+            expect(zero.body).toEqual({error: '"round" must be a positive integer.'});
+
+            const nonInteger = await post(`${baseUrl}/api/project/replays`, {round: 4.2});
+            expect(nonInteger.status).toBe(400);
+        });
+
+        it("rejects a round above the safety limit with 400", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 100_000_001});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: '"round" must not exceed 100000.'});
+        });
+
+        it("rejects an empty seed with 400", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: "  "});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: '"seed" must be a non-empty string when given.'});
+        });
+
+        it("runs a replay and returns the full descriptor", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
+
+            expect(status).toBe(201);
+            const record = body as {id: string; projectRoot: string; descriptor: {game: unknown; round: number; seed: string}};
+            expect(record.projectRoot).toBe(path.resolve("./crazy-fruits"));
+            expect(record.descriptor).toMatchObject({game: manifest, round: 5, seed: "demo"});
+            expect(typeof record.id).toBe("string");
+        });
+
+        it("produces the exact same descriptor for the same seed/round (reproducibility)", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const first = await post(`${baseUrl}/api/project/replays`, {round: 10, seed: "reproducible"});
+            const second = await post(`${baseUrl}/api/project/replays`, {round: 10, seed: "reproducible"});
+
+            const firstDescriptor = (first.body as {descriptor: Record<string, unknown>}).descriptor;
+            const secondDescriptor = (second.body as {descriptor: Record<string, unknown>}).descriptor;
+            expect(secondDescriptor).toEqual({...firstDescriptor, timestamp: secondDescriptor.timestamp});
+        });
+
+        it("still succeeds for a game that ignores the seed entirely", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 4, seed: "whatever"});
+
+            expect(status).toBe(201);
+            expect((body as {descriptor: {seed: string}}).descriptor.seed).toBe("whatever");
+        });
+
+        it("records screen: null for a session without getSymbolsCombination()", async () => {
+            await openCrazyFruits(createFakeGameWithoutScreen(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 3});
+
+            expect(status).toBe(201);
+            expect((body as {descriptor: {screen: unknown}}).descriptor.screen).toBeNull();
+        });
+
+        it("returns 400 with a safe message when loading the game fails", async () => {
+            loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            loadGame.mockRejectedValueOnce(new Error("Cannot find module './dist/index.js'"));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 3});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: "Cannot find module './dist/index.js'"});
+            expect(JSON.stringify(body)).not.toContain("\\n    at ");
+        });
+
+        it("returns 404 for GET of an unknown replay id", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const {status, body} = await get(`${baseUrl}/api/project/replays/does-not-exist`);
+
+            expect(status).toBe(404);
+            expect(body).toEqual({error: 'Unknown replay id "does-not-exist".'});
+        });
+
+        it("lists a project's replays with the required summary fields", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+            await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
+
+            const {status, body} = await get(`${baseUrl}/api/project/replays`);
+
+            expect(status).toBe(200);
+            const entries = body as Array<Record<string, unknown>>;
+            expect(entries).toHaveLength(1);
+            expect(entries[0]).toMatchObject({game: manifest, round: 5, seed: "demo"});
+            expect(typeof entries[0].totalBet).toBe("number");
+            expect(typeof entries[0].timestamp).toBe("number");
+        });
+
+        it("returns an empty list when the project has no replays yet", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const {status, body} = await get(`${baseUrl}/api/project/replays`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual([]);
+        });
+
+        it("downloads a JSON artifact with correct headers and a parseable, matching body", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
+            const {id, descriptor} = created.body as {id: string; descriptor: unknown};
+
+            const response = await fetch(`${baseUrl}/api/project/replays/${id}/download`);
+
+            expect(response.status).toBe(200);
+            expect(response.headers.get("content-type")).toContain("application/json");
+            expect(response.headers.get("content-disposition")).toBe(`attachment; filename="crazy-fruits-0.1.0-${id}.json"`);
+            expect(JSON.parse(await response.text())).toEqual(descriptor);
+        });
+
+        it("returns 404 when downloading an unknown replay id", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const response = await fetch(`${baseUrl}/api/project/replays/does-not-exist/download`);
+
+            expect(response.status).toBe(404);
+        });
+
+        it("returns 404 (not a leak) for a replay id that belongs to a different project", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 3});
+            const {id} = created.body as {id: string};
+
+            await post(`${baseUrl}/api/projects/close`);
+            loadGame.mockResolvedValue(createSeedAwareFakeGame({id: "other-game", name: "Other Game", version: "2.0.0"}));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./other-game"});
+
+            const detail = await get(`${baseUrl}/api/project/replays/${id}`);
+            expect(detail.status).toBe(404);
+
+            const list = await get(`${baseUrl}/api/project/replays`);
+            expect(list.body).toEqual([]);
+        });
+
+        it("makes a saved replay unreachable after switching to a different project, even by its own id", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 3});
+            const {id} = created.body as {id: string};
+
+            await post(`${baseUrl}/api/projects/close`);
+            loadGame.mockResolvedValue(createSeedAwareFakeGame({id: "another-game", name: "Another Game", version: "3.0.0"}));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./another-game"});
+
+            const download = await fetch(`${baseUrl}/api/project/replays/${id}/download`);
+            expect(download.status).toBe(404);
+        });
+    });
+
+    describe("Project Dashboard: Replay with the real fixture game package", () => {
+        let replayStudioRoot: string;
+        let replayServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            replayStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-replay-fixture-test-"));
+            writeStudioAssets(replayStudioRoot);
+        });
+
+        afterEach(async () => {
+            await replayServer?.stop();
+            fs.rmSync(replayStudioRoot, {recursive: true, force: true});
+        });
+
+        it("runs a replay against a real fixture game and produces a reproducible descriptor", async () => {
+            const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+            replayServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: replayStudioRoot,
+                gamePackageCreator: createStubCreator(scaffoldResult),
+                initialContext: {mode: "project", projectRoot: fixtureRoot},
+                replayService: new StudioReplayService(new InMemoryStudioReplayRepository()),
+            });
+            const address = await replayServer.start();
+            const replayBaseUrl = `http://${address.host}:${address.port}`;
+
+            const first = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+            const second = await post(`${replayBaseUrl}/api/project/replays`, {round: 20, seed: "demo"});
+
+            expect(first.status).toBe(201);
+            expect((first.body as {descriptor: {game: unknown}}).descriptor.game).toEqual({
+                id: "playable-game",
+                name: "Playable Game",
+                version: "1.0.0",
+            });
+            const firstDescriptor = (first.body as {descriptor: Record<string, unknown>}).descriptor;
+            const secondDescriptor = (second.body as {descriptor: Record<string, unknown>}).descriptor;
+            expect(secondDescriptor.totalBet).toBe(firstDescriptor.totalBet);
+            expect(secondDescriptor.totalWin).toBe(firstDescriptor.totalWin);
+            expect(secondDescriptor.screen).toEqual(firstDescriptor.screen);
         });
     });
 });

@@ -6,6 +6,8 @@ import type {
     RecentProjectEntry,
     SimulationReport,
     StudioContext,
+    StudioReplayListEntry,
+    StudioReplayRecordView,
     StudioSimulationJobView,
     StudioSimulationReportListEntry,
 } from "./types.js";
@@ -148,6 +150,40 @@ export type ReportDownloadFormat = "json" | "markdown" | "html";
 // links point at, consistently, in one place.
 export function buildReportDownloadUrl(id: string, format: ReportDownloadFormat): string {
     return `/api/project/reports/${encodeURIComponent(id)}/download?format=${format}`;
+}
+
+export async function runReplay(fetchImpl: FetchLike, round: number, seed?: string): Promise<StudioReplayRecordView> {
+    const response = await fetchImpl("/api/project/replays", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(seed === undefined ? {round} : {round, seed}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to run replay"));
+    }
+    return (await response.json()) as StudioReplayRecordView;
+}
+
+export async function getReplay(fetchImpl: FetchLike, id: string): Promise<StudioReplayRecordView> {
+    const response = await fetchImpl(`/api/project/replays/${encodeURIComponent(id)}`);
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to load replay"));
+    }
+    return (await response.json()) as StudioReplayRecordView;
+}
+
+export async function listReplays(fetchImpl: FetchLike): Promise<StudioReplayListEntry[]> {
+    const response = await fetchImpl("/api/project/replays");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to list replays"));
+    }
+    return (await response.json()) as StudioReplayListEntry[];
+}
+
+// Same "plain browser-native navigation" reasoning as buildReportDownloadUrl — no fetch/blob dance,
+// the server's Content-Disposition header does the rest.
+export function buildReplayDownloadUrl(id: string): string {
+    return `/api/project/replays/${encodeURIComponent(id)}/download`;
 }
 
 async function extractErrorMessage(

@@ -141,3 +141,37 @@ export type StudioSimulationReportListEntry = {
     durationMs: number;
     hasWarnings: boolean;
 };
+
+// The server's copy of this same type lives in "pokie" itself (src/replay/ReplayDescriptor.ts) —
+// kept as its own client-side copy here, same convention as every other type in this file.
+export type ReplayDescriptor = {
+    game: {id: string; name: string; version: string};
+    seed: string | null;
+    round: number;
+    totalBet: number;
+    totalWin: number;
+    screen: unknown[][] | null;
+    timestamp: number;
+    durationMs: number;
+};
+
+// The DTO POST /api/project/replays and GET /api/project/replays/:id return — see
+// cli/studio/replay/StudioReplayRecordView.ts's own doc comment.
+export type StudioReplayRecordView = {
+    id: string;
+    projectRoot: string;
+    descriptor: ReplayDescriptor;
+};
+
+// One row of GET /api/project/replays — see cli/studio/replay/StudioReplayListEntry.ts's own doc
+// comment (no `screen`, kept out of the list summary).
+export type StudioReplayListEntry = {
+    id: string;
+    game: {id: string; name: string; version: string};
+    round: number;
+    seed: string | null;
+    totalBet: number;
+    totalWin: number;
+    timestamp: number;
+    durationMs: number;
+};

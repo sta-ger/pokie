@@ -63,6 +63,7 @@
                 <button id="tab-validation" type="button" class="tab">Validation</button>
                 <button id="tab-simulation" type="button" class="tab">Simulation</button>
                 <button id="tab-reports" type="button" class="tab">Reports</button>
+                <button id="tab-replay" type="button" class="tab">Replay</button>
             </nav>
 
             <section id="project-overview">
@@ -278,6 +279,68 @@
                         <p id="report-detail-reproducibility" hidden></p>
                     </div>
                 </div>
+            </section>
+
+            <section id="project-replay" hidden>
+                <p class="notice">
+                    Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same
+                    seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on
+                    the seed (e.g. it reads external state) may not reproduce the original round.
+                </p>
+
+                <form id="replay-form">
+                    <label for="replay-round">Round</label>
+                    <input id="replay-round" name="round" type="number" min="1" step="1" value="1" required />
+                    <label for="replay-seed">Seed (optional)</label>
+                    <input id="replay-seed" name="seed" type="text" />
+                    <button id="replay-run-button" type="submit">Run Replay</button>
+                </form>
+
+                <p id="replay-idle" hidden>No replay has been run yet.</p>
+                <p id="replay-error" hidden></p>
+
+                <button id="replay-rerun-button" type="button" hidden>Run again with the same parameters</button>
+
+                <div id="replay-result" hidden>
+                    <dl class="project-info">
+                        <dt>Game</dt>
+                        <dd id="replay-result-game"></dd>
+                        <dt>Round</dt>
+                        <dd id="replay-result-round"></dd>
+                        <dt>Seed</dt>
+                        <dd id="replay-result-seed"></dd>
+                        <dt>Total bet</dt>
+                        <dd id="replay-result-total-bet"></dd>
+                        <dt>Total payout</dt>
+                        <dd id="replay-result-total-win"></dd>
+                        <dt>Timestamp</dt>
+                        <dd id="replay-result-timestamp"></dd>
+                        <dt>Duration</dt>
+                        <dd id="replay-result-duration"></dd>
+                    </dl>
+
+                    <div id="replay-result-screen-section" hidden>
+                        <h3>Screen</h3>
+                        <table class="screen-table">
+                            <tbody id="replay-result-screen-body"></tbody>
+                        </table>
+                    </div>
+                    <p id="replay-result-no-screen" hidden>
+                        No screen available — this game's session doesn't expose a symbols combination.
+                    </p>
+
+                    <a id="replay-download-json" href="#" download>Download JSON</a>
+                </div>
+
+                <section id="replay-list-section">
+                    <div class="quick-actions">
+                        <h3>Recent Replays</h3>
+                        <button id="replay-list-refresh-button" type="button">Refresh</button>
+                    </div>
+                    <p id="replay-list-empty" hidden>No replays run yet.</p>
+                    <p id="replay-list-error" hidden></p>
+                    <ul id="replay-list"></ul>
+                </section>
             </section>
         </section>
     </main>

@@ -1,4 +1,5 @@
 import {
+    buildReplayDownloadUrl,
     buildReportDownloadUrl,
     cancelSimulation,
     closeProject,
@@ -6,12 +7,15 @@ import {
     FetchLike,
     getContext,
     getProjectContext,
+    getReplay,
     getReport,
     getSimulation,
     inspectProject,
+    listReplays,
     listReports,
     listRecentProjects,
     openProject,
+    runReplay,
     startSimulation,
     validateProject,
 } from "../../../cli/studio-client/apiClient.js";
@@ -386,6 +390,121 @@ describe("studio-client apiClient", () => {
 
         it("encodes the id in the URL", () => {
             expect(buildReportDownloadUrl("a/b", "json")).toBe("/api/project/reports/a%2Fb/download?format=json");
+        });
+    });
+
+    describe("runReplay", () => {
+        it("POSTs round and seed and returns the created replay", () => {
+            const record = {
+                id: "replay-1",
+                projectRoot: "/a",
+                descriptor: {
+                    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                    seed: "demo",
+                    round: 42,
+                    totalBet: 42,
+                    totalWin: 10,
+                    screen: [["A"]],
+                    timestamp: 1735707845000,
+                    durationMs: 5,
+                },
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: record}));
+
+            return runReplay(fetchImpl, 42, "demo").then((result) => {
+                expect(calls).toEqual([
+                    {
+                        url: "/api/project/replays",
+                        init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({round: 42, seed: "demo"})},
+                    },
+                ]);
+                expect(result).toEqual(record);
+            });
+        });
+
+        it("omits seed from the body when not given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {}}));
+
+            await runReplay(fetchImpl, 42);
+
+            expect(calls[0].init?.body).toBe(JSON.stringify({round: 42}));
+        });
+
+        it("throws the server's own error message on failure", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"round" must be a positive integer.'}}));
+
+            await expect(runReplay(fetchImpl, 0)).rejects.toThrow('"round" must be a positive integer.');
+        });
+    });
+
+    describe("getReplay", () => {
+        it("GETs /api/project/replays/:id and returns the record", async () => {
+            const record = {id: "replay-1", projectRoot: "/a", descriptor: {round: 1}};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: record}));
+
+            const result = await getReplay(fetchImpl, "replay-1");
+
+            expect(calls).toEqual([{url: "/api/project/replays/replay-1", init: undefined}]);
+            expect(result).toEqual(record);
+        });
+
+        it("encodes the id in the URL", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {}}));
+
+            await getReplay(fetchImpl, "a/b");
+
+            expect(calls[0].url).toBe("/api/project/replays/a%2Fb");
+        });
+
+        it("throws the server's own error message for an unknown id", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown replay id "does-not-exist".'}}));
+
+            await expect(getReplay(fetchImpl, "does-not-exist")).rejects.toThrow('Unknown replay id "does-not-exist".');
+        });
+    });
+
+    describe("listReplays", () => {
+        it("GETs /api/project/replays and returns the list", async () => {
+            const entries = [
+                {
+                    id: "replay-1",
+                    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                    round: 42,
+                    seed: "demo",
+                    totalBet: 42,
+                    totalWin: 10,
+                    timestamp: 1735707845000,
+                    durationMs: 5,
+                },
+            ];
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: entries}));
+
+            const result = await listReplays(fetchImpl);
+
+            expect(calls).toEqual([{url: "/api/project/replays", init: undefined}]);
+            expect(result).toEqual(entries);
+        });
+
+        it("returns an empty list when there are no replays yet", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: []}));
+
+            expect(await listReplays(fetchImpl)).toEqual([]);
+        });
+
+        it("throws the server's own error message when there is no active project", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "No active project."}}));
+
+            await expect(listReplays(fetchImpl)).rejects.toThrow("No active project.");
+        });
+    });
+
+    describe("buildReplayDownloadUrl", () => {
+        it("builds the download URL", () => {
+            expect(buildReplayDownloadUrl("replay-1")).toBe("/api/project/replays/replay-1/download");
+        });
+
+        it("encodes the id in the URL", () => {
+            expect(buildReplayDownloadUrl("a/b")).toBe("/api/project/replays/a%2Fb/download");
         });
     });
 });
