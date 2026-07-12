@@ -32,25 +32,53 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
 }
 
 export type ProvenanceView =
-    | {generated: false}
-    | {generated: true; blueprintHash: string; source: string; pokieVersion: string; generatedAt: string; files: string[]};
+    | {status: "generated"; blueprintHash: string; source: string; pokieVersion: string; generatedAt: string; files: string[]}
+    | {status: "not-generated"}
+    | {status: "error"; message: string};
 
-// Provenance is only meaningful for a package `pokie build` actually generated — everything else
-// (a plain `pokie create`/`pokie init` scaffold, or an inspection that failed outright) collapses to
-// the same "not generated" view; dom.ts renders one "not built via pokie build" message for both
-// rather than needing to know the difference.
+// Three distinct states, deliberately not collapsed into one another:
+// - "generated" — a valid inspection with build-info present (built via `pokie build`).
+// - "not-generated" — a *valid* inspection with no build-info (a `pokie create`/`pokie init`
+//   scaffold, or a build-info.json that failed to parse/wasn't written by `pokie build` — see
+//   GamePackageInspector.readBuildInfo, which already treats either the same way as "absent").
+// - "error" — the inspection report itself is invalid (`report.valid === false`, e.g. a missing or
+//   corrupt package.json): this is not "not generated", it's "couldn't even be read", and must show
+//   the report's own safe error message, not be silently folded into "not built via pokie build".
 export function describeProvenance(report: GamePackageInspectionReport): ProvenanceView {
-    if (!report.valid || !report.buildInfo) {
-        return {generated: false};
+    if (!report.valid) {
+        return {status: "error", message: report.error ?? "Inspection failed."};
+    }
+    if (!report.buildInfo) {
+        return {status: "not-generated"};
     }
     const {buildInfo} = report;
     return {
-        generated: true,
+        status: "generated",
         blueprintHash: buildInfo.blueprintHash,
         source: buildInfo.source ?? "(unknown)",
         pokieVersion: buildInfo.pokieVersion,
         generatedAt: buildInfo.generatedAt,
         files: buildInfo.files ?? [],
+    };
+}
+
+// The full Inspect result block — not just the provenance sub-panel: package name/version/root, plus
+// nested provenance. "loading"/"error" here are about the /api/project/inspect call itself (in
+// flight, or failing outright — e.g. a 409 when there's no active project); a *successful* call that
+// reports an invalid package still comes back as "loaded", with the invalidity carried by its
+// nested `provenance` (status "error") — see describeProvenance above.
+export type InspectionResultView =
+    | {status: "loading"}
+    | {status: "error"; message: string}
+    | {status: "loaded"; packageRoot: string; packageName?: string; packageVersion?: string; provenance: ProvenanceView};
+
+export function describeInspection(report: GamePackageInspectionReport): InspectionResultView {
+    return {
+        status: "loaded",
+        packageRoot: report.packageRoot,
+        packageName: report.packageJson?.name,
+        packageVersion: report.packageJson?.version,
+        provenance: describeProvenance(report),
     };
 }
 

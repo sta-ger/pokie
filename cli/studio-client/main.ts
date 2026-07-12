@@ -13,15 +13,15 @@ import {
     Elements,
     ProjectTab,
     queryElements,
+    renderInspectionResult,
     renderProjectHeader,
-    renderProvenance,
     renderRecentProjects,
     renderValidationSummary,
     setStatus,
     showProjectTab,
     showView,
 } from "./dom.js";
-import {describeProjectHeader, describeProvenance, describeValidationSummary} from "./interpretProjectDashboard.js";
+import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
 import {currentRoute, navigate, onRouteChange, StudioRoute} from "./router.js";
 import type {ProjectDashboardContext, StudioContext} from "./types.js";
 
@@ -48,15 +48,20 @@ async function main(): Promise<void> {
 
     // Inspect is safe to run whenever the dashboard shows "loaded" or "error" — it only ever reads
     // package.json/build-info.json, independent of whether the entry module itself loaded — so it's
-    // both the automatic provenance fetch on dashboard load and the manual "Inspect" quick action.
+    // both the automatic fetch on dashboard load and the manual "Re-run Inspect" quick action. A
+    // *successful* call reporting an invalid/unreadable package still renders as "loaded" (see
+    // describeInspection) — only the API call itself failing (e.g. a 409) renders as "error" here.
     const refreshInspect = (): void => {
+        renderInspectionResult(elements, {status: "loading"});
         inspectProject(fetchImpl)
             .then((report) => {
-                setStatus(elements.inspectStatus, "");
-                renderProvenance(elements, describeProvenance(report));
+                renderInspectionResult(elements, describeInspection(report));
             })
             .catch((error: unknown) => {
-                setStatus(elements.inspectStatus, error instanceof Error ? error.message : String(error));
+                renderInspectionResult(elements, {
+                    status: "error",
+                    message: error instanceof Error ? error.message : String(error),
+                });
             });
     };
 
@@ -190,7 +195,6 @@ async function main(): Promise<void> {
     });
 
     elements.inspectButton.addEventListener("click", () => {
-        setStatus(elements.inspectStatus, "Inspecting…");
         refreshInspect();
     });
 

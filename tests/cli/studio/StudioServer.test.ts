@@ -1,5 +1,6 @@
 import {
     GameBuildInfo,
+    GamePackageInspector,
     GamePackageInspectionReport,
     PokieGame,
     PokieGameManifest,
@@ -319,7 +320,7 @@ describe("StudioServer", () => {
 
             expect(status).toBe(200);
             expect(body).toEqual(report);
-            expect(JSON.stringify(body)).not.toContain("at ");
+            expect(JSON.stringify(body)).not.toContain("\\n    at ");
         });
     });
 
@@ -371,7 +372,7 @@ describe("StudioServer", () => {
 
             expect(status).toBe(200);
             expect(body).toEqual(report);
-            expect(JSON.stringify(body)).not.toContain("at ");
+            expect(JSON.stringify(body)).not.toContain("\\n    at ");
         });
 
         it("forwards a validation report with only warnings (still valid)", async () => {
@@ -481,6 +482,110 @@ describe("StudioServer", () => {
                 projectRoot: "/tmp/broken-game",
                 error: "Cannot find module './dist/index.js'",
             });
+        });
+    });
+
+    describe("GET /api/project/inspect with the real GamePackageInspector (fixtures on disk)", () => {
+        let fixtureStudioRoot: string;
+        let fixtureServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            fixtureStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-inspect-fixture-test-"));
+            writeStudioAssets(fixtureStudioRoot);
+        });
+
+        afterEach(async () => {
+            await fixtureServer?.stop();
+            fs.rmSync(fixtureStudioRoot, {recursive: true, force: true});
+        });
+
+        async function startServerForProject(projectRoot: string): Promise<string> {
+            fixtureServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: fixtureStudioRoot,
+                gamePackageCreator: creator,
+                loadGame,
+                gamePackageInspector: new GamePackageInspector(),
+                initialContext: {mode: "project", projectRoot},
+            });
+            const address = await fixtureServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("reports a real, safe error for a corrupt package.json — never a stack trace", async () => {
+            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-broken-package-json-"));
+            try {
+                fs.writeFileSync(path.join(projectRoot, "package.json"), "{ this is not json");
+                const projectBaseUrl = await startServerForProject(projectRoot);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({packageRoot: projectRoot, valid: false, generated: false});
+                expect((body as {error: string}).error).toContain("is not valid JSON");
+                expect(JSON.stringify(body)).not.toContain("\\n    at ");
+            } finally {
+                fs.rmSync(projectRoot, {recursive: true, force: true});
+            }
+        });
+
+        it("reports a real, safe error for a missing package.json", async () => {
+            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-missing-package-json-"));
+            try {
+                const projectBaseUrl = await startServerForProject(projectRoot);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({packageRoot: projectRoot, valid: false, generated: false});
+                expect((body as {error: string}).error).toContain("does not exist");
+                expect(JSON.stringify(body)).not.toContain("\\n    at ");
+            } finally {
+                fs.rmSync(projectRoot, {recursive: true, force: true});
+            }
+        });
+
+        it("treats a corrupt/unparseable build-info.json as not-generated, not an error", async () => {
+            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-corrupt-build-info-"));
+            try {
+                fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "a", version: "1.0.0"}));
+                fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
+                fs.writeFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "{ not valid json");
+                const projectBaseUrl = await startServerForProject(projectRoot);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
+
+                expect(status).toBe(200);
+                expect(body).toEqual({
+                    packageRoot: projectRoot,
+                    valid: true,
+                    packageJson: {name: "a", version: "1.0.0", description: undefined},
+                    generated: false,
+                });
+            } finally {
+                fs.rmSync(projectRoot, {recursive: true, force: true});
+            }
+        });
+
+        it("treats a build-info.json not written by pokie build as not-generated", async () => {
+            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wrong-build-info-"));
+            try {
+                fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "a", version: "1.0.0"}));
+                fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
+                fs.writeFileSync(
+                    path.join(projectRoot, "src", "generated", "build-info.json"),
+                    JSON.stringify({generatedBy: "someone-else"}),
+                );
+                const projectBaseUrl = await startServerForProject(projectRoot);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({valid: true, generated: false});
+            } finally {
+                fs.rmSync(projectRoot, {recursive: true, force: true});
+            }
         });
     });
 });

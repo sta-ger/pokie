@@ -1,4 +1,4 @@
-import type {ProjectHeaderView, ProvenanceView, ValidationSummaryView} from "./interpretProjectDashboard.js";
+import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
 import type {RecentProjectEntry} from "./types.js";
 
 export type ProjectTab = "overview" | "validation";
@@ -28,16 +28,23 @@ export type Elements = {
     projectId: HTMLElement;
     projectVersion: HTMLElement;
     projectRoot: HTMLElement;
+    inspectButton: HTMLButtonElement;
+    inspectLoading: HTMLElement;
+    inspectError: HTMLElement;
+    inspectReport: HTMLElement;
+    inspectPackageName: HTMLElement;
+    inspectPackageVersion: HTMLElement;
+    inspectPackageRoot: HTMLElement;
+    provenanceGenerated: HTMLElement;
     provenanceNotGenerated: HTMLElement;
+    provenanceError: HTMLElement;
     provenanceDetails: HTMLElement;
     provenanceHash: HTMLElement;
     provenanceSource: HTMLElement;
     provenancePokieVersion: HTMLElement;
     provenanceGeneratedAt: HTMLElement;
     provenanceFiles: HTMLElement;
-    inspectButton: HTMLButtonElement;
     validateQuickActionButton: HTMLButtonElement;
-    inspectStatus: HTMLElement;
     runValidateButton: HTMLButtonElement;
     validationStatus: HTMLElement;
     validationSummary: HTMLElement;
@@ -83,16 +90,23 @@ export function queryElements(): Elements {
         projectId: requireElement("project-id"),
         projectVersion: requireElement("project-version"),
         projectRoot: requireElement("project-root"),
+        inspectButton: requireElement("inspect-button"),
+        inspectLoading: requireElement("inspect-loading"),
+        inspectError: requireElement("inspect-error"),
+        inspectReport: requireElement("inspect-report"),
+        inspectPackageName: requireElement("inspect-package-name"),
+        inspectPackageVersion: requireElement("inspect-package-version"),
+        inspectPackageRoot: requireElement("inspect-package-root"),
+        provenanceGenerated: requireElement("provenance-generated"),
         provenanceNotGenerated: requireElement("provenance-not-generated"),
+        provenanceError: requireElement("provenance-error"),
         provenanceDetails: requireElement("provenance-details"),
         provenanceHash: requireElement("provenance-hash"),
         provenanceSource: requireElement("provenance-source"),
         provenancePokieVersion: requireElement("provenance-pokie-version"),
         provenanceGeneratedAt: requireElement("provenance-generated-at"),
         provenanceFiles: requireElement("provenance-files"),
-        inspectButton: requireElement("inspect-button"),
         validateQuickActionButton: requireElement("validate-quick-action"),
-        inspectStatus: requireElement("inspect-status"),
         runValidateButton: requireElement("run-validate-button"),
         validationStatus: requireElement("validation-status"),
         validationSummary: requireElement("validation-summary"),
@@ -190,10 +204,39 @@ export function showProjectTab(elements: Elements, tab: ProjectTab): void {
     elements.tabValidationButton.setAttribute("aria-current", tab === "validation" ? "page" : "false");
 }
 
-export function renderProvenance(elements: Elements, provenance: ProvenanceView): void {
-    elements.provenanceNotGenerated.hidden = provenance.generated;
-    elements.provenanceDetails.hidden = !provenance.generated;
-    if (!provenance.generated) {
+// Renders the full Inspect result block for every InspectionResultView state (loading/error/loaded
+// — see interpretProjectDashboard.ts): "error" here is the /api/project/inspect call itself failing
+// (e.g. a 409 when there's no active project); a successful call that reports an invalid package is
+// "loaded", with the invalidity shown via its nested provenance "error" state (report's own safe
+// message — never a stack trace, see describeProvenance).
+export function renderInspectionResult(elements: Elements, inspection: InspectionResultView): void {
+    elements.inspectLoading.hidden = inspection.status !== "loading";
+    elements.inspectError.hidden = inspection.status !== "error";
+    elements.inspectReport.hidden = inspection.status !== "loaded";
+
+    if (inspection.status === "error") {
+        elements.inspectError.textContent = inspection.message;
+        return;
+    }
+    if (inspection.status === "loading") {
+        return;
+    }
+
+    elements.inspectPackageName.textContent = inspection.packageName ?? "(unknown)";
+    elements.inspectPackageVersion.textContent = inspection.packageVersion ?? "(unknown)";
+    elements.inspectPackageRoot.textContent = inspection.packageRoot;
+
+    const {provenance} = inspection;
+    elements.provenanceGenerated.hidden = provenance.status !== "generated";
+    elements.provenanceNotGenerated.hidden = provenance.status !== "not-generated";
+    elements.provenanceError.hidden = provenance.status !== "error";
+    elements.provenanceDetails.hidden = provenance.status !== "generated";
+
+    if (provenance.status === "error") {
+        elements.provenanceError.textContent = provenance.message;
+        return;
+    }
+    if (provenance.status !== "generated") {
         return;
     }
     elements.provenanceHash.textContent = provenance.blueprintHash;

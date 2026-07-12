@@ -1,4 +1,5 @@
 import {
+    describeInspection,
     describeProjectHeader,
     describeProvenance,
     describeValidationSummary,
@@ -62,10 +63,24 @@ describe("describeProvenance", () => {
             generated: false,
         };
 
-        expect(describeProvenance(report)).toEqual({generated: false});
+        expect(describeProvenance(report)).toEqual({status: "not-generated"});
     });
 
-    it("reports not-generated for an invalid/unreadable package (missing or corrupt package.json)", () => {
+    it("reports not-generated for a package whose build-info.json was corrupt/unparseable", () => {
+        // GamePackageInspector.readBuildInfo already treats a build-info.json that fails to parse
+        // (or wasn't written by "pokie build") the same as "absent" — describeProvenance must not
+        // second-guess that and invent a separate state for it.
+        const report: GamePackageInspectionReport = {
+            packageRoot: "/a",
+            valid: true,
+            packageJson: {name: "a", version: "1.0.0"},
+            generated: false,
+        };
+
+        expect(describeProvenance(report)).toEqual({status: "not-generated"});
+    });
+
+    it("reports error (not not-generated) for an invalid/unreadable package (missing or corrupt package.json)", () => {
         const report: GamePackageInspectionReport = {
             packageRoot: "/a",
             valid: false,
@@ -73,7 +88,13 @@ describe("describeProvenance", () => {
             error: '"/a/package.json" does not exist.',
         };
 
-        expect(describeProvenance(report)).toEqual({generated: false});
+        expect(describeProvenance(report)).toEqual({status: "error", message: '"/a/package.json" does not exist.'});
+    });
+
+    it("falls back to a generic message when an invalid report has no error text", () => {
+        const report: GamePackageInspectionReport = {packageRoot: "/a", valid: false, generated: false};
+
+        expect(describeProvenance(report)).toEqual({status: "error", message: "Inspection failed."});
     });
 
     it("extracts buildInfo fields for a generated package", () => {
@@ -95,7 +116,7 @@ describe("describeProvenance", () => {
         };
 
         expect(describeProvenance(report)).toEqual({
-            generated: true,
+            status: "generated",
             blueprintHash: "sha256:abc123",
             source: "crazy-fruits.blueprint.json",
             pokieVersion: "1.3.0",
@@ -121,8 +142,76 @@ describe("describeProvenance", () => {
 
         const view = describeProvenance(report);
         expect(view).toEqual(
-            expect.objectContaining({generated: true, source: "(unknown)", files: []}),
+            expect.objectContaining({status: "generated", source: "(unknown)", files: []}),
         );
+    });
+});
+
+describe("describeInspection", () => {
+    it("wraps a valid, not-generated report with its package name/version/root", () => {
+        const report: GamePackageInspectionReport = {
+            packageRoot: "/a",
+            valid: true,
+            packageJson: {name: "a", version: "1.0.0"},
+            generated: false,
+        };
+
+        expect(describeInspection(report)).toEqual({
+            status: "loaded",
+            packageRoot: "/a",
+            packageName: "a",
+            packageVersion: "1.0.0",
+            provenance: {status: "not-generated"},
+        });
+    });
+
+    it("wraps a generated report with its provenance", () => {
+        const report: GamePackageInspectionReport = {
+            packageRoot: "/a",
+            valid: true,
+            packageJson: {name: "a", version: "0.1.0"},
+            generated: true,
+            buildInfo: {
+                schemaVersion: 1,
+                generatedBy: "pokie build",
+                pokieVersion: "1.3.0",
+                generatedAt: "2026-01-02T03:04:05.000Z",
+                blueprintHash: "sha256:abc123",
+                source: "crazy-fruits.blueprint.json",
+                files: ["package.json"],
+                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            },
+        };
+
+        const view = describeInspection(report);
+        expect(view.status).toBe("loaded");
+        if (view.status === "loaded") {
+            expect(view.provenance).toEqual({
+                status: "generated",
+                blueprintHash: "sha256:abc123",
+                source: "crazy-fruits.blueprint.json",
+                pokieVersion: "1.3.0",
+                generatedAt: "2026-01-02T03:04:05.000Z",
+                files: ["package.json"],
+            });
+        }
+    });
+
+    it("wraps an invalid report as loaded, with the error carried by its nested provenance", () => {
+        const report: GamePackageInspectionReport = {
+            packageRoot: "/a",
+            valid: false,
+            generated: false,
+            error: '"/a/package.json" does not exist.',
+        };
+
+        expect(describeInspection(report)).toEqual({
+            status: "loaded",
+            packageRoot: "/a",
+            packageName: undefined,
+            packageVersion: undefined,
+            provenance: {status: "error", message: '"/a/package.json" does not exist.'},
+        });
     });
 });
 

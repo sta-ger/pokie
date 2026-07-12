@@ -73,28 +73,43 @@
                     <dd id="project-root"></dd>
                 </dl>
 
-                <section id="provenance">
-                    <h3>Provenance</h3>
-                    <p id="provenance-not-generated" hidden>This package was not built via "pokie build" (no build-info found).</p>
-                    <dl id="provenance-details" class="project-info" hidden>
-                        <dt>Blueprint hash</dt>
-                        <dd id="provenance-hash"></dd>
-                        <dt>Source</dt>
-                        <dd id="provenance-source"></dd>
-                        <dt>pokie version</dt>
-                        <dd id="provenance-pokie-version"></dd>
-                        <dt>Generated at</dt>
-                        <dd id="provenance-generated-at"></dd>
-                        <dt>Generated files</dt>
-                        <dd id="provenance-files"></dd>
-                    </dl>
+                <section id="inspect-result">
+                    <h3>Inspect</h3>
+                    <p id="inspect-loading" hidden>Inspecting…</p>
+                    <p id="inspect-error" hidden></p>
+                    <div id="inspect-report" hidden>
+                        <dl class="project-info">
+                            <dt>Package name</dt>
+                            <dd id="inspect-package-name"></dd>
+                            <dt>Package version</dt>
+                            <dd id="inspect-package-version"></dd>
+                            <dt>Package root</dt>
+                            <dd id="inspect-package-root"></dd>
+                        </dl>
+
+                        <h4>Provenance</h4>
+                        <p id="provenance-generated" hidden>Built via "pokie build".</p>
+                        <p id="provenance-not-generated" hidden>This package was not built via "pokie build" (no build-info found).</p>
+                        <p id="provenance-error" hidden></p>
+                        <dl id="provenance-details" class="project-info" hidden>
+                            <dt>Blueprint hash</dt>
+                            <dd id="provenance-hash"></dd>
+                            <dt>Source</dt>
+                            <dd id="provenance-source"></dd>
+                            <dt>pokie version</dt>
+                            <dd id="provenance-pokie-version"></dd>
+                            <dt>Generated at</dt>
+                            <dd id="provenance-generated-at"></dd>
+                            <dt>Generated files</dt>
+                            <dd id="provenance-files"></dd>
+                        </dl>
+                    </div>
+                    <button id="inspect-button" type="button">Re-run Inspect</button>
                 </section>
 
                 <div class="quick-actions">
-                    <button id="inspect-button" type="button">Inspect</button>
                     <button id="validate-quick-action" type="button">Validate</button>
                 </div>
-                <p id="inspect-status"></p>
             </section>
 
             <section id="project-validation" hidden>
