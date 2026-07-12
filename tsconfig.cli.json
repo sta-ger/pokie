@@ -6,5 +6,5 @@
         "paths": {}
     },
     "include": ["cli"],
-    "exclude": ["cli/client"]
+    "exclude": ["cli/client", "cli/studio-client"]
 }

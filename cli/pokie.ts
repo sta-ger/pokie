@@ -14,7 +14,9 @@ import {ReplayCommand} from "./commands/ReplayCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
 import {ServeCommand} from "./commands/ServeCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
+import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
+import {resolveCommandName} from "./resolveCommandName.js";
 
 function readOwnVersion(): string {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +31,13 @@ function readOwnVersion(): string {
 function ownClientRoot(): string {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     return path.join(currentDir, "client");
+}
+
+// Same reasoning as ownClientRoot() above, for the separately-built POKIE Studio frontend
+// (dist/cli/studio-client) — see StudioCommand's own comment on why studioRoot isn't computed there.
+function ownStudioRoot(): string {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    return path.join(currentDir, "studio-client");
 }
 
 function printUsage(commands: CliCommandHandling[]): void {
@@ -52,14 +61,17 @@ async function run(): Promise<number> {
         new ReportCommand(),
         new ServeCommand(),
         new SimCommand(),
+        new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot()}),
         new ValidateCommand(),
     ];
-    const [commandName] = process.argv.slice(2);
+    // No arguments at all means "launch POKIE Studio" (resolveCommandName.ts) rather than the usage
+    // printout below — an explicit unrecognized command name still falls through to that printout.
+    const commandName = resolveCommandName(process.argv);
     const command = commands.find((candidate) => candidate.getName() === commandName);
 
     if (!command) {
         printUsage(commands);
-        return commandName === undefined ? 0 : 1;
+        return 1;
     }
 
     try {

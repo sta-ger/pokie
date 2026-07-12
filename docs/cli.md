@@ -1524,6 +1524,57 @@ it never fails the command. Registering `SIGINT`/`SIGTERM` handlers to stop both
 calls `process.exit()` itself once both `.stop()` calls settle (successfully or not) — Node won't exit
 automatically once a custom signal handler is registered.
 
+## `pokie` / `pokie studio` (experimental)
+
+**Experimental.** Running `pokie` with no arguments at all — or explicitly, `pokie studio` — launches **POKIE
+Studio**: a local web app (its own HTTP server plus a small browser-based frontend) that will eventually host a
+GUI for every command above. This first stage is the foundation only: an app shell, two modes, and a JSON API
+other tool GUIs can be built against — not GUIs for `create`/`build`/`sim`/etc. themselves yet.
+
+```
+pokie
+```
+
+```
+POKIE Studio listening on http://127.0.0.1:3200
+```
+
+A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` mechanism as `pokie dev`, and the
+same `--no-open` escape hatch) showing the **Home** view:
+
+- **Create Project** — a name field that calls the same `GamePackageCreating` service `pokie create` uses, scaffolding
+  a new game package under the current directory.
+- **Open Project** — a path field that loads a directory with `loadPokieGame`, the same package loader every other
+  command uses, and switches to the **Project** view on success.
+- **Recent Projects** — the projects created/opened this session (in-memory only; resets when Studio is restarted).
+- **Documentation** — links into this repository's docs.
+
+Options:
+
+- `--port <number>` / `--host <string>` — where Studio listens (default `127.0.0.1:3200`).
+- `--no-open` — don't try to open a browser.
+
+### Project mode (stub)
+
+Opening or creating a project switches Studio into the **Project** mode/route, identified by that project's
+`projectRoot`. This stage only shows a placeholder — no tool GUI is wired up yet — but the mode and route already
+exist so a future `pokie .` (launching Studio directly into the current directory's project) and per-tool GUIs
+(`build`/`inspect`/`validate`/`sim`/`report`/`diff`/`replay`/`serve`) have a stable foundation to build on, via the
+`StudioToolHandling` extension point.
+
+### API
+
+Studio's frontend and JSON API share one origin/server (unlike `pokie serve`/`pokie client`'s deliberate split) —
+no CORS handling is needed. A few routes worth knowing about directly:
+
+- `GET /api/health` — `200 {"status": "ok"}`, always, once Studio is up.
+- `GET /api/context` — the current mode: `{"mode": "home"}` or `{"mode": "project", "projectRoot": "..."}`.
+- `GET /api/recent-projects` — the in-memory recent-projects list.
+- `POST /api/projects/create` `{"name": string}` / `POST /api/projects/open` `{"projectRoot": string}` — create or
+  open a project, switching Studio to Project mode on success (`400 {"error": "..."}` on failure — an invalid
+  name, or a `projectRoot` that isn't a valid [game package](game-packages.md)).
+- `POST /api/projects/close` — switches back to Home mode.
+
 ## Workflow
 
 A typical end-to-end loop, from a fresh directory to a running dev server, chaining every subcommand above:
@@ -1567,4 +1618,5 @@ Each step builds on the same `<packageRoot>`:
 `pokie build`, `pokie create`, `pokie init`, `pokie inspect`, `pokie sim`, `pokie validate`, `pokie report`,
 `pokie diff`, `pokie replay`, `pokie serve`, `pokie client`, and `pokie dev` are the first of a planned set of
 subcommands built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
-`PokieGameContractValidationRule`).
+`PokieGameContractValidationRule`). [POKIE Studio](#pokie--pokie-studio-experimental) is where GUIs for each of
+them will eventually live, built on the exact same primitives via `StudioToolHandling`.

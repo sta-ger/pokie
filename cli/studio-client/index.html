@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>POKIE Studio</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<div id="app">
+    <header>
+        <h1>POKIE Studio</h1>
+        <p id="status">Connecting…</p>
+    </header>
+    <main>
+        <section id="home-view">
+            <section id="create-project">
+                <h2>Create Project</h2>
+                <form id="create-form">
+                    <label for="create-name">Name</label>
+                    <input id="create-name" name="name" type="text" required />
+                    <button type="submit">Create</button>
+                </form>
+                <p id="create-status"></p>
+            </section>
+            <section id="open-project">
+                <h2>Open Project</h2>
+                <form id="open-form">
+                    <label for="open-path">Project path</label>
+                    <input id="open-path" name="projectRoot" type="text" required />
+                    <button type="submit">Open</button>
+                </form>
+                <p id="open-status"></p>
+            </section>
+            <section id="recent-projects">
+                <h2>Recent Projects</h2>
+                <ul id="recent-list"></ul>
+            </section>
+            <section id="documentation">
+                <h2>Documentation</h2>
+                <ul>
+                    <li><a href="https://github.com/sta-ger/pokie/blob/master/docs/README.md" target="_blank" rel="noreferrer">Docs index</a></li>
+                    <li><a href="https://github.com/sta-ger/pokie/blob/master/docs/getting-started.md" target="_blank" rel="noreferrer">Getting started</a></li>
+                    <li><a href="https://github.com/sta-ger/pokie/blob/master/docs/cli.md" target="_blank" rel="noreferrer">CLI reference</a></li>
+                </ul>
+            </section>
+        </section>
+        <section id="project-view" hidden>
+            <h2>Project</h2>
+            <p>Root: <span id="project-root"></span></p>
+            <p>Tool GUIs (build/inspect/validate/sim/report/diff/replay/serve) are coming soon.</p>
+            <button id="close-project" type="button">Close project</button>
+        </section>
+    </main>
+</div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
