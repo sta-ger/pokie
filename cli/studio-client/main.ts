@@ -1,4 +1,5 @@
 import {
+    buildProject,
     buildReportDownloadUrl,
     cancelReplay,
     cancelSimulation,
@@ -10,22 +11,30 @@ import {
     getReplay,
     getReport,
     getSimulation,
+    initProject,
     inspectProject,
     listRecentProjects,
     listReplays,
     listReports,
     openProject,
+    previewBuild,
     runReplay,
     startSimulation,
     validateProject,
 } from "./apiClient.js";
 import {
     Elements,
+    HomeTab,
     ProjectTab,
     queryElements,
+    renderBuildPreview,
+    renderBuildResult,
+    renderCreateResult,
+    renderHomeRecentProjects,
+    renderHomeRecentProjectsError,
+    renderInitResult,
     renderInspectionResult,
     renderProjectHeader,
-    renderRecentProjects,
     renderReplayError,
     renderReplayList,
     renderReplayListError,
@@ -39,9 +48,11 @@ import {
     renderSimulationReport,
     renderValidationSummary,
     setStatus,
+    showHomeTab,
     showProjectTab,
     showView,
 } from "./dom.js";
+import {describeBuildPreview, describeBuildResult, describeRecentProjectsList, describeScaffoldResult} from "./interpretHome.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
 import {describeReplayList, describeReplayProgress, describeReplayResult, isReplayActive, isReplayTerminal} from "./interpretReplay.js";
 import {describeReportsList} from "./interpretReports.js";
@@ -51,6 +62,7 @@ import type {
     ProjectDashboardContext,
     SimulationReport,
     StudioContext,
+    StudioHomeRecentProjectView,
     StudioReplayJobView,
     StudioSimulationJobView,
 } from "./types.js";
@@ -77,15 +89,26 @@ function routeForContext(context: StudioContext): StudioRoute {
     return context.mode === "project" ? "project" : "home";
 }
 
-async function refreshRecentProjects(elements: Elements, fetchImpl: FetchLike, onOpen: (projectRoot: string) => void): Promise<void> {
+async function refreshRecentProjects(
+    elements: Elements,
+    fetchImpl: FetchLike,
+    onOpen: (entry: StudioHomeRecentProjectView) => void,
+): Promise<void> {
     const entries = await listRecentProjects(fetchImpl);
-    renderRecentProjects(elements.recentList, entries, onOpen);
+    renderHomeRecentProjects(elements, describeRecentProjectsList(entries), onOpen);
 }
 
 async function main(): Promise<void> {
     const elements = queryElements();
     const fetchImpl = window.fetch.bind(window) as FetchLike;
     let activeProjectTab: ProjectTab = "overview";
+    let activeHomeTab: HomeTab = "recent";
+    // The projectRoot of the most recent successful Create/Init/Build result, one per flow — each
+    // flow's own "Open in Studio" button reuses the same Home Open action (POST
+    // /api/home/projects/open) against this path, rather than transitioning context itself.
+    let lastCreatedProjectRoot: string | undefined;
+    let lastInitializedProjectRoot: string | undefined;
+    let lastBuiltProjectRoot: string | undefined;
 
     // Inspect is safe to run whenever the dashboard shows "loaded" or "error" — it only ever reads
     // package.json/build-info.json, independent of whether the entry module itself loaded — so it's
@@ -315,10 +338,11 @@ async function main(): Promise<void> {
             });
     };
 
-    // Shared by both the Open Project form and clicking a Recent Projects entry — opens
-    // `projectRoot` through the API and, on success, switches the app to the Project route. Throws
-    // on failure so each caller decides how to surface the error (the form clears/sets its own
-    // status text; a recent-projects click reuses the same status element).
+    // Shared by the Open Existing Project form, clicking a Recent Projects entry, and each of
+    // Create/Init/Build's own "Open in Studio" buttons — opens `projectRoot` through the API and, on
+    // success, switches the app to the Project route (the one explicit Home → Project Studio context
+    // transition; see StudioServer.handleHomeOpenProject). Throws on failure so each caller decides how
+    // to surface the error in its own tab's error element.
     const openAndNavigate = async (projectRoot: string): Promise<void> => {
         const {context} = await openProject(fetchImpl, projectRoot);
         navigate("project");
@@ -328,14 +352,91 @@ async function main(): Promise<void> {
         }
     };
 
-    const refreshHome = (): void => {
-        refreshRecentProjects(elements, fetchImpl, (projectRoot) => {
-            openAndNavigate(projectRoot).catch((error: unknown) => {
-                setStatus(elements.openStatus, error instanceof Error ? error.message : String(error));
+    const refreshHomeRecentProjects = (): void => {
+        refreshRecentProjects(elements, fetchImpl, (entry) => {
+            openAndNavigate(entry.projectRoot).catch((error: unknown) => {
+                renderHomeRecentProjectsError(elements, error instanceof Error ? error.message : String(error));
             });
         }).catch((error: unknown) => {
-            setStatus(elements.status, error instanceof Error ? error.message : String(error));
+            renderHomeRecentProjectsError(elements, error instanceof Error ? error.message : String(error));
         });
+    };
+
+    // Refreshing Home only ever means refreshing its Recent Projects list — Create/Init/Build/Open are
+    // one-shot forms with no data of their own to load, same reasoning as the Project Dashboard's own
+    // per-tab refreshes in showProjectDashboard. Restores whichever tab was last active (same
+    // "remembers the active tab across a reload" convention as renderProjectHeader/activeProjectTab).
+    const refreshHome = (): void => {
+        showHomeTab(elements, activeHomeTab);
+        refreshHomeRecentProjects();
+    };
+
+    const runCreateProject = (): void => {
+        renderCreateResult(elements, {status: "loading"});
+        createProject(fetchImpl, {
+            destinationDir: elements.homeCreateDestination.value,
+            name: elements.homeCreateName.value,
+            gameId: elements.homeCreateGameId.value.trim() || undefined,
+            gameName: elements.homeCreateGameName.value.trim() || undefined,
+            version: elements.homeCreateVersion.value.trim() || undefined,
+        })
+            .then((result) => {
+                renderCreateResult(elements, describeScaffoldResult(result));
+                if (result.status === "ok") {
+                    lastCreatedProjectRoot = result.projectRoot;
+                    refreshHomeRecentProjects();
+                }
+            })
+            .catch((error: unknown) => {
+                renderCreateResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
+    };
+
+    const runInitProject = (): void => {
+        renderInitResult(elements, {status: "loading"});
+        initProject(fetchImpl, {directory: elements.homeInitDirectory.value})
+            .then((result) => {
+                renderInitResult(elements, describeScaffoldResult(result));
+                if (result.status === "ok") {
+                    lastInitializedProjectRoot = result.projectRoot;
+                    refreshHomeRecentProjects();
+                }
+            })
+            .catch((error: unknown) => {
+                renderInitResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
+    };
+
+    const runBuildPreview = (): void => {
+        renderBuildPreview(elements, {status: "loading"});
+        previewBuild(fetchImpl, {
+            blueprintPath: elements.homeBuildBlueprintPath.value,
+            outDir: elements.homeBuildOutDir.value.trim() || undefined,
+        })
+            .then((preview) => {
+                renderBuildPreview(elements, describeBuildPreview(preview));
+            })
+            .catch((error: unknown) => {
+                renderBuildPreview(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
+    };
+
+    const runBuildProject = (): void => {
+        renderBuildResult(elements, {status: "loading"});
+        buildProject(fetchImpl, {
+            blueprintPath: elements.homeBuildBlueprintPath.value,
+            outDir: elements.homeBuildOutDir.value.trim() || undefined,
+        })
+            .then((result) => {
+                renderBuildResult(elements, describeBuildResult(result));
+                if (result.status === "ok") {
+                    lastBuiltProjectRoot = result.projectRoot;
+                    refreshHomeRecentProjects();
+                }
+            })
+            .catch((error: unknown) => {
+                renderBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
     };
 
     try {
@@ -363,31 +464,91 @@ async function main(): Promise<void> {
         }
     });
 
-    elements.createForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        setStatus(elements.createStatus, "Creating…");
-        createProject(fetchImpl, elements.createName.value)
-            .then(({context}) => {
-                setStatus(elements.createStatus, "");
-                navigate("project");
-                showView(elements, "project");
-                if (context.mode === "project") {
-                    pollProjectDashboard(PROJECT_POLL_MAX_ATTEMPTS);
-                }
-            })
-            .catch((error: unknown) => {
-                setStatus(elements.createStatus, error instanceof Error ? error.message : String(error));
-            });
+    elements.homeTabRecentButton.addEventListener("click", () => {
+        activeHomeTab = "recent";
+        showHomeTab(elements, "recent");
+        refreshHomeRecentProjects();
     });
 
-    elements.openForm.addEventListener("submit", (event) => {
+    elements.homeTabCreateButton.addEventListener("click", () => {
+        activeHomeTab = "create";
+        showHomeTab(elements, "create");
+    });
+
+    elements.homeTabInitButton.addEventListener("click", () => {
+        activeHomeTab = "init";
+        showHomeTab(elements, "init");
+    });
+
+    elements.homeTabBuildButton.addEventListener("click", () => {
+        activeHomeTab = "build";
+        showHomeTab(elements, "build");
+    });
+
+    elements.homeTabOpenButton.addEventListener("click", () => {
+        activeHomeTab = "open";
+        showHomeTab(elements, "open");
+    });
+
+    elements.homeRecentRefreshButton.addEventListener("click", () => {
+        refreshHomeRecentProjects();
+    });
+
+    elements.homeCreateForm.addEventListener("submit", (event) => {
         event.preventDefault();
-        setStatus(elements.openStatus, "Opening…");
-        openAndNavigate(elements.openPath.value)
-            .then(() => setStatus(elements.openStatus, ""))
-            .catch((error: unknown) => {
-                setStatus(elements.openStatus, error instanceof Error ? error.message : String(error));
-            });
+        runCreateProject();
+    });
+
+    elements.homeCreateOpenButton.addEventListener("click", () => {
+        if (lastCreatedProjectRoot === undefined) {
+            return;
+        }
+        openAndNavigate(lastCreatedProjectRoot).catch((error: unknown) => {
+            renderCreateResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+        });
+    });
+
+    elements.homeInitForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        runInitProject();
+    });
+
+    elements.homeInitOpenButton.addEventListener("click", () => {
+        if (lastInitializedProjectRoot === undefined) {
+            return;
+        }
+        openAndNavigate(lastInitializedProjectRoot).catch((error: unknown) => {
+            renderInitResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+        });
+    });
+
+    elements.homeBuildForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        runBuildPreview();
+    });
+
+    elements.homeBuildRunButton.addEventListener("click", () => {
+        runBuildProject();
+    });
+
+    elements.homeBuildOpenButton.addEventListener("click", () => {
+        if (lastBuiltProjectRoot === undefined) {
+            return;
+        }
+        openAndNavigate(lastBuiltProjectRoot).catch((error: unknown) => {
+            renderBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+        });
+    });
+
+    elements.homeOpenForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        elements.homeOpenLoading.hidden = false;
+        elements.homeOpenError.hidden = true;
+        openAndNavigate(elements.homeOpenPath.value).catch((error: unknown) => {
+            elements.homeOpenLoading.hidden = true;
+            elements.homeOpenError.hidden = false;
+            elements.homeOpenError.textContent = error instanceof Error ? error.message : String(error);
+        });
     });
 
     elements.closeProjectButton.addEventListener("click", () => {

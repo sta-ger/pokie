@@ -6,6 +6,10 @@ export type RecentProjectEntry = {
     openedAt: string;
 };
 
+// GET /api/home/recent-projects's own DTO — see cli/studio/home/StudioHomeRecentProjectView.ts's own
+// doc comment. A missing project is flagged, never silently dropped from the list.
+export type StudioHomeRecentProjectView = RecentProjectEntry & {missing: boolean};
+
 export type PokieGameManifest = {
     id: string;
     name: string;
@@ -59,6 +63,52 @@ export type PokieGamePackageValidationReport = {
     warnings: ValidationIssue[];
     suggestions: string[];
 };
+
+// POST /api/home/projects/create and /init's shared DTO — see
+// cli/studio/home/StudioScaffoldResultView.ts's own doc comment (the two flows' underlying
+// ScaffoldResult shapes are already identical).
+export type StudioScaffoldResultView =
+    | {
+          status: "ok";
+          projectRoot: string;
+          manifest: PokieGameManifest;
+          createdFiles: string[];
+          updatedFiles: string[];
+          skippedFiles: string[];
+      }
+    | {status: "error"; error: string};
+
+// POST /api/home/projects/build/preview's own DTO — see cli/studio/home/StudioBuildPreviewView.ts's
+// own doc comment. Never the result of anything being written to disk.
+export type StudioBuildPreviewView =
+    | {status: "load-error"; error: string}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
+    | {
+          status: "ok";
+          warnings: ValidationIssue[];
+          manifest: PokieGameManifest;
+          reels: number;
+          rows: number;
+          symbolsCount: number;
+          blueprintHash: string;
+          expectedFiles: string[];
+      };
+
+// POST /api/home/projects/build's own DTO — see cli/studio/home/StudioBuildResult.ts's own doc
+// comment.
+export type StudioBuildResult =
+    | {status: "load-error"; error: string}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
+    | {status: "error"; error: string}
+    | {
+          status: "ok";
+          projectRoot: string;
+          manifest: PokieGameManifest;
+          createdFiles: string[];
+          buildInfo: GameBuildInfo;
+          unchanged: boolean;
+          warnings: ValidationIssue[];
+      };
 
 export type SimulationReportBreakdownComponent = {
     rounds: number;

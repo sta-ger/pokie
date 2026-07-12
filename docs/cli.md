@@ -1527,9 +1527,8 @@ automatically once a custom signal handler is registered.
 ## `pokie` / `pokie studio` (experimental)
 
 **Experimental.** Launches **POKIE Studio**: a local web app (its own HTTP server plus a small browser-based
-frontend) that will eventually host a GUI for every command above. This first stage is the foundation only: an
-app shell, two modes, and a JSON API other tool GUIs can be built against — not GUIs for `create`/`build`/`sim`/etc.
-themselves yet.
+frontend) that hosts a GUI for the commands above. The Home nav below already covers `create`/`init`/`build`/
+opening a project; the Project Dashboard (see its own section) covers `inspect`/`validate`/`sim`/`report`/`replay`.
 
 Several invocations all launch it, resolved by `resolveCliInvocation` (`cli/resolveCliInvocation.ts`):
 
@@ -1552,14 +1551,37 @@ POKIE Studio listening on http://127.0.0.1:3200
 ```
 
 A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` mechanism as `pokie dev`, and the
-same `--no-open` escape hatch) showing the **Home** view:
+same `--no-open` escape hatch) showing the **Home** view, with five tabs:
 
-- **Create Project** — a name field that calls the same `GamePackageCreating` service `pokie create` uses, scaffolding
-  a new game package under the current directory.
-- **Open Project** — a path field that loads a directory with `loadPokieGame`, the same package loader every other
-  command uses, and switches to the **Project** view on success.
-- **Recent Projects** — the projects created/opened this session (in-memory only; resets when Studio is restarted).
-- **Documentation** — links into this repository's docs.
+- **Recent Projects** — every project created/opened this session (most-recently-started first), each showing its
+  name, path, and last-opened time. A project whose directory/`package.json` can no longer be found is flagged
+  **missing** (its Open button disabled) rather than silently dropped from the list — it's still there to explain
+  history, and reappears as normal if the directory comes back. In-memory only: resets when Studio is restarted.
+- **Create Project** — destination directory, package name, and optional game id/name/version overrides, calling
+  the same `GamePackageCreating` service `pokie create` uses (the overrides are new: `GamePackageCreating.create()`
+  now accepts an optional third `{id?, name?, version?}` argument on top of what it would otherwise derive from the
+  package name — `pokie create` itself is unaffected, still calling the plain 2-argument form). Shows the created
+  files and an **Open in Studio** button on success.
+- **Initialize Project** — an existing directory, calling the same `GamePackageScaffolding` service `pokie init`
+  uses. Shows created/updated/skipped files (a missing `package.json` is reported as a clear error, exactly as
+  `pokie init` itself reports it) and an **Open in Studio** button on success.
+- **Build from Blueprint** — a blueprint JSON path and optional output directory, with two actions: **Preview**
+  (`GameBlueprintValidating` + a pure `buildGameBuildInfo()` call — validation summary, game metadata, blueprint
+  hash, and expected generated files, without writing anything, same as `pokie build --dry-run`) and **Build**
+  (the same `GamePackageGenerating` service `pokie build` uses, including its safe-rebuild/conflict check — building
+  into a directory that already contains files a prior build didn't generate is refused with the same descriptive
+  error `pokie build` itself gives). Shows warnings, generated files, and build-info on success, plus an
+  **Open in Studio** button.
+- **Open Existing Project** — an absolute or relative path, loaded with `loadPokieGame`, the same package loader
+  every other command uses; switches to the **Project** view on success. This is also what each of Create/Init/
+  Build's own "Open in Studio" buttons calls, against the path they just produced — Create/Init/Build never
+  transition Studio into Project mode themselves.
+
+None of these ever shell out to `pokie create`/`init`/`build` as a subprocess, or duplicate their logic — see
+`StudioHomeService` (`cli/studio/home/StudioHomeService.ts`), which drives the same services directly and is the
+one place recent-projects bookkeeping happens for all four flows.
+
+A **Documentation** section links into this repository's docs.
 
 Options:
 
@@ -1709,10 +1731,37 @@ client, even for a load/validation failure.
 
 - `GET /api/health` — `200 {"status": "ok"}`, always, once Studio is up.
 - `GET /api/context` — the current mode: `{"mode": "home"}` or `{"mode": "project", "projectRoot": "..."}`.
-- `GET /api/recent-projects` — the in-memory recent-projects list.
-- `POST /api/projects/create` `{"name": string}` / `POST /api/projects/open` `{"projectRoot": string}` — create or
-  open a project, switching Studio to Project mode on success (`400 {"error": "..."}` on failure — an invalid
-  name, or a `projectRoot` that isn't a valid [game package](game-packages.md)).
+- `GET /api/home/recent-projects` — the in-memory recent-projects list: `{projectRoot, name, openedAt,
+  missing}[]`, most-recently-started first. `missing` is `true` when the project's directory/`package.json` can no
+  longer be found on disk — the entry itself is never dropped just because of that (see
+  `StudioHomeService.listRecentProjects()`).
+- `POST /api/home/projects/create` `{"destinationDir": string, "name": string, "gameId"?: string, "gameName"?:
+  string, "version"?: string}` — creates a project via the same `GamePackageCreating` service `pokie create` uses.
+  `400 {"error": "..."}` for a malformed request (missing `destinationDir`/`name`, or an empty optional override);
+  otherwise always `200`/`201` with a `StudioScaffoldResultView`: `{"status": "ok", "projectRoot", "manifest",
+  "createdFiles", "updatedFiles", "skippedFiles"}` or `{"status": "error", "error": "..."}` for a domain-level
+  failure (e.g. the destination already exists) — a well-formed request that fails at the domain level is not a
+  failed HTTP request, so this is never a 4xx. Never switches Studio to Project mode itself — see
+  `POST /api/home/projects/open` below.
+- `POST /api/home/projects/init` `{"directory": string}` — initializes an existing npm project via the same
+  `GamePackageScaffolding` service `pokie init` uses. Same request-validation-vs-domain-result split as `create`
+  above; the same `StudioScaffoldResultView` shape (a missing `package.json` is `{"status": "error", "error":
+  "..."}`, the same clear message `pokie init` itself gives).
+- `POST /api/home/projects/build/preview` `{"blueprintPath": string, "outDir"?: string}` — validates the blueprint
+  and previews what a build would generate, without writing anything: `{"status": "load-error", "error": "..."}`
+  (the file doesn't exist/isn't valid JSON) / `{"status": "invalid", "errors": [...], "warnings": [...]}` /
+  `{"status": "ok", "warnings": [...], "manifest", "reels", "rows", "symbolsCount", "blueprintHash",
+  "expectedFiles"}`. Always `200` for a well-formed request, same reasoning as `GET /api/project/validate`.
+- `POST /api/home/projects/build` — same request shape as the preview; on top of `load-error`/`invalid`, generates
+  the package via the same `GamePackageGenerating` service `pokie build` uses, including its safe-rebuild/conflict
+  check: `{"status": "error", "error": "..."}` (e.g. `"... already exists and contains file(s) ... did not
+  generate: ..."` — refusing to overwrite a directory it didn't produce) or `{"status": "ok", "projectRoot",
+  "manifest", "createdFiles", "buildInfo", "unchanged", "warnings"}` on success (`201`).
+- `POST /api/home/projects/open` `{"projectRoot": string}` — loads `projectRoot` with `loadPokieGame` and switches
+  Studio to Project mode on success (`200 {"context": {...}, "manifest": {...}}`); `400 {"error": "..."}` if it
+  isn't a valid [game package](game-packages.md). This is the one explicit Home → Project Studio context
+  transition — it mutates the same running server's state in place, never starting a new HTTP server or Studio
+  process (see `StudioServer.handleHomeOpenProject`).
 - `POST /api/projects/close` — switches back to Home mode.
 - `GET /api/project/context` — the Project Dashboard's own read model, always one of the four states above:
   `{"status": "empty"}` / `{"status": "loading", "projectRoot": "..."}` /

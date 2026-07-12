@@ -3,11 +3,14 @@ import type {
     PokieGameManifest,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
-    RecentProjectEntry,
     SimulationReport,
+    StudioBuildPreviewView,
+    StudioBuildResult,
     StudioContext,
+    StudioHomeRecentProjectView,
     StudioReplayJobView,
     StudioReplayListEntry,
+    StudioScaffoldResultView,
     StudioSimulationJobView,
     StudioSimulationReportListEntry,
 } from "./types.js";
@@ -26,25 +29,78 @@ export async function getContext(fetchImpl: FetchLike): Promise<StudioContext> {
     return (await response.json()) as StudioContext;
 }
 
-export async function listRecentProjects(fetchImpl: FetchLike): Promise<RecentProjectEntry[]> {
-    const response = await fetchImpl("/api/recent-projects");
-    return (await response.json()) as RecentProjectEntry[];
+export async function listRecentProjects(fetchImpl: FetchLike): Promise<StudioHomeRecentProjectView[]> {
+    const response = await fetchImpl("/api/home/recent-projects");
+    return (await response.json()) as StudioHomeRecentProjectView[];
 }
 
-export async function createProject(fetchImpl: FetchLike, name: string): Promise<ProjectActionResult> {
-    const response = await fetchImpl("/api/projects/create", {
+export type CreateProjectRequest = {
+    destinationDir: string;
+    name: string;
+    gameId?: string;
+    gameName?: string;
+    version?: string;
+};
+
+// Never throws for a domain-level failure (an invalid name, a destination that already exists) — the
+// DTO's own `status` field carries that; only a genuinely malformed request throws (see
+// validateCreateProjectRequest on the server side). Same reasoning for initProject/previewBuild/
+// buildProject below.
+export async function createProject(fetchImpl: FetchLike, request: CreateProjectRequest): Promise<StudioScaffoldResultView> {
+    const response = await fetchImpl("/api/home/projects/create", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name}),
+        body: JSON.stringify(request),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to create project"));
     }
-    return (await response.json()) as ProjectActionResult;
+    return (await response.json()) as StudioScaffoldResultView;
+}
+
+export type InitProjectRequest = {directory: string};
+
+export async function initProject(fetchImpl: FetchLike, request: InitProjectRequest): Promise<StudioScaffoldResultView> {
+    const response = await fetchImpl("/api/home/projects/init", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to initialize project"));
+    }
+    return (await response.json()) as StudioScaffoldResultView;
+}
+
+export type BuildRequest = {blueprintPath: string; outDir?: string};
+
+// Never writes anything — see StudioHomeService.previewBuild()'s own doc comment.
+export async function previewBuild(fetchImpl: FetchLike, request: BuildRequest): Promise<StudioBuildPreviewView> {
+    const response = await fetchImpl("/api/home/projects/build/preview", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to preview build"));
+    }
+    return (await response.json()) as StudioBuildPreviewView;
+}
+
+export async function buildProject(fetchImpl: FetchLike, request: BuildRequest): Promise<StudioBuildResult> {
+    const response = await fetchImpl("/api/home/projects/build", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to build project"));
+    }
+    return (await response.json()) as StudioBuildResult;
 }
 
 export async function openProject(fetchImpl: FetchLike, projectRoot: string): Promise<ProjectActionResult> {
-    const response = await fetchImpl("/api/projects/open", {
+    const response = await fetchImpl("/api/home/projects/open", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({projectRoot}),

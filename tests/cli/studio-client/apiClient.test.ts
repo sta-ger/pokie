@@ -1,4 +1,5 @@
 import {
+    buildProject,
     buildReplayDownloadUrl,
     buildReportDownloadUrl,
     cancelReplay,
@@ -11,11 +12,13 @@ import {
     getReplay,
     getReport,
     getSimulation,
+    initProject,
     inspectProject,
     listReplays,
     listReports,
     listRecentProjects,
     openProject,
+    previewBuild,
     runReplay,
     startSimulation,
     validateProject,
@@ -49,44 +52,195 @@ describe("studio-client apiClient", () => {
     });
 
     describe("listRecentProjects", () => {
-        it("GETs /api/recent-projects", async () => {
-            const entries = [{projectRoot: "/a", name: "A", openedAt: "2026-01-01T00:00:00.000Z"}];
+        it("GETs /api/home/recent-projects", async () => {
+            const entries = [{projectRoot: "/a", name: "A", openedAt: "2026-01-01T00:00:00.000Z", missing: false}];
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: entries}));
 
             const result = await listRecentProjects(fetchImpl);
 
-            expect(calls).toEqual([{url: "/api/recent-projects", init: undefined}]);
+            expect(calls).toEqual([{url: "/api/home/recent-projects", init: undefined}]);
             expect(result).toEqual(entries);
         });
     });
 
     describe("createProject", () => {
-        it("POSTs the name and returns the resulting context/manifest", async () => {
-            const body = {context: {mode: "project", projectRoot: "/a"}, manifest: {id: "a", name: "A", version: "1.0.0"}};
+        it("POSTs the request and returns the scaffold result", async () => {
+            const body = {
+                status: "ok",
+                projectRoot: "/a/crazy-fruits",
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                createdFiles: ["package.json"],
+                updatedFiles: [],
+                skippedFiles: [],
+            };
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
 
-            const result = await createProject(fetchImpl, "crazy-fruits");
+            const result = await createProject(fetchImpl, {destinationDir: "/a", name: "crazy-fruits"});
 
             expect(calls).toEqual([
                 {
-                    url: "/api/projects/create",
-                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "crazy-fruits"})},
+                    url: "/api/home/projects/create",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({destinationDir: "/a", name: "crazy-fruits"}),
+                    },
                 },
             ]);
             expect(result).toEqual(body);
         });
 
-        it("throws the server's own error message on failure", async () => {
+        it("includes gameId/gameName/version overrides in the body when given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "ok"}}));
+
+            await createProject(fetchImpl, {destinationDir: "/a", name: "crazy-fruits", gameId: "cf", gameName: "CF", version: "2.0.0"});
+
+            expect(calls[0].init?.body).toBe(
+                JSON.stringify({destinationDir: "/a", name: "crazy-fruits", gameId: "cf", gameName: "CF", version: "2.0.0"}),
+            );
+        });
+
+        it("returns a domain-level error result rather than throwing", async () => {
+            const body = {status: "error", error: '"crazy-fruits" already exists.'};
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await createProject(fetchImpl, {destinationDir: "/a", name: "crazy-fruits"});
+
+            expect(result).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"name" is required.'}}));
 
-            await expect(createProject(fetchImpl, "")).rejects.toThrow('"name" is required.');
+            await expect(createProject(fetchImpl, {destinationDir: "/a", name: ""})).rejects.toThrow('"name" is required.');
         });
 
         it("falls back to a generic message when the error body isn't parseable JSON", async () => {
             const fetchImpl: FetchLike = () =>
                 Promise.resolve({ok: false, status: 500, json: () => Promise.reject(new Error("not json"))});
 
-            await expect(createProject(fetchImpl, "crazy-fruits")).rejects.toThrow(/HTTP 500/);
+            await expect(createProject(fetchImpl, {destinationDir: "/a", name: "crazy-fruits"})).rejects.toThrow(/HTTP 500/);
+        });
+    });
+
+    describe("initProject", () => {
+        it("POSTs the directory and returns the scaffold result", async () => {
+            const body = {
+                status: "ok",
+                projectRoot: "/a",
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                createdFiles: ["tsconfig.json"],
+                updatedFiles: ["package.json"],
+                skippedFiles: [],
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await initProject(fetchImpl, {directory: "/a"});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/projects/init",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({directory: "/a"})},
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns a domain-level error result rather than throwing", async () => {
+            const body = {status: "error", error: "No \"package.json\" found."};
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            expect(await initProject(fetchImpl, {directory: "/a"})).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"directory" is required.'}}));
+
+            await expect(initProject(fetchImpl, {directory: ""})).rejects.toThrow('"directory" is required.');
+        });
+    });
+
+    describe("previewBuild", () => {
+        it("POSTs the blueprint path/outDir and returns the preview", async () => {
+            const body = {
+                status: "ok",
+                warnings: [],
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                reels: 5,
+                rows: 3,
+                symbolsCount: 7,
+                blueprintHash: "sha256:abc",
+                expectedFiles: ["package.json"],
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await previewBuild(fetchImpl, {blueprintPath: "./blueprint.json", outDir: "./out"});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/projects/build/preview",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({blueprintPath: "./blueprint.json", outDir: "./out"}),
+                    },
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns an invalid/load-error result rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "load-error", error: "not found"}}));
+
+            expect(await previewBuild(fetchImpl, {blueprintPath: "./missing.json"})).toEqual({status: "load-error", error: "not found"});
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprintPath" is required.'}}));
+
+            await expect(previewBuild(fetchImpl, {blueprintPath: ""})).rejects.toThrow('"blueprintPath" is required.');
+        });
+    });
+
+    describe("buildProject", () => {
+        it("POSTs the blueprint path/outDir and returns the build result", async () => {
+            const body = {
+                status: "ok",
+                projectRoot: "/out",
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                createdFiles: ["package.json"],
+                buildInfo: {schemaVersion: 1, generatedBy: "pokie build", pokieVersion: "1.0.0", generatedAt: "2026-01-01T00:00:00.000Z", blueprintHash: "sha256:abc", game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}},
+                unchanged: false,
+                warnings: [],
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
+
+            const result = await buildProject(fetchImpl, {blueprintPath: "./blueprint.json", outDir: "./out"});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/projects/build",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({blueprintPath: "./blueprint.json", outDir: "./out"}),
+                    },
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns a conflict/error result rather than throwing", async () => {
+            const body = {status: "error", error: "already exists and contains file(s)"};
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            expect(await buildProject(fetchImpl, {blueprintPath: "./blueprint.json", outDir: "./out"})).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprintPath" is required.'}}));
+
+            await expect(buildProject(fetchImpl, {blueprintPath: ""})).rejects.toThrow('"blueprintPath" is required.');
         });
     });
 
@@ -99,7 +253,7 @@ describe("studio-client apiClient", () => {
 
             expect(calls).toEqual([
                 {
-                    url: "/api/projects/open",
+                    url: "/api/home/projects/open",
                     init: {
                         method: "POST",
                         headers: {"Content-Type": "application/json"},

@@ -76,4 +76,51 @@ describe("GamePackageCreator", () => {
 
         expect(() => creator.create(parentDir, "../escape")).toThrow(/not a valid project name/);
     });
+
+    describe("overrides", () => {
+        it("uses the given id/name/version instead of deriving them from the directory name", () => {
+            const creator = new GamePackageCreator("1.2.1");
+
+            const result = creator.create(parentDir, "crazy-fruits", {id: "cf", name: "Crazy Fruits Deluxe", version: "2.0.0"});
+
+            expect(result.manifest).toEqual({id: "cf", name: "Crazy Fruits Deluxe", version: "2.0.0"});
+        });
+
+        it("derives the class name from the overridden id, not the directory name", () => {
+            const creator = new GamePackageCreator("1.2.1");
+
+            const result = creator.create(parentDir, "crazy-fruits", {id: "lucky-sevens"});
+
+            expect(fs.existsSync(path.join(result.projectRoot, "src", "LuckySevensGame.ts"))).toBe(true);
+            expect(fs.existsSync(path.join(result.projectRoot, "src", "LuckySevensSession.ts"))).toBe(true);
+            expect(result.createdFiles).toEqual(
+                expect.arrayContaining(["src/LuckySevensGame.ts", "src/LuckySevensSession.ts"]),
+            );
+        });
+
+        it("writes the overridden version into package.json too", () => {
+            const creator = new GamePackageCreator("1.2.1");
+
+            const result = creator.create(parentDir, "crazy-fruits", {version: "3.1.4"});
+
+            const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
+            expect(pkg.version).toBe("3.1.4");
+        });
+
+        it("falls back to the derived defaults when an override is empty/whitespace", () => {
+            const creator = new GamePackageCreator("1.2.1");
+
+            const result = creator.create(parentDir, "crazy-fruits", {id: "  ", name: "", version: undefined});
+
+            expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        });
+
+        it("still works with no overrides object at all (existing 2-arg callers)", () => {
+            const creator = new GamePackageCreator("1.2.1");
+
+            const result = creator.create(parentDir, "crazy-fruits");
+
+            expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        });
+    });
 });

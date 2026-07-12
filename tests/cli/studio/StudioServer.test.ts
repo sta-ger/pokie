@@ -14,6 +14,7 @@ import os from "os";
 import path from "path";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
+import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
@@ -251,7 +252,16 @@ describe("StudioServer", () => {
             host: "127.0.0.1",
             port: 0,
             studioRoot,
-            gamePackageCreator: creator,
+            homeService: new StudioHomeService(
+                "1.0.0",
+                undefined,
+                creator,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                loadGame,
+            ),
             loadGame,
             gamePackageInspector: {inspect},
             gamePackageValidator: {validate},
@@ -300,31 +310,38 @@ describe("StudioServer", () => {
     });
 
     it("starts with an empty recent-projects list", async () => {
-        const {status, body} = await get(`${baseUrl}/api/recent-projects`);
+        const {status, body} = await get(`${baseUrl}/api/home/recent-projects`);
 
         expect(status).toBe(200);
         expect(body).toEqual([]);
     });
 
-    it("creates a project via the injected GamePackageCreating and switches to project mode", async () => {
-        const {status, body} = await post(`${baseUrl}/api/projects/create`, {name: "crazy-fruits"});
+    it("creates a project via the injected GamePackageCreating without switching Studio's context", async () => {
+        const {status, body} = await post(`${baseUrl}/api/home/projects/create`, {destinationDir: process.cwd(), name: "crazy-fruits"});
 
         expect(status).toBe(201);
         expect(body).toEqual({
-            context: {mode: "project", projectRoot: scaffoldResult.projectRoot},
+            status: "ok",
+            projectRoot: scaffoldResult.projectRoot,
             manifest: scaffoldResult.manifest,
+            createdFiles: scaffoldResult.createdFiles,
+            updatedFiles: scaffoldResult.updatedFiles,
+            skippedFiles: scaffoldResult.skippedFiles,
         });
         expect(creator.calls).toEqual([{parentDir: process.cwd(), name: "crazy-fruits"}]);
 
+        // Create only scaffolds and records a recent project — it never transitions Studio into
+        // Project mode itself; that only happens via the separate "Open in Studio" action (POST
+        // /api/home/projects/open), same as Open Existing Project.
         const context = await get(`${baseUrl}/api/context`);
-        expect(context.body).toEqual({mode: "project", projectRoot: scaffoldResult.projectRoot});
+        expect(context.body).toEqual({mode: "home"});
 
-        const recent = await get(`${baseUrl}/api/recent-projects`);
+        const recent = await get(`${baseUrl}/api/home/recent-projects`);
         expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(scaffoldResult.projectRoot);
     });
 
     it("rejects creating a project with a missing name", async () => {
-        const {status, body} = await post(`${baseUrl}/api/projects/create`, {});
+        const {status, body} = await post(`${baseUrl}/api/home/projects/create`, {destinationDir: process.cwd()});
 
         expect(status).toBe(400);
         expect(body).toEqual({error: '"name" is required.'});
@@ -334,7 +351,7 @@ describe("StudioServer", () => {
         const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
         loadGame.mockResolvedValue(createFakeGame(manifest));
 
-        const {status, body} = await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+        const {status, body} = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
 
         expect(status).toBe(200);
         expect(body).toEqual({
@@ -347,7 +364,7 @@ describe("StudioServer", () => {
     it("returns 400 for a projectRoot that fails to load", async () => {
         loadGame.mockRejectedValue(new Error("not a pokie game package"));
 
-        const {status, body} = await post(`${baseUrl}/api/projects/open`, {projectRoot: "./not-a-game"});
+        const {status, body} = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./not-a-game"});
 
         expect(status).toBe(400);
         expect(body).toEqual({error: "not a pokie game package"});
@@ -359,7 +376,7 @@ describe("StudioServer", () => {
     it("closes a project back to home mode", async () => {
         const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
         loadGame.mockResolvedValue(createFakeGame(manifest));
-        await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+        await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
 
         const {status, body} = await post(`${baseUrl}/api/projects/close`);
 
@@ -368,6 +385,214 @@ describe("StudioServer", () => {
 
         const context = await get(`${baseUrl}/api/context`);
         expect(context.body).toEqual({mode: "home"});
+    });
+
+    describe("Home nav: recent-projects dedup/missing (through the injected homeService)", () => {
+        it("never lists another project's recent entries as duplicates when the same canonical path is opened twice", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            loadGame.mockResolvedValue(createFakeGame(manifest));
+
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: path.resolve("./crazy-fruits")});
+
+            const {body} = await get(`${baseUrl}/api/home/recent-projects`);
+            expect(body).toHaveLength(1);
+        });
+
+        it("flags a recent project as missing (without dropping it) once its directory disappears", async () => {
+            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-home-recent-"));
+            try {
+                fs.writeFileSync(path.join(projectRoot, "package.json"), "{}");
+                const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+                loadGame.mockResolvedValue(createFakeGame(manifest));
+                await post(`${baseUrl}/api/home/projects/open`, {projectRoot});
+
+                const before = await get(`${baseUrl}/api/home/recent-projects`);
+                expect((before.body as Array<{missing: boolean}>)[0].missing).toBe(false);
+
+                fs.rmSync(projectRoot, {recursive: true, force: true});
+                const after = await get(`${baseUrl}/api/home/recent-projects`);
+                expect(after.body).toEqual([expect.objectContaining({projectRoot, missing: true})]);
+            } finally {
+                fs.rmSync(projectRoot, {recursive: true, force: true});
+            }
+        });
+    });
+
+    describe("Home nav: Init/Build (real collaborators against real temp directories)", () => {
+        let homeStudioRoot: string;
+        let homeServer: StudioServer | undefined;
+        let homeBaseUrl: string;
+        let workDir: string;
+
+        function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+            return {
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}, B: {3: 2}},
+                ...overrides,
+            };
+        }
+
+        function writeBlueprintFile(blueprint: unknown): string {
+            const filePath = path.join(workDir, "blueprint.json");
+            fs.writeFileSync(filePath, JSON.stringify(blueprint));
+            return filePath;
+        }
+
+        beforeEach(async () => {
+            homeStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-home-test-"));
+            writeStudioAssets(homeStudioRoot);
+            workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-home-work-"));
+
+            homeServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: homeStudioRoot,
+                homeService: new StudioHomeService("1.0.0"),
+            });
+            const address = await homeServer.start();
+            homeBaseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await homeServer?.stop();
+            fs.rmSync(homeStudioRoot, {recursive: true, force: true});
+            fs.rmSync(workDir, {recursive: true, force: true});
+        });
+
+        it("rejects init with a missing directory field", async () => {
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/init`, {});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: '"directory" is required.'});
+        });
+
+        it("initializes an existing npm project via the real GamePackageScaffolder and records it as recent", async () => {
+            fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "crazy-fruits", version: "0.1.0"}));
+
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/init`, {directory: workDir});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "ok", manifest: {id: "crazy-fruits"}});
+            expect(fs.existsSync(path.join(workDir, "tsconfig.json"))).toBe(true);
+
+            const recent = await get(`${homeBaseUrl}/api/home/recent-projects`);
+            expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(workDir);
+        });
+
+        it("returns a clear, safe error when initializing a directory with no package.json", async () => {
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/init`, {directory: workDir});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "error"});
+            expect((body as {error: string}).error).toContain("No \"package.json\" found");
+            expect(JSON.stringify(body)).not.toContain("\\n    at ");
+        });
+
+        it("previews a valid blueprint without writing anything", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint());
+
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build/preview`, {blueprintPath});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({
+                status: "ok",
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbolsCount: 2,
+                warnings: [],
+            });
+            expect(typeof (body as {blueprintHash: string}).blueprintHash).toBe("string");
+            expect(fs.readdirSync(workDir)).toEqual(["blueprint.json"]);
+        });
+
+        it("previews a blueprint that is valid but warnings-only", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint({reels: 15}));
+
+            const {body} = await post(`${homeBaseUrl}/api/home/projects/build/preview`, {blueprintPath});
+
+            expect((body as {status: string}).status).toBe("ok");
+            expect((body as {warnings: Array<{code: string}>}).warnings[0].code).toBe("blueprint-reels-suspicious");
+        });
+
+        it("previews an invalid blueprint with its structural errors", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint({reels: 0}));
+
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build/preview`, {blueprintPath});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "invalid"});
+            expect((body as {errors: Array<{code: string}>}).errors[0].code).toBe("blueprint-reels-invalid");
+        });
+
+        it("returns a safe load-error for a blueprint file that doesn't exist", async () => {
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build/preview`, {
+                blueprintPath: path.join(workDir, "does-not-exist.json"),
+            });
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "load-error"});
+        });
+
+        it("builds a real package via the real GamePackageGenerator and records it as recent", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint());
+            const outDir = path.join(workDir, "out");
+
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
+
+            expect(status).toBe(201);
+            expect(body).toMatchObject({status: "ok", manifest: {id: "crazy-fruits"}, unchanged: false});
+            expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+
+            const recent = await get(`${homeBaseUrl}/api/home/recent-projects`);
+            expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(outDir);
+        });
+
+        it("rejects building an invalid blueprint with a structured invalid result and writes nothing", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint({reels: 0}));
+            const outDir = path.join(workDir, "out");
+
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "invalid"});
+            expect(fs.existsSync(outDir)).toBe(false);
+        });
+
+        it("refuses to build over a directory containing files pokie build did not generate", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint());
+            const outDir = path.join(workDir, "out");
+            fs.mkdirSync(outDir, {recursive: true});
+            fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify({name: "someone-elses-project"}));
+
+            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "error"});
+            expect((body as {error: string}).error).toContain("did not generate: package.json");
+        });
+
+        it("opens a just-built project via the Home Open action, transitioning Studio's context in place", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint());
+            const outDir = path.join(workDir, "out");
+            const built = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
+            const projectRoot = (built.body as {projectRoot: string}).projectRoot;
+
+            // The generated package's entry module (src/generated/index.js) is plain, already-compiled
+            // JS with no further build step — genuinely loadable via the real loadPokieGame, no stub
+            // needed, proving the "Open in Studio" action works end-to-end after a real build.
+            const opened = await post(`${homeBaseUrl}/api/home/projects/open`, {projectRoot});
+
+            expect(opened.status).toBe(200);
+            expect((opened.body as {context: unknown}).context).toEqual({mode: "project", projectRoot});
+
+            const context = await get(`${homeBaseUrl}/api/context`);
+            expect(context.body).toEqual({mode: "project", projectRoot});
+        });
     });
 
     describe("Project Dashboard: GET /api/project/context", () => {
@@ -381,7 +606,7 @@ describe("StudioServer", () => {
         it('reports "loaded" with the game manifest right after opening a project', async () => {
             const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
             loadGame.mockResolvedValue(createFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
 
             const {status, body} = await get(`${baseUrl}/api/project/context`);
 
@@ -389,9 +614,21 @@ describe("StudioServer", () => {
             expect(body).toEqual({status: "loaded", projectRoot: path.resolve("./crazy-fruits"), game: manifest});
         });
 
-        it('reports "loaded" with the scaffolded manifest right after creating a project', async () => {
-            await post(`${baseUrl}/api/projects/create`, {name: "crazy-fruits"});
+        it('stays "empty" after creating a project that is not (yet) opened', async () => {
+            await post(`${baseUrl}/api/home/projects/create`, {destinationDir: process.cwd(), name: "crazy-fruits"});
 
+            const {status, body} = await get(`${baseUrl}/api/project/context`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "empty"});
+            expect(loadGame).not.toHaveBeenCalled();
+        });
+
+        it('reports "loaded" with the scaffolded manifest once the newly created project is explicitly opened', async () => {
+            await post(`${baseUrl}/api/home/projects/create`, {destinationDir: process.cwd(), name: "crazy-fruits"});
+            loadGame.mockResolvedValue(createFakeGame(scaffoldResult.manifest));
+
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: scaffoldResult.projectRoot});
             const {status, body} = await get(`${baseUrl}/api/project/context`);
 
             expect(status).toBe(200);
@@ -400,15 +637,12 @@ describe("StudioServer", () => {
                 projectRoot: scaffoldResult.projectRoot,
                 game: scaffoldResult.manifest,
             });
-            // Creating a project trusts the scaffolder's own manifest — it never re-loads the
-            // (likely not yet built) entry module just to populate the dashboard.
-            expect(loadGame).not.toHaveBeenCalled();
         });
 
         it('reports "empty" again after closing a project', async () => {
             const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
             loadGame.mockResolvedValue(createFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
 
             await post(`${baseUrl}/api/projects/close`);
             const {status, body} = await get(`${baseUrl}/api/project/context`);
@@ -428,7 +662,7 @@ describe("StudioServer", () => {
 
         async function openCrazyFruits(): Promise<void> {
             loadGame.mockResolvedValue(createFakeGame({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
         }
 
         it("forwards a generated package's provenance/build-info as-is", async () => {
@@ -503,7 +737,7 @@ describe("StudioServer", () => {
 
         async function openCrazyFruits(): Promise<void> {
             loadGame.mockResolvedValue(createFakeGame({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
         }
 
         it("forwards a fully valid validation report", async () => {
@@ -607,7 +841,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                gamePackageCreator: creator,
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    creator,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    slowLoadGame,
+                ),
                 loadGame: slowLoadGame,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
             });
@@ -634,7 +877,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                gamePackageCreator: creator,
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    creator,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    failingLoadGame,
+                ),
                 loadGame: failingLoadGame,
                 initialContext: {mode: "project", projectRoot: "/tmp/broken-game"},
             });
@@ -673,7 +925,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: fixtureStudioRoot,
-                gamePackageCreator: creator,
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    creator,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    loadGame,
+                ),
                 loadGame,
                 gamePackageInspector: new GamePackageInspector(),
                 initialContext: {mode: "project", projectRoot},
@@ -773,7 +1034,7 @@ describe("StudioServer", () => {
         // ahead of this persistent default).
         async function openCrazyFruits(game: PokieGame): Promise<void> {
             loadGame.mockResolvedValue(game);
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
         }
 
         it("rejects an invalid rounds with 400 and never creates a job", async () => {
@@ -867,7 +1128,7 @@ describe("StudioServer", () => {
             // Open succeeds (first loadGame call); the simulation's own independent load (second call)
             // fails — e.g. the entry file was removed after the project was opened.
             loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
             loadGame.mockRejectedValueOnce(new Error("Cannot find module './dist/index.js'"));
 
             const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 100});
@@ -883,7 +1144,7 @@ describe("StudioServer", () => {
         it("rejects a second POST for the same project with 409 while one is already queued/running", async () => {
             const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
             loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
             // The simulation's own independent load never resolves — keeps the first job "queued"
             // forever, so the conflict check below can never race.
             loadGame.mockReturnValueOnce(
@@ -949,7 +1210,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                gamePackageCreator: createStubCreator(scaffoldResult),
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    createStubCreator(scaffoldResult),
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(createPlayableFakeGame(manifest)),
+                ),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 simulationService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -989,7 +1259,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                gamePackageCreator: createStubCreator(scaffoldResult),
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    createStubCreator(scaffoldResult),
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(createPlayableFakeGame(manifest)),
+                ),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 simulationService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -1020,7 +1299,7 @@ describe("StudioServer", () => {
 
         async function openCrazyFruits(game: PokieGame): Promise<void> {
             loadGame.mockResolvedValue(game);
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
         }
 
         async function runToCompletion(rounds: number, seed?: string): Promise<string> {
@@ -1074,7 +1353,7 @@ describe("StudioServer", () => {
 
         it("never lists a failed simulation (no report to summarize)", async () => {
             loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
             loadGame.mockRejectedValueOnce(new Error("boom"));
             await runToCompletion(10);
 
@@ -1104,7 +1383,7 @@ describe("StudioServer", () => {
 
         it("returns 409 for a failed simulation (no report available)", async () => {
             loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
             loadGame.mockRejectedValueOnce(new Error("boom"));
             const id = await runToCompletion(10);
 
@@ -1120,7 +1399,7 @@ describe("StudioServer", () => {
 
             await post(`${baseUrl}/api/projects/close`);
             loadGame.mockResolvedValue(createPlayableFakeGame({id: "other-game", name: "Other Game", version: "2.0.0"}));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./other-game"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./other-game"});
 
             const {status, body} = await get(`${baseUrl}/api/project/reports/${idFromProjectA}`);
 
@@ -1150,7 +1429,7 @@ describe("StudioServer", () => {
 
             it("returns 409 for a simulation with no report", async () => {
                 loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
-                await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+                await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
                 loadGame.mockRejectedValueOnce(new Error("boom"));
                 const id = await runToCompletion(10);
 
@@ -1234,7 +1513,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: reportsStudioRoot,
-                gamePackageCreator: createStubCreator(scaffoldResult),
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    createStubCreator(scaffoldResult),
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(createPlayableFakeGame(manifest)),
+                ),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 simulationService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -1303,7 +1591,7 @@ describe("StudioServer", () => {
         // as the Simulation describe block's own openCrazyFruits().
         async function openCrazyFruits(game: PokieGame): Promise<void> {
             loadGame.mockResolvedValue(game);
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
         }
 
         it("returns 409 for POST when there is no active project", async () => {
@@ -1417,7 +1705,7 @@ describe("StudioServer", () => {
 
         it("fails the job with a safe message (no stack trace) when loading the game fails", async () => {
             loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
             loadGame.mockRejectedValueOnce(new Error("Cannot find module './dist/index.js'"));
 
             const created = await post(`${baseUrl}/api/project/replays`, {round: 3});
@@ -1430,7 +1718,7 @@ describe("StudioServer", () => {
 
         it("rejects a second POST for the same project with 409 while one is already queued/running", async () => {
             loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
             // The replay's own independent load never resolves — keeps the first job "queued" forever,
             // so the conflict check below can never race.
             loadGame.mockReturnValueOnce(
@@ -1508,7 +1796,7 @@ describe("StudioServer", () => {
 
         it("returns 409 (not-ready) when downloading a replay that hasn't completed yet", async () => {
             loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
             loadGame.mockReturnValueOnce(
                 new Promise(() => {
                     // never resolves — keeps the job "queued"
@@ -1524,7 +1812,7 @@ describe("StudioServer", () => {
 
         it("returns 409 (not-ready) when downloading a failed replay", async () => {
             loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
             loadGame.mockRejectedValueOnce(new Error("boom"));
             const created = await post(`${baseUrl}/api/project/replays`, {round: 10});
             const {id} = created.body as {id: string};
@@ -1551,7 +1839,7 @@ describe("StudioServer", () => {
 
             await post(`${baseUrl}/api/projects/close`);
             loadGame.mockResolvedValue(createSeedAwareFakeGame({id: "other-game", name: "Other Game", version: "2.0.0"}));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./other-game"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./other-game"});
 
             const detail = await get(`${baseUrl}/api/project/replays/${id}`);
             expect(detail.status).toBe(404);
@@ -1568,7 +1856,7 @@ describe("StudioServer", () => {
 
             await post(`${baseUrl}/api/projects/close`);
             loadGame.mockResolvedValue(createSeedAwareFakeGame({id: "another-game", name: "Another Game", version: "3.0.0"}));
-            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./another-game"});
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./another-game"});
 
             const download = await fetch(`${baseUrl}/api/project/replays/${id}/download`);
             expect(download.status).toBe(404);
@@ -1619,7 +1907,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                gamePackageCreator: createStubCreator(scaffoldResult),
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    createStubCreator(scaffoldResult),
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(createPlayableFakeGame(manifest)),
+                ),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 replayService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -1659,7 +1956,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                gamePackageCreator: createStubCreator(scaffoldResult),
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    createStubCreator(scaffoldResult),
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(createPlayableFakeGame(manifest)),
+                ),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 replayService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -1705,7 +2011,16 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                gamePackageCreator: createStubCreator(scaffoldResult),
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    createStubCreator(scaffoldResult),
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(createPlayableFakeGame(manifest)),
+                ),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 gamePackageInspector: {inspect: inspectStub},
                 gamePackageValidator: {validate: validateStub},
@@ -1753,7 +2068,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: replayStudioRoot,
-                gamePackageCreator: createStubCreator(scaffoldResult),
+                homeService: new StudioHomeService("1.0.0", undefined, createStubCreator(scaffoldResult)),
                 initialContext: {mode: "project", projectRoot: fixtureRoot},
                 replayService: new StudioReplayExecutionService(new InMemoryStudioReplayRepository()),
             });

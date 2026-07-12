@@ -1,7 +1,6 @@
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {openBrowser} from "../openBrowser.js";
-import {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
-import {GamePackageCreator} from "../scaffold/GamePackageCreator.js";
+import {StudioHomeService} from "../studio/home/StudioHomeService.js";
 import {StudioContextResolver} from "../studio/StudioContextResolver.js";
 import {StudioContextResolving} from "../studio/StudioContextResolving.js";
 import {StudioServer} from "../studio/StudioServer.js";
@@ -21,7 +20,8 @@ export type StudioCommandDependencies = {
     createServer?: (options: StudioServerOptions) => StudioServerHandling;
     openBrowser?: typeof openBrowser;
     contextResolver?: StudioContextResolving;
-    gamePackageCreator?: GamePackageCreating;
+    // Drives the Home nav's Create/Init/Build/Open/Recent-Projects flows — see StudioHomeService.
+    homeService?: StudioHomeService;
     // Where the compiled cli/studio-client assets live (dist/cli/studio-client at runtime) — no
     // default here on purpose, same reason as DevCommand's own clientRoot: resolving it needs
     // import.meta.url, which only works in cli/pokie.ts's real ESM build. cli/pokie.ts computes it
@@ -39,7 +39,7 @@ export class StudioCommand implements CliCommandHandling {
     private readonly createServer: (options: StudioServerOptions) => StudioServerHandling;
     private readonly openBrowserImpl: typeof openBrowser;
     private readonly contextResolver: StudioContextResolving;
-    private readonly gamePackageCreator: GamePackageCreating;
+    private readonly homeService: StudioHomeService;
     private readonly studioRoot: string;
     private readonly process: NodeJS.Process;
 
@@ -47,7 +47,7 @@ export class StudioCommand implements CliCommandHandling {
         this.createServer = dependencies.createServer ?? ((options) => new StudioServer(options));
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
-        this.gamePackageCreator = dependencies.gamePackageCreator ?? new GamePackageCreator(pokieVersion);
+        this.homeService = dependencies.homeService ?? new StudioHomeService(pokieVersion);
         this.studioRoot = dependencies.studioRoot ?? "";
         this.process = dependencies.process ?? process;
     }
@@ -69,7 +69,7 @@ export class StudioCommand implements CliCommandHandling {
             port: options.port,
             studioRoot: this.studioRoot,
             initialContext: context,
-            gamePackageCreator: this.gamePackageCreator,
+            homeService: this.homeService,
         });
         const address = await server.start();
 

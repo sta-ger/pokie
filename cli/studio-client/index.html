@@ -14,28 +14,151 @@
     </header>
     <main>
         <section id="home-view">
-            <section id="create-project">
-                <h2>Create Project</h2>
-                <form id="create-form">
-                    <label for="create-name">Name</label>
-                    <input id="create-name" name="name" type="text" required />
-                    <button type="submit">Create</button>
+            <nav id="home-tabs" class="tabs">
+                <button id="home-tab-recent" type="button" class="tab" aria-current="page">Recent Projects</button>
+                <button id="home-tab-create" type="button" class="tab">Create Project</button>
+                <button id="home-tab-init" type="button" class="tab">Initialize Project</button>
+                <button id="home-tab-build" type="button" class="tab">Build from Blueprint</button>
+                <button id="home-tab-open" type="button" class="tab">Open Existing Project</button>
+            </nav>
+
+            <section id="home-recent">
+                <div class="quick-actions">
+                    <button id="home-recent-refresh-button" type="button">Refresh</button>
+                </div>
+                <p id="home-recent-empty" hidden>No recent projects yet.</p>
+                <p id="home-recent-error" hidden></p>
+                <ul id="home-recent-list"></ul>
+            </section>
+
+            <section id="home-create" hidden>
+                <form id="home-create-form">
+                    <label for="home-create-destination">Destination directory</label>
+                    <input id="home-create-destination" name="destinationDir" type="text" value="." required />
+                    <label for="home-create-name">Package name</label>
+                    <input id="home-create-name" name="name" type="text" required />
+                    <label for="home-create-game-id">Game id (optional)</label>
+                    <input id="home-create-game-id" name="gameId" type="text" />
+                    <label for="home-create-game-name">Game name (optional)</label>
+                    <input id="home-create-game-name" name="gameName" type="text" />
+                    <label for="home-create-version">Version (optional)</label>
+                    <input id="home-create-version" name="version" type="text" />
+                    <button id="home-create-submit-button" type="submit">Create</button>
                 </form>
-                <p id="create-status"></p>
+
+                <p id="home-create-loading" hidden>Creating…</p>
+                <p id="home-create-error" hidden></p>
+
+                <div id="home-create-result" hidden>
+                    <p id="home-create-result-summary"></p>
+                    <div id="home-create-result-created-section" hidden>
+                        <h4>Created files</h4>
+                        <ul id="home-create-result-created"></ul>
+                    </div>
+                    <p id="home-create-next-steps"></p>
+                    <button id="home-create-open-button" type="button">Open in Studio</button>
+                </div>
             </section>
-            <section id="open-project">
-                <h2>Open Project</h2>
-                <form id="open-form">
-                    <label for="open-path">Project path</label>
-                    <input id="open-path" name="projectRoot" type="text" required />
-                    <button type="submit">Open</button>
+
+            <section id="home-init" hidden>
+                <form id="home-init-form">
+                    <label for="home-init-directory">Existing project directory</label>
+                    <input id="home-init-directory" name="directory" type="text" value="." required />
+                    <button id="home-init-submit-button" type="submit">Initialize</button>
                 </form>
-                <p id="open-status"></p>
+
+                <p id="home-init-loading" hidden>Initializing…</p>
+                <p id="home-init-error" hidden></p>
+
+                <div id="home-init-result" hidden>
+                    <p id="home-init-result-summary"></p>
+                    <div id="home-init-result-created-section" hidden>
+                        <h4>Created files</h4>
+                        <ul id="home-init-result-created"></ul>
+                    </div>
+                    <div id="home-init-result-updated-section" hidden>
+                        <h4>Updated files</h4>
+                        <ul id="home-init-result-updated"></ul>
+                    </div>
+                    <div id="home-init-result-skipped-section" hidden>
+                        <h4>Skipped (already existed)</h4>
+                        <ul id="home-init-result-skipped"></ul>
+                    </div>
+                    <button id="home-init-open-button" type="button">Open in Studio</button>
+                </div>
             </section>
-            <section id="recent-projects">
-                <h2>Recent Projects</h2>
-                <ul id="recent-list"></ul>
+
+            <section id="home-build" hidden>
+                <form id="home-build-form">
+                    <label for="home-build-blueprint-path">Blueprint JSON path</label>
+                    <input id="home-build-blueprint-path" name="blueprintPath" type="text" required />
+                    <label for="home-build-out-dir">Output directory (optional)</label>
+                    <input id="home-build-out-dir" name="outDir" type="text" />
+                    <button id="home-build-preview-button" type="submit">Preview</button>
+                    <button id="home-build-run-button" type="button">Build</button>
+                </form>
+
+                <p id="home-build-loading" hidden>Working…</p>
+                <p id="home-build-error" hidden></p>
+
+                <div id="home-build-preview" hidden>
+                    <h3>Preview</h3>
+                    <p id="home-build-preview-load-error" hidden></p>
+
+                    <div id="home-build-preview-ok" hidden>
+                        <dl class="project-info">
+                            <dt>Game</dt>
+                            <dd id="home-build-preview-game"></dd>
+                            <dt>Reels x rows</dt>
+                            <dd id="home-build-preview-reels-rows"></dd>
+                            <dt>Symbols</dt>
+                            <dd id="home-build-preview-symbols"></dd>
+                            <dt>Blueprint hash</dt>
+                            <dd id="home-build-preview-hash"></dd>
+                            <dt>Would generate</dt>
+                            <dd id="home-build-preview-files"></dd>
+                        </dl>
+                    </div>
+
+                    <div id="home-build-preview-warnings-section" hidden>
+                        <h4>Warnings</h4>
+                        <ul id="home-build-preview-warnings"></ul>
+                    </div>
+
+                    <div id="home-build-preview-errors-section" hidden>
+                        <h4>Errors</h4>
+                        <ul id="home-build-preview-errors"></ul>
+                    </div>
+                </div>
+
+                <div id="home-build-result" hidden>
+                    <h3>Build result</h3>
+                    <p id="home-build-result-summary"></p>
+
+                    <div id="home-build-result-warnings-section" hidden>
+                        <h4>Warnings</h4>
+                        <ul id="home-build-result-warnings"></ul>
+                    </div>
+
+                    <div id="home-build-result-created-section" hidden>
+                        <h4>Created files</h4>
+                        <ul id="home-build-result-created"></ul>
+                    </div>
+
+                    <button id="home-build-open-button" type="button" hidden>Open in Studio</button>
+                </div>
             </section>
+
+            <section id="home-open" hidden>
+                <form id="home-open-form">
+                    <label for="home-open-path">Project path</label>
+                    <input id="home-open-path" name="projectRoot" type="text" required />
+                    <button id="home-open-submit-button" type="submit">Open</button>
+                </form>
+                <p id="home-open-loading" hidden>Opening…</p>
+                <p id="home-open-error" hidden></p>
+            </section>
+
             <section id="documentation">
                 <h2>Documentation</h2>
                 <ul>

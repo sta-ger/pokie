@@ -1,10 +1,12 @@
+import type {BuildPreviewView, BuildProjectView, HomeRecentProjectsListView, ScaffoldActionView} from "./interpretHome.js";
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
 import type {ReplayListView, ReplayProgressView, ReplayResultView} from "./interpretReplay.js";
 import type {ReportListView} from "./interpretReports.js";
 import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
-import type {RecentProjectEntry, StudioReplayListEntry, StudioSimulationReportListEntry} from "./types.js";
+import type {StudioHomeRecentProjectView, StudioReplayListEntry, StudioSimulationReportListEntry} from "./types.js";
 
 export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay";
+export type HomeTab = "recent" | "create" | "init" | "build" | "open";
 
 // One report's worth of display fields — factored out so the exact same renderSimulationReport()
 // below can fill in both the Simulation tab's own "just completed" block and the Reports tab's
@@ -33,13 +35,78 @@ export type Elements = {
     status: HTMLElement;
     homeView: HTMLElement;
     projectView: HTMLElement;
-    createForm: HTMLFormElement;
-    createName: HTMLInputElement;
-    createStatus: HTMLElement;
-    openForm: HTMLFormElement;
-    openPath: HTMLInputElement;
-    openStatus: HTMLElement;
-    recentList: HTMLElement;
+    homeTabs: HTMLElement;
+    homeTabRecentButton: HTMLButtonElement;
+    homeTabCreateButton: HTMLButtonElement;
+    homeTabInitButton: HTMLButtonElement;
+    homeTabBuildButton: HTMLButtonElement;
+    homeTabOpenButton: HTMLButtonElement;
+    homeRecentSection: HTMLElement;
+    homeRecentRefreshButton: HTMLButtonElement;
+    homeRecentEmpty: HTMLElement;
+    homeRecentError: HTMLElement;
+    homeRecentList: HTMLElement;
+    homeCreateSection: HTMLElement;
+    homeCreateForm: HTMLFormElement;
+    homeCreateDestination: HTMLInputElement;
+    homeCreateName: HTMLInputElement;
+    homeCreateGameId: HTMLInputElement;
+    homeCreateGameName: HTMLInputElement;
+    homeCreateVersion: HTMLInputElement;
+    homeCreateLoading: HTMLElement;
+    homeCreateError: HTMLElement;
+    homeCreateResult: HTMLElement;
+    homeCreateResultSummary: HTMLElement;
+    homeCreateResultCreatedSection: HTMLElement;
+    homeCreateResultCreated: HTMLElement;
+    homeCreateNextSteps: HTMLElement;
+    homeCreateOpenButton: HTMLButtonElement;
+    homeInitSection: HTMLElement;
+    homeInitForm: HTMLFormElement;
+    homeInitDirectory: HTMLInputElement;
+    homeInitLoading: HTMLElement;
+    homeInitError: HTMLElement;
+    homeInitResult: HTMLElement;
+    homeInitResultSummary: HTMLElement;
+    homeInitResultCreatedSection: HTMLElement;
+    homeInitResultCreated: HTMLElement;
+    homeInitResultUpdatedSection: HTMLElement;
+    homeInitResultUpdated: HTMLElement;
+    homeInitResultSkippedSection: HTMLElement;
+    homeInitResultSkipped: HTMLElement;
+    homeInitOpenButton: HTMLButtonElement;
+    homeBuildSection: HTMLElement;
+    homeBuildForm: HTMLFormElement;
+    homeBuildBlueprintPath: HTMLInputElement;
+    homeBuildOutDir: HTMLInputElement;
+    homeBuildPreviewButton: HTMLButtonElement;
+    homeBuildRunButton: HTMLButtonElement;
+    homeBuildLoading: HTMLElement;
+    homeBuildError: HTMLElement;
+    homeBuildPreview: HTMLElement;
+    homeBuildPreviewLoadError: HTMLElement;
+    homeBuildPreviewOk: HTMLElement;
+    homeBuildPreviewGame: HTMLElement;
+    homeBuildPreviewReelsRows: HTMLElement;
+    homeBuildPreviewSymbols: HTMLElement;
+    homeBuildPreviewHash: HTMLElement;
+    homeBuildPreviewFiles: HTMLElement;
+    homeBuildPreviewWarningsSection: HTMLElement;
+    homeBuildPreviewWarnings: HTMLElement;
+    homeBuildPreviewErrorsSection: HTMLElement;
+    homeBuildPreviewErrors: HTMLElement;
+    homeBuildResult: HTMLElement;
+    homeBuildResultSummary: HTMLElement;
+    homeBuildResultWarningsSection: HTMLElement;
+    homeBuildResultWarnings: HTMLElement;
+    homeBuildResultCreatedSection: HTMLElement;
+    homeBuildResultCreated: HTMLElement;
+    homeBuildOpenButton: HTMLButtonElement;
+    homeOpenSection: HTMLElement;
+    homeOpenForm: HTMLFormElement;
+    homeOpenPath: HTMLInputElement;
+    homeOpenLoading: HTMLElement;
+    homeOpenError: HTMLElement;
     closeProjectButton: HTMLButtonElement;
     projectTitle: HTMLElement;
     projectSubtitle: HTMLElement;
@@ -180,13 +247,78 @@ export function queryElements(): Elements {
         status: requireElement("status"),
         homeView: requireElement("home-view"),
         projectView: requireElement("project-view"),
-        createForm: requireElement("create-form"),
-        createName: requireElement("create-name"),
-        createStatus: requireElement("create-status"),
-        openForm: requireElement("open-form"),
-        openPath: requireElement("open-path"),
-        openStatus: requireElement("open-status"),
-        recentList: requireElement("recent-list"),
+        homeTabs: requireElement("home-tabs"),
+        homeTabRecentButton: requireElement("home-tab-recent"),
+        homeTabCreateButton: requireElement("home-tab-create"),
+        homeTabInitButton: requireElement("home-tab-init"),
+        homeTabBuildButton: requireElement("home-tab-build"),
+        homeTabOpenButton: requireElement("home-tab-open"),
+        homeRecentSection: requireElement("home-recent"),
+        homeRecentRefreshButton: requireElement("home-recent-refresh-button"),
+        homeRecentEmpty: requireElement("home-recent-empty"),
+        homeRecentError: requireElement("home-recent-error"),
+        homeRecentList: requireElement("home-recent-list"),
+        homeCreateSection: requireElement("home-create"),
+        homeCreateForm: requireElement("home-create-form"),
+        homeCreateDestination: requireElement("home-create-destination"),
+        homeCreateName: requireElement("home-create-name"),
+        homeCreateGameId: requireElement("home-create-game-id"),
+        homeCreateGameName: requireElement("home-create-game-name"),
+        homeCreateVersion: requireElement("home-create-version"),
+        homeCreateLoading: requireElement("home-create-loading"),
+        homeCreateError: requireElement("home-create-error"),
+        homeCreateResult: requireElement("home-create-result"),
+        homeCreateResultSummary: requireElement("home-create-result-summary"),
+        homeCreateResultCreatedSection: requireElement("home-create-result-created-section"),
+        homeCreateResultCreated: requireElement("home-create-result-created"),
+        homeCreateNextSteps: requireElement("home-create-next-steps"),
+        homeCreateOpenButton: requireElement("home-create-open-button"),
+        homeInitSection: requireElement("home-init"),
+        homeInitForm: requireElement("home-init-form"),
+        homeInitDirectory: requireElement("home-init-directory"),
+        homeInitLoading: requireElement("home-init-loading"),
+        homeInitError: requireElement("home-init-error"),
+        homeInitResult: requireElement("home-init-result"),
+        homeInitResultSummary: requireElement("home-init-result-summary"),
+        homeInitResultCreatedSection: requireElement("home-init-result-created-section"),
+        homeInitResultCreated: requireElement("home-init-result-created"),
+        homeInitResultUpdatedSection: requireElement("home-init-result-updated-section"),
+        homeInitResultUpdated: requireElement("home-init-result-updated"),
+        homeInitResultSkippedSection: requireElement("home-init-result-skipped-section"),
+        homeInitResultSkipped: requireElement("home-init-result-skipped"),
+        homeInitOpenButton: requireElement("home-init-open-button"),
+        homeBuildSection: requireElement("home-build"),
+        homeBuildForm: requireElement("home-build-form"),
+        homeBuildBlueprintPath: requireElement("home-build-blueprint-path"),
+        homeBuildOutDir: requireElement("home-build-out-dir"),
+        homeBuildPreviewButton: requireElement("home-build-preview-button"),
+        homeBuildRunButton: requireElement("home-build-run-button"),
+        homeBuildLoading: requireElement("home-build-loading"),
+        homeBuildError: requireElement("home-build-error"),
+        homeBuildPreview: requireElement("home-build-preview"),
+        homeBuildPreviewLoadError: requireElement("home-build-preview-load-error"),
+        homeBuildPreviewOk: requireElement("home-build-preview-ok"),
+        homeBuildPreviewGame: requireElement("home-build-preview-game"),
+        homeBuildPreviewReelsRows: requireElement("home-build-preview-reels-rows"),
+        homeBuildPreviewSymbols: requireElement("home-build-preview-symbols"),
+        homeBuildPreviewHash: requireElement("home-build-preview-hash"),
+        homeBuildPreviewFiles: requireElement("home-build-preview-files"),
+        homeBuildPreviewWarningsSection: requireElement("home-build-preview-warnings-section"),
+        homeBuildPreviewWarnings: requireElement("home-build-preview-warnings"),
+        homeBuildPreviewErrorsSection: requireElement("home-build-preview-errors-section"),
+        homeBuildPreviewErrors: requireElement("home-build-preview-errors"),
+        homeBuildResult: requireElement("home-build-result"),
+        homeBuildResultSummary: requireElement("home-build-result-summary"),
+        homeBuildResultWarningsSection: requireElement("home-build-result-warnings-section"),
+        homeBuildResultWarnings: requireElement("home-build-result-warnings"),
+        homeBuildResultCreatedSection: requireElement("home-build-result-created-section"),
+        homeBuildResultCreated: requireElement("home-build-result-created"),
+        homeBuildOpenButton: requireElement("home-build-open-button"),
+        homeOpenSection: requireElement("home-open"),
+        homeOpenForm: requireElement("home-open-form"),
+        homeOpenPath: requireElement("home-open-path"),
+        homeOpenLoading: requireElement("home-open-loading"),
+        homeOpenError: requireElement("home-open-error"),
         closeProjectButton: requireElement("close-project"),
         projectTitle: requireElement("project-title"),
         projectSubtitle: requireElement("project-subtitle"),
@@ -295,31 +427,201 @@ export function showView(elements: Elements, route: "home" | "project"): void {
     elements.projectView.hidden = route !== "project";
 }
 
-export function renderRecentProjects(
-    container: HTMLElement,
-    entries: RecentProjectEntry[],
-    onOpen: (projectRoot: string) => void,
+export function setStatus(element: HTMLElement, message: string): void {
+    element.textContent = message;
+}
+
+export function showHomeTab(elements: Elements, tab: HomeTab): void {
+    elements.homeRecentSection.hidden = tab !== "recent";
+    elements.homeCreateSection.hidden = tab !== "create";
+    elements.homeInitSection.hidden = tab !== "init";
+    elements.homeBuildSection.hidden = tab !== "build";
+    elements.homeOpenSection.hidden = tab !== "open";
+    elements.homeTabRecentButton.setAttribute("aria-current", tab === "recent" ? "page" : "false");
+    elements.homeTabCreateButton.setAttribute("aria-current", tab === "create" ? "page" : "false");
+    elements.homeTabInitButton.setAttribute("aria-current", tab === "init" ? "page" : "false");
+    elements.homeTabBuildButton.setAttribute("aria-current", tab === "build" ? "page" : "false");
+    elements.homeTabOpenButton.setAttribute("aria-current", tab === "open" ? "page" : "false");
+}
+
+export function renderHomeRecentProjects(
+    elements: Elements,
+    view: HomeRecentProjectsListView,
+    onOpen: (entry: StudioHomeRecentProjectView) => void,
 ): void {
-    container.textContent = "";
-    if (entries.length === 0) {
-        const empty = document.createElement("li");
-        empty.textContent = "No recent projects yet.";
-        container.appendChild(empty);
+    elements.homeRecentError.hidden = true;
+    elements.homeRecentEmpty.hidden = view.status !== "empty";
+    elements.homeRecentList.textContent = "";
+    if (view.status === "empty") {
         return;
     }
-    for (const entry of entries) {
+
+    for (const entry of view.entries) {
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
-        button.textContent = `${entry.name} — ${entry.projectRoot}`;
-        button.addEventListener("click", () => onOpen(entry.projectRoot));
+        button.disabled = entry.missing;
+        const openedAt = new Date(entry.openedAt).toLocaleString();
+        button.textContent = entry.missing
+            ? `${entry.name} — ${entry.projectRoot} (missing), last opened ${openedAt}`
+            : `${entry.name} — ${entry.projectRoot}, last opened ${openedAt}`;
+        if (!entry.missing) {
+            button.addEventListener("click", () => onOpen(entry));
+        }
         item.appendChild(button);
+        elements.homeRecentList.appendChild(item);
+    }
+}
+
+export function renderHomeRecentProjectsError(elements: Elements, message: string): void {
+    elements.homeRecentError.hidden = false;
+    elements.homeRecentError.textContent = message;
+}
+
+function renderScaffoldResult(
+    view: ScaffoldActionView,
+    loadingEl: HTMLElement,
+    errorEl: HTMLElement,
+    resultEl: HTMLElement,
+    summaryEl: HTMLElement,
+    createdSectionEl: HTMLElement,
+    createdListEl: HTMLElement,
+): void {
+    loadingEl.hidden = view.status !== "loading";
+    errorEl.hidden = view.status !== "error" && view.status !== "failed";
+    resultEl.hidden = view.status !== "ok";
+
+    if (view.status === "error" || view.status === "failed") {
+        errorEl.textContent = view.message;
+        return;
+    }
+    if (view.status !== "ok") {
+        return;
+    }
+
+    summaryEl.textContent = `"${view.manifest.name}" (id: "${view.manifest.id}", v${view.manifest.version}) at "${view.projectRoot}".`;
+    createdSectionEl.hidden = view.createdFiles.length === 0;
+    renderFileList(createdListEl, view.createdFiles);
+}
+
+function renderFileList(container: HTMLElement, files: string[]): void {
+    container.textContent = "";
+    for (const file of files) {
+        const item = document.createElement("li");
+        item.textContent = file;
         container.appendChild(item);
     }
 }
 
-export function setStatus(element: HTMLElement, message: string): void {
-    element.textContent = message;
+export function renderCreateResult(elements: Elements, view: ScaffoldActionView): void {
+    renderScaffoldResult(
+        view,
+        elements.homeCreateLoading,
+        elements.homeCreateError,
+        elements.homeCreateResult,
+        elements.homeCreateResultSummary,
+        elements.homeCreateResultCreatedSection,
+        elements.homeCreateResultCreated,
+    );
+    if (view.status === "ok") {
+        elements.homeCreateNextSteps.textContent = `Next: cd ${view.projectRoot} && npm install && npm run build`;
+    }
+}
+
+export function renderInitResult(elements: Elements, view: ScaffoldActionView): void {
+    renderScaffoldResult(
+        view,
+        elements.homeInitLoading,
+        elements.homeInitError,
+        elements.homeInitResult,
+        elements.homeInitResultSummary,
+        elements.homeInitResultCreatedSection,
+        elements.homeInitResultCreated,
+    );
+    if (view.status !== "ok") {
+        return;
+    }
+    elements.homeInitResultUpdatedSection.hidden = view.updatedFiles.length === 0;
+    renderFileList(elements.homeInitResultUpdated, view.updatedFiles);
+    elements.homeInitResultSkippedSection.hidden = view.skippedFiles.length === 0;
+    renderFileList(elements.homeInitResultSkipped, view.skippedFiles);
+}
+
+export function renderBuildPreview(elements: Elements, view: BuildPreviewView): void {
+    elements.homeBuildLoading.hidden = view.status !== "loading";
+    elements.homeBuildError.hidden = view.status !== "error";
+    elements.homeBuildPreview.hidden = view.status === "idle" || view.status === "loading" || view.status === "error";
+
+    if (view.status === "error") {
+        elements.homeBuildError.textContent = view.message;
+        return;
+    }
+    if (view.status === "idle" || view.status === "loading") {
+        return;
+    }
+
+    elements.homeBuildPreviewLoadError.hidden = view.status !== "load-error";
+    elements.homeBuildPreviewOk.hidden = view.status !== "ok";
+    elements.homeBuildPreviewErrorsSection.hidden = view.status !== "invalid";
+
+    if (view.status === "load-error") {
+        elements.homeBuildPreviewLoadError.textContent = view.message;
+        elements.homeBuildPreviewWarningsSection.hidden = true;
+        return;
+    }
+
+    elements.homeBuildPreviewWarningsSection.hidden = view.warnings.length === 0;
+    renderIssueList(elements.homeBuildPreviewWarnings, view.warnings);
+
+    if (view.status === "invalid") {
+        renderIssueList(elements.homeBuildPreviewErrors, view.errors);
+        return;
+    }
+
+    elements.homeBuildPreviewGame.textContent = `${view.manifest.name} (id: "${view.manifest.id}", v${view.manifest.version})`;
+    elements.homeBuildPreviewReelsRows.textContent = `${view.reels} x ${view.rows}`;
+    elements.homeBuildPreviewSymbols.textContent = String(view.symbolsCount);
+    elements.homeBuildPreviewHash.textContent = view.blueprintHash;
+    elements.homeBuildPreviewFiles.textContent = view.expectedFiles.join(", ");
+}
+
+export function renderBuildResult(elements: Elements, view: BuildProjectView): void {
+    elements.homeBuildLoading.hidden = view.status !== "loading";
+    elements.homeBuildError.hidden = view.status !== "error";
+    elements.homeBuildResult.hidden = true;
+    elements.homeBuildOpenButton.hidden = true;
+
+    if (view.status === "error") {
+        elements.homeBuildError.textContent = view.message;
+        return;
+    }
+    if (view.status === "idle" || view.status === "loading") {
+        return;
+    }
+
+    elements.homeBuildResult.hidden = false;
+
+    if (view.status === "load-error" || view.status === "failed") {
+        elements.homeBuildResultSummary.textContent = view.message;
+        elements.homeBuildResultWarningsSection.hidden = true;
+        elements.homeBuildResultCreatedSection.hidden = true;
+        return;
+    }
+    if (view.status === "invalid") {
+        elements.homeBuildResultSummary.textContent = `Blueprint is invalid — ${view.errors.length} error(s).`;
+        elements.homeBuildResultWarningsSection.hidden = true;
+        elements.homeBuildResultCreatedSection.hidden = true;
+        return;
+    }
+
+    elements.homeBuildResultSummary.textContent =
+        `"${view.manifest.name}" (id: "${view.manifest.id}", v${view.manifest.version}) built in "${view.projectRoot}"` +
+        (view.unchanged ? " (unchanged — deterministic rebuild)." : ".");
+    elements.homeBuildResultWarningsSection.hidden = view.warnings.length === 0;
+    renderIssueList(elements.homeBuildResultWarnings, view.warnings);
+    elements.homeBuildResultCreatedSection.hidden = view.createdFiles.length === 0;
+    renderFileList(elements.homeBuildResultCreated, view.createdFiles);
+    elements.homeBuildOpenButton.hidden = false;
 }
 
 // Renders the Project Dashboard header for every ProjectHeaderView state (empty/loading/error/

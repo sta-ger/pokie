@@ -2,11 +2,13 @@ import {GamePackageInspecting, GamePackageInspector, loadPokieGame, PokieDevServ
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
-import type {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
-import {InMemoryRecentProjectsRepository} from "./InMemoryRecentProjectsRepository.js";
+import {StudioHomeService} from "./home/StudioHomeService.js";
+import {validateBuildRequest, BuildRequestInput} from "./home/validateBuildRequest.js";
+import {validateCreateProjectRequest, CreateProjectRequestInput} from "./home/validateCreateProjectRequest.js";
+import {validateInitProjectRequest, InitProjectRequestInput} from "./home/validateInitProjectRequest.js";
+import {validateOpenProjectRequest, OpenProjectRequestInput} from "./home/validateOpenProjectRequest.js";
 import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
-import type {RecentProjectsRepository} from "./RecentProjectsRepository.js";
 import {buildReplayDownload} from "./replay/buildReplayDownload.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
@@ -50,8 +52,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly host: string;
     private readonly port: number;
     private readonly studioRoot: string;
-    private readonly recentProjectsRepository: RecentProjectsRepository;
-    private readonly gamePackageCreator: GamePackageCreating;
+    private readonly homeService: StudioHomeService;
     private readonly loadGame: typeof loadPokieGame;
     private readonly gamePackageInspector: GamePackageInspecting;
     private readonly gamePackageValidator: PokieGamePackageValidating;
@@ -70,8 +71,7 @@ export class StudioServer implements StudioServerHandling {
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
         this.studioRoot = path.resolve(options.studioRoot);
-        this.recentProjectsRepository = options.recentProjectsRepository ?? new InMemoryRecentProjectsRepository();
-        this.gamePackageCreator = options.gamePackageCreator;
+        this.homeService = options.homeService;
         this.loadGame = options.loadGame ?? loadPokieGame;
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
@@ -156,18 +156,33 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        if (method === "GET" && url.pathname === "/api/recent-projects") {
-            this.sendJson(res, 200, await this.recentProjectsRepository.list());
+        if (method === "GET" && url.pathname === "/api/home/recent-projects") {
+            this.sendJson(res, 200, await this.homeService.listRecentProjects());
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/projects/create") {
-            await this.handleCreateProject(req, res);
+        if (method === "POST" && url.pathname === "/api/home/projects/create") {
+            await this.handleHomeCreateProject(req, res);
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/projects/open") {
-            await this.handleOpenProject(req, res);
+        if (method === "POST" && url.pathname === "/api/home/projects/init") {
+            await this.handleHomeInitProject(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/projects/build/preview") {
+            await this.handleHomeBuildPreview(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/projects/build") {
+            await this.handleHomeBuildProject(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/projects/open") {
+            await this.handleHomeOpenProject(req, res);
             return;
         }
 
@@ -333,62 +348,101 @@ export class StudioServer implements StudioServerHandling {
         return handler.handle(this.currentContext, {method, url, body});
     }
 
-    private async handleCreateProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // Every Home handler below follows the same shape: validate the body into a trusted request — a
+    // genuinely malformed request (missing/invalid field) is the *only* case that produces an HTTP 4xx
+    // with a plain `{error}` body, before StudioHomeService is ever called — then delegate the actual
+    // operation to StudioHomeService (which never throws — see its own doc comment) and send its
+    // plain-data result back as-is with a 2xx status, letting the DTO's own `status` field (ok/error/
+    // invalid/load-error) carry the domain-level outcome. This mirrors GET /api/project/validate
+    // returning 200 with a report that may itself say invalid:false — a well-formed request that
+    // legitimately failed at the domain level is not a failed HTTP request. None of these ever spawn
+    // `pokie create`/`init`/`build` as a subprocess or duplicate their logic — StudioHomeService drives
+    // the exact same underlying services directly.
+    private async handleHomeCreateProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
-        const name = (body as {name?: unknown} | undefined)?.name;
-        if (typeof name !== "string" || name.trim().length === 0) {
-            this.sendJson(res, 400, {error: '"name" is required.'});
-            return;
-        }
-
-        let result;
+        let validated;
         try {
-            result = this.gamePackageCreator.create(process.cwd(), name);
+            validated = validateCreateProjectRequest((body ?? {}) as CreateProjectRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
 
-        this.currentContext = {mode: "project", projectRoot: result.projectRoot};
-        // No separate load needed: GamePackageCreating.create() already returned a trustworthy
-        // manifest without needing to execute the (likely not yet built) scaffolded entry module —
-        // see loadProjectDashboardContext's own doc comment for why Open, which has no such manifest
-        // in hand up front, goes through an actual load instead.
-        this.projectDashboard = {status: "loaded", projectRoot: result.projectRoot, game: result.manifest};
-        await this.recentProjectsRepository.add({
-            projectRoot: result.projectRoot,
-            name: result.manifest.name,
-            openedAt: new Date().toISOString(),
-        });
-        this.sendJson(res, 201, {context: this.currentContext, manifest: result.manifest});
+        const result = await this.homeService.createProject(validated);
+        this.sendJson(res, result.status === "ok" ? 201 : 200, result);
     }
 
-    private async handleOpenProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    private async handleHomeInitProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
-        const projectRoot = (body as {projectRoot?: unknown} | undefined)?.projectRoot;
-        if (typeof projectRoot !== "string" || projectRoot.trim().length === 0) {
-            this.sendJson(res, 400, {error: '"projectRoot" is required.'});
+        let validated;
+        try {
+            validated = validateInitProjectRequest((body ?? {}) as InitProjectRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
 
-        // loadProjectDashboardContext only ever resolves "loaded" or "error" (see its own doc
-        // comment) — "empty"/"loading" are exclusively synthesized elsewhere in this class — but the
-        // check is spelled as `!== "loaded"` rather than `=== "error"` so TypeScript can narrow
-        // `dashboard` to the "loaded" variant below without a cast.
-        const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame);
+        const result = await this.homeService.initProject(validated);
+        this.sendJson(res, 200, result);
+    }
+
+    // Never writes anything (see StudioHomeService.previewBuild()) — always 200, even for a
+    // "load-error"/"invalid" result, same reasoning as GET /api/project/validate returning 200 with a
+    // report that may itself say invalid:false: this is a read of the blueprint's current state, not
+    // a failed request.
+    private async handleHomeBuildPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBuildRequest((body ?? {}) as BuildRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.homeService.previewBuild(validated));
+    }
+
+    private async handleHomeBuildProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBuildRequest((body ?? {}) as BuildRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.homeService.buildProject(validated);
+        this.sendJson(res, result.status === "ok" ? 201 : 200, result);
+    }
+
+    private async handleHomeOpenProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateOpenProjectRequest((body ?? {}) as OpenProjectRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        // loadProjectDashboardContext (behind StudioHomeService.openProject()) only ever resolves
+        // "loaded" or "error" — "empty"/"loading" are exclusively synthesized elsewhere in this class
+        // — but the check is spelled as `!== "loaded"` rather than `=== "error"` so TypeScript can
+        // narrow `dashboard` to the "loaded" variant below without a cast.
+        const dashboard = await this.homeService.openProject(validated.projectRoot);
         if (dashboard.status !== "loaded") {
-            const message = dashboard.status === "error" ? dashboard.error : `Could not load "${projectRoot}".`;
+            const message = dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`;
             this.sendJson(res, 400, {error: message});
             return;
         }
 
+        // The explicit Home → Project Studio context transition: mutates this same running server's
+        // state in place — no new HTTP server or Studio process is ever started (see the class-level
+        // doc comment).
         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
         this.projectDashboard = dashboard;
-        await this.recentProjectsRepository.add({
-            projectRoot: dashboard.projectRoot,
-            name: dashboard.game.name,
-            openedAt: new Date().toISOString(),
-        });
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.game});
     }
 
