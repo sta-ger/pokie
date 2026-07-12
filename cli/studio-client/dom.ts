@@ -1,3 +1,32 @@
+import {
+    addReelStripSymbol,
+    duplicateBetAt,
+    duplicatePaylineAt,
+    duplicatePaytablePayout,
+    duplicateReelStripSymbolAt,
+    duplicateSymbolAt,
+    getReelGenerationMode,
+    moveBetAt,
+    movePaylineAt,
+    moveReelStripSymbolAt,
+    moveSymbolAt,
+    removeBetAt,
+    removePaylineAt,
+    removePaytablePayout,
+    removeReelStripSymbolAt,
+    removeSymbolAt,
+    removeSymbolWeight,
+    setBetAt,
+    setPaylineCell,
+    setPaytablePayout,
+    setReelStripSymbolAt,
+    setSymbolAt,
+    setSymbolWeight,
+    toggleScatterSymbol,
+    toggleWildSymbol,
+    type ReelGenerationMode,
+} from "./blueprintFormOps.js";
+import type {BlueprintLoadView, BlueprintSaveView, BlueprintValidationView} from "./interpretBlueprintEditor.js";
 import type {BuildPreviewView, BuildProjectView, HomeRecentProjectsListView, ScaffoldActionView} from "./interpretHome.js";
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
 import type {ReplayListView, ReplayProgressView, ReplayResultView} from "./interpretReplay.js";
@@ -5,8 +34,15 @@ import type {ReportListView} from "./interpretReports.js";
 import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
 import type {StudioHomeRecentProjectView, StudioReplayListEntry, StudioSimulationReportListEntry} from "./types.js";
 
+// A single hand-off point from every dynamic row's add/remove/duplicate/move/edit control back to
+// main.ts: run a pure mutator from blueprintFormOps.ts against a clone of the current blueprint, then
+// let main.ts re-derive jsonText and re-render (see blueprintEditorState.ts's withFieldUpdate). Row
+// wiring below calls blueprintFormOps functions directly (they're pure, DOM-independent) so this stays
+// the only callback the Blueprint Editor's render functions need.
+export type BlueprintMutate = (mutate: (blueprint: Record<string, unknown>) => void) => void;
+
 export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay";
-export type HomeTab = "recent" | "create" | "init" | "build" | "open";
+export type HomeTab = "recent" | "create" | "init" | "build" | "open" | "blueprint-editor";
 
 // One report's worth of display fields — factored out so the exact same renderSimulationReport()
 // below can fill in both the Simulation tab's own "just completed" block and the Reports tab's
@@ -207,6 +243,86 @@ export type Elements = {
     replayListEmpty: HTMLElement;
     replayListError: HTMLElement;
     replayList: HTMLElement;
+    homeTabBlueprintEditorButton: HTMLButtonElement;
+    homeBlueprintEditorSection: HTMLElement;
+    blueprintNewButton: HTMLButtonElement;
+    blueprintLoadPath: HTMLInputElement;
+    blueprintLoadButton: HTMLButtonElement;
+    blueprintSavePath: HTMLInputElement;
+    blueprintSaveButton: HTMLButtonElement;
+    blueprintLoadError: HTMLElement;
+    blueprintSaveConflict: HTMLElement;
+    blueprintSaveConflictMessage: HTMLElement;
+    blueprintSaveOverwriteButton: HTMLButtonElement;
+    blueprintSaveError: HTMLElement;
+    blueprintSaveOk: HTMLElement;
+    blueprintModeFormButton: HTMLButtonElement;
+    blueprintModeJsonButton: HTMLButtonElement;
+    blueprintFormView: HTMLElement;
+    blueprintJsonView: HTMLElement;
+    blueprintFieldId: HTMLInputElement;
+    blueprintFieldName: HTMLInputElement;
+    blueprintFieldVersion: HTMLInputElement;
+    blueprintFieldDescription: HTMLInputElement;
+    blueprintFieldAuthor: HTMLInputElement;
+    blueprintFieldReels: HTMLInputElement;
+    blueprintFieldRows: HTMLInputElement;
+    blueprintSymbolsBody: HTMLElement;
+    blueprintAddSymbolInput: HTMLInputElement;
+    blueprintAddSymbolButton: HTMLButtonElement;
+    blueprintBetsList: HTMLElement;
+    blueprintAddBetInput: HTMLInputElement;
+    blueprintAddBetButton: HTMLButtonElement;
+    blueprintPaylinesList: HTMLElement;
+    blueprintAddPaylineButton: HTMLButtonElement;
+    blueprintPaytableBody: HTMLElement;
+    blueprintAddPaytableSymbol: HTMLSelectElement;
+    blueprintAddPaytableMatchCount: HTMLInputElement;
+    blueprintAddPaytablePayout: HTMLInputElement;
+    blueprintAddPaytableButton: HTMLButtonElement;
+    blueprintModeDefaultRadio: HTMLInputElement;
+    blueprintModeReelStripsRadio: HTMLInputElement;
+    blueprintModeWeightsRadio: HTMLInputElement;
+    blueprintReelStripsSection: HTMLElement;
+    blueprintReelStripsContainer: HTMLElement;
+    blueprintWeightsSection: HTMLElement;
+    blueprintWeightsBody: HTMLElement;
+    blueprintAddWeightSymbol: HTMLSelectElement;
+    blueprintAddWeightValue: HTMLInputElement;
+    blueprintAddWeightButton: HTMLButtonElement;
+    blueprintJsonTextarea: HTMLTextAreaElement;
+    blueprintJsonApplyButton: HTMLButtonElement;
+    blueprintJsonError: HTMLElement;
+    blueprintValidateButton: HTMLButtonElement;
+    blueprintValidationStatus: HTMLElement;
+    blueprintValidationErrorsSection: HTMLElement;
+    blueprintValidationErrors: HTMLElement;
+    blueprintValidationWarningsSection: HTMLElement;
+    blueprintValidationWarnings: HTMLElement;
+    blueprintOutDir: HTMLInputElement;
+    blueprintBuildPreviewButton: HTMLButtonElement;
+    blueprintBuildButton: HTMLButtonElement;
+    blueprintBuildLoading: HTMLElement;
+    blueprintBuildError: HTMLElement;
+    blueprintBuildPreview: HTMLElement;
+    blueprintBuildPreviewLoadError: HTMLElement;
+    blueprintBuildPreviewOk: HTMLElement;
+    blueprintBuildPreviewGame: HTMLElement;
+    blueprintBuildPreviewReelsRows: HTMLElement;
+    blueprintBuildPreviewSymbols: HTMLElement;
+    blueprintBuildPreviewHash: HTMLElement;
+    blueprintBuildPreviewFiles: HTMLElement;
+    blueprintBuildPreviewWarningsSection: HTMLElement;
+    blueprintBuildPreviewWarnings: HTMLElement;
+    blueprintBuildPreviewErrorsSection: HTMLElement;
+    blueprintBuildPreviewErrors: HTMLElement;
+    blueprintBuildResult: HTMLElement;
+    blueprintBuildResultSummary: HTMLElement;
+    blueprintBuildResultWarningsSection: HTMLElement;
+    blueprintBuildResultWarnings: HTMLElement;
+    blueprintBuildResultCreatedSection: HTMLElement;
+    blueprintBuildResultCreated: HTMLElement;
+    blueprintBuildOpenButton: HTMLButtonElement;
 };
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -419,6 +535,86 @@ export function queryElements(): Elements {
         replayListEmpty: requireElement("replay-list-empty"),
         replayListError: requireElement("replay-list-error"),
         replayList: requireElement("replay-list"),
+        homeTabBlueprintEditorButton: requireElement("home-tab-blueprint-editor"),
+        homeBlueprintEditorSection: requireElement("home-blueprint-editor"),
+        blueprintNewButton: requireElement("blueprint-new-button"),
+        blueprintLoadPath: requireElement("blueprint-load-path"),
+        blueprintLoadButton: requireElement("blueprint-load-button"),
+        blueprintSavePath: requireElement("blueprint-save-path"),
+        blueprintSaveButton: requireElement("blueprint-save-button"),
+        blueprintLoadError: requireElement("blueprint-load-error"),
+        blueprintSaveConflict: requireElement("blueprint-save-conflict"),
+        blueprintSaveConflictMessage: requireElement("blueprint-save-conflict-message"),
+        blueprintSaveOverwriteButton: requireElement("blueprint-save-overwrite-button"),
+        blueprintSaveError: requireElement("blueprint-save-error"),
+        blueprintSaveOk: requireElement("blueprint-save-ok"),
+        blueprintModeFormButton: requireElement("blueprint-mode-form-button"),
+        blueprintModeJsonButton: requireElement("blueprint-mode-json-button"),
+        blueprintFormView: requireElement("blueprint-form-view"),
+        blueprintJsonView: requireElement("blueprint-json-view"),
+        blueprintFieldId: requireElement("blueprint-field-id"),
+        blueprintFieldName: requireElement("blueprint-field-name"),
+        blueprintFieldVersion: requireElement("blueprint-field-version"),
+        blueprintFieldDescription: requireElement("blueprint-field-description"),
+        blueprintFieldAuthor: requireElement("blueprint-field-author"),
+        blueprintFieldReels: requireElement("blueprint-field-reels"),
+        blueprintFieldRows: requireElement("blueprint-field-rows"),
+        blueprintSymbolsBody: requireElement("blueprint-symbols-body"),
+        blueprintAddSymbolInput: requireElement("blueprint-add-symbol-input"),
+        blueprintAddSymbolButton: requireElement("blueprint-add-symbol-button"),
+        blueprintBetsList: requireElement("blueprint-bets-list"),
+        blueprintAddBetInput: requireElement("blueprint-add-bet-input"),
+        blueprintAddBetButton: requireElement("blueprint-add-bet-button"),
+        blueprintPaylinesList: requireElement("blueprint-paylines-list"),
+        blueprintAddPaylineButton: requireElement("blueprint-add-payline-button"),
+        blueprintPaytableBody: requireElement("blueprint-paytable-body"),
+        blueprintAddPaytableSymbol: requireElement("blueprint-add-paytable-symbol"),
+        blueprintAddPaytableMatchCount: requireElement("blueprint-add-paytable-matchcount"),
+        blueprintAddPaytablePayout: requireElement("blueprint-add-paytable-payout"),
+        blueprintAddPaytableButton: requireElement("blueprint-add-paytable-button"),
+        blueprintModeDefaultRadio: requireElement("blueprint-mode-default"),
+        blueprintModeReelStripsRadio: requireElement("blueprint-mode-reelstrips"),
+        blueprintModeWeightsRadio: requireElement("blueprint-mode-weights"),
+        blueprintReelStripsSection: requireElement("blueprint-reelstrips-section"),
+        blueprintReelStripsContainer: requireElement("blueprint-reelstrips-container"),
+        blueprintWeightsSection: requireElement("blueprint-weights-section"),
+        blueprintWeightsBody: requireElement("blueprint-weights-body"),
+        blueprintAddWeightSymbol: requireElement("blueprint-add-weight-symbol"),
+        blueprintAddWeightValue: requireElement("blueprint-add-weight-value"),
+        blueprintAddWeightButton: requireElement("blueprint-add-weight-button"),
+        blueprintJsonTextarea: requireElement("blueprint-json-textarea"),
+        blueprintJsonApplyButton: requireElement("blueprint-json-apply-button"),
+        blueprintJsonError: requireElement("blueprint-json-error"),
+        blueprintValidateButton: requireElement("blueprint-validate-button"),
+        blueprintValidationStatus: requireElement("blueprint-validation-status"),
+        blueprintValidationErrorsSection: requireElement("blueprint-validation-errors-section"),
+        blueprintValidationErrors: requireElement("blueprint-validation-errors"),
+        blueprintValidationWarningsSection: requireElement("blueprint-validation-warnings-section"),
+        blueprintValidationWarnings: requireElement("blueprint-validation-warnings"),
+        blueprintOutDir: requireElement("blueprint-out-dir"),
+        blueprintBuildPreviewButton: requireElement("blueprint-build-preview-button"),
+        blueprintBuildButton: requireElement("blueprint-build-button"),
+        blueprintBuildLoading: requireElement("blueprint-build-loading"),
+        blueprintBuildError: requireElement("blueprint-build-error"),
+        blueprintBuildPreview: requireElement("blueprint-build-preview"),
+        blueprintBuildPreviewLoadError: requireElement("blueprint-build-preview-load-error"),
+        blueprintBuildPreviewOk: requireElement("blueprint-build-preview-ok"),
+        blueprintBuildPreviewGame: requireElement("blueprint-build-preview-game"),
+        blueprintBuildPreviewReelsRows: requireElement("blueprint-build-preview-reels-rows"),
+        blueprintBuildPreviewSymbols: requireElement("blueprint-build-preview-symbols"),
+        blueprintBuildPreviewHash: requireElement("blueprint-build-preview-hash"),
+        blueprintBuildPreviewFiles: requireElement("blueprint-build-preview-files"),
+        blueprintBuildPreviewWarningsSection: requireElement("blueprint-build-preview-warnings-section"),
+        blueprintBuildPreviewWarnings: requireElement("blueprint-build-preview-warnings"),
+        blueprintBuildPreviewErrorsSection: requireElement("blueprint-build-preview-errors-section"),
+        blueprintBuildPreviewErrors: requireElement("blueprint-build-preview-errors"),
+        blueprintBuildResult: requireElement("blueprint-build-result"),
+        blueprintBuildResultSummary: requireElement("blueprint-build-result-summary"),
+        blueprintBuildResultWarningsSection: requireElement("blueprint-build-result-warnings-section"),
+        blueprintBuildResultWarnings: requireElement("blueprint-build-result-warnings"),
+        blueprintBuildResultCreatedSection: requireElement("blueprint-build-result-created-section"),
+        blueprintBuildResultCreated: requireElement("blueprint-build-result-created"),
+        blueprintBuildOpenButton: requireElement("blueprint-build-open-button"),
     };
 }
 
@@ -437,11 +633,22 @@ export function showHomeTab(elements: Elements, tab: HomeTab): void {
     elements.homeInitSection.hidden = tab !== "init";
     elements.homeBuildSection.hidden = tab !== "build";
     elements.homeOpenSection.hidden = tab !== "open";
+    elements.homeBlueprintEditorSection.hidden = tab !== "blueprint-editor";
     elements.homeTabRecentButton.setAttribute("aria-current", tab === "recent" ? "page" : "false");
     elements.homeTabCreateButton.setAttribute("aria-current", tab === "create" ? "page" : "false");
     elements.homeTabInitButton.setAttribute("aria-current", tab === "init" ? "page" : "false");
     elements.homeTabBuildButton.setAttribute("aria-current", tab === "build" ? "page" : "false");
     elements.homeTabOpenButton.setAttribute("aria-current", tab === "open" ? "page" : "false");
+    elements.homeTabBlueprintEditorButton.setAttribute("aria-current", tab === "blueprint-editor" ? "page" : "false");
+}
+
+export type BlueprintMode = "form" | "json";
+
+export function showBlueprintMode(elements: Elements, mode: BlueprintMode): void {
+    elements.blueprintFormView.hidden = mode !== "form";
+    elements.blueprintJsonView.hidden = mode !== "json";
+    elements.blueprintModeFormButton.setAttribute("aria-current", mode === "form" ? "page" : "false");
+    elements.blueprintModeJsonButton.setAttribute("aria-current", mode === "json" ? "page" : "false");
 }
 
 export function renderHomeRecentProjects(
@@ -1000,4 +1207,467 @@ export function renderReplayList(
 export function renderReplayListError(elements: Elements, message: string): void {
     elements.replayListError.hidden = false;
     elements.replayListError.textContent = message;
+}
+
+// ---- Blueprint Editor ----
+//
+// The dynamic collection sections below (symbols/bets/paylines/paytable/reelStrips/symbolWeights) all
+// follow the same shape: clear the container, rebuild every row from the current blueprint, and wire
+// each row's controls straight to a blueprintFormOps.ts mutator via the single `mutate` callback (see
+// its own doc comment above) — there's no listener-accumulation risk since these containers are fully
+// torn down and rebuilt on every render. Static, persistent controls (metadata inputs, the JSON
+// textarea, the generation-mode radios) are the opposite: their listeners are wired once by main.ts at
+// startup, and the render functions here only ever reflect state into them, guarded by
+// `document.activeElement` so a re-render never clobbers what the user is mid-typing.
+
+function setInputValueIfNotFocused(input: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+    if (document.activeElement !== input) {
+        input.value = value;
+    }
+}
+
+function appendRowActions(row: HTMLElement, actions: Array<{label: string; onClick: () => void}>): void {
+    const cell = document.createElement("td");
+    for (const action of actions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = action.label;
+        button.addEventListener("click", action.onClick);
+        cell.appendChild(button);
+    }
+    row.appendChild(cell);
+}
+
+function asStringList(value: unknown): string[] {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+export function renderBlueprintMetadata(elements: Elements, blueprint: Record<string, unknown>): void {
+    const manifest =
+        typeof blueprint.manifest === "object" && blueprint.manifest !== null && !Array.isArray(blueprint.manifest)
+            ? (blueprint.manifest as Record<string, unknown>)
+            : {};
+    setInputValueIfNotFocused(elements.blueprintFieldId, typeof manifest.id === "string" ? manifest.id : "");
+    setInputValueIfNotFocused(elements.blueprintFieldName, typeof manifest.name === "string" ? manifest.name : "");
+    setInputValueIfNotFocused(elements.blueprintFieldVersion, typeof manifest.version === "string" ? manifest.version : "");
+    setInputValueIfNotFocused(elements.blueprintFieldDescription, typeof manifest.description === "string" ? manifest.description : "");
+    setInputValueIfNotFocused(elements.blueprintFieldAuthor, typeof manifest.author === "string" ? manifest.author : "");
+    setInputValueIfNotFocused(elements.blueprintFieldReels, typeof blueprint.reels === "number" ? String(blueprint.reels) : "");
+    setInputValueIfNotFocused(elements.blueprintFieldRows, typeof blueprint.rows === "number" ? String(blueprint.rows) : "");
+}
+
+export function renderBlueprintSymbols(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    const symbols = asStringList(blueprint.symbols);
+    const wilds = new Set(asStringList(blueprint.wilds));
+    const scatters = new Set(asStringList(blueprint.scatters));
+
+    elements.blueprintSymbolsBody.textContent = "";
+    symbols.forEach((symbolId, index) => {
+        const row = document.createElement("tr");
+
+        const idCell = document.createElement("td");
+        const idInput = document.createElement("input");
+        idInput.type = "text";
+        idInput.value = symbolId;
+        idInput.addEventListener("change", () => mutate((b) => setSymbolAt(b, index, idInput.value)));
+        idCell.appendChild(idInput);
+        row.appendChild(idCell);
+
+        const wildCell = document.createElement("td");
+        const wildCheckbox = document.createElement("input");
+        wildCheckbox.type = "checkbox";
+        wildCheckbox.checked = wilds.has(symbolId);
+        wildCheckbox.addEventListener("change", () => mutate((b) => toggleWildSymbol(b, symbolId)));
+        wildCell.appendChild(wildCheckbox);
+        row.appendChild(wildCell);
+
+        const scatterCell = document.createElement("td");
+        const scatterCheckbox = document.createElement("input");
+        scatterCheckbox.type = "checkbox";
+        scatterCheckbox.checked = scatters.has(symbolId);
+        scatterCheckbox.addEventListener("change", () => mutate((b) => toggleScatterSymbol(b, symbolId)));
+        scatterCell.appendChild(scatterCheckbox);
+        row.appendChild(scatterCell);
+
+        appendRowActions(row, [
+            {label: "Duplicate", onClick: () => mutate((b) => duplicateSymbolAt(b, index))},
+            {label: "Remove", onClick: () => mutate((b) => removeSymbolAt(b, index))},
+            {label: "↑", onClick: () => mutate((b) => moveSymbolAt(b, index, index - 1))},
+            {label: "↓", onClick: () => mutate((b) => moveSymbolAt(b, index, index + 1))},
+        ]);
+
+        elements.blueprintSymbolsBody.appendChild(row);
+    });
+}
+
+export function renderBlueprintBets(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    const bets = Array.isArray(blueprint.availableBets)
+        ? blueprint.availableBets.filter((item): item is number => typeof item === "number")
+        : [];
+
+    elements.blueprintBetsList.textContent = "";
+    bets.forEach((value, index) => {
+        const item = document.createElement("li");
+        const input = document.createElement("input");
+        input.type = "number";
+        input.step = "any";
+        input.value = String(value);
+        input.addEventListener("change", () => mutate((b) => setBetAt(b, index, input.valueAsNumber)));
+        item.appendChild(input);
+
+        appendRowActions(item, [
+            {label: "Duplicate", onClick: () => mutate((b) => duplicateBetAt(b, index))},
+            {label: "Remove", onClick: () => mutate((b) => removeBetAt(b, index))},
+            {label: "↑", onClick: () => mutate((b) => moveBetAt(b, index, index - 1))},
+            {label: "↓", onClick: () => mutate((b) => moveBetAt(b, index, index + 1))},
+        ]);
+
+        elements.blueprintBetsList.appendChild(item);
+    });
+}
+
+export function renderBlueprintPaylines(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    const paylines = Array.isArray(blueprint.paylines)
+        ? blueprint.paylines.map((line) => (Array.isArray(line) ? line.filter((row): row is number => typeof row === "number") : []))
+        : [];
+
+    elements.blueprintPaylinesList.textContent = "";
+    paylines.forEach((line, lineIndex) => {
+        const row = document.createElement("div");
+        row.className = "payline-row";
+
+        const label = document.createElement("span");
+        label.textContent = `Line ${lineIndex + 1}: `;
+        row.appendChild(label);
+
+        line.forEach((rowValue, reelIndex) => {
+            const input = document.createElement("input");
+            input.type = "number";
+            input.min = "0";
+            input.step = "1";
+            input.value = String(rowValue);
+            input.addEventListener("change", () =>
+                mutate((b) => setPaylineCell(b, lineIndex, reelIndex, input.valueAsNumber)),
+            );
+            row.appendChild(input);
+        });
+
+        appendRowActions(row, [
+            {label: "Duplicate", onClick: () => mutate((b) => duplicatePaylineAt(b, lineIndex))},
+            {label: "Remove", onClick: () => mutate((b) => removePaylineAt(b, lineIndex))},
+            {label: "↑", onClick: () => mutate((b) => movePaylineAt(b, lineIndex, lineIndex - 1))},
+            {label: "↓", onClick: () => mutate((b) => movePaylineAt(b, lineIndex, lineIndex + 1))},
+        ]);
+
+        elements.blueprintPaylinesList.appendChild(row);
+    });
+}
+
+function renderSymbolOptions(select: HTMLSelectElement, symbols: string[]): void {
+    const previousValue = select.value;
+    select.textContent = "";
+    for (const symbolId of symbols) {
+        const option = document.createElement("option");
+        option.value = symbolId;
+        option.textContent = symbolId;
+        select.appendChild(option);
+    }
+    if (symbols.includes(previousValue)) {
+        select.value = previousValue;
+    }
+}
+
+export function renderBlueprintPaytable(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    const symbols = asStringList(blueprint.symbols);
+    renderSymbolOptions(elements.blueprintAddPaytableSymbol, symbols);
+
+    const paytable =
+        typeof blueprint.paytable === "object" && blueprint.paytable !== null && !Array.isArray(blueprint.paytable)
+            ? (blueprint.paytable as Record<string, unknown>)
+            : {};
+    const reels = typeof blueprint.reels === "number" ? blueprint.reels : 10;
+
+    elements.blueprintPaytableBody.textContent = "";
+    for (const [symbolId, payouts] of Object.entries(paytable)) {
+        if (typeof payouts !== "object" || payouts === null || Array.isArray(payouts)) {
+            continue;
+        }
+        for (const [timesKey, multiplier] of Object.entries(payouts as Record<string, unknown>)) {
+            if (typeof multiplier !== "number") {
+                continue;
+            }
+            const matchCount = Number(timesKey);
+            const row = document.createElement("tr");
+
+            const symbolCell = document.createElement("td");
+            symbolCell.textContent = symbolId;
+            row.appendChild(symbolCell);
+
+            const matchCell = document.createElement("td");
+            matchCell.textContent = String(matchCount);
+            row.appendChild(matchCell);
+
+            const payoutCell = document.createElement("td");
+            const payoutInput = document.createElement("input");
+            payoutInput.type = "number";
+            payoutInput.step = "any";
+            payoutInput.value = String(multiplier);
+            payoutInput.addEventListener("change", () =>
+                mutate((b) => setPaytablePayout(b, symbolId, matchCount, payoutInput.valueAsNumber)),
+            );
+            payoutCell.appendChild(payoutInput);
+            row.appendChild(payoutCell);
+
+            appendRowActions(row, [
+                {label: "Duplicate", onClick: () => mutate((b) => duplicatePaytablePayout(b, symbolId, matchCount, reels))},
+                {label: "Remove", onClick: () => mutate((b) => removePaytablePayout(b, symbolId, matchCount))},
+            ]);
+
+            elements.blueprintPaytableBody.appendChild(row);
+        }
+    }
+}
+
+export function renderBlueprintReelStrips(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    const strips = Array.isArray(blueprint.reelStrips) ? blueprint.reelStrips.map((strip) => asStringList(strip)) : [];
+
+    elements.blueprintReelStripsContainer.textContent = "";
+    strips.forEach((strip, reelIndex) => {
+        const fieldset = document.createElement("fieldset");
+        const legend = document.createElement("legend");
+        legend.textContent = `Reel ${reelIndex + 1}`;
+        fieldset.appendChild(legend);
+
+        const list = document.createElement("ul");
+        strip.forEach((symbolId, position) => {
+            const item = document.createElement("li");
+            const input = document.createElement("input");
+            input.type = "text";
+            input.value = symbolId;
+            input.addEventListener("change", () =>
+                mutate((b) => setReelStripSymbolAt(b, reelIndex, position, input.value)),
+            );
+            item.appendChild(input);
+
+            appendRowActions(item, [
+                {label: "Duplicate", onClick: () => mutate((b) => duplicateReelStripSymbolAt(b, reelIndex, position))},
+                {label: "Remove", onClick: () => mutate((b) => removeReelStripSymbolAt(b, reelIndex, position))},
+                {label: "↑", onClick: () => mutate((b) => moveReelStripSymbolAt(b, reelIndex, position, position - 1))},
+                {label: "↓", onClick: () => mutate((b) => moveReelStripSymbolAt(b, reelIndex, position, position + 1))},
+            ]);
+            list.appendChild(item);
+        });
+        fieldset.appendChild(list);
+
+        const addRow = document.createElement("div");
+        addRow.className = "quick-actions";
+        const addInput = document.createElement("input");
+        addInput.type = "text";
+        addInput.placeholder = "Symbol id";
+        const addButton = document.createElement("button");
+        addButton.type = "button";
+        addButton.textContent = "Add symbol";
+        addButton.addEventListener("click", () => mutate((b) => addReelStripSymbol(b, reelIndex, addInput.value)));
+        addRow.appendChild(addInput);
+        addRow.appendChild(addButton);
+        fieldset.appendChild(addRow);
+
+        elements.blueprintReelStripsContainer.appendChild(fieldset);
+    });
+}
+
+export function renderBlueprintWeights(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    renderSymbolOptions(elements.blueprintAddWeightSymbol, asStringList(blueprint.symbols));
+
+    const weights =
+        typeof blueprint.symbolWeights === "object" && blueprint.symbolWeights !== null && !Array.isArray(blueprint.symbolWeights)
+            ? (blueprint.symbolWeights as Record<string, unknown>)
+            : {};
+
+    elements.blueprintWeightsBody.textContent = "";
+    for (const [symbolId, weight] of Object.entries(weights)) {
+        if (typeof weight !== "number") {
+            continue;
+        }
+        const row = document.createElement("tr");
+
+        const symbolCell = document.createElement("td");
+        symbolCell.textContent = symbolId;
+        row.appendChild(symbolCell);
+
+        const weightCell = document.createElement("td");
+        const weightInput = document.createElement("input");
+        weightInput.type = "number";
+        weightInput.min = "1";
+        weightInput.step = "1";
+        weightInput.value = String(weight);
+        weightInput.addEventListener("change", () => mutate((b) => setSymbolWeight(b, symbolId, weightInput.valueAsNumber)));
+        weightCell.appendChild(weightInput);
+        row.appendChild(weightCell);
+
+        appendRowActions(row, [{label: "Remove", onClick: () => mutate((b) => removeSymbolWeight(b, symbolId))}]);
+
+        elements.blueprintWeightsBody.appendChild(row);
+    }
+}
+
+export function renderBlueprintGenerationMode(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    const mode: ReelGenerationMode = getReelGenerationMode(blueprint);
+    elements.blueprintModeDefaultRadio.checked = mode === "default";
+    elements.blueprintModeReelStripsRadio.checked = mode === "reelStrips";
+    elements.blueprintModeWeightsRadio.checked = mode === "symbolWeights";
+    elements.blueprintReelStripsSection.hidden = mode !== "reelStrips";
+    elements.blueprintWeightsSection.hidden = mode !== "symbolWeights";
+
+    if (mode === "reelStrips") {
+        renderBlueprintReelStrips(elements, blueprint, mutate);
+    } else if (mode === "symbolWeights") {
+        renderBlueprintWeights(elements, blueprint, mutate);
+    }
+}
+
+// The one function main.ts calls after every blueprint change — renders every Form section from the
+// current blueprint in one go. Cheap enough to always fully rebuild (these are small collections for a
+// single game's worth of symbols/bets/paylines/paytable entries, not a large dataset).
+export function renderBlueprintForm(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    renderBlueprintMetadata(elements, blueprint);
+    renderBlueprintSymbols(elements, blueprint, mutate);
+    renderBlueprintBets(elements, blueprint, mutate);
+    renderBlueprintPaylines(elements, blueprint, mutate);
+    renderBlueprintPaytable(elements, blueprint, mutate);
+    renderBlueprintGenerationMode(elements, blueprint, mutate);
+}
+
+export function renderBlueprintJson(elements: Elements, jsonText: string, jsonError: string | undefined): void {
+    setInputValueIfNotFocused(elements.blueprintJsonTextarea, jsonText);
+    elements.blueprintJsonError.hidden = jsonError === undefined;
+    elements.blueprintJsonError.textContent = jsonError ?? "";
+}
+
+export function renderBlueprintValidation(elements: Elements, view: BlueprintValidationView): void {
+    elements.blueprintValidationStatus.hidden = view.status === "idle" || view.status === "loading";
+    elements.blueprintValidationErrorsSection.hidden = true;
+    elements.blueprintValidationWarningsSection.hidden = true;
+
+    if (view.status === "idle" || view.status === "loading") {
+        return;
+    }
+    if (view.status === "error") {
+        elements.blueprintValidationStatus.textContent = view.message;
+        return;
+    }
+
+    if (view.status === "invalid") {
+        elements.blueprintValidationStatus.textContent = `Invalid — ${view.errors.length} error(s).`;
+    } else if (view.warnings.length === 0) {
+        elements.blueprintValidationStatus.textContent = "Valid — no issues found.";
+    } else {
+        elements.blueprintValidationStatus.textContent = `Valid, with warnings — ${view.warnings.length} warning(s).`;
+    }
+
+    elements.blueprintValidationWarningsSection.hidden = view.warnings.length === 0;
+    renderIssueList(elements.blueprintValidationWarnings, view.warnings);
+
+    if (view.status === "invalid") {
+        elements.blueprintValidationErrorsSection.hidden = view.errors.length === 0;
+        renderIssueList(elements.blueprintValidationErrors, view.errors);
+    }
+}
+
+export function renderBlueprintLoadResult(elements: Elements, view: BlueprintLoadView): void {
+    elements.blueprintLoadError.hidden = view.status !== "load-error" && view.status !== "error";
+    if (view.status === "load-error" || view.status === "error") {
+        elements.blueprintLoadError.textContent = view.message;
+    }
+}
+
+export function renderBlueprintSaveResult(elements: Elements, view: BlueprintSaveView): void {
+    elements.blueprintSaveConflict.hidden = view.status !== "conflict";
+    elements.blueprintSaveError.hidden = view.status !== "failed" && view.status !== "error";
+    elements.blueprintSaveOk.hidden = view.status !== "ok";
+
+    if (view.status === "conflict") {
+        elements.blueprintSaveConflictMessage.textContent = view.message;
+    } else if (view.status === "failed" || view.status === "error") {
+        elements.blueprintSaveError.textContent = view.message;
+    } else if (view.status === "ok") {
+        elements.blueprintSaveOk.textContent = `Saved to "${view.path}".`;
+    }
+}
+
+export function renderBlueprintBuildPreview(elements: Elements, view: BuildPreviewView): void {
+    elements.blueprintBuildLoading.hidden = view.status !== "loading";
+    elements.blueprintBuildError.hidden = view.status !== "error";
+    elements.blueprintBuildPreview.hidden = view.status === "idle" || view.status === "loading" || view.status === "error";
+
+    if (view.status === "error") {
+        elements.blueprintBuildError.textContent = view.message;
+        return;
+    }
+    if (view.status === "idle" || view.status === "loading") {
+        return;
+    }
+
+    elements.blueprintBuildPreviewLoadError.hidden = view.status !== "load-error";
+    elements.blueprintBuildPreviewOk.hidden = view.status !== "ok";
+    elements.blueprintBuildPreviewErrorsSection.hidden = view.status !== "invalid";
+
+    if (view.status === "load-error") {
+        elements.blueprintBuildPreviewLoadError.textContent = view.message;
+        elements.blueprintBuildPreviewWarningsSection.hidden = true;
+        return;
+    }
+
+    elements.blueprintBuildPreviewWarningsSection.hidden = view.warnings.length === 0;
+    renderIssueList(elements.blueprintBuildPreviewWarnings, view.warnings);
+
+    if (view.status === "invalid") {
+        renderIssueList(elements.blueprintBuildPreviewErrors, view.errors);
+        return;
+    }
+
+    elements.blueprintBuildPreviewGame.textContent = `${view.manifest.name} (id: "${view.manifest.id}", v${view.manifest.version})`;
+    elements.blueprintBuildPreviewReelsRows.textContent = `${view.reels} x ${view.rows}`;
+    elements.blueprintBuildPreviewSymbols.textContent = String(view.symbolsCount);
+    elements.blueprintBuildPreviewHash.textContent = view.blueprintHash;
+    elements.blueprintBuildPreviewFiles.textContent = view.expectedFiles.join(", ");
+}
+
+export function renderBlueprintBuildResult(elements: Elements, view: BuildProjectView): void {
+    elements.blueprintBuildLoading.hidden = view.status !== "loading";
+    elements.blueprintBuildError.hidden = view.status !== "error";
+    elements.blueprintBuildResult.hidden = true;
+    elements.blueprintBuildOpenButton.hidden = true;
+
+    if (view.status === "error") {
+        elements.blueprintBuildError.textContent = view.message;
+        return;
+    }
+    if (view.status === "idle" || view.status === "loading") {
+        return;
+    }
+
+    elements.blueprintBuildResult.hidden = false;
+
+    if (view.status === "load-error" || view.status === "failed") {
+        elements.blueprintBuildResultSummary.textContent = view.message;
+        elements.blueprintBuildResultWarningsSection.hidden = true;
+        elements.blueprintBuildResultCreatedSection.hidden = true;
+        return;
+    }
+    if (view.status === "invalid") {
+        elements.blueprintBuildResultSummary.textContent = `Blueprint is invalid — ${view.errors.length} error(s).`;
+        elements.blueprintBuildResultWarningsSection.hidden = true;
+        elements.blueprintBuildResultCreatedSection.hidden = true;
+        return;
+    }
+
+    elements.blueprintBuildResultSummary.textContent =
+        `"${view.manifest.name}" (id: "${view.manifest.id}", v${view.manifest.version}) built in "${view.projectRoot}"` +
+        (view.unchanged ? " (unchanged — deterministic rebuild)." : ".");
+    elements.blueprintBuildResultWarningsSection.hidden = view.warnings.length === 0;
+    renderIssueList(elements.blueprintBuildResultWarnings, view.warnings);
+    elements.blueprintBuildResultCreatedSection.hidden = view.createdFiles.length === 0;
+    renderFileList(elements.blueprintBuildResultCreated, view.createdFiles);
+    elements.blueprintBuildOpenButton.hidden = false;
 }

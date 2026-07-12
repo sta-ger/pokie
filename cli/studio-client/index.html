@@ -20,6 +20,7 @@
                 <button id="home-tab-init" type="button" class="tab">Initialize Project</button>
                 <button id="home-tab-build" type="button" class="tab">Build from Blueprint</button>
                 <button id="home-tab-open" type="button" class="tab">Open Existing Project</button>
+                <button id="home-tab-blueprint-editor" type="button" class="tab">Blueprint Editor</button>
             </nav>
 
             <section id="home-recent">
@@ -157,6 +158,215 @@
                 </form>
                 <p id="home-open-loading" hidden>Opening…</p>
                 <p id="home-open-error" hidden></p>
+            </section>
+
+            <section id="home-blueprint-editor" hidden>
+                <div class="quick-actions">
+                    <button id="blueprint-new-button" type="button">New Blueprint</button>
+                    <label for="blueprint-load-path">Load from path</label>
+                    <input id="blueprint-load-path" type="text" />
+                    <button id="blueprint-load-button" type="button">Load</button>
+                    <label for="blueprint-save-path">Save to path</label>
+                    <input id="blueprint-save-path" type="text" />
+                    <button id="blueprint-save-button" type="button">Save</button>
+                </div>
+                <p id="blueprint-load-error" hidden></p>
+                <div id="blueprint-save-conflict" hidden>
+                    <p id="blueprint-save-conflict-message"></p>
+                    <button id="blueprint-save-overwrite-button" type="button">Overwrite</button>
+                </div>
+                <p id="blueprint-save-error" hidden></p>
+                <p id="blueprint-save-ok" hidden></p>
+
+                <nav id="blueprint-mode-tabs" class="tabs">
+                    <button id="blueprint-mode-form-button" type="button" class="tab" aria-current="page">Form</button>
+                    <button id="blueprint-mode-json-button" type="button" class="tab">JSON</button>
+                </nav>
+
+                <section id="blueprint-form-view">
+                    <fieldset>
+                        <legend>Metadata</legend>
+                        <label for="blueprint-field-id">Game id</label>
+                        <input id="blueprint-field-id" type="text" />
+                        <label for="blueprint-field-name">Game name</label>
+                        <input id="blueprint-field-name" type="text" />
+                        <label for="blueprint-field-version">Version</label>
+                        <input id="blueprint-field-version" type="text" />
+                        <label for="blueprint-field-description">Description (optional)</label>
+                        <input id="blueprint-field-description" type="text" />
+                        <label for="blueprint-field-author">Author (optional)</label>
+                        <input id="blueprint-field-author" type="text" />
+                        <label for="blueprint-field-reels">Reels</label>
+                        <input id="blueprint-field-reels" type="number" min="1" step="1" />
+                        <label for="blueprint-field-rows">Rows</label>
+                        <input id="blueprint-field-rows" type="number" min="1" step="1" />
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Symbols</legend>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Symbol id</th>
+                                    <th>Wild</th>
+                                    <th>Scatter</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="blueprint-symbols-body"></tbody>
+                        </table>
+                        <div class="quick-actions">
+                            <input id="blueprint-add-symbol-input" type="text" placeholder="New symbol id" />
+                            <button id="blueprint-add-symbol-button" type="button">Add symbol</button>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Available bets</legend>
+                        <ul id="blueprint-bets-list"></ul>
+                        <div class="quick-actions">
+                            <input id="blueprint-add-bet-input" type="number" step="any" placeholder="New bet amount" />
+                            <button id="blueprint-add-bet-button" type="button">Add bet</button>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Paylines</legend>
+                        <p class="notice">Optional — omit to use the engine's default (one horizontal line per row).</p>
+                        <div id="blueprint-paylines-list"></div>
+                        <div class="quick-actions">
+                            <button id="blueprint-add-payline-button" type="button">Add payline</button>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Paytable</legend>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Match count</th>
+                                    <th>Payout (x bet)</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="blueprint-paytable-body"></tbody>
+                        </table>
+                        <div class="quick-actions">
+                            <select id="blueprint-add-paytable-symbol"></select>
+                            <input id="blueprint-add-paytable-matchcount" type="number" min="2" step="1" placeholder="Match count" />
+                            <input id="blueprint-add-paytable-payout" type="number" step="any" placeholder="Payout" />
+                            <button id="blueprint-add-paytable-button" type="button">Add payout</button>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Reel generation</legend>
+                        <p class="notice">Optional — omit both to use the engine's default weighted reel generator.</p>
+                        <div id="blueprint-generation-mode" role="radiogroup">
+                            <label><input type="radio" name="blueprint-generation-mode" id="blueprint-mode-default" value="default" /> Default</label>
+                            <label><input type="radio" name="blueprint-generation-mode" id="blueprint-mode-reelstrips" value="reelStrips" /> Reel strips</label>
+                            <label><input type="radio" name="blueprint-generation-mode" id="blueprint-mode-weights" value="symbolWeights" /> Symbol weights</label>
+                        </div>
+
+                        <div id="blueprint-reelstrips-section" hidden>
+                            <div id="blueprint-reelstrips-container"></div>
+                        </div>
+
+                        <div id="blueprint-weights-section" hidden>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Symbol</th>
+                                        <th>Weight</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="blueprint-weights-body"></tbody>
+                            </table>
+                            <div class="quick-actions">
+                                <select id="blueprint-add-weight-symbol"></select>
+                                <input id="blueprint-add-weight-value" type="number" min="1" step="1" placeholder="Weight" />
+                                <button id="blueprint-add-weight-button" type="button">Add weight</button>
+                            </div>
+                        </div>
+                    </fieldset>
+                </section>
+
+                <section id="blueprint-json-view" hidden>
+                    <textarea id="blueprint-json-textarea" rows="24" spellcheck="false"></textarea>
+                    <div class="quick-actions">
+                        <button id="blueprint-json-apply-button" type="button">Apply JSON</button>
+                    </div>
+                    <p id="blueprint-json-error" hidden></p>
+                </section>
+
+                <section id="blueprint-validation">
+                    <div class="quick-actions">
+                        <button id="blueprint-validate-button" type="button">Validate</button>
+                    </div>
+                    <p id="blueprint-validation-status" hidden></p>
+                    <div id="blueprint-validation-errors-section" hidden>
+                        <h4>Errors</h4>
+                        <ul id="blueprint-validation-errors"></ul>
+                    </div>
+                    <div id="blueprint-validation-warnings-section" hidden>
+                        <h4>Warnings</h4>
+                        <ul id="blueprint-validation-warnings"></ul>
+                    </div>
+                </section>
+
+                <section id="blueprint-build">
+                    <div class="quick-actions">
+                        <label for="blueprint-out-dir">Output directory (optional)</label>
+                        <input id="blueprint-out-dir" type="text" />
+                        <button id="blueprint-build-preview-button" type="button">Build Preview</button>
+                        <button id="blueprint-build-button" type="button">Build Package</button>
+                    </div>
+                    <p id="blueprint-build-loading" hidden>Working…</p>
+                    <p id="blueprint-build-error" hidden></p>
+
+                    <div id="blueprint-build-preview" hidden>
+                        <h3>Preview</h3>
+                        <p id="blueprint-build-preview-load-error" hidden></p>
+                        <div id="blueprint-build-preview-ok" hidden>
+                            <dl class="project-info">
+                                <dt>Game</dt>
+                                <dd id="blueprint-build-preview-game"></dd>
+                                <dt>Reels x rows</dt>
+                                <dd id="blueprint-build-preview-reels-rows"></dd>
+                                <dt>Symbols</dt>
+                                <dd id="blueprint-build-preview-symbols"></dd>
+                                <dt>Blueprint hash</dt>
+                                <dd id="blueprint-build-preview-hash"></dd>
+                                <dt>Would generate</dt>
+                                <dd id="blueprint-build-preview-files"></dd>
+                            </dl>
+                        </div>
+                        <div id="blueprint-build-preview-warnings-section" hidden>
+                            <h4>Warnings</h4>
+                            <ul id="blueprint-build-preview-warnings"></ul>
+                        </div>
+                        <div id="blueprint-build-preview-errors-section" hidden>
+                            <h4>Errors</h4>
+                            <ul id="blueprint-build-preview-errors"></ul>
+                        </div>
+                    </div>
+
+                    <div id="blueprint-build-result" hidden>
+                        <h3>Build result</h3>
+                        <p id="blueprint-build-result-summary"></p>
+                        <div id="blueprint-build-result-warnings-section" hidden>
+                            <h4>Warnings</h4>
+                            <ul id="blueprint-build-result-warnings"></ul>
+                        </div>
+                        <div id="blueprint-build-result-created-section" hidden>
+                            <h4>Created files</h4>
+                            <ul id="blueprint-build-result-created"></ul>
+                        </div>
+                        <button id="blueprint-build-open-button" type="button" hidden>Open in Studio</button>
+                    </div>
+                </section>
             </section>
 
             <section id="documentation">

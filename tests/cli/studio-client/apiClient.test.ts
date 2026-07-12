@@ -1,4 +1,5 @@
 import {
+    buildBlueprint,
     buildProject,
     buildReplayDownloadUrl,
     buildReportDownloadUrl,
@@ -17,10 +18,14 @@ import {
     listReplays,
     listReports,
     listRecentProjects,
+    loadBlueprint,
     openProject,
+    previewBlueprintBuild,
     previewBuild,
     runReplay,
+    saveBlueprint,
     startSimulation,
+    validateBlueprint,
     validateProject,
 } from "../../../cli/studio-client/apiClient.js";
 
@@ -241,6 +246,163 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprintPath" is required.'}}));
 
             await expect(buildProject(fetchImpl, {blueprintPath: ""})).rejects.toThrow('"blueprintPath" is required.');
+        });
+    });
+
+    describe("validateBlueprint", () => {
+        it("POSTs the blueprint and returns the validation result", async () => {
+            const body = {status: "ok", warnings: []};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await validateBlueprint(fetchImpl, {manifest: {id: "a"}});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/validate",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({blueprint: {manifest: {id: "a"}}}),
+                    },
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprint" is required.'}}));
+
+            await expect(validateBlueprint(fetchImpl, undefined)).rejects.toThrow('"blueprint" is required.');
+        });
+    });
+
+    describe("loadBlueprint", () => {
+        it("POSTs the path and returns the loaded blueprint", async () => {
+            const body = {status: "ok", path: "/a/blueprint.json", blueprint: {manifest: {id: "a"}}};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await loadBlueprint(fetchImpl, "./blueprint.json");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/load",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({path: "./blueprint.json"})},
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns a load-error result rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "load-error", error: "not found"}}));
+
+            expect(await loadBlueprint(fetchImpl, "./missing.json")).toEqual({status: "load-error", error: "not found"});
+        });
+    });
+
+    describe("saveBlueprint", () => {
+        it("POSTs the path/blueprint/overwrite and returns the save result", async () => {
+            const body = {status: "ok", path: "/a/blueprint.json"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
+
+            const result = await saveBlueprint(fetchImpl, "./blueprint.json", {manifest: {id: "a"}}, false);
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/save",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({path: "./blueprint.json", blueprint: {manifest: {id: "a"}}, overwrite: false}),
+                    },
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns a typed conflict (not a thrown error) on 409", async () => {
+            const body = {status: "conflict", path: "/a/blueprint.json", error: "already exists"};
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body}));
+
+            const result = await saveBlueprint(fetchImpl, "./blueprint.json", {manifest: {id: "a"}}, false);
+
+            expect(result).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"path" is required.'}}));
+
+            await expect(saveBlueprint(fetchImpl, "", {}, false)).rejects.toThrow('"path" is required.');
+        });
+    });
+
+    describe("previewBlueprintBuild", () => {
+        it("POSTs the blueprint/outDir/sourcePath and returns the preview", async () => {
+            const body = {
+                status: "ok",
+                warnings: [],
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                reels: 5,
+                rows: 3,
+                symbolsCount: 7,
+                blueprintHash: "sha256:abc",
+                expectedFiles: ["package.json"],
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await previewBlueprintBuild(fetchImpl, {manifest: {id: "crazy-fruits"}}, "./out", "blueprint.json");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/build-preview",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({blueprint: {manifest: {id: "crazy-fruits"}}, outDir: "./out", sourcePath: "blueprint.json"}),
+                    },
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns an invalid result rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "invalid", errors: [], warnings: []}}));
+
+            expect(await previewBlueprintBuild(fetchImpl, {})).toEqual({status: "invalid", errors: [], warnings: []});
+        });
+    });
+
+    describe("buildBlueprint", () => {
+        it("POSTs the blueprint/outDir/sourcePath and returns the build result", async () => {
+            const body = {
+                status: "ok",
+                projectRoot: "/out",
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                createdFiles: ["package.json"],
+                buildInfo: {schemaVersion: 1, generatedBy: "pokie build", pokieVersion: "1.0.0", generatedAt: "2026-01-01T00:00:00.000Z", blueprintHash: "sha256:abc", game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}},
+                unchanged: false,
+                warnings: [],
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
+
+            const result = await buildBlueprint(fetchImpl, {manifest: {id: "crazy-fruits"}}, "./out");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/build",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({blueprint: {manifest: {id: "crazy-fruits"}}, outDir: "./out"}),
+                    },
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns an invalid/error result rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "error", error: "conflict"}}));
+
+            expect(await buildBlueprint(fetchImpl, {})).toEqual({status: "error", error: "conflict"});
         });
     });
 

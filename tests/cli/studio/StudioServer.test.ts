@@ -14,6 +14,7 @@ import os from "os";
 import path from "path";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
+import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
@@ -248,20 +249,22 @@ describe("StudioServer", () => {
         inspect = jest.fn();
         validate = jest.fn();
 
+        const homeService = new StudioHomeService(
+            "1.0.0",
+            undefined,
+            creator,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            loadGame,
+        );
         server = new StudioServer({
             host: "127.0.0.1",
             port: 0,
             studioRoot,
-            homeService: new StudioHomeService(
-                "1.0.0",
-                undefined,
-                creator,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                loadGame,
-            ),
+            homeService,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
             loadGame,
             gamePackageInspector: {inspect},
             gamePackageValidator: {validate},
@@ -447,11 +450,13 @@ describe("StudioServer", () => {
             writeStudioAssets(homeStudioRoot);
             workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-home-work-"));
 
+            const homeService = new StudioHomeService("1.0.0");
             homeServer = new StudioServer({
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: homeStudioRoot,
-                homeService: new StudioHomeService("1.0.0"),
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", homeStudioRoot, homeService),
             });
             const address = await homeServer.start();
             homeBaseUrl = `http://${address.host}:${address.port}`;
@@ -592,6 +597,236 @@ describe("StudioServer", () => {
 
             const context = await get(`${homeBaseUrl}/api/context`);
             expect(context.body).toEqual({mode: "project", projectRoot});
+        });
+
+        describe("POST /api/home/blueprints/validate", () => {
+            it("rejects a body with no blueprint field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"blueprint" is required.'});
+            });
+
+            it("returns ok with no warnings for a clean blueprint", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint()});
+
+                expect(status).toBe(200);
+                expect(body).toEqual({status: "ok", warnings: []});
+            });
+
+            it("returns ok with warnings for a valid-but-unusual blueprint", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {
+                    blueprint: buildBlueprint({reels: 15}),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "ok"});
+                expect((body as {warnings: Array<{code: string}>}).warnings[0].code).toBe("blueprint-reels-suspicious");
+            });
+
+            it("returns invalid with structural errors for a broken blueprint", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {
+                    blueprint: buildBlueprint({reels: 0}),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "invalid"});
+                expect((body as {errors: Array<{code: string}>}).errors[0].code).toBe("blueprint-reels-invalid");
+            });
+        });
+
+        describe("POST /api/home/blueprints/load", () => {
+            it("rejects a body with no path field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/load`, {});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"path" is required.'});
+            });
+
+            it("loads and returns the parsed blueprint", async () => {
+                const blueprintPath = writeBlueprintFile(buildBlueprint());
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/load`, {path: blueprintPath});
+
+                expect(status).toBe(200);
+                expect(body).toEqual({status: "ok", path: blueprintPath, blueprint: buildBlueprint()});
+            });
+
+            it("returns a safe load-error for a missing file", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/load`, {
+                    path: path.join(workDir, "does-not-exist.json"),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "load-error"});
+                expect(JSON.stringify(body)).not.toContain("\\n    at ");
+            });
+
+            it("returns a safe load-error for a path inside Studio's own internal directory", async () => {
+                const insidePath = path.join(homeStudioRoot, "index.html");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/load`, {path: insidePath});
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "load-error"});
+                expect((body as {error: string}).error).toContain("internal directory");
+            });
+        });
+
+        describe("POST /api/home/blueprints/save", () => {
+            it("rejects a body with no path field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/save`, {blueprint: buildBlueprint()});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"path" is required.'});
+            });
+
+            it("rejects a body with no blueprint field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/save`, {
+                    path: path.join(workDir, "out.json"),
+                });
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"blueprint" is required.'});
+            });
+
+            it("writes a new file with a stable field order and a trailing newline", async () => {
+                const filePath = path.join(workDir, "out.json");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/save`, {
+                    path: filePath,
+                    blueprint: buildBlueprint(),
+                });
+
+                expect(status).toBe(201);
+                expect(body).toEqual({status: "ok", path: filePath});
+                const written = fs.readFileSync(filePath, "utf-8");
+                expect(written.endsWith("\n")).toBe(true);
+                expect(Object.keys(JSON.parse(written))).toEqual(["manifest", "reels", "rows", "symbols", "paytable"]);
+            });
+
+            it("returns 409 conflict and writes nothing when the file already exists and overwrite isn't set", async () => {
+                const filePath = path.join(workDir, "out.json");
+                fs.writeFileSync(filePath, "existing content");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/save`, {
+                    path: filePath,
+                    blueprint: buildBlueprint(),
+                });
+
+                expect(status).toBe(409);
+                expect(body).toMatchObject({status: "conflict", path: filePath});
+                expect(fs.readFileSync(filePath, "utf-8")).toBe("existing content");
+            });
+
+            it("overwrites the file once overwrite:true is sent, and re-saving unchanged content is byte-identical", async () => {
+                const filePath = path.join(workDir, "out.json");
+
+                const first = await post(`${homeBaseUrl}/api/home/blueprints/save`, {path: filePath, blueprint: buildBlueprint()});
+                expect(first.status).toBe(201);
+                const firstBytes = fs.readFileSync(filePath);
+
+                const second = await post(`${homeBaseUrl}/api/home/blueprints/save`, {
+                    path: filePath,
+                    blueprint: buildBlueprint(),
+                    overwrite: true,
+                });
+
+                expect(second.status).toBe(201);
+                expect(fs.readFileSync(filePath).equals(firstBytes)).toBe(true);
+            });
+        });
+
+        describe("POST /api/home/blueprints/build-preview", () => {
+            it("returns an ok preview without writing anything", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/build-preview`, {
+                    blueprint: buildBlueprint(),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "ok", manifest: {id: "crazy-fruits"}, reels: 3, rows: 3, symbolsCount: 2});
+                expect(fs.readdirSync(workDir)).toEqual([]);
+            });
+
+            it("returns invalid for a structurally broken blueprint", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/build-preview`, {
+                    blueprint: buildBlueprint({reels: 0}),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "invalid"});
+            });
+        });
+
+        describe("POST /api/home/blueprints/build", () => {
+            it("builds a real package via the real GamePackageGenerator and records it as recent", async () => {
+                const outDir = path.join(workDir, "out");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/build`, {
+                    blueprint: buildBlueprint(),
+                    outDir,
+                });
+
+                expect(status).toBe(201);
+                expect(body).toMatchObject({status: "ok", manifest: {id: "crazy-fruits"}, unchanged: false});
+                expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+
+                const recent = await get(`${homeBaseUrl}/api/home/recent-projects`);
+                expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(outDir);
+            });
+
+            it("rejects building an invalid blueprint and writes nothing", async () => {
+                const outDir = path.join(workDir, "out");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/build`, {
+                    blueprint: buildBlueprint({reels: 0}),
+                    outDir,
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "invalid"});
+                expect(fs.existsSync(outDir)).toBe(false);
+            });
+
+            it("safely rebuilds the same outDir twice (unchanged: true, no conflict)", async () => {
+                const outDir = path.join(workDir, "out");
+
+                const first = await post(`${homeBaseUrl}/api/home/blueprints/build`, {blueprint: buildBlueprint(), outDir});
+                const second = await post(`${homeBaseUrl}/api/home/blueprints/build`, {blueprint: buildBlueprint(), outDir});
+
+                expect(first.status).toBe(201);
+                expect(second.status).toBe(201);
+                expect(second.body).toMatchObject({status: "ok", unchanged: true});
+            });
+
+            it("refuses to build over a directory containing files pokie build did not generate", async () => {
+                const outDir = path.join(workDir, "out");
+                fs.mkdirSync(outDir, {recursive: true});
+                fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify({name: "someone-elses-project"}));
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/build`, {
+                    blueprint: buildBlueprint(),
+                    outDir,
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "error"});
+                expect((body as {error: string}).error).toContain("did not generate: package.json");
+            });
+
+            it("opens a just-built project via the Home Open action, transitioning Studio's context in place (Home -> Project)", async () => {
+                const outDir = path.join(workDir, "out");
+                const built = await post(`${homeBaseUrl}/api/home/blueprints/build`, {blueprint: buildBlueprint(), outDir});
+                const projectRoot = (built.body as {projectRoot: string}).projectRoot;
+
+                const opened = await post(`${homeBaseUrl}/api/home/projects/open`, {projectRoot});
+
+                expect(opened.status).toBe(200);
+                expect((opened.body as {context: unknown}).context).toEqual({mode: "project", projectRoot});
+
+                const context = await get(`${homeBaseUrl}/api/context`);
+                expect(context.body).toEqual({mode: "project", projectRoot});
+            });
         });
     });
 
@@ -851,6 +1086,7 @@ describe("StudioServer", () => {
                     undefined,
                     slowLoadGame,
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: slowLoadGame,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
             });
@@ -887,6 +1123,7 @@ describe("StudioServer", () => {
                     undefined,
                     failingLoadGame,
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: failingLoadGame,
                 initialContext: {mode: "project", projectRoot: "/tmp/broken-game"},
             });
@@ -935,6 +1172,7 @@ describe("StudioServer", () => {
                     undefined,
                     loadGame,
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", fixtureStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame,
                 gamePackageInspector: new GamePackageInspector(),
                 initialContext: {mode: "project", projectRoot},
@@ -1220,6 +1458,7 @@ describe("StudioServer", () => {
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 simulationService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -1269,6 +1508,7 @@ describe("StudioServer", () => {
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 simulationService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -1523,6 +1763,7 @@ describe("StudioServer", () => {
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", reportsStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 simulationService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -1917,6 +2158,7 @@ describe("StudioServer", () => {
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 replayService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -1966,6 +2208,7 @@ describe("StudioServer", () => {
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 replayService,
                 initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
@@ -2021,6 +2264,7 @@ describe("StudioServer", () => {
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
                 gamePackageInspector: {inspect: inspectStub},
                 gamePackageValidator: {validate: validateStub},
@@ -2069,6 +2313,7 @@ describe("StudioServer", () => {
                 port: 0,
                 studioRoot: replayStudioRoot,
                 homeService: new StudioHomeService("1.0.0", undefined, createStubCreator(scaffoldResult)),
+                blueprintService: new StudioBlueprintService("1.0.0", replayStudioRoot, new StudioHomeService("1.0.0")),
                 initialContext: {mode: "project", projectRoot: fixtureRoot},
                 replayService: new StudioReplayExecutionService(new InMemoryStudioReplayRepository()),
             });

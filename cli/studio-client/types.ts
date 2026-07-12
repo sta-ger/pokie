@@ -110,6 +110,24 @@ export type StudioBuildResult =
           warnings: ValidationIssue[];
       };
 
+// POST /api/home/blueprints/validate's own DTO — see cli/studio/blueprint/StudioBlueprintValidationView.ts's
+// own doc comment. Never the result of anything being read/written on disk.
+export type StudioBlueprintValidationView =
+    | {status: "ok"; warnings: ValidationIssue[]}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]};
+
+// POST /api/home/blueprints/load's own DTO — see cli/studio/blueprint/StudioBlueprintLoadView.ts's own
+// doc comment. `blueprint` is the raw parsed JSON value (unknown), not yet validated.
+export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: unknown} | {status: "load-error"; error: string};
+
+// POST /api/home/blueprints/save's own DTO — see cli/studio/blueprint/StudioBlueprintSaveView.ts's own
+// doc comment. "conflict" means the file already exists and the request needs `overwrite: true` to
+// replace it.
+export type StudioBlueprintSaveView =
+    | {status: "ok"; path: string}
+    | {status: "conflict"; path: string; error: string}
+    | {status: "error"; error: string};
+
 export type SimulationReportBreakdownComponent = {
     rounds: number;
     totalBet: number;

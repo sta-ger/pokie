@@ -1,4 +1,5 @@
 import {
+    buildBlueprint,
     buildProject,
     buildReportDownloadUrl,
     cancelReplay,
@@ -16,17 +17,42 @@ import {
     listRecentProjects,
     listReplays,
     listReports,
+    loadBlueprint,
     openProject,
+    previewBlueprintBuild,
     previewBuild,
     runReplay,
+    saveBlueprint,
     startSimulation,
+    validateBlueprint,
     validateProject,
 } from "./apiClient.js";
+import {applyJsonText, BlueprintEditorState, createEmptyBlueprintEditorState, loadBlueprintEditorState, withFieldUpdate} from "./blueprintEditorState.js";
 import {
+    addBet,
+    addPayline,
+    addSymbol,
+    resizePaylinesToReelCount,
+    resizeReelStripsToReelCount,
+    setPaytablePayout,
+    setReelGenerationMode,
+    setSymbolWeight,
+    type ReelGenerationMode,
+} from "./blueprintFormOps.js";
+import {
+    BlueprintMode,
+    BlueprintMutate,
     Elements,
     HomeTab,
     ProjectTab,
     queryElements,
+    renderBlueprintBuildPreview,
+    renderBlueprintBuildResult,
+    renderBlueprintForm,
+    renderBlueprintJson,
+    renderBlueprintLoadResult,
+    renderBlueprintSaveResult,
+    renderBlueprintValidation,
     renderBuildPreview,
     renderBuildResult,
     renderCreateResult,
@@ -48,10 +74,12 @@ import {
     renderSimulationReport,
     renderValidationSummary,
     setStatus,
+    showBlueprintMode,
     showHomeTab,
     showProjectTab,
     showView,
 } from "./dom.js";
+import {describeLoadResult, describeSaveResult, describeValidation} from "./interpretBlueprintEditor.js";
 import {describeBuildPreview, describeBuildResult, describeRecentProjectsList, describeScaffoldResult} from "./interpretHome.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
 import {describeReplayList, describeReplayProgress, describeReplayResult, isReplayActive, isReplayTerminal} from "./interpretReplay.js";
@@ -66,6 +94,10 @@ import type {
     StudioReplayJobView,
     StudioSimulationJobView,
 } from "./types.js";
+
+function toRecordCopy(value: unknown): Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : {};
+}
 
 // How long/often to re-check GET /api/project/context while it reports "loading" — only ever
 // happens right after Studio starts directly into Project mode (`pokie .`/`pokie <path>`), since
@@ -109,6 +141,56 @@ async function main(): Promise<void> {
     let lastCreatedProjectRoot: string | undefined;
     let lastInitializedProjectRoot: string | undefined;
     let lastBuiltProjectRoot: string | undefined;
+
+    // The Blueprint Editor's own state — see blueprintEditorState.ts's own doc comment for how
+    // `blueprintState` stays the one source of truth Form edits and JSON edits both go through.
+    // `blueprintPath` is the last path successfully loaded from or saved to (prefilled into both the
+    // Load/Save path inputs and passed as Build/Build Preview's `sourcePath`); once a save to a given
+    // path succeeds (or that path was just loaded from), `blueprintOverwriteConfirmedForPath` remembers
+    // it so a normal edit-then-resave loop doesn't need to re-confirm the overwrite every time — only a
+    // *different* path, or a path this session has never successfully written to, needs confirmation.
+    let blueprintState: BlueprintEditorState = createEmptyBlueprintEditorState();
+    let blueprintMode: BlueprintMode = "form";
+    let blueprintPath: string | undefined;
+    let blueprintOverwriteConfirmedForPath: string | undefined;
+    let lastBuiltBlueprintProjectRoot: string | undefined;
+
+    const renderBlueprintEditor = (): void => {
+        renderBlueprintForm(elements, blueprintState.blueprint, blueprintMutate);
+        renderBlueprintJson(elements, blueprintState.jsonText, blueprintState.jsonError);
+    };
+
+    const blueprintMutate: BlueprintMutate = (mutate) => {
+        blueprintState = withFieldUpdate(blueprintState, mutate);
+        renderBlueprintEditor();
+    };
+
+    const setManifestField = (field: "id" | "name" | "version" | "description" | "author", value: string): void => {
+        blueprintMutate((b) => {
+            const manifest = toRecordCopy(b.manifest);
+            if (value.length === 0 && field !== "id" && field !== "name" && field !== "version") {
+                Reflect.deleteProperty(manifest, field);
+            } else {
+                manifest[field] = value;
+            }
+            b.manifest = manifest;
+        });
+    };
+
+    const runSaveBlueprint = (overwrite: boolean): void => {
+        const path = elements.blueprintSavePath.value;
+        saveBlueprint(fetchImpl, path, blueprintState.blueprint, overwrite)
+            .then((result) => {
+                renderBlueprintSaveResult(elements, describeSaveResult(result));
+                if (result.status === "ok") {
+                    blueprintPath = result.path;
+                    blueprintOverwriteConfirmedForPath = result.path;
+                }
+            })
+            .catch((error: unknown) => {
+                renderBlueprintSaveResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
+    };
 
     // Inspect is safe to run whenever the dashboard shows "loaded" or "error" — it only ever reads
     // package.json/build-info.json, independent of whether the entry module itself loaded — so it's
@@ -439,6 +521,9 @@ async function main(): Promise<void> {
             });
     };
 
+    renderBlueprintEditor();
+    showBlueprintMode(elements, blueprintMode);
+
     try {
         setStatus(elements.status, "Connecting…");
         const context = await getContext(fetchImpl);
@@ -537,6 +622,182 @@ async function main(): Promise<void> {
         }
         openAndNavigate(lastBuiltProjectRoot).catch((error: unknown) => {
             renderBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+        });
+    });
+
+    elements.homeTabBlueprintEditorButton.addEventListener("click", () => {
+        activeHomeTab = "blueprint-editor";
+        showHomeTab(elements, "blueprint-editor");
+        renderBlueprintEditor();
+    });
+
+    elements.blueprintModeFormButton.addEventListener("click", () => {
+        blueprintMode = "form";
+        showBlueprintMode(elements, blueprintMode);
+    });
+
+    elements.blueprintModeJsonButton.addEventListener("click", () => {
+        blueprintMode = "json";
+        showBlueprintMode(elements, blueprintMode);
+    });
+
+    elements.blueprintNewButton.addEventListener("click", () => {
+        blueprintState = createEmptyBlueprintEditorState();
+        blueprintPath = undefined;
+        blueprintOverwriteConfirmedForPath = undefined;
+        elements.blueprintLoadPath.value = "";
+        elements.blueprintSavePath.value = "";
+        renderBlueprintLoadResult(elements, {status: "idle"});
+        renderBlueprintSaveResult(elements, {status: "idle"});
+        renderBlueprintValidation(elements, {status: "idle"});
+        renderBlueprintBuildPreview(elements, {status: "idle"});
+        renderBlueprintBuildResult(elements, {status: "idle"});
+        renderBlueprintEditor();
+    });
+
+    elements.blueprintLoadButton.addEventListener("click", () => {
+        loadBlueprint(fetchImpl, elements.blueprintLoadPath.value)
+            .then((result) => {
+                renderBlueprintLoadResult(elements, describeLoadResult(result));
+                if (result.status === "ok") {
+                    blueprintState = loadBlueprintEditorState(result.blueprint);
+                    blueprintPath = result.path;
+                    blueprintOverwriteConfirmedForPath = result.path;
+                    elements.blueprintSavePath.value = result.path;
+                    renderBlueprintEditor();
+                }
+            })
+            .catch((error: unknown) => {
+                renderBlueprintLoadResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
+    });
+
+    elements.blueprintSaveButton.addEventListener("click", () => {
+        runSaveBlueprint(blueprintOverwriteConfirmedForPath === elements.blueprintSavePath.value);
+    });
+
+    elements.blueprintSaveOverwriteButton.addEventListener("click", () => {
+        runSaveBlueprint(true);
+    });
+
+    elements.blueprintJsonApplyButton.addEventListener("click", () => {
+        blueprintState = applyJsonText(blueprintState, elements.blueprintJsonTextarea.value);
+        renderBlueprintEditor();
+    });
+
+    elements.blueprintFieldId.addEventListener("change", () => setManifestField("id", elements.blueprintFieldId.value));
+    elements.blueprintFieldName.addEventListener("change", () => setManifestField("name", elements.blueprintFieldName.value));
+    elements.blueprintFieldVersion.addEventListener("change", () => setManifestField("version", elements.blueprintFieldVersion.value));
+    elements.blueprintFieldDescription.addEventListener("change", () =>
+        setManifestField("description", elements.blueprintFieldDescription.value),
+    );
+    elements.blueprintFieldAuthor.addEventListener("change", () => setManifestField("author", elements.blueprintFieldAuthor.value));
+
+    elements.blueprintFieldReels.addEventListener("change", () => {
+        blueprintMutate((b) => {
+            b.reels = elements.blueprintFieldReels.valueAsNumber;
+            resizePaylinesToReelCount(b);
+            resizeReelStripsToReelCount(b);
+        });
+    });
+
+    elements.blueprintFieldRows.addEventListener("change", () => {
+        blueprintMutate((b) => {
+            b.rows = elements.blueprintFieldRows.valueAsNumber;
+        });
+    });
+
+    elements.blueprintAddSymbolButton.addEventListener("click", () => {
+        const id = elements.blueprintAddSymbolInput.value.trim();
+        if (id.length === 0) {
+            return;
+        }
+        blueprintMutate((b) => addSymbol(b, id));
+        elements.blueprintAddSymbolInput.value = "";
+    });
+
+    elements.blueprintAddBetButton.addEventListener("click", () => {
+        const value = elements.blueprintAddBetInput.valueAsNumber;
+        if (Number.isNaN(value)) {
+            return;
+        }
+        blueprintMutate((b) => addBet(b, value));
+        elements.blueprintAddBetInput.value = "";
+    });
+
+    elements.blueprintAddPaylineButton.addEventListener("click", () => {
+        blueprintMutate((b) => addPayline(b));
+    });
+
+    elements.blueprintAddPaytableButton.addEventListener("click", () => {
+        const symbolId = elements.blueprintAddPaytableSymbol.value;
+        const matchCount = elements.blueprintAddPaytableMatchCount.valueAsNumber;
+        const payout = elements.blueprintAddPaytablePayout.valueAsNumber;
+        if (symbolId.length === 0 || Number.isNaN(matchCount) || Number.isNaN(payout)) {
+            return;
+        }
+        blueprintMutate((b) => setPaytablePayout(b, symbolId, matchCount, payout));
+    });
+
+    elements.blueprintAddWeightButton.addEventListener("click", () => {
+        const symbolId = elements.blueprintAddWeightSymbol.value;
+        const weight = elements.blueprintAddWeightValue.valueAsNumber;
+        if (symbolId.length === 0 || Number.isNaN(weight)) {
+            return;
+        }
+        blueprintMutate((b) => setSymbolWeight(b, symbolId, weight));
+    });
+
+    const setBlueprintGenerationMode = (mode: ReelGenerationMode): void => {
+        blueprintMutate((b) => setReelGenerationMode(b, mode));
+    };
+    elements.blueprintModeDefaultRadio.addEventListener("change", () => setBlueprintGenerationMode("default"));
+    elements.blueprintModeReelStripsRadio.addEventListener("change", () => setBlueprintGenerationMode("reelStrips"));
+    elements.blueprintModeWeightsRadio.addEventListener("change", () => setBlueprintGenerationMode("symbolWeights"));
+
+    elements.blueprintValidateButton.addEventListener("click", () => {
+        renderBlueprintValidation(elements, {status: "loading"});
+        validateBlueprint(fetchImpl, blueprintState.blueprint)
+            .then((result) => {
+                renderBlueprintValidation(elements, describeValidation(result));
+            })
+            .catch((error: unknown) => {
+                renderBlueprintValidation(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
+    });
+
+    elements.blueprintBuildPreviewButton.addEventListener("click", () => {
+        renderBlueprintBuildPreview(elements, {status: "loading"});
+        previewBlueprintBuild(fetchImpl, blueprintState.blueprint, elements.blueprintOutDir.value.trim() || undefined, blueprintPath)
+            .then((preview) => {
+                renderBlueprintBuildPreview(elements, describeBuildPreview(preview));
+            })
+            .catch((error: unknown) => {
+                renderBlueprintBuildPreview(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
+    });
+
+    elements.blueprintBuildButton.addEventListener("click", () => {
+        renderBlueprintBuildResult(elements, {status: "loading"});
+        buildBlueprint(fetchImpl, blueprintState.blueprint, elements.blueprintOutDir.value.trim() || undefined, blueprintPath)
+            .then((result) => {
+                renderBlueprintBuildResult(elements, describeBuildResult(result));
+                if (result.status === "ok") {
+                    lastBuiltBlueprintProjectRoot = result.projectRoot;
+                    refreshHomeRecentProjects();
+                }
+            })
+            .catch((error: unknown) => {
+                renderBlueprintBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            });
+    });
+
+    elements.blueprintBuildOpenButton.addEventListener("click", () => {
+        if (lastBuiltBlueprintProjectRoot === undefined) {
+            return;
+        }
+        openAndNavigate(lastBuiltBlueprintProjectRoot).catch((error: unknown) => {
+            renderBlueprintBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
         });
     });
 

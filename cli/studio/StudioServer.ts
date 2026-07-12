@@ -2,6 +2,11 @@ import {GamePackageInspecting, GamePackageInspector, loadPokieGame, PokieDevServ
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
+import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
+import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
+import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
+import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
+import {validateSaveBlueprintRequest, SaveBlueprintRequestInput} from "./blueprint/validateSaveBlueprintRequest.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {validateBuildRequest, BuildRequestInput} from "./home/validateBuildRequest.js";
 import {validateCreateProjectRequest, CreateProjectRequestInput} from "./home/validateCreateProjectRequest.js";
@@ -9,6 +14,7 @@ import {validateInitProjectRequest, InitProjectRequestInput} from "./home/valida
 import {validateOpenProjectRequest, OpenProjectRequestInput} from "./home/validateOpenProjectRequest.js";
 import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
+import {isPathWithin} from "./isPathWithin.js";
 import {buildReplayDownload} from "./replay/buildReplayDownload.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
@@ -53,6 +59,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly port: number;
     private readonly studioRoot: string;
     private readonly homeService: StudioHomeService;
+    private readonly blueprintService: StudioBlueprintService;
     private readonly loadGame: typeof loadPokieGame;
     private readonly gamePackageInspector: GamePackageInspecting;
     private readonly gamePackageValidator: PokieGamePackageValidating;
@@ -72,6 +79,7 @@ export class StudioServer implements StudioServerHandling {
         this.port = options.port ?? DEFAULT_PORT;
         this.studioRoot = path.resolve(options.studioRoot);
         this.homeService = options.homeService;
+        this.blueprintService = options.blueprintService;
         this.loadGame = options.loadGame ?? loadPokieGame;
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
@@ -183,6 +191,31 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/projects/open") {
             await this.handleHomeOpenProject(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/validate") {
+            await this.handleBlueprintValidate(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/load") {
+            await this.handleBlueprintLoad(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/save") {
+            await this.handleBlueprintSave(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/build-preview") {
+            await this.handleBlueprintBuildPreview(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/build") {
+            await this.handleBlueprintBuild(req, res);
             return;
         }
 
@@ -446,6 +479,86 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.game});
     }
 
+    // The five Blueprint Editor handlers below follow the same validate-then-delegate shape as the Home
+    // handlers above — see that block's own doc comment. StudioBlueprintService never throws either;
+    // its DTOs' own `status` field carries every domain-level outcome (including a save conflict, which
+    // does get a real 409 — see handleBlueprintSave below — since "a file already exists and needs
+    // explicit confirmation" is a conflict with current state, the same class of case as an
+    // already-running simulation/replay, not a validation failure).
+    private async handleBlueprintValidate(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintValidationRequest((body ?? {}) as BlueprintValidationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.validate(validated.blueprint));
+    }
+
+    private async handleBlueprintLoad(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateLoadBlueprintRequest((body ?? {}) as LoadBlueprintRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.load(validated.path));
+    }
+
+    private async handleBlueprintSave(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateSaveBlueprintRequest((body ?? {}) as SaveBlueprintRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = this.blueprintService.save(validated.path, validated.blueprint, validated.overwrite);
+        this.sendJson(res, this.statusForBlueprintSave(result.status), result);
+    }
+
+    private statusForBlueprintSave(status: "ok" | "conflict" | "error"): number {
+        if (status === "ok") {
+            return 201;
+        }
+        return status === "conflict" ? 409 : 200;
+    }
+
+    private async handleBlueprintBuildPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintBuildRequest((body ?? {}) as BlueprintBuildRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.previewBuild(validated.blueprint, validated.outDir, validated.sourcePath));
+    }
+
+    private async handleBlueprintBuild(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintBuildRequest((body ?? {}) as BlueprintBuildRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.blueprintService.build(validated.blueprint, validated.outDir, validated.sourcePath);
+        this.sendJson(res, result.status === "ok" ? 201 : 200, result);
+    }
+
     private handleInspectProject(res: ServerResponse): void {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -683,8 +796,7 @@ export class StudioServer implements StudioServerHandling {
     private resolveStaticFilePath(pathname: string): string | undefined {
         const decodedPath = decodeURIComponent(pathname === "/" ? "/index.html" : pathname);
         const resolved = path.resolve(this.studioRoot, `.${decodedPath}`);
-        const rootWithSep = this.studioRoot.endsWith(path.sep) ? this.studioRoot : this.studioRoot + path.sep;
-        if (resolved !== this.studioRoot && !resolved.startsWith(rootWithSep)) {
+        if (!isPathWithin(this.studioRoot, resolved)) {
             return undefined;
         }
         if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {

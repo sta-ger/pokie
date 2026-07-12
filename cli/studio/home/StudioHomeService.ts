@@ -158,6 +158,13 @@ export class StudioHomeService {
         return dashboard;
     }
 
+    // Public so StudioBlueprintService (see cli/studio/blueprint/StudioBlueprintService.ts) can record a
+    // successful blueprint-editor build here too, rather than needing a second, divergent
+    // RecentProjectsRepository instance — this stays the one place recent-projects bookkeeping happens.
+    public async rememberRecentProject(projectRoot: string, name: string): Promise<void> {
+        await this.recentProjectsRepository.add({projectRoot, name, openedAt: new Date().toISOString()});
+    }
+
     // "ready" (rather than "ok") is deliberate: this return type's "load-error"/"invalid" variants are
     // structurally identical to StudioBuildPreviewView/StudioBuildResult's own, so callers can return
     // this value as-is on failure — but reusing "ok" here too would leave two differently-shaped
@@ -180,10 +187,6 @@ export class StudioHomeService {
         }
 
         return {status: "ready", blueprint: blueprint as GameBlueprint, warnings};
-    }
-
-    private async rememberRecentProject(projectRoot: string, name: string): Promise<void> {
-        await this.recentProjectsRepository.add({projectRoot, name, openedAt: new Date().toISOString()});
     }
 
     private projectStillExists(projectRoot: string): boolean {

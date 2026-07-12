@@ -1551,7 +1551,7 @@ POKIE Studio listening on http://127.0.0.1:3200
 ```
 
 A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` mechanism as `pokie dev`, and the
-same `--no-open` escape hatch) showing the **Home** view, with five tabs:
+same `--no-open` escape hatch) showing the **Home** view, with six tabs:
 
 - **Recent Projects** — every project created/opened this session (most-recently-started first), each showing its
   name, path, and last-opened time. A project whose directory/`package.json` can no longer be found is flagged
@@ -1576,10 +1576,31 @@ same `--no-open` escape hatch) showing the **Home** view, with five tabs:
   every other command uses; switches to the **Project** view on success. This is also what each of Create/Init/
   Build's own "Open in Studio" buttons calls, against the path they just produced — Create/Init/Build never
   transition Studio into Project mode themselves.
+- **Blueprint Editor** — creates or edits a `GameBlueprint` through a GUI instead of hand-written JSON, editing the
+  exact same DTO `pokie build <config.json>` accepts (no separate Studio-only blueprint schema, and the
+  vertical-slice scope is unchanged: manifest, reels/rows, symbols, paylines, paytable, reel strips/symbol weights,
+  available bets). **New Blueprint** starts from a minimal starter object; **Load** reads an existing blueprint JSON
+  from a path the user types. A **Form**/**JSON** toggle switches between the field-by-field editor (with
+  add/remove/duplicate/reorder controls for every collection: symbols, bets, paylines, paytable rows, reel-strip
+  symbols, symbol-weight rows, plus wild/scatter checkboxes and a reel-strips-vs-symbol-weights mode toggle) and a
+  raw JSON textarea kept in sync with it — a Form edit always re-derives the JSON text, a syntactically valid JSON
+  edit always re-derives the Form, and invalid JSON (or JSON that parses but isn't an object) leaves the last-known-
+  good state untouched rather than clearing the editor; any top-level field the Form doesn't know about survives
+  every round trip unchanged. **Validate** runs the same `GameBlueprintValidator` used everywhere else, without
+  touching disk. **Save** writes the blueprint as formatted JSON with a stable field order and a trailing newline
+  (so re-saving unchanged content is byte-identical) to a path the user types — refusing to overwrite a file that
+  already exists unless the request explicitly confirms it (`{"status": "conflict"}`, `409`; see the API section).
+  **Build Preview**/**Build Package** call the same `buildGameBuildInfo()`/`GamePackageGenerating` services the
+  path-based Build tab and `pokie build` itself use, including the same safe-rebuild/conflict check, followed by an
+  **Open in Studio** button on a successful build — the same Home → Project transition as every other flow here.
+  Load/Save/Build never resolve a path against Studio's own internal asset directory (`studioRoot`) — only an
+  explicitly user-given path is ever read or written.
 
 None of these ever shell out to `pokie create`/`init`/`build` as a subprocess, or duplicate their logic — see
-`StudioHomeService` (`cli/studio/home/StudioHomeService.ts`), which drives the same services directly and is the
-one place recent-projects bookkeeping happens for all four flows.
+`StudioHomeService` (`cli/studio/home/StudioHomeService.ts`) for Create/Init/Build(path)/Open, and
+`StudioBlueprintService` (`cli/studio/blueprint/StudioBlueprintService.ts`) for the Blueprint Editor — both drive
+the same underlying services directly, and share one place (`StudioHomeService.rememberRecentProject`) for
+recent-projects bookkeeping across all six flows.
 
 A **Documentation** section links into this repository's docs.
 
@@ -1757,6 +1778,34 @@ client, even for a load/validation failure.
   check: `{"status": "error", "error": "..."}` (e.g. `"... already exists and contains file(s) ... did not
   generate: ..."` — refusing to overwrite a directory it didn't produce) or `{"status": "ok", "projectRoot",
   "manifest", "createdFiles", "buildInfo", "unchanged", "warnings"}` on success (`201`).
+- `POST /api/home/blueprints/validate` `{"blueprint": <any JSON value>}` — runs `GameBlueprintValidator` against
+  `blueprint` as given (no file is read or written): `400 {"error": "..."}` only if `blueprint` itself is missing
+  from the request body; otherwise always `200` with `{"status": "ok", "warnings": [...]}` or `{"status": "invalid",
+  "errors": [...], "warnings": [...]}`.
+- `POST /api/home/blueprints/load` `{"path": string}` — reads and parses `path` as a `GameBlueprint` JSON file (the
+  same `loadGameBlueprint` `pokie build` itself uses): `200 {"status": "ok", "path": "<resolved path>", "blueprint":
+  <parsed value>}`, or `200 {"status": "load-error", "error": "..."}` for a missing file, invalid JSON, or a path
+  that resolves inside Studio's own internal asset directory. `400 {"error": "..."}` only for a missing/malformed
+  `path`.
+- `POST /api/home/blueprints/save` `{"path": string, "blueprint": <any JSON value>, "overwrite"?: boolean}` — writes
+  `blueprint` to `path` as formatted JSON (known `GameBlueprint` fields in a fixed order, any unrecognized top-level
+  fields preserved and appended after them, 4-space indent, trailing newline — deterministic: re-saving unchanged
+  content produces byte-identical output). If `path` already exists and `overwrite` isn't `true`, nothing is written
+  and the response is `409 {"status": "conflict", "path": "...", "error": "..."}` — resend with `"overwrite": true`
+  to replace it. `201 {"status": "ok", "path": "..."}` on a successful write; `200 {"status": "error", "error":
+  "..."}` for an fs failure or a path resolving inside Studio's own internal directory (safe message, never a stack
+  trace). `400 {"error": "..."}` only for a missing `path`/`blueprint`, or a non-boolean `overwrite`.
+- `POST /api/home/blueprints/build-preview` `{"blueprint": <any JSON value>, "outDir"?: string, "sourcePath"?:
+  string}` — the same preview `POST /api/home/projects/build/preview` gives, except the blueprint is taken directly
+  from the request body instead of loaded from a path (so it never needs to be saved first): `200 {"status":
+  "invalid", "errors": [...], "warnings": [...]}` or `200 {"status": "ok", "warnings": [...], "manifest", "reels",
+  "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`. Never writes anything.
+- `POST /api/home/blueprints/build` — same request shape as the preview; on top of `invalid`, generates the package
+  via the same `GamePackageGenerating` service `pokie build` uses, including its safe-rebuild/conflict check (an
+  `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
+  `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "manifest", "createdFiles",
+  "buildInfo", "unchanged", "warnings"}` on success — the built project is also recorded as a recent project, so its
+  **Open in Studio** button (`POST /api/home/projects/open` below) works exactly like every other Home flow's.
 - `POST /api/home/projects/open` `{"projectRoot": string}` — loads `projectRoot` with `loadPokieGame` and switches
   Studio to Project mode on success (`200 {"context": {...}, "manifest": {...}}`); `400 {"error": "..."}` if it
   isn't a valid [game package](game-packages.md). This is the one explicit Home → Project Studio context

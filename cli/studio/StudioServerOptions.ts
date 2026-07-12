@@ -1,4 +1,5 @@
 import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
+import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
@@ -19,6 +20,11 @@ export type StudioServerOptions = {
     // StudioCommand always builds this with readOwnVersion() and passes it in — same reasoning as
     // gamePackageCreator used to have before Home absorbed it.
     homeService: StudioHomeService;
+    // Drives the Blueprint Editor's five /api/home/blueprints/* endpoints — see StudioBlueprintService.
+    // Required rather than defaulted for the same reason homeService is: a default instance would need
+    // a `pokie` version to embed into generated package.json files, and StudioServer has no business
+    // guessing one. StudioCommand always builds this with readOwnVersion() and passes it in.
+    blueprintService: StudioBlueprintService;
     loadGame?: typeof loadPokieGame;
     // Provenance (GET /api/project/inspect) and contract/validation (GET /api/project/validate) for
     // the Project Dashboard — the exact same services `pokie inspect`/`pokie validate` use, so

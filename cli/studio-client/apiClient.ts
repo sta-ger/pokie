@@ -4,6 +4,9 @@ import type {
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
     SimulationReport,
+    StudioBlueprintLoadView,
+    StudioBlueprintSaveView,
+    StudioBlueprintValidationView,
     StudioBuildPreviewView,
     StudioBuildResult,
     StudioContext,
@@ -92,6 +95,88 @@ export async function buildProject(fetchImpl: FetchLike, request: BuildRequest):
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to build project"));
+    }
+    return (await response.json()) as StudioBuildResult;
+}
+
+// Never writes/reads anything on disk — see StudioBlueprintService.validate()'s own doc comment.
+export async function validateBlueprint(fetchImpl: FetchLike, blueprint: unknown): Promise<StudioBlueprintValidationView> {
+    const response = await fetchImpl("/api/home/blueprints/validate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to validate blueprint"));
+    }
+    return (await response.json()) as StudioBlueprintValidationView;
+}
+
+export async function loadBlueprint(fetchImpl: FetchLike, path: string): Promise<StudioBlueprintLoadView> {
+    const response = await fetchImpl("/api/home/blueprints/load", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to load blueprint"));
+    }
+    return (await response.json()) as StudioBlueprintLoadView;
+}
+
+// A 409 ("conflict") is an expected domain outcome, not a failed request — handled the same way
+// startSimulation/runReplay handle their own 409s: parsed and returned as a typed result, not thrown.
+export async function saveBlueprint(
+    fetchImpl: FetchLike,
+    path: string,
+    blueprint: unknown,
+    overwrite: boolean,
+): Promise<StudioBlueprintSaveView> {
+    const response = await fetchImpl("/api/home/blueprints/save", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path, blueprint, overwrite}),
+    });
+    if (response.status === 409) {
+        return (await response.json()) as StudioBlueprintSaveView;
+    }
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to save blueprint"));
+    }
+    return (await response.json()) as StudioBlueprintSaveView;
+}
+
+// Never writes anything — see StudioBlueprintService.previewBuild()'s own doc comment.
+export async function previewBlueprintBuild(
+    fetchImpl: FetchLike,
+    blueprint: unknown,
+    outDir?: string,
+    sourcePath?: string,
+): Promise<StudioBuildPreviewView> {
+    const response = await fetchImpl("/api/home/blueprints/build-preview", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint, outDir, sourcePath}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to preview build"));
+    }
+    return (await response.json()) as StudioBuildPreviewView;
+}
+
+export async function buildBlueprint(
+    fetchImpl: FetchLike,
+    blueprint: unknown,
+    outDir?: string,
+    sourcePath?: string,
+): Promise<StudioBuildResult> {
+    const response = await fetchImpl("/api/home/blueprints/build", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint, outDir, sourcePath}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to build project"));

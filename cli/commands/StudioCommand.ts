@@ -1,5 +1,6 @@
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {openBrowser} from "../openBrowser.js";
+import {StudioBlueprintService} from "../studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../studio/home/StudioHomeService.js";
 import {StudioContextResolver} from "../studio/StudioContextResolver.js";
 import {StudioContextResolving} from "../studio/StudioContextResolving.js";
@@ -22,6 +23,8 @@ export type StudioCommandDependencies = {
     contextResolver?: StudioContextResolving;
     // Drives the Home nav's Create/Init/Build/Open/Recent-Projects flows — see StudioHomeService.
     homeService?: StudioHomeService;
+    // Drives the Blueprint Editor's five /api/home/blueprints/* endpoints — see StudioBlueprintService.
+    blueprintService?: StudioBlueprintService;
     // Where the compiled cli/studio-client assets live (dist/cli/studio-client at runtime) — no
     // default here on purpose, same reason as DevCommand's own clientRoot: resolving it needs
     // import.meta.url, which only works in cli/pokie.ts's real ESM build. cli/pokie.ts computes it
@@ -40,6 +43,7 @@ export class StudioCommand implements CliCommandHandling {
     private readonly openBrowserImpl: typeof openBrowser;
     private readonly contextResolver: StudioContextResolving;
     private readonly homeService: StudioHomeService;
+    private readonly blueprintService: StudioBlueprintService;
     private readonly studioRoot: string;
     private readonly process: NodeJS.Process;
 
@@ -49,6 +53,8 @@ export class StudioCommand implements CliCommandHandling {
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
         this.homeService = dependencies.homeService ?? new StudioHomeService(pokieVersion);
         this.studioRoot = dependencies.studioRoot ?? "";
+        this.blueprintService =
+            dependencies.blueprintService ?? new StudioBlueprintService(pokieVersion, this.studioRoot, this.homeService);
         this.process = dependencies.process ?? process;
     }
 
@@ -70,6 +76,7 @@ export class StudioCommand implements CliCommandHandling {
             studioRoot: this.studioRoot,
             initialContext: context,
             homeService: this.homeService,
+            blueprintService: this.blueprintService,
         });
         const address = await server.start();
 
