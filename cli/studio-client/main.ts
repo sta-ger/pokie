@@ -1,7 +1,36 @@
-import {closeProject, createProject, FetchLike, getContext, listRecentProjects, openProject} from "./apiClient.js";
-import {Elements, queryElements, renderProjectRoot, renderRecentProjects, setStatus, showView} from "./dom.js";
+import {
+    closeProject,
+    createProject,
+    FetchLike,
+    getContext,
+    getProjectContext,
+    inspectProject,
+    listRecentProjects,
+    openProject,
+    validateProject,
+} from "./apiClient.js";
+import {
+    Elements,
+    ProjectTab,
+    queryElements,
+    renderProjectHeader,
+    renderProvenance,
+    renderRecentProjects,
+    renderValidationSummary,
+    setStatus,
+    showProjectTab,
+    showView,
+} from "./dom.js";
+import {describeProjectHeader, describeProvenance, describeValidationSummary} from "./interpretProjectDashboard.js";
 import {currentRoute, navigate, onRouteChange, StudioRoute} from "./router.js";
-import type {StudioContext} from "./types.js";
+import type {ProjectDashboardContext, StudioContext} from "./types.js";
+
+// How long/often to re-check GET /api/project/context while it reports "loading" — only ever
+// happens right after Studio starts directly into Project mode (`pokie .`/`pokie <path>`), since
+// Create/Open both resolve straight to "loaded"/an error response. Bounded so a pathologically
+// hanging entry-module load doesn't poll forever.
+const PROJECT_POLL_INTERVAL_MS = 500;
+const PROJECT_POLL_MAX_ATTEMPTS = 40;
 
 function routeForContext(context: StudioContext): StudioRoute {
     return context.mode === "project" ? "project" : "home";
@@ -15,6 +44,53 @@ async function refreshRecentProjects(elements: Elements, fetchImpl: FetchLike, o
 async function main(): Promise<void> {
     const elements = queryElements();
     const fetchImpl = window.fetch.bind(window) as FetchLike;
+    let activeProjectTab: ProjectTab = "overview";
+
+    // Inspect is safe to run whenever the dashboard shows "loaded" or "error" — it only ever reads
+    // package.json/build-info.json, independent of whether the entry module itself loaded — so it's
+    // both the automatic provenance fetch on dashboard load and the manual "Inspect" quick action.
+    const refreshInspect = (): void => {
+        inspectProject(fetchImpl)
+            .then((report) => {
+                setStatus(elements.inspectStatus, "");
+                renderProvenance(elements, describeProvenance(report));
+            })
+            .catch((error: unknown) => {
+                setStatus(elements.inspectStatus, error instanceof Error ? error.message : String(error));
+            });
+    };
+
+    const runValidate = (): void => {
+        setStatus(elements.validationStatus, "Validating…");
+        validateProject(fetchImpl)
+            .then((report) => {
+                setStatus(elements.validationStatus, "");
+                renderValidationSummary(elements, describeValidationSummary(report));
+            })
+            .catch((error: unknown) => {
+                setStatus(elements.validationStatus, error instanceof Error ? error.message : String(error));
+            });
+    };
+
+    const showProjectDashboard = (dashboard: ProjectDashboardContext): void => {
+        renderProjectHeader(elements, describeProjectHeader(dashboard), activeProjectTab);
+        if (dashboard.status === "loaded" || dashboard.status === "error") {
+            refreshInspect();
+        }
+    };
+
+    const pollProjectDashboard = (attemptsLeft: number): void => {
+        getProjectContext(fetchImpl)
+            .then((dashboard) => {
+                showProjectDashboard(dashboard);
+                if (dashboard.status === "loading" && attemptsLeft > 0 && currentRoute() === "project") {
+                    setTimeout(() => pollProjectDashboard(attemptsLeft - 1), PROJECT_POLL_INTERVAL_MS);
+                }
+            })
+            .catch((error: unknown) => {
+                setStatus(elements.status, error instanceof Error ? error.message : String(error));
+            });
+    };
 
     // Shared by both the Open Project form and clicking a Recent Projects entry — opens
     // `projectRoot` through the API and, on success, switches the app to the Project route. Throws
@@ -22,11 +98,11 @@ async function main(): Promise<void> {
     // status text; a recent-projects click reuses the same status element).
     const openAndNavigate = async (projectRoot: string): Promise<void> => {
         const {context} = await openProject(fetchImpl, projectRoot);
-        if (context.mode === "project") {
-            renderProjectRoot(elements, context.projectRoot);
-        }
         navigate("project");
         showView(elements, "project");
+        if (context.mode === "project") {
+            pollProjectDashboard(PROJECT_POLL_MAX_ATTEMPTS);
+        }
     };
 
     const refreshHome = (): void => {
@@ -42,13 +118,12 @@ async function main(): Promise<void> {
     try {
         setStatus(elements.status, "Connecting…");
         const context = await getContext(fetchImpl);
-        if (context.mode === "project") {
-            renderProjectRoot(elements, context.projectRoot);
-        }
         navigate(routeForContext(context));
         showView(elements, currentRoute());
         if (currentRoute() === "home") {
             refreshHome();
+        } else {
+            pollProjectDashboard(PROJECT_POLL_MAX_ATTEMPTS);
         }
         setStatus(elements.status, "Ready");
     } catch (error) {
@@ -60,6 +135,8 @@ async function main(): Promise<void> {
         showView(elements, route);
         if (route === "home") {
             refreshHome();
+        } else {
+            pollProjectDashboard(PROJECT_POLL_MAX_ATTEMPTS);
         }
     });
 
@@ -68,12 +145,12 @@ async function main(): Promise<void> {
         setStatus(elements.createStatus, "Creating…");
         createProject(fetchImpl, elements.createName.value)
             .then(({context}) => {
-                if (context.mode === "project") {
-                    renderProjectRoot(elements, context.projectRoot);
-                }
                 setStatus(elements.createStatus, "");
                 navigate("project");
                 showView(elements, "project");
+                if (context.mode === "project") {
+                    pollProjectDashboard(PROJECT_POLL_MAX_ATTEMPTS);
+                }
             })
             .catch((error: unknown) => {
                 setStatus(elements.createStatus, error instanceof Error ? error.message : String(error));
@@ -100,6 +177,31 @@ async function main(): Promise<void> {
             .catch((error: unknown) => {
                 setStatus(elements.status, error instanceof Error ? error.message : String(error));
             });
+    });
+
+    elements.tabOverviewButton.addEventListener("click", () => {
+        activeProjectTab = "overview";
+        showProjectTab(elements, "overview");
+    });
+
+    elements.tabValidationButton.addEventListener("click", () => {
+        activeProjectTab = "validation";
+        showProjectTab(elements, "validation");
+    });
+
+    elements.inspectButton.addEventListener("click", () => {
+        setStatus(elements.inspectStatus, "Inspecting…");
+        refreshInspect();
+    });
+
+    elements.validateQuickActionButton.addEventListener("click", () => {
+        activeProjectTab = "validation";
+        showProjectTab(elements, "validation");
+        runValidate();
+    });
+
+    elements.runValidateButton.addEventListener("click", () => {
+        runValidate();
     });
 }
 

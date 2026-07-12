@@ -46,10 +46,74 @@
             </section>
         </section>
         <section id="project-view" hidden>
-            <h2>Project</h2>
-            <p>Root: <span id="project-root"></span></p>
-            <p>Tool GUIs (build/inspect/validate/sim/report/diff/replay/serve) are coming soon.</p>
-            <button id="close-project" type="button">Close project</button>
+            <header class="project-header">
+                <div>
+                    <h2 id="project-title">Project</h2>
+                    <p id="project-subtitle"></p>
+                </div>
+                <button id="close-project" type="button">Close project</button>
+            </header>
+
+            <p id="project-empty" hidden>No active project. <a href="#/">Go to Home</a>.</p>
+            <p id="project-loading" hidden>Loading project…</p>
+            <p id="project-error" hidden></p>
+
+            <nav id="project-tabs" class="tabs" hidden>
+                <button id="tab-overview" type="button" class="tab" aria-current="page">Overview</button>
+                <button id="tab-validation" type="button" class="tab">Validation</button>
+            </nav>
+
+            <section id="project-overview">
+                <dl class="project-info">
+                    <dt>ID</dt>
+                    <dd id="project-id"></dd>
+                    <dt>Version</dt>
+                    <dd id="project-version"></dd>
+                    <dt>Package root</dt>
+                    <dd id="project-root"></dd>
+                </dl>
+
+                <section id="provenance">
+                    <h3>Provenance</h3>
+                    <p id="provenance-not-generated" hidden>This package was not built via "pokie build" (no build-info found).</p>
+                    <dl id="provenance-details" class="project-info" hidden>
+                        <dt>Blueprint hash</dt>
+                        <dd id="provenance-hash"></dd>
+                        <dt>Source</dt>
+                        <dd id="provenance-source"></dd>
+                        <dt>pokie version</dt>
+                        <dd id="provenance-pokie-version"></dd>
+                        <dt>Generated at</dt>
+                        <dd id="provenance-generated-at"></dd>
+                        <dt>Generated files</dt>
+                        <dd id="provenance-files"></dd>
+                    </dl>
+                </section>
+
+                <div class="quick-actions">
+                    <button id="inspect-button" type="button">Inspect</button>
+                    <button id="validate-quick-action" type="button">Validate</button>
+                </div>
+                <p id="inspect-status"></p>
+            </section>
+
+            <section id="project-validation" hidden>
+                <button id="run-validate-button" type="button">Run Validate</button>
+                <p id="validation-status"></p>
+                <p id="validation-summary"></p>
+                <div id="validation-errors-section" hidden>
+                    <h3>Errors</h3>
+                    <ul id="validation-errors"></ul>
+                </div>
+                <div id="validation-warnings-section" hidden>
+                    <h3>Warnings</h3>
+                    <ul id="validation-warnings"></ul>
+                </div>
+                <div id="validation-suggestions-section" hidden>
+                    <h3>Suggestions</h3>
+                    <ul id="validation-suggestions"></ul>
+                </div>
+            </section>
         </section>
     </main>
 </div>

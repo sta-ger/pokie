@@ -65,3 +65,58 @@ button:disabled {
     cursor: not-allowed;
     opacity: 0.5;
 }
+
+.project-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.project-header h2 {
+    margin: 0 0 0.25rem;
+}
+
+.project-header p {
+    margin: 0;
+    opacity: 0.75;
+}
+
+.tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.tab {
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    opacity: 0.6;
+}
+
+.tab[aria-current="page"] {
+    opacity: 1;
+    font-weight: bold;
+}
+
+.project-info {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0 0 1rem;
+}
+
+.project-info dt {
+    font-weight: bold;
+}
+
+.project-info dd {
+    margin: 0;
+    word-break: break-all;
+}
+
+.quick-actions {
+    display: flex;
+    gap: 0.5rem;
+}

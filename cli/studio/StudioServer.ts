@@ -1,9 +1,11 @@
-import {loadPokieGame, PokieDevServerAddress} from "pokie";
+import {GamePackageInspecting, GamePackageInspector, loadPokieGame, PokieDevServerAddress, PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
 import type {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
 import {InMemoryRecentProjectsRepository} from "./InMemoryRecentProjectsRepository.js";
+import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
+import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {RecentProjectsRepository} from "./RecentProjectsRepository.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
@@ -31,9 +33,11 @@ const CONTENT_TYPES: Record<string, string> = {
 // "home". This is intentionally not multi-tenant — a shared/remote Studio is out of scope, see
 // docs/cli.md.
 //
-// Project mode itself is a stub at this stage: GET /api/context reports it and studio-client renders
-// a placeholder view, but no tool (build/sim/serve/...) is wired up yet — that's what `toolHandlers`
-// (see StudioToolHandling) is the extension point for.
+// The Project Dashboard (GET /api/project/context, /api/project/inspect, /api/project/validate) is
+// the first real Project-mode feature built on top of that stub — see docs/cli.md. It reuses
+// GamePackageInspecting/PokieGamePackageValidating exactly as `pokie inspect`/`pokie validate` do,
+// and loadPokieGame exactly as Open Project already did — no business logic is duplicated, and no
+// CLI command is ever spawned as a subprocess.
 export class StudioServer implements StudioServerHandling {
     private readonly host: string;
     private readonly port: number;
@@ -41,8 +45,15 @@ export class StudioServer implements StudioServerHandling {
     private readonly recentProjectsRepository: RecentProjectsRepository;
     private readonly gamePackageCreator: GamePackageCreating;
     private readonly loadGame: typeof loadPokieGame;
+    private readonly gamePackageInspector: GamePackageInspecting;
+    private readonly gamePackageValidator: PokieGamePackageValidating;
     private readonly toolHandlers: StudioToolHandling[];
     private currentContext: StudioContext;
+    // undefined exactly when currentContext.mode === "home" — kept as a separate field (rather than
+    // folded into StudioContext) since StudioContext is also returned synchronously by
+    // create/open/close, while this can lag behind briefly after startup (see start()'s background
+    // load for `pokie .`/`pokie <path>`).
+    private projectDashboard: ProjectDashboardContext | undefined;
     private server: http.Server | undefined;
 
     constructor(options: StudioServerOptions) {
@@ -52,6 +63,8 @@ export class StudioServer implements StudioServerHandling {
         this.recentProjectsRepository = options.recentProjectsRepository ?? new InMemoryRecentProjectsRepository();
         this.gamePackageCreator = options.gamePackageCreator;
         this.loadGame = options.loadGame ?? loadPokieGame;
+        this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
+        this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -71,6 +84,13 @@ export class StudioServer implements StudioServerHandling {
                     return;
                 }
                 this.server = server;
+                // Deliberately not awaited: the HTTP server must be reachable immediately (the
+                // browser opens right away — see StudioCommand), not block on loading the entry
+                // module. GET /api/project/context reports "loading" for the brief window until this
+                // settles into "loaded"/"error" — see loadProjectDashboardContext.
+                if (this.currentContext.mode === "project") {
+                    this.startProjectDashboardLoad(this.currentContext.projectRoot);
+                }
                 resolve({host: this.host, port: address.port});
             });
         });
@@ -90,6 +110,18 @@ export class StudioServer implements StudioServerHandling {
                 resolve();
             });
         });
+    }
+
+    private startProjectDashboardLoad(projectRoot: string): void {
+        this.projectDashboard = {status: "loading", projectRoot};
+        loadProjectDashboardContext(projectRoot, this.loadGame)
+            .then((dashboard) => {
+                this.projectDashboard = dashboard;
+            })
+            .catch(() => {
+                // loadProjectDashboardContext itself never rejects (it catches internally) — this is
+                // an extra safety net only, so a StudioServer never crashes on a background load.
+            });
     }
 
     private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -123,7 +155,23 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/projects/close") {
             this.currentContext = {mode: "home"};
+            this.projectDashboard = undefined;
             this.sendJson(res, 200, {context: this.currentContext});
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/context") {
+            this.sendJson(res, 200, this.projectDashboard ?? {status: "empty"});
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/inspect") {
+            this.handleInspectProject(res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/validate") {
+            await this.handleValidateProject(res);
             return;
         }
 
@@ -188,6 +236,11 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.currentContext = {mode: "project", projectRoot: result.projectRoot};
+        // No separate load needed: GamePackageCreating.create() already returned a trustworthy
+        // manifest without needing to execute the (likely not yet built) scaffolded entry module —
+        // see loadProjectDashboardContext's own doc comment for why Open, which has no such manifest
+        // in hand up front, goes through an actual load instead.
+        this.projectDashboard = {status: "loaded", projectRoot: result.projectRoot, game: result.manifest};
         await this.recentProjectsRepository.add({
             projectRoot: result.projectRoot,
             name: result.manifest.name,
@@ -204,23 +257,41 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        let manifest;
-        try {
-            const game = await this.loadGame(projectRoot);
-            manifest = game.getManifest();
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+        // loadProjectDashboardContext only ever resolves "loaded" or "error" (see its own doc
+        // comment) — "empty"/"loading" are exclusively synthesized elsewhere in this class — but the
+        // check is spelled as `!== "loaded"` rather than `=== "error"` so TypeScript can narrow
+        // `dashboard` to the "loaded" variant below without a cast.
+        const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame);
+        if (dashboard.status !== "loaded") {
+            const message = dashboard.status === "error" ? dashboard.error : `Could not load "${projectRoot}".`;
+            this.sendJson(res, 400, {error: message});
             return;
         }
 
-        const resolvedRoot = path.resolve(projectRoot);
-        this.currentContext = {mode: "project", projectRoot: resolvedRoot};
+        this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
+        this.projectDashboard = dashboard;
         await this.recentProjectsRepository.add({
-            projectRoot: resolvedRoot,
-            name: manifest.name,
+            projectRoot: dashboard.projectRoot,
+            name: dashboard.game.name,
             openedAt: new Date().toISOString(),
         });
-        this.sendJson(res, 200, {context: this.currentContext, manifest});
+        this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.game});
+    }
+
+    private handleInspectProject(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, this.gamePackageInspector.inspect(this.currentContext.projectRoot));
+    }
+
+    private async handleValidateProject(res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, await this.gamePackageValidator.validate(this.currentContext.projectRoot));
     }
 
     private async readJsonBody(req: IncomingMessage): Promise<unknown> {

@@ -1,4 +1,4 @@
-import {loadPokieGame} from "pokie";
+import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
 import type {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
 import type {RecentProjectsRepository} from "./RecentProjectsRepository.js";
 import type {StudioContext} from "./StudioContext.js";
@@ -18,5 +18,10 @@ export type StudioServerOptions = {
     // passes it in.
     gamePackageCreator: GamePackageCreating;
     loadGame?: typeof loadPokieGame;
+    // Provenance (GET /api/project/inspect) and contract/validation (GET /api/project/validate) for
+    // the Project Dashboard — the exact same services `pokie inspect`/`pokie validate` use, so
+    // Studio never re-implements either.
+    gamePackageInspector?: GamePackageInspecting;
+    gamePackageValidator?: PokieGamePackageValidating;
     toolHandlers?: StudioToolHandling[];
 };

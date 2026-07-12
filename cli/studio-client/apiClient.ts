@@ -1,4 +1,11 @@
-import type {PokieGameManifest, RecentProjectEntry, StudioContext} from "./types.js";
+import type {
+    GamePackageInspectionReport,
+    PokieGameManifest,
+    PokieGamePackageValidationReport,
+    ProjectDashboardContext,
+    RecentProjectEntry,
+    StudioContext,
+} from "./types.js";
 
 // Same minimal Fetch subset as cli/client/apiClient.ts's FetchLike — kept structurally compatible
 // with the real global `fetch` so tests can inject a trivial fake instead of needing jsdom/network.
@@ -47,6 +54,27 @@ export async function closeProject(fetchImpl: FetchLike): Promise<StudioContext>
     const response = await fetchImpl("/api/projects/close", {method: "POST"});
     const body = (await response.json()) as {context: StudioContext};
     return body.context;
+}
+
+export async function getProjectContext(fetchImpl: FetchLike): Promise<ProjectDashboardContext> {
+    const response = await fetchImpl("/api/project/context");
+    return (await response.json()) as ProjectDashboardContext;
+}
+
+export async function inspectProject(fetchImpl: FetchLike): Promise<GamePackageInspectionReport> {
+    const response = await fetchImpl("/api/project/inspect");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to inspect the project"));
+    }
+    return (await response.json()) as GamePackageInspectionReport;
+}
+
+export async function validateProject(fetchImpl: FetchLike): Promise<PokieGamePackageValidationReport> {
+    const response = await fetchImpl("/api/project/validate");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to validate the project"));
+    }
+    return (await response.json()) as PokieGamePackageValidationReport;
 }
 
 async function extractErrorMessage(
