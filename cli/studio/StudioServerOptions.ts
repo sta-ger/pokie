@@ -1,6 +1,7 @@
 import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
 import type {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
 import type {RecentProjectsRepository} from "./RecentProjectsRepository.js";
+import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioToolHandling} from "./StudioToolHandling.js";
 
@@ -23,5 +24,9 @@ export type StudioServerOptions = {
     // Studio never re-implements either.
     gamePackageInspector?: GamePackageInspecting;
     gamePackageValidator?: PokieGamePackageValidating;
+    // Runs simulations for the Project Dashboard's Simulation tab (POST/GET/DELETE
+    // /api/project/simulations*) — defaults to a StudioSimulationService built around this same
+    // `loadGame`, so tests only ever need to configure one loader, not two.
+    simulationService?: StudioSimulationService;
     toolHandlers?: StudioToolHandling[];
 };

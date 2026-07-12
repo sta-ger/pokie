@@ -61,6 +61,7 @@
             <nav id="project-tabs" class="tabs" hidden>
                 <button id="tab-overview" type="button" class="tab" aria-current="page">Overview</button>
                 <button id="tab-validation" type="button" class="tab">Validation</button>
+                <button id="tab-simulation" type="button" class="tab">Simulation</button>
             </nav>
 
             <section id="project-overview">
@@ -127,6 +128,78 @@
                 <div id="validation-suggestions-section" hidden>
                     <h3>Suggestions</h3>
                     <ul id="validation-suggestions"></ul>
+                </div>
+            </section>
+
+            <section id="project-simulation" hidden>
+                <form id="simulation-form">
+                    <label for="simulation-rounds">Rounds</label>
+                    <input id="simulation-rounds" name="rounds" type="number" min="1" step="1" value="1000" required />
+                    <label for="simulation-seed">Seed (optional)</label>
+                    <input id="simulation-seed" name="seed" type="text" />
+                    <button id="simulation-run-button" type="submit">Run Simulation</button>
+                </form>
+
+                <p id="simulation-idle" hidden>No simulation has been run yet.</p>
+                <p id="simulation-error" hidden></p>
+
+                <div id="simulation-progress" hidden>
+                    <p id="simulation-status-text"></p>
+                    <p id="simulation-progress-text"></p>
+                    <button id="simulation-cancel-button" type="button">Cancel</button>
+                </div>
+
+                <button id="simulation-rerun-button" type="button" hidden>Run again with the same parameters</button>
+
+                <div id="simulation-report" hidden>
+                    <dl class="project-info">
+                        <dt>Game</dt>
+                        <dd id="simulation-report-game"></dd>
+                        <dt>Rounds</dt>
+                        <dd id="simulation-report-rounds"></dd>
+                        <dt>Seed</dt>
+                        <dd id="simulation-report-seed"></dd>
+                        <dt>Total bet</dt>
+                        <dd id="simulation-report-total-bet"></dd>
+                        <dt>Total payout</dt>
+                        <dd id="simulation-report-total-win"></dd>
+                        <dt>RTP</dt>
+                        <dd id="simulation-report-rtp"></dd>
+                        <dt>Hit frequency</dt>
+                        <dd id="simulation-report-hit-frequency"></dd>
+                        <dt>Volatility (std. deviation)</dt>
+                        <dd id="simulation-report-volatility"></dd>
+                        <dt>RTP 95% confidence interval</dt>
+                        <dd id="simulation-report-confidence-interval"></dd>
+                        <dt>Max win</dt>
+                        <dd id="simulation-report-max-win"></dd>
+                        <dt>Duration</dt>
+                        <dd id="simulation-report-duration"></dd>
+                    </dl>
+
+                    <div id="simulation-report-breakdown-section" hidden>
+                        <h3>Breakdown</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th>Rounds</th>
+                                    <th>RTP</th>
+                                    <th>Contribution</th>
+                                    <th>Hit freq.</th>
+                                    <th>Max win</th>
+                                </tr>
+                            </thead>
+                            <tbody id="simulation-report-breakdown-body"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="simulation-report-warnings-section" hidden>
+                        <h3>Warnings</h3>
+                        <ul id="simulation-report-warnings"></ul>
+                    </div>
+
+                    <p id="simulation-report-reproducibility" hidden></p>
                 </div>
             </section>
         </section>

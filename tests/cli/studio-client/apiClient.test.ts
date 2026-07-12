@@ -1,12 +1,15 @@
 import {
+    cancelSimulation,
     closeProject,
     createProject,
     FetchLike,
     getContext,
     getProjectContext,
+    getSimulation,
     inspectProject,
     listRecentProjects,
     openProject,
+    startSimulation,
     validateProject,
 } from "../../../cli/studio-client/apiClient.js";
 
@@ -180,6 +183,107 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "No active project."}}));
 
             await expect(validateProject(fetchImpl)).rejects.toThrow("No active project.");
+        });
+    });
+
+    describe("startSimulation", () => {
+        it("POSTs rounds and seed and returns the created job", async () => {
+            const job = {id: "job-1", status: "queued", rounds: 1000, seed: "demo", startedAt: "2026-01-01T00:00:00.000Z", roundsCompleted: 0, durationMs: 0};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: job}));
+
+            const result = await startSimulation(fetchImpl, 1000, "demo");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/project/simulations",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({rounds: 1000, seed: "demo"}),
+                    },
+                },
+            ]);
+            expect(result).toEqual({status: "created", job});
+        });
+
+        it("omits seed from the body when not given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {id: "job-1", status: "queued"}}));
+
+            await startSimulation(fetchImpl, 1000);
+
+            expect(calls[0].init?.body).toBe(JSON.stringify({rounds: 1000}));
+        });
+
+        it("returns a typed conflict (not a thrown error) when another simulation is already active", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {error: "A simulation is already running for this project.", activeJobId: "job-0"},
+            }));
+
+            const result = await startSimulation(fetchImpl, 1000);
+
+            expect(result).toEqual({status: "conflict", activeJobId: "job-0"});
+        });
+
+        it("throws for a 409 with no active project (no activeJobId)", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "No active project."}}));
+
+            await expect(startSimulation(fetchImpl, 1000)).rejects.toThrow("No active project.");
+        });
+
+        it("throws the server's own error message for an invalid rounds", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 400,
+                body: {error: '"rounds" must be a positive integer.'},
+            }));
+
+            await expect(startSimulation(fetchImpl, 0)).rejects.toThrow('"rounds" must be a positive integer.');
+        });
+    });
+
+    describe("getSimulation", () => {
+        it("GETs /api/project/simulations/:id and returns the job", async () => {
+            const job = {id: "job-1", status: "completed", rounds: 1000, roundsCompleted: 1000, durationMs: 42, startedAt: "2026-01-01T00:00:00.000Z"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: job}));
+
+            const result = await getSimulation(fetchImpl, "job-1");
+
+            expect(calls).toEqual([{url: "/api/project/simulations/job-1", init: undefined}]);
+            expect(result).toEqual(job);
+        });
+
+        it("encodes the id in the URL", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {id: "a/b"}}));
+
+            await getSimulation(fetchImpl, "a/b");
+
+            expect(calls[0].url).toBe("/api/project/simulations/a%2Fb");
+        });
+
+        it("throws the server's own error message for an unknown id", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown simulation id "does-not-exist".'}}));
+
+            await expect(getSimulation(fetchImpl, "does-not-exist")).rejects.toThrow('Unknown simulation id "does-not-exist".');
+        });
+    });
+
+    describe("cancelSimulation", () => {
+        it("DELETEs /api/project/simulations/:id and returns the updated job", async () => {
+            const job = {id: "job-1", status: "running", rounds: 1000, roundsCompleted: 200, durationMs: 10, startedAt: "2026-01-01T00:00:00.000Z"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: job}));
+
+            const result = await cancelSimulation(fetchImpl, "job-1");
+
+            expect(calls).toEqual([{url: "/api/project/simulations/job-1", init: {method: "DELETE"}}]);
+            expect(result).toEqual(job);
+        });
+
+        it("throws the server's own error message for an unknown id", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown simulation id "does-not-exist".'}}));
+
+            await expect(cancelSimulation(fetchImpl, "does-not-exist")).rejects.toThrow('Unknown simulation id "does-not-exist".');
         });
     });
 });

@@ -5,6 +5,7 @@ import type {
     ProjectDashboardContext,
     RecentProjectEntry,
     StudioContext,
+    StudioSimulationJobView,
 } from "./types.js";
 
 // Same minimal Fetch subset as cli/client/apiClient.ts's FetchLike — kept structurally compatible
@@ -75,6 +76,51 @@ export async function validateProject(fetchImpl: FetchLike): Promise<PokieGamePa
         throw new Error(await extractErrorMessage(response, "Failed to validate the project"));
     }
     return (await response.json()) as PokieGamePackageValidationReport;
+}
+
+export type StartSimulationResult =
+    | {status: "created"; job: StudioSimulationJobView}
+    | {status: "conflict"; activeJobId: string};
+
+// Distinguishes the two different 409 cases the endpoint can return: "another simulation is already
+// running for this project" (has an activeJobId — returned here as a typed result, not thrown, so a
+// caller can jump straight to polling that job) vs. "no active project" or any other failure (thrown
+// as a plain Error, same as every other apiClient function).
+export async function startSimulation(fetchImpl: FetchLike, rounds: number, seed?: string): Promise<StartSimulationResult> {
+    const response = await fetchImpl("/api/project/simulations", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(seed === undefined ? {rounds} : {rounds, seed}),
+    });
+
+    if (response.status === 409) {
+        const body = (await response.json()) as {activeJobId?: string; error?: string};
+        if (body.activeJobId !== undefined) {
+            return {status: "conflict", activeJobId: body.activeJobId};
+        }
+        throw new Error(body.error ?? "Failed to start simulation (HTTP 409).");
+    }
+
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to start simulation"));
+    }
+    return {status: "created", job: (await response.json()) as StudioSimulationJobView};
+}
+
+export async function getSimulation(fetchImpl: FetchLike, id: string): Promise<StudioSimulationJobView> {
+    const response = await fetchImpl(`/api/project/simulations/${encodeURIComponent(id)}`);
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to fetch simulation status"));
+    }
+    return (await response.json()) as StudioSimulationJobView;
+}
+
+export async function cancelSimulation(fetchImpl: FetchLike, id: string): Promise<StudioSimulationJobView> {
+    const response = await fetchImpl(`/api/project/simulations/${encodeURIComponent(id)}`, {method: "DELETE"});
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to cancel simulation"));
+    }
+    return (await response.json()) as StudioSimulationJobView;
 }
 
 async function extractErrorMessage(

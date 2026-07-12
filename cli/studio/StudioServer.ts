@@ -7,6 +7,8 @@ import {InMemoryRecentProjectsRepository} from "./InMemoryRecentProjectsReposito
 import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {RecentProjectsRepository} from "./RecentProjectsRepository.js";
+import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
+import {validateSimulationRequest, SimulationRequestInput} from "./simulation/validateSimulationRequest.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
 import type {StudioServerOptions} from "./StudioServerOptions.js";
@@ -47,6 +49,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly loadGame: typeof loadPokieGame;
     private readonly gamePackageInspector: GamePackageInspecting;
     private readonly gamePackageValidator: PokieGamePackageValidating;
+    private readonly simulationService: StudioSimulationService;
     private readonly toolHandlers: StudioToolHandling[];
     private currentContext: StudioContext;
     // undefined exactly when currentContext.mode === "home" — kept as a separate field (rather than
@@ -65,6 +68,7 @@ export class StudioServer implements StudioServerHandling {
         this.loadGame = options.loadGame ?? loadPokieGame;
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
+        this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -97,6 +101,11 @@ export class StudioServer implements StudioServerHandling {
     }
 
     public stop(): Promise<void> {
+        // Best-effort, synchronous, before anything else: a simulation's chunked run loop (see
+        // StudioSimulationService.run()) is scheduled independently of any HTTP connection, so
+        // closing the server alone would leave it running against an event loop nobody is serving
+        // requests on anymore.
+        this.simulationService.cancelAll();
         return new Promise((resolve, reject) => {
             if (!this.server) {
                 resolve();
@@ -175,6 +184,21 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/project/simulations") {
+            await this.handleStartSimulation(req, res);
+            return;
+        }
+
+        const simulationId = this.matchSimulationRoute(url.pathname);
+        if (simulationId !== undefined && method === "GET") {
+            this.handleGetSimulation(res, simulationId);
+            return;
+        }
+        if (simulationId !== undefined && method === "DELETE") {
+            this.handleCancelSimulation(res, simulationId);
+            return;
+        }
+
         const toolId = this.matchToolRoute(url.pathname);
         if (toolId !== undefined) {
             const handled = await this.tryToolHandlers(toolId, method, url, req);
@@ -201,6 +225,14 @@ export class StudioServer implements StudioServerHandling {
         const segments = pathname.split("/").filter((segment) => segment.length > 0);
         if (segments.length >= 3 && segments[0] === "api" && segments[1] === "tools") {
             return decodeURIComponent(segments[2]);
+        }
+        return undefined;
+    }
+
+    private matchSimulationRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (segments.length === 4 && segments[0] === "api" && segments[1] === "project" && segments[2] === "simulations") {
+            return decodeURIComponent(segments[3]);
         }
         return undefined;
     }
@@ -292,6 +324,50 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, await this.gamePackageValidator.validate(this.currentContext.projectRoot));
+    }
+
+    private async handleStartSimulation(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateSimulationRequest((body ?? {}) as SimulationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = this.simulationService.start(this.currentContext.projectRoot, validated);
+        if (result.status === "conflict") {
+            this.sendJson(res, 409, {
+                error: "A simulation is already running for this project.",
+                activeJobId: result.activeJobId,
+            });
+            return;
+        }
+        this.sendJson(res, 202, result.job);
+    }
+
+    private handleGetSimulation(res: ServerResponse, id: string): void {
+        const job = this.simulationService.getStatus(id);
+        if (!job) {
+            this.sendJson(res, 404, {error: `Unknown simulation id "${id}".`});
+            return;
+        }
+        this.sendJson(res, 200, job);
+    }
+
+    private handleCancelSimulation(res: ServerResponse, id: string): void {
+        const job = this.simulationService.cancel(id);
+        if (!job) {
+            this.sendJson(res, 404, {error: `Unknown simulation id "${id}".`});
+            return;
+        }
+        this.sendJson(res, 200, job);
     }
 
     private async readJsonBody(req: IncomingMessage): Promise<unknown> {

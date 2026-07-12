@@ -1,7 +1,8 @@
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
+import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
 import type {RecentProjectEntry} from "./types.js";
 
-export type ProjectTab = "overview" | "validation";
+export type ProjectTab = "overview" | "validation" | "simulation";
 
 export type Elements = {
     status: HTMLElement;
@@ -54,6 +55,36 @@ export type Elements = {
     validationWarningsList: HTMLElement;
     validationSuggestionsSection: HTMLElement;
     validationSuggestionsList: HTMLElement;
+    tabSimulationButton: HTMLButtonElement;
+    projectSimulationSection: HTMLElement;
+    simulationForm: HTMLFormElement;
+    simulationRoundsInput: HTMLInputElement;
+    simulationSeedInput: HTMLInputElement;
+    simulationRunButton: HTMLButtonElement;
+    simulationIdle: HTMLElement;
+    simulationError: HTMLElement;
+    simulationProgress: HTMLElement;
+    simulationStatusText: HTMLElement;
+    simulationProgressText: HTMLElement;
+    simulationCancelButton: HTMLButtonElement;
+    simulationRerunButton: HTMLButtonElement;
+    simulationReport: HTMLElement;
+    simulationReportGame: HTMLElement;
+    simulationReportRounds: HTMLElement;
+    simulationReportSeed: HTMLElement;
+    simulationReportTotalBet: HTMLElement;
+    simulationReportTotalWin: HTMLElement;
+    simulationReportRtp: HTMLElement;
+    simulationReportHitFrequency: HTMLElement;
+    simulationReportVolatility: HTMLElement;
+    simulationReportConfidenceInterval: HTMLElement;
+    simulationReportMaxWin: HTMLElement;
+    simulationReportDuration: HTMLElement;
+    simulationReportBreakdownSection: HTMLElement;
+    simulationReportBreakdownBody: HTMLElement;
+    simulationReportWarningsSection: HTMLElement;
+    simulationReportWarningsList: HTMLElement;
+    simulationReportReproducibility: HTMLElement;
 };
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -116,6 +147,36 @@ export function queryElements(): Elements {
         validationWarningsList: requireElement("validation-warnings"),
         validationSuggestionsSection: requireElement("validation-suggestions-section"),
         validationSuggestionsList: requireElement("validation-suggestions"),
+        tabSimulationButton: requireElement("tab-simulation"),
+        projectSimulationSection: requireElement("project-simulation"),
+        simulationForm: requireElement("simulation-form"),
+        simulationRoundsInput: requireElement("simulation-rounds"),
+        simulationSeedInput: requireElement("simulation-seed"),
+        simulationRunButton: requireElement("simulation-run-button"),
+        simulationIdle: requireElement("simulation-idle"),
+        simulationError: requireElement("simulation-error"),
+        simulationProgress: requireElement("simulation-progress"),
+        simulationStatusText: requireElement("simulation-status-text"),
+        simulationProgressText: requireElement("simulation-progress-text"),
+        simulationCancelButton: requireElement("simulation-cancel-button"),
+        simulationRerunButton: requireElement("simulation-rerun-button"),
+        simulationReport: requireElement("simulation-report"),
+        simulationReportGame: requireElement("simulation-report-game"),
+        simulationReportRounds: requireElement("simulation-report-rounds"),
+        simulationReportSeed: requireElement("simulation-report-seed"),
+        simulationReportTotalBet: requireElement("simulation-report-total-bet"),
+        simulationReportTotalWin: requireElement("simulation-report-total-win"),
+        simulationReportRtp: requireElement("simulation-report-rtp"),
+        simulationReportHitFrequency: requireElement("simulation-report-hit-frequency"),
+        simulationReportVolatility: requireElement("simulation-report-volatility"),
+        simulationReportConfidenceInterval: requireElement("simulation-report-confidence-interval"),
+        simulationReportMaxWin: requireElement("simulation-report-max-win"),
+        simulationReportDuration: requireElement("simulation-report-duration"),
+        simulationReportBreakdownSection: requireElement("simulation-report-breakdown-section"),
+        simulationReportBreakdownBody: requireElement("simulation-report-breakdown-body"),
+        simulationReportWarningsSection: requireElement("simulation-report-warnings-section"),
+        simulationReportWarningsList: requireElement("simulation-report-warnings"),
+        simulationReportReproducibility: requireElement("simulation-report-reproducibility"),
     };
 }
 
@@ -168,6 +229,7 @@ export function renderProjectHeader(elements: Elements, header: ProjectHeaderVie
     } else {
         elements.projectOverviewSection.hidden = true;
         elements.projectValidationSection.hidden = true;
+        elements.projectSimulationSection.hidden = true;
     }
 
     if (header.status === "empty") {
@@ -200,8 +262,10 @@ export function renderProjectHeader(elements: Elements, header: ProjectHeaderVie
 export function showProjectTab(elements: Elements, tab: ProjectTab): void {
     elements.projectOverviewSection.hidden = tab !== "overview";
     elements.projectValidationSection.hidden = tab !== "validation";
+    elements.projectSimulationSection.hidden = tab !== "simulation";
     elements.tabOverviewButton.setAttribute("aria-current", tab === "overview" ? "page" : "false");
     elements.tabValidationButton.setAttribute("aria-current", tab === "validation" ? "page" : "false");
+    elements.tabSimulationButton.setAttribute("aria-current", tab === "simulation" ? "page" : "false");
 }
 
 // Renders the full Inspect result block for every InspectionResultView state (loading/error/loaded
@@ -272,5 +336,95 @@ export function renderValidationSummary(elements: Elements, summary: ValidationS
         const item = document.createElement("li");
         item.textContent = suggestion;
         elements.validationSuggestionsList.appendChild(item);
+    }
+}
+
+// `progress` is undefined exactly for "idle" (no simulation has been started this session yet) — not
+// an API state, purely a frontend concept before the first POST /api/project/simulations. Every
+// other state (queued/running/completed/failed/cancelled) comes straight from the polled job.
+export function renderSimulationProgress(elements: Elements, progress: SimulationProgressView | undefined): void {
+    const active = progress !== undefined && (progress.status === "queued" || progress.status === "running");
+    const terminal = progress !== undefined && !active;
+
+    elements.simulationIdle.hidden = progress !== undefined;
+    elements.simulationError.hidden = progress?.status !== "failed";
+    elements.simulationProgress.hidden = progress === undefined;
+    elements.simulationCancelButton.hidden = !active;
+    elements.simulationRerunButton.hidden = !terminal;
+
+    if (progress === undefined) {
+        return;
+    }
+
+    elements.simulationStatusText.textContent = `Status: ${progress.status}`;
+    elements.simulationProgressText.textContent =
+        `${progress.roundsCompleted} / ${progress.rounds} rounds (${progress.percent}%) — ${progress.durationMs}ms`;
+
+    if (progress.status === "failed") {
+        elements.simulationError.textContent = progress.error ?? "Simulation failed.";
+    }
+}
+
+// For an apiClient call itself failing (network error, an unexpected non-2xx) — distinct from the
+// job's own "failed" status, which renderSimulationProgress already handles from polled data.
+export function renderSimulationError(elements: Elements, message: string): void {
+    elements.simulationError.hidden = false;
+    elements.simulationError.textContent = message;
+}
+
+function formatConfidenceInterval(interval: {low: number; high: number} | undefined): string {
+    if (!interval) {
+        return "—";
+    }
+    return `${(interval.low * 100).toFixed(2)}% – ${(interval.high * 100).toFixed(2)}%`;
+}
+
+export function renderSimulationReport(elements: Elements, view: SimulationReportView): void {
+    elements.simulationReport.hidden = false;
+    elements.simulationReportGame.textContent = `${view.game.name} (id: "${view.game.id}", v${view.game.version})`;
+    elements.simulationReportRounds.textContent =
+        view.rounds === view.requestedRounds ? String(view.rounds) : `${view.rounds} (requested ${view.requestedRounds})`;
+    elements.simulationReportSeed.textContent = view.seed ?? "(none)";
+    elements.simulationReportTotalBet.textContent = view.totalBet.toFixed(2);
+    elements.simulationReportTotalWin.textContent = view.totalWin.toFixed(2);
+    elements.simulationReportRtp.textContent = `${(view.rtp * 100).toFixed(2)}%`;
+    elements.simulationReportHitFrequency.textContent = `${(view.hitFrequency * 100).toFixed(2)}%`;
+    elements.simulationReportVolatility.textContent =
+        view.volatility === undefined ? "—" : view.volatility.toFixed(2);
+    elements.simulationReportConfidenceInterval.textContent = formatConfidenceInterval(view.rtpConfidenceInterval95);
+    elements.simulationReportMaxWin.textContent = view.maxWin.toFixed(2);
+    elements.simulationReportDuration.textContent = `${view.durationMs}ms (${view.spinsPerSecond} spins/s)`;
+
+    elements.simulationReportBreakdownSection.hidden = !view.breakdown || view.breakdown.length === 0;
+    elements.simulationReportBreakdownBody.textContent = "";
+    for (const row of view.breakdown ?? []) {
+        const tr = document.createElement("tr");
+        const cells = [
+            row.category,
+            String(row.rounds),
+            `${(row.rtp * 100).toFixed(2)}%`,
+            `${(row.contribution * 100).toFixed(2)} pp`,
+            `${(row.hitFrequency * 100).toFixed(2)}%`,
+            row.maxWin.toFixed(2),
+        ];
+        for (const cellText of cells) {
+            const td = document.createElement("td");
+            td.textContent = cellText;
+            tr.appendChild(td);
+        }
+        elements.simulationReportBreakdownBody.appendChild(tr);
+    }
+
+    elements.simulationReportWarningsSection.hidden = view.warnings.length === 0;
+    elements.simulationReportWarningsList.textContent = "";
+    for (const warning of view.warnings) {
+        const item = document.createElement("li");
+        item.textContent = warning;
+        elements.simulationReportWarningsList.appendChild(item);
+    }
+
+    elements.simulationReportReproducibility.hidden = view.reproducibilityCommand === undefined;
+    if (view.reproducibilityCommand !== undefined) {
+        elements.simulationReportReproducibility.textContent = view.reproducibilityCommand;
     }
 }

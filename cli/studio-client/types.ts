@@ -59,3 +59,67 @@ export type PokieGamePackageValidationReport = {
     warnings: ValidationIssue[];
     suggestions: string[];
 };
+
+export type SimulationReportBreakdownComponent = {
+    rounds: number;
+    totalBet: number;
+    totalWin: number;
+    rtp: number;
+    hitFrequency: number;
+    maxWin: number;
+    contribution: number;
+};
+
+export type SimulationReportReproducibility = {
+    game: {id: string; name: string; version: string};
+    seed: string | null;
+    requestedRounds: number;
+    actualRounds: number;
+    command: string;
+};
+
+// The server's copy of this same type lives in "pokie" itself (src/reporting/SimulationReport.ts) —
+// kept as its own client-side copy here, same convention as every other type in this file.
+export type SimulationReport = {
+    game: {id: string; name: string; version: string};
+    requestedRounds: number;
+    rounds: number;
+    seed: string | null;
+    totalBet: number;
+    totalWin: number;
+    rtp: number;
+    hitFrequency: number;
+    maxWin: number;
+    durationMs: number;
+    spinsPerSecond: number;
+    reproducibility?: SimulationReportReproducibility;
+    warnings?: string[];
+    recommendations?: string[];
+    breakdown?: {components: Record<string, SimulationReportBreakdownComponent>};
+};
+
+// The extra volatility/standard-deviation/confidence-interval fields Studio surfaces alongside the
+// standard SimulationReport — see cli/studio/simulation/StudioSimulationJobView.ts's own doc comment
+// for why these live here rather than as a change to SimulationReport itself.
+export type StudioSimulationStatisticsView = {
+    volatility: number;
+    payoutStandardDeviation: number;
+    returnStandardDeviation: number;
+    averagePayoutConfidenceInterval95: {low: number; high: number};
+    rtpConfidenceInterval95: {low: number; high: number};
+};
+
+export type StudioSimulationStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+
+export type StudioSimulationJobView = {
+    id: string;
+    status: StudioSimulationStatus;
+    rounds: number;
+    seed?: string;
+    startedAt: string;
+    roundsCompleted: number;
+    durationMs: number;
+    report?: SimulationReport;
+    statistics?: StudioSimulationStatisticsView;
+    error?: string;
+};

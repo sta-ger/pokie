@@ -2,6 +2,7 @@ import {
     GameBuildInfo,
     GamePackageInspector,
     GamePackageInspectionReport,
+    GameSessionHandling,
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -11,6 +12,8 @@ import os from "os";
 import path from "path";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
+import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
+import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
@@ -24,6 +27,11 @@ async function post(url: string, body?: unknown): Promise<{status: number; body:
         headers: body === undefined ? undefined : {"Content-Type": "application/json"},
         body: body === undefined ? undefined : JSON.stringify(body),
     });
+    return {status: response.status, body: await response.json()};
+}
+
+async function del(url: string): Promise<{status: number; body: unknown}> {
+    const response = await fetch(url, {method: "DELETE"});
     return {status: response.status, body: await response.json()};
 }
 
@@ -44,6 +52,88 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame {
             throw new Error("not used by these tests");
         },
     };
+}
+
+function createPlayableSession(): GameSessionHandling {
+    let credits = 1000;
+    let bet = 1;
+    let round = 0;
+    let winAmount = 0;
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: (value: number) => {
+            bet = value;
+        },
+        getAvailableBets: () => [1, 2, 5],
+        canPlayNextGame: () => true,
+        play: () => {
+            round++;
+            winAmount = round % 5 === 0 ? bet * 10 : 0;
+            credits = credits - bet + winAmount;
+        },
+        getWinAmount: () => winAmount,
+    };
+}
+
+function createPlayableFakeGame(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => createPlayableSession(),
+    };
+}
+
+// Same StakeAmountDetermining-implementing fake as StudioSimulationService.test.ts's own —
+// round % 5 === 4 is an unstaked (free games) round.
+function createFreeGamesAwareFakeGame(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => {
+            let credits = 1000;
+            const bet = 1;
+            let round = 0;
+            let pendingWin = 0;
+            return {
+                getCreditsAmount: () => credits,
+                setCreditsAmount: (value: number) => {
+                    credits = value;
+                },
+                getBet: () => bet,
+                setBet: () => undefined,
+                getAvailableBets: () => [1],
+                canPlayNextGame: () => true,
+                getStakeAmount: () => (round % 5 === 4 ? 0 : bet),
+                play: () => {
+                    pendingWin = round % 10 === 0 ? 10 : 0;
+                    round++;
+                    credits = credits - (round % 5 === 0 ? 0 : bet) + pendingWin;
+                },
+                getWinAmount: () => pendingWin,
+            } as unknown as GameSessionHandling;
+        },
+    };
+}
+
+function flushMacrotask(): Promise<void> {
+    return new Promise((resolve) => {
+        setImmediate(resolve);
+    });
+}
+
+async function pollUntilTerminal(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
+    for (let i = 0; i < 2000; i++) {
+        const response = await get(url);
+        const body = response.body as {status: string};
+        if (body.status !== "queued" && body.status !== "running") {
+            return response as {status: number; body: {[key: string]: unknown; status: string}};
+        }
+        await flushMacrotask();
+    }
+    throw new Error(`Timed out waiting for ${url} to reach a terminal state.`);
 }
 
 describe("StudioServer", () => {
@@ -586,6 +676,263 @@ describe("StudioServer", () => {
             } finally {
                 fs.rmSync(projectRoot, {recursive: true, force: true});
             }
+        });
+    });
+
+    describe("Project Dashboard: Simulation (POST/GET/DELETE /api/project/simulations)", () => {
+        it("returns 409 for POST when there is no active project", async () => {
+            const {status, body} = await post(`${baseUrl}/api/project/simulations`, {rounds: 1000});
+
+            expect(status).toBe(409);
+            expect(body).toEqual({error: "No active project."});
+        });
+
+        // Persistent (not "Once"): the simulation's own StudioSimulationService independently calls
+        // this same `loadGame` a second time (see StudioSimulationService.run()), so both the Open
+        // Project call and the simulation's own load need `game` unless a test explicitly overrides
+        // the second call (e.g. with mockResolvedValueOnce/mockRejectedValueOnce, which jest checks
+        // ahead of this persistent default).
+        async function openCrazyFruits(game: PokieGame): Promise<void> {
+            loadGame.mockResolvedValue(game);
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+        }
+
+        it("rejects an invalid rounds with 400 and never creates a job", async () => {
+            await openCrazyFruits(createPlayableFakeGame({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}));
+
+            const {status, body} = await post(`${baseUrl}/api/project/simulations`, {rounds: 0});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: '"rounds" must be a positive integer.'});
+        });
+
+        it("rejects a non-integer rounds with 400", async () => {
+            await openCrazyFruits(createPlayableFakeGame({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}));
+
+            const {status, body} = await post(`${baseUrl}/api/project/simulations`, {rounds: 12.5});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: '"rounds" must be a positive integer.'});
+        });
+
+        it("rejects an empty seed with 400", async () => {
+            await openCrazyFruits(createPlayableFakeGame({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}));
+
+            const {status, body} = await post(`${baseUrl}/api/project/simulations`, {rounds: 100, seed: "  "});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: '"seed" must be a non-empty string when given.'});
+        });
+
+        it("starts a simulation, completes it, and returns a full SimulationReport", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 200, seed: "demo"});
+            expect(created.status).toBe(202);
+            const createdBody = created.body as {id: string; status: string};
+            expect(createdBody.status).toBe("queued");
+
+            const {status, body} = await pollUntilTerminal(`${baseUrl}/api/project/simulations/${createdBody.id}`);
+
+            expect(status).toBe(200);
+            expect(body.status).toBe("completed");
+            expect(body.report).toMatchObject({game: manifest, rounds: 200, requestedRounds: 200, seed: "demo"});
+            expect(body.statistics).toMatchObject({volatility: expect.any(Number)});
+            expect(body.roundsCompleted).toBe(200);
+        });
+
+        it("returns 404 for GET of an unknown simulation id", async () => {
+            const {status, body} = await get(`${baseUrl}/api/project/simulations/does-not-exist`);
+
+            expect(status).toBe(404);
+            expect(body).toEqual({error: 'Unknown simulation id "does-not-exist".'});
+        });
+
+        it("returns 404 for DELETE of an unknown simulation id", async () => {
+            const {status, body} = await del(`${baseUrl}/api/project/simulations/does-not-exist`);
+
+            expect(status).toBe(404);
+            expect(body).toEqual({error: 'Unknown simulation id "does-not-exist".'});
+        });
+
+        it("produces a base/freeGames breakdown when the session implements StakeAmountDetermining", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            await openCrazyFruits(createFreeGamesAwareFakeGame(manifest));
+
+            const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 50});
+            const createdBody = created.body as {id: string};
+
+            const {body} = await pollUntilTerminal(`${baseUrl}/api/project/simulations/${createdBody.id}`);
+
+            const report = body.report as {breakdown: {components: Record<string, {rounds: number}>}; rounds: number};
+            expect(report.breakdown).toBeDefined();
+            expect(report.breakdown.components.base.rounds).toBe(40);
+            expect(report.breakdown.components.freeGames.rounds).toBe(10);
+        });
+
+        it("has no breakdown when the session doesn't implement StakeAmountDetermining", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 30});
+            const createdBody = created.body as {id: string};
+
+            const {body} = await pollUntilTerminal(`${baseUrl}/api/project/simulations/${createdBody.id}`);
+
+            expect((body.report as {breakdown?: unknown}).breakdown).toBeUndefined();
+        });
+
+        it("fails the job with a safe error message when the simulation's own load of the game throws", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            // Open succeeds (first loadGame call); the simulation's own independent load (second call)
+            // fails — e.g. the entry file was removed after the project was opened.
+            loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            loadGame.mockRejectedValueOnce(new Error("Cannot find module './dist/index.js'"));
+
+            const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 100});
+            const createdBody = created.body as {id: string};
+
+            const {body} = await pollUntilTerminal(`${baseUrl}/api/project/simulations/${createdBody.id}`);
+
+            expect(body.status).toBe("failed");
+            expect(body.error).toBe("Cannot find module './dist/index.js'");
+            expect(JSON.stringify(body)).not.toContain("\\n    at ");
+        });
+
+        it("rejects a second POST for the same project with 409 while one is already queued/running", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
+            await post(`${baseUrl}/api/projects/open`, {projectRoot: "./crazy-fruits"});
+            // The simulation's own independent load never resolves — keeps the first job "queued"
+            // forever, so the conflict check below can never race.
+            loadGame.mockReturnValueOnce(
+                new Promise(() => {
+                    // never resolves
+                }),
+            );
+
+            const first = await post(`${baseUrl}/api/project/simulations`, {rounds: 1000});
+            const firstBody = first.body as {id: string};
+            const second = await post(`${baseUrl}/api/project/simulations`, {rounds: 500});
+
+            expect(second.status).toBe(409);
+            expect(second.body).toEqual({
+                error: "A simulation is already running for this project.",
+                activeJobId: firstBody.id,
+            });
+        });
+    });
+
+    describe("Project Dashboard: Simulation cancellation (controlled chunk pacing)", () => {
+        let projectStudioRoot: string;
+        let projectServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            projectStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-sim-cancel-test-"));
+            writeStudioAssets(projectStudioRoot);
+        });
+
+        afterEach(async () => {
+            await projectServer?.stop();
+            fs.rmSync(projectStudioRoot, {recursive: true, force: true});
+        });
+
+        function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendingCount: () => number; release: () => void} {
+            const pending: Array<() => void> = [];
+            return {
+                yieldToEventLoop: () =>
+                    new Promise<void>((resolve) => {
+                        pending.push(resolve);
+                    }),
+                pendingCount: () => pending.length,
+                release: () => {
+                    const resolve = pending.shift();
+                    resolve?.();
+                },
+            };
+        }
+
+        it("cancels a running simulation via DELETE, stopping further progress", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            const gate = createControlledYield();
+            const simulationService = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                undefined,
+                10, // chunkSize
+                undefined,
+                gate.yieldToEventLoop,
+            );
+
+            projectServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: projectStudioRoot,
+                gamePackageCreator: createStubCreator(scaffoldResult),
+                loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
+                simulationService,
+                initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
+            });
+            const address = await projectServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${projectBaseUrl}/api/project/simulations`, {rounds: 25});
+            const createdBody = created.body as {id: string};
+            await flushMacrotask();
+            expect(gate.pendingCount()).toBe(1);
+
+            const cancelResponse = await del(`${projectBaseUrl}/api/project/simulations/${createdBody.id}`);
+            expect(cancelResponse.status).toBe(200);
+
+            gate.release();
+            await flushMacrotask();
+
+            const {body} = await get(`${projectBaseUrl}/api/project/simulations/${createdBody.id}`);
+            expect((body as {status: string}).status).toBe("cancelled");
+            expect((body as {roundsCompleted: number}).roundsCompleted).toBe(10);
+        });
+
+        it("stopping the Studio server during an active simulation resolves cleanly and cancels the job", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            const gate = createControlledYield();
+            const simulationService = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                undefined,
+                10,
+                undefined,
+                gate.yieldToEventLoop,
+            );
+
+            projectServer = new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: projectStudioRoot,
+                gamePackageCreator: createStubCreator(scaffoldResult),
+                loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
+                simulationService,
+                initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
+            });
+            const address = await projectServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${projectBaseUrl}/api/project/simulations`, {rounds: 25});
+            const createdBody = created.body as {id: string};
+            await flushMacrotask();
+            expect(gate.pendingCount()).toBe(1);
+
+            const serverToStop = projectServer;
+            projectServer = undefined; // already being stopped — afterEach shouldn't stop it again
+            await expect(serverToStop.stop()).resolves.toBeUndefined();
+
+            // stop() only requests cancellation (aborts the controller) — the record transitions to
+            // "cancelled" once the paused chunk loop notices, same as a DELETE-triggered cancel.
+            gate.release();
+            await flushMacrotask();
+
+            expect(simulationService.getStatus(createdBody.id)?.status).toBe("cancelled");
         });
     });
 });

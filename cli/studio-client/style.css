@@ -120,3 +120,25 @@ button:disabled {
     display: flex;
     gap: 0.5rem;
 }
+
+#simulation-form input[type="number"] {
+    flex: 0 0 6rem;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+}
+
+th,
+td {
+    border: 1px solid currentColor;
+    padding: 0.4rem 0.6rem;
+    text-align: right;
+}
+
+th:first-child,
+td:first-child {
+    text-align: left;
+}

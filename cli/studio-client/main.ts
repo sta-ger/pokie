@@ -1,12 +1,15 @@
 import {
+    cancelSimulation,
     closeProject,
     createProject,
     FetchLike,
     getContext,
     getProjectContext,
+    getSimulation,
     inspectProject,
     listRecentProjects,
     openProject,
+    startSimulation,
     validateProject,
 } from "./apiClient.js";
 import {
@@ -16,14 +19,18 @@ import {
     renderInspectionResult,
     renderProjectHeader,
     renderRecentProjects,
+    renderSimulationError,
+    renderSimulationProgress,
+    renderSimulationReport,
     renderValidationSummary,
     setStatus,
     showProjectTab,
     showView,
 } from "./dom.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
+import {describeSimulationProgress, describeSimulationReport, isSimulationActive} from "./interpretSimulation.js";
 import {currentRoute, navigate, onRouteChange, StudioRoute} from "./router.js";
-import type {ProjectDashboardContext, StudioContext} from "./types.js";
+import type {ProjectDashboardContext, StudioContext, StudioSimulationJobView} from "./types.js";
 
 // How long/often to re-check GET /api/project/context while it reports "loading" — only ever
 // happens right after Studio starts directly into Project mode (`pokie .`/`pokie <path>`), since
@@ -31,6 +38,12 @@ import type {ProjectDashboardContext, StudioContext} from "./types.js";
 // hanging entry-module load doesn't poll forever.
 const PROJECT_POLL_INTERVAL_MS = 500;
 const PROJECT_POLL_MAX_ATTEMPTS = 40;
+
+// How often to re-check GET /api/project/simulations/:id while queued/running. Unlike the dashboard
+// poll above, this has no max-attempts cap — a legitimate simulation is allowed to run as long as it
+// actually takes; polling only stops once the job reaches a terminal status or the user navigates
+// away from the Project route.
+const SIMULATION_POLL_INTERVAL_MS = 500;
 
 function routeForContext(context: StudioContext): StudioRoute {
     return context.mode === "project" ? "project" : "home";
@@ -77,10 +90,59 @@ async function main(): Promise<void> {
             });
     };
 
+    // Tracked so the Cancel/re-run buttons and background polling know which job to act on — reset
+    // whenever a (new) project becomes active (see showProjectDashboard below), same as Inspect's own
+    // per-project state.
+    let currentSimulationId: string | undefined;
+    let lastSimulationParams: {rounds: number; seed?: string} | undefined;
+
+    const renderSimulationJob = (job: StudioSimulationJobView): void => {
+        renderSimulationProgress(elements, describeSimulationProgress(job));
+        if (job.status === "completed" && job.report) {
+            renderSimulationReport(elements, describeSimulationReport(job.report, job.statistics));
+        }
+    };
+
+    const pollSimulation = (id: string): void => {
+        getSimulation(fetchImpl, id)
+            .then((job) => {
+                renderSimulationJob(job);
+                if (isSimulationActive(job) && currentRoute() === "project") {
+                    setTimeout(() => pollSimulation(id), SIMULATION_POLL_INTERVAL_MS);
+                }
+            })
+            .catch((error: unknown) => {
+                renderSimulationError(elements, error instanceof Error ? error.message : String(error));
+            });
+    };
+
+    const runSimulation = (rounds: number, seed?: string): void => {
+        lastSimulationParams = {rounds, seed};
+        renderSimulationProgress(elements, {status: "queued", roundsCompleted: 0, rounds, percent: 0, durationMs: 0});
+        startSimulation(fetchImpl, rounds, seed)
+            .then((result) => {
+                if (result.status === "conflict") {
+                    currentSimulationId = result.activeJobId;
+                    pollSimulation(result.activeJobId);
+                    return;
+                }
+                currentSimulationId = result.job.id;
+                renderSimulationJob(result.job);
+                pollSimulation(result.job.id);
+            })
+            .catch((error: unknown) => {
+                renderSimulationError(elements, error instanceof Error ? error.message : String(error));
+            });
+    };
+
     const showProjectDashboard = (dashboard: ProjectDashboardContext): void => {
         renderProjectHeader(elements, describeProjectHeader(dashboard), activeProjectTab);
         if (dashboard.status === "loaded" || dashboard.status === "error") {
             refreshInspect();
+            currentSimulationId = undefined;
+            lastSimulationParams = undefined;
+            renderSimulationProgress(elements, undefined);
+            elements.simulationReport.hidden = true;
         }
     };
 
@@ -194,6 +256,11 @@ async function main(): Promise<void> {
         showProjectTab(elements, "validation");
     });
 
+    elements.tabSimulationButton.addEventListener("click", () => {
+        activeProjectTab = "simulation";
+        showProjectTab(elements, "simulation");
+    });
+
     elements.inspectButton.addEventListener("click", () => {
         refreshInspect();
     });
@@ -206,6 +273,31 @@ async function main(): Promise<void> {
 
     elements.runValidateButton.addEventListener("click", () => {
         runValidate();
+    });
+
+    elements.simulationForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const rounds = Number(elements.simulationRoundsInput.value);
+        const seed = elements.simulationSeedInput.value.trim();
+        runSimulation(rounds, seed.length > 0 ? seed : undefined);
+    });
+
+    elements.simulationCancelButton.addEventListener("click", () => {
+        if (currentSimulationId === undefined) {
+            return;
+        }
+        cancelSimulation(fetchImpl, currentSimulationId)
+            .then((job) => renderSimulationJob(job))
+            .catch((error: unknown) => {
+                renderSimulationError(elements, error instanceof Error ? error.message : String(error));
+            });
+    });
+
+    elements.simulationRerunButton.addEventListener("click", () => {
+        if (lastSimulationParams === undefined) {
+            return;
+        }
+        runSimulation(lastSimulationParams.rounds, lastSimulationParams.seed);
     });
 }
 
