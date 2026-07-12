@@ -1270,4 +1270,61 @@ describe("PokieDevServer (optimistic locking / session versioning)", () => {
 
         await server.stop();
     });
+
+    describe("client-declared expectedSessionVersion", () => {
+        it("returns 409 with a clear error, and never plays, when expectedSessionVersion is stale", async () => {
+            const game = createFakeGame(manifest);
+            const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: new InMemorySessionRepository()});
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await postJson(`${baseUrl}/sessions`); // saved at version 1
+            const sessionId = created.body.sessionId as string;
+
+            const {status, body} = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {expectedSessionVersion: 99});
+
+            expect(status).toBe(409);
+            expect(typeof body.error).toBe("string");
+            expect(body.error).toContain("expected version 99");
+
+            // Never spun — a follow-up GET still shows win: 0 / the pre-spin state.
+            const restored = await getJson(`${baseUrl}/sessions/${sessionId}`);
+            expect(restored.body.win).toBe(0);
+
+            await server.stop();
+        });
+
+        it("plays normally (200) when expectedSessionVersion matches the current version", async () => {
+            const game = createFakeGame(manifest);
+            const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: new InMemorySessionRepository()});
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+            const startingVersion = (created.body.internal as Record<string, unknown>).sessionVersion as number;
+
+            const {status} = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {expectedSessionVersion: startingVersion});
+
+            expect(status).toBe(200);
+
+            await server.stop();
+        });
+
+        it("returns 400 when expectedSessionVersion isn't a positive integer", async () => {
+            const game = createFakeGame(manifest);
+            const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const {status, body} = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {expectedSessionVersion: "not-a-number"});
+
+            expect(status).toBe(400);
+            expect(typeof body.error).toBe("string");
+
+            await server.stop();
+        });
+    });
 });

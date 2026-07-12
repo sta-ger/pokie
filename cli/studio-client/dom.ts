@@ -31,8 +31,14 @@ import type {BuildPreviewView, BuildProjectView, HomeRecentProjectsListView, Sca
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
 import type {ReplayListView, ReplayProgressView, ReplayResultView} from "./interpretReplay.js";
 import type {ReportListView} from "./interpretReports.js";
+import {isRuntimeRunning, describeRuntimeScreen, RuntimeSessionResultView, RuntimeSpinResultView, RuntimeStateView} from "./interpretRuntime.js";
 import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
-import type {StudioHomeRecentProjectView, StudioReplayListEntry, StudioSimulationReportListEntry} from "./types.js";
+import type {
+    StudioHomeRecentProjectView,
+    StudioReplayListEntry,
+    StudioRuntimeSessionView,
+    StudioSimulationReportListEntry,
+} from "./types.js";
 
 // A single hand-off point from every dynamic row's add/remove/duplicate/move/edit control back to
 // main.ts: run a pure mutator from blueprintFormOps.ts against a clone of the current blueprint, then
@@ -41,7 +47,7 @@ import type {StudioHomeRecentProjectView, StudioReplayListEntry, StudioSimulatio
 // the only callback the Blueprint Editor's render functions need.
 export type BlueprintMutate = (mutate: (blueprint: Record<string, unknown>) => void) => void;
 
-export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay";
+export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay" | "runtime";
 export type HomeTab = "recent" | "create" | "init" | "build" | "open" | "blueprint-editor";
 
 // One report's worth of display fields — factored out so the exact same renderSimulationReport()
@@ -243,6 +249,53 @@ export type Elements = {
     replayListEmpty: HTMLElement;
     replayListError: HTMLElement;
     replayList: HTMLElement;
+    tabRuntimeButton: HTMLButtonElement;
+    projectRuntimeSection: HTMLElement;
+    runtimeStartForm: HTMLFormElement;
+    runtimeHost: HTMLInputElement;
+    runtimePort: HTMLInputElement;
+    runtimeDebug: HTMLInputElement;
+    runtimeRepositoryMode: HTMLSelectElement;
+    runtimeSeed: HTMLInputElement;
+    runtimeStartButton: HTMLButtonElement;
+    runtimeStopButton: HTMLButtonElement;
+    runtimeRestartButton: HTMLButtonElement;
+    runtimeStatusBadge: HTMLElement;
+    runtimeError: HTMLElement;
+    runtimeAddressDetails: HTMLElement;
+    runtimeAddressHost: HTMLElement;
+    runtimeAddressPort: HTMLElement;
+    runtimeAddressBaseUrl: HTMLElement;
+    runtimeAddressRepositoryMode: HTMLElement;
+    runtimeOpenEndpointLink: HTMLAnchorElement;
+    runtimeCreateSeed: HTMLInputElement;
+    runtimeCreateSessionButton: HTMLButtonElement;
+    runtimeLoadSessionId: HTMLInputElement;
+    runtimeLoadSessionButton: HTMLButtonElement;
+    runtimeSessionError: HTMLElement;
+    runtimeSessionNotRunning: HTMLElement;
+    runtimeSessionNotFound: HTMLElement;
+    runtimeSessionDetails: HTMLElement;
+    runtimeSessionId: HTMLElement;
+    runtimeSessionVersion: HTMLElement;
+    runtimeSessionCredits: HTMLElement;
+    runtimeSessionBet: HTMLElement;
+    runtimeSessionWin: HTMLElement;
+    runtimeSessionScreenSection: HTMLElement;
+    runtimeSessionScreenBody: HTMLElement;
+    runtimeSpinForm: HTMLFormElement;
+    runtimeSpinRequestId: HTMLInputElement;
+    runtimeSpinExpectedVersion: HTMLInputElement;
+    runtimeSpinButton: HTMLButtonElement;
+    runtimeRepeatSpinButton: HTMLButtonElement;
+    runtimeSpinError: HTMLElement;
+    runtimeSpinBlocked: HTMLElement;
+    runtimeSpinConflict: HTMLElement;
+    runtimePublicJson: HTMLElement;
+    runtimeDebugDisabled: HTMLElement;
+    runtimeDebugJson: HTMLElement;
+    runtimeHistoryEmpty: HTMLElement;
+    runtimeHistoryList: HTMLElement;
     homeTabBlueprintEditorButton: HTMLButtonElement;
     homeBlueprintEditorSection: HTMLElement;
     blueprintNewButton: HTMLButtonElement;
@@ -535,6 +588,53 @@ export function queryElements(): Elements {
         replayListEmpty: requireElement("replay-list-empty"),
         replayListError: requireElement("replay-list-error"),
         replayList: requireElement("replay-list"),
+        tabRuntimeButton: requireElement("tab-runtime"),
+        projectRuntimeSection: requireElement("project-runtime"),
+        runtimeStartForm: requireElement("runtime-start-form"),
+        runtimeHost: requireElement("runtime-host"),
+        runtimePort: requireElement("runtime-port"),
+        runtimeDebug: requireElement("runtime-debug"),
+        runtimeRepositoryMode: requireElement("runtime-repository-mode"),
+        runtimeSeed: requireElement("runtime-seed"),
+        runtimeStartButton: requireElement("runtime-start-button"),
+        runtimeStopButton: requireElement("runtime-stop-button"),
+        runtimeRestartButton: requireElement("runtime-restart-button"),
+        runtimeStatusBadge: requireElement("runtime-status-badge"),
+        runtimeError: requireElement("runtime-error"),
+        runtimeAddressDetails: requireElement("runtime-address-details"),
+        runtimeAddressHost: requireElement("runtime-address-host"),
+        runtimeAddressPort: requireElement("runtime-address-port"),
+        runtimeAddressBaseUrl: requireElement("runtime-address-base-url"),
+        runtimeAddressRepositoryMode: requireElement("runtime-address-repository-mode"),
+        runtimeOpenEndpointLink: requireElement("runtime-open-endpoint-link"),
+        runtimeCreateSeed: requireElement("runtime-create-seed"),
+        runtimeCreateSessionButton: requireElement("runtime-create-session-button"),
+        runtimeLoadSessionId: requireElement("runtime-load-session-id"),
+        runtimeLoadSessionButton: requireElement("runtime-load-session-button"),
+        runtimeSessionError: requireElement("runtime-session-error"),
+        runtimeSessionNotRunning: requireElement("runtime-session-not-running"),
+        runtimeSessionNotFound: requireElement("runtime-session-not-found"),
+        runtimeSessionDetails: requireElement("runtime-session-details"),
+        runtimeSessionId: requireElement("runtime-session-id"),
+        runtimeSessionVersion: requireElement("runtime-session-version"),
+        runtimeSessionCredits: requireElement("runtime-session-credits"),
+        runtimeSessionBet: requireElement("runtime-session-bet"),
+        runtimeSessionWin: requireElement("runtime-session-win"),
+        runtimeSessionScreenSection: requireElement("runtime-session-screen-section"),
+        runtimeSessionScreenBody: requireElement("runtime-session-screen-body"),
+        runtimeSpinForm: requireElement("runtime-spin-form"),
+        runtimeSpinRequestId: requireElement("runtime-spin-request-id"),
+        runtimeSpinExpectedVersion: requireElement("runtime-spin-expected-version"),
+        runtimeSpinButton: requireElement("runtime-spin-button"),
+        runtimeRepeatSpinButton: requireElement("runtime-repeat-spin-button"),
+        runtimeSpinError: requireElement("runtime-spin-error"),
+        runtimeSpinBlocked: requireElement("runtime-spin-blocked"),
+        runtimeSpinConflict: requireElement("runtime-spin-conflict"),
+        runtimePublicJson: requireElement("runtime-public-json"),
+        runtimeDebugDisabled: requireElement("runtime-debug-disabled"),
+        runtimeDebugJson: requireElement("runtime-debug-json"),
+        runtimeHistoryEmpty: requireElement("runtime-history-empty"),
+        runtimeHistoryList: requireElement("runtime-history-list"),
         homeTabBlueprintEditorButton: requireElement("home-tab-blueprint-editor"),
         homeBlueprintEditorSection: requireElement("home-blueprint-editor"),
         blueprintNewButton: requireElement("blueprint-new-button"),
@@ -851,6 +951,7 @@ export function renderProjectHeader(elements: Elements, header: ProjectHeaderVie
         elements.projectSimulationSection.hidden = true;
         elements.projectReportsSection.hidden = true;
         elements.projectReplaySection.hidden = true;
+        elements.projectRuntimeSection.hidden = true;
     }
 
     if (header.status === "empty") {
@@ -886,11 +987,13 @@ export function showProjectTab(elements: Elements, tab: ProjectTab): void {
     elements.projectSimulationSection.hidden = tab !== "simulation";
     elements.projectReportsSection.hidden = tab !== "reports";
     elements.projectReplaySection.hidden = tab !== "replay";
+    elements.projectRuntimeSection.hidden = tab !== "runtime";
     elements.tabOverviewButton.setAttribute("aria-current", tab === "overview" ? "page" : "false");
     elements.tabValidationButton.setAttribute("aria-current", tab === "validation" ? "page" : "false");
     elements.tabSimulationButton.setAttribute("aria-current", tab === "simulation" ? "page" : "false");
     elements.tabReportsButton.setAttribute("aria-current", tab === "reports" ? "page" : "false");
     elements.tabReplayButton.setAttribute("aria-current", tab === "replay" ? "page" : "false");
+    elements.tabRuntimeButton.setAttribute("aria-current", tab === "runtime" ? "page" : "false");
 }
 
 // Renders the full Inspect result block for every InspectionResultView state (loading/error/loaded
@@ -1670,4 +1773,147 @@ export function renderBlueprintBuildResult(elements: Elements, view: BuildProjec
     elements.blueprintBuildResultCreatedSection.hidden = view.createdFiles.length === 0;
     renderFileList(elements.blueprintBuildResultCreated, view.createdFiles);
     elements.blueprintBuildOpenButton.hidden = false;
+}
+
+// ---- Runtime tab ----
+
+export function renderRuntimeState(elements: Elements, view: RuntimeStateView): void {
+    elements.runtimeError.hidden = true;
+    elements.runtimeAddressDetails.hidden = true;
+    elements.runtimeOpenEndpointLink.hidden = true;
+
+    switch (view.status) {
+        case "idle":
+            elements.runtimeStatusBadge.textContent = "Not checked yet.";
+            break;
+        case "loading":
+            elements.runtimeStatusBadge.textContent = "Checking…";
+            break;
+        case "error":
+            elements.runtimeStatusBadge.textContent = "Error";
+            elements.runtimeError.hidden = false;
+            elements.runtimeError.textContent = view.message;
+            break;
+        case "failed":
+            elements.runtimeStatusBadge.textContent = "Failed to start";
+            elements.runtimeError.hidden = false;
+            elements.runtimeError.textContent = view.error;
+            break;
+        case "starting":
+            elements.runtimeStatusBadge.textContent = "Starting…";
+            break;
+        case "stopping":
+            elements.runtimeStatusBadge.textContent = "Stopping…";
+            break;
+        case "stopped":
+            elements.runtimeStatusBadge.textContent = "Stopped";
+            break;
+        case "running":
+            elements.runtimeStatusBadge.textContent = `Running at ${view.baseUrl}`;
+            elements.runtimeAddressDetails.hidden = false;
+            elements.runtimeAddressHost.textContent = view.host;
+            elements.runtimeAddressPort.textContent = String(view.port);
+            elements.runtimeAddressBaseUrl.textContent = view.baseUrl;
+            elements.runtimeAddressRepositoryMode.textContent = view.repositoryMode;
+            elements.runtimeOpenEndpointLink.hidden = false;
+            elements.runtimeOpenEndpointLink.href = `${view.baseUrl}/health`;
+            break;
+    }
+
+    const running = isRuntimeRunning(view);
+    elements.runtimeStartButton.disabled = view.status === "running" || view.status === "starting";
+    elements.runtimeStopButton.disabled = !running && view.status !== "stopping";
+    elements.runtimeCreateSessionButton.disabled = !running;
+    elements.runtimeLoadSessionButton.disabled = !running;
+    elements.runtimeSpinButton.disabled = !running;
+    elements.runtimeRepeatSpinButton.disabled = !running;
+}
+
+// Shared by Create Session (RuntimeSessionResultView) and Spin (RuntimeSpinResultView) — both unify
+// into the same idle/loading/error/not-running/not-found/ok shape, spin's own blocked/conflict cases
+// layered on top. "idle"/"loading" leave whatever was already rendered in place (no flicker to empty
+// while a request is in flight); every other status first clears every message/detail panel, then
+// shows exactly the one that applies.
+export function renderRuntimeSession(elements: Elements, view: RuntimeSessionResultView | RuntimeSpinResultView): void {
+    if (view.status === "idle" || view.status === "loading") {
+        return;
+    }
+
+    elements.runtimeSessionError.hidden = true;
+    elements.runtimeSessionNotRunning.hidden = true;
+    elements.runtimeSessionNotFound.hidden = true;
+    elements.runtimeSpinBlocked.hidden = true;
+    elements.runtimeSpinConflict.hidden = true;
+
+    if (view.status === "error") {
+        elements.runtimeSessionError.hidden = false;
+        elements.runtimeSessionError.textContent = view.message;
+        return;
+    }
+    if (view.status === "not-running") {
+        elements.runtimeSessionNotRunning.hidden = false;
+        return;
+    }
+    if (view.status === "not-found") {
+        elements.runtimeSessionNotFound.hidden = false;
+        return;
+    }
+    if (view.status === "blocked") {
+        elements.runtimeSpinBlocked.hidden = false;
+        elements.runtimeSpinBlocked.textContent = view.message;
+        return;
+    }
+    if (view.status === "conflict") {
+        elements.runtimeSpinConflict.hidden = false;
+        elements.runtimeSpinConflict.textContent = view.message;
+        return;
+    }
+
+    renderRuntimeSessionDetails(elements, view.session);
+}
+
+function renderRuntimeSessionDetails(elements: Elements, session: StudioRuntimeSessionView): void {
+    elements.runtimeSessionDetails.hidden = false;
+    elements.runtimeSessionId.textContent = session.sessionId;
+    elements.runtimeSessionVersion.textContent = session.sessionVersion !== undefined ? String(session.sessionVersion) : "(not versioned)";
+    elements.runtimeSessionCredits.textContent = session.credits.toFixed(2);
+    elements.runtimeSessionBet.textContent = session.bet !== undefined ? session.bet.toFixed(2) : "—";
+    elements.runtimeSessionWin.textContent = session.win !== undefined ? session.win.toFixed(2) : "—";
+
+    const screen = describeRuntimeScreen(session.screen);
+    elements.runtimeSessionScreenSection.hidden = screen === undefined;
+    elements.runtimeSessionScreenBody.textContent = "";
+    for (const row of screen ?? []) {
+        const tr = document.createElement("tr");
+        for (const cellText of row) {
+            const td = document.createElement("td");
+            td.textContent = cellText;
+            tr.appendChild(td);
+        }
+        elements.runtimeSessionScreenBody.appendChild(tr);
+    }
+
+    const {debug, ...publicFields} = session;
+    elements.runtimePublicJson.textContent = JSON.stringify(publicFields, null, 2);
+
+    elements.runtimeDebugDisabled.hidden = debug !== undefined;
+    elements.runtimeDebugJson.hidden = debug === undefined;
+    elements.runtimeDebugJson.textContent = debug !== undefined ? JSON.stringify(debug, null, 2) : "";
+}
+
+export type RuntimeHistoryEntry = {
+    timestamp: string;
+    action: string;
+    summary: string;
+};
+
+// Page-session-only (never persisted, never sent to the server) — see main.ts's own retention cap.
+export function renderRuntimeHistory(elements: Elements, entries: RuntimeHistoryEntry[]): void {
+    elements.runtimeHistoryEmpty.hidden = entries.length !== 0;
+    elements.runtimeHistoryList.textContent = "";
+    for (const entry of entries) {
+        const item = document.createElement("li");
+        item.textContent = `[${entry.timestamp}] ${entry.action} — ${entry.summary}`;
+        elements.runtimeHistoryList.appendChild(item);
+    }
 }

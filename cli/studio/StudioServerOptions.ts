@@ -2,6 +2,7 @@ import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
+import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioToolHandling} from "./StudioToolHandling.js";
@@ -38,5 +39,10 @@ export type StudioServerOptions = {
     // Runs replays for the Project Dashboard's Replay tab (POST/GET/DELETE /api/project/replays*) —
     // same "defaults around this same `loadGame`" reasoning as simulationService above.
     replayService?: StudioReplayExecutionService;
+    // Owns the Project Dashboard's Runtime tab (GET/POST /api/project/runtime*) — a process-local
+    // in-process `pokie serve`-equivalent server for the active project, plus its Session Tools. Same
+    // "defaults around this same `loadGame`" reasoning as simulationService/replayService above; no
+    // `pokieVersion` needed, unlike homeService/blueprintService.
+    runtimeManager?: StudioRuntimeManager;
     toolHandlers?: StudioToolHandling[];
 };

@@ -19,6 +19,10 @@ import {buildReplayDownload} from "./replay/buildReplayDownload.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
 import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
+import {StudioRuntimeManager, StudioRuntimeSessionResult, StudioRuntimeSpinResult, StudioRuntimeStartResult} from "./runtime/StudioRuntimeManager.js";
+import {validateRuntimeSessionRequest, RuntimeSessionRequestInput} from "./runtime/validateRuntimeSessionRequest.js";
+import {validateRuntimeSpinRequest, RuntimeSpinRequestInput} from "./runtime/validateRuntimeSpinRequest.js";
+import {validateStartRuntimeRequest, StartRuntimeRequestInput, ValidatedStartRuntimeRequest} from "./runtime/validateStartRuntimeRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import type {StudioSimulationStatus} from "./simulation/StudioSimulationStatus.js";
@@ -65,6 +69,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly gamePackageValidator: PokieGamePackageValidating;
     private readonly simulationService: StudioSimulationService;
     private readonly replayService: StudioReplayExecutionService;
+    private readonly runtimeManager: StudioRuntimeManager;
     private readonly toolHandlers: StudioToolHandling[];
     private currentContext: StudioContext;
     // undefined exactly when currentContext.mode === "home" — kept as a separate field (rather than
@@ -85,6 +90,7 @@ export class StudioServer implements StudioServerHandling {
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
         this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame);
+        this.runtimeManager = options.runtimeManager ?? new StudioRuntimeManager(this.loadGame);
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -116,13 +122,16 @@ export class StudioServer implements StudioServerHandling {
         });
     }
 
-    public stop(): Promise<void> {
+    public async stop(): Promise<void> {
         // Best-effort, synchronous, before anything else: a simulation's/replay's chunked run loop
         // (see StudioSimulationService.run()/StudioReplayExecutionService.run()) is scheduled
         // independently of any HTTP connection, so closing the server alone would leave either running
         // against an event loop nobody is serving requests on anymore.
         this.simulationService.cancelAll();
         this.replayService.cancelAll();
+        // Unlike the two above, a runtime server genuinely holds an OS port — awaited so it's released
+        // before this method resolves, not left listening after Studio itself has shut down.
+        await this.runtimeManager.stopForShutdown();
         return new Promise((resolve, reject) => {
             if (!this.server) {
                 resolve();
@@ -220,6 +229,12 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "POST" && url.pathname === "/api/projects/close") {
+            // Awaited before the context actually flips to "home": a runtime server belongs to the
+            // project being left, and — unlike Simulation/Replay's own jobs, which are merely scoped
+            // by projectRoot and never stopped on switch — it holds an OS port, so it must be fully
+            // torn down here rather than left running unseen (see StudioRuntimeManager's own doc
+            // comment).
+            await this.runtimeManager.stopForProjectSwitch();
             this.currentContext = {mode: "home"};
             this.projectDashboard = undefined;
             this.sendJson(res, 200, {context: this.currentContext});
@@ -295,6 +310,43 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "GET" && url.pathname === "/api/project/runtime") {
+            this.handleGetRuntime(res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/runtime/start") {
+            await this.handleRuntimeStart(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/runtime/stop") {
+            await this.handleRuntimeStop(res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/runtime/restart") {
+            await this.handleRuntimeRestart(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/runtime/sessions") {
+            await this.handleRuntimeCreateSession(req, res);
+            return;
+        }
+
+        const runtimeSpinSessionId = this.matchRuntimeSpinRoute(url.pathname);
+        if (runtimeSpinSessionId !== undefined && method === "POST") {
+            await this.handleRuntimeSpin(req, res, runtimeSpinSessionId);
+            return;
+        }
+
+        const runtimeSessionId = this.matchRuntimeSessionRoute(url.pathname);
+        if (runtimeSessionId !== undefined && method === "GET") {
+            await this.handleRuntimeGetSession(res, runtimeSessionId);
+            return;
+        }
+
         const toolId = this.matchToolRoute(url.pathname);
         if (toolId !== undefined) {
             const handled = await this.tryToolHandlers(toolId, method, url, req);
@@ -363,6 +415,35 @@ export class StudioServer implements StudioServerHandling {
             segments[4] === "download"
         ) {
             return {id: decodeURIComponent(segments[3]), download: true};
+        }
+        return undefined;
+    }
+
+    private matchRuntimeSessionRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (
+            segments.length === 5 &&
+            segments[0] === "api" &&
+            segments[1] === "project" &&
+            segments[2] === "runtime" &&
+            segments[3] === "sessions"
+        ) {
+            return decodeURIComponent(segments[4]);
+        }
+        return undefined;
+    }
+
+    private matchRuntimeSpinRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (
+            segments.length === 6 &&
+            segments[0] === "api" &&
+            segments[1] === "project" &&
+            segments[2] === "runtime" &&
+            segments[3] === "sessions" &&
+            segments[5] === "spins"
+        ) {
+            return decodeURIComponent(segments[4]);
         }
         return undefined;
     }
@@ -470,6 +551,11 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: message});
             return;
         }
+
+        // Stopped only now that the new project's dashboard has actually loaded — a *failed* open
+        // never strands the previous project's runtime prematurely. Same reasoning as the
+        // /api/projects/close branch's own call.
+        await this.runtimeManager.stopForProjectSwitch();
 
         // The explicit Home → Project Studio context transition: mutates this same running server's
         // state in place — no new HTTP server or Studio process is ever started (see the class-level
@@ -767,6 +853,179 @@ export class StudioServer implements StudioServerHandling {
             return `Replay "${id}" has not completed yet (status: ${jobStatus}).`;
         }
         return `Replay "${id}" has no descriptor (status: ${jobStatus}).`;
+    }
+
+    // The seven Runtime tab handlers below all share the same "No active project." 409 guard as every
+    // other /api/project/* route. StudioRuntimeManager never throws — its own result types carry every
+    // domain-level outcome (not-running/not-found/blocked/conflict/error), translated to a status code
+    // here the same way every other Studio route does; StudioRuntimeManager.buildSessionView() is the
+    // one place that ever reads PokieDevServer's raw JSON, so nothing here ever sees a repository
+    // instance, a WalletPort, or a raw session object — only the same plain JSON any HTTP client of the
+    // running server would get back.
+    private handleGetRuntime(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, this.runtimeManager.getState());
+    }
+
+    private async handleRuntimeStart(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateStartRuntimeRequest((body ?? {}) as StartRuntimeRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.runtimeManager.start(this.currentContext.projectRoot, validated);
+        this.sendRuntimeStartResult(res, result);
+    }
+
+    // Unlike start(), an omitted body genuinely means something different from an empty `{}` body: no
+    // body at all reuses whatever the last successful start's options were (StudioRuntimeManager.
+    // restart()'s own fallback); an explicit `{}` means "restart with defaults," same as a fresh start.
+    private async handleRuntimeRestart(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated: ValidatedStartRuntimeRequest | undefined;
+        if (body !== undefined) {
+            try {
+                validated = validateStartRuntimeRequest(body as StartRuntimeRequestInput);
+            } catch (error) {
+                this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+                return;
+            }
+        }
+
+        const result = await this.runtimeManager.restart(this.currentContext.projectRoot, validated);
+        this.sendRuntimeStartResult(res, result);
+    }
+
+    private sendRuntimeStartResult(res: ServerResponse, result: StudioRuntimeStartResult): void {
+        if (result.status === "already-running") {
+            this.sendJson(res, 409, {error: "Runtime is already running.", state: result.view});
+            return;
+        }
+        if (result.status === "failed") {
+            this.sendJson(res, 200, {status: "failed", error: result.error});
+            return;
+        }
+        this.sendJson(res, 201, result.view);
+    }
+
+    private async handleRuntimeStop(res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        // Idempotent either way — StudioRuntimeManager.stop() never errors, see its own doc comment.
+        await this.runtimeManager.stop();
+        this.sendJson(res, 200, {status: "stopped"});
+    }
+
+    private async handleRuntimeCreateSession(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateRuntimeSessionRequest((body ?? {}) as RuntimeSessionRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.runtimeManager.createSession(validated.seed);
+        if (result.status === "ok") {
+            this.sendJson(res, 201, {status: "ok", session: result.session});
+            return;
+        }
+        this.sendRuntimeErrorResult(res, "(new session)", result);
+    }
+
+    private async handleRuntimeGetSession(res: ServerResponse, sessionId: string): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const result = await this.runtimeManager.getSession(sessionId);
+        if (result.status === "ok") {
+            this.sendJson(res, 200, {status: "ok", session: result.session});
+            return;
+        }
+        this.sendRuntimeErrorResult(res, sessionId, result);
+    }
+
+    private async handleRuntimeSpin(req: IncomingMessage, res: ServerResponse, sessionId: string): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateRuntimeSpinRequest((body ?? {}) as RuntimeSpinRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.runtimeManager.spin(sessionId, validated.requestId, validated.expectedSessionVersion);
+        if (result.status === "ok") {
+            this.sendJson(res, 200, {status: "ok", session: result.session});
+            return;
+        }
+        this.sendRuntimeErrorResult(res, sessionId, result);
+    }
+
+    // Shared by getSession/spin's non-"ok" outcomes (createSession only ever reaches "not-running"/
+    // "error" here — PokieDevServer's POST /sessions never 404s). "not-found"/"blocked"/"conflict" are
+    // bare `{"error"}` bodies mirroring exactly what PokieDevServer itself would return to any client
+    // of the running server; "not-running" is a Studio-level precondition PokieDevServer has no
+    // equivalent for; "error" covers anything else (safe message only, never a stack trace).
+    // "not-running" and "conflict" are both a 409 (an optimistic-locking conflict is, deliberately,
+    // an HTTP conflict — see the task's own requirement to surface it as one), so a `reason` field
+    // disambiguates them for the frontend instead of asking it to pattern-match `error`'s free-text
+    // message.
+    private sendRuntimeErrorResult(
+        res: ServerResponse,
+        sessionId: string,
+        result: Exclude<StudioRuntimeSessionResult | StudioRuntimeSpinResult, {status: "ok"}>,
+    ): void {
+        if (result.status === "not-found") {
+            this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
+            return;
+        }
+        if (result.status === "not-running") {
+            this.sendJson(res, 409, {error: "Runtime is not running. Start it first.", reason: "not-running"});
+            return;
+        }
+        if (result.status === "blocked") {
+            this.sendJson(res, 400, {error: result.error});
+            return;
+        }
+        if (result.status === "conflict") {
+            this.sendJson(res, 409, {error: result.error, reason: "conflict"});
+            return;
+        }
+        this.sendJson(res, 200, {status: "error", error: result.error});
     }
 
     private async readJsonBody(req: IncomingMessage): Promise<unknown> {

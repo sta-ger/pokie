@@ -7,11 +7,14 @@ import {
     cancelSimulation,
     closeProject,
     createProject,
+    createRuntimeSession,
     FetchLike,
     getContext,
     getProjectContext,
     getReplay,
     getReport,
+    getRuntimeSession,
+    getRuntimeState,
     getSimulation,
     initProject,
     inspectProject,
@@ -22,9 +25,13 @@ import {
     openProject,
     previewBlueprintBuild,
     previewBuild,
+    restartRuntime,
     runReplay,
     saveBlueprint,
+    spinRuntimeSession,
+    startRuntime,
     startSimulation,
+    stopRuntime,
     validateBlueprint,
     validateProject,
 } from "../../../cli/studio-client/apiClient.js";
@@ -848,6 +855,215 @@ describe("studio-client apiClient", () => {
 
         it("encodes the id in the URL", () => {
             expect(buildReplayDownloadUrl("a/b")).toBe("/api/project/replays/a%2Fb/download");
+        });
+    });
+
+    describe("getRuntimeState", () => {
+        it("GETs /api/project/runtime", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "stopped"}}));
+
+            const result = await getRuntimeState(fetchImpl);
+
+            expect(calls).toEqual([{url: "/api/project/runtime", init: undefined}]);
+            expect(result).toEqual({status: "stopped"});
+        });
+
+        it("throws when there is no active project", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "No active project."}}));
+
+            await expect(getRuntimeState(fetchImpl)).rejects.toThrow("No active project.");
+        });
+    });
+
+    describe("startRuntime", () => {
+        it("POSTs the start options and returns the running state", async () => {
+            const body = {status: "running", host: "127.0.0.1", port: 4123, baseUrl: "http://127.0.0.1:4123", debug: false, repositoryMode: "memory", startedAt: "2026-01-01T00:00:00.000Z"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
+
+            const result = await startRuntime(fetchImpl, {port: 0, debug: true});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/project/runtime/start",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({port: 0, debug: true})},
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns a 'failed' domain result (200) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "failed", error: "port busy"}}));
+
+            expect(await startRuntime(fetchImpl, {})).toEqual({status: "failed", error: "port busy"});
+        });
+
+        it("returns a typed 'already-running' result (not a thrown error) on 409", async () => {
+            const state = {status: "running", host: "127.0.0.1", port: 4123, baseUrl: "http://127.0.0.1:4123", debug: false, repositoryMode: "memory", startedAt: "2026-01-01T00:00:00.000Z"};
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "Runtime is already running.", state}}));
+
+            const result = await startRuntime(fetchImpl, {});
+
+            expect(result).toEqual({status: "already-running", state});
+        });
+
+        it("throws for a malformed request (400)", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"port" must be a non-negative integer when given.'}}));
+
+            await expect(startRuntime(fetchImpl, {})).rejects.toThrow('"port" must be a non-negative integer when given.');
+        });
+    });
+
+    describe("restartRuntime", () => {
+        it("POSTs the given options", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "stopped"}}));
+
+            await restartRuntime(fetchImpl, {debug: true});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/project/runtime/restart",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({debug: true})},
+                },
+            ]);
+        });
+
+        it("sends no body when options are omitted", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "stopped"}}));
+
+            await restartRuntime(fetchImpl);
+
+            expect(calls[0].init?.body).toBeUndefined();
+        });
+    });
+
+    describe("stopRuntime", () => {
+        it("POSTs /api/project/runtime/stop and returns the stopped state", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "stopped"}}));
+
+            const result = await stopRuntime(fetchImpl);
+
+            expect(calls).toEqual([{url: "/api/project/runtime/stop", init: {method: "POST"}}]);
+            expect(result).toEqual({status: "stopped"});
+        });
+    });
+
+    describe("createRuntimeSession", () => {
+        it("POSTs the seed and returns the ok session result", async () => {
+            const session = {sessionId: "session-1", game: {id: "a", name: "A", version: "0.1.0"}, credits: 1000};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "ok", session}}));
+
+            const result = await createRuntimeSession(fetchImpl, "demo");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/project/runtime/sessions",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({seed: "demo"})},
+                },
+            ]);
+            expect(result).toEqual({status: "ok", session});
+        });
+
+        it("omits seed from the body when not given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "ok", session: {}}}));
+
+            await createRuntimeSession(fetchImpl);
+
+            expect(calls[0].init?.body).toBe(JSON.stringify({}));
+        });
+
+        it("returns a typed not-running result (409) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "Runtime is not running.", reason: "not-running"}}));
+
+            expect(await createRuntimeSession(fetchImpl)).toEqual({status: "not-running"});
+        });
+
+        it("returns a typed error result (200) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "error", error: "repository failure"}}));
+
+            expect(await createRuntimeSession(fetchImpl)).toEqual({status: "error", message: "repository failure"});
+        });
+    });
+
+    describe("getRuntimeSession", () => {
+        it("GETs the session by id", async () => {
+            const session = {sessionId: "session-1", game: {id: "a", name: "A", version: "0.1.0"}, credits: 1000};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "ok", session}}));
+
+            const result = await getRuntimeSession(fetchImpl, "session-1");
+
+            expect(calls).toEqual([{url: "/api/project/runtime/sessions/session-1", init: undefined}]);
+            expect(result).toEqual({status: "ok", session});
+        });
+
+        it("returns a typed not-found result (404) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown sessionId "x".'}}));
+
+            expect(await getRuntimeSession(fetchImpl, "x")).toEqual({status: "not-found"});
+        });
+
+        it("encodes the sessionId in the URL", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "ok", session: {}}}));
+
+            await getRuntimeSession(fetchImpl, "a/b");
+
+            expect(calls).toEqual([{url: "/api/project/runtime/sessions/a%2Fb", init: undefined}]);
+        });
+    });
+
+    describe("spinRuntimeSession", () => {
+        it("POSTs requestId/expectedSessionVersion and returns the ok session result", async () => {
+            const session = {sessionId: "session-1", game: {id: "a", name: "A", version: "0.1.0"}, credits: 995, win: 0};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "ok", session}}));
+
+            const result = await spinRuntimeSession(fetchImpl, "session-1", "req-1", 2);
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/project/runtime/sessions/session-1/spins",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({requestId: "req-1", expectedSessionVersion: 2}),
+                    },
+                },
+            ]);
+            expect(result).toEqual({status: "ok", session});
+        });
+
+        it("omits requestId/expectedSessionVersion from the body when not given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "ok", session: {}}}));
+
+            await spinRuntimeSession(fetchImpl, "session-1");
+
+            expect(calls[0].init?.body).toBe(JSON.stringify({}));
+        });
+
+        it("returns a typed not-found result (404) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown sessionId "x".'}}));
+
+            expect(await spinRuntimeSession(fetchImpl, "x")).toEqual({status: "not-found"});
+        });
+
+        it("returns a typed blocked result (400) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: "insufficient balance"}}));
+
+            expect(await spinRuntimeSession(fetchImpl, "session-1")).toEqual({status: "blocked", message: "insufficient balance"});
+        });
+
+        it("distinguishes a version conflict (409, reason: conflict) from not-running (409, reason: not-running)", async () => {
+            const conflictFetch = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {error: "Session version mismatch.", reason: "conflict"},
+            })).fetchImpl;
+            const notRunningFetch = createFakeFetch(() => ({
+                ok: false,
+                status: 409,
+                body: {error: "Runtime is not running.", reason: "not-running"},
+            })).fetchImpl;
+
+            expect(await spinRuntimeSession(conflictFetch, "session-1")).toEqual({status: "conflict", message: "Session version mismatch."});
+            expect(await spinRuntimeSession(notRunningFetch, "session-1")).toEqual({status: "not-running"});
         });
     });
 });

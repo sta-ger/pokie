@@ -10,6 +10,7 @@ import {
     SimulationReportBuilding,
 } from "pokie";
 import fs from "fs";
+import http from "http";
 import os from "os";
 import path from "path";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
@@ -2336,6 +2337,166 @@ describe("StudioServer", () => {
             expect(secondDescriptor.totalBet).toBe(firstDescriptor.totalBet);
             expect(secondDescriptor.totalWin).toBe(firstDescriptor.totalWin);
             expect(secondDescriptor.screen).toEqual(firstDescriptor.screen);
+        });
+    });
+
+    describe("Project Dashboard: Runtime with the real fixture game package", () => {
+        let runtimeStudioRoot: string;
+        let runtimeServer: StudioServer | undefined;
+        const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+
+        function createRuntimeServer(initialContext: {mode: "home"} | {mode: "project"; projectRoot: string}): StudioServer {
+            return new StudioServer({
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: runtimeStudioRoot,
+                homeService: new StudioHomeService("1.0.0", undefined, createStubCreator(scaffoldResult)),
+                blueprintService: new StudioBlueprintService("1.0.0", runtimeStudioRoot, new StudioHomeService("1.0.0")),
+                initialContext,
+            });
+        }
+
+        beforeEach(() => {
+            runtimeStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-runtime-fixture-test-"));
+            writeStudioAssets(runtimeStudioRoot);
+        });
+
+        afterEach(async () => {
+            await runtimeServer?.stop();
+            fs.rmSync(runtimeStudioRoot, {recursive: true, force: true});
+        });
+
+        it("returns 409 'No active project' for every runtime route in Home mode", async () => {
+            runtimeServer = createRuntimeServer({mode: "home"});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            expect((await get(`${baseUrl}/api/project/runtime`)).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/runtime/start`, {})).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/runtime/stop`)).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/runtime/restart`, {})).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/runtime/sessions`, {})).status).toBe(409);
+            expect((await get(`${baseUrl}/api/project/runtime/sessions/unknown`)).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/runtime/sessions/unknown/spins`, {})).status).toBe(409);
+        });
+
+        it("reports stopped initially, then running after start on an automatic port, rejects a second start, and stops idempotently", async () => {
+            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            expect((await get(`${baseUrl}/api/project/runtime`)).body).toEqual({status: "stopped"});
+
+            const started = await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
+            expect(started.status).toBe(201);
+            expect((started.body as {status: string}).status).toBe("running");
+            const runtimePort = (started.body as {port: number}).port;
+            expect(runtimePort).toBeGreaterThan(0);
+
+            expect((await get(`${baseUrl}/api/project/runtime`)).body).toMatchObject({status: "running", port: runtimePort});
+
+            const again = await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
+            expect(again.status).toBe(409);
+
+            const stopped = await post(`${baseUrl}/api/project/runtime/stop`);
+            expect(stopped.status).toBe(200);
+            expect(stopped.body).toEqual({status: "stopped"});
+
+            const stoppedAgain = await post(`${baseUrl}/api/project/runtime/stop`);
+            expect(stoppedAgain.status).toBe(200);
+            expect(stoppedAgain.body).toEqual({status: "stopped"});
+        });
+
+        it("creates a session, spins it with debug on, replays a requestId idempotently, and rejects a stale expectedSessionVersion", async () => {
+            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            await post(`${baseUrl}/api/project/runtime/start`, {port: 0, debug: true});
+
+            type SessionResponse = {status: string; session: {sessionId: string; sessionVersion?: number; debug?: unknown}};
+
+            const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
+            expect(created.status).toBe(201);
+            const createdBody = created.body as SessionResponse;
+            expect(createdBody.status).toBe("ok");
+            const sessionId = createdBody.session.sessionId;
+            expect(typeof createdBody.session.sessionVersion).toBe("number");
+            expect(createdBody.session.debug).toBeDefined();
+
+            const fetched = await get(`${baseUrl}/api/project/runtime/sessions/${sessionId}`);
+            expect(fetched.status).toBe(200);
+
+            const spun = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-1"});
+            expect(spun.status).toBe(200);
+            expect((spun.body as SessionResponse).session.debug).toBeDefined();
+
+            const replay = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-1"});
+            expect(replay.body).toEqual(spun.body);
+
+            const stale = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {expectedSessionVersion: 999});
+            expect(stale.status).toBe(409);
+            expect(typeof (stale.body as {error: string}).error).toBe("string");
+            expect((stale.body as {reason: string}).reason).toBe("conflict");
+
+            const unknown = await get(`${baseUrl}/api/project/runtime/sessions/does-not-exist`);
+            expect(unknown.status).toBe(404);
+
+            await post(`${baseUrl}/api/project/runtime/stop`);
+            const notRunning = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {});
+            expect(notRunning.status).toBe(409);
+            expect((notRunning.body as {reason: string}).reason).toBe("not-running");
+        });
+
+        it("omits the debug bundle (but still reports sessionVersion) when the runtime was started without debug mode", async () => {
+            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
+
+            const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
+            const createdBody = created.body as {status: string; session: {sessionVersion?: number; debug?: unknown}};
+
+            expect(typeof createdBody.session.sessionVersion).toBe("number");
+            expect(createdBody.session.debug).toBeUndefined();
+        });
+
+        it("stops an active runtime when the project is switched away and back", async () => {
+            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
+            expect((await get(`${baseUrl}/api/project/runtime`)).body).toMatchObject({status: "running"});
+
+            await post(`${baseUrl}/api/projects/close`);
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: fixtureRoot});
+
+            expect((await get(`${baseUrl}/api/project/runtime`)).body).toEqual({status: "stopped"});
+        });
+
+        it("stops an active runtime — releasing its port — when Studio itself shuts down", async () => {
+            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            const started = await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
+            const runtimePort = (started.body as {port: number}).port;
+
+            const serverToStop = runtimeServer;
+            runtimeServer = undefined; // already stopped — afterEach shouldn't stop it again
+            await serverToStop.stop();
+
+            // The runtime's own port is free again — binding a fresh listener on it succeeds.
+            const probe = http.createServer();
+            await new Promise<void>((resolve, reject) => {
+                probe.once("error", reject);
+                probe.listen(runtimePort, "127.0.0.1", () => {
+                    resolve();
+                });
+            });
+            await new Promise<void>((resolve) => {
+                probe.close(() => {
+                    resolve();
+                });
+            });
         });
     });
 });

@@ -6,11 +6,14 @@ import {
     cancelSimulation,
     closeProject,
     createProject,
+    createRuntimeSession,
     FetchLike,
     getContext,
     getProjectContext,
     getReplay,
     getReport,
+    getRuntimeSession,
+    getRuntimeState,
     getSimulation,
     initProject,
     inspectProject,
@@ -21,9 +24,14 @@ import {
     openProject,
     previewBlueprintBuild,
     previewBuild,
+    restartRuntime,
     runReplay,
     saveBlueprint,
+    spinRuntimeSession,
+    startRuntime,
+    StartRuntimeOptions,
     startSimulation,
+    stopRuntime,
     validateBlueprint,
     validateProject,
 } from "./apiClient.js";
@@ -69,6 +77,10 @@ import {
     renderReportDetailState,
     renderReportsList,
     renderReportsListError,
+    renderRuntimeHistory,
+    renderRuntimeSession,
+    renderRuntimeState,
+    RuntimeHistoryEntry,
     renderSimulationError,
     renderSimulationProgress,
     renderSimulationReport,
@@ -84,6 +96,15 @@ import {describeBuildPreview, describeBuildResult, describeRecentProjectsList, d
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
 import {describeReplayList, describeReplayProgress, describeReplayResult, isReplayActive, isReplayTerminal} from "./interpretReplay.js";
 import {describeReportsList} from "./interpretReports.js";
+import {
+    describeRuntimeState,
+    describeSessionResult,
+    describeSpinResult,
+    describeStartResult,
+    RuntimeSessionResultView,
+    RuntimeSpinResultView,
+    RuntimeStateView,
+} from "./interpretRuntime.js";
 import {describeSimulationProgress, describeSimulationReport, isSimulationActive} from "./interpretSimulation.js";
 import {currentRoute, navigate, onRouteChange, StudioRoute} from "./router.js";
 import type {
@@ -237,6 +258,74 @@ async function main(): Promise<void> {
     // own per-project state.
     let currentReplayId: string | undefined;
     let lastReplayParams: {round: number; seed?: string} | undefined;
+
+    // The Runtime tab's own state — reset whenever a (new) project becomes active (see
+    // showProjectDashboard below), same reasoning as Simulation/Replay's own per-project state.
+    // `currentRuntimeSessionId` is tracked separately from whatever renderRuntimeSession last showed,
+    // since Spin/Repeat need it even while a request is in flight (no DOM value to read back from).
+    let runtimeState: RuntimeStateView = {status: "idle"};
+    let runtimeSessionView: RuntimeSessionResultView | RuntimeSpinResultView = {status: "idle"};
+    let currentRuntimeSessionId: string | undefined;
+    let lastSpinRequestId: string | undefined;
+    let lastSpinExpectedVersion: number | undefined;
+    let runtimeHistory: RuntimeHistoryEntry[] = [];
+    const RUNTIME_HISTORY_LIMIT = 20;
+
+    const pushRuntimeHistory = (action: string, summary: string): void => {
+        runtimeHistory = [{timestamp: new Date().toLocaleTimeString(), action, summary}, ...runtimeHistory].slice(0, RUNTIME_HISTORY_LIMIT);
+        renderRuntimeHistory(elements, runtimeHistory);
+    };
+
+    const refreshRuntimeState = (): void => {
+        runtimeState = {status: "loading"};
+        renderRuntimeState(elements, runtimeState);
+        getRuntimeState(fetchImpl)
+            .then((state) => {
+                runtimeState = describeRuntimeState(state);
+                renderRuntimeState(elements, runtimeState);
+            })
+            .catch((error: unknown) => {
+                runtimeState = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                renderRuntimeState(elements, runtimeState);
+            });
+    };
+
+    const readStartRuntimeOptions = (): StartRuntimeOptions => ({
+        host: elements.runtimeHost.value.trim() || undefined,
+        port: elements.runtimePort.value.trim() === "" ? undefined : Number(elements.runtimePort.value),
+        debug: elements.runtimeDebug.checked,
+        repositoryMode: elements.runtimeRepositoryMode.value === "file" ? "file" : "memory",
+        seed: elements.runtimeSeed.value.trim() || undefined,
+    });
+
+    const runtimeStateSummary = (state: RuntimeStateView): string =>
+        state.status === "running" ? `running at ${state.baseUrl}` : state.status;
+
+    const resetRuntimeSessionView = (): void => {
+        currentRuntimeSessionId = undefined;
+        runtimeSessionView = {status: "idle"};
+        renderRuntimeSession(elements, runtimeSessionView);
+    };
+
+    const runRuntimeSpin = (requestId: string | undefined, expectedVersion: number | undefined): void => {
+        if (currentRuntimeSessionId === undefined) {
+            return;
+        }
+        lastSpinRequestId = requestId;
+        lastSpinExpectedVersion = expectedVersion;
+        runtimeSessionView = {status: "loading"};
+        renderRuntimeSession(elements, runtimeSessionView);
+        spinRuntimeSession(fetchImpl, currentRuntimeSessionId, requestId, expectedVersion)
+            .then((result) => {
+                runtimeSessionView = describeSpinResult(result);
+                renderRuntimeSession(elements, runtimeSessionView);
+                pushRuntimeHistory("Spin", result.status === "ok" ? `credits ${result.session.credits}, win ${result.session.win ?? 0}` : result.status);
+            })
+            .catch((error: unknown) => {
+                runtimeSessionView = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                renderRuntimeSession(elements, runtimeSessionView);
+            });
+    };
 
     const renderSimulationJob = (job: StudioSimulationJobView): void => {
         renderSimulationProgress(elements, describeSimulationProgress(job));
@@ -404,6 +493,12 @@ async function main(): Promise<void> {
             renderReplayProgress(elements, undefined);
             elements.replayResult.hidden = true;
             refreshReplays();
+            resetRuntimeSessionView();
+            lastSpinRequestId = undefined;
+            lastSpinExpectedVersion = undefined;
+            runtimeHistory = [];
+            renderRuntimeHistory(elements, runtimeHistory);
+            refreshRuntimeState();
         }
     };
 
@@ -853,6 +948,109 @@ async function main(): Promise<void> {
         activeProjectTab = "replay";
         showProjectTab(elements, "replay");
         refreshReplays();
+    });
+
+    elements.tabRuntimeButton.addEventListener("click", () => {
+        activeProjectTab = "runtime";
+        showProjectTab(elements, "runtime");
+        refreshRuntimeState();
+    });
+
+    elements.runtimeStartForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const options = readStartRuntimeOptions();
+        runtimeState = {status: "loading"};
+        renderRuntimeState(elements, runtimeState);
+        startRuntime(fetchImpl, options)
+            .then((result) => {
+                runtimeState = describeStartResult(result);
+                renderRuntimeState(elements, runtimeState);
+                pushRuntimeHistory("Start", runtimeStateSummary(runtimeState));
+            })
+            .catch((error: unknown) => {
+                runtimeState = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                renderRuntimeState(elements, runtimeState);
+            });
+    });
+
+    elements.runtimeStopButton.addEventListener("click", () => {
+        stopRuntime(fetchImpl)
+            .then((state) => {
+                runtimeState = describeRuntimeState(state);
+                renderRuntimeState(elements, runtimeState);
+                pushRuntimeHistory("Stop", runtimeStateSummary(runtimeState));
+                resetRuntimeSessionView();
+            })
+            .catch((error: unknown) => {
+                runtimeState = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                renderRuntimeState(elements, runtimeState);
+            });
+    });
+
+    elements.runtimeRestartButton.addEventListener("click", () => {
+        const options = readStartRuntimeOptions();
+        runtimeState = {status: "loading"};
+        renderRuntimeState(elements, runtimeState);
+        restartRuntime(fetchImpl, options)
+            .then((state) => {
+                runtimeState = describeRuntimeState(state);
+                renderRuntimeState(elements, runtimeState);
+                pushRuntimeHistory("Restart", runtimeStateSummary(runtimeState));
+                resetRuntimeSessionView();
+            })
+            .catch((error: unknown) => {
+                runtimeState = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                renderRuntimeState(elements, runtimeState);
+            });
+    });
+
+    elements.runtimeCreateSessionButton.addEventListener("click", () => {
+        const seed = elements.runtimeCreateSeed.value.trim() || undefined;
+        runtimeSessionView = {status: "loading"};
+        renderRuntimeSession(elements, runtimeSessionView);
+        createRuntimeSession(fetchImpl, seed)
+            .then((result) => {
+                runtimeSessionView = describeSessionResult(result);
+                renderRuntimeSession(elements, runtimeSessionView);
+                currentRuntimeSessionId = result.status === "ok" ? result.session.sessionId : undefined;
+                pushRuntimeHistory("Create Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
+            })
+            .catch((error: unknown) => {
+                runtimeSessionView = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                renderRuntimeSession(elements, runtimeSessionView);
+            });
+    });
+
+    elements.runtimeLoadSessionButton.addEventListener("click", () => {
+        const sessionId = elements.runtimeLoadSessionId.value.trim();
+        if (!sessionId) {
+            return;
+        }
+        runtimeSessionView = {status: "loading"};
+        renderRuntimeSession(elements, runtimeSessionView);
+        getRuntimeSession(fetchImpl, sessionId)
+            .then((result) => {
+                runtimeSessionView = describeSessionResult(result);
+                renderRuntimeSession(elements, runtimeSessionView);
+                currentRuntimeSessionId = result.status === "ok" ? result.session.sessionId : undefined;
+                pushRuntimeHistory("Load Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
+            })
+            .catch((error: unknown) => {
+                runtimeSessionView = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                renderRuntimeSession(elements, runtimeSessionView);
+            });
+    });
+
+    elements.runtimeSpinForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const requestId = elements.runtimeSpinRequestId.value.trim() || undefined;
+        const expectedVersionRaw = elements.runtimeSpinExpectedVersion.value.trim();
+        const expectedVersion = expectedVersionRaw === "" ? undefined : Number(expectedVersionRaw);
+        runRuntimeSpin(requestId, expectedVersion);
+    });
+
+    elements.runtimeRepeatSpinButton.addEventListener("click", () => {
+        runRuntimeSpin(lastSpinRequestId, lastSpinExpectedVersion);
     });
 
     elements.replayListRefreshButton.addEventListener("click", () => {

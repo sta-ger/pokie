@@ -91,6 +91,10 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 // SessionVersionConflictError, caught in playAndSettle()'s catch block and turned into a "conflict"
 // SpinCommandResult after the same wallet-reversal/session-eviction compensation any other mid-flight
 // failure gets — never a silent overwrite of whatever the other attempt committed.
+//
+// A caller can additionally declare its own expected version via handle()'s third parameter — a
+// precondition checked up front in handleSerialized(), before canPlayNextGame()/play()/any wallet
+// transaction, distinct from (and checked before) the storage-level conflict above.
 export class SpinCommandHandler implements SpinCommandHandling {
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
@@ -117,8 +121,8 @@ export class SpinCommandHandler implements SpinCommandHandling {
         this.liveSessions.set(sessionId, session);
     }
 
-    public handle(sessionId: string, requestId?: string): Promise<SpinCommandResult> {
-        return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId));
+    public handle(sessionId: string, requestId?: string, expectedVersion?: number): Promise<SpinCommandResult> {
+        return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion));
     }
 
     // Chains `work` onto whatever is already queued for `sessionId`, so it only starts once every
@@ -138,7 +142,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
         return result;
     }
 
-    private async handleSerialized(sessionId: string, requestId?: string): Promise<SpinCommandResult> {
+    private async handleSerialized(sessionId: string, requestId?: string, expectedVersion?: number): Promise<SpinCommandResult> {
         if (requestId !== undefined) {
             const cached = await this.idempotencyRepository.load(sessionId, requestId);
             if (cached !== undefined) {
@@ -149,6 +153,19 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const {state, version} = await this.loadState(sessionId);
         if (!state) {
             return {status: "not-found", sessionId};
+        }
+
+        // A caller-declared precondition, checked before anything else mutates: if the repository is
+        // versioned and the caller expected a different version than what's actually stored, this is
+        // already stale — reject immediately rather than spinning against state the caller didn't
+        // expect. Nothing has been applied yet (no wallet transaction, no play()), so there's nothing
+        // to compensate, unlike a conflict discovered at save time in playAndSettle().
+        if (expectedVersion !== undefined && version !== undefined && version !== expectedVersion) {
+            return {
+                status: "conflict",
+                sessionId,
+                reason: `Session "${sessionId}" version mismatch: expected version ${expectedVersion}, but the current version is ${version}.`,
+            };
         }
 
         const session = this.resolveSession(sessionId, state);

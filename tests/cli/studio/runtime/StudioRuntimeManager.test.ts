@@ -1,0 +1,336 @@
+import {GameSessionHandling, PokieDevServer, PokieGame, PokieGameManifest} from "pokie";
+import {StudioRuntimeManager} from "../../../../cli/studio/runtime/StudioRuntimeManager.js";
+import type {ValidatedStartRuntimeRequest} from "../../../../cli/studio/runtime/validateStartRuntimeRequest.js";
+
+const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+function createFakeSession(): GameSessionHandling {
+    let credits = 1000;
+    const bet = 5;
+    let round = 0;
+    let winAmount = 0;
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: () => undefined,
+        getAvailableBets: () => [bet],
+        canPlayNextGame: () => credits >= bet,
+        play: () => {
+            round++;
+            winAmount = round % 2 === 0 ? bet * 3 : 0;
+            credits = credits - bet + winAmount;
+        },
+        getWinAmount: () => winAmount,
+    };
+}
+
+function createFakeGame(): PokieGame {
+    return {getManifest: () => manifest, createSession: () => createFakeSession()};
+}
+
+function fakeLoadGame(): () => Promise<PokieGame> {
+    return () => Promise.resolve(createFakeGame());
+}
+
+function startOptions(overrides: Partial<ValidatedStartRuntimeRequest> = {}): ValidatedStartRuntimeRequest {
+    return {debug: false, repositoryMode: "memory", port: 0, ...overrides};
+}
+
+describe("StudioRuntimeManager", () => {
+    it("starts stopped", () => {
+        const manager = new StudioRuntimeManager(fakeLoadGame());
+        expect(manager.getState()).toEqual({status: "stopped"});
+    });
+
+    it("starts a real server on an automatic (port: 0) port and reports it as running", async () => {
+        const manager = new StudioRuntimeManager(fakeLoadGame());
+
+        const result = await manager.start("/fake/project", startOptions());
+
+        expect(result.status).toBe("started");
+        if (result.status !== "started") {
+            return;
+        }
+        expect(result.view.status).toBe("running");
+        if (result.view.status !== "running") {
+            return;
+        }
+        expect(result.view.port).toBeGreaterThan(0);
+        expect(result.view.host).toBe("127.0.0.1");
+        expect(result.view.baseUrl).toBe(`http://${result.view.host}:${result.view.port}`);
+        expect(manager.getState()).toEqual(result.view);
+
+        await manager.stop();
+    });
+
+    it("rejects a second start while already running (conflict), without disturbing the running one", async () => {
+        const manager = new StudioRuntimeManager(fakeLoadGame());
+        const first = await manager.start("/fake/project", startOptions());
+        expect(first.status).toBe("started");
+        if (first.status !== "started") {
+            return;
+        }
+
+        const second = await manager.start("/fake/project", startOptions());
+
+        expect(second.status).toBe("already-running");
+        expect(manager.getState()).toEqual(first.view);
+
+        await manager.stop();
+    });
+
+    it("stopping an already-stopped runtime is idempotent, never an error", async () => {
+        const manager = new StudioRuntimeManager(fakeLoadGame());
+
+        const result = await manager.stop();
+
+        expect(result).toEqual({status: "already-stopped"});
+        expect(manager.getState()).toEqual({status: "stopped"});
+    });
+
+    it("stop() after running settles back to stopped", async () => {
+        const manager = new StudioRuntimeManager(fakeLoadGame());
+        await manager.start("/fake/project", startOptions());
+
+        const result = await manager.stop();
+
+        expect(result).toEqual({status: "stopped"});
+        expect(manager.getState()).toEqual({status: "stopped"});
+    });
+
+    it("restart() while running stops the old server and starts a fresh one", async () => {
+        const manager = new StudioRuntimeManager(fakeLoadGame());
+        const started = await manager.start("/fake/project", startOptions());
+        expect(started.status).toBe("started");
+        const firstPort = started.status === "started" && started.view.status === "running" ? started.view.port : undefined;
+
+        const restarted = await manager.restart("/fake/project");
+
+        expect(restarted.status).toBe("started");
+        if (restarted.status === "started" && restarted.view.status === "running") {
+            expect(restarted.view.port).toBeGreaterThan(0);
+            // Not necessarily a different port (both are OS-assigned), but the manager must genuinely
+            // be pointing at a live server either way — proven by the session-tools calls elsewhere.
+            expect(typeof firstPort).toBe("number");
+        }
+
+        await manager.stop();
+    });
+
+    it("restart() with no prior successful start and no options given fails cleanly", async () => {
+        const manager = new StudioRuntimeManager(fakeLoadGame());
+
+        const result = await manager.restart("/fake/project");
+
+        expect(result.status).toBe("failed");
+    });
+
+    it("reports a safe 'failed' result (no stack trace) when the project fails to load", async () => {
+        const manager = new StudioRuntimeManager(() => Promise.reject(new Error("not a pokie game package")));
+
+        const result = await manager.start("/fake/project", startOptions());
+
+        expect(result).toEqual({status: "failed", error: "not a pokie game package"});
+        expect(manager.getState()).toEqual({status: "failed", error: "not a pokie game package"});
+        expect(JSON.stringify(result)).not.toContain("\\n    at ");
+    });
+
+    it("reports a safe 'failed' result when the port is already in use", async () => {
+        const occupied = new PokieDevServer(createFakeGame(), {host: "127.0.0.1", port: 0});
+        const address = await occupied.start();
+
+        const manager = new StudioRuntimeManager(fakeLoadGame());
+        const result = await manager.start("/fake/project", startOptions({port: address.port}));
+
+        expect(result.status).toBe("failed");
+        if (result.status === "failed") {
+            expect(JSON.stringify(result)).not.toContain("\\n    at ");
+        }
+
+        await occupied.stop();
+    });
+
+    describe("session tools (against the manager's own real, running server)", () => {
+        async function startedManager(overrides: Partial<ValidatedStartRuntimeRequest> = {}): Promise<StudioRuntimeManager> {
+            const manager = new StudioRuntimeManager(fakeLoadGame());
+            await manager.start("/fake/project", startOptions(overrides));
+            return manager;
+        }
+
+        it("returns not-running for create/get/spin before anything has been started", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadGame());
+
+            expect(await manager.createSession()).toEqual({status: "not-running"});
+            expect(await manager.getSession("does-not-matter")).toEqual({status: "not-running"});
+            expect(await manager.spin("does-not-matter")).toEqual({status: "not-running"});
+        });
+
+        it("creates a session, reads it back, and spins it", async () => {
+            const manager = await startedManager();
+
+            const created = await manager.createSession();
+            expect(created.status).toBe("ok");
+            if (created.status !== "ok") {
+                return;
+            }
+            const sessionId = created.session.sessionId;
+            expect(created.session.credits).toBe(1000);
+
+            // GET always includes `win` (0 before any spin), unlike POST /sessions's own creation
+            // response — same "restore" semantics PokieDevServer itself documents — so this only
+            // checks the fields that are guaranteed to still match, not a full deep-equal.
+            const fetched = await manager.getSession(sessionId);
+            expect(fetched.status).toBe("ok");
+            if (fetched.status === "ok") {
+                expect(fetched.session.sessionId).toBe(sessionId);
+                expect(fetched.session.credits).toBe(created.session.credits);
+                expect(fetched.session.win).toBe(0);
+            }
+
+            const spun = await manager.spin(sessionId);
+            expect(spun.status).toBe("ok");
+            if (spun.status === "ok") {
+                expect(spun.session.sessionId).toBe(sessionId);
+                expect(typeof spun.session.win).toBe("number");
+            }
+
+            await manager.stop();
+        });
+
+        it("returns not-found for an unknown sessionId on get and spin", async () => {
+            const manager = await startedManager();
+
+            expect(await manager.getSession("does-not-exist")).toEqual({status: "not-found"});
+            expect(await manager.spin("does-not-exist")).toEqual({status: "not-found"});
+
+            await manager.stop();
+        });
+
+        it("idempotent replay: repeating the same requestId returns the exact same result without spinning again", async () => {
+            const manager = await startedManager();
+            const created = await manager.createSession();
+            if (created.status !== "ok") {
+                return;
+            }
+            const sessionId = created.session.sessionId;
+
+            const first = await manager.spin(sessionId, "request-1");
+            const replay = await manager.spin(sessionId, "request-1");
+
+            expect(replay).toEqual(first);
+
+            await manager.stop();
+        });
+
+        it("optimistic-lock conflict: a stale client-declared expectedSessionVersion is rejected with a clear error", async () => {
+            const manager = await startedManager();
+            const created = await manager.createSession();
+            if (created.status !== "ok") {
+                return;
+            }
+            const sessionId = created.session.sessionId;
+
+            const result = await manager.spin(sessionId, undefined, 999);
+
+            expect(result.status).toBe("conflict");
+            if (result.status === "conflict") {
+                expect(result.error).toContain("999");
+            }
+
+            await manager.stop();
+        });
+
+        it("hoists sessionVersion unconditionally, but only attaches the debug bundle when debug mode is on", async () => {
+            const debugOff = await startedManager({debug: false});
+            const createdOff = await debugOff.createSession();
+            expect(createdOff.status).toBe("ok");
+            if (createdOff.status === "ok") {
+                expect(typeof createdOff.session.sessionVersion).toBe("number");
+                expect(createdOff.session.debug).toBeUndefined();
+            }
+            await debugOff.stop();
+
+            const debugOn = await startedManager({debug: true});
+            const createdOn = await debugOn.createSession();
+            expect(createdOn.status).toBe("ok");
+            if (createdOn.status === "ok") {
+                expect(typeof createdOn.session.sessionVersion).toBe("number");
+                expect(createdOn.session.debug).toBeDefined();
+                expect(createdOn.session.debug?.stateAfter).toBeDefined();
+            }
+            await debugOn.stop();
+        });
+    });
+
+    describe("repositoryMode: file", () => {
+        it("survives sessions across a restart, unlike the memory default", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadGame());
+            await manager.start("/fake/project", startOptions({repositoryMode: "file"}));
+            const created = await manager.createSession();
+            expect(created.status).toBe("ok");
+            if (created.status !== "ok") {
+                return;
+            }
+            const sessionId = created.session.sessionId;
+
+            await manager.restart("/fake/project");
+            const restored = await manager.getSession(sessionId);
+
+            expect(restored.status).toBe("ok");
+
+            await manager.stop();
+        });
+
+        it("a fresh manager (no prior file-mode start) does not reuse another manager's session directory", async () => {
+            const first = new StudioRuntimeManager(fakeLoadGame());
+            await first.start("/fake/project", startOptions({repositoryMode: "file"}));
+            const created = await first.createSession();
+            const sessionId = created.status === "ok" ? created.session.sessionId : "unused";
+            await first.stop();
+
+            const second = new StudioRuntimeManager(fakeLoadGame());
+            await second.start("/fake/project", startOptions({repositoryMode: "file"}));
+            const fetched = await second.getSession(sessionId);
+
+            expect(fetched).toEqual({status: "not-found"});
+
+            await second.stop();
+        });
+    });
+
+    describe("project switch / shutdown", () => {
+        it("stopForProjectSwitch() stops a running server and clears its configuration", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadGame());
+            await manager.start("/fake/project", startOptions({debug: true}));
+
+            await manager.stopForProjectSwitch();
+
+            expect(manager.getState()).toEqual({status: "stopped"});
+            // The debug flag/last options were reset too — a bare restart (no options) now fails
+            // cleanly instead of silently reusing the previous project's configuration.
+            const restarted = await manager.restart("/fake/project");
+            expect(restarted.status).toBe("failed");
+        });
+
+        it("stopForShutdown() stops a running server", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadGame());
+            await manager.start("/fake/project", startOptions());
+
+            await manager.stopForShutdown();
+
+            expect(manager.getState()).toEqual({status: "stopped"});
+        });
+
+        it("stopForProjectSwitch()/stopForShutdown() are safe no-ops when nothing is running", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadGame());
+
+            await expect(manager.stopForProjectSwitch()).resolves.toBeUndefined();
+            await expect(manager.stopForShutdown()).resolves.toBeUndefined();
+            expect(manager.getState()).toEqual({status: "stopped"});
+        });
+    });
+});

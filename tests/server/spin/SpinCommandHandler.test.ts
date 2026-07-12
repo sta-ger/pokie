@@ -724,4 +724,75 @@ describe("SpinCommandHandler", () => {
             await expect(wallet.getBalance("session-1")).resolves.toBe(1005);
         });
     });
+
+    describe("expectedVersion precondition (client-declared, handle()'s third parameter)", () => {
+        it("plays normally when the given expectedVersion matches the current version", async () => {
+            const game = createFakeGame();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000); // save() -> version 1
+
+            const result = await handler.handle("session-1", undefined, 1);
+
+            expect(result).toMatchObject({status: "played", version: 2});
+        });
+
+        it("returns a conflict immediately — without playing, debiting, or crediting — when expectedVersion is stale", async () => {
+            const game = createFakeGame();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new RecordingTransactionalWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000); // save() -> version 1
+
+            const result = await handler.handle("session-1", undefined, 99);
+
+            expect(result.status).toBe("conflict");
+            if (result.status === "conflict") {
+                expect(result.sessionId).toBe("session-1");
+                expect(result.reason).toContain("expected version 99");
+                expect(result.reason).toContain("current version is 1");
+            }
+            expect(wallet.debitCalls).toEqual([]);
+            expect(wallet.creditCalls).toEqual([]);
+            await expect(sessionRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
+        });
+
+        it("does not cache a stale-expectedVersion conflict under its requestId, so a retry with the same requestId can still succeed", async () => {
+            const game = createFakeGame();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet, new InMemoryIdempotencyRepository());
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const first = await handler.handle("session-1", "request-1", 99);
+            expect(first.status).toBe("conflict");
+
+            const retry = await handler.handle("session-1", "request-1");
+
+            expect(retry).toMatchObject({status: "played", win: 0});
+        });
+
+        it("is silently ignored when the configured repository isn't versioned (legacy fallback)", async () => {
+            const game = createFakeGame();
+            const backing = new Map<string, PokieSessionState>();
+            const plainRepository: SessionRepository = {
+                load: (sessionId) => Promise.resolve(backing.get(sessionId)),
+                save: (sessionId, state) => {
+                    backing.set(sessionId, state);
+                    return Promise.resolve();
+                },
+            };
+            const wallet = new InMemoryWallet();
+            await wallet.setBalance("session-1", 1000);
+            backing.set("session-1", {bet: 5, win: 0});
+            const handler = new SpinCommandHandler(game, plainRepository, wallet);
+
+            // A wildly wrong expectedVersion has no effect at all — there's no version to compare it
+            // against, so the spin plays for real instead of conflicting.
+            const result = await handler.handle("session-1", undefined, 999);
+
+            expect(result).toMatchObject({status: "played", win: 0});
+        });
+    });
 });

@@ -258,3 +258,41 @@ export type StudioReplayListEntry = {
     durationMs: number;
     error?: string;
 };
+
+// GET/POST /api/project/runtime*'s own DTO — see cli/studio/runtime/StudioRuntimeStateView.ts's own
+// doc comment. "starting"/"stopping" are only ever observed transiently (a concurrent GET racing an
+// in-flight start/stop), never held between two separate calls.
+export type StudioRuntimeStateView =
+    | {status: "stopped"}
+    | {status: "starting"}
+    | {
+          status: "running";
+          host: string;
+          port: number;
+          baseUrl: string;
+          debug: boolean;
+          repositoryMode: "memory" | "file";
+          startedAt: string;
+      }
+    | {status: "stopping"}
+    | {status: "failed"; error: string};
+
+// The Runtime tab's Session Tools response DTO — see cli/studio/runtime/StudioRuntimeSessionView.ts's
+// own doc comment. `sessionVersion` is present whenever the runtime's configured repository is
+// versioned, regardless of debug mode; `debug` is only present when the runtime was started with
+// debug mode on.
+export type StudioRuntimeSessionView = {
+    sessionId: string;
+    game: {id: string; name: string; version: string};
+    credits: number;
+    bet?: number;
+    win?: number;
+    screen?: unknown[][];
+    sessionVersion?: number;
+    debug?: {
+        stateAfter: unknown;
+        stateBefore?: unknown;
+        debugData?: Record<string, unknown>;
+        requestId?: string;
+    };
+} & Record<string, unknown>;

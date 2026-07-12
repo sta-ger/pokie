@@ -65,9 +65,10 @@ const DEFAULT_PORT = 3000;
 // own optimistic-locking revision for the session.
 //
 // A spin can also come back `409` instead of `200`/`400`/`404`: SpinCommandHandler's "conflict"
-// status, meaning a versioned sessionRepository rejected this attempt because the session's version
-// moved between load and save — see SpinCommandHandler's own doc comment for when this actually
-// happens (mainly a repository shared across multiple PokieDevServer instances/processes).
+// status, meaning either a versioned sessionRepository rejected this attempt because the session's
+// version moved between load and save (mainly a repository shared across multiple PokieDevServer
+// instances/processes), or the request itself declared an `expectedSessionVersion` that no longer
+// matches — see SpinCommandHandling.handle()'s own doc comment for the distinction.
 export class PokieDevServer implements PokieDevServerHandling {
     private readonly game: PokieGame;
     private readonly host: string;
@@ -258,15 +259,15 @@ export class PokieDevServer implements PokieDevServerHandling {
     }
 
     private async handleSpin(sessionId: string, req: IncomingMessage, res: ServerResponse, includeInternal: boolean): Promise<void> {
-        let requestId: string | undefined;
+        let spinRequest: {requestId?: string; expectedVersion?: number};
         try {
-            requestId = await this.readSpinRequestId(req);
+            spinRequest = await this.readSpinRequest(req);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
 
-        const result = await this.spinCommandHandler.handle(sessionId, requestId);
+        const result = await this.spinCommandHandler.handle(sessionId, spinRequest.requestId, spinRequest.expectedVersion);
 
         if (result.status === "not-found") {
             this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
@@ -423,10 +424,13 @@ export class PokieDevServer implements PokieDevServerHandling {
         return {seed};
     }
 
-    private async readSpinRequestId(req: IncomingMessage): Promise<string | undefined> {
+    // `requestId` (idempotency, see the class doc comment) and `expectedVersion` (a caller-declared
+    // optimistic-locking precondition — see SpinCommandHandling.handle()'s own doc comment) are both
+    // optional and read from the same JSON body.
+    private async readSpinRequest(req: IncomingMessage): Promise<{requestId?: string; expectedVersion?: number}> {
         const raw = await this.readBody(req);
         if (!raw) {
-            return undefined;
+            return {};
         }
 
         let parsed: unknown;
@@ -436,17 +440,26 @@ export class PokieDevServer implements PokieDevServerHandling {
             throw new Error("Request body is not valid JSON.");
         }
         if (parsed === null || typeof parsed !== "object") {
-            return undefined;
+            return {};
         }
 
-        const {requestId} = parsed as {requestId?: unknown};
-        if (requestId === undefined) {
-            return undefined;
-        }
-        if (typeof requestId !== "string") {
+        const {requestId, expectedSessionVersion} = parsed as {requestId?: unknown; expectedSessionVersion?: unknown};
+
+        if (requestId !== undefined && typeof requestId !== "string") {
             throw new Error('"requestId" must be a string.');
         }
-        return requestId;
+
+        if (
+            expectedSessionVersion !== undefined &&
+            (typeof expectedSessionVersion !== "number" || !Number.isInteger(expectedSessionVersion) || expectedSessionVersion < 1)
+        ) {
+            throw new Error('"expectedSessionVersion" must be a positive integer.');
+        }
+
+        return {
+            requestId: requestId as string | undefined,
+            expectedVersion: expectedSessionVersion as number | undefined,
+        };
     }
 
     private readBody(req: IncomingMessage): Promise<string> {

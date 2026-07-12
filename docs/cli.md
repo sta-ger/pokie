@@ -964,20 +964,30 @@ calls `session.play()` on the (possibly just-reconstructed, see
   between rounds) is **not** repeated here; a client that needs both keeps what `POST /sessions` gave it and
   merges in each spin's response, or re-fetches everything at once via `GET /sessions/:sessionId` below.
 
-An optional JSON body `{"requestId": string}` makes the call idempotent: a repeated request with the same
-`sessionId`/`requestId` pair returns the exact same response instead of spinning (and charging the wallet) again
-— see [Spin orchestration & idempotency](#spin-orchestration--idempotency). Omit it (or send no body) to always
-spin for real, the original behavior.
+An optional JSON body `{"requestId"?: string, "expectedSessionVersion"?: number}`:
+
+- `requestId` makes the call idempotent: a repeated request with the same `sessionId`/`requestId` pair returns
+  the exact same response instead of spinning (and charging the wallet) again — see
+  [Spin orchestration & idempotency](#spin-orchestration--idempotency). Omit it (or send no body) to always spin
+  for real, the original behavior.
+- `expectedSessionVersion`, when the configured `SessionRepository` supports
+  [optimistic locking](#optimistic-locking-session-versioning), lets a caller declare "I expect the session to
+  still be at version N" — a mismatch is rejected as a `409` immediately, before `canPlayNextGame()`/`play()`/any
+  wallet transaction, so there's nothing to compensate. This is a caller-declared precondition, distinct from (and
+  checked before) the repository's own storage-level conflict detection described below; omit it to skip this
+  check entirely. Ignored (never causes a conflict) when the configured repository isn't versioned.
 
 `404 {"error": "..."}` for an unknown `sessionId`. `400 {"error": "..."}` if `canPlayNextGame()` returns `false`
 (e.g. insufficient credits for the current bet) — `play()` is never called in that case, and the session's
 game state, `SessionRepository` entry, and `WalletPort` balance are all left exactly as they were. A game whose
 `canPlayNextGame()` ignores balance while an in-progress feature (e.g. a free-games round) is active still spins
 normally even at a 0 balance — the gate only ever reflects what `canPlayNextGame()` itself returns. `400
-{"error": "..."}` too if a `requestId` is sent but isn't a string. `409 {"error": "..."}` if the configured
-`SessionRepository` supports [optimistic locking](#optimistic-locking-session-versioning) and this session's
-version moved between load and save — the wallet is left exactly as it was before this attempt (every
-transaction it applied is reversed), same as the `canPlayNextGame()` case above.
+{"error": "..."}` too if a `requestId` is sent but isn't a string, or if `expectedSessionVersion` is sent but
+isn't a positive integer. `409 {"error": "..."}` if `expectedSessionVersion` was given and no longer matches (see
+above), or if the configured `SessionRepository` supports
+[optimistic locking](#optimistic-locking-session-versioning) and this session's version moved between load and
+save — the wallet is left exactly as it was before this attempt (every transaction it applied is reversed), same
+as the `canPlayNextGame()` case above.
 
 ### `GET /sessions/:sessionId`
 
@@ -1250,6 +1260,14 @@ and the live session evicted, the same compensation any other mid-flight failure
 below). `PokieDevServer` maps this to `409 {"error": "..."}` on `POST /sessions/:sessionId/spin`. A
 conflicted attempt is never cached under its `requestId` either — a client retry with the same
 `requestId` runs for real against whatever is current, rather than replaying the failed attempt.
+
+The version compared above is always the one `SpinCommandHandler` itself just loaded — never a
+client-declared expectation. A caller that wants to assert "I expect the session to still be at version
+N" and get a `409` on demand when that's stale (rather than only when a genuinely concurrent writer
+raced it) passes `expectedSessionVersion` on the spin request body itself — see
+[`POST /sessions/:sessionId/spin`](#post-sessionssessionidspin) above — checked by
+`SpinCommandHandler.handle()`'s optional third parameter before anything else runs, so a mismatch here
+never even reaches `canPlayNextGame()`/`play()`/the wallet.
 
 This mainly matters for a repository **shared across multiple `PokieDevServer` instances or
 processes** — e.g. two servers pointed at the same `FileSessionRepository` directory. Within a single
@@ -1616,8 +1634,8 @@ Opening or creating a project — or launching Studio directly with `pokie .`/`p
 **Project Dashboard**: the first real Project-mode feature (everything else beyond it — GUIs for
 `build`/`sim`/`report`/`diff`/`replay`/`serve` — is still to come, via the `StudioToolHandling` extension point).
 
-The Dashboard has five tabs, **Overview**, **Validation**, **Simulation**, **Reports**, and **Replay**, switched
-client-side with no full page reload:
+The Dashboard has six tabs, **Overview**, **Validation**, **Simulation**, **Reports**, **Replay**, and
+**Runtime**, switched client-side with no full page reload:
 
 - **Overview** shows the game's name/id/version, the absolute `projectRoot`, and a **provenance** panel — if the
   package was generated by [`pokie build`](#pokie-build-configjson), its blueprint hash, source path, `pokie`
@@ -1630,6 +1648,7 @@ client-side with no full page reload:
 - **Simulation** — see its own section below.
 - **Reports** — see its own section below.
 - **Replay** — see its own section below.
+- **Runtime** — see its own section below.
 
 Every quick action calls `GamePackageInspecting`/`PokieGamePackageValidating`/the simulation services directly (the
 same services `pokie inspect`/`pokie validate`/`pokie sim` use) — Studio never spawns a CLI command as a
@@ -1743,6 +1762,58 @@ still-active replay the same way it cancels every still-active simulation.
 Studio bounds `round` to an explicit safety ceiling (`MAX_STUDIO_REPLAY_ROUND`, 100,000) — `pokie replay` itself has
 no such limit; this mostly bounds how long a single replay job can occupy its project's one-active-replay-at-a-time
 slot, now that the replay itself no longer blocks the server while it runs.
+
+#### Runtime
+
+The **Runtime** tab starts, stops, and restarts an in-process, [`pokie serve`](#pokie-serve-packageroot-experimental)-
+equivalent HTTP server for the active project, then lets you create/load a session and spin against it — the same
+`PokieDevServer`/`SessionRepository`/`WalletPort`/network serializers/idempotency repository/optimistic-locking
+machinery `pokie serve`/`pokie dev` themselves use, driven directly, in-process. **`pokie serve`/`pokie dev` are
+never spawned as a subprocess, and none of their logic is reimplemented** — a `StudioRuntimeManager`
+(`cli/studio/runtime/StudioRuntimeManager.ts`) owns at most one running server for the current project, and Session
+Tools talk to that running server through a small typed HTTP client
+(`cli/studio/runtime/RuntimeSessionClient.ts`) exactly the way any external client would — Studio's own domain
+layer never reimplements `PokieDevServer`'s HTTP contract.
+
+**Server controls** — **Host**/**Port** (blank port lets the OS assign a free one, same as `pokie serve --port 0`),
+**Debug mode**, **Session storage** (`memory`, the default and same as `pokie serve`'s own out-of-box behavior, or
+`file`, backed by a `FileSessionRepository` under a Studio-managed temp directory that survives a Stop→Start or
+Restart within the same project session), and an optional default **Seed** applied to Create Session when its own
+seed field is left blank — then **Start**/**Stop**/**Restart** buttons. A status badge always shows one of the five
+lifecycle states — **stopped**, **starting**, **running**, **stopping**, **failed** — plus, once running, the bound
+host/port/base URL and an **Open runtime endpoint in a new tab** link (`<baseUrl>/health`). Starting while already
+running is refused with a `409` naming the currently running state rather than silently restarting; starting a
+second time after a genuine failure (an invalid project package, or a port already in use) is always safe to retry.
+Stopping an already-stopped runtime, and stopping one that was never started, are both a no-op, never an error.
+Switching to a different project (or back to Home) always stops any active runtime first — unlike Simulation/Replay
+jobs, which are merely scoped by `projectRoot` and keep running unseen after a switch, a Runtime server holds an OS
+port and is explicitly on/off state, so it's torn down on every project switch and on Studio shutdown alike.
+
+**Debug mode is a start-time toggle on the runtime server itself**, not a raw `?debug=1` exposed per request to the
+browser: `sessionVersion` is always shown regardless (central to demonstrating optimistic locking below), but the
+rest of the internal/debug bundle (`stateBefore`/`stateAfter`/`debugData`/`requestId`) is only ever attached to
+Studio's own response — and only ever shown in the tab's **Debug response** panel — when the runtime was started
+with debug mode on; otherwise that panel shows an explicit "Debug disabled" placeholder. Restart with debug mode on
+to inspect it.
+
+**Session Tools**: **Create Session** (with an optional seed override) or **Load Session** by an existing session
+id (restoring it exactly as `GET /sessions/:sessionId` would) both show the session id, its `sessionVersion` (when
+the configured repository is versioned), credits, bet, win, and — for a game with a screen — a rendered grid. A
+**Spin** form takes an optional **Request id** (repeating the same one returns the exact same result instead of
+spinning again — the tab's own **Repeat Same Request** button resends the last spin's exact `requestId`/
+`expectedSessionVersion`, a quick way to see idempotent replay in action) and an optional **Expected session
+version** — a stale value is rejected as an HTTP `409` conflict immediately, before anything spins (see
+[Optimistic locking](#optimistic-locking-session-versioning) above for the underlying
+`expectedSessionVersion` mechanism this field drives). The **Public response** panel always shows the exact JSON a
+plain client of the runtime server would see; the **Debug response** panel shows the rest of `internal` when debug
+mode is on. Every outcome is a distinct, clearly labeled state — an unknown session id, insufficient balance/
+`canPlayNextGame()` blocked, a stale-version conflict, and the runtime simply not running yet — never a generic
+error. A **Request/Response History** list (page-session only, capped at 20 entries, never persisted) records every
+Server-control/Session-tools action taken.
+
+None of this ever returns a stack trace, a `SessionRepository`/`WalletPort` instance, or a raw runtime session
+object through Studio's own API — `StudioRuntimeManager` only ever forwards the same plain JSON `RuntimeSessionClient`
+already got back from the real running server.
 
 ### API
 
@@ -1884,6 +1955,46 @@ client, even for a load/validation failure.
   `404 {"error": "..."}` for an unknown id or one belonging to a different project; `409 {"error": "..."}` if the
   replay hasn't completed yet (still queued/running) or completed without a descriptor (failed/cancelled) — the
   message names which.
+- `GET /api/project/runtime` — the active project's runtime lifecycle state: `{"status": "stopped"}` /
+  `{"status": "starting"}` / `{"status": "running", "host", "port", "baseUrl", "debug", "repositoryMode", "startedAt"}`
+  / `{"status": "stopping"}` / `{"status": "failed", "error"}`. `409 {"error": "No active project."}` in Home mode.
+- `POST /api/project/runtime/start` `{"host"?: string, "port"?: number, "debug"?: boolean, "seed"?: string|number,
+  "repositoryMode"?: "memory"|"file"}` — starts a `PokieDevServer` for the active project directly, in-process
+  (never a subprocess); `"port"` omitted or `0` lets the OS assign a free port, same as `pokie serve --port 0`;
+  `"repositoryMode"` defaults to `"memory"`. `201` with the resulting `{"status": "running", ...}` state on success;
+  `200 {"status": "failed", "error": "..."}` for a safe domain-level failure (an invalid project package, or the
+  port already in use — never a stack trace); `409 {"error": "Runtime is already running.", "state": {...}}` if a
+  runtime is already `"running"`/`"starting"` for this project — refuses to silently restart it. `400 {"error":
+  "..."}` for a malformed request. `409 {"error": "No active project."}` in Home mode.
+- `POST /api/project/runtime/stop` — idempotent: always `200 {"status": "stopped"}`, whether or not a runtime was
+  actually running. `409 {"error": "No active project."}` in Home mode.
+- `POST /api/project/runtime/restart` — same request shape as `start`, but every field is optional even as a whole:
+  omit the body entirely to reuse the last successful start's own options; never a `409` conflict (restarting while
+  already running is the point). Same `201`/`200`-with-`"failed"` response shape as `start`. `409 {"error": "No
+  active project."}` in Home mode.
+- `POST /api/project/runtime/sessions` `{"seed"?: string|number}` — creates a session against the running runtime
+  server via `RuntimeSessionClient` (the same request an external client would make to
+  [`POST /sessions`](#post-sessions)), overriding `start`'s own default seed when given. `201 {"status": "ok",
+  "session": {...}}` on success — `session` always includes `sessionVersion` when the configured repository is
+  versioned, and a `debug` field (the rest of `internal`) only when the runtime was started with debug mode on (see
+  [Runtime](#runtime) above). `409 {"error": "Runtime is not running. Start it first."}` if the runtime isn't
+  `"running"`; `200 {"status": "error", "error": "..."}` for a safe, unexpected failure. `409 {"error": "No active
+  project."}` in Home mode.
+- `GET /api/project/runtime/sessions/:sessionId` — restores a session's current state via
+  [`GET /sessions/:sessionId`](#get-sessionssessionid) against the running runtime server. Same `{"status": "ok",
+  "session": {...}}` shape as create. `404 {"error": "Unknown sessionId \"...\"."}` for an unknown id; `409
+  {"error": "Runtime is not running. Start it first."}` if the runtime isn't running; `200 {"status": "error",
+  "error": "..."}` for a safe, unexpected failure. `409 {"error": "No active project."}` in Home mode.
+- `POST /api/project/runtime/sessions/:sessionId/spins` `{"requestId"?: string, "expectedSessionVersion"?: number}`
+  — spins via [`POST /sessions/:sessionId/spin`](#post-sessionssessionidspin) against the running runtime server,
+  forwarding both fields as-is (see [Optimistic locking](#optimistic-locking-session-versioning) above for what
+  `expectedSessionVersion` does). Same `{"status": "ok", "session": {...}}` shape as create/get. `404 {"error":
+  "Unknown sessionId \"...\"."}` for an unknown id; `400 {"error": "..."}` if `canPlayNextGame()` blocks the spin;
+  `409 {"error": "...", "reason": "not-running"}` if the runtime isn't running, or `409 {"error": "...", "reason":
+  "conflict"}` for a stale `expectedSessionVersion`/a storage-level version conflict — `reason` disambiguates the
+  two 409 cases (both a genuine HTTP conflict, deliberately, per the task this feature was built for) without
+  parsing `error`'s free-text message; `200 {"status": "error", "error": "..."}` for a safe, unexpected failure.
+  `409 {"error": "No active project."}` in Home mode.
 
 ## Workflow
 

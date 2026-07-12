@@ -397,6 +397,7 @@
                 <button id="tab-simulation" type="button" class="tab">Simulation</button>
                 <button id="tab-reports" type="button" class="tab">Reports</button>
                 <button id="tab-replay" type="button" class="tab">Replay</button>
+                <button id="tab-runtime" type="button" class="tab">Runtime</button>
             </nav>
 
             <section id="project-overview">
@@ -679,6 +680,118 @@
                     <p id="replay-list-empty" hidden>No replays run yet.</p>
                     <p id="replay-list-error" hidden></p>
                     <ul id="replay-list"></ul>
+                </section>
+            </section>
+
+            <section id="project-runtime" hidden>
+                <p class="notice">
+                    Starts a local `pokie serve`-equivalent HTTP server for this project, in-process — never a
+                    subprocess — so you can create sessions and spin against it the same way an external client
+                    would.
+                </p>
+
+                <section id="runtime-controls">
+                    <h3>Server</h3>
+                    <form id="runtime-start-form">
+                        <label for="runtime-host">Host (optional)</label>
+                        <input id="runtime-host" name="host" type="text" placeholder="127.0.0.1" />
+                        <label for="runtime-port">Port (optional — blank for an automatic free port)</label>
+                        <input id="runtime-port" name="port" type="number" min="0" step="1" />
+                        <label><input id="runtime-debug" name="debug" type="checkbox" /> Debug mode</label>
+                        <label for="runtime-repository-mode">Session storage</label>
+                        <select id="runtime-repository-mode" name="repositoryMode">
+                            <option value="memory" selected>In-memory (default)</option>
+                            <option value="file">File (survives a restart)</option>
+                        </select>
+                        <label for="runtime-seed">Default seed (optional)</label>
+                        <input id="runtime-seed" name="seed" type="text" />
+                        <button id="runtime-start-button" type="submit">Start</button>
+                        <button id="runtime-stop-button" type="button">Stop</button>
+                        <button id="runtime-restart-button" type="button">Restart</button>
+                    </form>
+
+                    <p id="runtime-status-badge"></p>
+                    <p id="runtime-error" hidden></p>
+                    <dl class="project-info" id="runtime-address-details" hidden>
+                        <dt>Host</dt>
+                        <dd id="runtime-address-host"></dd>
+                        <dt>Port</dt>
+                        <dd id="runtime-address-port"></dd>
+                        <dt>Base URL</dt>
+                        <dd id="runtime-address-base-url"></dd>
+                        <dt>Session storage</dt>
+                        <dd id="runtime-address-repository-mode"></dd>
+                    </dl>
+                    <a id="runtime-open-endpoint-link" href="#" target="_blank" rel="noreferrer" hidden>Open runtime endpoint in a new tab</a>
+                </section>
+
+                <section id="runtime-session-tools">
+                    <h3>Session Tools</h3>
+                    <div class="quick-actions">
+                        <label for="runtime-create-seed">Seed (optional, overrides the server's default)</label>
+                        <input id="runtime-create-seed" type="text" />
+                        <button id="runtime-create-session-button" type="button">Create Session</button>
+                    </div>
+                    <div class="quick-actions">
+                        <label for="runtime-load-session-id">Existing session id</label>
+                        <input id="runtime-load-session-id" type="text" />
+                        <button id="runtime-load-session-button" type="button">Load Session</button>
+                    </div>
+                    <p id="runtime-session-error" hidden></p>
+                    <p id="runtime-session-not-running" hidden>Runtime is not running — start it first.</p>
+                    <p id="runtime-session-not-found" hidden>Unknown session id.</p>
+
+                    <dl class="project-info" id="runtime-session-details" hidden>
+                        <dt>Session id</dt>
+                        <dd id="runtime-session-id"></dd>
+                        <dt>Session version</dt>
+                        <dd id="runtime-session-version"></dd>
+                        <dt>Credits</dt>
+                        <dd id="runtime-session-credits"></dd>
+                        <dt>Bet</dt>
+                        <dd id="runtime-session-bet"></dd>
+                        <dt>Win</dt>
+                        <dd id="runtime-session-win"></dd>
+                    </dl>
+
+                    <div id="runtime-session-screen-section" hidden>
+                        <h4>Screen</h4>
+                        <table class="screen-table">
+                            <tbody id="runtime-session-screen-body"></tbody>
+                        </table>
+                    </div>
+
+                    <form id="runtime-spin-form">
+                        <label for="runtime-spin-request-id">Request id (optional)</label>
+                        <input id="runtime-spin-request-id" type="text" />
+                        <label for="runtime-spin-expected-version">Expected session version (optional)</label>
+                        <input id="runtime-spin-expected-version" type="number" min="1" step="1" />
+                        <button id="runtime-spin-button" type="submit">Spin</button>
+                        <button id="runtime-repeat-spin-button" type="button">Repeat Same Request</button>
+                    </form>
+                    <p id="runtime-spin-error" hidden></p>
+                    <p id="runtime-spin-blocked" hidden></p>
+                    <p id="runtime-spin-conflict" hidden></p>
+
+                    <div id="runtime-public-panel">
+                        <h4>Public response</h4>
+                        <pre id="runtime-public-json"></pre>
+                    </div>
+
+                    <div id="runtime-debug-panel">
+                        <h4>Debug response</h4>
+                        <p id="runtime-debug-disabled" hidden>
+                            Debug mode is disabled for this runtime — restart it with debug mode on to see
+                            internal/debug data.
+                        </p>
+                        <pre id="runtime-debug-json" hidden></pre>
+                    </div>
+                </section>
+
+                <section id="runtime-history-section">
+                    <h3>Request/Response History</h3>
+                    <p id="runtime-history-empty" hidden>No requests yet this session.</p>
+                    <ul id="runtime-history-list"></ul>
                 </section>
             </section>
         </section>
