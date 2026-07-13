@@ -14,6 +14,12 @@ the whole shape shown below.
   produce with the engine's default 3 active lines on a 3-row grid. See docs/cli.md's
   [Math-quality warnings](../../docs/cli.md#math-quality-warnings) for the `pokie build` checks that catch this
   class of mistake.
+- `generated-reels.blueprint.json` — 5x3, wilds, scatters, and a `reelStripGeneration` block instead of literal
+  `reelStrips`: `pokie build` runs `ReelStripGenerator` once per reel (`symbolWeights`, a fixed `seed`, and two
+  constraints — no run longer than 3-of-a-kind, wilds/scatters at least 6 apart) and bakes the resulting exact
+  strips into the generated package as plain `reelStrips` — see
+  [`reelStripGeneration`](../../docs/cli.md#reelstripgeneration-build-time-reel-strip-generation) in docs/cli.md
+  for the full field reference.
 
 Try it from the repository root:
 
@@ -22,6 +28,14 @@ npx pokie build examples/blueprints/crazy-fruits.blueprint.json --out /tmp/crazy
 cd /tmp/crazy-fruits && npm install
 npx pokie inspect .
 npx pokie validate .
+```
+
+Or the `reelStripGeneration` example — its `src/generated/build-info.json` additionally records the seed, the
+original `reelStripGeneration` config, and a per-reel generation result:
+
+```
+npx pokie build examples/blueprints/generated-reels.blueprint.json --out /tmp/generated-reels
+cat /tmp/generated-reels/src/generated/build-info.json
 ```
 
 The generated package includes its own `README.md` (what each file is, and the rest of the

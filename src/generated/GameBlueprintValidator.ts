@@ -1,6 +1,18 @@
 import type {GameBlueprintValidating} from "./GameBlueprintValidating.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
+const REEL_STRIP_CONSTRAINT_TYPES = [
+    "minimumCircularDistance",
+    "maximumCircularDistance",
+    "maximumConsecutiveOccurrences",
+    "forbiddenAdjacency",
+    "requiredAdjacency",
+    "forbiddenSequence",
+    "requiredSequence",
+];
+const REEL_STRIP_ROUNDING_POLICIES = ["floor", "round", "ceil"];
+const REEL_STRIP_TIE_BREAK_POLICIES = ["symbol-id", "declared-order", "largest-weight-first"];
+
 const SUSPICIOUS_REELS_OR_ROWS_THRESHOLD = 10;
 // Below this many matching symbols, a non-scatter (line-pay) payout hits so often it behaves more
 // like a scatter than a line win — most line-pay symbols start paying at 3-of-a-kind.
@@ -74,7 +86,17 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, reels, reelsValid, issues);
         this.validatePaylines(b.paylines, reels, reelsValid, rows, rowsValid, issues);
         const reelStripSymbols = this.validateReelStrips(b.reelStrips, symbolSet, symbolsValid, reels, reelsValid, rows, rowsValid, issues);
+        const reelStripGenerationSymbols = this.validateReelStripGeneration(b.reelStripGeneration, symbolSet, symbolsValid, issues);
         const weightSymbols = this.validateSymbolWeights(b.symbolWeights, symbolSet, symbolsValid, issues);
+
+        if (b.reelStrips !== undefined && b.reelStripGeneration !== undefined) {
+            issues.push({
+                code: "blueprint-reelstrips-and-generation",
+                severity: "error",
+                message: 'Both "reelStrips" and "reelStripGeneration" are set; a reel\'s strip must come from exactly one of them.',
+                suggestion: 'Remove either "reelStrips" or "reelStripGeneration".',
+            });
+        }
 
         if (b.reelStrips !== undefined && b.symbolWeights !== undefined) {
             issues.push({
@@ -84,11 +106,20 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             });
         }
 
-        this.validateReachability(paytableSymbols, wilds, scatters, reelStripSymbols, weightSymbols, issues);
+        if (b.reelStrips === undefined && b.reelStripGeneration !== undefined && b.symbolWeights !== undefined) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-and-weights",
+                severity: "warning",
+                message:
+                    'Both "reelStripGeneration" and "symbolWeights" are set; "reelStripGeneration" takes precedence and "symbolWeights" is ignored.',
+            });
+        }
+
+        this.validateReachability(paytableSymbols, wilds, scatters, reelStripSymbols, reelStripGenerationSymbols, weightSymbols, issues);
         this.validateEverySymbolHasAPayout(symbolList, symbolsValid, paytableSymbols, wilds, scatters, issues);
 
         const regularPayouts = this.validatePaytableQuality(b.paytable, wilds, scatters, reels, reelsValid, issues);
-        this.validateWeightingQuality(b.reelStrips, b.symbolWeights, wilds, scatters, regularPayouts, issues);
+        this.validateWeightingQuality(b.reelStrips, b.reelStripGeneration, b.symbolWeights, wilds, scatters, regularPayouts, issues);
 
         if (b.availableBets !== undefined) {
             const availableBets = b.availableBets;
@@ -393,6 +424,237 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         return stripSymbols;
     }
 
+    // Shape-checks reelStripGeneration only: length/seed/symbolCounts-or-symbolWeights/
+    // lockedPositions/maxAttempts/policy-enum values, plus a "known constraint type" check on each
+    // constraints[] entry. Whether the resulting configuration can actually be *satisfied* is a
+    // runtime question ReelStripGenerator itself answers (each constraint class fail-fasts on a
+    // nonsensical numeric bound in its own constructor, and unsatisfiable constraints surface as a
+    // build-time failure) — see resolveReelStripGeneration.ts and BuildCommand, not here.
+    private validateReelStripGeneration(
+        reelStripGeneration: unknown,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        issues: ValidationIssue[],
+    ): Set<string> | undefined {
+        if (reelStripGeneration === undefined) {
+            return undefined;
+        }
+
+        if (typeof reelStripGeneration !== "object" || reelStripGeneration === null || Array.isArray(reelStripGeneration)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid",
+                severity: "error",
+                message: '"reelStripGeneration", if present, must be an object.',
+            });
+            return undefined;
+        }
+
+        const g = reelStripGeneration as Record<string, unknown>;
+
+        if (!(typeof g.length === "number" && Number.isInteger(g.length) && g.length > 0)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-length",
+                severity: "error",
+                message: '"reelStripGeneration.length" must be a positive integer.',
+            });
+        }
+
+        if (!(typeof g.seed === "number" && Number.isInteger(g.seed))) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-seed",
+                severity: "error",
+                message: '"reelStripGeneration.seed" must be an integer — required (not optional) so builds stay deterministic.',
+            });
+        }
+
+        const hasCounts = g.symbolCounts !== undefined;
+        const hasWeights = g.symbolWeights !== undefined;
+        if (hasCounts === hasWeights) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-source-invalid",
+                severity: "error",
+                message: 'Exactly one of "reelStripGeneration.symbolCounts" or "reelStripGeneration.symbolWeights" must be set.',
+            });
+        }
+
+        let generatedSymbols: Set<string> | undefined;
+        if (hasCounts && !hasWeights) {
+            generatedSymbols = this.validateReelStripGenerationCounts(g.symbolCounts, symbolSet, symbolsValid, issues);
+        } else if (hasWeights && !hasCounts) {
+            generatedSymbols = this.validateReelStripGenerationWeights(g.symbolWeights, symbolSet, symbolsValid, issues);
+        }
+
+        if (g.lockedPositions !== undefined) {
+            this.validateReelStripGenerationLockedPositions(g.lockedPositions, symbolSet, symbolsValid, issues);
+        }
+
+        if (g.constraints !== undefined) {
+            this.validateReelStripGenerationConstraints(g.constraints, issues);
+        }
+
+        if (g.maxAttempts !== undefined && !(typeof g.maxAttempts === "number" && Number.isInteger(g.maxAttempts) && g.maxAttempts > 0)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-maxattempts",
+                severity: "error",
+                message: '"reelStripGeneration.maxAttempts", if present, must be a positive integer.',
+            });
+        }
+
+        if (g.roundingPolicy !== undefined && !REEL_STRIP_ROUNDING_POLICIES.includes(g.roundingPolicy as string)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-roundingpolicy",
+                severity: "error",
+                message: `"reelStripGeneration.roundingPolicy", if present, must be one of: ${REEL_STRIP_ROUNDING_POLICIES.join(", ")}.`,
+            });
+        }
+
+        if (g.remainderTieBreakPolicy !== undefined && !REEL_STRIP_TIE_BREAK_POLICIES.includes(g.remainderTieBreakPolicy as string)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-tiebreakpolicy",
+                severity: "error",
+                message: `"reelStripGeneration.remainderTieBreakPolicy", if present, must be one of: ${REEL_STRIP_TIE_BREAK_POLICIES.join(", ")}.`,
+            });
+        }
+
+        return generatedSymbols;
+    }
+
+    private validateReelStripGenerationCounts(
+        symbolCounts: unknown,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        issues: ValidationIssue[],
+    ): Set<string> | undefined {
+        if (typeof symbolCounts !== "object" || symbolCounts === null || Array.isArray(symbolCounts)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-symbolcounts",
+                severity: "error",
+                message: '"reelStripGeneration.symbolCounts", if present, must be an object mapping symbol ids to non-negative counts.',
+            });
+            return undefined;
+        }
+
+        const generatedSymbols = new Set<string>();
+        for (const [symbolId, count] of Object.entries(symbolCounts as Record<string, unknown>)) {
+            generatedSymbols.add(symbolId);
+            if (symbolsValid && !symbolSet.has(symbolId)) {
+                issues.push({
+                    code: "blueprint-reelstripgeneration-unknown-symbol",
+                    severity: "error",
+                    message: `"reelStripGeneration.symbolCounts" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
+                });
+            }
+            if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
+                issues.push({
+                    code: "blueprint-reelstripgeneration-invalid-count",
+                    severity: "error",
+                    message: `"reelStripGeneration.symbolCounts.${symbolId}" must be a non-negative integer.`,
+                });
+            }
+        }
+        return generatedSymbols;
+    }
+
+    private validateReelStripGenerationWeights(
+        symbolWeights: unknown,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        issues: ValidationIssue[],
+    ): Set<string> | undefined {
+        if (typeof symbolWeights !== "object" || symbolWeights === null || Array.isArray(symbolWeights)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-symbolweights",
+                severity: "error",
+                message: '"reelStripGeneration.symbolWeights", if present, must be an object mapping symbol ids to positive weights.',
+            });
+            return undefined;
+        }
+
+        const generatedSymbols = new Set<string>();
+        for (const [symbolId, weight] of Object.entries(symbolWeights as Record<string, unknown>)) {
+            generatedSymbols.add(symbolId);
+            if (symbolsValid && !symbolSet.has(symbolId)) {
+                issues.push({
+                    code: "blueprint-reelstripgeneration-unknown-symbol",
+                    severity: "error",
+                    message: `"reelStripGeneration.symbolWeights" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
+                });
+            }
+            if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) {
+                issues.push({
+                    code: "blueprint-reelstripgeneration-invalid-weight",
+                    severity: "error",
+                    message: `"reelStripGeneration.symbolWeights.${symbolId}" must be a positive, finite number.`,
+                });
+            }
+        }
+        return generatedSymbols;
+    }
+
+    private validateReelStripGenerationLockedPositions(
+        lockedPositions: unknown,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        issues: ValidationIssue[],
+    ): void {
+        if (typeof lockedPositions !== "object" || lockedPositions === null || Array.isArray(lockedPositions)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-lockedpositions",
+                severity: "error",
+                message: '"reelStripGeneration.lockedPositions", if present, must be an object mapping position indexes to symbol ids.',
+            });
+            return;
+        }
+
+        for (const [position, symbolId] of Object.entries(lockedPositions as Record<string, unknown>)) {
+            if (!Number.isInteger(Number(position)) || Number(position) < 0) {
+                issues.push({
+                    code: "blueprint-reelstripgeneration-invalid-lockedposition-index",
+                    severity: "error",
+                    message: `"reelStripGeneration.lockedPositions" has an invalid position key "${position}"; keys must be non-negative integers.`,
+                });
+            }
+            if (typeof symbolId !== "string" || (symbolsValid && !symbolSet.has(symbolId))) {
+                issues.push({
+                    code: "blueprint-reelstripgeneration-unknown-symbol",
+                    severity: "error",
+                    message: `"reelStripGeneration.lockedPositions.${position}" references unknown symbol "${symbolId}".`,
+                });
+            }
+        }
+    }
+
+    private validateReelStripGenerationConstraints(constraints: unknown, issues: ValidationIssue[]): void {
+        if (!Array.isArray(constraints)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-constraints",
+                severity: "error",
+                message: '"reelStripGeneration.constraints", if present, must be an array of constraint specs.',
+            });
+            return;
+        }
+
+        constraints.forEach((constraint, index) => {
+            if (typeof constraint !== "object" || constraint === null || Array.isArray(constraint)) {
+                issues.push({
+                    code: "blueprint-reelstripgeneration-invalid-constraint",
+                    severity: "error",
+                    message: `"reelStripGeneration.constraints[${index}]" must be an object with a "type" field.`,
+                });
+                return;
+            }
+
+            const type = (constraint as Record<string, unknown>).type;
+            if (typeof type !== "string" || !REEL_STRIP_CONSTRAINT_TYPES.includes(type)) {
+                issues.push({
+                    code: "blueprint-reelstripgeneration-invalid-constraint-type",
+                    severity: "error",
+                    message: `"reelStripGeneration.constraints[${index}].type" must be one of: ${REEL_STRIP_CONSTRAINT_TYPES.join(", ")}.`,
+                });
+            }
+        });
+    }
+
     private validateSymbolWeights(
         symbolWeights: unknown,
         symbolSet: Set<string>,
@@ -434,29 +696,42 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
     }
 
     // "reelStrips" (when present) fully replaces the engine's default reel generator, and
-    // "symbolWeights" (when reelStrips is absent) does too — so a symbol that a blueprint pays out on,
-    // or marks as wild/scatter, but never places in the explicit reel data can physically never land.
-    // Without either field the built-in generator seeds every declared symbol on every reel, so there's
-    // nothing to check.
+    // "reelStripGeneration"/"symbolWeights" (in that order, when reelStrips is absent) do too — so a
+    // symbol that a blueprint pays out on, or marks as wild/scatter, but never places in the explicit
+    // reel data can physically never land. Without any of the three the built-in generator seeds
+    // every declared symbol on every reel, so there's nothing to check.
     private validateReachability(
         paytableSymbols: string[],
         wilds: string[],
         scatters: string[],
         reelStripSymbols: Set<string> | undefined,
+        reelStripGenerationSymbols: Set<string> | undefined,
         weightSymbols: Set<string> | undefined,
         issues: ValidationIssue[],
     ): void {
-        const reachable = reelStripSymbols ?? weightSymbols;
+        const reachable = reelStripSymbols ?? reelStripGenerationSymbols ?? weightSymbols;
         if (reachable === undefined) {
             return;
         }
-        const source = reelStripSymbols !== undefined ? "reelStrips" : "symbolWeights";
+
+        let source: "reelStrips" | "reelStripGeneration" | "symbolWeights";
+        let code: string;
+        if (reelStripSymbols !== undefined) {
+            source = "reelStrips";
+            code = "blueprint-reelstrips-missing-symbol";
+        } else if (reelStripGenerationSymbols !== undefined) {
+            source = "reelStripGeneration";
+            code = "blueprint-reelstripgeneration-missing-symbol";
+        } else {
+            source = "symbolWeights";
+            code = "blueprint-symbolweights-missing-symbol";
+        }
 
         const referenced = new Set<string>([...paytableSymbols, ...wilds, ...scatters]);
         for (const symbolId of referenced) {
             if (!reachable.has(symbolId)) {
                 issues.push({
-                    code: source === "reelStrips" ? "blueprint-reelstrips-missing-symbol" : "blueprint-symbolweights-missing-symbol",
+                    code,
                     severity: "error",
                     message: `"${symbolId}" is referenced by "paytable"/"wilds"/"scatters" but never appears in "${source}", so it can never land on the reels — any payout for it is impossible to win.`,
                     suggestion: `Add "${symbolId}" to "${source}", or remove references to it from "paytable"/"wilds"/"scatters".`,
@@ -580,11 +855,17 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         return regularPayouts;
     }
 
-    // A symbol's "effective weight" on the reels, from whichever of reelStrips/symbolWeights is active
-    // (reelStrips takes precedence, mirroring validateReachability) — occurrence count across every
-    // strip for reelStrips, the weight value itself for symbolWeights. Best-effort: reads through
-    // shape errors already reported elsewhere the same way validateReelStrips's own stripSymbols does.
-    private computeEffectiveWeights(reelStrips: unknown, symbolWeights: unknown): {weights: Map<string, number>; source: string} | undefined {
+    // A symbol's "effective weight" on the reels, from whichever of reelStrips/reelStripGeneration/
+    // symbolWeights is active (reelStrips takes precedence, mirroring validateReachability) —
+    // occurrence count across every strip for reelStrips, the counts/weights object as-is for
+    // reelStripGeneration (whichever of its own symbolCounts/symbolWeights is set), the weight value
+    // itself for symbolWeights. Best-effort: reads through shape errors already reported elsewhere
+    // the same way validateReelStrips's own stripSymbols does.
+    private computeEffectiveWeights(
+        reelStrips: unknown,
+        reelStripGeneration: unknown,
+        symbolWeights: unknown,
+    ): {weights: Map<string, number>; source: string} | undefined {
         if (Array.isArray(reelStrips)) {
             const counts = new Map<string, number>();
             for (const strip of reelStrips) {
@@ -598,6 +879,22 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 }
             }
             return counts.size > 0 ? {weights: counts, source: "reelStrips"} : undefined;
+        }
+
+        if (typeof reelStripGeneration === "object" && reelStripGeneration !== null && !Array.isArray(reelStripGeneration)) {
+            const g = reelStripGeneration as Record<string, unknown>;
+            const generationSource = g.symbolCounts ?? g.symbolWeights;
+            if (typeof generationSource === "object" && generationSource !== null && !Array.isArray(generationSource)) {
+                const weights = new Map<string, number>();
+                for (const [symbolId, weight] of Object.entries(generationSource as Record<string, unknown>)) {
+                    if (typeof weight === "number" && Number.isFinite(weight) && weight > 0) {
+                        weights.set(symbolId, weight);
+                    }
+                }
+                if (weights.size > 0) {
+                    return {weights, source: "reelStripGeneration"};
+                }
+            }
         }
 
         if (typeof symbolWeights === "object" && symbolWeights !== null && !Array.isArray(symbolWeights)) {
@@ -620,13 +917,14 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
     // across symbols with different payouts is the most common way to trip this).
     private validateWeightingQuality(
         reelStrips: unknown,
+        reelStripGeneration: unknown,
         symbolWeights: unknown,
         wilds: string[],
         scatters: string[],
         regularPayouts: Map<string, SymbolPayout[]>,
         issues: ValidationIssue[],
     ): void {
-        const effective = this.computeEffectiveWeights(reelStrips, symbolWeights);
+        const effective = this.computeEffectiveWeights(reelStrips, reelStripGeneration, symbolWeights);
         if (effective === undefined) {
             return;
         }

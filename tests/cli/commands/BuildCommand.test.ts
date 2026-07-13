@@ -1,4 +1,4 @@
-import {GameBlueprint, GameBlueprintValidating, GamePackageGenerating, GeneratedGamePackage, ValidationIssue} from "pokie";
+import {GameBlueprint, GameBlueprintValidating, GameBuildInfoReelStripGeneration, GamePackageGenerating, GeneratedGamePackage, ValidationIssue} from "pokie";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {GameBlueprintWizarding} from "../../../cli/wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";
@@ -15,10 +15,18 @@ function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating
 
 function createStubGenerator(
     result: GeneratedGamePackage,
-): GamePackageGenerating & {calledWith?: {blueprint: GameBlueprint; cwd: string; outDir?: string}} {
+): GamePackageGenerating & {
+    calledWith?: {
+        blueprint: GameBlueprint;
+        cwd: string;
+        outDir?: string;
+        sourcePath?: string;
+        reelStripGeneration?: GameBuildInfoReelStripGeneration;
+    };
+} {
     return {
-        generate(blueprint: GameBlueprint, cwd: string, outDir?: string) {
-            this.calledWith = {blueprint, cwd, outDir};
+        generate(blueprint: GameBlueprint, cwd: string, outDir?: string, sourcePath?: string, reelStripGeneration?: GameBuildInfoReelStripGeneration) {
+            this.calledWith = {blueprint, cwd, outDir, sourcePath, reelStripGeneration};
             return result;
         },
     };
@@ -285,7 +293,12 @@ describe("BuildCommand", () => {
 
         await command.run(["config.json", "--out", "somewhere"]);
 
-        expect(generator.calledWith).toEqual({blueprint: rawBlueprint, cwd: process.cwd(), outDir: "somewhere"});
+        expect(generator.calledWith).toEqual({
+            blueprint: rawBlueprint,
+            cwd: process.cwd(),
+            outDir: "somewhere",
+            sourcePath: "config.json",
+        });
     });
 
     it("prints the created files and a success summary, returning 0", async () => {
@@ -437,5 +450,68 @@ describe("BuildCommand", () => {
         expect(printed).toContain("pokie report sim.json");
         expect(printed).toContain("pokie replay /tmp/crazy-fruits");
         expect(printed).toContain("pokie dev /tmp/crazy-fruits");
+    });
+
+    describe("reelStripGeneration", () => {
+        const blueprintWithGeneration: GameBlueprint = {
+            manifest: {id: "generated-reels", name: "Generated Reels", version: "0.1.0"},
+            reels: 2,
+            rows: 3,
+            symbols: ["A", "B"],
+            paytable: {A: {3: 5}, B: {3: 2}},
+            reelStripGeneration: {length: 10, symbolCounts: {A: 6, B: 4}, seed: 1},
+        };
+
+        it("resolves reelStripGeneration and forwards the materialized blueprint + buildInfo to the generator", async () => {
+            const validator = createStubValidator([]);
+            const generator = createStubGenerator(generatedResult);
+            const command = new BuildCommand("1.3.0", () => blueprintWithGeneration, validator, generator);
+
+            const exitCode = await command.run(["config.json"]);
+
+            expect(exitCode).toBe(0);
+            const calledWith = generator.calledWith!;
+            expect(calledWith.blueprint.reelStripGeneration).toBeUndefined();
+            expect(calledWith.blueprint.reelStrips).toHaveLength(2);
+            expect(calledWith.blueprint.reelStrips![0]).toHaveLength(10);
+            expect(calledWith.reelStripGeneration?.config).toEqual(blueprintWithGeneration.reelStripGeneration);
+            expect(calledWith.reelStripGeneration?.reels).toHaveLength(2);
+            expect(calledWith.reelStripGeneration?.reels.every((reel) => reel.success)).toBe(true);
+        });
+
+        it("--dry-run does not call the generator, even with reelStripGeneration present", async () => {
+            const generator = createStubGenerator(generatedResult);
+            const command = new BuildCommand("1.3.0", () => blueprintWithGeneration, createStubValidator([]), generator);
+
+            const exitCode = await command.run(["config.json", "--dry-run"]);
+
+            expect(exitCode).toBe(0);
+            expect(generator.calledWith).toBeUndefined();
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("Dry run");
+        });
+
+        it("reports a clear failure and returns 1, without generating, when reel strip generation is unsatisfiable", async () => {
+            const unsatisfiable: GameBlueprint = {
+                ...blueprintWithGeneration,
+                reelStripGeneration: {
+                    length: 4,
+                    symbolCounts: {A: 2, B: 2},
+                    seed: 5,
+                    maxAttempts: 2,
+                    constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
+                },
+            };
+            const generator = createStubGenerator(generatedResult);
+            const command = new BuildCommand("1.3.0", () => unsatisfiable, createStubValidator([]), generator);
+
+            const exitCode = await command.run(["config.json"]);
+
+            expect(exitCode).toBe(1);
+            expect(generator.calledWith).toBeUndefined();
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("could not generate its reel strips"));
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("maximum-circular-distance"));
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("docs/cli.md#pokie-build-configjson"));
+        });
     });
 });

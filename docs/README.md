@@ -43,7 +43,8 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 12. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
     `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
 13. **[CLI](cli.md)** — `pokie build <config.json>`, which generates a working game package straight from a JSON
-    `GameBlueprint` (reels, symbols, paylines, paytable, reel strips/weights), no compile step required; `pokie
+    `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated
+    via `reelStripGeneration` and `ReelStripGenerator`), no compile step required; `pokie
     create <name>` (new directory) and `pokie init` (existing project), which scaffold
     a minimal game package; `pokie sim <packageRoot>`, which runs a simulation against one and reports
     RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without

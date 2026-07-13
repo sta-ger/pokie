@@ -91,11 +91,14 @@ npm install
   `pokie` version that generated it, an ISO 8601 generation timestamp, a `sha256` hash of the source blueprint
   (so an unchanged blueprint reproduces the same hash across re-runs), the source file path (when known), the
   list of files this run generated (`files` — also what a later `pokie build` reads to recognize this directory
-  as safe to rebuild, see below), and the blueprint's own `manifest`. The same summary (minus the timestamp and
-  the full hash's `sha256:` prefix repetition) is echoed as the header comment in `index.js`, so either file is
-  enough to tell what a generated package was built from. Re-running `pokie build` on an unchanged blueprint
-  with the same `pokie` version regenerates every file byte-identically, including `build-info.json`'s own
-  timestamp (reused from the previous run rather than restamped) — see
+  as safe to rebuild, see below), the blueprint's own `manifest`, and — only when the blueprint used
+  `reelStripGeneration` — a `reelStripGeneration: {config, reels}` block recording the original config (including
+  its `seed`) and a per-reel generation result; see
+  [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation) above. The same summary (minus
+  the timestamp and the full hash's `sha256:` prefix repetition) is echoed as the header comment in `index.js`, so
+  either file is enough to tell what a generated package was built from. Re-running `pokie build` on an unchanged
+  blueprint with the same `pokie` version regenerates every file byte-identically, including `build-info.json`'s
+  own timestamp (reused from the previous run rather than restamped) — see
   [Rebuilding an existing `--out` directory](#rebuilding-an-existing---out-directory).
 
 After generation, `pokie build` prints a build summary to stdout: package root, game id/name/version, blueprint
@@ -168,10 +171,16 @@ overwriting it — remove or rename the existing file first, or pick a different
     paylines?: number[][];
     // symbolId -> matchCount -> bet multiplier, applied across every configured bet.
     paytable: Record<string, Record<string, number>>;
-    // One strip (an ordered array of symbol ids) per reel. Takes precedence over symbolWeights.
+    // One strip (an ordered array of symbol ids) per reel. Takes precedence over reelStripGeneration
+    // and symbolWeights.
     reelStrips?: string[][];
+    // Build-time alternative to a literal reelStrips: generates every reel's exact strip via
+    // ReelStripGenerator instead of hand-authoring it — see "reelStripGeneration" below. Mutually
+    // exclusive with reelStrips (an error if both are set); takes precedence over symbolWeights.
+    reelStripGeneration?: ReelStripGenerationBlueprint;
     // symbolId -> relative count, applied uniformly (independently shuffled) to every reel. Ignored
-    // when reelStrips is present. Omit both for the engine's built-in default weighting.
+    // when reelStrips or reelStripGeneration is present. Omit all three for the engine's built-in
+    // default weighting.
     symbolWeights?: Record<string, number>;
     availableBets?: number[];
 }
@@ -199,28 +208,99 @@ repository — see [`examples/blueprints/README.md`](../examples/blueprints/READ
 from a checkout. It's also what the workflow below and `pokie build`'s own smoke test
 (`tests/cli/BuildWorkflow.integration.test.ts`) both run, so it's guaranteed to actually work, not just parse.
 
+### `reelStripGeneration` (build-time reel strip generation)
+
+An alternative to hand-authoring `reelStrips`: `pokie build` runs the same [`ReelStripGenerator`](reel-strip-generation.md)
+you'd use programmatically, once per reel, and bakes the resulting exact strips into the generated package as
+plain `reelStrips` — the runtime game module never depends on the generation API at all, only ever seeing a plain
+literal array (the same shape a hand-authored `reelStrips` blueprint already has).
+
+```ts
+type ReelStripGenerationBlueprint = {
+    length: number;
+    // Exactly one of these two must be set.
+    symbolCounts?: Record<string, number>;
+    symbolWeights?: Record<string, number>;
+    // Required (not optional): build-time generation must be reproducible.
+    seed: number;
+    roundingPolicy?: "floor" | "round" | "ceil";                              // only with symbolWeights
+    remainderTieBreakPolicy?: "symbol-id" | "declared-order" | "largest-weight-first"; // only with symbolWeights
+    lockedPositions?: Record<number, string>;
+    constraints?: ReelStripConstraintSpec[];
+    maxAttempts?: number;
+};
+```
+
+Applied identically to every reel (same `length`/`symbolCounts`-or-`symbolWeights`/`constraints`), except the
+seed: reel *N* uses `seed + N` (every reel needs a different seed, or they'd all come out byte-identical). This
+keeps generation fully **deterministic** — re-running `pokie build` on an unchanged blueprint always reproduces the
+same exact `reelStrips`, so a rebuild reports `status  unchanged` exactly like a literal-`reelStrips` blueprint
+would.
+
+`constraints` entries are plain JSON, not class instances — a `type` field picks which
+[constraint](reel-strip-generation.md#constraints-reelstripconstraint) to build, and every other field maps onto
+that constraint's own constructor parameters:
+
+```ts
+type ReelStripConstraintSpec =
+    | {type: "minimumCircularDistance"; minimumDistance: number; symbolIds?: string[]; wrapAround?: boolean}
+    | {type: "maximumCircularDistance"; maximumDistance: number; symbolIds?: string[]; wrapAround?: boolean}
+    | {type: "maximumConsecutiveOccurrences"; maximumConsecutive: number; symbolIds?: string[]; wrapAround?: boolean}
+    | {type: "forbiddenAdjacency"; pairs: [string, string][]; wrapAround?: boolean; directed?: boolean}
+    | {type: "requiredAdjacency"; pairs: [string, string][]; directed?: boolean; wrapAround?: boolean}
+    | {type: "forbiddenSequence"; sequence: string[]; maximumOccurrences?: number; reversed?: boolean; wrapAround?: boolean}
+    | {type: "requiredSequence"; sequence: string[]; minimumOccurrences?: number; maximumOccurrences?: number; reversed?: boolean; wrapAround?: boolean};
+```
+
+A complete example (`symbolWeights`, a fixed `seed`, and two constraints) lives at
+[`examples/blueprints/generated-reels.blueprint.json`](../examples/blueprints/generated-reels.blueprint.json) — see
+[`examples/blueprints/README.md`](../examples/blueprints/README.md) to try it directly from a checkout.
+
+**When generation fails** — the requested constraints can't be satisfied within `maxAttempts` for one or more
+reels — `pokie build` reports it exactly like a validation error: printed with the failing reel's index, seed,
+attempt count, and the closest attempt's constraint violations, then exits non-zero without writing any files.
+This only runs *after* validation passes (validation only checks `reelStripGeneration`'s shape — a positive
+`length`, an integer `seed`, exactly one of `symbolCounts`/`symbolWeights`, known constraint `type`s, and so on; see
+[Validation](#validation) below) — whether the configuration is actually satisfiable is a question only
+`ReelStripGenerator` itself can answer, by actually trying.
+
+**`build-info.json`** additionally records `reelStripGeneration: {config, reels}` when a blueprint used it: `config`
+is the exact authored `reelStripGeneration` block (including its `seed`), and `reels` is what happened per reel
+(`reelIndex`, the actual `seed` used, `success`, `attemptsUsed`, and `diagnostics`). Absent entirely for a
+literal-`reelStrips` blueprint (or one using neither `reelStrips` nor `reelStripGeneration`).
+
 ### Validation
 
 Every field above is checked before anything is generated: `manifest.id`/`name`/`version` must be non-empty
 strings; `reels`/`rows` must be positive integers; `symbols` must be a non-empty array of unique non-empty
 strings; `wilds`/`scatters` must be arrays of unique symbol ids with no overlap between the two; `wilds`/`scatters`/
-`paytable` keys/`reelStrips` symbols/`symbolWeights` keys must all reference symbols actually listed in `symbols`;
-`paytable` match-counts must be integers between 2 and `reels`, with positive multipliers; `paylines` entries must
-have exactly `reels` row indexes, each within `[0, rows)`; `reelStrips` must have exactly one strip per reel;
-`availableBets` must be positive numbers.
+`paytable` keys/`reelStrips` symbols/`reelStripGeneration` symbols/`symbolWeights` keys must all reference symbols
+actually listed in `symbols`; `paytable` match-counts must be integers between 2 and `reels`, with positive
+multipliers; `paylines` entries must have exactly `reels` row indexes, each within `[0, rows)`; `reelStrips` must
+have exactly one strip per reel; `reelStripGeneration` must have a positive `length`, an integer `seed`, exactly
+one of `symbolCounts`/`symbolWeights`, well-shaped `lockedPositions`/`constraints` (each constraint needs a
+recognized `type`), a positive `maxAttempts`, and valid `roundingPolicy`/`remainderTieBreakPolicy` enum values
+where present; `availableBets` must be positive numbers.
 
-Since `reelStrips` (or, absent that, `symbolWeights`) fully replaces the engine's default reel generator, every
-symbol referenced by `paytable`/`wilds`/`scatters` must also actually appear in it — otherwise that payout, wild,
-or scatter can physically never land, which is flagged as an error, not a warning.
+Since `reelStrips` (or, absent that, `reelStripGeneration`, or absent that, `symbolWeights`) fully replaces the
+engine's default reel generator, every symbol referenced by `paytable`/`wilds`/`scatters` must also actually appear
+in it — otherwise that payout, wild, or scatter can physically never land, which is flagged as an error, not a
+warning. Note that this only checks `reelStripGeneration`'s declared `symbolCounts`/`symbolWeights` keys — whether
+generation actually *succeeds* is checked separately, after validation passes (see
+[`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation) above).
+
+Setting both `reelStrips` and `reelStripGeneration` is an error (not a warning): a reel's strip must come from
+exactly one of them, so there's no sensible precedence to fall back to.
 
 A number of further checks catch configs that parse fine but are almost certainly mistakes, so they're reported as
 **warnings** rather than errors (they don't block generation): a paytable entry for a wild symbol's own id (an
 all-wild line resolves to no winning symbol id, so the entry is never looked up); setting both `reelStrips` and
-`symbolWeights` (`reelStrips` wins, `symbolWeights` is ignored); duplicate `paylines` entries or duplicate
-`availableBets` values; a `reelStrips` entry shorter than `rows` (guaranteed to repeat a symbol within a single
-spin due to wrapping); a `paytable` entry that pays less for more matching symbols than for fewer; a non-wild,
-non-scatter symbol in `symbols` with no `paytable` entry at all (it can never win anything); and `reels`/`rows`
-values above 10 (unusually large for a line-pay video slot).
+`symbolWeights` (`reelStrips` wins, `symbolWeights` is ignored), or both `reelStripGeneration` and `symbolWeights`
+(`reelStripGeneration` wins); duplicate `paylines` entries or duplicate `availableBets` values; a `reelStrips`
+entry shorter than `rows` (guaranteed to repeat a symbol within a single spin due to wrapping); a `paytable` entry
+that pays less for more matching symbols than for fewer; a non-wild, non-scatter symbol in `symbols` with no
+`paytable` entry at all (it can never win anything); and `reels`/`rows` values above 10 (unusually large for a
+line-pay video slot).
 
 #### Math-quality warnings
 
@@ -239,14 +319,15 @@ their economics (paying from 2-of-a-kind, much bigger multipliers) are legitimat
 - **No low/high-pay tiering** (`blueprint-paytable-no-tiering`) — every symbol with a payout tops out at the exact
   same multiplier, so there's no differentiation between filler and premium symbols.
 - **A symbol dominates the reels** (`blueprint-weighting-dominant-symbol`) — one symbol makes up more than 40% of
-  `symbolWeights` (or, counting occurrences across every strip, `reelStrips`), crowding out the rest.
+  `symbolWeights` (or `reelStripGeneration`'s own `symbolCounts`/`symbolWeights`, or, counting occurrences across
+  every strip, `reelStrips`), crowding out the rest.
 - **A wild is too common** (`blueprint-weighting-wild-too-common`) — a wild symbol's weight is at least as high as
   the average of the regular symbols. Wilds substitute for everything, so landing this often inflates RTP well
   beyond what the paytable alone suggests.
 - **Payout doesn't track rarity** (`blueprint-weighting-pay-mismatch`) — a higher-paying symbol isn't rarer (in
-  `symbolWeights`/`reelStrips`) than a lower-paying one. This is the most common way a blueprint's RTP quietly runs
-  away: identical weights across symbols with different payouts (every symbol equally likely, but some worth much
-  more) mean the high-value symbol lands just as often as the low-value one — see
+  `symbolWeights`/`reelStripGeneration`/`reelStrips`) than a lower-paying one. This is the most common way a
+  blueprint's RTP quietly runs away: identical weights across symbols with different payouts (every symbol equally
+  likely, but some worth much more) mean the high-value symbol lands just as often as the low-value one — see
   [`examples/blueprints/crazy-fruits.blueprint.json`](../examples/blueprints/crazy-fruits.blueprint.json)'s own
   `symbolWeights`/`paytable` for what a fix looks like (low-pay symbols weighted heavier, high-pay symbols rarer).
 

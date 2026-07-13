@@ -1,3 +1,5 @@
+import type {ReelStripGenerationBlueprint} from "./ReelStripGenerationBlueprint.js";
+
 // Bumped only if the GameBlueprint JSON shape itself changes in a way older tooling couldn't parse.
 // Stamped into generated output (see GameBuildInfo) so a generated package records which shape of
 // blueprint it was built from; it is not read back from blueprint JSON files.
@@ -27,10 +29,18 @@ export type GameBlueprint = {
     // symbolId -> matchCount (as a string key, since JSON object keys are always strings) -> bet
     // multiplier, applied across every configured bet — see Paytable.setPayoutForSymbol.
     paytable: Record<string, Record<string, number>>;
-    // One strip (an ordered array of symbol ids) per reel. Takes precedence over symbolWeights.
+    // One strip (an ordered array of symbol ids) per reel. Takes precedence over reelStripGeneration
+    // and symbolWeights.
     reelStrips?: string[][];
-    // symbolId -> relative count, applied uniformly (independently shuffled) to every reel.
-    // Ignored when reelStrips is present. Omit both for the engine's built-in default weighting.
+    // Build-time alternative to a literal reelStrips: generates every reel's exact strip via the
+    // existing ReelStripGenerator (see resolveReelStripGeneration.ts) instead of hand-authoring it.
+    // Mutually exclusive with reelStrips (an error if both are set); takes precedence over
+    // symbolWeights. The generated package stores the resulting exact strips as plain reelStrips —
+    // the runtime game module never depends on the generation API.
+    reelStripGeneration?: ReelStripGenerationBlueprint;
+    // symbolId -> relative count, applied uniformly (independently shuffled) to every reel. Ignored
+    // when reelStrips or reelStripGeneration is present. Omit all three for the engine's built-in
+    // default weighting.
     symbolWeights?: Record<string, number>;
     availableBets?: number[];
 };

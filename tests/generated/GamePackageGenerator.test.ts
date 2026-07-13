@@ -320,4 +320,39 @@ describe("GamePackageGenerator", () => {
         // one of the default horizontal lines wins the "A": 3 payout (5x bet) configured above.
         expect(session.getWinAmount()).toBeGreaterThan(0);
     });
+
+    it("records a given reelStripGeneration summary on build-info.json when provided", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint({
+            reelStrips: [
+                ["A", "B"],
+                ["A", "B"],
+                ["A", "B"],
+            ],
+        });
+        const reelStripGeneration = {
+            config: {length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+            reels: [
+                {reelIndex: 0, seed: 1, success: true, attemptsUsed: 1, diagnostics: []},
+                {reelIndex: 1, seed: 2, success: true, attemptsUsed: 1, diagnostics: []},
+                {reelIndex: 2, seed: 3, success: true, attemptsUsed: 1, diagnostics: []},
+            ],
+        };
+
+        const result = generator.generate(blueprint, cwd, undefined, undefined, reelStripGeneration);
+
+        expect(result.buildInfo.reelStripGeneration).toEqual(reelStripGeneration);
+        const buildInfoOnDisk = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+        expect(buildInfoOnDisk.reelStripGeneration).toEqual(reelStripGeneration);
+    });
+
+    it("omits reelStripGeneration from build-info.json when not given", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+
+        const result = generator.generate(buildBlueprint(), cwd);
+
+        expect(result.buildInfo.reelStripGeneration).toBeUndefined();
+        const buildInfoOnDisk = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+        expect(buildInfoOnDisk.reelStripGeneration).toBeUndefined();
+    });
 });

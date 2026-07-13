@@ -107,4 +107,22 @@ describe("buildGameBuildInfo", () => {
 
         expect(info.generatedAt).toBe("2026-06-01T00:00:00.000Z");
     });
+
+    it("records a given reelStripGeneration summary when provided", () => {
+        const reelStripGeneration = {
+            config: {length: 10, symbolCounts: {A: 5, B: 5}, seed: 1},
+            reels: [{reelIndex: 0, seed: 1, success: true, attemptsUsed: 1, diagnostics: []}],
+        };
+
+        const info = buildGameBuildInfo(buildBlueprint(), "1.3.0", undefined, new Date(), undefined, undefined, reelStripGeneration);
+
+        expect(info.reelStripGeneration).toEqual(reelStripGeneration);
+    });
+
+    it("omits reelStripGeneration entirely when not provided", () => {
+        const info = buildGameBuildInfo(buildBlueprint(), "1.3.0");
+
+        expect(info.reelStripGeneration).toBeUndefined();
+        expect(Object.keys(info)).not.toContain("reelStripGeneration");
+    });
 });

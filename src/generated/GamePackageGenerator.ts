@@ -3,6 +3,7 @@ import path from "path";
 import {buildGameBuildInfo, GENERATED_PACKAGE_FILES} from "./buildGameBuildInfo.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
 import type {GameBuildInfo} from "./GameBuildInfo.js";
+import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
 import type {GamePackageGenerating} from "./GamePackageGenerating.js";
 import type {GeneratedGamePackage} from "./GeneratedGamePackage.js";
 import {renderGeneratedGameModule} from "./renderGeneratedGameModule.js";
@@ -22,7 +23,18 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // <config.json> path it was invoked with), it's recorded in build-info.json for provenance.
     // Omitting it — e.g. when calling the generator directly with an in-memory blueprint — still
     // produces a fully valid package, just without a "source" field.
-    public generate(blueprint: GameBlueprint, cwd: string, outDir?: string, sourcePath?: string): GeneratedGamePackage {
+    //
+    // "reelStripGeneration" is likewise purely informational here: by the time "blueprint" reaches
+    // this method it must already carry literal reelStrips (resolveReelStripGeneration.ts is
+    // responsible for running the actual generation and materializing them, before BuildCommand ever
+    // calls this) — this method only records the config/result it's handed, in build-info.json.
+    public generate(
+        blueprint: GameBlueprint,
+        cwd: string,
+        outDir?: string,
+        sourcePath?: string,
+        reelStripGeneration?: GameBuildInfoReelStripGeneration,
+    ): GeneratedGamePackage {
         const id = blueprint.manifest.id;
         if (outDir === undefined && (id.includes("/") || id.includes("\\") || id === "." || id === "..")) {
             throw new Error(
@@ -39,7 +51,15 @@ export class GamePackageGenerator implements GamePackageGenerating {
 
         fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
 
-        const buildInfo = buildGameBuildInfo(blueprint, this.pokieVersion, sourcePath, new Date(), GENERATED_PACKAGE_FILES, previousBuildInfo);
+        const buildInfo = buildGameBuildInfo(
+            blueprint,
+            this.pokieVersion,
+            sourcePath,
+            new Date(),
+            GENERATED_PACKAGE_FILES,
+            previousBuildInfo,
+            reelStripGeneration,
+        );
 
         const packageJson = {
             name: id,

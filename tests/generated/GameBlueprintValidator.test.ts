@@ -153,6 +153,120 @@ describe("GameBlueprintValidator", () => {
         expect(issues.find((issue) => issue.code === "blueprint-reelstrips-and-weights")?.severity).toBe("warning");
     });
 
+    describe("reelStripGeneration", () => {
+        it("accepts a blueprint using reelStripGeneration with symbolCounts", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {length: 20, symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 42},
+            };
+
+            expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it("accepts a blueprint using reelStripGeneration with symbolWeights", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {length: 20, symbolWeights: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 42},
+            };
+
+            expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it("flags reelStripGeneration with an invalid length or a non-integer seed", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {length: 0, symbolCounts: {A: 1}, seed: 1.5},
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toEqual(
+                expect.arrayContaining(["blueprint-reelstripgeneration-invalid-length", "blueprint-reelstripgeneration-invalid-seed"]),
+            );
+        });
+
+        it("flags reelStripGeneration missing both symbolCounts and symbolWeights", () => {
+            const blueprint = {...validBlueprint(), reelStripGeneration: {length: 20, seed: 1}};
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-source-invalid");
+        });
+
+        it("flags reelStripGeneration with both symbolCounts and symbolWeights set", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {length: 20, symbolCounts: {A: 1}, symbolWeights: {A: 1}, seed: 1},
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-source-invalid");
+        });
+
+        it("flags reelStripGeneration.symbolCounts referencing an unknown symbol or a negative count", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {length: 20, symbolCounts: {A: 6, ZZ: 5, K: -1}, seed: 1},
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toEqual(
+                expect.arrayContaining(["blueprint-reelstripgeneration-unknown-symbol", "blueprint-reelstripgeneration-invalid-count"]),
+            );
+        });
+
+        it("flags an unrecognized constraint type", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {
+                    length: 20,
+                    symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1},
+                    seed: 1,
+                    constraints: [{type: "notARealConstraint"}],
+                },
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-constraint-type");
+        });
+
+        it("errors (not warns) when both reelStrips and reelStripGeneration are set", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStrips: new Array(5).fill(["A", "K", "Q", "J", "W", "S"]),
+                reelStripGeneration: {length: 20, symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 1},
+            };
+
+            const issues = validator.validate(blueprint);
+            expect(issues.find((issue) => issue.code === "blueprint-reelstrips-and-generation")?.severity).toBe("error");
+        });
+
+        it("warns (does not error) when both reelStripGeneration and symbolWeights are set", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {length: 20, symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 1},
+                symbolWeights: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1},
+            };
+
+            const issues = validator.validate(blueprint);
+            expect(issues.find((issue) => issue.code === "blueprint-reelstripgeneration-and-weights")?.severity).toBe("warning");
+            expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it("flags a paytable/wild/scatter symbol that never appears in reelStripGeneration", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {length: 20, symbolCounts: {A: 10, K: 5, Q: 5, W: 1}, seed: 1}, // missing "J" and "S"
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-missing-symbol");
+        });
+
+        it("warns when a single symbol dominates reelStripGeneration's weighting", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: {length: 60, symbolCounts: {A: 1, K: 1, Q: 1, J: 1, W: 1, S: 55}, seed: 1},
+            };
+
+            const issues = validator.validate(blueprint);
+            expect(issues.find((issue) => issue.code === "blueprint-weighting-dominant-symbol")?.severity).toBe("warning");
+            expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+    });
+
     it("flags a non-positive availableBets entry", () => {
         const blueprint = {...validBlueprint(), availableBets: [1, 0, -5]};
 

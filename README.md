@@ -42,7 +42,8 @@ POKIE goes well beyond classic paylines:
   `loadPokieGame` loader, so an external game can be loaded by a CLI, simulator, validator, or server without
   knowing about it in advance.
 - **[CLI](docs/cli.md)** — `npx pokie build <config.json>` generates a working game package straight from a JSON
-  `GameBlueprint` (reels, symbols, paylines, paytable, reel strips/weights), no compile step required (see
+  `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated via
+  `reelStripGeneration` and `ReelStripGenerator`), no compile step required (see
   [`examples/blueprints`](examples/blueprints)); `npx pokie build` with no config path launches an interactive
   wizard that asks for the same fields on the terminal instead; `npx pokie build --init-blueprint <file>` writes a
   small, hand-editable example `GameBlueprint` to `<file>` instead of building anything, ready for the

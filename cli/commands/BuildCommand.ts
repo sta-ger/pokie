@@ -7,6 +7,7 @@ import {
     GamePackageGenerating,
     GamePackageGenerator,
     loadGameBlueprint,
+    resolveReelStripGeneration,
 } from "pokie";
 import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -148,12 +149,32 @@ export class BuildCommand implements CliCommandHandling {
             return 1;
         }
 
+        // Runs reelStripGeneration (if the blueprint has one) through the real ReelStripGenerator —
+        // validate() above only checked its shape, not whether its constraints are satisfiable. A
+        // literal-reelStrips (or neither) blueprint passes straight through unchanged.
+        const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
+        if (!resolution.success) {
+            console.error(`Blueprint${sourcePath ? ` "${sourcePath}"` : ""} could not generate its reel strips:`);
+            for (const reel of resolution.reels) {
+                const label = reel.reelIndex === -1 ? "reelStripGeneration" : `reel ${reel.reelIndex}`;
+                console.error(`  - ${label} (seed ${reel.seed}): failed after ${reel.attemptsUsed} attempt(s)`);
+                const lastDiagnostic = reel.diagnostics[reel.diagnostics.length - 1];
+                for (const violation of lastDiagnostic?.violations ?? []) {
+                    console.error(`      ${violation.constraintId}: ${violation.message}`);
+                }
+            }
+            console.error(`\n${BLUEPRINT_HINT}`);
+            return 1;
+        }
+
+        const resolvedBlueprint = resolution.blueprint;
+
         if (dryRun) {
-            this.printDryRunSummary(blueprint as GameBlueprint, sourcePath);
+            this.printDryRunSummary(resolvedBlueprint, sourcePath);
             return 0;
         }
 
-        const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), outDir, sourcePath);
+        const result = this.generator.generate(resolvedBlueprint, process.cwd(), outDir, sourcePath, resolution.buildInfo);
 
         console.log("Build summary:");
         for (const file of result.createdFiles) {
