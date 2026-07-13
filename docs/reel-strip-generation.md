@@ -261,6 +261,8 @@ path — they only ever read a `ReelStripDefinition` and report violations, whet
 | `MaximumConsecutiveOccurrencesConstraint(maximumConsecutive, symbolIds?, wrapAround = true)` | No run of identical adjacent symbols exceeds `maximumConsecutive` |
 | `ForbiddenAdjacencyConstraint(pairs, wrapAround = true, directed = false)` | No adjacent pair of positions holds two symbols from the same forbidden pair |
 | `RequiredAdjacencyConstraint(pairs, directed = false, wrapAround = true)` | Every occurrence of a "subject" symbol has one of its required neighbor(s) actually adjacent to it |
+| `RequiredSequenceConstraint(sequence, minimumOccurrences = 1, maximumOccurrences = Infinity, reversed = false, wrapAround = true)` | The exact, ordered `sequence` occurs consecutively between `minimumOccurrences` and `maximumOccurrences` times |
+| `ForbiddenSequenceConstraint(sequence, maximumOccurrences = 0, reversed = false, wrapAround = true)` | The exact, ordered `sequence` occurs consecutively at most `maximumOccurrences` times (0 by default: fully forbidden) |
 | `FixedPositionsConstraint(lockedPositions)` | Specific positions hold specific symbols — useful for validating a hand-authored strip outside `ReelStripGenerator`, which already enforces `request.lockedPositions` as a built-in invariant |
 
 **Both circular-distance constraints check consecutive occurrences only** — the arcs that partition the circle
@@ -271,17 +273,21 @@ checking every possible pair (the closest pair is always a consecutive one) — 
 `MaximumCircularDistanceConstraint` would give a different (and wrong) answer if it checked all pairs instead.
 
 `symbolIds` (where present) restricts the check to a subset of symbols, defaulting to every symbol on the strip. The
-two adjacency constraints have no separate `symbolIds` parameter — their `pairs` argument already determines exactly
-which symbols get inspected (a symbol that never appears as a pair member is never looked at).
+two adjacency constraints and the two sequence constraints have no separate `symbolIds` parameter — their
+`pairs`/`sequence` argument already determines exactly which symbols get inspected (a symbol that never appears in
+one is never looked at).
 
 `wrapAround` (where present) controls whether the strip's last and first positions are treated as adjacent/circular
 (the default, matching a physical reel strip) or purely linear — e.g. whether the arc from the last occurrence back
-to the first counts for the circular-distance constraints, or whether the last/first symbols count as neighbors for
-`ForbiddenAdjacencyConstraint`/`RequiredAdjacencyConstraint`.
+to the first counts for the circular-distance constraints, whether the last/first symbols count as neighbors for
+`ForbiddenAdjacencyConstraint`/`RequiredAdjacencyConstraint`, or whether a sequence match may read across the
+strip's end back to its start for the two sequence constraints.
 
 **Fail-fast constructor validation:** `minimumDistance`, `maximumDistance`, and `maximumConsecutive` must each be a
 positive, finite integer — `NaN`, `Infinity`, `0`, negative, and fractional values all throw immediately from the
-constructor instead of being silently accepted as a nonsensical bound.
+constructor instead of being silently accepted as a nonsensical bound. Likewise, `sequence` must be non-empty, and
+`minimumOccurrences`/`maximumOccurrences` must be non-negative integers (`maximumOccurrences` may also be `Infinity`)
+with `maximumOccurrences >= minimumOccurrences`.
 
 ### Directed vs. undirected adjacency
 
@@ -310,6 +316,45 @@ followedByM.validate(new ReelStrip(["M", "W", "A"])); // one violation -- "W" is
 
 Multiple `requiredPairs` entries sharing the same subject accumulate into a set of acceptable neighbors for that
 subject (an "OR": any one of them satisfies that occurrence), rather than requiring all of them simultaneously.
+
+### Sequence pattern constraints
+
+`RequiredSequenceConstraint`/`ForbiddenSequenceConstraint` match an exact, ordered run of symbol IDs — no separate
+pattern DSL, just a plain `string[]` compared symbol-for-symbol against every consecutive window on the strip.
+Overlapping matches all count independently: sequence `["A", "A"]` against `["A", "A", "A"]` matches at both
+position 0 and position 1.
+
+```ts
+import {ForbiddenSequenceConstraint, ReelStrip, RequiredSequenceConstraint} from "pokie";
+
+// A "bonus trigger" run (3 scatters in a row) must occur between 1 and 2 times.
+const bonusTrigger = new RequiredSequenceConstraint(["S", "S", "S"], 1, 2);
+
+// Three wilds in a row is never allowed to occur at all (the default maximumOccurrences of 0).
+const noTripleWild = new ForbiddenSequenceConstraint(["W", "W", "W"]);
+
+bonusTrigger.validate(new ReelStrip(["A", "S", "S", "S", "B"])); // [] -- exactly 1 occurrence
+noTripleWild.validate(new ReelStrip(["W", "W", "W", "A"])); // one violation
+```
+
+Both default to **forward-only, wrap-aware** matching; pass `reversed = true` to also accept/forbid the sequence
+read backwards, and `wrapAround = false` to only search linear (non-circular) windows:
+
+```ts
+const palindromeSafe = new RequiredSequenceConstraint(["A", "B", "C"], 1, Infinity, true); // "C","B","A" also counts
+```
+
+`RequiredSequenceConstraint` takes both bounds (`minimumOccurrences` default 1, `maximumOccurrences` default
+`Infinity`) since "required" naturally means "enough, but not necessarily unlimited". `ForbiddenSequenceConstraint`
+only exposes `maximumOccurrences` (default 0, i.e. fully forbidden) — raise it to mean "restricted to N
+occurrences" rather than "banned outright", instead of declaring a separate `minimumOccurrences` that wouldn't mean
+anything for a forbidden pattern.
+
+Violation granularity differs by what's actually being reported: a **maximum exceeded** (either constraint) reports
+one violation *per occurrence found*, each with that occurrence's own `positions` and `details.matched` — a
+concrete instance of "too many". A **minimum not met** (`RequiredSequenceConstraint` only) reports a single
+violation for the whole strip, since there's no specific position to blame for an absence — `positions` lists every
+position from whatever occurrences *were* found (empty if none were).
 
 Each violation is a plain, inspectable object:
 

@@ -1,5 +1,6 @@
 import {
     ForbiddenAdjacencyConstraint,
+    ForbiddenSequenceConstraint,
     MaximumCircularDistanceConstraint,
     MaximumConsecutiveOccurrencesConstraint,
     MinimumCircularDistanceConstraint,
@@ -11,6 +12,7 @@ import {
     ReelStripGenerator,
     ReelStripScorer,
     RequiredAdjacencyConstraint,
+    RequiredSequenceConstraint,
 } from "pokie";
 
 describe("ReelStripGenerator", () => {
@@ -222,6 +224,65 @@ describe("ReelStripGenerator", () => {
         expect(
             result.diagnostics.every((diagnostic) => diagnostic.violations.some((violation) => violation.constraintId === "maximum-circular-distance")),
         ).toBe(true);
+    });
+
+    test("satisfies RequiredSequenceConstraint and ForbiddenSequenceConstraint together", () => {
+        const generator = new ReelStripGenerator();
+
+        // "A","B","C" is locked in place at the front, structurally satisfying the required sequence
+        // regardless of how the remaining symbols get shuffled; "D" and "E" each appear only once, so
+        // whether they land adjacent (and in that order) depends on the shuffle.
+        const result = generator.generate({
+            length: 10,
+            symbolCounts: {A: 1, B: 1, C: 1, D: 1, E: 1, X: 5},
+            seed: 1,
+            lockedPositions: {0: "A", 1: "B", 2: "C"},
+            constraints: [new RequiredSequenceConstraint(["A", "B", "C"]), new ForbiddenSequenceConstraint(["D", "E"])],
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.strip!.getSymbolAt(0)).toBe("A");
+        expect(result.strip!.getSymbolAt(1)).toBe("B");
+        expect(result.strip!.getSymbolAt(2)).toBe("C");
+    });
+
+    test("fails when RequiredSequenceConstraint demands a sequence that can never occur because a symbol is missing from symbolCounts", () => {
+        const generator = new ReelStripGenerator();
+
+        const result = generator.generate({
+            length: 5,
+            symbolCounts: {A: 1, X: 4}, // "B" never appears, so "A" -> "B" can never occur
+            seed: 2,
+            maxAttempts: 3,
+            constraints: [new RequiredSequenceConstraint(["A", "B"])],
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.attemptsUsed).toBe(3);
+        expect(result.diagnostics.every((diagnostic) => diagnostic.violations.some((violation) => violation.constraintId === "required-sequence"))).toBe(
+            true,
+        );
+    });
+
+    test("fails when ForbiddenSequenceConstraint bans a sequence that must occur in any arrangement containing both symbols", () => {
+        const generator = new ReelStripGenerator();
+
+        // Any circular arrangement containing both "A"s and "B"s must have at least one position
+        // where "A" is immediately followed by "B" -- walking all the way around the circle, some
+        // A-run must be immediately followed by a B-run.
+        const result = generator.generate({
+            length: 6,
+            symbolCounts: {A: 3, B: 3},
+            seed: 3,
+            maxAttempts: 3,
+            constraints: [new ForbiddenSequenceConstraint(["A", "B"])],
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.attemptsUsed).toBe(3);
+        expect(result.diagnostics.every((diagnostic) => diagnostic.violations.some((violation) => violation.constraintId === "forbidden-sequence"))).toBe(
+            true,
+        );
     });
 
     test("re-validates a custom strategy's candidate against lockedPositions, even though it can't itself report failure", () => {

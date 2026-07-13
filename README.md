@@ -34,8 +34,8 @@ POKIE goes well beyond classic paylines:
   setups as structured issues instead of silent runtime surprises.
 - **[Reel strip generation](docs/reel-strip-generation.md)** — `ReelStripGenerator` produces a reel strip's fixed
   symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
-  required adjacency — directed or undirected — locked positions), deterministically by seed, with clear
-  diagnostics when a request can't be satisfied. Also accepts
+  required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions),
+  deterministically by seed, with clear diagnostics when a request can't be satisfied. Also accepts
   proportional `symbolWeights` instead of exact counts, deterministically apportioned via the Largest Remainder
   Method. A design-time tool, separate from the runtime spin path.
 - **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
