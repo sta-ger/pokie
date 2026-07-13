@@ -56,8 +56,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     casino backend or RGS; `pokie client <packageRoot>` (experimental), a universal browser preview UI talking to
     a running `pokie serve`; and `pokie dev <packageRoot>` (experimental), which runs both together.
 14. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
-    symbol sequence under constraints (exact counts, minimum distance, max run length, forbidden adjacency, locked
-    positions) either from exact counts or from proportional `symbolWeights` (via
+    symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
+    required adjacency — directed or undirected — locked positions) either from exact counts or from proportional
+    `symbolWeights` (via
     `LargestRemainderReelStripSymbolWeightsConverter`), and `ReelStripAnalyzer` for inspecting any strip. A
     design-time tool, separate from the runtime spin path.
 

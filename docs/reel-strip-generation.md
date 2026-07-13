@@ -249,19 +249,55 @@ interface ReelStripConstraint {
 }
 ```
 
-Built-in constraints, all under `constraints/` in the package:
+Built-in constraints, all under `constraints/` in the package. None of them touch generation or the runtime spin
+path — they only ever read a `ReelStripDefinition` and report violations, whether that strip came from
+`ReelStripGenerator` or was hand-authored:
 
 | Constraint | Checks |
 |---|---|
 | `ExactSymbolCountsConstraint(expectedCounts)` | Every symbol's occurrence count matches exactly (a symbol present on the strip but absent from `expectedCounts` is expected to occur 0 times) |
 | `MinimumCircularDistanceConstraint(minimumDistance, symbolIds?, wrapAround = true)` | Every pair of occurrences of the same symbol is at least `minimumDistance` apart |
+| `MaximumCircularDistanceConstraint(maximumDistance, symbolIds?, wrapAround = true)` | Every pair of occurrences of the same symbol is at most `maximumDistance` apart — e.g. a scatter that must not go too long without reappearing. The mirror image of `MinimumCircularDistanceConstraint`; a symbol occurring 0 or 1 times has no gap to measure and is never flagged |
 | `MaximumConsecutiveOccurrencesConstraint(maximumConsecutive, symbolIds?, wrapAround = true)` | No run of identical adjacent symbols exceeds `maximumConsecutive` |
-| `ForbiddenAdjacencyConstraint(pairs, wrapAround = true)` | No adjacent pair of positions holds two symbols from the same forbidden pair (order-independent) |
+| `ForbiddenAdjacencyConstraint(pairs, wrapAround = true, directed = false)` | No adjacent pair of positions holds two symbols from the same forbidden pair |
+| `RequiredAdjacencyConstraint(pairs, directed = false, wrapAround = true)` | Every occurrence of a "subject" symbol has one of its required neighbor(s) actually adjacent to it |
 | `FixedPositionsConstraint(lockedPositions)` | Specific positions hold specific symbols — useful for validating a hand-authored strip outside `ReelStripGenerator`, which already enforces `request.lockedPositions` as a built-in invariant |
 
-`symbolIds` (where present) restricts the check to a subset of symbols, defaulting to every symbol on the strip.
+`symbolIds` (where present) restricts the check to a subset of symbols, defaulting to every symbol on the strip. The
+two adjacency constraints have no separate `symbolIds` parameter — their `pairs` argument already determines exactly
+which symbols get inspected (a symbol that never appears as a pair member is never looked at).
+
 `wrapAround` (where present) controls whether the strip's last and first positions are treated as adjacent/circular
-(the default, matching a physical reel strip) or purely linear.
+(the default, matching a physical reel strip) or purely linear — e.g. `MaximumCircularDistanceConstraint`'s gaps, or
+whether the last/first symbols count as neighbors for `ForbiddenAdjacencyConstraint`/`RequiredAdjacencyConstraint`.
+
+### Directed vs. undirected adjacency
+
+Both adjacency constraints default to **undirected**: a pair `[A, B]` matches regardless of which side `A` or `B`
+lands on. Pass `directed = true` to make order matter:
+
+- **`ForbiddenAdjacencyConstraint(pairs, wrapAround, directed = true)`** — `[A, B]` only forbids `A` immediately
+  followed by `B`; `B` followed by `A` is unaffected (list both pairs explicitly to forbid both orders).
+- **`RequiredAdjacencyConstraint(pairs, directed = true, wrapAround)`** — `[subject, requiredNeighbor]` only counts
+  the *next* position; the subject's previous neighbor is not considered at all, even if it happens to match.
+
+```ts
+import {ReelStrip, RequiredAdjacencyConstraint} from "pokie";
+
+// Every "W" must have an "M" or an "X" next to it, in either direction (undirected, the default).
+const flanked = new RequiredAdjacencyConstraint([
+    ["W", "M"],
+    ["W", "X"],
+]);
+flanked.validate(new ReelStrip(["M", "W", "A"])); // [] -- "M" is on the left, that's enough
+
+// Every "W" must be *immediately followed by* an "M" specifically.
+const followedByM = new RequiredAdjacencyConstraint([["W", "M"]], true);
+followedByM.validate(new ReelStrip(["M", "W", "A"])); // one violation -- "W" is followed by "A", not "M"
+```
+
+Multiple `requiredPairs` entries sharing the same subject accumulate into a set of acceptable neighbors for that
+subject (an "OR": any one of them satisfies that occurrence), rather than requiring all of them simultaneously.
 
 Each violation is a plain, inspectable object:
 

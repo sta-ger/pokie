@@ -1,5 +1,6 @@
 import {
     ForbiddenAdjacencyConstraint,
+    MaximumCircularDistanceConstraint,
     MaximumConsecutiveOccurrencesConstraint,
     MinimumCircularDistanceConstraint,
     ReelStrip,
@@ -9,6 +10,7 @@ import {
     ReelStripGenerationStrategy,
     ReelStripGenerator,
     ReelStripScorer,
+    RequiredAdjacencyConstraint,
 } from "pokie";
 
 describe("ReelStripGenerator", () => {
@@ -159,6 +161,66 @@ describe("ReelStripGenerator", () => {
         expect(result.success).toBe(false);
         expect(
             result.diagnostics.every((diagnostic) => diagnostic.violations.some((violation) => violation.constraintId === "exact-symbol-counts")),
+        ).toBe(true);
+    });
+
+    test("satisfies MaximumCircularDistanceConstraint and RequiredAdjacencyConstraint together", () => {
+        const generator = new ReelStripGenerator();
+
+        // Each "W" is locked immediately before an "M", structurally satisfying the (directed)
+        // required adjacency regardless of how the remaining symbols get shuffled.
+        const result = generator.generate({
+            length: 10,
+            symbolCounts: {W: 2, M: 2, S: 2, A: 2, B: 2},
+            seed: 1,
+            lockedPositions: {0: "W", 1: "M", 5: "W", 6: "M"},
+            constraints: [new RequiredAdjacencyConstraint([["W", "M"]], true), new MaximumCircularDistanceConstraint(6, ["S"])],
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.strip!.getSymbolCounts()).toEqual({W: 2, M: 2, S: 2, A: 2, B: 2});
+        expect(result.strip!.getSymbolAt(0)).toBe("W");
+        expect(result.strip!.getSymbolAt(1)).toBe("M");
+
+        const analysis = ReelStripAnalyzer.analyze(result.strip!);
+        expect(analysis.minimumCircularDistances.S).toBeLessThanOrEqual(6);
+    });
+
+    test("fails when RequiredAdjacencyConstraint demands a neighbor symbol that never appears in symbolCounts", () => {
+        const generator = new ReelStripGenerator();
+
+        const result = generator.generate({
+            length: 6,
+            symbolCounts: {W: 1, A: 5}, // "M" is never in the pool, so "W" can never be next to it
+            seed: 2,
+            maxAttempts: 3,
+            constraints: [new RequiredAdjacencyConstraint([["W", "M"]])],
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.attemptsUsed).toBe(3);
+        expect(result.diagnostics.every((diagnostic) => diagnostic.violations.some((violation) => violation.constraintId === "required-adjacency"))).toBe(
+            true,
+        );
+    });
+
+    test("fails when MaximumCircularDistanceConstraint's bound is mathematically impossible for the given counts", () => {
+        const generator = new ReelStripGenerator();
+
+        // Two "S"s on a 4-long strip always split the circle into two gaps summing to 4, so both
+        // gaps can never simultaneously be <= 1 -- no arrangement can ever satisfy this.
+        const result = generator.generate({
+            length: 4,
+            symbolCounts: {S: 2, A: 2},
+            seed: 3,
+            maxAttempts: 3,
+            constraints: [new MaximumCircularDistanceConstraint(1, ["S"])],
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.attemptsUsed).toBe(3);
+        expect(
+            result.diagnostics.every((diagnostic) => diagnostic.violations.some((violation) => violation.constraintId === "maximum-circular-distance")),
         ).toBe(true);
     });
 
