@@ -1,4 +1,4 @@
-import {ReelStrip, RequiredSequenceConstraint} from "pokie";
+import {ReelStrip, RequiredSequenceConstraint, ViolationCountReelStripScorer} from "pokie";
 
 describe("RequiredSequenceConstraint", () => {
     test("is silent when the sequence occurs at least the default minimum of 1 time", () => {
@@ -33,7 +33,7 @@ describe("RequiredSequenceConstraint", () => {
         });
     });
 
-    test("reports one violation per occurrence when maximumOccurrences is exceeded, including positions and the matched run", () => {
+    test("reports one violation for the single occurrence when maximumOccurrences = 0, including positions and the matched run", () => {
         const constraint = new RequiredSequenceConstraint(["A", "B", "C"], 0, 0);
         const strip = new ReelStrip(["X", "A", "B", "C"]);
 
@@ -41,22 +41,61 @@ describe("RequiredSequenceConstraint", () => {
         expect(violations).toHaveLength(1);
         expect(violations[0]).toMatchObject({
             positions: [1, 2, 3],
-            details: {sequence: ["A", "B", "C"], matched: ["A", "B", "C"], occurrencesFound: 1, maximumOccurrences: 0},
+            details: {sequence: ["A", "B", "C"], matched: ["A", "B", "C"], occurrencesFound: 1, maximumOccurrences: 0, excessOccurrences: 1},
         });
     });
 
-    test("reports every occurrence separately when there are more matches than maximumOccurrences allows", () => {
-        const constraint = new RequiredSequenceConstraint(["A", "B"], 1, 1, false, true);
+    test("2 occurrences with maximumOccurrences = 1 yields exactly 1 violation, for the excess occurrence only", () => {
+        const constraint = new RequiredSequenceConstraint(["A", "B"], 0, 1, false, true);
         const strip = new ReelStrip(["A", "B", "A", "B"]);
 
         // Occurrences at position 0 (A,B) and position 2 (A,B); position 1 (B,A) and the wrap-around
-        // start at position 3 (B,A) don't match.
+        // start at position 3 (B,A) don't match. Only the *second* (excess) occurrence is a violation
+        // -- the first is within the allowed maximum.
         const violations = constraint.validate(strip);
-        expect(violations).toHaveLength(2);
-        expect(violations.map((violation) => violation.positions)).toEqual([
-            [0, 1],
-            [2, 3],
-        ]);
+        expect(violations).toHaveLength(1);
+        expect(violations[0]).toMatchObject({
+            positions: [2, 3],
+            details: {occurrencesFound: 2, maximumOccurrences: 1, excessOccurrences: 1},
+        });
+    });
+
+    test("3 occurrences with maximumOccurrences = 2 yields exactly 1 violation, for the excess occurrence only", () => {
+        const constraint = new RequiredSequenceConstraint(["A"], 0, 2, false, false);
+        const strip = new ReelStrip(["A", "X", "A", "X", "A"]);
+
+        const violations = constraint.validate(strip);
+        expect(violations).toHaveLength(1);
+        expect(violations[0]).toMatchObject({
+            positions: [4],
+            details: {occurrencesFound: 3, maximumOccurrences: 2, excessOccurrences: 1},
+        });
+    });
+
+    test("the corrected (excess-only) violation count is reflected by ViolationCountReelStripScorer", () => {
+        const constraint = new RequiredSequenceConstraint(["A"], 0, 1, false, false);
+        const scorer = new ViolationCountReelStripScorer();
+
+        const oneExcess = new ReelStrip(["A", "X", "A"]); // 2 occurrences, 1 excess
+        const twoExcess = new ReelStrip(["A", "A", "A"]); // 3 occurrences, 2 excess
+
+        const violationsForOneExcess = constraint.validate(oneExcess);
+        const violationsForTwoExcess = constraint.validate(twoExcess);
+
+        expect(violationsForOneExcess).toHaveLength(1);
+        expect(violationsForTwoExcess).toHaveLength(2);
+        expect(scorer.score(oneExcess, violationsForOneExcess)).toBe(-1);
+        expect(scorer.score(twoExcess, violationsForTwoExcess)).toBe(-2);
+        expect(scorer.score(oneExcess, violationsForOneExcess)).toBeGreaterThan(scorer.score(twoExcess, violationsForTwoExcess));
+    });
+
+    test("a palindrome sequence with reversed = true is not counted twice for a single match", () => {
+        const constraint = new RequiredSequenceConstraint(["A", "B", "A"], 1, 1, true, false);
+        const strip = new ReelStrip(["A", "B", "A"]);
+
+        // If the palindrome were (incorrectly) counted as both a forward and a reversed match at the
+        // same position, this would report occurrencesFound: 2 and violate maximumOccurrences = 1.
+        expect(constraint.validate(strip)).toEqual([]);
     });
 
     test("reversed = true also accepts the sequence read backwards", () => {

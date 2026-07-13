@@ -46,7 +46,10 @@ export class ForbiddenSequenceConstraint implements ReelStripConstraint {
             return [];
         }
 
-        return occurrences.map((occurrence) => ({
+        const excessOccurrences = occurrences.length - this.maximumOccurrences;
+        // Only the occurrences beyond the allowed maximum are themselves violations -- the first
+        // `maximumOccurrences` matches are permitted and don't get a violation each.
+        return occurrences.slice(this.maximumOccurrences).map((occurrence) => ({
             constraintId: this.getId(),
             message: `Forbidden sequence [${this.sequence.join(", ")}] found at position ${occurrence.position} (${occurrences.length} occurrence(s) total, maximum allowed is ${this.maximumOccurrences}).`,
             positions: occurrence.positions,
@@ -55,6 +58,7 @@ export class ForbiddenSequenceConstraint implements ReelStripConstraint {
                 matched: occurrence.matched,
                 occurrencesFound: occurrences.length,
                 maximumOccurrences: this.maximumOccurrences,
+                excessOccurrences,
             },
         }));
     }

@@ -350,11 +350,19 @@ only exposes `maximumOccurrences` (default 0, i.e. fully forbidden) — raise it
 occurrences" rather than "banned outright", instead of declaring a separate `minimumOccurrences` that wouldn't mean
 anything for a forbidden pattern.
 
-Violation granularity differs by what's actually being reported: a **maximum exceeded** (either constraint) reports
-one violation *per occurrence found*, each with that occurrence's own `positions` and `details.matched` — a
-concrete instance of "too many". A **minimum not met** (`RequiredSequenceConstraint` only) reports a single
-violation for the whole strip, since there's no specific position to blame for an absence — `positions` lists every
-position from whatever occurrences *were* found (empty if none were).
+Violation granularity differs by what's actually being reported. A **maximum exceeded** (either constraint) reports
+one violation *per occurrence beyond the allowed maximum* — not one per occurrence found. With
+`maximumOccurrences = 1` and 3 occurrences on the strip, the first occurrence is within the allowed limit and gets
+no violation; only the 2 excess occurrences (`occurrences.slice(maximumOccurrences)`) each produce one, so 3
+occurrences with `maximumOccurrences = 1` yields 2 violations, and 3 occurrences with `maximumOccurrences = 2`
+yields exactly 1. Each such violation carries that occurrence's own `positions`/`details.matched`, plus
+`details.occurrencesFound`, `details.maximumOccurrences`, and `details.excessOccurrences` (how many occurrences
+exceed the maximum in total) for context. This also means the violation count handed to a `ReelStripScorer` (see
+below) reflects how far *over* the limit a strip is, not simply how many matches it happens to contain.
+
+A **minimum not met** (`RequiredSequenceConstraint` only) reports a single violation for the whole strip, since
+there's no specific position to blame for an absence — `positions` lists every position from whatever occurrences
+*were* found (empty if none were).
 
 Each violation is a plain, inspectable object:
 

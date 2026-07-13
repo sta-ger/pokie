@@ -51,7 +51,10 @@ export class RequiredSequenceConstraint implements ReelStripConstraint {
         const occurrences = findSequenceOccurrences(strip.toArray(), this.sequence, this.reversed, this.wrapAround);
 
         if (occurrences.length > this.maximumOccurrences) {
-            for (const occurrence of occurrences) {
+            const excessOccurrences = occurrences.length - this.maximumOccurrences;
+            // Only the occurrences beyond the allowed maximum are themselves violations -- the
+            // first `maximumOccurrences` matches are permitted and don't get a violation each.
+            for (const occurrence of occurrences.slice(this.maximumOccurrences)) {
                 violations.push({
                     constraintId: this.getId(),
                     message: `Sequence [${this.sequence.join(", ")}] occurs ${occurrences.length} time(s) (matched again at position ${occurrence.position}), exceeding the maximum of ${this.maximumOccurrences}.`,
@@ -61,6 +64,7 @@ export class RequiredSequenceConstraint implements ReelStripConstraint {
                         matched: occurrence.matched,
                         occurrencesFound: occurrences.length,
                         maximumOccurrences: this.maximumOccurrences,
+                        excessOccurrences,
                     },
                 });
             }
