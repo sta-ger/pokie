@@ -4,6 +4,7 @@ import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/See
 import {CompositeReelStripConstraintValidator} from "./CompositeReelStripConstraintValidator.js";
 import {ExactSymbolCountsConstraint} from "./constraints/ExactSymbolCountsConstraint.js";
 import {FixedPositionsConstraint} from "./constraints/FixedPositionsConstraint.js";
+import {LargestRemainderReelStripSymbolWeightsConverter} from "./LargestRemainderReelStripSymbolWeightsConverter.js";
 import type {ReelStripConstraint} from "./ReelStripConstraint.js";
 import type {ReelStripConstraintValidator} from "./ReelStripConstraintValidator.js";
 import type {ReelStripConstraintViolation} from "./ReelStripConstraintViolation.js";
@@ -13,6 +14,8 @@ import type {ReelStripGenerationRequest} from "./ReelStripGenerationRequest.js";
 import type {ReelStripGenerationResult} from "./ReelStripGenerationResult.js";
 import type {ReelStripGenerationStrategy} from "./ReelStripGenerationStrategy.js";
 import type {ReelStripScorer} from "./ReelStripScorer.js";
+import type {ReelStripSymbolWeightsConverter} from "./ReelStripSymbolWeightsConverter.js";
+import type {ReelStripWeightedGenerationRequest} from "./ReelStripWeightedGenerationRequest.js";
 import {ShuffleReelStripGenerationStrategy} from "./ShuffleReelStripGenerationStrategy.js";
 import {ViolationCountReelStripScorer} from "./ViolationCountReelStripScorer.js";
 
@@ -35,15 +38,18 @@ export class ReelStripGenerator {
     private readonly strategy: ReelStripGenerationStrategy;
     private readonly validator: ReelStripConstraintValidator;
     private readonly scorer: ReelStripScorer;
+    private readonly symbolWeightsConverter: ReelStripSymbolWeightsConverter;
 
     constructor(
         strategy: ReelStripGenerationStrategy = new ShuffleReelStripGenerationStrategy(),
         validator: ReelStripConstraintValidator = new CompositeReelStripConstraintValidator(),
         scorer: ReelStripScorer = new ViolationCountReelStripScorer(),
+        symbolWeightsConverter: ReelStripSymbolWeightsConverter = new LargestRemainderReelStripSymbolWeightsConverter(),
     ) {
         this.strategy = strategy;
         this.validator = validator;
         this.scorer = scorer;
+        this.symbolWeightsConverter = symbolWeightsConverter;
     }
 
     public generate(request: ReelStripGenerationRequest): ReelStripGenerationResult {
@@ -90,6 +96,39 @@ export class ReelStripGenerator {
             attemptsUsed: diagnostics.length,
             diagnostics,
         };
+    }
+
+    // Converts `request.symbolWeights` into exact symbolCounts (via `symbolWeightsConverter`) and
+    // hands them to `generate()` — the same single generation path as a plain symbolCounts-based
+    // request, never a separate one. The conversion diagnostic (weights, resulting counts, and how
+    // far the actual proportions deviate from the requested ones) rides along on the result.
+    public generateFromSymbolWeights(request: ReelStripWeightedGenerationRequest): ReelStripGenerationResult {
+        const conversion = this.symbolWeightsConverter.convert({
+            length: request.length,
+            symbolWeights: request.symbolWeights,
+            roundingPolicy: request.roundingPolicy,
+            remainderTieBreakPolicy: request.remainderTieBreakPolicy,
+        });
+
+        if (!conversion.success) {
+            return {
+                success: false,
+                attemptsUsed: 0,
+                diagnostics: [{attempt: 0, accepted: false, violations: conversion.violations}],
+            };
+        }
+
+        const result = this.generate({
+            length: request.length,
+            symbolCounts: conversion.symbolCounts!,
+            seed: request.seed,
+            lockedPositions: request.lockedPositions,
+            constraints: request.constraints,
+            maxAttempts: request.maxAttempts,
+            scorer: request.scorer,
+        });
+
+        return {...result, symbolWeightsConversion: conversion.diagnostic};
     }
 
     private buildInvariantConstraints(request: ReelStripGenerationRequest): ReelStripConstraint[] {

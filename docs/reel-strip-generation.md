@@ -63,8 +63,10 @@ constructor(
     strategy: ReelStripGenerationStrategy = new ShuffleReelStripGenerationStrategy(),
     validator: ReelStripConstraintValidator = new CompositeReelStripConstraintValidator(),
     scorer: ReelStripScorer = new ViolationCountReelStripScorer(),
+    symbolWeightsConverter: ReelStripSymbolWeightsConverter = new LargestRemainderReelStripSymbolWeightsConverter(),
 )
 generate(request: ReelStripGenerationRequest): ReelStripGenerationResult
+generateFromSymbolWeights(request: ReelStripWeightedGenerationRequest): ReelStripGenerationResult
 ```
 
 ```ts
@@ -83,6 +85,7 @@ type ReelStripGenerationResult = {
     strip?: ReelStripDefinition;                // the best candidate found, even when success is false
     attemptsUsed: number;
     diagnostics: ReelStripGenerationDiagnostic[]; // one entry per attempt (or one, if the request itself was malformed)
+    symbolWeightsConversion?: ReelStripSymbolWeightsConversionDiagnostic; // present only from generateFromSymbolWeights
 };
 ```
 
@@ -124,6 +127,100 @@ another attempt. Swap in your own `ReelStripGenerationStrategy` to change how ca
 touching `ReelStripGenerator` itself (Open/Closed: `ReelStripGenerator` never needs to know which strategy it's
 driving) — `ReelStripGenerator` re-checks `symbolCounts`/`lockedPositions` regardless of which strategy produced the
 candidate (see above), so a custom strategy that gets them wrong fails loudly instead of silently reporting success.
+
+## Generating from weights instead of exact counts
+
+Specifying exact `symbolCounts` up front means doing the weight-to-count arithmetic yourself. `generateFromSymbolWeights`
+does it for you: give it proportions (`symbolWeights`), and it converts them into exact `symbolCounts` for the
+requested `length`, then generates through **the same `generate()` path** described above — there is no separate
+generation codepath for weighted requests, only a conversion step in front of it.
+
+```ts
+import {ReelStripGenerator} from "pokie";
+
+const generator = new ReelStripGenerator();
+
+const result = generator.generateFromSymbolWeights({
+    length: 32,
+    symbolWeights: {W: 2, A: 6, K: 8, Q: 8, J: 8}, // proportions, not exact counts (need not sum to length)
+    seed: 12345,
+});
+
+if (result.success) {
+    result.strip!.toArray();               // the generated strip, exactly as from generate()
+    result.symbolWeightsConversion!.counts; // the exact counts the weights resolved to: {W: 2, A: 6, K: 8, Q: 8, J: 8}
+}
+```
+
+```ts
+type ReelStripWeightedGenerationRequest = {
+    length: number;
+    symbolWeights: Record<string, number>;                             // proportions, need not sum to length or to 100
+    roundingPolicy?: ReelStripSymbolWeightsRoundingPolicy;              // default "floor"
+    remainderTieBreakPolicy?: ReelStripSymbolWeightsRemainderTieBreakPolicy; // default "symbol-id"
+    // ...plus seed / lockedPositions / constraints / maxAttempts / scorer, same as ReelStripGenerationRequest
+};
+```
+
+### `ReelStripSymbolWeightsConverter` — the explicit weights → counts strategy
+
+```ts
+interface ReelStripSymbolWeightsConverter {
+    convert(request: ReelStripSymbolWeightsConversionRequest): ReelStripSymbolWeightsConversionResult;
+}
+```
+
+The default, `LargestRemainderReelStripSymbolWeightsConverter`, implements the **Largest Remainder Method** (a.k.a.
+Hare-quota apportionment — the same family of algorithm used for proportional seat allocation):
+
+1. Each symbol's exact quota is `weight / totalWeight * length` (a real number).
+2. `roundingPolicy` turns each quota into an initial integer count:
+   - `"floor"` (default) — never overshoots `length` on its own, so step 3 only ever *adds* units.
+   - `"round"` — nearest integer; may overshoot or undershoot.
+   - `"ceil"` — always overshoots unless every quota is already an integer; step 3 only ever *removes* units.
+3. The gap between the sum of those initial counts and `length` (the "remainder") is corrected one unit at a time,
+   always picking the symbol(s) whose quota was least well served by the initial rounding (largest fractional
+   remainder gets the next `+1`; smallest gets the next `-1`).
+4. Ties in step 3 are broken deterministically per `remainderTieBreakPolicy`:
+   - `"symbol-id"` (default) — ascending symbol ID, independent of declaration order.
+   - `"declared-order"` — the order symbols first appear in `symbolWeights`.
+   - `"largest-weight-first"` — the heavier original weight wins; falls back to `"symbol-id"` if weights also tie.
+
+The same `symbolWeights`, `length`, and policies always produce the same `symbolCounts` — swap in your own
+`ReelStripSymbolWeightsConverter` (the generator's 4th constructor argument) for a different apportionment algorithm
+without touching `ReelStripGenerator` itself (Open/Closed, same as the other three collaborators).
+
+### Diagnostics: weights, counts, and proportion deviation
+
+```ts
+type ReelStripSymbolWeightsConversionDiagnostic = {
+    weights: Record<string, number>;            // the original input weights, unchanged
+    counts: Record<string, number>;              // the resolved exact counts (includes 0-count symbols)
+    targetProportions: Record<string, number>;   // weight / totalWeight, the ideal proportion
+    actualProportions: Record<string, number>;   // count / length, what was actually achievable
+    deviations: Record<string, number>;          // actualProportion - targetProportion, per symbol
+};
+```
+
+```ts
+import {LargestRemainderReelStripSymbolWeightsConverter} from "pokie";
+
+const converter = new LargestRemainderReelStripSymbolWeightsConverter();
+const conversion = converter.convert({length: 10, symbolWeights: {A: 1, B: 1, C: 1}});
+
+conversion.symbolCounts;              // {A: 4, B: 3, C: 3} -- 10/3 doesn't divide evenly
+conversion.diagnostic!.deviations;    // {A: 0.0667, B: -0.0333, C: -0.0333} -- A got the rounding-up
+```
+
+`result.symbolWeightsConversion` on `ReelStripGenerationResult` is this same diagnostic, so you don't need to call
+the converter yourself unless you want the counts *before* generation.
+
+### Validation
+
+Rejected up front, mirroring `generate()`'s own malformed-request handling (`success: false`, `attemptsUsed: 0`, a
+single diagnostic, no candidate ever generated): a non-positive/non-integer `length`; an empty `symbolWeights`; and
+any weight that is zero, negative, `NaN`, or `Infinity` (weights must be positive finite numbers — to exclude a
+symbol entirely, omit it from `symbolWeights` rather than giving it a weight of `0`).
 
 ## Constraints (`ReelStripConstraint`)
 
