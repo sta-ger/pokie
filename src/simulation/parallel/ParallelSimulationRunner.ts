@@ -1,6 +1,11 @@
-import {loadPokieGame, PokieGame, PokieGameManifest, SimulationBreakdownComponent, SimulationStatistics, SimulationStatisticsMerger} from "pokie";
+import {loadPokieGame} from "../../gamepackage/loadPokieGame.js";
+import type {PokieGame} from "../../gamepackage/PokieGame.js";
+import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import type {SimulationBreakdownComponent} from "../SimulationBreakdownComponent.js";
+import type {SimulationStatistics} from "../SimulationStatistics.js";
+import {SimulationStatisticsMerger} from "../SimulationStatisticsMerger.js";
+import {runChunkedSimulation} from "./internal/runChunkedSimulation.js";
 import {MAX_SIMULATION_WORKERS} from "./ParallelSimulationLimits.js";
-import {runChunkedSimulation} from "./runChunkedSimulation.js";
 import {SimulationCancelledError} from "./SimulationCancelledError.js";
 import {SimulationWorkerCoordinator} from "./SimulationWorkerCoordinator.js";
 import type {SimulationWorkerRequest} from "./SimulationWorkerRequest.js";
@@ -28,8 +33,8 @@ export type ParallelSimulationRunOptions = {
     signal?: AbortSignal;
     // Only used by the workers===1 in-process path — a live game/session can't cross a worker_threads
     // boundary, so workers > 1 always (re)loads the package for real inside each worker instead (see
-    // simulationWorkerEntry.ts). Defaults to the real loadPokieGame; tests may inject an in-memory
-    // fake here exactly as SimCommand's own constructor already allows.
+    // internal/simulationWorkerEntry.ts). Defaults to the real loadPokieGame; a caller may inject an
+    // in-memory fake here (as pokie's own CLI does for its unit tests) for workers===1 only.
     loadGame?: (packageRoot: string) => Promise<PokieGame>;
     // How many rounds to play before reporting an interim progress message / yielding to the event
     // loop (workers===1) or posting a progress message (workers>1). Defaults to the full round count
@@ -40,14 +45,14 @@ export type ParallelSimulationRunOptions = {
     yieldToEventLoop?: () => Promise<void>;
     // Aggregate rounds completed across every worker.
     onProgress?: (roundsCompleted: number) => void;
-    // Where the compiled simulationWorkerEntry.js lives — required only when workers > 1. No default
-    // (see SimulationWorkerCoordinator's own doc comment): resolving it needs import.meta.url, which
-    // only works in the real ESM build, not a direct ts-jest unit-test import of this file.
+    // Where the compiled worker entry point lives — optional. When omitted (the common case), workers
+    // > 1 uses this package's own bundled worker entry automatically; only supply this to point at a
+    // different build (e.g. a test pointing at source, or an embedder shipping its own copy).
     workerEntryUrl?: URL;
-    createWorkerCoordinator?: (workerEntryUrl: URL) => SimulationWorkerCoordinator;
+    createWorkerCoordinator?: (workerEntryUrl: URL | undefined) => SimulationWorkerCoordinator;
 };
 
-export type ParallelSimulationRunResult = {
+export type ParallelSimulationResult = {
     manifest: PokieGameManifest;
     statistics: SimulationStatistics;
     breakdown?: Record<string, SimulationBreakdownComponent>;
@@ -55,12 +60,14 @@ export type ParallelSimulationRunResult = {
     workerSeedStrategy: string;
 };
 
-// The one shared entry point `pokie sim --workers` and Studio's simulation service both call for any
-// workers >= 1 — see docs/simulation.md. workers===1 runs in-process (see runInProcess()); workers>1
-// splits `rounds` across real worker threads (see splitRoundsAcrossWorkers/SimulationWorkerCoordinator),
-// deriving each worker's own seed (see WorkerSeedStrategy) and merging their results via
-// SimulationStatisticsMerger. Either way, the actual calculation is always
-// AggregateSimulationRunner/SimulationAccumulator/SimulationStatistics — never reimplemented here.
+// The public entry point for running a simulation, sequentially or in parallel, programmatically —
+// the same object `pokie sim --workers`/Studio's Simulation tab call, and the only piece of the
+// public API a caller needs for either case. workers===1 runs in-process (see runInProcess()) with
+// no worker thread involved at all; workers>1 splits `rounds` across real worker threads (see
+// splitRoundsAcrossWorkers/SimulationWorkerCoordinator), deriving each worker's own seed (see
+// WorkerSeedStrategy) and merging their results via SimulationStatisticsMerger. Either way, the
+// actual calculation is always AggregateSimulationRunner/SimulationAccumulator/SimulationStatistics —
+// never reimplemented here.
 export class ParallelSimulationRunner {
     private readonly packageRoot: string;
     private readonly rounds: number;
@@ -75,7 +82,7 @@ export class ParallelSimulationRunner {
     // Never throws synchronously — every failure (a workers validation error included) comes back as
     // a rejected promise, so a caller can always rely on .catch()/await-in-try, without also needing
     // a synchronous try/catch just around the call to run() itself.
-    public run(): Promise<ParallelSimulationRunResult> {
+    public run(): Promise<ParallelSimulationResult> {
         try {
             const workers = this.validateWorkers(this.options.workers ?? 1);
             if (this.options.signal?.aborted) {
@@ -93,7 +100,7 @@ export class ParallelSimulationRunner {
     // in exactly one AggregateSimulationRunner.run() call, identical to calling it directly). A
     // smaller chunkSize is purely an orchestration detail (progress/cancellation granularity for a
     // caller like Studio) that never changes the resulting statistics.
-    private async runInProcess(): Promise<ParallelSimulationRunResult> {
+    private async runInProcess(): Promise<ParallelSimulationResult> {
         const loadGame = this.options.loadGame ?? loadPokieGame;
         const game = await loadGame(this.packageRoot);
         const session = game.createSession(this.options.seed === undefined ? undefined : {seed: this.options.seed});
@@ -122,13 +129,7 @@ export class ParallelSimulationRunner {
         };
     }
 
-    private async runAcrossWorkers(workers: number): Promise<ParallelSimulationRunResult> {
-        if (!this.options.workerEntryUrl) {
-            throw new Error(
-                `ParallelSimulationRunner requires a workerEntryUrl to run with workers > 1 (requested ${workers}).`,
-            );
-        }
-
+    private async runAcrossWorkers(workers: number): Promise<ParallelSimulationResult> {
         const requests = this.buildRequests(workers);
         const coordinator = this.options.createWorkerCoordinator
             ? this.options.createWorkerCoordinator(this.options.workerEntryUrl)

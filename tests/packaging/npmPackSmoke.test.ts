@@ -144,4 +144,46 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             await stopChild(child);
         }
     });
+
+    it("imports ParallelSimulationRunner from the installed \"pokie\" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads", () => {
+        const fixtureRoot = path.join(REPO_ROOT, "tests", "cli", "fixtures", "playable-game");
+        const scriptPath = path.join(installDir!, "run-parallel-simulation.mjs");
+        // Deliberately not importing anything from this repo's own src/cli — this script only ever
+        // sees what npm actually installed from the tarball, exactly as a real third-party consumer
+        // embedding parallel simulation programmatically would write it.
+        fs.writeFileSync(
+            scriptPath,
+            `
+            import {ParallelSimulationRunner} from "pokie";
+
+            const runner = new ParallelSimulationRunner(${JSON.stringify(fixtureRoot)}, 20000, {seed: "demo", workers: 2});
+            const result = await runner.run();
+
+            if (result.workers !== 2) {
+                throw new Error("expected workers to be 2, got " + result.workers);
+            }
+            if (result.statistics.rounds !== 20000) {
+                throw new Error("expected 20000 rounds, got " + result.statistics.rounds);
+            }
+            if (!Number.isFinite(result.statistics.rtp)) {
+                throw new Error("expected a finite rtp");
+            }
+            if (result.manifest.id !== "playable-game") {
+                throw new Error("expected the fixture game's manifest, got " + JSON.stringify(result.manifest));
+            }
+            if (!result.workerSeedStrategy || typeof result.workerSeedStrategy !== "string") {
+                throw new Error("expected a workerSeedStrategy description");
+            }
+
+            console.log("PARALLEL_SIMULATION_SMOKE_OK " + JSON.stringify({workers: result.workers, rounds: result.statistics.rounds}));
+            `,
+        );
+
+        // execFileSync only returns once the child process has actually exited on its own — if a
+        // worker thread were left running (not terminated after run() resolves), Node's event loop
+        // would never drain and this would hang until Jest's own timeout killed it, failing the test.
+        const output = execFileSync("node", [scriptPath], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+
+        expect(output).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
+    });
 });

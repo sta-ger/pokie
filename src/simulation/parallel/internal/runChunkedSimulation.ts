@@ -1,5 +1,9 @@
-import {AggregateSimulationRunner, GameSessionHandling, SimulationAccumulator, SimulationBreakdownComponent, mergeSimulationBreakdowns} from "pokie";
-import {SimulationCancelledError} from "./SimulationCancelledError.js";
+import {AggregateSimulationRunner} from "../../AggregateSimulationRunner.js";
+import {SimulationAccumulator} from "../../SimulationAccumulator.js";
+import type {SimulationBreakdownComponent} from "../../SimulationBreakdownComponent.js";
+import {mergeSimulationBreakdowns} from "../../SimulationBreakdownMerging.js";
+import type {GameSessionHandling} from "../../../session/GameSessionHandling.js";
+import {SimulationCancelledError} from "../SimulationCancelledError.js";
 
 export type ChunkedSimulationChunkInfo = {
     roundsCompleted: number;

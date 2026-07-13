@@ -1,7 +1,13 @@
-import {loadPokieGame, SimulationReport, SimulationReportBuilder, SimulationReportBuilding} from "pokie";
+import {
+    loadPokieGame,
+    ParallelSimulationRunner,
+    ParallelSimulationRunOptions,
+    SimulationCancelledError,
+    SimulationReport,
+    SimulationReportBuilder,
+    SimulationReportBuilding,
+} from "pokie";
 import crypto from "crypto";
-import {ParallelSimulationRunner, ParallelSimulationRunOptions} from "../../simulation/parallel/ParallelSimulationRunner.js";
-import {SimulationCancelledError} from "../../simulation/parallel/SimulationCancelledError.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
 import type {StudioSimulationJobView} from "./StudioSimulationJobView.js";
@@ -39,8 +45,10 @@ export class StudioSimulationService {
     private readonly now: () => number;
     private readonly yieldToEventLoop: () => Promise<void>;
     private readonly createId: () => string;
-    // Where the compiled simulationWorkerEntry.js lives — no default (see
-    // SimulationWorkerCoordinator's own doc comment); only needed when a request's workers > 1.
+    // Overrides ParallelSimulationRunner's own default worker entry point — left undefined in every
+    // real Studio request (StudioServer never sets it), since the library already knows how to find
+    // its own bundled worker entry. Only tests (pointing at source rather than a built dist) supply
+    // one.
     private readonly workerEntryUrl: URL | undefined;
     private readonly createParallelSimulationRunner: (
         packageRoot: string,

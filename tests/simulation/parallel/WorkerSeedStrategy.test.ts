@@ -1,4 +1,4 @@
-import {WorkerSeedStrategy} from "../../../../cli/simulation/parallel/WorkerSeedStrategy.js";
+import {WorkerSeedStrategy} from "pokie";
 
 describe("WorkerSeedStrategy", () => {
     describe("deriveSeed", () => {

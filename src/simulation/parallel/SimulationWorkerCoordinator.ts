@@ -1,6 +1,7 @@
 import {Worker} from "worker_threads";
+import {getDefaultWorkerEntryUrl} from "./internal/defaultWorkerEntryUrl.js";
+import type {SimulationWorkerMessage} from "./internal/SimulationWorkerMessage.js";
 import {SimulationCancelledError} from "./SimulationCancelledError.js";
-import type {SimulationWorkerMessage} from "./SimulationWorkerMessage.js";
 import type {SimulationWorkerRequest} from "./SimulationWorkerRequest.js";
 import {SimulationWorkerFailureError} from "./SimulationWorkerFailureError.js";
 import type {SimulationWorkerResult} from "./SimulationWorkerResult.js";
@@ -13,41 +14,42 @@ export type SimulationWorkerCoordinatorRunOptions = {
 };
 
 // Owns the actual worker_threads lifecycle for one simulation run: spawns one real Worker per
-// SimulationWorkerRequest (see simulationWorkerEntry.ts for what runs inside each), collects their
-// progress/result/error messages, and enforces the "one worker's failure ends the whole simulation" /
-// "cancellation stops every worker" rules (see docs/simulation.md). run() never resolves with a
-// partial result: it either resolves once every requested worker has reported a result, or rejects —
-// and by the time it settles either way, every worker thread this call spawned has been told to
-// terminate.
+// SimulationWorkerRequest (see internal/simulationWorkerEntry.ts for what runs inside each), collects
+// their progress/result/error messages, and enforces the "one worker's failure ends the whole
+// simulation" / "cancellation stops every worker" rules (see docs/simulation.md). run() never
+// resolves with a partial result: it either resolves once every requested worker has reported a
+// result, or rejects — and by the time it settles either way, every worker thread this call spawned
+// has been told to terminate.
 export class SimulationWorkerCoordinator {
-    private readonly createWorker: (request: SimulationWorkerRequest) => Worker;
+    private readonly workerEntryUrl: URL | undefined;
+    private readonly createWorker: ((request: SimulationWorkerRequest) => Worker) | undefined;
 
-    // `workerEntryUrl` has no default on purpose (mirrors ClientCommand/StudioCommand's own
-    // clientRoot/studioRoot — see cli/pokie.ts's ownSimulationWorkerEntryUrl()): resolving it needs
-    // import.meta.url, which only works in the real ESM build, not a direct ts-jest unit-test import
-    // of this file. Tests inject either a fake createWorker (no real thread spawned) or a real,
-    // test-supplied entry URL.
-    constructor(workerEntryUrl: URL, createWorker?: (request: SimulationWorkerRequest) => Worker) {
-        this.createWorker = createWorker ?? ((request) => new Worker(workerEntryUrl, {workerData: request}));
+    // Neither argument is required. With no `createWorker` override, run() spawns a real Worker at
+    // `workerEntryUrl`; with neither given, it falls back to this package's own bundled worker entry
+    // (see internal/defaultWorkerEntryUrl.ts for why that needs an indirect dynamic import rather than
+    // a plain constructor-time default). Tests substitute a fake `createWorker` (no real thread ever
+    // spawned) or a real, test-supplied entry URL instead.
+    constructor(workerEntryUrl?: URL, createWorker?: (request: SimulationWorkerRequest) => Worker) {
+        this.workerEntryUrl = workerEntryUrl;
+        this.createWorker = createWorker;
     }
 
-    public run(
+    public async run(
         requests: SimulationWorkerRequest[],
         options: SimulationWorkerCoordinatorRunOptions = {},
     ): Promise<SimulationWorkerResult[]> {
         const {signal, onProgress} = options;
+        if (signal?.aborted) {
+            throw new SimulationCancelledError();
+        }
+        if (requests.length === 0) {
+            return [];
+        }
+
+        const createWorker = this.createWorker ?? (await this.buildDefaultCreateWorker());
 
         return new Promise((resolve, reject) => {
-            if (signal?.aborted) {
-                reject(new SimulationCancelledError());
-                return;
-            }
-            if (requests.length === 0) {
-                resolve([]);
-                return;
-            }
-
-            const workers = requests.map((request) => this.createWorker(request));
+            const workers = requests.map((request) => createWorker(request));
             // .fill(undefined) matters: new Array(n) alone produces holes, not actual `undefined`
             // elements, and Array.prototype.every() silently skips holes — which would make the
             // "every result is in" check below resolve prematurely after only the first worker
@@ -147,5 +149,10 @@ export class SimulationWorkerCoordinator {
                 });
             });
         });
+    }
+
+    private async buildDefaultCreateWorker(): Promise<(request: SimulationWorkerRequest) => Worker> {
+        const url = this.workerEntryUrl ?? (await getDefaultWorkerEntryUrl());
+        return (request) => new Worker(url, {workerData: request});
     }
 }

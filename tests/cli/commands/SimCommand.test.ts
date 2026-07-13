@@ -1,10 +1,9 @@
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameManifest, SimulationReport} from "pokie";
+import {GameSessionHandling, loadPokieGame, MAX_SIMULATION_WORKERS, PokieGame, PokieGameManifest, SimulationReport} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
-import {MAX_SIMULATION_WORKERS} from "../../../cli/simulation/parallel/ParallelSimulationLimits.js";
-import {TEST_WORKER_ENTRY_URL} from "../simulation/parallel/testWorkerEntryUrl.js";
+import {TEST_WORKER_ENTRY_URL} from "../../simulation/parallel/testWorkerEntryUrl.js";
 
 function createFakeSession(): GameSessionHandling {
     let credits = 1000;
@@ -116,11 +115,14 @@ describe("SimCommand", () => {
         logSpy.mockRestore();
     });
 
-    it("throws a clear error for --workers > 1 when no worker entry point was configured", async () => {
-        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
-
-        await expect(command.run(["./crazy-fruits", "--rounds", "20", "--workers", "2"])).rejects.toThrow(/workerEntryUrl/);
-    });
+    // --workers > 1 with no configured workerEntryUrl falls back to ParallelSimulationRunner's own
+    // default worker entry resolution (see src/simulation/parallel/internal/defaultWorkerEntryUrl.ts)
+    // rather than throwing — not exercisable here since that default only ever resolves inside a real
+    // built dist/ tree, which ts-jest's source-only module resolution doesn't provide (and can't even
+    // attempt the dynamic import at all without extra Jest configuration). See the npm tarball smoke
+    // test (tests/packaging/npmPackSmoke.test.ts) for the real, end-to-end verification of that path,
+    // and SimCommand's own real-worker-thread tests below (using TEST_WORKER_ENTRY_URL) for workers>1
+    // exercised via an explicit override instead.
 
     it("loads the game via the injected loader and plays the requested number of rounds", async () => {
         const game = createFakeGame(manifest);

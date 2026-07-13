@@ -1,9 +1,14 @@
-import {GameSessionHandling, PokieGame, PokieGameManifest} from "pokie";
-import {ParallelSimulationRunner} from "../../../../cli/simulation/parallel/ParallelSimulationRunner.js";
-import {SimulationCancelledError} from "../../../../cli/simulation/parallel/SimulationCancelledError.js";
-import type {SimulationWorkerCoordinator, SimulationWorkerCoordinatorRunOptions} from "../../../../cli/simulation/parallel/SimulationWorkerCoordinator.js";
-import type {SimulationWorkerRequest} from "../../../../cli/simulation/parallel/SimulationWorkerRequest.js";
-import type {SimulationWorkerResult} from "../../../../cli/simulation/parallel/SimulationWorkerResult.js";
+import {
+    GameSessionHandling,
+    ParallelSimulationRunner,
+    PokieGame,
+    PokieGameManifest,
+    SimulationCancelledError,
+    SimulationWorkerCoordinator,
+    SimulationWorkerCoordinatorRunOptions,
+    SimulationWorkerRequest,
+    SimulationWorkerResult,
+} from "pokie";
 
 const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
 
@@ -179,6 +184,15 @@ describe("ParallelSimulationRunner (workers=1, in-process)", () => {
     });
 });
 
+// workers>1 tests below all inject a fake SimulationWorkerCoordinator (via createWorkerCoordinator) to
+// exercise ParallelSimulationRunner's own orchestration logic (round splitting, seed derivation,
+// progress aggregation, error/signal propagation) without spawning a single real OS thread — real
+// worker threads are covered by tests/simulation/parallel/simulationWorkerEntry.test.ts (the worker
+// entry point in isolation) and the npm tarball smoke test (tests/packaging/npmPackSmoke.test.ts),
+// which is also the one place that exercises ParallelSimulationRunner's own *default* worker entry
+// resolution for real — that default only ever resolves to a real file inside an actual built dist/
+// tree (see src/simulation/parallel/internal/defaultWorkerEntryUrl.ts), which ts-jest's source-only
+// module resolution can't provide.
 describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () => {
     function makeAccumulatorSnapshot(rounds: number) {
         return {
@@ -201,10 +215,28 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
         return {run: handleRun} as unknown as SimulationWorkerCoordinator;
     }
 
-    test("requires a workerEntryUrl — throws a clear error rather than silently running sequentially", async () => {
-        const runner = new ParallelSimulationRunner("/fake/root", 10, {workers: 2});
+    test("passes workerEntryUrl through to createWorkerCoordinator unchanged — undefined when not given, so the coordinator falls back to its own default", async () => {
+        let receivedUrl: URL | undefined = new URL("file:///should-be-overwritten");
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            workers: 2,
+            createWorkerCoordinator: (workerEntryUrl) => {
+                receivedUrl = workerEntryUrl;
+                return makeFakeCoordinator((requests) =>
+                    Promise.resolve(
+                        requests.map((request) => ({
+                            workerIndex: request.workerIndex,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(request.rounds),
+                            roundsCompleted: request.rounds,
+                        })),
+                    ),
+                );
+            },
+        });
 
-        await expect(runner.run()).rejects.toThrow(/workerEntryUrl/);
+        await runner.run();
+
+        expect(receivedUrl).toBeUndefined();
     });
 
     test("splits rounds across workers and derives per-worker seeds, then merges the results", async () => {
@@ -212,7 +244,6 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
         const runner = new ParallelSimulationRunner("/fake/root", 10, {
             seed: "demo",
             workers: 4,
-            workerEntryUrl: new URL("file:///unused"),
             createWorkerCoordinator: () =>
                 makeFakeCoordinator((requests) => {
                     capturedRequests = requests;
@@ -241,7 +272,6 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
         let capturedRequests: SimulationWorkerRequest[] = [];
         const runner = new ParallelSimulationRunner("/fake/root", 2, {
             workers: 5,
-            workerEntryUrl: new URL("file:///unused"),
             createWorkerCoordinator: () =>
                 makeFakeCoordinator((requests) => {
                     capturedRequests = requests;
@@ -266,7 +296,6 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
         const failure = new Error("worker 2 failed: package load error");
         const runner = new ParallelSimulationRunner("/fake/root", 10, {
             workers: 3,
-            workerEntryUrl: new URL("file:///unused"),
             createWorkerCoordinator: () => makeFakeCoordinator(() => Promise.reject(failure)),
         });
 
@@ -279,7 +308,6 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
         const runner = new ParallelSimulationRunner("/fake/root", 10, {
             workers: 2,
             signal: controller.signal,
-            workerEntryUrl: new URL("file:///unused"),
             createWorkerCoordinator: () =>
                 makeFakeCoordinator((requests, options) => {
                     receivedSignal = options.signal;
@@ -303,7 +331,6 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
         const progressUpdates: number[] = [];
         const runner = new ParallelSimulationRunner("/fake/root", 10, {
             workers: 2,
-            workerEntryUrl: new URL("file:///unused"),
             onProgress: (n) => progressUpdates.push(n),
             createWorkerCoordinator: () =>
                 makeFakeCoordinator((requests, options) => {

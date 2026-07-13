@@ -1,10 +1,6 @@
+import {SimulationCancelledError, SimulationWorkerCoordinator, SimulationWorkerFailureError, SimulationWorkerRequest, SimulationWorkerResult} from "pokie";
 import {EventEmitter} from "events";
 import type {Worker} from "worker_threads";
-import {SimulationCancelledError} from "../../../../cli/simulation/parallel/SimulationCancelledError.js";
-import {SimulationWorkerCoordinator} from "../../../../cli/simulation/parallel/SimulationWorkerCoordinator.js";
-import type {SimulationWorkerRequest} from "../../../../cli/simulation/parallel/SimulationWorkerRequest.js";
-import {SimulationWorkerFailureError} from "../../../../cli/simulation/parallel/SimulationWorkerFailureError.js";
-import type {SimulationWorkerResult} from "../../../../cli/simulation/parallel/SimulationWorkerResult.js";
 
 // A fake worker_threads Worker: a plain EventEmitter with a `terminate()` a test can observe, so
 // these tests exercise SimulationWorkerCoordinator's own message-protocol/lifecycle logic without
@@ -53,10 +49,7 @@ describe("SimulationWorkerCoordinator", () => {
     test("resolves with every worker's result once all have posted one", async () => {
         const workers = [new FakeWorker(), new FakeWorker()];
         let created = 0;
-        const coordinator = new SimulationWorkerCoordinator(
-            new URL("file:///unused"),
-            () => workers[created++] as unknown as Worker,
-        );
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => workers[created++] as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0), makeRequest(1)]);
         workers[0].emit("message", {type: "result", ...makeResult(0)});
@@ -68,7 +61,7 @@ describe("SimulationWorkerCoordinator", () => {
     });
 
     test("resolves with an empty array without spawning anything when given no requests", async () => {
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => {
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => {
             throw new Error("should never be called");
         });
 
@@ -77,7 +70,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("forwards progress messages via onProgress", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
         const progressEvents: Array<{workerIndex: number; roundsCompleted: number}> = [];
 
         const promise = coordinator.run([makeRequest(0)], {onProgress: (p) => progressEvents.push(p)});
@@ -91,10 +84,7 @@ describe("SimulationWorkerCoordinator", () => {
     test("one worker's explicit error message ends the whole run and terminates every worker", async () => {
         const workers = [new FakeWorker(), new FakeWorker()];
         let created = 0;
-        const coordinator = new SimulationWorkerCoordinator(
-            new URL("file:///unused"),
-            () => workers[created++] as unknown as Worker,
-        );
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => workers[created++] as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0), makeRequest(1)]);
         workers[1].emit("message", {type: "error", workerIndex: 1, message: "boom"});
@@ -107,7 +97,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("carries the failing worker's index on the thrown error", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(3, 4)]);
         worker.emit("message", {type: "error", workerIndex: 3, message: "package load failed"});
@@ -123,7 +113,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("an uncaught worker-thread exception ('error' event) fails the run with a safe message", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("error", new Error("segfault-ish crash"));
@@ -133,7 +123,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("a malformed message (no recognizable type) fails the run instead of hanging or throwing raw", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("message", {unexpected: "shape"});
@@ -144,7 +134,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("a null message is treated as malformed rather than crashing the coordinator", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("message", null);
@@ -154,7 +144,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("an unrecognized message type fails the run", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("message", {type: "something-else"});
@@ -164,7 +154,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("premature exit (before posting a result) fails the run", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("exit", 1);
@@ -174,7 +164,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("exit with code 0 but no prior result is still treated as premature", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("exit", 0);
@@ -184,7 +174,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("a clean exit after already posting a result is not an error", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("message", {type: "result", ...makeResult(0)});
@@ -195,7 +185,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("a messageerror (unparseable message) fails the run with a safe message", async () => {
         const worker = new FakeWorker();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("messageerror", new Error("clone failed"));
@@ -206,7 +196,7 @@ describe("SimulationWorkerCoordinator", () => {
     test("an already-aborted signal rejects immediately without spawning any worker", async () => {
         const controller = new AbortController();
         controller.abort();
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => {
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => {
             throw new Error("should never be called");
         });
 
@@ -217,10 +207,7 @@ describe("SimulationWorkerCoordinator", () => {
         const workers = [new FakeWorker(), new FakeWorker()];
         let created = 0;
         const controller = new AbortController();
-        const coordinator = new SimulationWorkerCoordinator(
-            new URL("file:///unused"),
-            () => workers[created++] as unknown as Worker,
-        );
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => workers[created++] as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0), makeRequest(1)], {signal: controller.signal});
         controller.abort();
@@ -233,10 +220,7 @@ describe("SimulationWorkerCoordinator", () => {
     test("no worker is left running (every worker gets terminate()) after a failure", async () => {
         const workers = [new FakeWorker(), new FakeWorker(), new FakeWorker()];
         let created = 0;
-        const coordinator = new SimulationWorkerCoordinator(
-            new URL("file:///unused"),
-            () => workers[created++] as unknown as Worker,
-        );
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => workers[created++] as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0), makeRequest(1), makeRequest(2)]);
         workers[2].emit("message", {type: "error", workerIndex: 2, message: "boom"});
@@ -247,7 +231,7 @@ describe("SimulationWorkerCoordinator", () => {
 
     test("a worker rejecting terminate() never masks the original failure reason", async () => {
         const worker = new FakeWorker(() => Promise.reject(new Error("already dead")));
-        const coordinator = new SimulationWorkerCoordinator(new URL("file:///unused"), () => worker as unknown as Worker);
+        const coordinator = new SimulationWorkerCoordinator(undefined, () => worker as unknown as Worker);
 
         const promise = coordinator.run([makeRequest(0)]);
         worker.emit("message", {type: "error", workerIndex: 0, message: "original reason"});

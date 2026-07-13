@@ -1,8 +1,8 @@
-import {loadPokieGame} from "pokie";
+import {loadPokieGame} from "../../../gamepackage/loadPokieGame.js";
 import {parentPort, workerData} from "worker_threads";
 import {runChunkedSimulation} from "./runChunkedSimulation.js";
 import type {SimulationWorkerMessage} from "./SimulationWorkerMessage.js";
-import type {SimulationWorkerRequest} from "./SimulationWorkerRequest.js";
+import type {SimulationWorkerRequest} from "../SimulationWorkerRequest.js";
 
 // The actual code a worker thread runs (spawned by SimulationWorkerCoordinator, see its own doc
 // comment for why the entry point is a real file rather than an eval'd string) — loads the SAME game

@@ -194,10 +194,53 @@ stats.rtpConfidenceInterval95;
 
 ## Parallel simulation (workers)
 
-`pokie sim --workers <n>` (and Studio's Simulation tab "Workers" field) split a large run across real
-`worker_threads`, using the exact same `AggregateSimulationRunner`/`SimulationAccumulator`/`SimulationStatistics`
-calculation path as the single-threaded run — parallelism only changes *how* the rounds are distributed and merged,
-never the underlying math. The pieces:
+`ParallelSimulationRunner` is a public part of the `pokie` package itself — importable directly from `"pokie"` like
+any other class, with no CLI or Studio involved — that splits a large run across real `worker_threads`, using the
+exact same `AggregateSimulationRunner`/`SimulationAccumulator`/`SimulationStatistics` calculation path as the
+single-threaded run. Parallelism only changes *how* the rounds are distributed and merged, never the underlying
+math. `pokie sim --workers <n>` and Studio's Simulation tab "Workers" field are both just callers of this same
+class — neither has (or needs) its own worker-thread implementation.
+
+### Programmatic usage
+
+```ts
+import {ParallelSimulationRunner} from "pokie";
+
+const runner = new ParallelSimulationRunner("./crazy-fruits", 1_000_000, {
+    seed: "demo",
+    workers: 4, // omit (or pass 1) to run in-process, exactly like the pre-`--workers` sequential path
+});
+
+const result = await runner.run();
+
+result.manifest; // {id, name, version} — the game's own manifest
+result.statistics; // SimulationStatistics — rtp, volatility, confidence intervals, payout histogram, etc.
+result.breakdown; // Record<string, SimulationBreakdownComponent> | undefined — same shape as pokie sim's own
+result.workers; // the actual worker count used
+result.workerSeedStrategy; // human-readable description of how per-worker seeds were derived
+```
+
+Everything `pokie sim --workers`/Studio's Simulation tab support is available the same way:
+
+```ts
+const controller = new AbortController();
+
+const runner = new ParallelSimulationRunner("./crazy-fruits", 5_000_000, {
+    seed: "demo",
+    workers: 8, // custom worker count, up to MAX_SIMULATION_WORKERS
+    signal: controller.signal, // cancel a run in progress — see Cancellation below
+    onProgress: (roundsCompleted) => console.log(`${roundsCompleted} rounds so far`),
+});
+
+const resultPromise = runner.run();
+// ... later, e.g. in response to a user action ...
+controller.abort(); // stops every worker thread; resultPromise rejects with SimulationCancelledError
+```
+
+`MAX_SIMULATION_WORKERS` (the same safety ceiling `--workers` is validated against) is also exported, for a caller
+that wants to clamp/validate a user-supplied worker count itself before constructing a runner.
+
+### The pieces
 
 - **`ParallelSimulationRunner`** — the one entry point both `pokie sim` and Studio call, for any `workers >= 1`.
   `workers === 1` runs in-process (no thread spawned at all — see below); `workers > 1` splits the rounds and
@@ -218,12 +261,30 @@ never the underlying math. The pieces:
   live sessions, or functions ever cross the worker boundary** — only plain, structured-cloneable data. This is
   also why `--workers > 1` requires a real on-disk game package: each worker independently calls `loadPokieGame`
   on `packageRoot` itself, from scratch, inside its own thread — there is no way to hand a worker an
-  already-constructed `PokieGame`/session.
+  already-constructed `PokieGame`/session. `SimulationWorkerCoordinator` is itself part of the public API too (a
+  lower-level building block than `ParallelSimulationRunner`, for a caller that wants direct control over worker
+  spawning), but the *transport* it speaks internally — the tagged-union postMessage protocol and the worker
+  entry script that receives it — is not: those live under `simulation/parallel/internal/` in the source tree and
+  are deliberately not exported, so they can change shape freely without it being a breaking change.
 - **`SimulationStatisticsMerger`** — combines every worker's result back into one `SimulationStatistics`, reusing
   `SimulationAccumulator.merge()` (the same online mean/variance combination `AggregateSimulationRunner`'s own
   chunking already relies on) — variance is never approximated by averaging each worker's own variance, it's
-  recombined correctly from each worker's raw running totals. Category breakdowns are merged the same way
-  (`mergeSimulationBreakdowns`).
+  recombined correctly from each worker's raw running totals. Category breakdowns are merged the same way.
+- **`SimulationCancelledError`** / **`SimulationWorkerFailureError`** — thrown by `run()` for, respectively, a
+  cancelled run (via `signal`) and any worker failure (a thrown error, a crash, a malformed message, or a
+  premature exit) — see Cancellation and error handling below.
+
+### Cancellation and error handling
+
+- Passing an already-aborted `signal` (or aborting it before/during a run) rejects `run()` with a
+  `SimulationCancelledError` and terminates every worker thread that run had spawned — `run()` never resolves
+  with a partial `ParallelSimulationResult` in that case, cancelled or not.
+- Any single worker failing — an uncaught exception, a malformed message, or exiting prematurely — immediately
+  stops the *whole* run: every other worker is terminated too, and `run()` rejects with a
+  `SimulationWorkerFailureError` (`.workerIndex` names which worker failed; `.message` is always a safe,
+  stack-trace-free description, never the worker's raw `Error.stack`).
+- Either way, by the time `run()`'s returned promise settles, no worker thread that call spawned is still running
+  — nothing is left behind for the caller to clean up.
 
 ### Reproducibility guarantees
 

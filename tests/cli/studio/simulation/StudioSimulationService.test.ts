@@ -3,7 +3,7 @@ import path from "path";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
 import {StudioSimulationService} from "../../../../cli/studio/simulation/StudioSimulationService.js";
-import {TEST_WORKER_ENTRY_URL} from "../../simulation/parallel/testWorkerEntryUrl.js";
+import {TEST_WORKER_ENTRY_URL} from "../../../simulation/parallel/testWorkerEntryUrl.js";
 
 function createFakeSession(options: {failOnRound?: number; stopAfterRounds?: number} = {}): GameSessionHandling {
     let credits = 1000;

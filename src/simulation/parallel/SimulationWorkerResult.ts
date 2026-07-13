@@ -1,4 +1,6 @@
-import type {PokieGameManifest, SimulationAccumulatorSnapshot, SimulationBreakdownComponent} from "pokie";
+import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import type {SimulationAccumulatorSnapshot} from "../SimulationAccumulatorSnapshot.js";
+import type {SimulationBreakdownComponent} from "../SimulationBreakdownComponent.js";
 
 // The plain-data result a worker thread posts back once it's finished its share of rounds — safe to
 // structured-clone back across the worker_threads boundary (no session/class instances), and exactly

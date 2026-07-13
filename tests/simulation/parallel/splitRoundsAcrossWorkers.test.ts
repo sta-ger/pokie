@@ -1,4 +1,4 @@
-import {splitRoundsAcrossWorkers} from "../../../../cli/simulation/parallel/splitRoundsAcrossWorkers.js";
+import {splitRoundsAcrossWorkers} from "pokie";
 
 describe("splitRoundsAcrossWorkers", () => {
     test("splits evenly when rounds is a multiple of workers", () => {

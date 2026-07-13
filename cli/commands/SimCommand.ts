@@ -1,8 +1,16 @@
-import {loadPokieGame, PokieGame, SimulationConfig, SimulationReport, SimulationReportBuilder, SimulationReportBuilding} from "pokie";
+import {
+    loadPokieGame,
+    MAX_SIMULATION_WORKERS,
+    ParallelSimulationRunner,
+    ParallelSimulationRunOptions,
+    PokieGame,
+    SimulationConfig,
+    SimulationReport,
+    SimulationReportBuilder,
+    SimulationReportBuilding,
+} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {MAX_SIMULATION_WORKERS} from "../simulation/parallel/ParallelSimulationLimits.js";
-import {ParallelSimulationRunner, ParallelSimulationRunOptions} from "../simulation/parallel/ParallelSimulationRunner.js";
 
 type SimFormat = "summary" | "json";
 
@@ -22,11 +30,10 @@ export class SimCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
     private readonly writeFile: (file: string, contents: string) => void;
     private readonly reportBuilder: SimulationReportBuilding;
-    // Where the compiled simulationWorkerEntry.js lives — no default on purpose, same reason
-    // ClientCommand/StudioCommand's clientRoot/studioRoot have none: resolving it needs
-    // import.meta.url, which only works in cli/pokie.ts's real ESM build (see its
-    // ownSimulationWorkerEntryUrl()). Only needed when --workers > 1 is actually requested; every
-    // --workers 1 (the default) run never touches it (see ParallelSimulationRunner.runInProcess()).
+    // Overrides ParallelSimulationRunner's own default worker entry point — left undefined in every
+    // real CLI invocation (cli/pokie.ts never sets it), since the library already knows how to find
+    // its own bundled worker entry. Only tests (pointing at source rather than a built dist) supply
+    // one.
     private readonly workerEntryUrl: URL | undefined;
     private readonly createParallelSimulationRunner: (
         packageRoot: string,

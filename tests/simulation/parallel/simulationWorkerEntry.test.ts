@@ -1,16 +1,18 @@
+import type {SimulationWorkerRequest} from "pokie";
 import path from "path";
 import {Worker} from "worker_threads";
-import type {SimulationWorkerMessage} from "../../../../cli/simulation/parallel/SimulationWorkerMessage.js";
-import type {SimulationWorkerRequest} from "../../../../cli/simulation/parallel/SimulationWorkerRequest.js";
+import type {SimulationWorkerMessage} from "../../../src/simulation/parallel/internal/SimulationWorkerMessage.js";
 import {TEST_WORKER_ENTRY_URL} from "./testWorkerEntryUrl.js";
 
-const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game");
-const fixtureRootWithFreeGames = path.join(__dirname, "..", "..", "fixtures", "playable-game-with-free-games");
+const fixtureRoot = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game");
+const fixtureRootWithFreeGames = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game-with-free-games");
 
-// Real worker_threads integration tests: no fakes anywhere in this file — a real Worker loads
-// simulationWorkerEntry.ts, which itself calls the real loadPokieGame against a real fixture package
-// on disk. This is what actually exercises "a worker independently loads the same game package," not
-// just the coordinator's message-handling logic (see SimulationWorkerCoordinator.test.ts for that).
+// Real worker_threads integration tests against the internal worker entry point directly: no fakes
+// anywhere in this file — a real Worker loads simulationWorkerEntry.js, which itself calls the real
+// loadPokieGame against a real fixture package on disk. This is what actually exercises "a worker
+// independently loads the same game package," not just the coordinator's message-handling logic (see
+// SimulationWorkerCoordinator.test.ts for that). SimulationWorkerMessage is internal transport, not
+// part of the public API — imported by relative path on purpose, unlike SimulationWorkerRequest.
 function runWorker(request: SimulationWorkerRequest): Promise<{messages: SimulationWorkerMessage[]; worker: Worker}> {
     return new Promise((resolve, reject) => {
         const worker = new Worker(TEST_WORKER_ENTRY_URL, {workerData: request});
@@ -32,7 +34,7 @@ describe("simulationWorkerEntry (real worker_threads + real fixture package)", (
         // Belt-and-suspenders: make sure nothing from a previous test is still alive before the next
         // one starts spawning more real OS threads.
         await new Promise((resolve) => {
-            setTimeout(resolve, 10); 
+            setTimeout(resolve, 10);
         });
     });
 

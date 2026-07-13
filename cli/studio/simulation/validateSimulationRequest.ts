@@ -1,4 +1,4 @@
-import {MAX_SIMULATION_WORKERS} from "../../simulation/parallel/ParallelSimulationLimits.js";
+import {MAX_SIMULATION_WORKERS} from "pokie";
 import {MAX_STUDIO_SIMULATION_ROUNDS} from "./StudioSimulationLimits.js";
 
 export type SimulationRequestInput = {
