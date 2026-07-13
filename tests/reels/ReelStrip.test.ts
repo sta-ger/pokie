@@ -28,4 +28,8 @@ describe("ReelStrip", () => {
 
         expect(strip.toArray()).toEqual(["A", "B", "C"]);
     });
+
+    test("rejects an empty symbol list, so getSymbolAt can never return undefined despite its string return type", () => {
+        expect(() => new ReelStrip([])).toThrow(/cannot be empty/);
+    });
 });

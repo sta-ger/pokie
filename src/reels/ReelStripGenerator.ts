@@ -2,6 +2,9 @@ import {PseudorandomNumberGenerator} from "../session/videoslot/combinations/Pse
 import type {RandomNumberGenerating} from "../session/videoslot/combinations/RandomNumberGenerating.js";
 import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/SeededRandomNumberGenerator.js";
 import {CompositeReelStripConstraintValidator} from "./CompositeReelStripConstraintValidator.js";
+import {ExactSymbolCountsConstraint} from "./constraints/ExactSymbolCountsConstraint.js";
+import {FixedPositionsConstraint} from "./constraints/FixedPositionsConstraint.js";
+import type {ReelStripConstraint} from "./ReelStripConstraint.js";
 import type {ReelStripConstraintValidator} from "./ReelStripConstraintValidator.js";
 import type {ReelStripConstraintViolation} from "./ReelStripConstraintViolation.js";
 import type {ReelStripDefinition} from "./ReelStripDefinition.js";
@@ -21,9 +24,13 @@ const DEFAULT_MAX_ATTEMPTS = 200;
 // SymbolsCombinationsGenerator in session/videoslot/combinations, which reads windows off an
 // already-built SymbolsSequence at spin time).
 //
-// Tries up to `request.maxAttempts` candidates (from `strategy`), scores each with `scorer` after
-// validating it against `request.constraints` (via `validator`), and keeps the best-scoring one —
-// stopping early the first time a candidate satisfies every constraint.
+// Tries up to `request.maxAttempts` candidates (from `strategy`), and checks each one against
+// `request.symbolCounts`/`request.lockedPositions` (a non-negotiable invariant, re-checked directly
+// rather than through the pluggable `validator` — a custom `ReelStripGenerationStrategy` or
+// `ReelStripConstraintValidator` can never bypass it) plus `request.constraints` (via `validator`).
+// A candidate satisfying everything is returned as `success: true` immediately — `scorer` is never
+// consulted for it, so it can only ever influence which *invalid* candidate is kept as the closest
+// miss across the remaining attempts.
 export class ReelStripGenerator {
     private readonly strategy: ReelStripGenerationStrategy;
     private readonly validator: ReelStripConstraintValidator;
@@ -51,6 +58,7 @@ export class ReelStripGenerator {
 
         const rng = this.createRng(request.seed);
         const scorer = request.scorer ?? this.scorer;
+        const invariantConstraints = this.buildInvariantConstraints(request);
         const constraints = request.constraints ?? [];
         const maxAttempts = request.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
 
@@ -59,24 +67,45 @@ export class ReelStripGenerator {
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             const candidate = this.strategy.generateCandidate(request, rng);
-            const violations = this.validator.validate(candidate, constraints);
-            const score = scorer.score(candidate, violations);
-            diagnostics.push({attempt, accepted: violations.length === 0, violations, score});
+            const violations = [
+                ...this.validateInvariants(candidate, invariantConstraints),
+                ...this.validator.validate(candidate, constraints),
+            ];
 
+            if (violations.length === 0) {
+                diagnostics.push({attempt, accepted: true, violations});
+                return {success: true, strip: candidate, attemptsUsed: diagnostics.length, diagnostics};
+            }
+
+            const score = scorer.score(candidate, violations);
+            diagnostics.push({attempt, accepted: false, violations, score});
             if (!best || score > best.score) {
                 best = {strip: candidate, violations, score};
-            }
-            if (violations.length === 0) {
-                break;
             }
         }
 
         return {
-            success: best !== undefined && best.violations.length === 0,
+            success: false,
             strip: best?.strip,
             attemptsUsed: diagnostics.length,
             diagnostics,
         };
+    }
+
+    private buildInvariantConstraints(request: ReelStripGenerationRequest): ReelStripConstraint[] {
+        const invariantConstraints: ReelStripConstraint[] = [new ExactSymbolCountsConstraint(request.symbolCounts)];
+        if (request.lockedPositions !== undefined) {
+            invariantConstraints.push(new FixedPositionsConstraint(request.lockedPositions));
+        }
+        return invariantConstraints;
+    }
+
+    private validateInvariants(candidate: ReelStripDefinition, invariantConstraints: ReelStripConstraint[]): ReelStripConstraintViolation[] {
+        const violations: ReelStripConstraintViolation[] = [];
+        for (const constraint of invariantConstraints) {
+            violations.push(...constraint.validate(candidate));
+        }
+        return violations;
     }
 
     private createRng(seed: number | undefined): RandomNumberGenerating {

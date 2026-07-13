@@ -2,7 +2,11 @@ import {
     ForbiddenAdjacencyConstraint,
     MaximumConsecutiveOccurrencesConstraint,
     MinimumCircularDistanceConstraint,
+    ReelStrip,
     ReelStripAnalyzer,
+    ReelStripConstraint,
+    ReelStripDefinition,
+    ReelStripGenerationStrategy,
     ReelStripGenerator,
     ReelStripScorer,
 } from "pokie";
@@ -100,10 +104,80 @@ describe("ReelStripGenerator", () => {
         const constructorScorer: ReelStripScorer = {score: jest.fn(() => -100)};
         const requestScorer: ReelStripScorer = {score: jest.fn(() => 0)};
         const generator = new ReelStripGenerator(undefined, undefined, constructorScorer);
+        const alwaysFails: ReelStripConstraint = {
+            getId: () => "always-fails",
+            validate: () => [{constraintId: "always-fails", message: "never satisfied"}],
+        };
 
-        generator.generate({length: 3, symbolCounts: {A: 3}, seed: 1, maxAttempts: 1, scorer: requestScorer});
+        generator.generate({
+            length: 3,
+            symbolCounts: {A: 3},
+            seed: 1,
+            maxAttempts: 1,
+            constraints: [alwaysFails],
+            scorer: requestScorer,
+        });
 
         expect(requestScorer.score).toHaveBeenCalled();
         expect(constructorScorer.score).not.toHaveBeenCalled();
+    });
+
+    test("a valid candidate is accepted immediately, even if a buggy scorer would have preferred an earlier invalid one", () => {
+        let callCount = 0;
+        const strategy: ReelStripGenerationStrategy = {
+            generateCandidate: (): ReelStripDefinition => {
+                callCount++;
+                // Attempt 1 breaks the custom constraint below; attempt 2 satisfies it.
+                return callCount === 1 ? new ReelStrip(["B", "A"]) : new ReelStrip(["A", "B"]);
+            },
+        };
+        const aMustLeadConstraint: ReelStripConstraint = {
+            getId: () => "a-must-lead",
+            validate: (strip) => (strip.getSymbolAt(0) === "A" ? [] : [{constraintId: "a-must-lead", message: "A must be first"}]),
+        };
+        // A deliberately buggy scorer that scores invalid candidates *higher* than valid ones.
+        const buggyScorer: ReelStripScorer = {
+            score: (_strip, violations) => (violations.length === 0 ? -1000 : 1000),
+        };
+        const generator = new ReelStripGenerator(strategy, undefined, buggyScorer);
+
+        const result = generator.generate({length: 2, symbolCounts: {A: 1, B: 1}, constraints: [aMustLeadConstraint]});
+
+        expect(result.success).toBe(true);
+        expect(result.strip!.toArray()).toEqual(["A", "B"]);
+        expect(result.attemptsUsed).toBe(2);
+    });
+
+    test("re-validates a custom strategy's candidate against symbolCounts, even though it can't itself report failure", () => {
+        const brokenStrategy: ReelStripGenerationStrategy = {
+            generateCandidate: (): ReelStripDefinition => new ReelStrip(["A", "A", "A"]), // ignores symbolCounts entirely
+        };
+        const generator = new ReelStripGenerator(brokenStrategy);
+
+        const result = generator.generate({length: 3, symbolCounts: {A: 2, B: 1}, maxAttempts: 3});
+
+        expect(result.success).toBe(false);
+        expect(
+            result.diagnostics.every((diagnostic) => diagnostic.violations.some((violation) => violation.constraintId === "exact-symbol-counts")),
+        ).toBe(true);
+    });
+
+    test("re-validates a custom strategy's candidate against lockedPositions, even though it can't itself report failure", () => {
+        const brokenStrategy: ReelStripGenerationStrategy = {
+            generateCandidate: (): ReelStripDefinition => new ReelStrip(["A", "B", "A"]), // ignores lockedPositions entirely
+        };
+        const generator = new ReelStripGenerator(brokenStrategy);
+
+        const result = generator.generate({
+            length: 3,
+            symbolCounts: {A: 2, B: 1},
+            lockedPositions: {0: "B"},
+            maxAttempts: 3,
+        });
+
+        expect(result.success).toBe(false);
+        expect(
+            result.diagnostics.every((diagnostic) => diagnostic.violations.some((violation) => violation.constraintId === "fixed-positions")),
+        ).toBe(true);
     });
 });

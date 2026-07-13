@@ -26,4 +26,21 @@ describe("ForbiddenAdjacencyConstraint", () => {
         expect(wrapping.validate(strip)).toHaveLength(1);
         expect(linear.validate(strip)).toEqual([]);
     });
+
+    test("does not collide symbol IDs containing the pair-key separator", () => {
+        // Naively joining a sorted pair with "," would turn both ["A,B", "C"] and ["A", "B,C"] into
+        // the same key ("A,B,C"), so the forbidden pair ["A,B", "C"] must not also forbid "A" next to
+        // "B,C" — they are four distinct symbols split two different ways.
+        const constraint = new ForbiddenAdjacencyConstraint([["A,B", "C"]]);
+        const strip = new ReelStrip(["A", "B,C"]);
+
+        expect(constraint.validate(strip)).toEqual([]);
+    });
+
+    test("still detects the genuine forbidden pair when a symbol ID contains the separator", () => {
+        const constraint = new ForbiddenAdjacencyConstraint([["A,B", "C"]]);
+        const strip = new ReelStrip(["A,B", "C", "X"]);
+
+        expect(constraint.validate(strip)).toHaveLength(1);
+    });
 });

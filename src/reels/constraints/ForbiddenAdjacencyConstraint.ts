@@ -14,8 +14,10 @@ export class ForbiddenAdjacencyConstraint implements ReelStripConstraint {
         this.wrapAround = wrapAround;
     }
 
+    // JSON-encoded rather than joined with a plain separator: symbol IDs containing that separator
+    // (e.g. "A,B" and "C" vs. "A" and "B,C") would otherwise collide onto the same key.
     private static toKey(first: string, second: string): string {
-        return [first, second].sort().join(",");
+        return JSON.stringify([first, second].sort());
     }
 
     public getId(): string {

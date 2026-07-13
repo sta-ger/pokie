@@ -7,6 +7,9 @@ export class ReelStrip implements ReelStripDefinition {
     private readonly symbols: readonly string[];
 
     constructor(symbols: string[]) {
+        if (symbols.length === 0) {
+            throw new Error("ReelStrip cannot be empty — a reel strip must contain at least one symbol.");
+        }
         this.symbols = [...symbols];
     }
 

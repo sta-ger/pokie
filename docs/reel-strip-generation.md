@@ -52,8 +52,9 @@ interface ReelStripDefinition {
 }
 ```
 
-`ReelStrip` is the immutable implementation: its constructor defensively copies the input array, and every getter
-returns a value that can't be used to mutate internal state.
+`ReelStrip` is the immutable implementation: its constructor defensively copies the input array (and rejects an
+empty one — `getSymbolAt` always returns a real `string`, never `undefined`), and every getter returns a value that
+can't be used to mutate internal state.
 
 ## `ReelStripGenerator` — the entry point
 
@@ -85,10 +86,22 @@ type ReelStripGenerationResult = {
 };
 ```
 
-Each attempt asks `strategy` for one candidate strip, validates it against `constraints` via `validator`, and scores
-it via `scorer`. Generation stops early the first time a candidate satisfies every constraint; otherwise it keeps
-the highest-scoring candidate across all `maxAttempts` tries and reports `success: false`, with `strip` still set to
-that best candidate for inspection.
+Each attempt asks `strategy` for one candidate strip and checks it in two layers:
+
+1. **Invariants** — `symbolCounts` and `lockedPositions` are re-validated directly against the candidate, independent
+   of whichever `validator`/`constraints` are in play. This is not optional and can't be swapped out: even a buggy
+   or malicious custom `ReelStripGenerationStrategy` can never produce a `success: true` result whose strip doesn't
+   actually match the request's counts and locked positions.
+2. **`request.constraints`** — validated via `validator`, exactly as configured.
+
+A candidate that clears both layers is accepted **immediately** as `success: true` — `scorer` is never consulted for
+it. `scorer` only ever runs on a candidate that failed something, to decide which invalid candidate is worth keeping
+as the closest miss if no attempt fully succeeds within `maxAttempts`; a scorer that (accidentally or not) rates
+invalid candidates above valid ones can never turn a real success into a reported failure, because valid candidates
+skip scoring entirely.
+
+If every attempt fails, `success` is `false` and `strip` is set to the highest-scoring (least-bad) candidate seen,
+for inspection.
 
 Malformed requests (`symbolCounts` not summing to `length`, a locked position out of range or requesting more
 copies of a symbol than `symbolCounts` provides, a non-positive `length`/`maxAttempts`) are rejected up front with a
@@ -109,7 +122,8 @@ remaining pool into the remaining positions. Exact counts and locked positions t
 for every candidate — only constraints beyond that (distance, run length, adjacency, ...) can still fail and trigger
 another attempt. Swap in your own `ReelStripGenerationStrategy` to change how candidates are produced without
 touching `ReelStripGenerator` itself (Open/Closed: `ReelStripGenerator` never needs to know which strategy it's
-driving).
+driving) — `ReelStripGenerator` re-checks `symbolCounts`/`lockedPositions` regardless of which strategy produced the
+candidate (see above), so a custom strategy that gets them wrong fails loudly instead of silently reporting success.
 
 ## Constraints (`ReelStripConstraint`)
 
@@ -128,7 +142,7 @@ Built-in constraints, all under `constraints/` in the package:
 | `MinimumCircularDistanceConstraint(minimumDistance, symbolIds?, wrapAround = true)` | Every pair of occurrences of the same symbol is at least `minimumDistance` apart |
 | `MaximumConsecutiveOccurrencesConstraint(maximumConsecutive, symbolIds?, wrapAround = true)` | No run of identical adjacent symbols exceeds `maximumConsecutive` |
 | `ForbiddenAdjacencyConstraint(pairs, wrapAround = true)` | No adjacent pair of positions holds two symbols from the same forbidden pair (order-independent) |
-| `FixedPositionsConstraint(lockedPositions)` | Specific positions hold specific symbols — a defensive re-check on top of whatever a strategy already guaranteed |
+| `FixedPositionsConstraint(lockedPositions)` | Specific positions hold specific symbols — useful for validating a hand-authored strip outside `ReelStripGenerator`, which already enforces `request.lockedPositions` as a built-in invariant |
 
 `symbolIds` (where present) restricts the check to a subset of symbols, defaulting to every symbol on the strip.
 `wrapAround` (where present) controls whether the strip's last and first positions are treated as adjacent/circular
@@ -158,9 +172,11 @@ interface ReelStripScorer {
 ```
 
 The default, `ViolationCountReelStripScorer`, scores `-violations.length` — higher is better, `0` (no violations) is
-the best possible score. Supply your own `ReelStripScorer` (via the constructor or per-call `request.scorer`) to
-prefer one imperfect candidate over another when nothing fully satisfies every constraint within `maxAttempts` — for
-example, weighting some constraints as more important than others.
+the best possible score, though a fully valid candidate is returned immediately without ever calling `scorer` (see
+above) — in practice `scorer` only ever compares invalid candidates against each other. Supply your own
+`ReelStripScorer` (via the constructor or per-call `request.scorer`) to prefer one imperfect candidate over another
+when nothing fully satisfies every constraint within `maxAttempts` — for example, weighting some constraints as more
+important than others.
 
 ## `ReelStripAnalyzer` — inspecting any strip
 
