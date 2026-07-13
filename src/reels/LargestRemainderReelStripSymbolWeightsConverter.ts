@@ -22,6 +22,12 @@ type SymbolQuota = {
 export class LargestRemainderReelStripSymbolWeightsConverter implements ReelStripSymbolWeightsConverter {
     private static readonly DEFAULT_ROUNDING_POLICY: ReelStripSymbolWeightsRoundingPolicy = "floor";
     private static readonly DEFAULT_TIE_BREAK_POLICY: ReelStripSymbolWeightsRemainderTieBreakPolicy = "symbol-id";
+    private static readonly VALID_ROUNDING_POLICIES: ReelStripSymbolWeightsRoundingPolicy[] = ["floor", "round", "ceil"];
+    private static readonly VALID_TIE_BREAK_POLICIES: ReelStripSymbolWeightsRemainderTieBreakPolicy[] = [
+        "symbol-id",
+        "declared-order",
+        "largest-weight-first",
+    ];
 
     private static validate(request: ReelStripSymbolWeightsConversionRequest): ReelStripConstraintViolation[] {
         const violations: ReelStripConstraintViolation[] = [];
@@ -51,6 +57,40 @@ export class LargestRemainderReelStripSymbolWeightsConverter implements ReelStri
             }
         }
 
+        // Individually finite/positive weights can still overflow once summed (e.g. two
+        // Number.MAX_VALUE entries) — the quota math below divides by this total, so a non-finite or
+        // non-positive sum must fail here rather than silently produce NaN/Infinity quotas.
+        const totalWeight = Object.values(symbolWeights).reduce((sum, weight) => sum + weight, 0);
+        if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
+            violations.push({
+                constraintId: "symbolWeights.weights",
+                message: `The sum of all weights must be a positive, finite number (got ${totalWeight}); check for numeric overflow.`,
+                details: {totalWeight},
+            });
+        }
+
+        if (
+            request.roundingPolicy !== undefined &&
+            !LargestRemainderReelStripSymbolWeightsConverter.VALID_ROUNDING_POLICIES.includes(request.roundingPolicy)
+        ) {
+            violations.push({
+                constraintId: "symbolWeights.roundingPolicy",
+                message: `roundingPolicy must be one of "floor", "round", "ceil", got "${request.roundingPolicy}".`,
+                details: {roundingPolicy: request.roundingPolicy},
+            });
+        }
+
+        if (
+            request.remainderTieBreakPolicy !== undefined &&
+            !LargestRemainderReelStripSymbolWeightsConverter.VALID_TIE_BREAK_POLICIES.includes(request.remainderTieBreakPolicy)
+        ) {
+            violations.push({
+                constraintId: "symbolWeights.remainderTieBreakPolicy",
+                message: `remainderTieBreakPolicy must be one of "symbol-id", "declared-order", "largest-weight-first", got "${request.remainderTieBreakPolicy}".`,
+                details: {remainderTieBreakPolicy: request.remainderTieBreakPolicy},
+            });
+        }
+
         return violations;
     }
 
@@ -76,27 +116,34 @@ export class LargestRemainderReelStripSymbolWeightsConverter implements ReelStri
         }
     }
 
+    // Every policy defines a single priority order (ascending = higher priority): the symbol with
+    // higher priority is more "deserving" of representation. `direction` decides what that priority
+    // is spent on: for +1 (direction 1) the highest-priority symbol receives the unit first; for -1
+    // (direction -1) the priority order is reversed, so the *lowest*-priority symbol loses a unit
+    // first and the highest-priority symbol is protected — a symbol never gets both "receives extra
+    // copies first" and "loses copies first" out of the same tie-break policy.
     private static compareForTieBreak(
         a: SymbolQuota,
         b: SymbolQuota,
         tieBreakPolicy: ReelStripSymbolWeightsRemainderTieBreakPolicy,
+        direction: 1 | -1,
         declaredOrder: Map<string, number>,
     ): number {
         if (tieBreakPolicy === "largest-weight-first" && a.weight !== b.weight) {
-            return b.weight - a.weight;
+            return direction * (b.weight - a.weight);
         }
         if (tieBreakPolicy === "declared-order") {
-            return (declaredOrder.get(a.symbolId) ?? 0) - (declaredOrder.get(b.symbolId) ?? 0);
+            return direction * ((declaredOrder.get(a.symbolId) ?? 0) - (declaredOrder.get(b.symbolId) ?? 0));
         }
         if (a.symbolId === b.symbolId) {
             return 0;
         }
-        return a.symbolId < b.symbolId ? -1 : 1;
+        return direction * (a.symbolId < b.symbolId ? -1 : 1);
     }
 
     // Ranks quotas by how much their fractional remainder (quota - count) favors receiving the next
     // +1 (direction 1, most-favored first) or losing a -1 (direction -1, least-favored first),
-    // breaking ties per `tieBreakPolicy`.
+    // breaking ties per `tieBreakPolicy` (see compareForTieBreak for the add/remove symmetry).
     private static rankByFractionalRemainder(
         quotas: SymbolQuota[],
         direction: 1 | -1,
@@ -108,7 +155,7 @@ export class LargestRemainderReelStripSymbolWeightsConverter implements ReelStri
             if (fractionalDifference !== 0) {
                 return direction * fractionalDifference;
             }
-            return LargestRemainderReelStripSymbolWeightsConverter.compareForTieBreak(a, b, tieBreakPolicy, declaredOrder);
+            return LargestRemainderReelStripSymbolWeightsConverter.compareForTieBreak(a, b, tieBreakPolicy, direction, declaredOrder);
         });
     }
 

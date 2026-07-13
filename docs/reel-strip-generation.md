@@ -181,10 +181,19 @@ Hare-quota apportionment — the same family of algorithm used for proportional 
 3. The gap between the sum of those initial counts and `length` (the "remainder") is corrected one unit at a time,
    always picking the symbol(s) whose quota was least well served by the initial rounding (largest fractional
    remainder gets the next `+1`; smallest gets the next `-1`).
-4. Ties in step 3 are broken deterministically per `remainderTieBreakPolicy`:
-   - `"symbol-id"` (default) — ascending symbol ID, independent of declaration order.
-   - `"declared-order"` — the order symbols first appear in `symbolWeights`.
-   - `"largest-weight-first"` — the heavier original weight wins; falls back to `"symbol-id"` if weights also tie.
+4. Ties in step 3 are broken deterministically per `remainderTieBreakPolicy`. Each policy defines a single priority
+   order — the higher-priority symbol is the one more "deserving" of representation:
+   - `"symbol-id"` (default) — ascending symbol ID is higher priority, independent of declaration order.
+   - `"declared-order"` — earlier appearance in `symbolWeights` is higher priority.
+   - `"largest-weight-first"` — the heavier original weight is higher priority; falls back to `"symbol-id"` if
+     weights also tie.
+
+   **The same priority order governs both directions, symmetrically**: when *adding* a unit (`remainder > 0`), the
+   highest-priority tied symbol receives it first. When *removing* a unit (`remainder < 0`, i.e. `roundingPolicy`
+   overshot `length`), the priority order is reversed — the **lowest**-priority tied symbol loses a unit first, and
+   the highest-priority symbol is protected. A policy never both "receives extra copies first" and "loses copies
+   first"; if `"largest-weight-first"` favors the heavier symbol when adding, it also protects that same heavier
+   symbol from losing a count when removing.
 
 The same `symbolWeights`, `length`, and policies always produce the same `symbolCounts` — swap in your own
 `ReelStripSymbolWeightsConverter` (the generator's 4th constructor argument) for a different apportionment algorithm
@@ -217,10 +226,19 @@ the converter yourself unless you want the counts *before* generation.
 
 ### Validation
 
-Rejected up front, mirroring `generate()`'s own malformed-request handling (`success: false`, `attemptsUsed: 0`, a
-single diagnostic, no candidate ever generated): a non-positive/non-integer `length`; an empty `symbolWeights`; and
-any weight that is zero, negative, `NaN`, or `Infinity` (weights must be positive finite numbers — to exclude a
-symbol entirely, omit it from `symbolWeights` rather than giving it a weight of `0`).
+Rejected up front, mirroring `generate()`'s own malformed-request handling (`success: false`, no candidate/counts ever
+computed):
+
+- A non-positive/non-integer `length`.
+- An empty `symbolWeights`.
+- Any weight that is zero, negative, `NaN`, or `Infinity` (weights must be positive finite numbers — to exclude a
+  symbol entirely, omit it from `symbolWeights` rather than giving it a weight of `0`).
+- **The sum of all weights**, even if every individual weight is finite — two `Number.MAX_VALUE` weights, for
+  example, are each individually valid but overflow to `Infinity` once summed, which would otherwise silently corrupt
+  every quota (`weight / totalWeight * length`). The sum must be finite and positive.
+- **An unrecognized `roundingPolicy` or `remainderTieBreakPolicy` string.** TypeScript callers can't construct one of
+  these outside the literal union, but anything crossing a JS/JSON/`any`-typed boundary can — an unknown value is
+  rejected with a violation rather than silently falling back to `"floor"`/`"symbol-id"`.
 
 ## Constraints (`ReelStripConstraint`)
 

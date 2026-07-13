@@ -62,13 +62,35 @@ describe("LargestRemainderReelStripSymbolWeightsConverter", () => {
         expect(Object.values(result.symbolCounts!).reduce((sum, count) => sum + count, 0)).toBe(10);
     });
 
-    test("roundingPolicy = ceil overshoots and corrects downward, removing from the least-favored symbols first", () => {
+    test("roundingPolicy = ceil overshoots and corrects downward, protecting the same symbol a tie-break policy would have favored when adding", () => {
         // Each quota is 4/3 = 1.333..., ceil gives 2 each (sum 6, remainder -2). All three tie on
-        // fractional remainder, so "symbol-id" order removes from "A" then "B" first.
+        // fractional remainder. "symbol-id" would give an *add* tie to "A" first (see the default
+        // tie-break test above) -- for *removal* that same policy protects "A" instead, so "C" and
+        // "B" (the two least-favored) lose a unit first.
         const result = converter.convert({length: 4, symbolWeights: {A: 1, B: 1, C: 1}, roundingPolicy: "ceil"});
 
-        expect(result.symbolCounts).toEqual({A: 1, B: 1, C: 2});
+        expect(result.symbolCounts).toEqual({A: 2, B: 1, C: 1});
         expect(Object.values(result.symbolCounts!).reduce((sum, count) => sum + count, 0)).toBe(4);
+    });
+
+    test("negative remainder + largest-weight-first protects the heavier symbol's count instead of removing it first", () => {
+        // quota(A) = 3/8 * 4 = 1.5, quota(B) = 5/8 * 4 = 2.5 -- ceil gives A=2, B=3 (sum 5, remainder
+        // -1); both tie on fractional remainder (-0.5) despite the unequal weights (3 vs 5).
+        const bySymbolId = converter.convert({length: 4, symbolWeights: {A: 3, B: 5}, roundingPolicy: "ceil"});
+        // Default "symbol-id" protects the alphabetically-first symbol ("A"), so "B" loses the unit.
+        expect(bySymbolId.symbolCounts).toEqual({A: 2, B: 2});
+
+        const byWeight = converter.convert({
+            length: 4,
+            symbolWeights: {A: 3, B: 5},
+            roundingPolicy: "ceil",
+            remainderTieBreakPolicy: "largest-weight-first",
+        });
+        // "largest-weight-first" must protect the heavier symbol ("B", weight 5) from losing its
+        // count -- the lighter "A" (weight 3) loses the unit instead. This is the inverse of the
+        // add-direction test above, where the heavier symbol received the extra unit first; the same
+        // policy must never both "receive first" and "lose first".
+        expect(byWeight.symbolCounts).toEqual({A: 1, B: 3});
     });
 
     test("roundingPolicy = round rounds each quota to the nearest integer before remainder correction", () => {
@@ -90,7 +112,9 @@ describe("LargestRemainderReelStripSymbolWeightsConverter", () => {
             const result = converter.convert({length: 5, symbolWeights: {}});
 
             expect(result.success).toBe(false);
-            expect(result.violations).toEqual([expect.objectContaining({constraintId: "symbolWeights.weights"})]);
+            expect(result.violations).toContainEqual(
+                expect.objectContaining({constraintId: "symbolWeights.weights", message: expect.stringContaining("at least one symbol")}),
+            );
         });
 
         test("rejects a zero weight", () => {
@@ -106,9 +130,11 @@ describe("LargestRemainderReelStripSymbolWeightsConverter", () => {
             const result = converter.convert({length: 5, symbolWeights: {A: -1, B: 1}});
 
             expect(result.success).toBe(false);
-            expect(result.violations).toEqual([
+            // The sum (-1 + 1 = 0) also fails the "positive" check, so this legitimately reports two
+            // violations -- the individual weight and the resulting non-positive total.
+            expect(result.violations).toContainEqual(
                 expect.objectContaining({constraintId: "symbolWeights.weights", details: {symbolId: "A", weight: -1}}),
-            ]);
+            );
         });
 
         test("rejects a NaN weight", () => {
@@ -131,7 +157,46 @@ describe("LargestRemainderReelStripSymbolWeightsConverter", () => {
         test("reports one violation per invalid weight, plus any request-level violations, in a single pass", () => {
             const result = converter.convert({length: -1, symbolWeights: {A: 0, B: -1, C: 1}});
 
-            expect(result.violations).toHaveLength(3); // length, A, B (C is valid)
+            // length, A (invalid weight), B (invalid weight), and the total (0 + -1 + 1 = 0, not positive).
+            expect(result.violations).toHaveLength(4);
+        });
+
+        test("rejects an unrecognized roundingPolicy instead of silently falling back to \"floor\"", () => {
+            const result = converter.convert({
+                length: 5,
+                symbolWeights: {A: 1, B: 1},
+                roundingPolicy: "banker's-rounding" as never,
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.symbolCounts).toBeUndefined();
+            expect(result.violations).toEqual([
+                expect.objectContaining({constraintId: "symbolWeights.roundingPolicy", details: {roundingPolicy: "banker's-rounding"}}),
+            ]);
+        });
+
+        test("rejects an unrecognized remainderTieBreakPolicy instead of silently falling back to \"symbol-id\"", () => {
+            const result = converter.convert({
+                length: 5,
+                symbolWeights: {A: 1, B: 1},
+                remainderTieBreakPolicy: "random" as never,
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.symbolCounts).toBeUndefined();
+            expect(result.violations).toEqual([
+                expect.objectContaining({constraintId: "symbolWeights.remainderTieBreakPolicy", details: {remainderTieBreakPolicy: "random"}}),
+            ]);
+        });
+
+        test("rejects a weight sum that overflows to Infinity, even though every individual weight is finite", () => {
+            const result = converter.convert({length: 5, symbolWeights: {A: Number.MAX_VALUE, B: Number.MAX_VALUE}});
+
+            expect(result.success).toBe(false);
+            expect(result.symbolCounts).toBeUndefined();
+            expect(result.violations).toEqual([
+                expect.objectContaining({constraintId: "symbolWeights.weights", details: {totalWeight: Infinity}}),
+            ]);
         });
     });
 });
