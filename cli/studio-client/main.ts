@@ -258,7 +258,7 @@ async function main(): Promise<void> {
     // whenever a (new) project becomes active (see showProjectDashboard below), same as Inspect's own
     // per-project state.
     let currentSimulationId: string | undefined;
-    let lastSimulationParams: {rounds: number; seed?: string} | undefined;
+    let lastSimulationParams: {rounds: number; seed?: string; workers: number} | undefined;
     // Mirrors the most recently rendered job's isSimulationActive() — cheaper than re-deriving it from
     // the DOM, and used only to gate the Close-project/Open-project confirmation prompts (see
     // confirmDangerousAction.ts) so they fire exclusively when there's actually something to lose.
@@ -481,10 +481,10 @@ async function main(): Promise<void> {
             });
     };
 
-    const runSimulation = (rounds: number, seed?: string): void => {
-        lastSimulationParams = {rounds, seed};
-        renderSimulationProgress(elements, {status: "queued", roundsCompleted: 0, rounds, percent: 0, durationMs: 0});
-        startSimulation(fetchImpl, rounds, seed)
+    const runSimulation = (rounds: number, seed?: string, workers = 1): void => {
+        lastSimulationParams = {rounds, seed, workers};
+        renderSimulationProgress(elements, {status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
+        startSimulation(fetchImpl, rounds, seed, workers)
             .then((result) => {
                 if (result.status === "conflict") {
                     currentSimulationId = result.activeJobId;
@@ -1186,7 +1186,8 @@ async function main(): Promise<void> {
         event.preventDefault();
         const rounds = Number(elements.simulationRoundsInput.value);
         const seed = elements.simulationSeedInput.value.trim();
-        runSimulation(rounds, seed.length > 0 ? seed : undefined);
+        const workers = Number(elements.simulationWorkersInput.value);
+        runSimulation(rounds, seed.length > 0 ? seed : undefined, workers);
     });
 
     elements.simulationCancelButton.addEventListener("click", () => {
@@ -1207,7 +1208,7 @@ async function main(): Promise<void> {
         if (lastSimulationParams === undefined) {
             return;
         }
-        runSimulation(lastSimulationParams.rounds, lastSimulationParams.seed);
+        runSimulation(lastSimulationParams.rounds, lastSimulationParams.seed, lastSimulationParams.workers);
     });
 }
 

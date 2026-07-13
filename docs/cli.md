@@ -431,6 +431,7 @@ Loads a [game package](game-packages.md) with `loadPokieGame` and runs an [aggre
 
 ```
 pokie sim ./crazy-fruits --rounds 10000 --seed demo --out report.json
+pokie sim ./crazy-fruits --rounds 1000000 --seed demo --workers 4 --out report.json
 ```
 
 Options:
@@ -443,6 +444,15 @@ Options:
   with an unseeded `Math.random()` at construction time, independently of any RNG passed to
   `SymbolsCombinationsGenerator` — a game package needs fixed (non-shuffled) symbol sequences, e.g. via
   `config.setSymbolsSequences(...)`, for `--seed` to make a whole run reproducible, not just individual reel stops.
+- `--workers <number>` — split `--rounds` across this many worker threads (default `1`; must be an integer between
+  1 and `MAX_SIMULATION_WORKERS`, currently 32). See
+  [Parallel simulation](simulation.md#parallel-simulation-workers) for the full mechanism, reproducibility
+  guarantees, and memory/CPU tradeoffs — the short version: `--workers 1` is the original, unchanged sequential
+  path; `--workers N > 1` runs N real OS threads, each independently loading `<packageRoot>` and playing its own
+  share of the rounds, merged back into one report. **`--workers > 1` requires `<packageRoot>` to be a real,
+  on-disk game package** — each worker thread calls `loadPokieGame` on it independently, so this doesn't work
+  against an in-memory/mocked game (not a concern for normal CLI use, only for embedding `pokie sim`'s underlying
+  API in your own tooling).
 - `--out <file>` — write the JSON report to `<file>`.
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary. Independent of
   `--out`: combine both to see the report and save it in the same run.
@@ -466,12 +476,15 @@ The JSON report shape:
     maxWin: number;
     durationMs: number;
     spinsPerSecond: number;
+    workers?: number;            // how many worker threads the run was split across (1 by default)
     reproducibility?: {
         game: {id: string; name: string; version: string};
         seed: string | null;
         requestedRounds: number;
         actualRounds: number;
         command: string;         // e.g. `pokie sim <packageRoot> --rounds 10000 --seed demo`, ready to re-run
+                                  // (includes `--workers N` when N > 1)
+        workerSeedStrategy?: string; // human-readable description of how per-worker seeds were derived
     };
     warnings?: string[];         // e.g. no seed given, low rounds, 0 hit frequency/maxWin/totalBet, early stop
     recommendations?: string[];  // simple next-step hints, e.g. use --seed, raise --rounds, run pokie diff/--out
@@ -1676,11 +1689,13 @@ The Dashboard itself has four states, all handled explicitly by the frontend:
 
 The **Simulation** tab runs a [`pokie sim`](#pokie-sim-packageroot)-equivalent simulation against the active
 project and shows a human-readable report — without ever shelling out to `pokie sim` or reimplementing its logic.
-A form asks for **rounds** (required, a positive integer) and an optional **seed**, same as `pokie sim
---rounds/--seed`; running it shows **queued** → **running** (with a live rounds-completed/total progress line and
+A form asks for **rounds** (required, a positive integer), an optional **seed**, and **workers** (a positive
+integer, default `1`), same as `pokie sim --rounds/--seed/--workers`; running it shows **queued** → **running**
+(with a live rounds-completed/total progress line — aggregated across every worker when `workers > 1` — and
 elapsed duration) → **completed**/**failed**/**cancelled**. A **Cancel** button is available while
-queued/running (asking for confirmation before it actually cancels), and once the job reaches a terminal state, a
-**Run again with the same parameters** button re-submits the exact same rounds/seed.
+queued/running (asking for confirmation before it actually cancels — see below for what cancelling actually stops
+when `workers > 1`), and once the job reaches a terminal state, a **Run again with the same parameters** button
+re-submits the exact same rounds/seed/workers.
 
 The report shown on completion includes at minimum: game id/version, rounds (and requested rounds, if the game
 stopped itself early), seed, total bet, total payout, RTP, hit frequency, volatility/standard deviation, the RTP
@@ -1691,12 +1706,16 @@ support round categorization), and any **warnings**/**reproducibility** command 
 Only one simulation may be queued/running per project at a time — starting a second one while the first is still
 active returns a `409` naming the already-active job's id, rather than silently starting a competing run.
 
-Because [`AggregateSimulationRunner`](#pokie-sim-packageroot) is a synchronous, uninterruptible loop with no
-progress/cancellation hooks of its own, Studio drives it in bounded chunks against the same session (merging each
-chunk's statistics via `SimulationAccumulator.merge()`, which already supports this), yielding once per chunk. This
-is what makes progress polling and genuine `AbortSignal`-based cancellation possible — a request only ever stops
-between chunks, not mid-chunk, but that's the only granularity a synchronous simulation can safely offer either
-way. Stopping Studio itself (`Ctrl+C`) cancels every still-active simulation the same way.
+Studio drives every simulation through the same [`ParallelSimulationRunner`](simulation.md#parallel-simulation-workers)
+`pokie sim --workers` uses — not a separate implementation of its own. For `workers === 1` (the default), that
+means the same bounded-chunks-with-a-yield-between-them approach as before (progress/cancellation only take effect
+between chunks, since [`AggregateSimulationRunner`](#pokie-sim-packageroot) itself is a synchronous,
+uninterruptible loop with no hooks of its own); for `workers > 1`, real worker threads are spawned per
+`ParallelSimulationRunner`'s own rules (see [Worker package-loading limitations](simulation.md#worker-package-loading-limitations)
+— this is why Workers is only usable against a real, on-disk project, which every open Studio project already
+is), and cancelling terminates every one of them immediately rather than waiting for a chunk boundary. Either way,
+a cancelled/failed job never surfaces a partial report as if it were a successful one. Stopping Studio itself
+(`Ctrl+C`) cancels every still-active simulation the same way.
 
 #### Reports
 
@@ -1903,28 +1922,30 @@ client, even for a load/validation failure.
   [`pokie inspect`](#pokie-inspect-packageroot)'s JSON), or `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/validate` — the active project's `PokieGamePackageValidationReport` (same shape as
   [`pokie validate`](#pokie-validate-packageroot)'s JSON), or `409 {"error": "No active project."}` in Home mode.
-- `POST /api/project/simulations` `{"rounds": number, "seed"?: string}` — starts a simulation for the active
-  project and returns immediately (`202`) with the new job in `"queued"` status; the simulation itself runs in the
-  background, never blocking this request. `400 {"error": "..."}` for an invalid `rounds` (missing, not an
-  integer, less than 1, or above the safe Studio ceiling of 2,000,000 — see
-  `MAX_STUDIO_SIMULATION_ROUNDS`) or an invalid `seed` (present but empty/not a string); `409
+- `POST /api/project/simulations` `{"rounds": number, "seed"?: string, "workers"?: number}` — starts a simulation
+  for the active project and returns immediately (`202`) with the new job in `"queued"` status; the simulation
+  itself runs in the background, never blocking this request. `workers` defaults to `1` when omitted. `400
+  {"error": "..."}` for an invalid `rounds` (missing, not an integer, less than 1, or above the safe Studio
+  ceiling of 2,000,000 — see `MAX_STUDIO_SIMULATION_ROUNDS`), an invalid `seed` (present but empty/not a string),
+  or an invalid `workers` (present but not an integer between 1 and `MAX_SIMULATION_WORKERS`, currently 32); `409
   {"error": "No active project."}` in Home mode; `409 {"error": "...", "activeJobId": "..."}` if a simulation is
   already queued/running for this project — a retried/duplicated request can never spawn a competing job or
   corrupt the one already in flight.
 - `GET /api/project/simulations/:id` — that job's current state:
-  `{id, status, rounds, seed?, startedAt, roundsCompleted, durationMs, report?, statistics?, error?}` — `status` is
+  `{id, status, rounds, seed?, workers, startedAt, roundsCompleted, durationMs, report?, statistics?, error?}` — `status` is
   `"queued"`/`"running"`/`"completed"`/`"failed"`/`"cancelled"`; `report` (a full `SimulationReport`, see
   [`pokie sim`](#pokie-sim-packageroot)) and `statistics` (the extra volatility/standard-deviation/confidence-
   interval fields `SimulationAccumulator` computes but `SimulationReport` itself doesn't carry) are only present
   once `status` is `"completed"`; `error` (a safe message, never a stack trace) only once `status` is `"failed"`.
   `404 {"error": "..."}` for an unknown id.
 - `DELETE /api/project/simulations/:id` — requests cancellation of a queued/running job (returns its current
-  view — the record only actually flips to `"cancelled"` once the chunk loop notices, on the next
-  `GET`/poll); idempotent on an already-terminal job (just returns it unchanged, not an error). `404
-  {"error": "..."}` for an unknown id.
+  view — the record only actually flips to `"cancelled"` once that's noticed, on the next `GET`/poll: at the next
+  chunk boundary for `workers === 1`, or as soon as its worker threads are terminated for `workers > 1`);
+  idempotent on an already-terminal job (just returns it unchanged, not an error). `404 {"error": "..."}` for an
+  unknown id.
 - `GET /api/project/reports` — the active project's completed simulations, most-recently-completed first:
-  `{id, status: "completed", game: {id, version}, requestedRounds, actualRounds, seed?, rtp, hitFrequency, maxWin,
-  startedAt, completedAt, durationMs, hasWarnings}[]`. A failed/cancelled job never appears here (it has no report
+  `{id, status: "completed", game: {id, version}, requestedRounds, actualRounds, seed?, workers, rtp, hitFrequency,
+  maxWin, startedAt, completedAt, durationMs, hasWarnings}[]`. A failed/cancelled job never appears here (it has no report
   to summarize). `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/reports/:id` — that simulation's full `SimulationReport` (same shape as
   [`pokie sim`](#pokie-sim-packageroot)'s own JSON). `404 {"error": "..."}` for an unknown id **or** one that

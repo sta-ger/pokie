@@ -1,16 +1,8 @@
-import {
-    AggregateSimulationRunner,
-    loadPokieGame,
-    PokieGame,
-    SimulationAccumulator,
-    SimulationBreakdownComponent,
-    SimulationReport,
-    SimulationReportBuilder,
-    SimulationReportBuilding,
-} from "pokie";
+import {loadPokieGame, SimulationReport, SimulationReportBuilder, SimulationReportBuilding} from "pokie";
 import crypto from "crypto";
+import {ParallelSimulationRunner, ParallelSimulationRunOptions} from "../../simulation/parallel/ParallelSimulationRunner.js";
+import {SimulationCancelledError} from "../../simulation/parallel/SimulationCancelledError.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
-import {mergeBreakdownComponents} from "./mergeBreakdownComponents.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
 import type {StudioSimulationJobView} from "./StudioSimulationJobView.js";
 import type {StudioSimulationRepository} from "./StudioSimulationRepository.js";
@@ -32,13 +24,13 @@ export type GetSimulationReportResult =
     // `jobStatus` tells the caller which, so it can phrase a precise message either way.
     | {status: "not-ready"; jobStatus: StudioSimulationStatus};
 
-// Drives AggregateSimulationRunner/SimulationAccumulator/SimulationReportBuilder — the exact same
-// simulation services `pokie sim` calls — directly, in chunks, so a long simulation never blocks the
-// HTTP server's event loop (see run()'s own doc comment for why chunking is unavoidable here: none
-// of those services have a native async/resumable/abortable API of their own). No CLI command is
-// ever spawned as a subprocess, and none of their logic is reimplemented — only the chunk-merging
-// glue (mergeBreakdownComponents) is new, since a resumable run wasn't something any of them
-// supported natively.
+// Drives the shared ParallelSimulationRunner — the exact same object `pokie sim --workers` calls —
+// rather than its own bespoke worker/chunk implementation. workers===1 (Studio's default) runs
+// in-process in bounded chunks (see ParallelSimulationRunner.runInProcess()) so a long simulation
+// never blocks the HTTP server's event loop; workers>1 spawns real worker threads. Either way,
+// progress/cancellation come from the exact same onProgress callback / AbortSignal contract, so this
+// class is left with only the job-lifecycle bookkeeping (queued/running/completed/failed/cancelled,
+// retention, per-project conflict checks) — none of the simulation logic itself.
 export class StudioSimulationService {
     private readonly repository: StudioSimulationRepository;
     private readonly loadGame: typeof loadPokieGame;
@@ -47,6 +39,14 @@ export class StudioSimulationService {
     private readonly now: () => number;
     private readonly yieldToEventLoop: () => Promise<void>;
     private readonly createId: () => string;
+    // Where the compiled simulationWorkerEntry.js lives — no default (see
+    // SimulationWorkerCoordinator's own doc comment); only needed when a request's workers > 1.
+    private readonly workerEntryUrl: URL | undefined;
+    private readonly createParallelSimulationRunner: (
+        packageRoot: string,
+        rounds: number,
+        options: ParallelSimulationRunOptions,
+    ) => ParallelSimulationRunner;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -59,6 +59,12 @@ export class StudioSimulationService {
                 setImmediate(resolve);
             }),
         createId: () => string = () => crypto.randomUUID(),
+        workerEntryUrl: URL | undefined = undefined,
+        createParallelSimulationRunner: (
+            packageRoot: string,
+            rounds: number,
+            options: ParallelSimulationRunOptions,
+        ) => ParallelSimulationRunner = (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, options),
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -67,6 +73,8 @@ export class StudioSimulationService {
         this.now = now;
         this.yieldToEventLoop = yieldToEventLoop;
         this.createId = createId;
+        this.workerEntryUrl = workerEntryUrl;
+        this.createParallelSimulationRunner = createParallelSimulationRunner;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
@@ -85,6 +93,7 @@ export class StudioSimulationService {
             status: "queued",
             rounds: request.rounds,
             seed: request.seed,
+            workers: request.workers ?? 1,
             startedAt: this.now(),
             roundsCompleted: 0,
             durationMs: 0,
@@ -92,10 +101,18 @@ export class StudioSimulationService {
         };
         this.repository.save(record);
 
-        this.run(record).catch(() => {
-            // run() already catches every failure into the record's own "failed" status (see
-            // below) — this is an extra safety net only, so a bug there can never surface as an
-            // unhandled promise rejection and crash the process.
+        // Deferred via queueMicrotask rather than called directly: run() sets record.status to
+        // "running" before its own first await (calling createParallelSimulationRunner/.run()
+        // synchronously starts that work), so calling it inline here would let that synchronous
+        // prefix flip the status before this function's own `return` below runs — a caller polling
+        // status right after POST would then never observe "queued" at all. Queuing it instead
+        // guarantees run() doesn't execute until after start() has already returned.
+        queueMicrotask(() => {
+            this.run(record).catch(() => {
+                // run() already catches every failure into the record's own "failed" status (see
+                // below) — this is an extra safety net only, so a bug there can never surface as an
+                // unhandled promise rejection and crash the process.
+            });
         });
 
         return {status: "created", job: toStudioSimulationJobView(record)};
@@ -121,8 +138,8 @@ export class StudioSimulationService {
     }
 
     // Best-effort: aborts every currently active job — called from StudioServer.stop() so a stopped
-    // Studio process never leaves a simulation's chunk loop scheduled against an event loop nobody is
-    // serving HTTP requests on anymore.
+    // Studio process never leaves a simulation (or its worker threads) running against an event loop
+    // nobody is serving HTTP requests on anymore.
     public cancelAll(): void {
         for (const record of this.repository.listActive()) {
             record.abortController.abort();
@@ -131,10 +148,11 @@ export class StudioSimulationService {
 
     // Same reasoning as cancelAll(), scoped to one project — called from StudioServer whenever Studio
     // switches away from `projectRoot` (a different project opened, or back to Home), so a simulation
-    // for the project just left doesn't keep running its chunk loop unseen and unreachable (its own
-    // job/report becomes unreachable through this project's own routes the moment the switch happens
-    // anyway — see getReport()/listReports()'s own projectRoot scoping — so leaving it running would
-    // only waste CPU, never remain usable). A no-op when nothing is active for that project.
+    // for the project just left doesn't keep running (or keep its worker threads alive) unseen and
+    // unreachable (its own job/report becomes unreachable through this project's own routes the
+    // moment the switch happens anyway — see getReport()/listReports()'s own projectRoot scoping — so
+    // leaving it running would only waste CPU, never remain usable). A no-op when nothing is active
+    // for that project.
     public cancelActiveForProject(projectRoot: string): void {
         const record = this.repository.findActiveByProjectRoot(projectRoot);
         record?.abortController.abort();
@@ -187,6 +205,7 @@ export class StudioSimulationService {
             requestedRounds: report.requestedRounds,
             actualRounds: report.rounds,
             seed: record.seed,
+            workers: report.workers ?? record.workers,
             rtp: report.rtp,
             hitFrequency: report.hitFrequency,
             maxWin: report.maxWin,
@@ -197,101 +216,59 @@ export class StudioSimulationService {
         };
     }
 
-    // Chunked rather than a single `new AggregateSimulationRunner(session, rounds).run()` call: that
-    // runner is a tight synchronous loop with no yield points and no abort/progress hooks of its own,
-    // so calling it once for the full round count would block this process's entire event loop for
-    // the whole simulation — no other request (a status poll, a cancel, even an unrelated Inspect
-    // call) could be served until it finished. Driving it in bounded chunks against the same session,
-    // merging each chunk's SimulationAccumulator (already-merge-capable) and breakdown into a running
-    // total, and yielding once per chunk is what makes progress polling and real mid-run cancellation
-    // possible at all.
     private async run(record: StudioSimulationJobRecord): Promise<void> {
-        let game: PokieGame;
-        try {
-            game = await this.loadGame(record.projectRoot);
-        } catch (error) {
-            this.fail(record, error);
-            return;
-        }
-
         if (record.abortController.signal.aborted) {
             this.cancelRecord(record);
             return;
         }
-
         record.status = "running";
 
-        let session;
-        try {
-            session = game.createSession(record.seed === undefined ? undefined : {seed: record.seed});
-            // Simulations measure RTP/volatility, not risk of ruin — same as `pokie sim` itself.
-            session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
-        } catch (error) {
-            this.fail(record, error);
-            return;
-        }
-
-        const accumulator = new SimulationAccumulator();
-        let breakdown: Record<string, SimulationBreakdownComponent> | undefined;
-        let roundsRemaining = record.rounds;
-
-        try {
-            while (roundsRemaining > 0) {
-                if (record.abortController.signal.aborted) {
-                    this.cancelRecord(record);
-                    return;
-                }
-
-                const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
-                const runner = new AggregateSimulationRunner(session, chunkRounds);
-                const chunkAccumulator = runner.run();
-                accumulator.merge(chunkAccumulator);
-                const chunkBreakdown = runner.getBreakdownStatistics();
-                if (chunkBreakdown) {
-                    breakdown = mergeBreakdownComponents(breakdown, chunkBreakdown);
-                }
-
-                const chunkRoundsPlayed = chunkAccumulator.getStatistics().rounds;
-                record.roundsCompleted += chunkRoundsPlayed;
+        const runner = this.createParallelSimulationRunner(record.projectRoot, record.rounds, {
+            seed: record.seed,
+            workers: record.workers,
+            loadGame: this.loadGame,
+            chunkSize: this.chunkSize,
+            yieldToEventLoop: this.yieldToEventLoop,
+            signal: record.abortController.signal,
+            workerEntryUrl: this.workerEntryUrl,
+            onProgress: (roundsCompleted) => {
+                record.roundsCompleted = roundsCompleted;
                 record.durationMs = this.now() - record.startedAt;
+            },
+        });
 
-                // The session stopped playing on its own (canPlayNextGame() returning false) before
-                // using every round in this chunk — same "actual rounds can be less than requested"
-                // behavior `pokie sim` already has. No point scheduling further chunks once that's
-                // happened.
-                if (chunkRoundsPlayed < chunkRounds) {
-                    break;
-                }
-
-                roundsRemaining -= chunkRounds;
-                if (roundsRemaining > 0) {
-                    await this.yieldToEventLoop();
-                }
-            }
+        let result;
+        try {
+            result = await runner.run();
         } catch (error) {
+            if (error instanceof SimulationCancelledError) {
+                this.cancelRecord(record);
+                return;
+            }
             this.fail(record, error);
             return;
         }
 
-        const statistics = accumulator.getStatistics();
         const report: SimulationReport = this.reportBuilder.build({
-            manifest: game.getManifest(),
+            manifest: result.manifest,
             requestedRounds: record.rounds,
             seed: record.seed,
-            statistics,
+            statistics: result.statistics,
             durationMs: record.durationMs,
             packageRoot: record.projectRoot,
-            breakdown,
+            breakdown: result.breakdown,
+            workers: result.workers,
+            workerSeedStrategy: result.workerSeedStrategy,
         });
 
         record.status = "completed";
         record.report = report;
         record.statistics = {
-            volatility: statistics.volatility,
-            payoutStandardDeviation: statistics.payoutStandardDeviation,
-            returnStandardDeviation: statistics.returnStandardDeviation,
-            averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
-            rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
+            volatility: result.statistics.volatility,
+            payoutStandardDeviation: result.statistics.payoutStandardDeviation,
+            returnStandardDeviation: result.statistics.returnStandardDeviation,
+            averagePayoutConfidenceInterval95: result.statistics.averagePayoutConfidenceInterval95,
+            rtpConfidenceInterval95: result.statistics.rtpConfidenceInterval95,
         };
         this.markTerminal(record);
     }

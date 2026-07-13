@@ -1,14 +1,8 @@
-import {
-    AggregateSimulationRunner,
-    loadPokieGame,
-    PokieGame,
-    SimulationConfig,
-    SimulationReport,
-    SimulationReportBuilder,
-    SimulationReportBuilding,
-} from "pokie";
+import {loadPokieGame, PokieGame, SimulationConfig, SimulationReport, SimulationReportBuilder, SimulationReportBuilding} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {MAX_SIMULATION_WORKERS} from "../simulation/parallel/ParallelSimulationLimits.js";
+import {ParallelSimulationRunner, ParallelSimulationRunOptions} from "../simulation/parallel/ParallelSimulationRunner.js";
 
 type SimFormat = "summary" | "json";
 
@@ -18,23 +12,44 @@ type SimOptions = {
     seed?: string;
     out?: string;
     format: SimFormat;
+    workers: number;
 };
 
-const USAGE = "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--out <file>] [--format json]";
+const USAGE =
+    "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--out <file>] [--format json]";
 
 export class SimCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
     private readonly writeFile: (file: string, contents: string) => void;
     private readonly reportBuilder: SimulationReportBuilding;
+    // Where the compiled simulationWorkerEntry.js lives — no default on purpose, same reason
+    // ClientCommand/StudioCommand's clientRoot/studioRoot have none: resolving it needs
+    // import.meta.url, which only works in cli/pokie.ts's real ESM build (see its
+    // ownSimulationWorkerEntryUrl()). Only needed when --workers > 1 is actually requested; every
+    // --workers 1 (the default) run never touches it (see ParallelSimulationRunner.runInProcess()).
+    private readonly workerEntryUrl: URL | undefined;
+    private readonly createParallelSimulationRunner: (
+        packageRoot: string,
+        rounds: number,
+        options: ParallelSimulationRunOptions,
+    ) => ParallelSimulationRunner;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         reportBuilder: SimulationReportBuilding = new SimulationReportBuilder(),
+        workerEntryUrl: URL | undefined = undefined,
+        createParallelSimulationRunner: (
+            packageRoot: string,
+            rounds: number,
+            options: ParallelSimulationRunOptions,
+        ) => ParallelSimulationRunner = (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, options),
     ) {
         this.loadGame = loadGame;
         this.writeFile = writeFile;
         this.reportBuilder = reportBuilder;
+        this.workerEntryUrl = workerEntryUrl;
+        this.createParallelSimulationRunner = createParallelSimulationRunner;
     }
 
     public getName(): string {
@@ -48,25 +63,29 @@ export class SimCommand implements CliCommandHandling {
     public async run(args: string[]): Promise<void> {
         const options = this.parseArgs(args);
 
-        const game = await this.loadGame(options.packageRoot);
-        const session = game.createSession(options.seed === undefined ? undefined : {seed: options.seed});
-        // Simulations measure RTP/volatility, not risk of ruin — give the session a bankroll large
-        // enough that `--rounds` is never truncated by running out of credits mid-run.
-        session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
-
         const startedAt = Date.now();
-        const runner = new AggregateSimulationRunner(session, options.rounds);
-        const statistics = runner.run().getStatistics();
+        // workers===1 runs fully in-process (using this.loadGame, so an injected in-memory fake game
+        // keeps working exactly as before --workers existed); workers>1 always (re)loads the package
+        // for real inside separate worker threads — see ParallelSimulationRunner's own doc comment.
+        const runner = this.createParallelSimulationRunner(options.packageRoot, options.rounds, {
+            seed: options.seed,
+            workers: options.workers,
+            loadGame: this.loadGame,
+            workerEntryUrl: this.workerEntryUrl,
+        });
+        const result = await runner.run();
         const durationMs = Date.now() - startedAt;
 
         const report = this.reportBuilder.build({
-            manifest: game.getManifest(),
+            manifest: result.manifest,
             requestedRounds: options.rounds,
             seed: options.seed,
-            statistics,
+            statistics: result.statistics,
             durationMs,
             packageRoot: options.packageRoot,
-            breakdown: runner.getBreakdownStatistics(),
+            breakdown: result.breakdown,
+            workers: result.workers,
+            workerSeedStrategy: result.workerSeedStrategy,
         });
 
         if (options.out) {
@@ -93,6 +112,7 @@ export class SimCommand implements CliCommandHandling {
         let seed: string | undefined;
         let out: string | undefined;
         let format: SimFormat = "summary";
+        let workers = 1;
 
         for (let i = 0; i < rest.length; i++) {
             const flag = rest[i];
@@ -112,6 +132,15 @@ export class SimCommand implements CliCommandHandling {
                         throw new Error(`--seed requires a value. ${USAGE}`);
                     }
                     seed = value;
+                    i++;
+                    break;
+                }
+                case "--workers": {
+                    const parsed = Number(value);
+                    if (value === undefined || !Number.isInteger(parsed) || parsed < 1 || parsed > MAX_SIMULATION_WORKERS) {
+                        throw new Error(`--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. ${USAGE}`);
+                    }
+                    workers = parsed;
                     i++;
                     break;
                 }
@@ -136,7 +165,7 @@ export class SimCommand implements CliCommandHandling {
             }
         }
 
-        return {packageRoot, rounds, seed, out, format};
+        return {packageRoot, rounds, seed, out, format, workers};
     }
 
     private printSummary(report: SimulationReport): void {
@@ -146,6 +175,7 @@ export class SimCommand implements CliCommandHandling {
         if (report.seed !== null) {
             console.log(`  seed            ${report.seed}`);
         }
+        console.log(`  workers         ${report.workers ?? 1}`);
         console.log(`  total bet       ${report.totalBet.toFixed(2)}`);
         console.log(`  total win       ${report.totalWin.toFixed(2)}`);
         console.log(`  rtp             ${(report.rtp * 100).toFixed(2)}%`);

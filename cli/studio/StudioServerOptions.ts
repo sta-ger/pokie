@@ -18,6 +18,12 @@ export type StudioServerOptions = {
     // Where the compiled cli/studio-client assets live (dist/cli/studio-client at runtime) — same
     // "computed once by cli/pokie.ts, passed in" pattern as PokieClientServer's clientRoot.
     studioRoot: string;
+    // Where the compiled simulation worker-thread entry point lives — passed through to
+    // StudioSimulationService (via ParallelSimulationRunner) so a Simulation request with workers > 1
+    // can spawn real worker threads. undefined when the caller never configured one (e.g. most unit
+    // tests, which only ever use workers: 1), in which case a workers > 1 request fails with a clear
+    // error the same way SimCommand's own runParallel() does.
+    workerEntryUrl?: URL;
     initialContext?: StudioContext;
     // Drives every Home nav flow (POST/GET /api/home/*: recent projects, create, init, build
     // preview/build, open) — see StudioHomeService. Required rather than defaulted: a default

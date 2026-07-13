@@ -22,6 +22,7 @@ export type StudioSimulationJobView = {
     status: StudioSimulationStatus;
     rounds: number;
     seed?: string;
+    workers: number;
     startedAt: string;
     roundsCompleted: number;
     durationMs: number;

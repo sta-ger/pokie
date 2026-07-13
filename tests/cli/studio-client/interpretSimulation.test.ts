@@ -12,6 +12,7 @@ function createJob(overrides: Partial<StudioSimulationJobView> = {}): StudioSimu
         id: "job-1",
         status: "running",
         rounds: 1000,
+        workers: 1,
         startedAt: "2026-01-01T00:00:00.000Z",
         roundsCompleted: 250,
         durationMs: 500,
@@ -23,7 +24,13 @@ describe("describeSimulationProgress", () => {
     it("computes a rounded percent from roundsCompleted/rounds", () => {
         const view = describeSimulationProgress(createJob({roundsCompleted: 250, rounds: 1000}));
 
-        expect(view).toEqual({status: "running", roundsCompleted: 250, rounds: 1000, percent: 25, durationMs: 500});
+        expect(view).toEqual({status: "running", roundsCompleted: 250, rounds: 1000, workers: 1, percent: 25, durationMs: 500});
+    });
+
+    it("carries through the workers count", () => {
+        const view = describeSimulationProgress(createJob({workers: 4}));
+
+        expect(view.workers).toBe(4);
     });
 
     it("caps percent at 100 even if roundsCompleted momentarily exceeds rounds", () => {

@@ -13,6 +13,7 @@ export type StudioSimulationJobRecord = {
     status: StudioSimulationStatus;
     rounds: number;
     seed?: string;
+    workers: number;
     startedAt: number;
     // Set exactly once, the moment status first becomes terminal (completed/failed/cancelled) — see
     // StudioSimulationService's fail()/cancelRecord()/completion path. Undefined while queued/running.

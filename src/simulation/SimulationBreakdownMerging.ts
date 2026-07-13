@@ -1,15 +1,14 @@
-import type {SimulationBreakdownComponent} from "pokie";
+import type {SimulationBreakdownComponent} from "./SimulationBreakdownComponent.js";
 
-// AggregateSimulationRunner produces one breakdown Record per run() call; StudioSimulationService
-// drives a simulation in chunks (see its own doc comment for why), so this is the small piece of
-// glue needed to combine one chunk's breakdown into the job's running total — the categorization
-// logic itself (which round belongs to which category) stays entirely inside AggregateSimulationRunner,
-// untouched; this only ever combines its already-computed output numbers.
+// Combines one additional chunk's/worker's category breakdown into a running total. Shared by
+// SimulationStatisticsMerger (combining across worker threads) and simulationWorkerEntry (combining
+// a single worker's own internal progress-reporting chunks) — the one place breakdown-merging
+// arithmetic lives, so neither ever reimplements it.
 //
 // `hitFrequency` is reconstructed to a hit *count* (rounds * hitFrequency, rounded) before combining
 // since SimulationBreakdownComponent doesn't expose the raw count — safe here because both operands
 // come from an integer number of rounds, so the rounding recovers the exact original count.
-export function mergeBreakdownComponents(
+export function mergeSimulationBreakdowns(
     base: Record<string, SimulationBreakdownComponent> | undefined,
     addition: Record<string, SimulationBreakdownComponent>,
 ): Record<string, SimulationBreakdownComponent> {

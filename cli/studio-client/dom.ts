@@ -194,6 +194,7 @@ export type Elements = {
     simulationForm: HTMLFormElement;
     simulationRoundsInput: HTMLInputElement;
     simulationSeedInput: HTMLInputElement;
+    simulationWorkersInput: HTMLInputElement;
     simulationRunButton: HTMLButtonElement;
     simulationIdle: HTMLElement;
     simulationError: HTMLElement;
@@ -533,6 +534,7 @@ export function queryElements(): Elements {
         simulationForm: requireElement("simulation-form"),
         simulationRoundsInput: requireElement("simulation-rounds"),
         simulationSeedInput: requireElement("simulation-seed"),
+        simulationWorkersInput: requireElement("simulation-workers"),
         simulationRunButton: requireElement("simulation-run-button"),
         simulationIdle: requireElement("simulation-idle"),
         simulationError: requireElement("simulation-error"),
@@ -1108,8 +1110,9 @@ export function renderSimulationProgress(elements: Elements, progress: Simulatio
     }
 
     elements.simulationStatusText.textContent = `Status: ${progress.status}`;
+    const workersSuffix = progress.workers > 1 ? `, ${progress.workers} workers` : "";
     elements.simulationProgressText.textContent =
-        `${progress.roundsCompleted} / ${progress.rounds} rounds (${progress.percent}%) — ${progress.durationMs}ms`;
+        `${progress.roundsCompleted} / ${progress.rounds} rounds (${progress.percent}%) — ${progress.durationMs}ms${workersSuffix}`;
 
     if (progress.status === "failed") {
         elements.simulationError.textContent = progress.error ?? "Simulation failed.";

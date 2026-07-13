@@ -17,6 +17,7 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ["Max win", report.maxWin.toFixed(2)],
             ["Duration", `${report.durationMs}ms`],
             ["Spins per second", String(report.spinsPerSecond)],
+            ["Workers", String(report.workers ?? 1)],
         ];
         const tableRows = rows.map(([label, value]) => `            <tr><th scope="row">${label}</th><td>${value}</td></tr>`).join("\n");
 
@@ -90,6 +91,9 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             `Actual rounds: ${reproducibility.actualRounds}`,
             `Re-run command: <code>${this.escapeHtml(reproducibility.command)}</code>`,
         ];
+        if (reproducibility.workerSeedStrategy) {
+            items.push(`Worker seed strategy: ${this.escapeHtml(reproducibility.workerSeedStrategy)}`);
+        }
 
         return [
             "        <section>",

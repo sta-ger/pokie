@@ -13,6 +13,7 @@ function createRecord(
         projectRoot,
         status,
         rounds: 1000,
+        workers: 1,
         startedAt: Date.now(),
         completedAt,
         roundsCompleted: 0,

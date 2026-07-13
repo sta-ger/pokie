@@ -9,6 +9,7 @@ export type StudioSimulationReportListEntry = {
     requestedRounds: number;
     actualRounds: number;
     seed?: string;
+    workers: number;
     rtp: number;
     hitFrequency: number;
     maxWin: number;

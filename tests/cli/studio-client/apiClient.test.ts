@@ -545,6 +545,22 @@ describe("studio-client apiClient", () => {
             expect(calls[0].init?.body).toBe(JSON.stringify({rounds: 1000}));
         });
 
+        it("includes workers in the body when given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {id: "job-1", status: "queued"}}));
+
+            await startSimulation(fetchImpl, 1000, "demo", 4);
+
+            expect(calls[0].init?.body).toBe(JSON.stringify({rounds: 1000, seed: "demo", workers: 4}));
+        });
+
+        it("omits workers from the body when not given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {id: "job-1", status: "queued"}}));
+
+            await startSimulation(fetchImpl, 1000);
+
+            expect(JSON.parse(calls[0].init?.body ?? "{}")).not.toHaveProperty("workers");
+        });
+
         it("returns a typed conflict (not a thrown error) when another simulation is already active", async () => {
             const {fetchImpl} = createFakeFetch(() => ({
                 ok: false,

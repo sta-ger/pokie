@@ -144,6 +144,7 @@ export type SimulationReportReproducibility = {
     requestedRounds: number;
     actualRounds: number;
     command: string;
+    workerSeedStrategy?: string;
 };
 
 // The server's copy of this same type lives in "pokie" itself (src/reporting/SimulationReport.ts) —
@@ -160,6 +161,7 @@ export type SimulationReport = {
     maxWin: number;
     durationMs: number;
     spinsPerSecond: number;
+    workers?: number;
     reproducibility?: SimulationReportReproducibility;
     warnings?: string[];
     recommendations?: string[];
@@ -184,6 +186,7 @@ export type StudioSimulationJobView = {
     status: StudioSimulationStatus;
     rounds: number;
     seed?: string;
+    workers: number;
     startedAt: string;
     roundsCompleted: number;
     durationMs: number;
@@ -201,6 +204,7 @@ export type StudioSimulationReportListEntry = {
     requestedRounds: number;
     actualRounds: number;
     seed?: string;
+    workers: number;
     rtp: number;
     hitFrequency: number;
     maxWin: number;

@@ -160,6 +160,48 @@ describe("SimulationAccumulator", () => {
         expect(stats.rtp).not.toBeCloseTo(stats.totalPayout / stats.totalBet, 5);
     });
 
+    test("toSnapshot()/fromSnapshot() round-trips to an equivalent accumulator", () => {
+        const original = new SimulationAccumulator();
+        original.addRound(10, 0);
+        original.addRound(10, 50);
+        original.addRound(5, 5);
+
+        const rehydrated = SimulationAccumulator.fromSnapshot(original.toSnapshot());
+
+        expect(rehydrated.getStatistics()).toEqual(original.getStatistics());
+    });
+
+    test("fromSnapshot() produces an independent instance — mutating one leaves the other untouched", () => {
+        const original = new SimulationAccumulator();
+        original.addRound(10, 20);
+        const snapshot = original.toSnapshot();
+        const rehydrated = SimulationAccumulator.fromSnapshot(snapshot);
+
+        rehydrated.addRound(10, 0);
+
+        expect(rehydrated.getStatistics().rounds).toBe(2);
+        expect(original.getStatistics().rounds).toBe(1);
+    });
+
+    test("merging two rehydrated-from-snapshot accumulators matches merging the originals directly", () => {
+        const left = new SimulationAccumulator();
+        left.addRound(10, 0);
+        left.addRound(10, 30);
+        const right = new SimulationAccumulator();
+        right.addRound(5, 5);
+        right.addRound(5, 0);
+
+        const direct = new SimulationAccumulator();
+        direct.merge(left);
+        direct.merge(right);
+
+        const viaSnapshots = new SimulationAccumulator();
+        viaSnapshots.merge(SimulationAccumulator.fromSnapshot(left.toSnapshot()));
+        viaSnapshots.merge(SimulationAccumulator.fromSnapshot(right.toSnapshot()));
+
+        expect(viaSnapshots.getStatistics()).toEqual(direct.getStatistics());
+    });
+
     test("no NaN appears anywhere in statistics across a realistic, varied run", () => {
         const accumulator = new SimulationAccumulator();
         const bets = [1, 5, 10, 20, 1, 1, 50];

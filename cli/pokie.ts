@@ -40,6 +40,13 @@ function ownStudioRoot(): string {
     return path.join(currentDir, "studio-client");
 }
 
+// Same reasoning as ownClientRoot()/ownStudioRoot() above, for the compiled worker-thread entry point
+// ParallelSimulationRunner spawns for --workers > 1 (see SimCommand/StudioCommand and
+// SimulationWorkerCoordinator's own comment on why it takes no default of its own).
+function ownSimulationWorkerEntryUrl(): URL {
+    return new URL("./simulation/parallel/simulationWorkerEntry.js", import.meta.url);
+}
+
 function printUsage(commands: CliCommandHandling[]): void {
     console.log("Usage: pokie <command>\n");
     console.log("Commands:");
@@ -60,8 +67,8 @@ async function run(): Promise<number> {
         new ReplayCommand(),
         new ReportCommand(),
         new ServeCommand(),
-        new SimCommand(),
-        new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot()}),
+        new SimCommand(undefined, undefined, undefined, ownSimulationWorkerEntryUrl()),
+        new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot(), workerEntryUrl: ownSimulationWorkerEntryUrl()}),
         new ValidateCommand(),
     ];
     // No arguments at all, "pokie ." / "pokie <existing path>", and every explicit command name

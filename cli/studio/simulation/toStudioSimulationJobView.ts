@@ -10,6 +10,7 @@ export function toStudioSimulationJobView(record: StudioSimulationJobRecord): St
         status: record.status,
         rounds: record.rounds,
         seed: record.seed,
+        workers: record.workers,
         startedAt: new Date(record.startedAt).toISOString(),
         roundsCompleted: record.roundsCompleted,
         durationMs: record.durationMs,

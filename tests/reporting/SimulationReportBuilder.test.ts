@@ -122,6 +122,77 @@ describe("SimulationReportBuilder", () => {
         });
     }
 
+    describe("workers", () => {
+        test("defaults to 1 when not given", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
+
+            expect(report.workers).toBe(1);
+        });
+
+        test("carries through an explicit workers count", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 100,
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                workers: 4,
+            });
+
+            expect(report.workers).toBe(4);
+        });
+
+        test("omits --workers from the re-run command when workers is 1 (or unset)", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({manifest, requestedRounds: 100, statistics: accumulator.getStatistics(), durationMs: 10});
+
+            expect(report.reproducibility!.command).not.toContain("--workers");
+        });
+
+        test("includes --workers N in the re-run command when workers > 1", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 100,
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                workers: 4,
+            });
+
+            expect(report.reproducibility!.command).toBe("pokie sim <packageRoot> --rounds 100 --workers 4");
+        });
+
+        test("carries through workerSeedStrategy into the reproducibility block when given", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 0);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 100,
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                workers: 4,
+                workerSeedStrategy: "deterministic per-worker derivation",
+            });
+
+            expect(report.reproducibility!.workerSeedStrategy).toBe("deterministic per-worker derivation");
+        });
+    });
+
     describe("reproducibility", () => {
         test("includes game/seed/requested/actual rounds mirroring the top-level report", () => {
             const report = buildHealthyReport();

@@ -13,4 +13,9 @@ export type SimulationReportInput = {
     // exposed the optional categorization contract, in which case the report simply won't have a
     // "breakdown" field (same additive-optional pattern as reproducibility/warnings/recommendations).
     breakdown?: Record<string, SimulationBreakdownComponent>;
+    // Number of worker threads used (1 by default) — see ParallelSimulationRunner/WorkerSeedStrategy.
+    workers?: number;
+    // A human-readable description of how per-worker seeds were derived — see
+    // WorkerSeedStrategy.describe(). Only meaningful alongside `workers`.
+    workerSeedStrategy?: string;
 };

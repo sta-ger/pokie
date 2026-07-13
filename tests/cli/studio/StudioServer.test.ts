@@ -1345,6 +1345,28 @@ describe("StudioServer", () => {
             expect(body.roundsCompleted).toBe(200);
         });
 
+        it("defaults workers to 1 and reports it on the created job/report", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const created = await post(`${baseUrl}/api/project/simulations`, {rounds: 50});
+            const createdBody = created.body as {id: string; workers: number};
+            expect(createdBody.workers).toBe(1);
+
+            const {body} = await pollUntilTerminal(`${baseUrl}/api/project/simulations/${createdBody.id}`);
+            expect(body.workers).toBe(1);
+            expect((body.report as {workers?: number} | undefined)?.workers).toBe(1);
+        });
+
+        it("rejects an invalid workers value with 400", async () => {
+            await openCrazyFruits(createPlayableFakeGame({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}));
+
+            const response = await post(`${baseUrl}/api/project/simulations`, {rounds: 50, workers: 0});
+
+            expect(response.status).toBe(400);
+            expect((response.body as {error: string}).error).toMatch(/"workers" must be an integer between 1 and/);
+        });
+
         it("returns 404 for GET of an unknown simulation id", async () => {
             const {status, body} = await get(`${baseUrl}/api/project/simulations/does-not-exist`);
 

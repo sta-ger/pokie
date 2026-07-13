@@ -19,7 +19,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
     public static readonly MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING: number = 20;
 
     public build(input: SimulationReportInput): SimulationReport {
-        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot} = input;
+        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy} = input;
+        const workers = input.workers ?? 1;
         const spinsPerSecond = Math.round(statistics.rounds / (Math.max(durationMs, 1) / 1000));
 
         const core: CoreMetrics = {
@@ -34,6 +35,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             maxWin: statistics.maxWin,
             durationMs,
             spinsPerSecond,
+            workers,
         };
 
         const breakdown = this.buildBreakdown(input.breakdown, core.totalBet);
@@ -42,7 +44,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         return {
             ...core,
             breakdown,
-            reproducibility: this.buildReproducibility(core, packageRoot),
+            reproducibility: this.buildReproducibility(core, packageRoot, workerSeedStrategy),
             warnings,
             recommendations: this.buildRecommendations(core),
         };
@@ -52,11 +54,18 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         return core.seed !== null && core.seed.trim().length > 0;
     }
 
-    private buildReproducibility(core: CoreMetrics, packageRoot: string | undefined): SimulationReportReproducibility {
+    private buildReproducibility(
+        core: CoreMetrics,
+        packageRoot: string | undefined,
+        workerSeedStrategy: string | undefined,
+    ): SimulationReportReproducibility {
         const target = packageRoot && packageRoot.trim().length > 0 ? packageRoot : "<packageRoot>";
         const parts = ["pokie", "sim", target, "--rounds", String(core.requestedRounds)];
         if (this.hasSeed(core)) {
             parts.push("--seed", core.seed as string);
+        }
+        if (core.workers !== 1) {
+            parts.push("--workers", String(core.workers));
         }
 
         return {
@@ -65,6 +74,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             requestedRounds: core.requestedRounds,
             actualRounds: core.rounds,
             command: parts.join(" "),
+            workerSeedStrategy,
         };
     }
 

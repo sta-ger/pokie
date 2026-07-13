@@ -8,6 +8,7 @@ function createEntry(overrides: Partial<StudioSimulationReportListEntry> = {}): 
         game: {id: "crazy-fruits", version: "0.1.0"},
         requestedRounds: 1000,
         actualRounds: 1000,
+        workers: 1,
         rtp: 0.95,
         hitFrequency: 0.25,
         maxWin: 120,

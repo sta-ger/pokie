@@ -192,6 +192,90 @@ stats.averagePayoutConfidenceInterval95;
 stats.rtpConfidenceInterval95;
 ```
 
+## Parallel simulation (workers)
+
+`pokie sim --workers <n>` (and Studio's Simulation tab "Workers" field) split a large run across real
+`worker_threads`, using the exact same `AggregateSimulationRunner`/`SimulationAccumulator`/`SimulationStatistics`
+calculation path as the single-threaded run — parallelism only changes *how* the rounds are distributed and merged,
+never the underlying math. The pieces:
+
+- **`ParallelSimulationRunner`** — the one entry point both `pokie sim` and Studio call, for any `workers >= 1`.
+  `workers === 1` runs in-process (no thread spawned at all — see below); `workers > 1` splits the rounds and
+  drives real worker threads.
+- **`splitRoundsAcrossWorkers(rounds, workers)`** — divides `rounds` as evenly as possible; the first
+  `rounds % workers` workers get one extra round, so the shares always sum to exactly `rounds`. If `rounds <
+  workers`, the first `rounds` workers get exactly 1 round each and the rest get 0 — a worker with a 0-round share
+  is never spawned.
+- **`WorkerSeedStrategy`** — derives each worker's own seed from the top-level `--seed`, deterministically:
+  - `workers === 1`: the identity case — the single worker gets the original seed **unchanged**. This is what
+    makes a `--workers 1` run's statistics match the pre-`--workers` sequential path exactly, for the same seed.
+  - `workers > 1`: worker *i* (of *N*) gets a distinct derived seed (`"<seed>::worker<i>/<N>"`), so no two workers
+    draw from the same/correlated RNG stream. An unseeded run (`--seed` omitted) simply leaves every worker
+    unseeded too — each draws its own non-deterministic randomness.
+- **`SimulationWorkerCoordinator`** — spawns one real `Worker` per non-zero round share, sends it a plain-data
+  `SimulationWorkerRequest` (`{packageRoot, rounds, seed, workerIndex, totalWorkers, progressChunkSize}`) via
+  `workerData`, and collects each one's `SimulationWorkerResult` back via `postMessage`. **No class instances,
+  live sessions, or functions ever cross the worker boundary** — only plain, structured-cloneable data. This is
+  also why `--workers > 1` requires a real on-disk game package: each worker independently calls `loadPokieGame`
+  on `packageRoot` itself, from scratch, inside its own thread — there is no way to hand a worker an
+  already-constructed `PokieGame`/session.
+- **`SimulationStatisticsMerger`** — combines every worker's result back into one `SimulationStatistics`, reusing
+  `SimulationAccumulator.merge()` (the same online mean/variance combination `AggregateSimulationRunner`'s own
+  chunking already relies on) — variance is never approximated by averaging each worker's own variance, it's
+  recombined correctly from each worker's raw running totals. Category breakdowns are merged the same way
+  (`mergeSimulationBreakdowns`).
+
+### Reproducibility guarantees
+
+- The same `(packageRoot, rounds, seed, workers)` always produces the same `SimulationStatistics` — for a fixed
+  `workers` count. This holds for both `workers === 1` and any `workers > 1`.
+- **`--workers 1` and `--workers N > 1` are each internally reproducible, but are *not* expected to produce
+  identical statistics to each other.** Splitting the same rounds across a different number of independent RNG
+  streams is a genuinely different execution, not just a faster version of the same one — don't diff a
+  `--workers 1` report against a `--workers 4` report (of the same seed) expecting them to match; diff two
+  `--workers 4` runs, or two `--workers 1` runs, instead.
+- The report's `workers` field and `reproducibility.workerSeedStrategy` (a human-readable description of the
+  derivation above) are included specifically so a report is self-describing about which of the two situations
+  above applies, without having to know what `--workers` value produced it.
+- An unseeded run (no `--seed`) is never reproducible, with or without `--workers` — same as before this feature.
+
+### workers=1 vs. workers>1
+
+| | `--workers 1` (default) | `--workers N > 1` |
+|---|---|---|
+| Execution | In-process, no thread spawned | N real `worker_threads`, one per non-zero round share |
+| Game package | Real package, or an in-memory/mocked one (via a custom `loadGame`) | **Real, on-disk package only** |
+| Seed | Used unchanged | Deterministically derived per worker (see `WorkerSeedStrategy`) |
+| vs. pre-`--workers` behavior | Byte-for-byte identical | N/A — a new capability, not a faster version of the old path |
+
+### Memory/CPU considerations
+
+- Each worker thread is a full, independent V8 isolate: it re-loads the game package, re-JITs its code, and holds
+  its own copy of any static tables (paytables, reel strips, etc.) the game builds at load time. Memory usage
+  scales roughly linearly with `--workers`, not just with `--rounds`.
+- Thread creation/module loading has fixed overhead per worker, independent of `--rounds` — `--workers` only pays
+  off once that fixed cost is small relative to the total simulation time (a `--rounds 1000 --workers 8` run will
+  likely be *slower* than `--workers 1`, purely from spin-up overhead across 8 isolates for very little actual
+  work per isolate). As a rule of thumb, don't reach for `--workers` below tens of thousands of rounds.
+- `--workers` doesn't change how much CPU the simulation *needs* — it changes how many CPU cores it can use at
+  once. On a single-core machine (or one already saturated by other work), `--workers > 1` won't be faster and
+  may be slower; it helps when idle cores are actually available.
+- `MAX_SIMULATION_WORKERS` (32) is a safety ceiling against a typo'd `--workers 100000` spawning far more OS
+  threads than any real machine benefits from — it isn't a recommendation to actually use that many; matching
+  `--workers` to the number of idle CPU cores is usually the better default.
+
+### Worker package-loading limitations
+
+- `--workers > 1` requires `<packageRoot>` to be a real, on-disk directory `loadPokieGame` can resolve — the same
+  requirement `pokie sim`/`pokie serve`/Studio already have for a real project, just enforced per-worker instead
+  of once.
+- Programmatic callers that inject a custom/in-memory `loadGame` (as `pokie`'s own test suite does) only get that
+  behavior for `workers === 1` — the in-process path. `workers > 1` always uses the real `loadPokieGame` inside
+  each worker thread and has no injection point for a substitute loader, by design (there is no way to hand a
+  worker thread a live object graph to use instead).
+- Studio's simulation service behaves the same way: a project must be a real on-disk package (which every open
+  Studio project already is) for its "Workers" field to be anything other than 1.
+
 ## Feature-level breakdown (`SimulationRoundCategoryDetermining`)
 
 `AggregateSimulationRunner` can additionally attribute each round to a **category** (`"base"`, `"freeGames"`,

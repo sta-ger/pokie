@@ -8,6 +8,7 @@ export type SimulationProgressView = {
     status: StudioSimulationJobView["status"];
     roundsCompleted: number;
     rounds: number;
+    workers: number;
     percent: number;
     durationMs: number;
     // Only ever set when status === "failed" — the job's own safe error message (see
@@ -22,6 +23,7 @@ export function describeSimulationProgress(job: StudioSimulationJobView): Simula
         status: job.status,
         roundsCompleted: job.roundsCompleted,
         rounds: job.rounds,
+        workers: job.workers,
         percent,
         durationMs: job.durationMs,
         error: job.error,
@@ -60,6 +62,7 @@ export type SimulationReportView = {
     maxWin: number;
     durationMs: number;
     spinsPerSecond: number;
+    workers: number;
     volatility?: number;
     payoutStandardDeviation?: number;
     rtpConfidenceInterval95?: {low: number; high: number};
@@ -89,6 +92,7 @@ export function describeSimulationReport(
         maxWin: report.maxWin,
         durationMs: report.durationMs,
         spinsPerSecond: report.spinsPerSecond,
+        workers: report.workers ?? 1,
         volatility: statistics?.volatility,
         payoutStandardDeviation: statistics?.payoutStandardDeviation,
         rtpConfidenceInterval95: statistics?.rtpConfidenceInterval95,

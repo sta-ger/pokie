@@ -6,6 +6,11 @@ export type SimulationReportReproducibility = {
     requestedRounds: number;
     actualRounds: number;
     command: string;
+    // A plain, human-readable description of how each worker's seed was derived from the top-level
+    // seed (see WorkerSeedStrategy.describe()) — present whenever `workers` is, i.e. whenever the
+    // caller populated this reproducibility block at all (see SimulationReportBuilder). Optional only
+    // for backward compatibility with older SimulationReport JSON that predates --workers.
+    workerSeedStrategy?: string;
 };
 
 export type SimulationReport = {
@@ -20,6 +25,11 @@ export type SimulationReport = {
     maxWin: number;
     durationMs: number;
     spinsPerSecond: number;
+    // Number of worker threads the run was split across (1 by default). Optional only for backward
+    // compatibility with SimulationReport JSON produced before --workers existed — every current
+    // caller (pokie sim, Studio) always sets it. See docs/simulation.md for what workers=1 vs.
+    // workers>1 guarantees (and doesn't guarantee) about matching the other's exact numbers.
+    workers?: number;
     reproducibility?: SimulationReportReproducibility;
     warnings?: string[];
     recommendations?: string[];

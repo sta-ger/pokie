@@ -1,0 +1,79 @@
+import {AggregateSimulationRunner, GameSessionHandling, SimulationAccumulator, SimulationBreakdownComponent, mergeSimulationBreakdowns} from "pokie";
+import {SimulationCancelledError} from "./SimulationCancelledError.js";
+
+export type ChunkedSimulationChunkInfo = {
+    roundsCompleted: number;
+    // True once there is nothing left to do: either every requested round has been played, or the
+    // session stopped itself early (canPlayNextGame() returning false). Lets a caller that yields
+    // between chunks (see ParallelSimulationRunner's in-process path) skip a pointless final yield.
+    isFinished: boolean;
+};
+
+export type ChunkedSimulationCallbacks = {
+    // Checked at the top of every chunk, before that chunk plays a single round — mirrors
+    // StudioSimulationService's original "cancellation can only take effect between chunks" behavior.
+    // Throws SimulationCancelledError to stop, same as ParallelSimulationRunner's worker-thread path.
+    shouldStop?: () => boolean;
+    onChunkComplete?: (info: ChunkedSimulationChunkInfo) => Promise<void> | void;
+};
+
+export type ChunkedSimulationResult = {
+    accumulator: SimulationAccumulator;
+    breakdown?: Record<string, SimulationBreakdownComponent>;
+    roundsCompleted: number;
+};
+
+// Plays `rounds` rounds against `session` in bounded chunks (via the existing
+// AggregateSimulationRunner, merged via the existing SimulationAccumulator.merge()/
+// mergeSimulationBreakdowns — never a reimplementation of either), reporting progress after each
+// chunk. This is the one place that chunking logic lives: both simulationWorkerEntry.ts (reporting
+// progress via postMessage) and ParallelSimulationRunner's in-process workers=1 path (reporting via a
+// plain callback and yielding to the event loop between chunks) call this same function rather than
+// each maintaining their own copy of it.
+//
+// `chunkSize >= rounds` (the default for a caller that doesn't need incremental progress/cancellation,
+// e.g. `pokie sim`'s workers=1 path) makes this run in a single chunk — mathematically and
+// numerically identical to one direct `new AggregateSimulationRunner(session, rounds).run()` call,
+// since chunking never changes the sequence of session.play() calls, only how the (already correct,
+// already merge-capable) running totals are batched.
+export async function runChunkedSimulation(
+    session: GameSessionHandling,
+    rounds: number,
+    chunkSize: number,
+    callbacks: ChunkedSimulationCallbacks = {},
+): Promise<ChunkedSimulationResult> {
+    const accumulator = new SimulationAccumulator();
+    let breakdown: Record<string, SimulationBreakdownComponent> | undefined;
+    let roundsCompleted = 0;
+    let roundsRemaining = rounds;
+
+    while (roundsRemaining > 0) {
+        if (callbacks.shouldStop?.()) {
+            throw new SimulationCancelledError();
+        }
+
+        const chunkRounds = Math.min(chunkSize, roundsRemaining);
+        const runner = new AggregateSimulationRunner(session, chunkRounds);
+        const chunkAccumulator = runner.run();
+        accumulator.merge(chunkAccumulator);
+        const chunkBreakdown = runner.getBreakdownStatistics();
+        if (chunkBreakdown) {
+            breakdown = mergeSimulationBreakdowns(breakdown, chunkBreakdown);
+        }
+
+        const chunkRoundsPlayed = chunkAccumulator.getStatistics().rounds;
+        roundsCompleted += chunkRoundsPlayed;
+        const stoppedEarly = chunkRoundsPlayed < chunkRounds;
+        roundsRemaining -= chunkRounds;
+
+        await callbacks.onChunkComplete?.({roundsCompleted, isFinished: stoppedEarly || roundsRemaining <= 0});
+
+        // The session stopped playing on its own before using every round in this chunk — no point
+        // scheduling further chunks once that's happened.
+        if (stoppedEarly) {
+            break;
+        }
+    }
+
+    return {accumulator, breakdown, roundsCompleted};
+}

@@ -1,0 +1,328 @@
+import {GameSessionHandling, PokieGame, PokieGameManifest} from "pokie";
+import {ParallelSimulationRunner} from "../../../../cli/simulation/parallel/ParallelSimulationRunner.js";
+import {SimulationCancelledError} from "../../../../cli/simulation/parallel/SimulationCancelledError.js";
+import type {SimulationWorkerCoordinator, SimulationWorkerCoordinatorRunOptions} from "../../../../cli/simulation/parallel/SimulationWorkerCoordinator.js";
+import type {SimulationWorkerRequest} from "../../../../cli/simulation/parallel/SimulationWorkerRequest.js";
+import type {SimulationWorkerResult} from "../../../../cli/simulation/parallel/SimulationWorkerResult.js";
+
+const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+function createFakeSession(seed?: string): GameSessionHandling {
+    let credits = 1_000_000;
+    const bet = 1;
+    let round = 0;
+    let winAmount = 0;
+    // Deterministic per "seed" (or a fixed pattern when unseeded) so two runs with the same seed
+    // produce identical statistics — good enough to exercise reproducibility without a real RNG.
+    const winEveryNth = seed === undefined ? 5 : (Math.abs(hashCode(seed)) % 4) + 2;
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: () => undefined,
+        getAvailableBets: () => [1],
+        canPlayNextGame: () => true,
+        play: () => {
+            round++;
+            winAmount = round % winEveryNth === 0 ? bet * 10 : 0;
+            credits = credits - bet + winAmount;
+        },
+        getWinAmount: () => winAmount,
+    };
+}
+
+function hashCode(value: string): number {
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+        hash = (hash * 31 + value.charCodeAt(i)) | 0;
+    }
+    return hash;
+}
+
+function createFakeGame(): PokieGame & {createdWith: (PokieGameContext | undefined)[]} {
+    const createdWith: (PokieGameContext | undefined)[] = [];
+    return {
+        getManifest: () => manifest,
+        createSession(context) {
+            createdWith.push(context);
+            return createFakeSession(context?.seed as string | undefined);
+        },
+        createdWith,
+    };
+}
+
+type PokieGameContext = {seed?: string | number};
+
+describe("ParallelSimulationRunner (workers=1, in-process)", () => {
+    test("plays every requested round using the injected loadGame, without any worker entry point", async () => {
+        const game = createFakeGame();
+        const runner = new ParallelSimulationRunner("/fake/root", 100, {
+            loadGame: () => Promise.resolve(game),
+        });
+
+        const result = await runner.run();
+
+        expect(result.workers).toBe(1);
+        expect(result.statistics.rounds).toBe(100);
+        expect(result.manifest).toEqual(manifest);
+        expect(game.createdWith).toEqual([undefined]);
+    });
+
+    test("passes the seed through to createSession unchanged (identity derivation)", async () => {
+        const game = createFakeGame();
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            seed: "demo",
+            loadGame: () => Promise.resolve(game),
+        });
+
+        await runner.run();
+
+        expect(game.createdWith).toEqual([{seed: "demo"}]);
+    });
+
+    test("two runs with the same seed produce identical statistics (deterministic)", async () => {
+        const runOnce = async () => {
+            const game = createFakeGame();
+            const runner = new ParallelSimulationRunner("/fake/root", 500, {
+                seed: "reproducible",
+                loadGame: () => Promise.resolve(game),
+            });
+            return (await runner.run()).statistics;
+        };
+
+        const first = await runOnce();
+        const second = await runOnce();
+
+        expect(second).toEqual(first);
+    });
+
+    test("chunkSize defaults to the full round count — no progress callback fires mid-run", async () => {
+        const game = createFakeGame();
+        const progressCalls: number[] = [];
+        const runner = new ParallelSimulationRunner("/fake/root", 50, {
+            loadGame: () => Promise.resolve(game),
+            onProgress: (n) => progressCalls.push(n),
+        });
+
+        await runner.run();
+
+        // A single chunk still reports one progress call (after the only chunk finishes) — the point
+        // is that it's exactly one call for the whole run, not one per round or per small batch.
+        expect(progressCalls).toEqual([50]);
+    });
+
+    test("a smaller chunkSize reports progress incrementally and yields between chunks", async () => {
+        const game = createFakeGame();
+        const progressCalls: number[] = [];
+        let yieldCount = 0;
+        const runner = new ParallelSimulationRunner("/fake/root", 25, {
+            loadGame: () => Promise.resolve(game),
+            chunkSize: 10,
+            onProgress: (n) => progressCalls.push(n),
+            yieldToEventLoop: () => {
+                yieldCount++;
+                return Promise.resolve();
+            },
+        });
+
+        await runner.run();
+
+        expect(progressCalls).toEqual([10, 20, 25]);
+        // Yields between chunks, not after the last one.
+        expect(yieldCount).toBe(2);
+    });
+
+    test("an already-aborted signal rejects with SimulationCancelledError before doing any work", async () => {
+        const controller = new AbortController();
+        controller.abort();
+        const game = createFakeGame();
+        const runner = new ParallelSimulationRunner("/fake/root", 100, {
+            loadGame: () => Promise.resolve(game),
+            signal: controller.signal,
+        });
+
+        await expect(runner.run()).rejects.toBeInstanceOf(SimulationCancelledError);
+        expect(game.createdWith).toEqual([]);
+    });
+
+    test("aborting between chunks stops the run and rejects with SimulationCancelledError", async () => {
+        const game = createFakeGame();
+        const controller = new AbortController();
+        let chunksCompleted = 0;
+        const runner = new ParallelSimulationRunner("/fake/root", 30, {
+            loadGame: () => Promise.resolve(game),
+            chunkSize: 10,
+            onProgress: () => {
+                chunksCompleted++;
+                if (chunksCompleted === 1) {
+                    controller.abort();
+                }
+            },
+            signal: controller.signal,
+        });
+
+        await expect(runner.run()).rejects.toBeInstanceOf(SimulationCancelledError);
+        expect(chunksCompleted).toBe(1);
+    });
+
+    test("rejects a non-integer/out-of-range workers value with a clear validation error", async () => {
+        const game = createFakeGame();
+        const makeRunner = (workers: number) =>
+            new ParallelSimulationRunner("/fake/root", 10, {loadGame: () => Promise.resolve(game), workers});
+
+        await expect(makeRunner(0).run()).rejects.toThrow(/workers.*integer between 1 and/i);
+        await expect(makeRunner(2.5).run()).rejects.toThrow(/workers.*integer between 1 and/i);
+        await expect(makeRunner(10_000).run()).rejects.toThrow(/workers.*integer between 1 and/i);
+    });
+});
+
+describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () => {
+    function makeAccumulatorSnapshot(rounds: number) {
+        return {
+            rounds,
+            hitCount: 0,
+            totalBet: rounds,
+            totalPayout: 0,
+            maxWin: 0,
+            meanPayout: 0,
+            meanSquareDelta: 0,
+            meanReturnRatio: 0,
+            meanReturnRatioSquareDelta: 0,
+            payoutHistogram: {},
+        };
+    }
+
+    function makeFakeCoordinator(
+        handleRun: (requests: SimulationWorkerRequest[], options: SimulationWorkerCoordinatorRunOptions) => Promise<SimulationWorkerResult[]>,
+    ): SimulationWorkerCoordinator {
+        return {run: handleRun} as unknown as SimulationWorkerCoordinator;
+    }
+
+    test("requires a workerEntryUrl — throws a clear error rather than silently running sequentially", async () => {
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {workers: 2});
+
+        await expect(runner.run()).rejects.toThrow(/workerEntryUrl/);
+    });
+
+    test("splits rounds across workers and derives per-worker seeds, then merges the results", async () => {
+        let capturedRequests: SimulationWorkerRequest[] = [];
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            seed: "demo",
+            workers: 4,
+            workerEntryUrl: new URL("file:///unused"),
+            createWorkerCoordinator: () =>
+                makeFakeCoordinator((requests) => {
+                    capturedRequests = requests;
+                    return Promise.resolve(
+                        requests.map((request) => ({
+                            workerIndex: request.workerIndex,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(request.rounds),
+                            roundsCompleted: request.rounds,
+                        })),
+                    );
+                }),
+        });
+
+        const result = await runner.run();
+
+        expect(capturedRequests).toHaveLength(4);
+        expect(capturedRequests.map((r) => r.rounds).sort((a, b) => b - a)).toEqual([3, 3, 2, 2]);
+        expect(new Set(capturedRequests.map((r) => r.seed)).size).toBe(4); // every worker gets a distinct seed
+        expect(result.workers).toBe(4);
+        expect(result.statistics.rounds).toBe(10);
+        expect(result.manifest).toEqual(manifest);
+    });
+
+    test("never spawns a worker for a zero-round share (rounds < workers)", async () => {
+        let capturedRequests: SimulationWorkerRequest[] = [];
+        const runner = new ParallelSimulationRunner("/fake/root", 2, {
+            workers: 5,
+            workerEntryUrl: new URL("file:///unused"),
+            createWorkerCoordinator: () =>
+                makeFakeCoordinator((requests) => {
+                    capturedRequests = requests;
+                    return Promise.resolve(
+                        requests.map((request) => ({
+                            workerIndex: request.workerIndex,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(request.rounds),
+                            roundsCompleted: request.rounds,
+                        })),
+                    );
+                }),
+        });
+
+        const result = await runner.run();
+
+        expect(capturedRequests).toHaveLength(2);
+        expect(result.statistics.rounds).toBe(2);
+    });
+
+    test("propagates a coordinator failure (e.g. a worker failure) as-is", async () => {
+        const failure = new Error("worker 2 failed: package load error");
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            workers: 3,
+            workerEntryUrl: new URL("file:///unused"),
+            createWorkerCoordinator: () => makeFakeCoordinator(() => Promise.reject(failure)),
+        });
+
+        await expect(runner.run()).rejects.toBe(failure);
+    });
+
+    test("forwards an AbortSignal through to the coordinator", async () => {
+        const controller = new AbortController();
+        let receivedSignal: AbortSignal | undefined;
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            workers: 2,
+            signal: controller.signal,
+            workerEntryUrl: new URL("file:///unused"),
+            createWorkerCoordinator: () =>
+                makeFakeCoordinator((requests, options) => {
+                    receivedSignal = options.signal;
+                    return Promise.resolve(
+                        requests.map((request) => ({
+                            workerIndex: request.workerIndex,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(request.rounds),
+                            roundsCompleted: request.rounds,
+                        })),
+                    );
+                }),
+        });
+
+        await runner.run();
+
+        expect(receivedSignal).toBe(controller.signal);
+    });
+
+    test("reports aggregate progress across workers as each one reports in", async () => {
+        const progressUpdates: number[] = [];
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            workers: 2,
+            workerEntryUrl: new URL("file:///unused"),
+            onProgress: (n) => progressUpdates.push(n),
+            createWorkerCoordinator: () =>
+                makeFakeCoordinator((requests, options) => {
+                    options.onProgress?.({workerIndex: 0, roundsCompleted: 3});
+                    options.onProgress?.({workerIndex: 1, roundsCompleted: 2});
+                    options.onProgress?.({workerIndex: 0, roundsCompleted: 5});
+                    return Promise.resolve(
+                        requests.map((request) => ({
+                            workerIndex: request.workerIndex,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(request.rounds),
+                            roundsCompleted: request.rounds,
+                        })),
+                    );
+                }),
+        });
+
+        await runner.run();
+
+        expect(progressUpdates).toEqual([3, 5, 7]);
+    });
+});

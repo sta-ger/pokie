@@ -30,6 +30,10 @@ export type StudioCommandDependencies = {
     // import.meta.url, which only works in cli/pokie.ts's real ESM build. cli/pokie.ts computes it
     // once (ownStudioRoot()) and passes it in.
     studioRoot?: string;
+    // Where the compiled simulation worker-thread entry point lives — same "no default, computed
+    // once by cli/pokie.ts (ownSimulationWorkerEntryUrl()), passed in" reasoning as studioRoot above.
+    // Threaded through to StudioServerOptions so Studio's simulations can use --workers > 1 too.
+    workerEntryUrl?: URL;
     process?: NodeJS.Process;
 };
 
@@ -45,6 +49,7 @@ export class StudioCommand implements CliCommandHandling {
     private readonly homeService: StudioHomeService;
     private readonly blueprintService: StudioBlueprintService;
     private readonly studioRoot: string;
+    private readonly workerEntryUrl: URL | undefined;
     private readonly process: NodeJS.Process;
     private readonly pokieVersion: string;
 
@@ -55,6 +60,7 @@ export class StudioCommand implements CliCommandHandling {
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
         this.homeService = dependencies.homeService ?? new StudioHomeService(pokieVersion);
         this.studioRoot = dependencies.studioRoot ?? "";
+        this.workerEntryUrl = dependencies.workerEntryUrl;
         this.blueprintService =
             dependencies.blueprintService ?? new StudioBlueprintService(pokieVersion, this.studioRoot, this.homeService);
         this.process = dependencies.process ?? process;
@@ -77,6 +83,7 @@ export class StudioCommand implements CliCommandHandling {
             port: options.port,
             pokieVersion: this.pokieVersion,
             studioRoot: this.studioRoot,
+            workerEntryUrl: this.workerEntryUrl,
             initialContext: context,
             homeService: this.homeService,
             blueprintService: this.blueprintService,

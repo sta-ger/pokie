@@ -18,6 +18,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Max win**: ${report.maxWin.toFixed(2)}`,
             `- **Duration**: ${report.durationMs}ms`,
             `- **Spins per second**: ${report.spinsPerSecond}`,
+            `- **Workers**: ${report.workers ?? 1}`,
         ];
 
         if (report.breakdown) {
@@ -49,6 +50,9 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
                 `- **Actual rounds**: ${reproducibility.actualRounds}`,
                 `- **Re-run command**: \`${reproducibility.command}\``,
             );
+            if (reproducibility.workerSeedStrategy) {
+                lines.push(`- **Worker seed strategy**: ${reproducibility.workerSeedStrategy}`);
+            }
         }
 
         if (report.warnings && report.warnings.length > 0) {

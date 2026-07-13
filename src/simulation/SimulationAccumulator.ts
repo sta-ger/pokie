@@ -1,4 +1,5 @@
 import {ConfidenceIntervalCalculator} from "./ConfidenceIntervalCalculator.js";
+import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapshot.js";
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
@@ -12,6 +13,26 @@ export class SimulationAccumulator {
     private meanReturnRatio = 0;
     private meanReturnRatioSquareDelta = 0;
     private readonly payoutHistogram: Record<string, number> = {};
+
+    // The inverse of toSnapshot() — rehydrates a real SimulationAccumulator so its own merge() (the
+    // online mean/variance algorithm) can be reused as-is, rather than reimplemented against plain
+    // data.
+    public static fromSnapshot(snapshot: SimulationAccumulatorSnapshot): SimulationAccumulator {
+        const accumulator = new SimulationAccumulator();
+        accumulator.rounds = snapshot.rounds;
+        accumulator.hitCount = snapshot.hitCount;
+        accumulator.totalBet = snapshot.totalBet;
+        accumulator.totalPayout = snapshot.totalPayout;
+        accumulator.maxWin = snapshot.maxWin;
+        accumulator.meanPayout = snapshot.meanPayout;
+        accumulator.meanSquareDelta = snapshot.meanSquareDelta;
+        accumulator.meanReturnRatio = snapshot.meanReturnRatio;
+        accumulator.meanReturnRatioSquareDelta = snapshot.meanReturnRatioSquareDelta;
+        Object.entries(snapshot.payoutHistogram).forEach(([bucket, count]) => {
+            accumulator.payoutHistogram[bucket] = count;
+        });
+        return accumulator;
+    }
 
     public addRound(bet: number, payout: number): void {
         if (bet <= 0) {
@@ -117,6 +138,24 @@ export class SimulationAccumulator {
             payoutStandardDeviation,
             returnStandardDeviation,
             maxWin: this.maxWin,
+            payoutHistogram: {...this.payoutHistogram},
+        };
+    }
+
+    // Exposes the running-totals state a worker thread needs to ship back to the coordinator for
+    // merging (see SimulationStatisticsMerger) — a live SimulationAccumulator instance can't cross a
+    // worker_threads boundary itself, but this plain snapshot can.
+    public toSnapshot(): SimulationAccumulatorSnapshot {
+        return {
+            rounds: this.rounds,
+            hitCount: this.hitCount,
+            totalBet: this.totalBet,
+            totalPayout: this.totalPayout,
+            maxWin: this.maxWin,
+            meanPayout: this.meanPayout,
+            meanSquareDelta: this.meanSquareDelta,
+            meanReturnRatio: this.meanReturnRatio,
+            meanReturnRatioSquareDelta: this.meanReturnRatioSquareDelta,
             payoutHistogram: {...this.payoutHistogram},
         };
     }

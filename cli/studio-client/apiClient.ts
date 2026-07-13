@@ -233,11 +233,16 @@ export type StartSimulationResult =
 // running for this project" (has an activeJobId — returned here as a typed result, not thrown, so a
 // caller can jump straight to polling that job) vs. "no active project" or any other failure (thrown
 // as a plain Error, same as every other apiClient function).
-export async function startSimulation(fetchImpl: FetchLike, rounds: number, seed?: string): Promise<StartSimulationResult> {
+export async function startSimulation(
+    fetchImpl: FetchLike,
+    rounds: number,
+    seed?: string,
+    workers?: number,
+): Promise<StartSimulationResult> {
     const response = await fetchImpl("/api/project/simulations", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(seed === undefined ? {rounds} : {rounds, seed}),
+        body: JSON.stringify({rounds, ...(seed === undefined ? {} : {seed}), ...(workers === undefined ? {} : {workers})}),
     });
 
     if (response.status === 409) {

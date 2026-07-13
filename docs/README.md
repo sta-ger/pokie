@@ -30,8 +30,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 7. **[Resizable Grid](resizable-grid.md)** — `VideoSlotWithResizableGridSession` and per-reel height changes between
    rounds, for features that grow or shrink the grid.
 8. **[Simulation](simulation.md)** — `Simulation`/`SimulationConfig`, RTP/volatility/hit-frequency statistics, play
-   strategies for driving targeted or bulk simulation runs, and the pluggable base/freeGames/custom-category
-   feature-level breakdown behind `pokie sim`'s `breakdown` field.
+   strategies for driving targeted or bulk simulation runs, the pluggable base/freeGames/custom-category
+   feature-level breakdown behind `pokie sim`'s `breakdown` field, and worker-thread parallelism via
+   `pokie sim --workers`.
 9. **[Network Serialization](serialization.md)** — turning a session's state into plain-data payloads for a game
    client.
 10. **[Extension Points](extension-points.md)** — every injectable collaborator in the library, in one table, plus
