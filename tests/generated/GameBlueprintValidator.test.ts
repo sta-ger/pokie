@@ -153,29 +153,78 @@ describe("GameBlueprintValidator", () => {
         expect(issues.find((issue) => issue.code === "blueprint-reelstrips-and-weights")?.severity).toBe("warning");
     });
 
+    // validBlueprint() has 5 reels, so reelStripGeneration must always have exactly 5 entries.
+    const literalEntry = {type: "literal", strip: ["A", "K", "Q", "J", "W", "S"]};
+    function generatedEntry(overrides: Record<string, unknown> = {}) {
+        return {type: "generated", length: 20, symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 1, ...overrides};
+    }
+
     describe("reelStripGeneration", () => {
-        it("accepts a blueprint using reelStripGeneration with symbolCounts", () => {
+        it("accepts a blueprint using reelStripGeneration with symbolCounts (all reels generated)", () => {
+            const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(generatedEntry())};
+
+            expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it("accepts a blueprint using reelStripGeneration with symbolWeights (all reels generated)", () => {
+            const entry = generatedEntry({symbolCounts: undefined, symbolWeights: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}});
+            const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+            expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it("accepts a blueprint mixing literal and generated reels", () => {
             const blueprint = {
                 ...validBlueprint(),
-                reelStripGeneration: {length: 20, symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 42},
+                reelStripGeneration: [literalEntry, generatedEntry(), literalEntry, generatedEntry({seed: 2, length: 15}), literalEntry],
             };
 
             expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
         });
 
-        it("accepts a blueprint using reelStripGeneration with symbolWeights", () => {
+        it("accepts reels with entirely independent generation configs (different length/seed/constraints)", () => {
             const blueprint = {
                 ...validBlueprint(),
-                reelStripGeneration: {length: 20, symbolWeights: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 42},
+                reelStripGeneration: [
+                    generatedEntry({length: 10, seed: 1}),
+                    generatedEntry({length: 40, seed: 100, constraints: [{type: "maximumConsecutiveOccurrences", maximumConsecutive: 2}]}),
+                    generatedEntry({length: 20, seed: -5, symbolCounts: undefined, symbolWeights: {A: 1, K: 1, Q: 1, J: 1, W: 1, S: 1}}),
+                    literalEntry,
+                    generatedEntry({length: 8, seed: 42, maxAttempts: 5}),
+                ],
             };
 
             expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
         });
 
-        it("flags reelStripGeneration with an invalid length or a non-integer seed", () => {
+        it("flags a reelStripGeneration array whose length does not match \"reels\"", () => {
+            const blueprint = {...validBlueprint(), reelStripGeneration: [generatedEntry(), generatedEntry()]};
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid");
+        });
+
+        it("flags an entry with neither a valid \"literal\" nor \"generated\" type", () => {
             const blueprint = {
                 ...validBlueprint(),
-                reelStripGeneration: {length: 0, symbolCounts: {A: 1}, seed: 1.5},
+                reelStripGeneration: [{type: "bogus"}, literalEntry, literalEntry, literalEntry, literalEntry],
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-entry-type");
+        });
+
+        it("flags a literal entry with an empty or unknown-symbol strip", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: [{type: "literal", strip: ["ZZ"]}, literalEntry, literalEntry, literalEntry, literalEntry],
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-literal");
+        });
+
+        it("flags a generated entry with an invalid length or a non-integer seed", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: [generatedEntry({length: 0, seed: 1.5}), literalEntry, literalEntry, literalEntry, literalEntry],
             };
 
             expect(codesOf(validator.validate(blueprint))).toEqual(
@@ -183,25 +232,34 @@ describe("GameBlueprintValidator", () => {
             );
         });
 
-        it("flags reelStripGeneration missing both symbolCounts and symbolWeights", () => {
-            const blueprint = {...validBlueprint(), reelStripGeneration: {length: 20, seed: 1}};
-
-            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-source-invalid");
-        });
-
-        it("flags reelStripGeneration with both symbolCounts and symbolWeights set", () => {
+        it("flags a generated entry missing both symbolCounts and symbolWeights", () => {
             const blueprint = {
                 ...validBlueprint(),
-                reelStripGeneration: {length: 20, symbolCounts: {A: 1}, symbolWeights: {A: 1}, seed: 1},
+                reelStripGeneration: [generatedEntry({symbolCounts: undefined}), literalEntry, literalEntry, literalEntry, literalEntry],
             };
 
             expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-source-invalid");
         });
 
-        it("flags reelStripGeneration.symbolCounts referencing an unknown symbol or a negative count", () => {
+        it("flags a generated entry with both symbolCounts and symbolWeights set", () => {
             const blueprint = {
                 ...validBlueprint(),
-                reelStripGeneration: {length: 20, symbolCounts: {A: 6, ZZ: 5, K: -1}, seed: 1},
+                reelStripGeneration: [generatedEntry({symbolWeights: {A: 1}}), literalEntry, literalEntry, literalEntry, literalEntry],
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-source-invalid");
+        });
+
+        it("flags a generated entry's symbolCounts referencing an unknown symbol or a negative count", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: [
+                    generatedEntry({symbolCounts: {A: 6, ZZ: 5, K: -1}}),
+                    literalEntry,
+                    literalEntry,
+                    literalEntry,
+                    literalEntry,
+                ],
             };
 
             expect(codesOf(validator.validate(blueprint))).toEqual(
@@ -209,25 +267,49 @@ describe("GameBlueprintValidator", () => {
             );
         });
 
-        it("flags an unrecognized constraint type", () => {
+        it("flags a generated entry's lockedPositions with an out-of-range index or an unknown symbol", () => {
             const blueprint = {
                 ...validBlueprint(),
-                reelStripGeneration: {
-                    length: 20,
-                    symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1},
-                    seed: 1,
-                    constraints: [{type: "notARealConstraint"}],
-                },
+                reelStripGeneration: [
+                    generatedEntry({length: 10, lockedPositions: {10: "A", 2: "ZZ"}}),
+                    literalEntry,
+                    literalEntry,
+                    literalEntry,
+                    literalEntry,
+                ],
             };
 
-            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-constraint-type");
+            expect(codesOf(validator.validate(blueprint))).toEqual(
+                expect.arrayContaining(["blueprint-reelstripgeneration-invalid-lockedposition-index", "blueprint-reelstripgeneration-unknown-symbol"]),
+            );
+        });
+
+        it("flags an invalid maxAttempts, roundingPolicy, or remainderTieBreakPolicy", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                reelStripGeneration: [
+                    generatedEntry({maxAttempts: 0, roundingPolicy: "bogus", remainderTieBreakPolicy: "bogus"}),
+                    literalEntry,
+                    literalEntry,
+                    literalEntry,
+                    literalEntry,
+                ],
+            };
+
+            expect(codesOf(validator.validate(blueprint))).toEqual(
+                expect.arrayContaining([
+                    "blueprint-reelstripgeneration-invalid-maxattempts",
+                    "blueprint-reelstripgeneration-invalid-roundingpolicy",
+                    "blueprint-reelstripgeneration-invalid-tiebreakpolicy",
+                ]),
+            );
         });
 
         it("errors (not warns) when both reelStrips and reelStripGeneration are set", () => {
             const blueprint = {
                 ...validBlueprint(),
                 reelStrips: new Array(5).fill(["A", "K", "Q", "J", "W", "S"]),
-                reelStripGeneration: {length: 20, symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 1},
+                reelStripGeneration: new Array(5).fill(generatedEntry()),
             };
 
             const issues = validator.validate(blueprint);
@@ -237,7 +319,7 @@ describe("GameBlueprintValidator", () => {
         it("warns (does not error) when both reelStripGeneration and symbolWeights are set", () => {
             const blueprint = {
                 ...validBlueprint(),
-                reelStripGeneration: {length: 20, symbolCounts: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1}, seed: 1},
+                reelStripGeneration: new Array(5).fill(generatedEntry()),
                 symbolWeights: {A: 6, K: 6, Q: 4, J: 2, W: 1, S: 1},
             };
 
@@ -247,23 +329,106 @@ describe("GameBlueprintValidator", () => {
         });
 
         it("flags a paytable/wild/scatter symbol that never appears in reelStripGeneration", () => {
-            const blueprint = {
-                ...validBlueprint(),
-                reelStripGeneration: {length: 20, symbolCounts: {A: 10, K: 5, Q: 5, W: 1}, seed: 1}, // missing "J" and "S"
-            };
+            const entry = generatedEntry({symbolCounts: {A: 10, K: 5, Q: 5, W: 1}}); // missing "J" and "S"
+            const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
 
             expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-missing-symbol");
         });
 
+        it("treats a symbolCounts entry of 0 as absent from the reel (still unreachable, not a false pass)", () => {
+            // "J" is declared (so validateReelStripGenerationCounts doesn't flag it as unknown) but
+            // with a count of 0 on every reel -- it can never actually land, exactly as if it were
+            // omitted entirely, so it must still be flagged as unreachable.
+            const entry = generatedEntry({symbolCounts: {A: 10, K: 5, Q: 5, J: 0, W: 1, S: 1}});
+            const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+            const issues = validator.validate(blueprint);
+            const missing = issues.find((issue) => issue.code === "blueprint-reelstripgeneration-missing-symbol");
+            expect(missing?.message).toContain('"J"');
+            expect(codesOf(issues)).not.toContain("blueprint-reelstripgeneration-unknown-symbol");
+        });
+
         it("warns when a single symbol dominates reelStripGeneration's weighting", () => {
-            const blueprint = {
-                ...validBlueprint(),
-                reelStripGeneration: {length: 60, symbolCounts: {A: 1, K: 1, Q: 1, J: 1, W: 1, S: 55}, seed: 1},
-            };
+            const entry = generatedEntry({length: 60, symbolCounts: {A: 1, K: 1, Q: 1, J: 1, W: 1, S: 55}});
+            const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
 
             const issues = validator.validate(blueprint);
             expect(issues.find((issue) => issue.code === "blueprint-weighting-dominant-symbol")?.severity).toBe("warning");
             expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        describe("constraint spec validation", () => {
+            it("flags a missing required field (minimumCircularDistance without minimumDistance)", () => {
+                const entry = generatedEntry({constraints: [{type: "minimumCircularDistance"}]});
+                const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-constraint-field");
+            });
+
+            it("flags a wrongly-typed field (maximumConsecutive as a string)", () => {
+                const entry = generatedEntry({constraints: [{type: "maximumConsecutiveOccurrences", maximumConsecutive: "two"}]});
+                const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-constraint-field");
+            });
+
+            it("flags a non-positive numeric bound (minimumDistance = -1)", () => {
+                const entry = generatedEntry({constraints: [{type: "minimumCircularDistance", minimumDistance: -1}]});
+                const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-constraint-field");
+            });
+
+            it("flags an unknown symbol in symbolIds", () => {
+                const entry = generatedEntry({constraints: [{type: "minimumCircularDistance", minimumDistance: 2, symbolIds: ["ZZ"]}]});
+                const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-unknown-symbol");
+            });
+
+            it("flags a malformed pair and an unknown symbol within a pair (forbiddenAdjacency)", () => {
+                const entry = generatedEntry({
+                    constraints: [{type: "forbiddenAdjacency", pairs: [["A"], ["A", "ZZ"]]}],
+                });
+                const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+                expect(codesOf(validator.validate(blueprint))).toEqual(
+                    expect.arrayContaining(["blueprint-reelstripgeneration-invalid-constraint-field", "blueprint-reelstripgeneration-unknown-symbol"]),
+                );
+            });
+
+            it("flags an empty or unknown-symbol sequence (requiredSequence)", () => {
+                const entry = generatedEntry({constraints: [{type: "requiredSequence", sequence: ["ZZ"]}]});
+                const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-unknown-symbol");
+            });
+
+            it("flags maximumOccurrences below minimumOccurrences (requiredSequence)", () => {
+                const entry = generatedEntry({
+                    constraints: [{type: "requiredSequence", sequence: ["A", "K"], minimumOccurrences: 3, maximumOccurrences: 1}],
+                });
+                const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-occurrences-range");
+            });
+
+            it("accepts a fully valid constraints array across every constraint type", () => {
+                const entry = generatedEntry({
+                    constraints: [
+                        {type: "minimumCircularDistance", minimumDistance: 2, symbolIds: ["W"]},
+                        {type: "maximumCircularDistance", maximumDistance: 10, symbolIds: ["W"]},
+                        {type: "maximumConsecutiveOccurrences", maximumConsecutive: 3},
+                        {type: "forbiddenAdjacency", pairs: [["W", "W"]]},
+                        {type: "requiredAdjacency", pairs: [["W", "A"]], directed: true},
+                        {type: "forbiddenSequence", sequence: ["W", "W", "W"]},
+                        {type: "requiredSequence", sequence: ["A", "K"], minimumOccurrences: 0, maximumOccurrences: 5},
+                    ],
+                });
+                const blueprint = {...validBlueprint(), reelStripGeneration: new Array(5).fill(entry)};
+
+                expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+            });
         });
     });
 

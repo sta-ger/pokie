@@ -3,7 +3,7 @@
         "id": "generated-reels",
         "name": "Generated Reels",
         "version": "0.1.0",
-        "description": "A pokie build example: 5x3, wilds, scatters, reel strips generated at build time (see docs/cli.md)."
+        "description": "A pokie build example: 5x3, wilds, scatters, per-reel reel strips - one hand-placed, four generated at build time (see docs/cli.md)."
     },
     "reels": 5,
     "rows": 3,
@@ -18,15 +18,45 @@
         "10": {"3": 1, "4": 2, "5": 4},
         "S": {"2": 2, "3": 5, "4": 20, "5": 100}
     },
-    "reelStripGeneration": {
-        "length": 32,
-        "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
-        "seed": 20260713,
-        "constraints": [
-            {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
-            {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["W"]},
-            {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["S"]}
-        ]
-    },
+    "reelStripGeneration": [
+        {
+            "type": "literal",
+            "strip": ["A", "10", "K", "10", "Q", "10", "J", "10", "A", "10", "K", "10", "Q", "10", "J", "10", "S", "W"]
+        },
+        {
+            "type": "generated",
+            "length": 30,
+            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+            "seed": 20260713,
+            "constraints": [
+                {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
+                {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["W"]}
+            ]
+        },
+        {
+            "type": "generated",
+            "length": 28,
+            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+            "seed": 20260714,
+            "constraints": [
+                {"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 3},
+                {"type": "minimumCircularDistance", "minimumDistance": 6, "symbolIds": ["S"]}
+            ]
+        },
+        {
+            "type": "generated",
+            "length": 34,
+            "symbolCounts": {"A": 4, "K": 5, "Q": 7, "J": 9, "10": 7, "W": 1, "S": 1},
+            "seed": 7,
+            "lockedPositions": {"0": "W"},
+            "constraints": [{"type": "maximumConsecutiveOccurrences", "maximumConsecutive": 2}]
+        },
+        {
+            "type": "generated",
+            "length": 24,
+            "symbolWeights": {"A": 4, "K": 6, "Q": 8, "J": 10, "10": 12, "W": 2, "S": 2},
+            "seed": 999
+        }
+    ],
     "availableBets": [1, 2, 5, 10]
 }

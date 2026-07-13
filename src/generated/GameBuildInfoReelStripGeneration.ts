@@ -1,12 +1,10 @@
-import type {ReelStripGenerationBlueprint} from "./ReelStripGenerationBlueprint.js";
 import type {ReelStripGenerationSummary} from "./ReelStripGenerationSummary.js";
 
-// Recorded on GameBuildInfo.reelStripGeneration whenever a blueprint used reelStripGeneration:
-// "config" is the original authored configuration (the exact GameBlueprint.reelStripGeneration
-// block -- seed, symbolCounts/symbolWeights, constraints, ...), and "reels" is what actually happened
-// when it ran, one entry per reel. Absent entirely when the blueprint used literal reelStrips (or
-// neither reelStrips nor reelStripGeneration).
+// Recorded on GameBuildInfo.reelStripGeneration whenever a blueprint's reelStripGeneration actually
+// generated at least one reel: one ReelStripGenerationSummary per *generated* reel (its own config,
+// seed, and — on success — resulting exact strip). Literal reels have no generation story to record
+// (their content is already visible in the materialized reelStrips output). Absent entirely when the
+// blueprint used literal reelStrips only, an all-literal reelStripGeneration, or neither field.
 export type GameBuildInfoReelStripGeneration = {
-    config: ReelStripGenerationBlueprint;
     reels: ReelStripGenerationSummary[];
 };

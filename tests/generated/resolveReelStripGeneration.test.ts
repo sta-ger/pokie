@@ -13,18 +13,31 @@ function baseBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
 }
 
 describe("resolveReelStripGeneration", () => {
-    it("passes a blueprint without reelStripGeneration through unchanged (same reference)", () => {
+    it("is a no-op success when reelStripGeneration is absent", () => {
         const blueprint = baseBlueprint();
 
-        const resolution = resolveReelStripGeneration(blueprint);
-
-        expect(resolution).toEqual({success: true, blueprint});
-        expect(resolution.success && resolution.blueprint).toBe(blueprint);
+        expect(resolveReelStripGeneration(blueprint)).toEqual({success: true});
     });
 
-    it("materializes exact reelStrips (one per reel) from symbolCounts, and drops reelStripGeneration", () => {
+    it("is a no-op success (no buildInfo) when every entry is literal", () => {
         const blueprint = baseBlueprint({
-            reelStripGeneration: {length: 10, symbolCounts: {A: 5, B: 4, W: 1}, seed: 42},
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "B"]},
+                {type: "literal", strip: ["A", "W"]},
+                {type: "literal", strip: ["B", "W"]},
+            ],
+        });
+
+        expect(resolveReelStripGeneration(blueprint)).toEqual({success: true});
+    });
+
+    it("generates only the \"generated\" reels, leaving literal reels untouched (mixed blueprint)", () => {
+        const blueprint = baseBlueprint({
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "B", "W"]},
+                {type: "generated", length: 10, symbolCounts: {A: 6, B: 3, W: 1}, seed: 1},
+                {type: "generated", length: 8, symbolWeights: {A: 5, B: 5, W: 1}, seed: 2},
+            ],
         });
 
         const resolution = resolveReelStripGeneration(blueprint);
@@ -33,36 +46,21 @@ describe("resolveReelStripGeneration", () => {
         if (!resolution.success) {
             return;
         }
-        expect(resolution.blueprint.reelStripGeneration).toBeUndefined();
-        expect(resolution.blueprint.reelStrips).toHaveLength(3);
-        for (const strip of resolution.blueprint.reelStrips!) {
-            expect(strip).toHaveLength(10);
-            const counts: Record<string, number> = {};
-            for (const symbolId of strip) {
-                counts[symbolId] = (counts[symbolId] ?? 0) + 1;
-            }
-            expect(counts).toEqual({A: 5, B: 4, W: 1});
-        }
+        expect(resolution.reelStripGeneration!.reels).toHaveLength(2); // only the 2 generated reels
+        expect(resolution.reelStripGeneration!.reels.map((reel) => reel.reelIndex)).toEqual([1, 2]);
+
+        const [reel1, reel2] = resolution.reelStripGeneration!.reels;
+        expect(reel1.strip).toHaveLength(10);
+        expect(reel2.strip).toHaveLength(8);
     });
 
-    it("materializes reelStrips from symbolWeights via the Largest Remainder Method", () => {
+    it("each generated reel is deterministic for its own seed, independent of the others", () => {
         const blueprint = baseBlueprint({
-            reelStripGeneration: {length: 10, symbolWeights: {A: 5, B: 4, W: 1}, seed: 7},
-        });
-
-        const resolution = resolveReelStripGeneration(blueprint);
-
-        expect(resolution.success).toBe(true);
-        if (!resolution.success) {
-            return;
-        }
-        expect(resolution.blueprint.reelStrips).toHaveLength(3);
-        expect(resolution.blueprint.reelStrips![0]).toHaveLength(10);
-    });
-
-    it("is deterministic: the same blueprint always resolves to byte-identical reelStrips", () => {
-        const blueprint = baseBlueprint({
-            reelStripGeneration: {length: 12, symbolWeights: {A: 5, B: 4, W: 1}, seed: 99},
+            reelStripGeneration: [
+                {type: "generated", length: 12, symbolCounts: {A: 6, B: 5, W: 1}, seed: 42},
+                {type: "generated", length: 12, symbolCounts: {A: 6, B: 5, W: 1}, seed: 42},
+                {type: "literal", strip: ["A"]},
+            ],
         });
 
         const first = resolveReelStripGeneration(blueprint);
@@ -70,14 +68,15 @@ describe("resolveReelStripGeneration", () => {
 
         expect(first.success && second.success).toBe(true);
         if (first.success && second.success) {
-            expect(first.blueprint.reelStrips).toEqual(second.blueprint.reelStrips);
+            expect(first.reelStripGeneration!.reels.map((reel) => reel.strip)).toEqual(second.reelStripGeneration!.reels.map((reel) => reel.strip));
+            // Same seed + same config on two different reels also produces the same strip.
+            expect(first.reelStripGeneration!.reels[0].strip).toEqual(first.reelStripGeneration!.reels[1].strip);
         }
     });
 
-    it("gives every reel a different (but deterministic) seed, derived from the base seed", () => {
-        const blueprint = baseBlueprint({
-            reelStripGeneration: {length: 10, symbolCounts: {A: 5, B: 4, W: 1}, seed: 100},
-        });
+    it("records each generated reel's own config, seed, and resulting exact strip", () => {
+        const reel0Config = {length: 10, symbolCounts: {A: 6, B: 3, W: 1}, seed: 7};
+        const blueprint = baseBlueprint({reelStripGeneration: [{type: "generated", ...reel0Config}, {type: "literal", strip: ["A"]}, {type: "literal", strip: ["B"]}]});
 
         const resolution = resolveReelStripGeneration(blueprint);
 
@@ -85,32 +84,32 @@ describe("resolveReelStripGeneration", () => {
         if (!resolution.success) {
             return;
         }
-        expect(resolution.buildInfo!.reels.map((reel) => reel.seed)).toEqual([100, 101, 102]);
-    });
-
-    it("records build-info with the original config and a per-reel success summary", () => {
-        const spec = {length: 10, symbolCounts: {A: 5, B: 4, W: 1}, seed: 5};
-        const blueprint = baseBlueprint({reelStripGeneration: spec});
-
-        const resolution = resolveReelStripGeneration(blueprint);
-
-        expect(resolution.success).toBe(true);
-        if (!resolution.success) {
-            return;
+        const [summary] = resolution.reelStripGeneration!.reels;
+        expect(summary.reelIndex).toBe(0);
+        expect(summary.config).toEqual({type: "generated", ...reel0Config});
+        expect(summary.seed).toBe(7);
+        expect(summary.success).toBe(true);
+        expect(summary.strip).toHaveLength(10);
+        const counts: Record<string, number> = {};
+        for (const symbolId of summary.strip!) {
+            counts[symbolId] = (counts[symbolId] ?? 0) + 1;
         }
-        expect(resolution.buildInfo!.config).toEqual(spec);
-        expect(resolution.buildInfo!.reels).toHaveLength(3);
-        expect(resolution.buildInfo!.reels.every((reel) => reel.success)).toBe(true);
+        expect(counts).toEqual({A: 6, B: 3, W: 1});
     });
 
     it("applies constraints via the same ReelStripGenerator constraint classes", () => {
         const blueprint = baseBlueprint({
-            reelStripGeneration: {
-                length: 12,
-                symbolCounts: {A: 6, B: 5, W: 1},
-                seed: 3,
-                constraints: [{type: "maximumConsecutiveOccurrences", maximumConsecutive: 2}],
-            },
+            reelStripGeneration: [
+                {
+                    type: "generated",
+                    length: 12,
+                    symbolCounts: {A: 6, B: 5, W: 1},
+                    seed: 3,
+                    constraints: [{type: "maximumConsecutiveOccurrences", maximumConsecutive: 2}],
+                },
+                {type: "literal", strip: ["A"]},
+                {type: "literal", strip: ["B"]},
+            ],
         });
 
         const resolution = resolveReelStripGeneration(blueprint);
@@ -119,24 +118,28 @@ describe("resolveReelStripGeneration", () => {
         if (!resolution.success) {
             return;
         }
-        for (const strip of resolution.blueprint.reelStrips!) {
-            let run = 1;
-            for (let i = 1; i < strip.length; i++) {
-                run = strip[i] === strip[i - 1] ? run + 1 : 1;
-                expect(run).toBeLessThanOrEqual(2);
-            }
+        const strip = resolution.reelStripGeneration!.reels[0].strip!;
+        let run = 1;
+        for (let i = 1; i < strip.length; i++) {
+            run = strip[i] === strip[i - 1] ? run + 1 : 1;
+            expect(run).toBeLessThanOrEqual(2);
         }
     });
 
-    it("fails with a per-reel diagnostic when a reel's constraints are unsatisfiable", () => {
+    it("fails with a per-reel diagnostic when one reel's constraints are unsatisfiable, without touching other reels", () => {
         const blueprint = baseBlueprint({
-            reelStripGeneration: {
-                length: 4,
-                symbolCounts: {A: 2, W: 2},
-                seed: 5,
-                maxAttempts: 3,
-                constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["W"]}],
-            },
+            reelStripGeneration: [
+                {type: "literal", strip: ["A"]},
+                {
+                    type: "generated",
+                    length: 4,
+                    symbolCounts: {A: 2, W: 2},
+                    seed: 5,
+                    maxAttempts: 3,
+                    constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["W"]}],
+                },
+                {type: "generated", length: 6, symbolCounts: {A: 4, B: 2}, seed: 1},
+            ],
         });
 
         const resolution = resolveReelStripGeneration(blueprint);
@@ -145,21 +148,31 @@ describe("resolveReelStripGeneration", () => {
         if (resolution.success) {
             return;
         }
-        expect(resolution.reels).toHaveLength(3); // one entry per reel, all failing the same way
-        expect(resolution.reels.every((reel) => !reel.success && reel.attemptsUsed === 3)).toBe(true);
-        expect(
-            resolution.reels.every((reel) => reel.diagnostics.some((diagnostic) => diagnostic.violations.some((v) => v.constraintId === "maximum-circular-distance"))),
-        ).toBe(true);
+        // Only the 2 "generated" entries are attempted at all (index 0 is literal); reel 1 fails,
+        // reel 2 succeeds on its own.
+        expect(resolution.reels.map((reel) => reel.reelIndex)).toEqual([1, 2]);
+        const failedReel = resolution.reels.find((reel) => reel.reelIndex === 1)!;
+        expect(failedReel.success).toBe(false);
+        expect(failedReel.attemptsUsed).toBe(3);
+        expect(failedReel.diagnostics.some((diagnostic) => diagnostic.violations.some((v) => v.constraintId === "maximum-circular-distance"))).toBe(true);
+        const succeededReel = resolution.reels.find((reel) => reel.reelIndex === 2)!;
+        expect(succeededReel.success).toBe(true);
+        expect(succeededReel.strip).toBeDefined();
     });
 
     it("fails with a single synthetic diagnostic when a constraint spec is invalid, without crashing", () => {
         const blueprint = baseBlueprint({
-            reelStripGeneration: {
-                length: 10,
-                symbolCounts: {A: 5, B: 4, W: 1},
-                seed: 1,
-                constraints: [{type: "minimumCircularDistance", minimumDistance: -1}],
-            },
+            reelStripGeneration: [
+                {
+                    type: "generated",
+                    length: 10,
+                    symbolCounts: {A: 6, B: 3, W: 1},
+                    seed: 1,
+                    constraints: [{type: "minimumCircularDistance", minimumDistance: -1}],
+                },
+                {type: "literal", strip: ["A"]},
+                {type: "literal", strip: ["B"]},
+            ],
         });
 
         const resolution = resolveReelStripGeneration(blueprint);
@@ -169,7 +182,7 @@ describe("resolveReelStripGeneration", () => {
             return;
         }
         expect(resolution.reels).toHaveLength(1);
-        expect(resolution.reels[0].reelIndex).toBe(-1);
+        expect(resolution.reels[0].reelIndex).toBe(0);
         expect(resolution.reels[0].diagnostics[0].violations[0]).toMatchObject({constraintId: "reelStripGeneration.constraints"});
         expect(resolution.reels[0].diagnostics[0].violations[0].message).toContain("minimumDistance must be a positive integer");
     });

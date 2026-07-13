@@ -6,6 +6,7 @@ import type {GameBuildInfo} from "./GameBuildInfo.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
 import type {GamePackageGenerating} from "./GamePackageGenerating.js";
 import type {GeneratedGamePackage} from "./GeneratedGamePackage.js";
+import {materializeReelStrips} from "./materializeReelStrips.js";
 import {renderGeneratedGameModule} from "./renderGeneratedGameModule.js";
 import {renderGeneratedPackageReadme} from "./renderGeneratedPackageReadme.js";
 
@@ -24,10 +25,15 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // Omitting it — e.g. when calling the generator directly with an in-memory blueprint — still
     // produces a fully valid package, just without a "source" field.
     //
-    // "reelStripGeneration" is likewise purely informational here: by the time "blueprint" reaches
-    // this method it must already carry literal reelStrips (resolveReelStripGeneration.ts is
-    // responsible for running the actual generation and materializing them, before BuildCommand ever
-    // calls this) — this method only records the config/result it's handed, in build-info.json.
+    // "blueprint" here is the blueprint exactly as authored/validated — including its per-reel
+    // reelStripGeneration array, if any (resolveReelStripGeneration.ts is responsible for actually
+    // running generation *before* this method is ever called; "reelStripGeneration" carries its
+    // results). blueprintHash/no-op-rebuild detection (see buildGameBuildInfo) are therefore keyed on
+    // the *authored* config, not on whatever a generated reel happened to produce — two different
+    // authored configs that happen to generate byte-identical strips still hash differently. The
+    // actual runtime file (index.js) instead gets a *materialized* copy (materializeReelStrips) with
+    // reelStripGeneration resolved into a plain reelStrips array — the runtime module never depends
+    // on the generation API.
     public generate(
         blueprint: GameBlueprint,
         cwd: string,
@@ -81,11 +87,13 @@ export class GamePackageGenerator implements GamePackageGenerating {
             },
         };
 
+        const materializedBlueprint = materializeReelStrips(blueprint, reelStripGeneration);
+
         fs.writeFileSync(path.join(projectRoot, "package.json"), `${JSON.stringify(packageJson, null, 4)}\n`);
         fs.writeFileSync(path.join(projectRoot, "README.md"), renderGeneratedPackageReadme(blueprint.manifest));
         fs.writeFileSync(
             path.join(projectRoot, "src", "generated", "index.js"),
-            renderGeneratedGameModule(blueprint, buildInfo),
+            renderGeneratedGameModule(materializedBlueprint, buildInfo),
         );
         fs.writeFileSync(
             path.join(projectRoot, "src", "generated", "build-info.json"),

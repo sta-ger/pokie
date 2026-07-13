@@ -4,11 +4,11 @@ import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 
 // End-to-end coverage for reelStripGeneration (see docs/cli.md and
-// examples/blueprints/generated-reels.blueprint.json): build-time generation of exact reel strips via
-// the existing ReelStripGenerator, as an alternative to a literal reelStrips array. Exercises the
-// real shipped example so it stays in sync with what "pokie build" actually does, mirroring
-// BuildWorkflow.integration.test.ts's use of crazy-fruits.blueprint.json for the literal-reelStrips
-// (and symbolWeights) path.
+// examples/blueprints/generated-reels.blueprint.json): per-reel build-time generation of exact reel
+// strips via the existing ReelStripGenerator, mixed freely with literal reels in the same blueprint.
+// Exercises the real shipped example so it stays in sync with what "pokie build" actually does,
+// mirroring BuildWorkflow.integration.test.ts's use of crazy-fruits.blueprint.json for the
+// literal-reelStrips (and symbolWeights) path.
 describe("CLI workflow (integration): pokie build with reelStripGeneration", () => {
     const blueprintPath = path.join(__dirname, "..", "..", "examples", "blueprints", "generated-reels.blueprint.json");
 
@@ -28,7 +28,7 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         (console.error as jest.Mock).mockRestore();
     });
 
-    it("builds the package with reelStrips already materialized as a plain literal array — the runtime module never touches the generation API", async () => {
+    it("builds the package with every reel materialized as a plain literal array — the runtime module never touches the generation API", async () => {
         const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
         expect(exitCode).toBe(0);
 
@@ -36,10 +36,34 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         const embedded = JSON.parse(indexJs.match(/const blueprint = ([\s\S]*?);\n\n/)![1]);
 
         // The materialized blueprint embedded in the generated module carries plain reelStrips, and
-        // the generation config that produced them is gone — the runtime module only ever sees the
-        // same "reelStrips" shape a literal-reelStrips blueprint would have used.
+        // the per-reel generation config that produced them is gone — the runtime module only ever
+        // sees the same "reelStrips" shape a literal-reelStrips blueprint would have used.
         expect(Object.keys(embedded)).not.toContain("reelStripGeneration");
         expect(embedded.reelStrips).toHaveLength(5);
+        expect(embedded.reelStrips[0]).toEqual([
+            "A",
+            "10",
+            "K",
+            "10",
+            "Q",
+            "10",
+            "J",
+            "10",
+            "A",
+            "10",
+            "K",
+            "10",
+            "Q",
+            "10",
+            "J",
+            "10",
+            "S",
+            "W",
+        ]);
+        expect(embedded.reelStrips[1]).toHaveLength(30);
+        expect(embedded.reelStrips[2]).toHaveLength(28);
+        expect(embedded.reelStrips[3]).toHaveLength(34);
+        expect(embedded.reelStrips[4]).toHaveLength(24);
 
         // The generated module's own require() list is the runtime contract: only ordinary
         // session/config primitives, never anything from the reel-generation API.
@@ -48,43 +72,49 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         expect(indexJs).not.toContain("ReelStripConstraint");
     });
 
-    it("records the seed, the original reelStripGeneration config, and a per-reel result in build-info.json", async () => {
+    it("records only the generated reels' provenance in build-info.json: each one's own config, seed, and resulting strip", async () => {
         const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
         expect(exitCode).toBe(0);
 
         const buildInfo = JSON.parse(fs.readFileSync(path.join(outDir, "src", "generated", "build-info.json"), "utf-8"));
 
-        expect(buildInfo.reelStripGeneration.config.seed).toBe(20260713);
-        expect(buildInfo.reelStripGeneration.config.symbolWeights).toEqual({A: 4, K: 6, Q: 8, J: 10, "10": 12, W: 2, S: 2});
-        expect(buildInfo.reelStripGeneration.reels).toHaveLength(5);
+        // Reel 0 is literal, so only reels 1-4 (the "generated" entries) appear here.
+        expect(buildInfo.reelStripGeneration.reels).toHaveLength(4);
+        expect(buildInfo.reelStripGeneration.reels.map((reel: {reelIndex: number}) => reel.reelIndex)).toEqual([1, 2, 3, 4]);
         expect(buildInfo.reelStripGeneration.reels.every((reel: {success: boolean}) => reel.success)).toBe(true);
-        // Every reel gets a different, deterministically derived seed (base seed + reel index).
-        expect(buildInfo.reelStripGeneration.reels.map((reel: {seed: number}) => reel.seed)).toEqual([
-            20260713, 20260714, 20260715, 20260716, 20260717,
-        ]);
+
+        const [reel1, reel2, reel3, reel4] = buildInfo.reelStripGeneration.reels;
+        expect(reel1.config).toMatchObject({length: 30, seed: 20260713});
+        expect(reel1.strip).toHaveLength(30);
+        expect(reel2.config).toMatchObject({length: 28, seed: 20260714});
+        expect(reel2.strip).toHaveLength(28);
+        expect(reel3.config).toMatchObject({length: 34, seed: 7, lockedPositions: {0: "W"}});
+        expect(reel3.strip).toHaveLength(34);
+        expect(reel3.strip[0]).toBe("W"); // the locked position honored
+        expect(reel4.config).toMatchObject({length: 24, seed: 999});
+        expect(reel4.strip).toHaveLength(24);
     });
 
-    it("stores exact, ready-to-use strips: every reel has the blueprint's declared length and exact symbol counts", async () => {
+    it("stores exact, ready-to-use strips: every generated reel has its own declared length and exact symbol counts", async () => {
         const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
         expect(exitCode).toBe(0);
 
-        // Read the literal reelStrips straight out of the generated source (it's a plain JSON literal
-        // embedded in the file, not something requiring the reels API to interpret).
         const indexJs = fs.readFileSync(path.join(outDir, "src", "generated", "index.js"), "utf-8");
         const embedded = JSON.parse(indexJs.match(/const blueprint = ([\s\S]*?);\n\n/)![1]);
 
-        expect(embedded.reelStrips).toHaveLength(5);
-        for (const strip of embedded.reelStrips) {
-            expect(strip).toHaveLength(32);
+        const countsOf = (strip: string[]) => {
             const counts: Record<string, number> = {};
             for (const symbolId of strip) {
                 counts[symbolId] = (counts[symbolId] ?? 0) + 1;
             }
-            expect(counts).toEqual({A: 3, K: 4, Q: 6, J: 7, "10": 9, W: 1, S: 2});
-        }
+            return counts;
+        };
+
+        // Reel 3 uses symbolCounts directly, so its exact per-symbol counts are known up front.
+        expect(countsOf(embedded.reelStrips[3])).toEqual({A: 4, K: 5, Q: 7, J: 9, "10": 7, W: 1, S: 1});
     });
 
-    it("is deterministic: rebuilding the unchanged blueprint reports an unchanged/no-op status", async () => {
+    it("is deterministic: rebuilding the unchanged blueprint reports an unchanged/no-op status with byte-identical output", async () => {
         const first = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
         expect(first).toBe(0);
         const firstIndexJs = fs.readFileSync(path.join(outDir, "src", "generated", "index.js"), "utf-8");
@@ -100,7 +130,7 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         expect(printed).toContain("status           unchanged — deterministic rebuild");
     });
 
-    it("reports a clear build-time error, via pokie build, when reelStripGeneration's constraints are unsatisfiable", async () => {
+    it("reports a clear per-reel build-time error, via pokie build, when one reel's constraints are unsatisfiable", async () => {
         const blueprint = {
             manifest: {id: "unsatisfiable", name: "Unsatisfiable", version: "0.1.0"},
             reels: 3,
@@ -108,15 +138,20 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
             symbols: ["A", "W"],
             wilds: ["W"],
             paytable: {A: {3: 5}},
-            reelStripGeneration: {
-                length: 4,
-                symbolCounts: {A: 2, W: 2},
-                seed: 1,
-                maxAttempts: 3,
-                // Two "W"s on a 4-long strip always split the circle into two gaps summing to 4, so
-                // both can never simultaneously be <= 1 -- no arrangement can ever satisfy this.
-                constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["W"]}],
-            },
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "W"]},
+                {
+                    type: "generated",
+                    length: 4,
+                    symbolCounts: {A: 2, W: 2},
+                    seed: 1,
+                    maxAttempts: 3,
+                    // Two "W"s on a 4-long strip always split the circle into two gaps summing to 4,
+                    // so both can never simultaneously be <= 1 -- no arrangement can ever satisfy this.
+                    constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["W"]}],
+                },
+                {type: "literal", strip: ["A", "W"]},
+            ],
         };
         const badBlueprintPath = path.join(workDir, "unsatisfiable.blueprint.json");
         fs.writeFileSync(badBlueprintPath, JSON.stringify(blueprint));
@@ -127,6 +162,7 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         expect(fs.existsSync(outDir)).toBe(false);
         const printedErrors = (console.error as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
         expect(printedErrors).toContain("could not generate its reel strips");
+        expect(printedErrors).toContain("reel 1");
         expect(printedErrors).toContain("maximum-circular-distance");
     });
 });

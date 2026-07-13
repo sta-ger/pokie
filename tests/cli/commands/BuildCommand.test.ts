@@ -459,10 +459,13 @@ describe("BuildCommand", () => {
             rows: 3,
             symbols: ["A", "B"],
             paytable: {A: {3: 5}, B: {3: 2}},
-            reelStripGeneration: {length: 10, symbolCounts: {A: 6, B: 4}, seed: 1},
+            reelStripGeneration: [
+                {type: "generated", length: 10, symbolCounts: {A: 6, B: 4}, seed: 1},
+                {type: "literal", strip: ["A", "B"]},
+            ],
         };
 
-        it("resolves reelStripGeneration and forwards the materialized blueprint + buildInfo to the generator", async () => {
+        it("resolves reelStripGeneration and forwards the AUTHORED blueprint (unmaterialized) + per-reel buildInfo to the generator", async () => {
             const validator = createStubValidator([]);
             const generator = createStubGenerator(generatedResult);
             const command = new BuildCommand("1.3.0", () => blueprintWithGeneration, validator, generator);
@@ -471,12 +474,13 @@ describe("BuildCommand", () => {
 
             expect(exitCode).toBe(0);
             const calledWith = generator.calledWith!;
-            expect(calledWith.blueprint.reelStripGeneration).toBeUndefined();
-            expect(calledWith.blueprint.reelStrips).toHaveLength(2);
-            expect(calledWith.blueprint.reelStrips![0]).toHaveLength(10);
-            expect(calledWith.reelStripGeneration?.config).toEqual(blueprintWithGeneration.reelStripGeneration);
-            expect(calledWith.reelStripGeneration?.reels).toHaveLength(2);
-            expect(calledWith.reelStripGeneration?.reels.every((reel) => reel.success)).toBe(true);
+            // The generator receives the blueprint exactly as authored -- materialization (and
+            // reelStrips derivation) happens inside GamePackageGenerator itself, using
+            // reelStripGeneration's per-reel results, not before this call.
+            expect(calledWith.blueprint).toBe(blueprintWithGeneration);
+            expect(calledWith.reelStripGeneration?.reels).toHaveLength(1); // only the 1 "generated" entry
+            expect(calledWith.reelStripGeneration?.reels[0]).toMatchObject({reelIndex: 0, success: true});
+            expect(calledWith.reelStripGeneration?.reels[0].strip).toHaveLength(10);
         });
 
         it("--dry-run does not call the generator, even with reelStripGeneration present", async () => {
@@ -491,16 +495,30 @@ describe("BuildCommand", () => {
             expect(printed).toContain("Dry run");
         });
 
-        it("reports a clear failure and returns 1, without generating, when reel strip generation is unsatisfiable", async () => {
+        it("accepts a blueprint mixing literal and generated reels", async () => {
+            const generator = createStubGenerator(generatedResult);
+            const command = new BuildCommand("1.3.0", () => blueprintWithGeneration, createStubValidator([]), generator);
+
+            const exitCode = await command.run(["config.json"]);
+
+            expect(exitCode).toBe(0);
+            expect(generator.calledWith).toBeDefined();
+        });
+
+        it("reports a clear per-reel failure and returns 1, without generating, when one reel's generation is unsatisfiable", async () => {
             const unsatisfiable: GameBlueprint = {
                 ...blueprintWithGeneration,
-                reelStripGeneration: {
-                    length: 4,
-                    symbolCounts: {A: 2, B: 2},
-                    seed: 5,
-                    maxAttempts: 2,
-                    constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
-                },
+                reelStripGeneration: [
+                    {type: "literal", strip: ["A", "B"]},
+                    {
+                        type: "generated",
+                        length: 4,
+                        symbolCounts: {A: 2, B: 2},
+                        seed: 5,
+                        maxAttempts: 2,
+                        constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
+                    },
+                ],
             };
             const generator = createStubGenerator(generatedResult);
             const command = new BuildCommand("1.3.0", () => unsatisfiable, createStubValidator([]), generator);
@@ -510,6 +528,7 @@ describe("BuildCommand", () => {
             expect(exitCode).toBe(1);
             expect(generator.calledWith).toBeUndefined();
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("could not generate its reel strips"));
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("reel 1"));
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("maximum-circular-distance"));
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("docs/cli.md#pokie-build-configjson"));
         });

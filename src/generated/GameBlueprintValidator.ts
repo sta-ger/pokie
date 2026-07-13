@@ -86,7 +86,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, reels, reelsValid, issues);
         this.validatePaylines(b.paylines, reels, reelsValid, rows, rowsValid, issues);
         const reelStripSymbols = this.validateReelStrips(b.reelStrips, symbolSet, symbolsValid, reels, reelsValid, rows, rowsValid, issues);
-        const reelStripGenerationSymbols = this.validateReelStripGeneration(b.reelStripGeneration, symbolSet, symbolsValid, issues);
+        const reelStripGenerationSymbols = this.validateReelStripGeneration(b.reelStripGeneration, symbolSet, symbolsValid, reels, reelsValid, issues);
         const weightSymbols = this.validateSymbolWeights(b.symbolWeights, symbolSet, symbolsValid, issues);
 
         if (b.reelStrips !== undefined && b.reelStripGeneration !== undefined) {
@@ -424,235 +424,496 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         return stripSymbols;
     }
 
-    // Shape-checks reelStripGeneration only: length/seed/symbolCounts-or-symbolWeights/
-    // lockedPositions/maxAttempts/policy-enum values, plus a "known constraint type" check on each
-    // constraints[] entry. Whether the resulting configuration can actually be *satisfied* is a
-    // runtime question ReelStripGenerator itself answers (each constraint class fail-fasts on a
-    // nonsensical numeric bound in its own constructor, and unsatisfiable constraints surface as a
-    // build-time failure) — see resolveReelStripGeneration.ts and BuildCommand, not here.
+    // Shape-checks reelStripGeneration only: it must have exactly one entry per reel, and each entry
+    // must be a well-formed {type: "literal", strip} or {type: "generated", ...} — for "generated",
+    // that means length/seed/symbolCounts-or-symbolWeights/lockedPositions/maxAttempts/policy-enum
+    // values, plus a full check of every constraints[] entry's own required fields, types, unknown
+    // symbols, and numeric bounds (validateReelStripConstraintSpec below). Whether a "generated"
+    // entry's configuration can actually be *satisfied* is a separate, runtime question
+    // ReelStripGenerator itself answers (unsatisfiable constraints surface as a build-time failure)
+    // — see resolveReelStripGeneration.ts and BuildCommand, not here.
     private validateReelStripGeneration(
         reelStripGeneration: unknown,
         symbolSet: Set<string>,
         symbolsValid: boolean,
+        reels: unknown,
+        reelsValid: boolean,
         issues: ValidationIssue[],
     ): Set<string> | undefined {
         if (reelStripGeneration === undefined) {
             return undefined;
         }
 
-        if (typeof reelStripGeneration !== "object" || reelStripGeneration === null || Array.isArray(reelStripGeneration)) {
+        if (!Array.isArray(reelStripGeneration)) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid",
                 severity: "error",
-                message: '"reelStripGeneration", if present, must be an object.',
+                message: '"reelStripGeneration", if present, must be an array with exactly one entry per reel.',
             });
             return undefined;
         }
 
-        const g = reelStripGeneration as Record<string, unknown>;
+        if (reelsValid && reelStripGeneration.length !== reels) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid",
+                severity: "error",
+                message: `"reelStripGeneration" has ${reelStripGeneration.length} entries, but "reels" is ${reels} — it must have exactly one entry per reel.`,
+            });
+        }
 
-        if (!(typeof g.length === "number" && Number.isInteger(g.length) && g.length > 0)) {
+        const generatedSymbols = new Set<string>();
+        reelStripGeneration.forEach((entry, index) => {
+            this.validateReelStripGenerationEntry(entry, `reelStripGeneration[${index}]`, symbolSet, symbolsValid, generatedSymbols, issues);
+        });
+        return generatedSymbols;
+    }
+
+    private validateReelStripGenerationEntry(
+        entry: unknown,
+        path: string,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        generatedSymbols: Set<string>,
+        issues: ValidationIssue[],
+    ): void {
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-entry",
+                severity: "error",
+                message: `"${path}" must be an object with a "type" field.`,
+            });
+            return;
+        }
+
+        const e = entry as Record<string, unknown>;
+        if (e.type === "literal") {
+            this.validateReelStripGenerationLiteral(e.strip, path, symbolSet, symbolsValid, generatedSymbols, issues);
+        } else if (e.type === "generated") {
+            this.validateReelStripGenerationGenerated(e, path, symbolSet, symbolsValid, generatedSymbols, issues);
+        } else {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-entry-type",
+                severity: "error",
+                message: `"${path}.type" must be "literal" or "generated".`,
+            });
+        }
+    }
+
+    private validateReelStripGenerationLiteral(
+        strip: unknown,
+        path: string,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        generatedSymbols: Set<string>,
+        issues: ValidationIssue[],
+    ): void {
+        const valid = Array.isArray(strip) && strip.length > 0 && strip.every((s) => typeof s === "string" && (!symbolsValid || symbolSet.has(s)));
+        if (!valid) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-literal",
+                severity: "error",
+                message: `"${path}.strip" must be a non-empty array of known symbol ids.`,
+            });
+            if (Array.isArray(strip)) {
+                strip.filter((s): s is string => typeof s === "string").forEach((s) => generatedSymbols.add(s));
+            }
+            return;
+        }
+        strip.forEach((s: string) => generatedSymbols.add(s));
+    }
+
+    private validateReelStripGenerationGenerated(
+        entry: Record<string, unknown>,
+        path: string,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        generatedSymbols: Set<string>,
+        issues: ValidationIssue[],
+    ): void {
+        const lengthValid = typeof entry.length === "number" && Number.isInteger(entry.length) && entry.length > 0;
+        if (!lengthValid) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-length",
                 severity: "error",
-                message: '"reelStripGeneration.length" must be a positive integer.',
+                message: `"${path}.length" must be a positive integer.`,
             });
         }
 
-        if (!(typeof g.seed === "number" && Number.isInteger(g.seed))) {
+        if (!(typeof entry.seed === "number" && Number.isInteger(entry.seed))) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-seed",
                 severity: "error",
-                message: '"reelStripGeneration.seed" must be an integer — required (not optional) so builds stay deterministic.',
+                message: `"${path}.seed" must be an integer — required (not optional) so builds stay deterministic.`,
             });
         }
 
-        const hasCounts = g.symbolCounts !== undefined;
-        const hasWeights = g.symbolWeights !== undefined;
+        const hasCounts = entry.symbolCounts !== undefined;
+        const hasWeights = entry.symbolWeights !== undefined;
         if (hasCounts === hasWeights) {
             issues.push({
                 code: "blueprint-reelstripgeneration-source-invalid",
                 severity: "error",
-                message: 'Exactly one of "reelStripGeneration.symbolCounts" or "reelStripGeneration.symbolWeights" must be set.',
+                message: `Exactly one of "${path}.symbolCounts" or "${path}.symbolWeights" must be set.`,
             });
         }
 
-        let generatedSymbols: Set<string> | undefined;
         if (hasCounts && !hasWeights) {
-            generatedSymbols = this.validateReelStripGenerationCounts(g.symbolCounts, symbolSet, symbolsValid, issues);
+            this.validateReelStripGenerationCounts(entry.symbolCounts, path, symbolSet, symbolsValid, generatedSymbols, issues);
         } else if (hasWeights && !hasCounts) {
-            generatedSymbols = this.validateReelStripGenerationWeights(g.symbolWeights, symbolSet, symbolsValid, issues);
+            this.validateReelStripGenerationWeights(entry.symbolWeights, path, symbolSet, symbolsValid, generatedSymbols, issues);
         }
 
-        if (g.lockedPositions !== undefined) {
-            this.validateReelStripGenerationLockedPositions(g.lockedPositions, symbolSet, symbolsValid, issues);
+        if (entry.lockedPositions !== undefined) {
+            this.validateReelStripGenerationLockedPositions(
+                entry.lockedPositions,
+                path,
+                symbolSet,
+                symbolsValid,
+                lengthValid ? (entry.length as number) : undefined,
+                issues,
+            );
         }
 
-        if (g.constraints !== undefined) {
-            this.validateReelStripGenerationConstraints(g.constraints, issues);
+        if (entry.constraints !== undefined) {
+            this.validateReelStripGenerationConstraints(entry.constraints, path, symbolSet, symbolsValid, issues);
         }
 
-        if (g.maxAttempts !== undefined && !(typeof g.maxAttempts === "number" && Number.isInteger(g.maxAttempts) && g.maxAttempts > 0)) {
+        if (entry.maxAttempts !== undefined && !(typeof entry.maxAttempts === "number" && Number.isInteger(entry.maxAttempts) && entry.maxAttempts > 0)) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-maxattempts",
                 severity: "error",
-                message: '"reelStripGeneration.maxAttempts", if present, must be a positive integer.',
+                message: `"${path}.maxAttempts", if present, must be a positive integer.`,
             });
         }
 
-        if (g.roundingPolicy !== undefined && !REEL_STRIP_ROUNDING_POLICIES.includes(g.roundingPolicy as string)) {
+        if (entry.roundingPolicy !== undefined && !REEL_STRIP_ROUNDING_POLICIES.includes(entry.roundingPolicy as string)) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-roundingpolicy",
                 severity: "error",
-                message: `"reelStripGeneration.roundingPolicy", if present, must be one of: ${REEL_STRIP_ROUNDING_POLICIES.join(", ")}.`,
+                message: `"${path}.roundingPolicy", if present, must be one of: ${REEL_STRIP_ROUNDING_POLICIES.join(", ")}.`,
             });
         }
 
-        if (g.remainderTieBreakPolicy !== undefined && !REEL_STRIP_TIE_BREAK_POLICIES.includes(g.remainderTieBreakPolicy as string)) {
+        if (entry.remainderTieBreakPolicy !== undefined && !REEL_STRIP_TIE_BREAK_POLICIES.includes(entry.remainderTieBreakPolicy as string)) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-tiebreakpolicy",
                 severity: "error",
-                message: `"reelStripGeneration.remainderTieBreakPolicy", if present, must be one of: ${REEL_STRIP_TIE_BREAK_POLICIES.join(", ")}.`,
+                message: `"${path}.remainderTieBreakPolicy", if present, must be one of: ${REEL_STRIP_TIE_BREAK_POLICIES.join(", ")}.`,
             });
         }
-
-        return generatedSymbols;
     }
 
     private validateReelStripGenerationCounts(
         symbolCounts: unknown,
+        path: string,
         symbolSet: Set<string>,
         symbolsValid: boolean,
+        generatedSymbols: Set<string>,
         issues: ValidationIssue[],
-    ): Set<string> | undefined {
+    ): void {
         if (typeof symbolCounts !== "object" || symbolCounts === null || Array.isArray(symbolCounts)) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-symbolcounts",
                 severity: "error",
-                message: '"reelStripGeneration.symbolCounts", if present, must be an object mapping symbol ids to non-negative counts.',
+                message: `"${path}.symbolCounts", if present, must be an object mapping symbol ids to non-negative counts.`,
             });
-            return undefined;
+            return;
         }
 
-        const generatedSymbols = new Set<string>();
         for (const [symbolId, count] of Object.entries(symbolCounts as Record<string, unknown>)) {
-            generatedSymbols.add(symbolId);
             if (symbolsValid && !symbolSet.has(symbolId)) {
                 issues.push({
                     code: "blueprint-reelstripgeneration-unknown-symbol",
                     severity: "error",
-                    message: `"reelStripGeneration.symbolCounts" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
+                    message: `"${path}.symbolCounts" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
                 });
             }
             if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
                 issues.push({
                     code: "blueprint-reelstripgeneration-invalid-count",
                     severity: "error",
-                    message: `"reelStripGeneration.symbolCounts.${symbolId}" must be a non-negative integer.`,
+                    message: `"${path}.symbolCounts.${symbolId}" must be a non-negative integer.`,
                 });
+                continue;
+            }
+            // A symbol declared with a count of 0 will never actually appear on this reel — it is
+            // not "reachable" via reelStripGeneration, exactly like a symbol simply absent from a
+            // literal strip isn't reachable via reelStrips either.
+            if (count > 0) {
+                generatedSymbols.add(symbolId);
             }
         }
-        return generatedSymbols;
     }
 
     private validateReelStripGenerationWeights(
         symbolWeights: unknown,
+        path: string,
         symbolSet: Set<string>,
         symbolsValid: boolean,
+        generatedSymbols: Set<string>,
         issues: ValidationIssue[],
-    ): Set<string> | undefined {
+    ): void {
         if (typeof symbolWeights !== "object" || symbolWeights === null || Array.isArray(symbolWeights)) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-symbolweights",
                 severity: "error",
-                message: '"reelStripGeneration.symbolWeights", if present, must be an object mapping symbol ids to positive weights.',
+                message: `"${path}.symbolWeights", if present, must be an object mapping symbol ids to positive weights.`,
             });
-            return undefined;
+            return;
         }
 
-        const generatedSymbols = new Set<string>();
         for (const [symbolId, weight] of Object.entries(symbolWeights as Record<string, unknown>)) {
-            generatedSymbols.add(symbolId);
             if (symbolsValid && !symbolSet.has(symbolId)) {
                 issues.push({
                     code: "blueprint-reelstripgeneration-unknown-symbol",
                     severity: "error",
-                    message: `"reelStripGeneration.symbolWeights" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
+                    message: `"${path}.symbolWeights" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
                 });
             }
             if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) {
                 issues.push({
                     code: "blueprint-reelstripgeneration-invalid-weight",
                     severity: "error",
-                    message: `"reelStripGeneration.symbolWeights.${symbolId}" must be a positive, finite number.`,
+                    message: `"${path}.symbolWeights.${symbolId}" must be a positive, finite number.`,
                 });
+                continue;
             }
+            // Unlike symbolCounts, a weight of 0 is already rejected above (weights must be
+            // positive), so every entry that reaches here is reachable.
+            generatedSymbols.add(symbolId);
         }
-        return generatedSymbols;
     }
 
     private validateReelStripGenerationLockedPositions(
         lockedPositions: unknown,
+        path: string,
         symbolSet: Set<string>,
         symbolsValid: boolean,
+        length: number | undefined,
         issues: ValidationIssue[],
     ): void {
         if (typeof lockedPositions !== "object" || lockedPositions === null || Array.isArray(lockedPositions)) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-lockedpositions",
                 severity: "error",
-                message: '"reelStripGeneration.lockedPositions", if present, must be an object mapping position indexes to symbol ids.',
+                message: `"${path}.lockedPositions", if present, must be an object mapping position indexes to symbol ids.`,
             });
             return;
         }
 
         for (const [position, symbolId] of Object.entries(lockedPositions as Record<string, unknown>)) {
-            if (!Number.isInteger(Number(position)) || Number(position) < 0) {
+            const positionNumber = Number(position);
+            if (!Number.isInteger(positionNumber) || positionNumber < 0 || (length !== undefined && positionNumber >= length)) {
                 issues.push({
                     code: "blueprint-reelstripgeneration-invalid-lockedposition-index",
                     severity: "error",
-                    message: `"reelStripGeneration.lockedPositions" has an invalid position key "${position}"; keys must be non-negative integers.`,
+                    message: `"${path}.lockedPositions" has an invalid position key "${position}"; keys must be non-negative integers below "${path}.length".`,
                 });
             }
             if (typeof symbolId !== "string" || (symbolsValid && !symbolSet.has(symbolId))) {
                 issues.push({
                     code: "blueprint-reelstripgeneration-unknown-symbol",
                     severity: "error",
-                    message: `"reelStripGeneration.lockedPositions.${position}" references unknown symbol "${symbolId}".`,
+                    message: `"${path}.lockedPositions.${position}" references unknown symbol "${symbolId}".`,
                 });
             }
         }
     }
 
-    private validateReelStripGenerationConstraints(constraints: unknown, issues: ValidationIssue[]): void {
+    private validateReelStripGenerationConstraints(
+        constraints: unknown,
+        path: string,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        issues: ValidationIssue[],
+    ): void {
         if (!Array.isArray(constraints)) {
             issues.push({
                 code: "blueprint-reelstripgeneration-invalid-constraints",
                 severity: "error",
-                message: '"reelStripGeneration.constraints", if present, must be an array of constraint specs.',
+                message: `"${path}.constraints", if present, must be an array of constraint specs.`,
             });
             return;
         }
 
         constraints.forEach((constraint, index) => {
-            if (typeof constraint !== "object" || constraint === null || Array.isArray(constraint)) {
+            this.validateReelStripConstraintSpec(constraint, `${path}.constraints[${index}]`, symbolSet, symbolsValid, issues);
+        });
+    }
+
+    // Full validation of one constraint spec: a recognized "type", every field that type requires,
+    // correct JS types for each field, unknown-symbol checks against symbolSet, and numeric bounds
+    // (positive/non-negative integers, min <= max) — mirroring each constraint class's own
+    // constructor validation, but reported as a blueprint ValidationIssue instead of a thrown Error.
+    private validateReelStripConstraintSpec(
+        constraint: unknown,
+        path: string,
+        symbolSet: Set<string>,
+        symbolsValid: boolean,
+        issues: ValidationIssue[],
+    ): void {
+        if (typeof constraint !== "object" || constraint === null || Array.isArray(constraint)) {
+            issues.push({code: "blueprint-reelstripgeneration-invalid-constraint", severity: "error", message: `"${path}" must be an object with a "type" field.`});
+            return;
+        }
+
+        const c = constraint as Record<string, unknown>;
+        if (typeof c.type !== "string" || !REEL_STRIP_CONSTRAINT_TYPES.includes(c.type)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-constraint-type",
+                severity: "error",
+                message: `"${path}.type" must be one of: ${REEL_STRIP_CONSTRAINT_TYPES.join(", ")}.`,
+            });
+            return;
+        }
+
+        switch (c.type) {
+            case "minimumCircularDistance":
+                this.requirePositiveInteger(c.minimumDistance, `${path}.minimumDistance`, issues);
+                this.validateOptionalSymbolIds(c.symbolIds, `${path}.symbolIds`, symbolSet, symbolsValid, issues);
+                this.validateOptionalBoolean(c.wrapAround, `${path}.wrapAround`, issues);
+                return;
+            case "maximumCircularDistance":
+                this.requirePositiveInteger(c.maximumDistance, `${path}.maximumDistance`, issues);
+                this.validateOptionalSymbolIds(c.symbolIds, `${path}.symbolIds`, symbolSet, symbolsValid, issues);
+                this.validateOptionalBoolean(c.wrapAround, `${path}.wrapAround`, issues);
+                return;
+            case "maximumConsecutiveOccurrences":
+                this.requirePositiveInteger(c.maximumConsecutive, `${path}.maximumConsecutive`, issues);
+                this.validateOptionalSymbolIds(c.symbolIds, `${path}.symbolIds`, symbolSet, symbolsValid, issues);
+                this.validateOptionalBoolean(c.wrapAround, `${path}.wrapAround`, issues);
+                return;
+            case "forbiddenAdjacency":
+            case "requiredAdjacency":
+                this.validatePairs(c.pairs, `${path}.pairs`, symbolSet, symbolsValid, issues);
+                this.validateOptionalBoolean(c.wrapAround, `${path}.wrapAround`, issues);
+                this.validateOptionalBoolean(c.directed, `${path}.directed`, issues);
+                return;
+            case "forbiddenSequence":
+                this.validateSequence(c.sequence, `${path}.sequence`, symbolSet, symbolsValid, issues);
+                this.validateOptionalNonNegativeInteger(c.maximumOccurrences, `${path}.maximumOccurrences`, issues);
+                this.validateOptionalBoolean(c.reversed, `${path}.reversed`, issues);
+                this.validateOptionalBoolean(c.wrapAround, `${path}.wrapAround`, issues);
+                return;
+            case "requiredSequence":
+                this.validateSequence(c.sequence, `${path}.sequence`, symbolSet, symbolsValid, issues);
+                this.validateOptionalNonNegativeInteger(c.minimumOccurrences, `${path}.minimumOccurrences`, issues);
+                this.validateOptionalNonNegativeInteger(c.maximumOccurrences, `${path}.maximumOccurrences`, issues);
+                this.validateOptionalBoolean(c.reversed, `${path}.reversed`, issues);
+                this.validateOptionalBoolean(c.wrapAround, `${path}.wrapAround`, issues);
+                if (
+                    typeof c.minimumOccurrences === "number" &&
+                    typeof c.maximumOccurrences === "number" &&
+                    c.maximumOccurrences < c.minimumOccurrences
+                ) {
+                    issues.push({
+                        code: "blueprint-reelstripgeneration-invalid-occurrences-range",
+                        severity: "error",
+                        message: `"${path}.maximumOccurrences" must be >= "${path}.minimumOccurrences".`,
+                    });
+                }
+        }
+    }
+
+    private requirePositiveInteger(value: unknown, path: string, issues: ValidationIssue[]): void {
+        if (!(typeof value === "number" && Number.isInteger(value) && value > 0)) {
+            issues.push({code: "blueprint-reelstripgeneration-invalid-constraint-field", severity: "error", message: `"${path}" must be a positive integer.`});
+        }
+    }
+
+    private validateOptionalNonNegativeInteger(value: unknown, path: string, issues: ValidationIssue[]): void {
+        if (value !== undefined && !(typeof value === "number" && Number.isInteger(value) && value >= 0)) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-constraint-field",
+                severity: "error",
+                message: `"${path}", if present, must be a non-negative integer.`,
+            });
+        }
+    }
+
+    private validateOptionalBoolean(value: unknown, path: string, issues: ValidationIssue[]): void {
+        if (value !== undefined && typeof value !== "boolean") {
+            issues.push({code: "blueprint-reelstripgeneration-invalid-constraint-field", severity: "error", message: `"${path}", if present, must be a boolean.`});
+        }
+    }
+
+    private validateOptionalSymbolIds(value: unknown, path: string, symbolSet: Set<string>, symbolsValid: boolean, issues: ValidationIssue[]): void {
+        if (value === undefined) {
+            return;
+        }
+        if (!Array.isArray(value) || !value.every((s) => typeof s === "string")) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-constraint-field",
+                severity: "error",
+                message: `"${path}", if present, must be an array of symbol ids.`,
+            });
+            return;
+        }
+        if (symbolsValid) {
+            for (const symbolId of value) {
+                if (!symbolSet.has(symbolId)) {
+                    issues.push({
+                        code: "blueprint-reelstripgeneration-unknown-symbol",
+                        severity: "error",
+                        message: `"${path}" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
+                    });
+                }
+            }
+        }
+    }
+
+    private validatePairs(value: unknown, path: string, symbolSet: Set<string>, symbolsValid: boolean, issues: ValidationIssue[]): void {
+        if (!Array.isArray(value) || value.length === 0) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-constraint-field",
+                severity: "error",
+                message: `"${path}" must be a non-empty array of [symbolId, symbolId] pairs.`,
+            });
+            return;
+        }
+        value.forEach((pair, index) => {
+            if (!Array.isArray(pair) || pair.length !== 2 || !pair.every((s) => typeof s === "string")) {
                 issues.push({
-                    code: "blueprint-reelstripgeneration-invalid-constraint",
+                    code: "blueprint-reelstripgeneration-invalid-constraint-field",
                     severity: "error",
-                    message: `"reelStripGeneration.constraints[${index}]" must be an object with a "type" field.`,
+                    message: `"${path}[${index}]" must be a [symbolId, symbolId] pair.`,
                 });
                 return;
             }
-
-            const type = (constraint as Record<string, unknown>).type;
-            if (typeof type !== "string" || !REEL_STRIP_CONSTRAINT_TYPES.includes(type)) {
-                issues.push({
-                    code: "blueprint-reelstripgeneration-invalid-constraint-type",
-                    severity: "error",
-                    message: `"reelStripGeneration.constraints[${index}].type" must be one of: ${REEL_STRIP_CONSTRAINT_TYPES.join(", ")}.`,
-                });
+            if (symbolsValid) {
+                for (const symbolId of pair) {
+                    if (!symbolSet.has(symbolId)) {
+                        issues.push({
+                            code: "blueprint-reelstripgeneration-unknown-symbol",
+                            severity: "error",
+                            message: `"${path}[${index}]" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
+                        });
+                    }
+                }
             }
         });
+    }
+
+    private validateSequence(value: unknown, path: string, symbolSet: Set<string>, symbolsValid: boolean, issues: ValidationIssue[]): void {
+        if (!Array.isArray(value) || value.length === 0 || !value.every((s) => typeof s === "string")) {
+            issues.push({
+                code: "blueprint-reelstripgeneration-invalid-constraint-field",
+                severity: "error",
+                message: `"${path}" must be a non-empty array of symbol ids.`,
+            });
+            return;
+        }
+        if (symbolsValid) {
+            for (const symbolId of value) {
+                if (!symbolSet.has(symbolId)) {
+                    issues.push({
+                        code: "blueprint-reelstripgeneration-unknown-symbol",
+                        severity: "error",
+                        message: `"${path}" references unknown symbol "${symbolId}", which is not listed in "symbols".`,
+                    });
+                }
+            }
+        }
     }
 
     private validateSymbolWeights(
@@ -857,10 +1118,13 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
 
     // A symbol's "effective weight" on the reels, from whichever of reelStrips/reelStripGeneration/
     // symbolWeights is active (reelStrips takes precedence, mirroring validateReachability) —
-    // occurrence count across every strip for reelStrips, the counts/weights object as-is for
-    // reelStripGeneration (whichever of its own symbolCounts/symbolWeights is set), the weight value
-    // itself for symbolWeights. Best-effort: reads through shape errors already reported elsewhere
-    // the same way validateReelStrips's own stripSymbols does.
+    // occurrence count across every strip for reelStrips, the weight value itself for symbolWeights.
+    // For reelStripGeneration (a per-reel array), each "literal" entry contributes its own strip's
+    // occurrence counts and each "generated" entry contributes its own symbolCounts/symbolWeights
+    // values directly, summed together per symbol across every reel — an approximation (literal
+    // occurrence counts and generated relative counts/weights aren't quite the same unit), but good
+    // enough for these heuristic checks. Best-effort: reads through shape errors already reported
+    // elsewhere the same way validateReelStrips's own stripSymbols does.
     private computeEffectiveWeights(
         reelStrips: unknown,
         reelStripGeneration: unknown,
@@ -881,19 +1145,32 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             return counts.size > 0 ? {weights: counts, source: "reelStrips"} : undefined;
         }
 
-        if (typeof reelStripGeneration === "object" && reelStripGeneration !== null && !Array.isArray(reelStripGeneration)) {
-            const g = reelStripGeneration as Record<string, unknown>;
-            const generationSource = g.symbolCounts ?? g.symbolWeights;
-            if (typeof generationSource === "object" && generationSource !== null && !Array.isArray(generationSource)) {
-                const weights = new Map<string, number>();
-                for (const [symbolId, weight] of Object.entries(generationSource as Record<string, unknown>)) {
-                    if (typeof weight === "number" && Number.isFinite(weight) && weight > 0) {
-                        weights.set(symbolId, weight);
+        if (Array.isArray(reelStripGeneration)) {
+            const weights = new Map<string, number>();
+            for (const entry of reelStripGeneration) {
+                if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+                    continue;
+                }
+                const e = entry as Record<string, unknown>;
+                if (e.type === "literal" && Array.isArray(e.strip)) {
+                    for (const symbolId of e.strip) {
+                        if (typeof symbolId === "string") {
+                            weights.set(symbolId, (weights.get(symbolId) ?? 0) + 1);
+                        }
+                    }
+                } else if (e.type === "generated") {
+                    const generationSource = e.symbolCounts ?? e.symbolWeights;
+                    if (typeof generationSource === "object" && generationSource !== null && !Array.isArray(generationSource)) {
+                        for (const [symbolId, weight] of Object.entries(generationSource as Record<string, unknown>)) {
+                            if (typeof weight === "number" && Number.isFinite(weight) && weight > 0) {
+                                weights.set(symbolId, (weights.get(symbolId) ?? 0) + weight);
+                            }
+                        }
                     }
                 }
-                if (weights.size > 0) {
-                    return {weights, source: "reelStripGeneration"};
-                }
+            }
+            if (weights.size > 0) {
+                return {weights, source: "reelStripGeneration"};
             }
         }
 

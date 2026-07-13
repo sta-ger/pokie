@@ -1,4 +1,4 @@
-import type {ReelStripGenerationBlueprint} from "./ReelStripGenerationBlueprint.js";
+import type {ReelStripGenerationSpec} from "./ReelStripGenerationSpec.js";
 
 // Bumped only if the GameBlueprint JSON shape itself changes in a way older tooling couldn't parse.
 // Stamped into generated output (see GameBuildInfo) so a generated package records which shape of
@@ -30,14 +30,17 @@ export type GameBlueprint = {
     // multiplier, applied across every configured bet — see Paytable.setPayoutForSymbol.
     paytable: Record<string, Record<string, number>>;
     // One strip (an ordered array of symbol ids) per reel. Takes precedence over reelStripGeneration
-    // and symbolWeights.
+    // and symbolWeights. Unchanged since before reelStripGeneration existed.
     reelStrips?: string[][];
-    // Build-time alternative to a literal reelStrips: generates every reel's exact strip via the
-    // existing ReelStripGenerator (see resolveReelStripGeneration.ts) instead of hand-authoring it.
+    // Per-reel build-time alternative to a literal reelStrips: one entry per reel (must have exactly
+    // "reels" entries), each independently either {type: "literal", strip} — the same data a
+    // reelStrips entry would hold — or {type: "generated", ...} — that reel's own, fully independent
+    // ReelStripGenerationConfig, run through the existing ReelStripGenerator (see
+    // resolveReelStripGeneration.ts). Literal and generated reels freely mix within one blueprint.
     // Mutually exclusive with reelStrips (an error if both are set); takes precedence over
     // symbolWeights. The generated package stores the resulting exact strips as plain reelStrips —
     // the runtime game module never depends on the generation API.
-    reelStripGeneration?: ReelStripGenerationBlueprint;
+    reelStripGeneration?: ReelStripGenerationSpec[];
     // symbolId -> relative count, applied uniformly (independently shuffled) to every reel. Ignored
     // when reelStrips or reelStripGeneration is present. Omit all three for the engine's built-in
     // default weighting.

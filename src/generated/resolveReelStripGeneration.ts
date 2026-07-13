@@ -6,69 +6,68 @@ import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGen
 import type {ReelStripGenerationSummary} from "./ReelStripGenerationSummary.js";
 
 export type ReelStripGenerationResolution =
-    | {success: true; blueprint: GameBlueprint; buildInfo?: GameBuildInfoReelStripGeneration}
+    | {success: true; reelStripGeneration?: GameBuildInfoReelStripGeneration}
     | {success: false; reels: ReelStripGenerationSummary[]};
 
-// Runs blueprint.reelStripGeneration (if present) through the existing ReelStripGenerator, once per
-// reel, and bakes the resulting exact strips into a materialized copy of the blueprint's own
-// reelStrips -- the exact same field a literal-reelStrips blueprint already uses, so
-// renderGeneratedGameModule.ts needs zero changes and the runtime game module never touches the
-// generation API at all. When reelStripGeneration is absent, returns the blueprint unchanged
-// (same reference, no copy), so old blueprints with literal reelStrips are entirely unaffected.
+// Runs every "generated" entry of blueprint.reelStripGeneration (if present) through the existing
+// ReelStripGenerator, independently per reel — each reel has its own length/symbolCounts-or-
+// symbolWeights/seed/constraints, entirely unrelated to any other reel's. "literal" entries are left
+// alone entirely (nothing to generate, nothing to record). When reelStripGeneration is absent, this
+// is a no-op success with no buildInfo — old blueprints with literal reelStrips (or neither field)
+// never call into this at all in practice, but it's harmless either way.
 //
-// Deterministic by construction: reel N is generated with seed "reelStripGeneration.seed + N" (every
-// reel needs a different seed or they'd all come out byte-identical), and ReelStripGenerator itself
-// is already deterministic for a given seed -- so re-running "pokie build" on an unchanged blueprint
-// always reproduces the same reelStrips.
+// Deterministic by construction: each "generated" entry supplies its own seed, and
+// ReelStripGenerator itself is already deterministic for a given seed — so re-running "pokie build"
+// on an unchanged blueprint always reproduces the same exact strips for every generated reel.
 export function resolveReelStripGeneration(
     blueprint: GameBlueprint,
     generator: ReelStripGenerator = new ReelStripGenerator(),
 ): ReelStripGenerationResolution {
-    const spec = blueprint.reelStripGeneration;
-    if (spec === undefined) {
-        return {success: true, blueprint};
-    }
-
-    let constraints: ReelStripConstraint[];
-    try {
-        constraints = (spec.constraints ?? []).map(createReelStripConstraintFromSpec);
-    } catch (error) {
-        return {
-            success: false,
-            reels: [
-                {
-                    reelIndex: -1,
-                    seed: spec.seed,
-                    success: false,
-                    attemptsUsed: 0,
-                    diagnostics: [
-                        {
-                            attempt: 0,
-                            accepted: false,
-                            violations: [
-                                {
-                                    constraintId: "reelStripGeneration.constraints",
-                                    message: `Could not build reelStripGeneration.constraints: ${
-                                        error instanceof Error ? error.message : String(error)
-                                    }`,
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        };
+    const specs = blueprint.reelStripGeneration;
+    if (specs === undefined) {
+        return {success: true};
     }
 
     const reels: ReelStripGenerationSummary[] = [];
-    const reelStrips: string[][] = [];
     let allSucceeded = true;
 
-    for (let reelIndex = 0; reelIndex < blueprint.reels; reelIndex++) {
-        const seed = spec.seed + reelIndex;
+    specs.forEach((spec, reelIndex) => {
+        if (spec.type === "literal") {
+            return;
+        }
+
+        let constraints: ReelStripConstraint[];
+        try {
+            constraints = (spec.constraints ?? []).map(createReelStripConstraintFromSpec);
+        } catch (error) {
+            allSucceeded = false;
+            reels.push({
+                reelIndex,
+                config: spec,
+                seed: spec.seed,
+                success: false,
+                attemptsUsed: 0,
+                diagnostics: [
+                    {
+                        attempt: 0,
+                        accepted: false,
+                        violations: [
+                            {
+                                constraintId: "reelStripGeneration.constraints",
+                                message: `Could not build reelStripGeneration[${reelIndex}].constraints: ${
+                                    error instanceof Error ? error.message : String(error)
+                                }`,
+                            },
+                        ],
+                    },
+                ],
+            });
+            return;
+        }
+
         const baseRequest = {
             length: spec.length,
-            seed,
+            seed: spec.seed,
             lockedPositions: spec.lockedPositions,
             constraints,
             maxAttempts: spec.maxAttempts,
@@ -84,20 +83,25 @@ export function resolveReelStripGeneration(
                     remainderTieBreakPolicy: spec.remainderTieBreakPolicy,
                 });
 
-        reels.push({reelIndex, seed, success: result.success, attemptsUsed: result.attemptsUsed, diagnostics: result.diagnostics});
-        if (result.success) {
-            reelStrips.push(result.strip!.toArray());
-        } else {
+        if (!result.success) {
             allSucceeded = false;
         }
-    }
+        reels.push({
+            reelIndex,
+            config: spec,
+            seed: spec.seed,
+            success: result.success,
+            attemptsUsed: result.attemptsUsed,
+            diagnostics: result.diagnostics,
+            ...(result.success ? {strip: result.strip!.toArray()} : {}),
+        });
+    });
 
     if (!allSucceeded) {
         return {success: false, reels};
     }
-
-    const materializedBlueprint: GameBlueprint = {...blueprint, reelStrips};
-    Reflect.deleteProperty(materializedBlueprint, "reelStripGeneration");
-
-    return {success: true, blueprint: materializedBlueprint, buildInfo: {config: spec, reels}};
+    if (reels.length === 0) {
+        return {success: true};
+    }
+    return {success: true, reelStripGeneration: {reels}};
 }

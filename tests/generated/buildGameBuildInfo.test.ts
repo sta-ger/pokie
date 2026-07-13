@@ -108,10 +108,19 @@ describe("buildGameBuildInfo", () => {
         expect(info.generatedAt).toBe("2026-06-01T00:00:00.000Z");
     });
 
-    it("records a given reelStripGeneration summary when provided", () => {
+    it("records a given reelStripGeneration summary (one entry per generated reel) when provided", () => {
         const reelStripGeneration = {
-            config: {length: 10, symbolCounts: {A: 5, B: 5}, seed: 1},
-            reels: [{reelIndex: 0, seed: 1, success: true, attemptsUsed: 1, diagnostics: []}],
+            reels: [
+                {
+                    reelIndex: 0,
+                    config: {length: 10, symbolCounts: {A: 5, B: 5}, seed: 1},
+                    seed: 1,
+                    success: true,
+                    attemptsUsed: 1,
+                    diagnostics: [],
+                    strip: ["A", "B"],
+                },
+            ],
         };
 
         const info = buildGameBuildInfo(buildBlueprint(), "1.3.0", undefined, new Date(), undefined, undefined, reelStripGeneration);
@@ -124,5 +133,23 @@ describe("buildGameBuildInfo", () => {
 
         expect(info.reelStripGeneration).toBeUndefined();
         expect(Object.keys(info)).not.toContain("reelStripGeneration");
+    });
+
+    it("hashes the blueprint's own reelStripGeneration config, so two authored configs producing the same generated strips still hash differently", () => {
+        // Both blueprints below are authored differently (maxAttempts differs) but -- being
+        // deterministic and easily satisfiable either way -- resolve to the same generated result.
+        // blueprintHash must still differ, because it's computed from the *authored* blueprint, not
+        // from whatever a generated reel happened to produce.
+        const first = buildBlueprint({
+            reelStripGeneration: [{type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 1, maxAttempts: 50}],
+        });
+        const second = buildBlueprint({
+            reelStripGeneration: [{type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 1, maxAttempts: 200}],
+        });
+
+        const infoFirst = buildGameBuildInfo(first, "1.3.0");
+        const infoSecond = buildGameBuildInfo(second, "1.3.0");
+
+        expect(infoFirst.blueprintHash).not.toBe(infoSecond.blueprintHash);
     });
 });

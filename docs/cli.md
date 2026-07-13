@@ -91,9 +91,10 @@ npm install
   `pokie` version that generated it, an ISO 8601 generation timestamp, a `sha256` hash of the source blueprint
   (so an unchanged blueprint reproduces the same hash across re-runs), the source file path (when known), the
   list of files this run generated (`files` — also what a later `pokie build` reads to recognize this directory
-  as safe to rebuild, see below), the blueprint's own `manifest`, and — only when the blueprint used
-  `reelStripGeneration` — a `reelStripGeneration: {config, reels}` block recording the original config (including
-  its `seed`) and a per-reel generation result; see
+  as safe to rebuild, see below), the blueprint's own `manifest`, and — only when the blueprint's
+  `reelStripGeneration` actually generated at least one reel — a `reelStripGeneration: {reels}` block with one
+  entry per *generated* reel (literal reels have no generation story to record): that reel's own authored config
+  (including its `seed`) and the resulting exact strip; see
   [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation) above. The same summary (minus
   the timestamp and the full hash's `sha256:` prefix repetition) is echoed as the header comment in `index.js`, so
   either file is enough to tell what a generated package was built from. Re-running `pokie build` on an unchanged
@@ -172,12 +173,13 @@ overwriting it — remove or rename the existing file first, or pick a different
     // symbolId -> matchCount -> bet multiplier, applied across every configured bet.
     paytable: Record<string, Record<string, number>>;
     // One strip (an ordered array of symbol ids) per reel. Takes precedence over reelStripGeneration
-    // and symbolWeights.
+    // and symbolWeights. Unchanged since before reelStripGeneration existed.
     reelStrips?: string[][];
-    // Build-time alternative to a literal reelStrips: generates every reel's exact strip via
-    // ReelStripGenerator instead of hand-authoring it — see "reelStripGeneration" below. Mutually
-    // exclusive with reelStrips (an error if both are set); takes precedence over symbolWeights.
-    reelStripGeneration?: ReelStripGenerationBlueprint;
+    // Per-reel build-time alternative to a literal reelStrips: one entry per reel (must have exactly
+    // "reels" entries), each independently either a literal strip or its own generation config — see
+    // "reelStripGeneration" below. Mutually exclusive with reelStrips (an error if both are set);
+    // takes precedence over symbolWeights.
+    reelStripGeneration?: ReelStripGenerationSpec[];
     // symbolId -> relative count, applied uniformly (independently shuffled) to every reel. Ignored
     // when reelStrips or reelStripGeneration is present. Omit all three for the engine's built-in
     // default weighting.
@@ -210,13 +212,21 @@ from a checkout. It's also what the workflow below and `pokie build`'s own smoke
 
 ### `reelStripGeneration` (build-time reel strip generation)
 
-An alternative to hand-authoring `reelStrips`: `pokie build` runs the same [`ReelStripGenerator`](reel-strip-generation.md)
-you'd use programmatically, once per reel, and bakes the resulting exact strips into the generated package as
-plain `reelStrips` — the runtime game module never depends on the generation API at all, only ever seeing a plain
-literal array (the same shape a hand-authored `reelStrips` blueprint already has).
+A **per-reel** alternative to hand-authoring `reelStrips`: an array with exactly one entry per reel, each entry
+independently either a literal strip or its own build-time generation config run through the same
+[`ReelStripGenerator`](reel-strip-generation.md) you'd use programmatically. Literal and generated reels freely mix
+within one blueprint — there is no blueprint-wide shared config, every "generated" reel is entirely independent
+(own `length`, own `symbolCounts`/`symbolWeights`, own `seed`, own `constraints`). `pokie build` bakes the resulting
+exact strips into the generated package as plain `reelStrips` — the runtime game module never depends on the
+generation API at all, only ever seeing a plain literal array (the same shape a hand-authored `reelStrips`
+blueprint already has).
 
 ```ts
-type ReelStripGenerationBlueprint = {
+type ReelStripGenerationSpec =
+    | {type: "literal"; strip: string[]}                    // same data a reelStrips[i] entry would hold
+    | {type: "generated"} & ReelStripGenerationConfig;
+
+type ReelStripGenerationConfig = {
     length: number;
     // Exactly one of these two must be set.
     symbolCounts?: Record<string, number>;
@@ -231,11 +241,9 @@ type ReelStripGenerationBlueprint = {
 };
 ```
 
-Applied identically to every reel (same `length`/`symbolCounts`-or-`symbolWeights`/`constraints`), except the
-seed: reel *N* uses `seed + N` (every reel needs a different seed, or they'd all come out byte-identical). This
-keeps generation fully **deterministic** — re-running `pokie build` on an unchanged blueprint always reproduces the
-same exact `reelStrips`, so a rebuild reports `status  unchanged` exactly like a literal-`reelStrips` blueprint
-would.
+Generation is fully **deterministic**: each "generated" entry supplies its own `seed`, so re-running `pokie build`
+on an unchanged blueprint always reproduces the same exact strip for every generated reel, and a rebuild reports
+`status  unchanged` exactly like a literal-`reelStrips` blueprint would.
 
 `constraints` entries are plain JSON, not class instances — a `type` field picks which
 [constraint](reel-strip-generation.md#constraints-reelstripconstraint) to build, and every other field maps onto
@@ -252,22 +260,32 @@ type ReelStripConstraintSpec =
     | {type: "requiredSequence"; sequence: string[]; minimumOccurrences?: number; maximumOccurrences?: number; reversed?: boolean; wrapAround?: boolean};
 ```
 
-A complete example (`symbolWeights`, a fixed `seed`, and two constraints) lives at
+A complete example (one hand-placed literal reel, four independently generated reels — different lengths, seeds,
+constraints, `symbolCounts` vs. `symbolWeights`, and a locked position) lives at
 [`examples/blueprints/generated-reels.blueprint.json`](../examples/blueprints/generated-reels.blueprint.json) — see
 [`examples/blueprints/README.md`](../examples/blueprints/README.md) to try it directly from a checkout.
 
-**When generation fails** — the requested constraints can't be satisfied within `maxAttempts` for one or more
-reels — `pokie build` reports it exactly like a validation error: printed with the failing reel's index, seed,
-attempt count, and the closest attempt's constraint violations, then exits non-zero without writing any files.
-This only runs *after* validation passes (validation only checks `reelStripGeneration`'s shape — a positive
-`length`, an integer `seed`, exactly one of `symbolCounts`/`symbolWeights`, known constraint `type`s, and so on; see
-[Validation](#validation) below) — whether the configuration is actually satisfiable is a question only
+**When generation fails** — a "generated" entry's constraints can't be satisfied within its own `maxAttempts` —
+`pokie build` reports it exactly like a validation error: printed per failing reel with its index, seed, attempt
+count, and the closest attempt's constraint violations, then exits non-zero without writing any files. Other
+reels' generation is unaffected (each is entirely independent) — only the failing reel(s) are reported. This only
+runs *after* validation passes (validation only checks `reelStripGeneration`'s shape — one entry per reel, each a
+well-formed `{type: "literal", strip}` or `{type: "generated", ...}` with a positive `length`, an integer `seed`,
+exactly one of `symbolCounts`/`symbolWeights`, and a fully validated `constraints` array — every required field
+present, correct types, unknown symbols, and numeric bounds checked per constraint `type`; see
+[Validation](#validation) below) — whether a configuration is actually *satisfiable* is a question only
 `ReelStripGenerator` itself can answer, by actually trying.
 
-**`build-info.json`** additionally records `reelStripGeneration: {config, reels}` when a blueprint used it: `config`
-is the exact authored `reelStripGeneration` block (including its `seed`), and `reels` is what happened per reel
-(`reelIndex`, the actual `seed` used, `success`, `attemptsUsed`, and `diagnostics`). Absent entirely for a
-literal-`reelStrips` blueprint (or one using neither `reelStrips` nor `reelStripGeneration`).
+**`build-info.json`** additionally records `reelStripGeneration: {reels}` when at least one reel was actually
+generated: one entry per *generated* reel (literal reels have no generation story to record) with that reel's own
+authored `config` (including its `seed`), `success`, `attemptsUsed`, `diagnostics`, and — on success — the
+resulting exact `strip`. Absent entirely for a literal-`reelStrips` blueprint, an all-literal
+`reelStripGeneration`, or one using neither field.
+
+`blueprintHash`/the `status  unchanged` no-op-rebuild check are both computed from the blueprint exactly as
+**authored** (with its `reelStripGeneration` array intact), not from the materialized `reelStrips` a build produces
+— two different authored configs that happen to generate byte-identical strips still hash differently, and only an
+unchanged *authored* blueprint is ever reported as a no-op rebuild.
 
 ### Validation
 
@@ -277,20 +295,34 @@ strings; `wilds`/`scatters` must be arrays of unique symbol ids with no overlap 
 `paytable` keys/`reelStrips` symbols/`reelStripGeneration` symbols/`symbolWeights` keys must all reference symbols
 actually listed in `symbols`; `paytable` match-counts must be integers between 2 and `reels`, with positive
 multipliers; `paylines` entries must have exactly `reels` row indexes, each within `[0, rows)`; `reelStrips` must
-have exactly one strip per reel; `reelStripGeneration` must have a positive `length`, an integer `seed`, exactly
-one of `symbolCounts`/`symbolWeights`, well-shaped `lockedPositions`/`constraints` (each constraint needs a
-recognized `type`), a positive `maxAttempts`, and valid `roundingPolicy`/`remainderTieBreakPolicy` enum values
-where present; `availableBets` must be positive numbers.
+have exactly one strip per reel; `reelStripGeneration` must have exactly one entry per reel, each entry either a
+well-formed `{type: "literal", strip}` (a non-empty array of known symbol ids) or `{type: "generated", ...}` with
+a positive `length`, an integer `seed`, exactly one of `symbolCounts`/`symbolWeights`, well-shaped
+`lockedPositions`, a positive `maxAttempts`, and valid `roundingPolicy`/`remainderTieBreakPolicy` enum values where
+present; `availableBets` must be positive numbers.
+
+Every `constraints[]` entry inside a `"generated"` reel is fully validated too, not just its `type`: every field
+that `type` requires must be present with the correct JS type (a number, a boolean, an array of known symbol ids,
+...), numeric bounds must make sense (positive/non-negative integers, and for `requiredSequence`,
+`maximumOccurrences >= minimumOccurrences`), and any symbol id referenced anywhere in the spec (`symbolIds`,
+sequence/pair entries, ...) must actually be listed in `symbols`.
+
+A `symbolCounts` entry of exactly `0` is treated as **absent from that reel** for reachability purposes (it will
+never actually land), exactly like a symbol simply omitted from a literal `reelStrips` entry — declaring
+`{A: 5, B: 0}` does not make `B` reachable via that reel.
 
 Since `reelStrips` (or, absent that, `reelStripGeneration`, or absent that, `symbolWeights`) fully replaces the
 engine's default reel generator, every symbol referenced by `paytable`/`wilds`/`scatters` must also actually appear
-in it — otherwise that payout, wild, or scatter can physically never land, which is flagged as an error, not a
-warning. Note that this only checks `reelStripGeneration`'s declared `symbolCounts`/`symbolWeights` keys — whether
-generation actually *succeeds* is checked separately, after validation passes (see
-[`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation) above).
+somewhere across it — otherwise that payout, wild, or scatter can physically never land, which is flagged as an
+error, not a warning. Note that this only checks `reelStripGeneration`'s declared `strip`/`symbolCounts`/
+`symbolWeights` content — whether a `"generated"` reel's generation actually *succeeds* is checked separately,
+after validation passes (see [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation) above).
 
 Setting both `reelStrips` and `reelStripGeneration` is an error (not a warning): a reel's strip must come from
-exactly one of them, so there's no sensible precedence to fall back to.
+exactly one of them, so there's no sensible precedence to fall back to. Within a single blueprint, though, literal
+and generated reels freely mix — that mixing lives entirely inside `reelStripGeneration`'s own per-reel array (a
+`{type: "literal", ...}` entry alongside `{type: "generated", ...}` entries), not between `reelStrips` and
+`reelStripGeneration`.
 
 A number of further checks catch configs that parse fine but are almost certainly mistakes, so they're reported as
 **warnings** rather than errors (they don't block generation): a paytable entry for a wild symbol's own id (an

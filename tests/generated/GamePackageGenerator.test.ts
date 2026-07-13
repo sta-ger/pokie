@@ -321,21 +321,26 @@ describe("GamePackageGenerator", () => {
         expect(session.getWinAmount()).toBeGreaterThan(0);
     });
 
-    it("records a given reelStripGeneration summary on build-info.json when provided", () => {
+    it("materializes reelStrips from a mixed literal/generated reelStripGeneration and records the per-reel summaries in build-info.json", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint({
-            reelStrips: [
-                ["A", "B"],
-                ["A", "B"],
-                ["A", "B"],
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "B"]},
+                {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                {type: "literal", strip: ["B", "A"]},
             ],
         });
         const reelStripGeneration = {
-            config: {length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
             reels: [
-                {reelIndex: 0, seed: 1, success: true, attemptsUsed: 1, diagnostics: []},
-                {reelIndex: 1, seed: 2, success: true, attemptsUsed: 1, diagnostics: []},
-                {reelIndex: 2, seed: 3, success: true, attemptsUsed: 1, diagnostics: []},
+                {
+                    reelIndex: 1,
+                    config: {length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                    seed: 1,
+                    success: true,
+                    attemptsUsed: 1,
+                    diagnostics: [],
+                    strip: ["A", "B"],
+                },
             ],
         };
 
@@ -344,6 +349,30 @@ describe("GamePackageGenerator", () => {
         expect(result.buildInfo.reelStripGeneration).toEqual(reelStripGeneration);
         const buildInfoOnDisk = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
         expect(buildInfoOnDisk.reelStripGeneration).toEqual(reelStripGeneration);
+
+        const indexJs = fs.readFileSync(path.join(result.projectRoot, "src", "generated", "index.js"), "utf-8");
+        const embedded = JSON.parse(indexJs.match(/const blueprint = ([\s\S]*?);\n\n/)![1]);
+        expect(embedded.reelStrips).toEqual([
+            ["A", "B"],
+            ["A", "B"],
+            ["B", "A"],
+        ]);
+        expect(Object.keys(embedded)).not.toContain("reelStripGeneration");
+    });
+
+    it("computes blueprintHash from the authored blueprint (with reelStripGeneration intact), not the materialized reelStrips", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint({
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "B"]},
+                {type: "literal", strip: ["A", "B"]},
+                {type: "literal", strip: ["A", "B"]},
+            ],
+        });
+
+        const result = generator.generate(blueprint, cwd);
+
+        expect(result.buildInfo.blueprintHash).toBe(`sha256:${crypto.createHash("sha256").update(JSON.stringify(blueprint)).digest("hex")}`);
     });
 
     it("omits reelStripGeneration from build-info.json when not given", () => {
