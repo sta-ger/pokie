@@ -46,8 +46,10 @@ export class StudioCommand implements CliCommandHandling {
     private readonly blueprintService: StudioBlueprintService;
     private readonly studioRoot: string;
     private readonly process: NodeJS.Process;
+    private readonly pokieVersion: string;
 
     constructor(pokieVersion: string, dependencies: StudioCommandDependencies = {}) {
+        this.pokieVersion = pokieVersion;
         this.createServer = dependencies.createServer ?? ((options) => new StudioServer(options));
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
@@ -73,6 +75,7 @@ export class StudioCommand implements CliCommandHandling {
         const server = this.createServer({
             host: options.host,
             port: options.port,
+            pokieVersion: this.pokieVersion,
             studioRoot: this.studioRoot,
             initialContext: context,
             homeService: this.homeService,

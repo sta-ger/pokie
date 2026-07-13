@@ -55,7 +55,8 @@ POKIE goes well beyond classic paylines:
   HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS; `npx pokie client
   <packageRoot>` (experimental) serves a universal browser preview UI talking to a running `pokie serve`; `npx
   pokie dev <packageRoot>` (experimental) runs both together, opening a browser — all optionally as a JSON
-  file/machine-readable output.
+  file/machine-readable output; `npx pokie` (or `npx pokie studio`) (experimental) launches **POKIE Studio**, a
+  local web app GUI for create/init/build/inspect/validate/sim/report/replay/serve, opening a browser.
 
 See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
 megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
@@ -177,6 +178,18 @@ pokie validate ./crazy-fruits
 See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate, what `pokie sim`/`pokie validate`
 report, and a
 [full create → validate → sim → report → diff → replay → dev walkthrough](docs/cli.md#workflow).
+
+Or skip the individual commands and drive the same workflow from a GUI:
+
+```
+npx pokie
+```
+
+**POKIE Studio** (experimental) is a local web app covering Home (create/init/build/open a project, plus a visual
+Blueprint Editor) and, once a project is open, a Project Dashboard (inspect/validate/simulate/replay/download
+reports, and a `pokie serve`-equivalent Runtime tab with session tools) — see the
+[Studio docs](docs/cli.md#pokie--pokie-studio-experimental) for the full tour. Like `pokie serve`/`pokie dev`,
+it's a local/dev tool, not a casino backend or RGS.
 
 ## Documentation
 

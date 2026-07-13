@@ -216,7 +216,7 @@
                             <tbody id="blueprint-symbols-body"></tbody>
                         </table>
                         <div class="quick-actions">
-                            <input id="blueprint-add-symbol-input" type="text" placeholder="New symbol id" />
+                            <input id="blueprint-add-symbol-input" type="text" placeholder="New symbol id" aria-label="New symbol id" />
                             <button id="blueprint-add-symbol-button" type="button">Add symbol</button>
                         </div>
                     </fieldset>
@@ -225,7 +225,7 @@
                         <legend>Available bets</legend>
                         <ul id="blueprint-bets-list"></ul>
                         <div class="quick-actions">
-                            <input id="blueprint-add-bet-input" type="number" step="any" placeholder="New bet amount" />
+                            <input id="blueprint-add-bet-input" type="number" step="any" placeholder="New bet amount" aria-label="New bet amount" />
                             <button id="blueprint-add-bet-button" type="button">Add bet</button>
                         </div>
                     </fieldset>
@@ -253,9 +253,9 @@
                             <tbody id="blueprint-paytable-body"></tbody>
                         </table>
                         <div class="quick-actions">
-                            <select id="blueprint-add-paytable-symbol"></select>
-                            <input id="blueprint-add-paytable-matchcount" type="number" min="2" step="1" placeholder="Match count" />
-                            <input id="blueprint-add-paytable-payout" type="number" step="any" placeholder="Payout" />
+                            <select id="blueprint-add-paytable-symbol" aria-label="Symbol"></select>
+                            <input id="blueprint-add-paytable-matchcount" type="number" min="2" step="1" placeholder="Match count" aria-label="Match count" />
+                            <input id="blueprint-add-paytable-payout" type="number" step="any" placeholder="Payout" aria-label="Payout" />
                             <button id="blueprint-add-paytable-button" type="button">Add payout</button>
                         </div>
                     </fieldset>
@@ -285,8 +285,8 @@
                                 <tbody id="blueprint-weights-body"></tbody>
                             </table>
                             <div class="quick-actions">
-                                <select id="blueprint-add-weight-symbol"></select>
-                                <input id="blueprint-add-weight-value" type="number" min="1" step="1" placeholder="Weight" />
+                                <select id="blueprint-add-weight-symbol" aria-label="Symbol"></select>
+                                <input id="blueprint-add-weight-value" type="number" min="1" step="1" placeholder="Weight" aria-label="Weight" />
                                 <button id="blueprint-add-weight-button" type="button">Add weight</button>
                             </div>
                         </div>
@@ -294,6 +294,7 @@
                 </section>
 
                 <section id="blueprint-json-view" hidden>
+                    <label for="blueprint-json-textarea">Blueprint JSON</label>
                     <textarea id="blueprint-json-textarea" rows="24" spellcheck="false"></textarea>
                     <div class="quick-actions">
                         <button id="blueprint-json-apply-button" type="button">Apply JSON</button>

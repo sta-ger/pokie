@@ -125,6 +125,21 @@ export class StudioReplayExecutionService {
         }
     }
 
+    // Same reasoning as cancelAll(), scoped to one project — called from StudioServer whenever Studio
+    // switches away from `projectRoot` (a different project opened, or back to Home), so a replay for
+    // the project just left doesn't keep running its chunk loop unseen and unreachable. A no-op when
+    // nothing is active for that project.
+    public cancelActiveForProject(projectRoot: string): void {
+        const record = this.repository.findActiveByProjectRoot(projectRoot);
+        record?.abortController.abort();
+    }
+
+    // Process-wide (not scoped to one project) — feeds GET /api/studio/diagnostics, a plain count safe
+    // to expose regardless of which project (if any) is currently active.
+    public getActiveCount(): number {
+        return this.repository.listActive().length;
+    }
+
     public listJobs(projectRoot: string): StudioReplayListEntry[] {
         return this.repository.listByProjectRoot(projectRoot).map((record) => this.toListEntry(record));
     }

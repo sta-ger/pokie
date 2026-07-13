@@ -727,6 +727,30 @@ export function setStatus(element: HTMLElement, message: string): void {
     element.textContent = message;
 }
 
+// The one place every catch block in main.ts turns an unknown thrown value into display text —
+// previously duplicated inline (`error instanceof Error ? error.message : String(error)`) at every
+// call site; extracted so the whole app renders errors the same way with no per-screen judgment call.
+export function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+export function showMessage(element: HTMLElement, text: string): void {
+    element.hidden = false;
+    element.textContent = text;
+}
+
+export function clearMessage(element: HTMLElement): void {
+    element.hidden = true;
+    element.textContent = "";
+}
+
+// The one place a raw timestamp (ISO string or epoch ms) becomes display text — every timestamp in the
+// app renders through this now, including Runtime history (previously toLocaleTimeString(), time-only)
+// and the provenance panel's generatedAt (previously the raw unformatted ISO string, a genuine bug).
+export function formatTimestamp(value: string | number): string {
+    return new Date(value).toLocaleString();
+}
+
 export function showHomeTab(elements: Elements, tab: HomeTab): void {
     elements.homeRecentSection.hidden = tab !== "recent";
     elements.homeCreateSection.hidden = tab !== "create";
@@ -768,7 +792,7 @@ export function renderHomeRecentProjects(
         const button = document.createElement("button");
         button.type = "button";
         button.disabled = entry.missing;
-        const openedAt = new Date(entry.openedAt).toLocaleString();
+        const openedAt = formatTimestamp(entry.openedAt);
         button.textContent = entry.missing
             ? `${entry.name} — ${entry.projectRoot} (missing), last opened ${openedAt}`
             : `${entry.name} — ${entry.projectRoot}, last opened ${openedAt}`;
@@ -781,8 +805,7 @@ export function renderHomeRecentProjects(
 }
 
 export function renderHomeRecentProjectsError(elements: Elements, message: string): void {
-    elements.homeRecentError.hidden = false;
-    elements.homeRecentError.textContent = message;
+    showMessage(elements.homeRecentError, message);
 }
 
 function renderScaffoldResult(
@@ -1034,7 +1057,7 @@ export function renderInspectionResult(elements: Elements, inspection: Inspectio
     elements.provenanceHash.textContent = provenance.blueprintHash;
     elements.provenanceSource.textContent = provenance.source;
     elements.provenancePokieVersion.textContent = provenance.pokieVersion;
-    elements.provenanceGeneratedAt.textContent = provenance.generatedAt;
+    elements.provenanceGeneratedAt.textContent = formatTimestamp(provenance.generatedAt);
     elements.provenanceFiles.textContent = provenance.files.join(", ");
 }
 
@@ -1096,8 +1119,7 @@ export function renderSimulationProgress(elements: Elements, progress: Simulatio
 // For an apiClient call itself failing (network error, an unexpected non-2xx) — distinct from the
 // job's own "failed" status, which renderSimulationProgress already handles from polled data.
 export function renderSimulationError(elements: Elements, message: string): void {
-    elements.simulationError.hidden = false;
-    elements.simulationError.textContent = message;
+    showMessage(elements.simulationError, message);
 }
 
 function formatConfidenceInterval(interval: {low: number; high: number} | undefined): string {
@@ -1175,7 +1197,7 @@ export function renderReportsList(
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
-        const startedAt = new Date(entry.startedAt).toLocaleString();
+        const startedAt = formatTimestamp(entry.startedAt);
         button.textContent =
             `${entry.game.id} v${entry.game.version} — ${entry.actualRounds}/${entry.requestedRounds} rounds, ` +
             `RTP ${(entry.rtp * 100).toFixed(2)}%, ${startedAt}` +
@@ -1187,8 +1209,7 @@ export function renderReportsList(
 }
 
 export function renderReportsListError(elements: Elements, message: string): void {
-    elements.reportsError.hidden = false;
-    elements.reportsError.textContent = message;
+    showMessage(elements.reportsError, message);
 }
 
 export type ReportDetailView = {status: "empty"} | {status: "loading"} | {status: "error"; message: string} | {status: "loaded"};
@@ -1243,8 +1264,7 @@ export function renderReplayProgress(elements: Elements, progress: ReplayProgres
 // For an apiClient call itself failing (network error, an unexpected non-2xx) — distinct from the
 // job's own "failed" status, which renderReplayProgress already handles from polled data.
 export function renderReplayError(elements: Elements, message: string): void {
-    elements.replayError.hidden = false;
-    elements.replayError.textContent = message;
+    showMessage(elements.replayError, message);
 }
 
 // Only ever called once a job's status is "completed" (see describeReplayResult) — fills in the
@@ -1258,7 +1278,7 @@ export function renderReplayResult(elements: Elements, result: ReplayResultView)
     elements.replayResultSeed.textContent = result.seed ?? "(none)";
     elements.replayResultTotalBet.textContent = result.totalBet.toFixed(2);
     elements.replayResultTotalWin.textContent = result.totalWin.toFixed(2);
-    elements.replayResultTimestamp.textContent = new Date(result.timestamp).toLocaleString();
+    elements.replayResultTimestamp.textContent = formatTimestamp(result.timestamp);
     elements.replayResultDuration.textContent = `${result.durationMs}ms`;
 
     elements.replayResultScreenSection.hidden = result.screen === undefined;
@@ -1293,7 +1313,7 @@ export function renderReplayList(
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
-        const startedAt = new Date(entry.startedAt).toLocaleString();
+        const startedAt = formatTimestamp(entry.startedAt);
         const outcome =
             entry.status === "completed"
                 ? `bet ${entry.totalBet?.toFixed(2)} / win ${entry.totalWin?.toFixed(2)}`
@@ -1308,8 +1328,7 @@ export function renderReplayList(
 }
 
 export function renderReplayListError(elements: Elements, message: string): void {
-    elements.replayListError.hidden = false;
-    elements.replayListError.textContent = message;
+    showMessage(elements.replayListError, message);
 }
 
 // ---- Blueprint Editor ----
@@ -1329,12 +1348,15 @@ function setInputValueIfNotFocused(input: HTMLInputElement | HTMLTextAreaElement
     }
 }
 
-function appendRowActions(row: HTMLElement, actions: Array<{label: string; onClick: () => void}>): void {
+function appendRowActions(row: HTMLElement, actions: Array<{label: string; ariaLabel?: string; onClick: () => void}>): void {
     const cell = document.createElement("td");
     for (const action of actions) {
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = action.label;
+        if (action.ariaLabel !== undefined) {
+            button.setAttribute("aria-label", action.ariaLabel);
+        }
         button.addEventListener("click", action.onClick);
         cell.appendChild(button);
     }
@@ -1395,8 +1417,8 @@ export function renderBlueprintSymbols(elements: Elements, blueprint: Record<str
         appendRowActions(row, [
             {label: "Duplicate", onClick: () => mutate((b) => duplicateSymbolAt(b, index))},
             {label: "Remove", onClick: () => mutate((b) => removeSymbolAt(b, index))},
-            {label: "↑", onClick: () => mutate((b) => moveSymbolAt(b, index, index - 1))},
-            {label: "↓", onClick: () => mutate((b) => moveSymbolAt(b, index, index + 1))},
+            {label: "↑", ariaLabel: `Move symbol ${index + 1} up`, onClick: () => mutate((b) => moveSymbolAt(b, index, index - 1))},
+            {label: "↓", ariaLabel: `Move symbol ${index + 1} down`, onClick: () => mutate((b) => moveSymbolAt(b, index, index + 1))},
         ]);
 
         elements.blueprintSymbolsBody.appendChild(row);
@@ -1421,8 +1443,8 @@ export function renderBlueprintBets(elements: Elements, blueprint: Record<string
         appendRowActions(item, [
             {label: "Duplicate", onClick: () => mutate((b) => duplicateBetAt(b, index))},
             {label: "Remove", onClick: () => mutate((b) => removeBetAt(b, index))},
-            {label: "↑", onClick: () => mutate((b) => moveBetAt(b, index, index - 1))},
-            {label: "↓", onClick: () => mutate((b) => moveBetAt(b, index, index + 1))},
+            {label: "↑", ariaLabel: `Move bet ${index + 1} up`, onClick: () => mutate((b) => moveBetAt(b, index, index - 1))},
+            {label: "↓", ariaLabel: `Move bet ${index + 1} down`, onClick: () => mutate((b) => moveBetAt(b, index, index + 1))},
         ]);
 
         elements.blueprintBetsList.appendChild(item);
@@ -1458,8 +1480,8 @@ export function renderBlueprintPaylines(elements: Elements, blueprint: Record<st
         appendRowActions(row, [
             {label: "Duplicate", onClick: () => mutate((b) => duplicatePaylineAt(b, lineIndex))},
             {label: "Remove", onClick: () => mutate((b) => removePaylineAt(b, lineIndex))},
-            {label: "↑", onClick: () => mutate((b) => movePaylineAt(b, lineIndex, lineIndex - 1))},
-            {label: "↓", onClick: () => mutate((b) => movePaylineAt(b, lineIndex, lineIndex + 1))},
+            {label: "↑", ariaLabel: `Move payline ${lineIndex + 1} up`, onClick: () => mutate((b) => movePaylineAt(b, lineIndex, lineIndex - 1))},
+            {label: "↓", ariaLabel: `Move payline ${lineIndex + 1} down`, onClick: () => mutate((b) => movePaylineAt(b, lineIndex, lineIndex + 1))},
         ]);
 
         elements.blueprintPaylinesList.appendChild(row);
@@ -1555,8 +1577,16 @@ export function renderBlueprintReelStrips(elements: Elements, blueprint: Record<
             appendRowActions(item, [
                 {label: "Duplicate", onClick: () => mutate((b) => duplicateReelStripSymbolAt(b, reelIndex, position))},
                 {label: "Remove", onClick: () => mutate((b) => removeReelStripSymbolAt(b, reelIndex, position))},
-                {label: "↑", onClick: () => mutate((b) => moveReelStripSymbolAt(b, reelIndex, position, position - 1))},
-                {label: "↓", onClick: () => mutate((b) => moveReelStripSymbolAt(b, reelIndex, position, position + 1))},
+                {
+                    label: "↑",
+                    ariaLabel: `Move reel ${reelIndex + 1} symbol ${position + 1} up`,
+                    onClick: () => mutate((b) => moveReelStripSymbolAt(b, reelIndex, position, position - 1)),
+                },
+                {
+                    label: "↓",
+                    ariaLabel: `Move reel ${reelIndex + 1} symbol ${position + 1} down`,
+                    onClick: () => mutate((b) => moveReelStripSymbolAt(b, reelIndex, position, position + 1)),
+                },
             ]);
             list.appendChild(item);
         });
@@ -1567,6 +1597,7 @@ export function renderBlueprintReelStrips(elements: Elements, blueprint: Record<
         const addInput = document.createElement("input");
         addInput.type = "text";
         addInput.placeholder = "Symbol id";
+        addInput.setAttribute("aria-label", `New symbol id for reel ${reelIndex + 1}`);
         const addButton = document.createElement("button");
         addButton.type = "button";
         addButton.textContent = "Add symbol";

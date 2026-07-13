@@ -35,6 +35,7 @@ section {
 
 form {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
 }
@@ -139,6 +140,13 @@ table {
     width: 100%;
     border-collapse: collapse;
     margin-bottom: 1rem;
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+pre {
+    overflow-x: auto;
+    max-width: 100%;
 }
 
 th,
@@ -146,6 +154,7 @@ td {
     border: 1px solid currentColor;
     padding: 0.4rem 0.6rem;
     text-align: right;
+    word-break: break-word;
 }
 
 th:first-child,

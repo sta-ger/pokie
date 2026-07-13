@@ -261,6 +261,7 @@ describe("StudioServer", () => {
             loadGame,
         );
         server = new StudioServer({
+            pokieVersion: "1.0.0",
             host: "127.0.0.1",
             port: 0,
             studioRoot,
@@ -291,6 +292,25 @@ describe("StudioServer", () => {
 
         expect(status).toBe(200);
         expect(body).toEqual({mode: "home"});
+    });
+
+    it("reports safe diagnostics on GET /api/studio/diagnostics in home mode", async () => {
+        const {status, body} = await get(`${baseUrl}/api/studio/diagnostics`);
+
+        expect(status).toBe(200);
+        expect(body).toMatchObject({
+            studioVersion: "1.0.0",
+            nodeVersion: process.version,
+            mode: "home",
+            activeSimulationCount: 0,
+            activeReplayCount: 0,
+            runtimeStatus: "stopped",
+            recentProjectStoragePath: "in-memory (no persistent path)",
+        });
+        expect((body as {projectRoot?: string}).projectRoot).toBeUndefined();
+        expect(typeof (body as {uptimeSeconds: number}).uptimeSeconds).toBe("number");
+        expect((body as {uptimeSeconds: number}).uptimeSeconds).toBeGreaterThanOrEqual(0);
+        expect(JSON.stringify(body)).not.toContain("\\n    at ");
     });
 
     it("serves index.html for GET /", async () => {
@@ -453,6 +473,7 @@ describe("StudioServer", () => {
 
             const homeService = new StudioHomeService("1.0.0");
             homeServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: homeStudioRoot,
@@ -1074,6 +1095,7 @@ describe("StudioServer", () => {
             const slowLoadGame = jest.fn().mockReturnValue(pendingLoad);
 
             projectServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
@@ -1111,6 +1133,7 @@ describe("StudioServer", () => {
             const failingLoadGame = jest.fn().mockRejectedValue(new Error("Cannot find module './dist/index.js'"));
 
             projectServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
@@ -1160,6 +1183,7 @@ describe("StudioServer", () => {
 
         async function startServerForProject(projectRoot: string): Promise<string> {
             fixtureServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: fixtureStudioRoot,
@@ -1446,6 +1470,7 @@ describe("StudioServer", () => {
             );
 
             projectServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
@@ -1496,6 +1521,7 @@ describe("StudioServer", () => {
             );
 
             projectServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
@@ -1532,6 +1558,112 @@ describe("StudioServer", () => {
             await flushMacrotask();
 
             expect(simulationService.getStatus(createdBody.id)?.status).toBe("cancelled");
+        });
+    });
+
+    describe("project switch cancels the old project's active jobs", () => {
+        let projectStudioRoot: string;
+        let projectServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            projectStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-switch-cancel-test-"));
+            writeStudioAssets(projectStudioRoot);
+        });
+
+        afterEach(async () => {
+            await projectServer?.stop();
+            fs.rmSync(projectStudioRoot, {recursive: true, force: true});
+        });
+
+        function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendingCount: () => number; release: () => void} {
+            const pending: Array<() => void> = [];
+            return {
+                yieldToEventLoop: () =>
+                    new Promise<void>((resolve) => {
+                        pending.push(resolve);
+                    }),
+                pendingCount: () => pending.length,
+                release: () => {
+                    const resolve = pending.shift();
+                    resolve?.();
+                },
+            };
+        }
+
+        it("POST /api/projects/close cancels the old project's active simulation and replay", async () => {
+            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            const simGate = createControlledYield();
+            const replayGate = createControlledYield();
+            const simulationService = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                undefined,
+                10, // chunkSize
+                undefined,
+                simGate.yieldToEventLoop,
+            );
+            const replayService = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                10, // chunkSize
+                undefined,
+                replayGate.yieldToEventLoop,
+            );
+
+            projectServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: projectStudioRoot,
+                homeService: new StudioHomeService(
+                    "1.0.0",
+                    undefined,
+                    createStubCreator(scaffoldResult),
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(createPlayableFakeGame(manifest)),
+                ),
+                blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
+                loadGame: () => Promise.resolve(createPlayableFakeGame(manifest)),
+                simulationService,
+                replayService,
+                initialContext: {mode: "project", projectRoot: "/tmp/crazy-fruits"},
+            });
+            const address = await projectServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            await post(`${projectBaseUrl}/api/project/simulations`, {rounds: 25});
+            await post(`${projectBaseUrl}/api/project/replays`, {round: 25});
+            await flushMacrotask();
+            expect(simGate.pendingCount()).toBe(1);
+            expect(replayGate.pendingCount()).toBe(1);
+            expect(simulationService.getActiveCount()).toBe(1);
+            expect(replayService.getActiveCount()).toBe(1);
+
+            const diagnostics = await get(`${projectBaseUrl}/api/studio/diagnostics`);
+            expect(diagnostics.status).toBe(200);
+            expect(diagnostics.body).toMatchObject({
+                mode: "project",
+                projectRoot: "/tmp/crazy-fruits",
+                activeSimulationCount: 1,
+                activeReplayCount: 1,
+            });
+            expect(JSON.stringify(diagnostics.body)).not.toContain("\\n    at ");
+
+            const closeResponse = await post(`${projectBaseUrl}/api/projects/close`);
+            expect(closeResponse.status).toBe(200);
+
+            // cancel() only requests cancellation (aborts the controller) — the records transition to
+            // "cancelled" once their paused chunk loops notice, same as an explicit DELETE-triggered
+            // cancel (see the Simulation/Replay cancellation describe blocks above).
+            simGate.release();
+            replayGate.release();
+            await flushMacrotask();
+
+            expect(simulationService.getActiveCount()).toBe(0);
+            expect(replayService.getActiveCount()).toBe(0);
         });
     });
 
@@ -1751,6 +1883,7 @@ describe("StudioServer", () => {
                 reportBuilder,
             );
             reportsServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: reportsStudioRoot,
@@ -2146,6 +2279,7 @@ describe("StudioServer", () => {
             );
 
             projectServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
@@ -2196,6 +2330,7 @@ describe("StudioServer", () => {
             );
 
             projectServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
@@ -2252,6 +2387,7 @@ describe("StudioServer", () => {
             const validateStub = jest.fn().mockResolvedValue({packageRoot: "/tmp/crazy-fruits", valid: true, game: manifest, errors: [], warnings: [], suggestions: []});
 
             projectServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
@@ -2310,6 +2446,7 @@ describe("StudioServer", () => {
         it("runs a replay against a real fixture game and produces a reproducible descriptor", async () => {
             const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
             replayServer = new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: replayStudioRoot,
@@ -2347,6 +2484,7 @@ describe("StudioServer", () => {
 
         function createRuntimeServer(initialContext: {mode: "home"} | {mode: "project"; projectRoot: string}): StudioServer {
             return new StudioServer({
+                pokieVersion: "1.0.0",
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: runtimeStudioRoot,

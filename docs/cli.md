@@ -1547,6 +1547,9 @@ automatically once a custom signal handler is registered.
 **Experimental.** Launches **POKIE Studio**: a local web app (its own HTTP server plus a small browser-based
 frontend) that hosts a GUI for the commands above. The Home nav below already covers `create`/`init`/`build`/
 opening a project; the Project Dashboard (see its own section) covers `inspect`/`validate`/`sim`/`report`/`replay`.
+Like `pokie serve`/`pokie dev`, this is a **local/dev tool, not a casino backend or RGS** — no real-money wallet,
+no authentication, and no operator/integration logic of any kind; its Runtime tab is the same local/dev reference
+server `pokie serve` is (see its own section above for what that does and doesn't provide).
 
 Several invocations all launch it, resolved by `resolveCliInvocation` (`cli/resolveCliInvocation.ts`):
 
@@ -1607,10 +1610,13 @@ same `--no-open` escape hatch) showing the **Home** view, with six tabs:
   every round trip unchanged. **Validate** runs the same `GameBlueprintValidator` used everywhere else, without
   touching disk. **Save** writes the blueprint as formatted JSON with a stable field order and a trailing newline
   (so re-saving unchanged content is byte-identical) to a path the user types — refusing to overwrite a file that
-  already exists unless the request explicitly confirms it (`{"status": "conflict"}`, `409`; see the API section).
+  already exists unless the request explicitly confirms it (`{"status": "conflict"}`, `409`; see the API section);
+  the UI's own **Overwrite** button asks for a confirmation naming the path before resending that request.
   **Build Preview**/**Build Package** call the same `buildGameBuildInfo()`/`GamePackageGenerating` services the
   path-based Build tab and `pokie build` itself use, including the same safe-rebuild/conflict check, followed by an
   **Open in Studio** button on a successful build — the same Home → Project transition as every other flow here.
+  Re-clicking **Build**/**Build Package** against the same output directory a build already succeeded against
+  earlier in the session asks for confirmation first (a first build against a given directory never does).
   Load/Save/Build never resolve a path against Studio's own internal asset directory (`studioRoot`) — only an
   explicitly user-given path is ever read or written.
 
@@ -1673,8 +1679,8 @@ project and shows a human-readable report — without ever shelling out to `poki
 A form asks for **rounds** (required, a positive integer) and an optional **seed**, same as `pokie sim
 --rounds/--seed`; running it shows **queued** → **running** (with a live rounds-completed/total progress line and
 elapsed duration) → **completed**/**failed**/**cancelled**. A **Cancel** button is available while
-queued/running, and once the job reaches a terminal state, a **Run again with the same parameters** button
-re-submits the exact same rounds/seed.
+queued/running (asking for confirmation before it actually cancels), and once the job reaches a terminal state, a
+**Run again with the same parameters** button re-submits the exact same rounds/seed.
 
 The report shown on completion includes at minimum: game id/version, rounds (and requested rounds, if the game
 stopped itself early), seed, total bet, total payout, RTP, hit frequency, volatility/standard deviation, the RTP
@@ -1731,9 +1737,9 @@ same reason [Simulation](#simulation) is chunked: replaying a large `round` in a
 HTTP server's event loop (no status poll, cancel request, or unrelated Inspect/Validate call could be served) for
 as long as it took. `POST /api/project/replays` therefore returns immediately (`202`) with a **queued** job; the
 tab then shows **queued** → **running** (with a live completed-rounds/requested-round progress line and elapsed
-duration) → **completed**/**failed**/**cancelled**. A **Cancel** button is available while queued/running, and
-once the job reaches a terminal state, a **Run again with the same parameters** button re-submits the exact same
-round/seed. Only one replay may be queued/running per project at a time — starting a second one while the first is
+duration) → **completed**/**failed**/**cancelled**. A **Cancel** button is available while queued/running (asking
+for confirmation before it actually cancels), and once the job reaches a terminal state, a **Run again with the
+same parameters** button re-submits the exact same round/seed. Only one replay may be queued/running per project at a time — starting a second one while the first is
 still active returns a `409` naming the already-active job's id, rather than silently starting a competing run.
 Cancellation, like Simulation's, can only take effect between chunks, not mid-chunk. The session itself is created
 exactly once per job and reused across every chunk — never recreated, and its RNG/game state is never reset — so
@@ -1784,10 +1790,10 @@ lifecycle states — **stopped**, **starting**, **running**, **stopping**, **fai
 host/port/base URL and an **Open runtime endpoint in a new tab** link (`<baseUrl>/health`). Starting while already
 running is refused with a `409` naming the currently running state rather than silently restarting; starting a
 second time after a genuine failure (an invalid project package, or a port already in use) is always safe to retry.
-Stopping an already-stopped runtime, and stopping one that was never started, are both a no-op, never an error.
-Switching to a different project (or back to Home) always stops any active runtime first — unlike Simulation/Replay
-jobs, which are merely scoped by `projectRoot` and keep running unseen after a switch, a Runtime server holds an OS
-port and is explicitly on/off state, so it's torn down on every project switch and on Studio shutdown alike.
+Stopping an already-stopped runtime, and stopping one that was never started, are both a no-op, never an error; the
+**Stop** button itself asks for confirmation first. Switching to a different project (or back to Home) always stops
+any active runtime first, and also cancels any active Simulation/Replay job for the project being left (see above)
+— nothing from a project you've switched away from keeps running unseen.
 
 **Debug mode is a start-time toggle on the runtime server itself**, not a raw `?debug=1` exposed per request to the
 browser: `sessionVersion` is always shown regardless (central to demonstrating optimistic locking below), but the
@@ -1823,6 +1829,12 @@ client, even for a load/validation failure.
 
 - `GET /api/health` — `200 {"status": "ok"}`, always, once Studio is up.
 - `GET /api/context` — the current mode: `{"mode": "home"}` or `{"mode": "project", "projectRoot": "..."}`.
+- `GET /api/studio/diagnostics` — safe, plain diagnostic data, in either mode: `{"studioVersion", "nodeVersion",
+  "mode", "projectRoot"?, "activeSimulationCount", "activeReplayCount", "runtimeStatus", "recentProjectStoragePath",
+  "uptimeSeconds"}`. Every field is a primitive already safe to expose — never a stack trace, an environment
+  variable, a token, or a service instance; `recentProjectStoragePath` is always the literal
+  `"in-memory (no persistent path)"`, since recent projects are never actually persisted to disk (see
+  **Recent Projects** above).
 - `GET /api/home/recent-projects` — the in-memory recent-projects list: `{projectRoot, name, openedAt,
   missing}[]`, most-recently-started first. `missing` is `true` when the project's directory/`package.json` can no
   longer be found on disk — the entry itself is never dropped just because of that (see

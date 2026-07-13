@@ -36,6 +36,7 @@ import {
     validateProject,
 } from "./apiClient.js";
 import {applyJsonText, BlueprintEditorState, createEmptyBlueprintEditorState, loadBlueprintEditorState, withFieldUpdate} from "./blueprintEditorState.js";
+import {confirmDangerousAction} from "./confirmDangerousAction.js";
 import {
     addBet,
     addPayline,
@@ -51,6 +52,8 @@ import {
     BlueprintMode,
     BlueprintMutate,
     Elements,
+    errorMessage,
+    formatTimestamp,
     HomeTab,
     ProjectTab,
     queryElements,
@@ -101,6 +104,7 @@ import {
     describeSessionResult,
     describeSpinResult,
     describeStartResult,
+    isRuntimeRunning,
     RuntimeSessionResultView,
     RuntimeSpinResultView,
     RuntimeStateView,
@@ -162,6 +166,10 @@ async function main(): Promise<void> {
     let lastCreatedProjectRoot: string | undefined;
     let lastInitializedProjectRoot: string | undefined;
     let lastBuiltProjectRoot: string | undefined;
+    // The outDir a Build actually succeeded against, so re-clicking Build with the *same* outDir can
+    // confirm before silently overwriting it — same "remember what's already safely written" pattern as
+    // blueprintOverwriteConfirmedForPath below. Never gates a first build against a given outDir.
+    let lastBuiltHomeOutDir: string | undefined;
 
     // The Blueprint Editor's own state — see blueprintEditorState.ts's own doc comment for how
     // `blueprintState` stays the one source of truth Form edits and JSON edits both go through.
@@ -175,6 +183,8 @@ async function main(): Promise<void> {
     let blueprintPath: string | undefined;
     let blueprintOverwriteConfirmedForPath: string | undefined;
     let lastBuiltBlueprintProjectRoot: string | undefined;
+    // Same reasoning as lastBuiltHomeOutDir above, for the Blueprint Editor's own Build action.
+    let lastBuiltBlueprintOutDir: string | undefined;
 
     const renderBlueprintEditor = (): void => {
         renderBlueprintForm(elements, blueprintState.blueprint, blueprintMutate);
@@ -209,7 +219,7 @@ async function main(): Promise<void> {
                 }
             })
             .catch((error: unknown) => {
-                renderBlueprintSaveResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderBlueprintSaveResult(elements, {status: "error", message: errorMessage(error)});
             });
     };
 
@@ -227,7 +237,7 @@ async function main(): Promise<void> {
             .catch((error: unknown) => {
                 renderInspectionResult(elements, {
                     status: "error",
-                    message: error instanceof Error ? error.message : String(error),
+                    message: errorMessage(error),
                 });
             });
     };
@@ -240,7 +250,7 @@ async function main(): Promise<void> {
                 renderValidationSummary(elements, describeValidationSummary(report));
             })
             .catch((error: unknown) => {
-                setStatus(elements.validationStatus, error instanceof Error ? error.message : String(error));
+                setStatus(elements.validationStatus, errorMessage(error));
             });
     };
 
@@ -249,6 +259,10 @@ async function main(): Promise<void> {
     // per-project state.
     let currentSimulationId: string | undefined;
     let lastSimulationParams: {rounds: number; seed?: string} | undefined;
+    // Mirrors the most recently rendered job's isSimulationActive() — cheaper than re-deriving it from
+    // the DOM, and used only to gate the Close-project/Open-project confirmation prompts (see
+    // confirmDangerousAction.ts) so they fire exclusively when there's actually something to lose.
+    let simulationActive = false;
     // The report currently shown in the Reports tab's detail view — kept so "Back to Simulation
     // parameters" can read its rounds/seed without a second fetch.
     let currentReportDetail: SimulationReport | undefined;
@@ -258,6 +272,8 @@ async function main(): Promise<void> {
     // own per-project state.
     let currentReplayId: string | undefined;
     let lastReplayParams: {round: number; seed?: string} | undefined;
+    // Same reasoning as simulationActive above, mirrored from isReplayActive().
+    let replayActive = false;
 
     // The Runtime tab's own state — reset whenever a (new) project becomes active (see
     // showProjectDashboard below), same reasoning as Simulation/Replay's own per-project state.
@@ -272,7 +288,7 @@ async function main(): Promise<void> {
     const RUNTIME_HISTORY_LIMIT = 20;
 
     const pushRuntimeHistory = (action: string, summary: string): void => {
-        runtimeHistory = [{timestamp: new Date().toLocaleTimeString(), action, summary}, ...runtimeHistory].slice(0, RUNTIME_HISTORY_LIMIT);
+        runtimeHistory = [{timestamp: formatTimestamp(Date.now()), action, summary}, ...runtimeHistory].slice(0, RUNTIME_HISTORY_LIMIT);
         renderRuntimeHistory(elements, runtimeHistory);
     };
 
@@ -285,7 +301,7 @@ async function main(): Promise<void> {
                 renderRuntimeState(elements, runtimeState);
             })
             .catch((error: unknown) => {
-                runtimeState = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                runtimeState = {status: "error", message: errorMessage(error)};
                 renderRuntimeState(elements, runtimeState);
             });
     };
@@ -300,6 +316,12 @@ async function main(): Promise<void> {
 
     const runtimeStateSummary = (state: RuntimeStateView): string =>
         state.status === "running" ? `running at ${state.baseUrl}` : state.status;
+
+    // Gates the Close-project/Open-project confirmation prompts (see confirmDangerousAction.ts) — only
+    // when the current project actually has something running does leaving it lose in-progress work
+    // (project-switch already cancels these server-side, see StudioServer's own project-switch
+    // cancellation — this prompt just makes sure that's not a surprise).
+    const hasActiveProjectOperation = (): boolean => simulationActive || replayActive || isRuntimeRunning(runtimeState);
 
     const resetRuntimeSessionView = (): void => {
         currentRuntimeSessionId = undefined;
@@ -322,12 +344,13 @@ async function main(): Promise<void> {
                 pushRuntimeHistory("Spin", result.status === "ok" ? `credits ${result.session.credits}, win ${result.session.win ?? 0}` : result.status);
             })
             .catch((error: unknown) => {
-                runtimeSessionView = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                runtimeSessionView = {status: "error", message: errorMessage(error)};
                 renderRuntimeSession(elements, runtimeSessionView);
             });
     };
 
     const renderSimulationJob = (job: StudioSimulationJobView): void => {
+        simulationActive = isSimulationActive(job);
         renderSimulationProgress(elements, describeSimulationProgress(job));
         elements.simulationViewInReportsButton.hidden = job.status !== "completed";
         if (job.status === "completed" && job.report) {
@@ -341,7 +364,7 @@ async function main(): Promise<void> {
                 renderReportsList(elements, describeReportsList(entries), (entry) => selectReport(entry.id));
             })
             .catch((error: unknown) => {
-                renderReportsListError(elements, error instanceof Error ? error.message : String(error));
+                renderReportsListError(elements, errorMessage(error));
             });
     };
 
@@ -365,12 +388,13 @@ async function main(): Promise<void> {
             .catch((error: unknown) => {
                 renderReportDetailState(elements, {
                     status: "error",
-                    message: error instanceof Error ? error.message : String(error),
+                    message: errorMessage(error),
                 });
             });
     };
 
     const renderReplayJob = (job: StudioReplayJobView): void => {
+        replayActive = isReplayActive(job);
         renderReplayProgress(elements, describeReplayProgress(job));
         if (job.status === "completed") {
             const result = describeReplayResult(job);
@@ -386,7 +410,7 @@ async function main(): Promise<void> {
                 renderReplayList(elements, describeReplayList(entries), (entry) => selectReplay(entry.id));
             })
             .catch((error: unknown) => {
-                renderReplayListError(elements, error instanceof Error ? error.message : String(error));
+                renderReplayListError(elements, errorMessage(error));
             });
     };
 
@@ -401,7 +425,7 @@ async function main(): Promise<void> {
                 }
             })
             .catch((error: unknown) => {
-                renderReplayError(elements, error instanceof Error ? error.message : String(error));
+                renderReplayError(elements, errorMessage(error));
             });
     };
 
@@ -420,7 +444,7 @@ async function main(): Promise<void> {
                 }
             })
             .catch((error: unknown) => {
-                renderReplayError(elements, error instanceof Error ? error.message : String(error));
+                renderReplayError(elements, errorMessage(error));
             });
     };
 
@@ -440,7 +464,7 @@ async function main(): Promise<void> {
                 pollReplay(result.job.id);
             })
             .catch((error: unknown) => {
-                renderReplayError(elements, error instanceof Error ? error.message : String(error));
+                renderReplayError(elements, errorMessage(error));
             });
     };
 
@@ -453,7 +477,7 @@ async function main(): Promise<void> {
                 }
             })
             .catch((error: unknown) => {
-                renderSimulationError(elements, error instanceof Error ? error.message : String(error));
+                renderSimulationError(elements, errorMessage(error));
             });
     };
 
@@ -472,7 +496,7 @@ async function main(): Promise<void> {
                 pollSimulation(result.job.id);
             })
             .catch((error: unknown) => {
-                renderSimulationError(elements, error instanceof Error ? error.message : String(error));
+                renderSimulationError(elements, errorMessage(error));
             });
     };
 
@@ -482,6 +506,7 @@ async function main(): Promise<void> {
             refreshInspect();
             currentSimulationId = undefined;
             lastSimulationParams = undefined;
+            simulationActive = false;
             renderSimulationProgress(elements, undefined);
             elements.simulationReport.container.hidden = true;
             elements.simulationViewInReportsButton.hidden = true;
@@ -490,6 +515,7 @@ async function main(): Promise<void> {
             refreshReports();
             currentReplayId = undefined;
             lastReplayParams = undefined;
+            replayActive = false;
             renderReplayProgress(elements, undefined);
             elements.replayResult.hidden = true;
             refreshReplays();
@@ -511,7 +537,7 @@ async function main(): Promise<void> {
                 }
             })
             .catch((error: unknown) => {
-                setStatus(elements.status, error instanceof Error ? error.message : String(error));
+                setStatus(elements.status, errorMessage(error));
             });
     };
 
@@ -532,10 +558,10 @@ async function main(): Promise<void> {
     const refreshHomeRecentProjects = (): void => {
         refreshRecentProjects(elements, fetchImpl, (entry) => {
             openAndNavigate(entry.projectRoot).catch((error: unknown) => {
-                renderHomeRecentProjectsError(elements, error instanceof Error ? error.message : String(error));
+                renderHomeRecentProjectsError(elements, errorMessage(error));
             });
         }).catch((error: unknown) => {
-            renderHomeRecentProjectsError(elements, error instanceof Error ? error.message : String(error));
+            renderHomeRecentProjectsError(elements, errorMessage(error));
         });
     };
 
@@ -565,7 +591,7 @@ async function main(): Promise<void> {
                 }
             })
             .catch((error: unknown) => {
-                renderCreateResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderCreateResult(elements, {status: "error", message: errorMessage(error)});
             });
     };
 
@@ -580,7 +606,7 @@ async function main(): Promise<void> {
                 }
             })
             .catch((error: unknown) => {
-                renderInitResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderInitResult(elements, {status: "error", message: errorMessage(error)});
             });
     };
 
@@ -594,25 +620,27 @@ async function main(): Promise<void> {
                 renderBuildPreview(elements, describeBuildPreview(preview));
             })
             .catch((error: unknown) => {
-                renderBuildPreview(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderBuildPreview(elements, {status: "error", message: errorMessage(error)});
             });
     };
 
     const runBuildProject = (): void => {
+        const outDir = elements.homeBuildOutDir.value.trim() || undefined;
         renderBuildResult(elements, {status: "loading"});
         buildProject(fetchImpl, {
             blueprintPath: elements.homeBuildBlueprintPath.value,
-            outDir: elements.homeBuildOutDir.value.trim() || undefined,
+            outDir,
         })
             .then((result) => {
                 renderBuildResult(elements, describeBuildResult(result));
                 if (result.status === "ok") {
                     lastBuiltProjectRoot = result.projectRoot;
+                    lastBuiltHomeOutDir = outDir;
                     refreshHomeRecentProjects();
                 }
             })
             .catch((error: unknown) => {
-                renderBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderBuildResult(elements, {status: "error", message: errorMessage(error)});
             });
     };
 
@@ -631,13 +659,24 @@ async function main(): Promise<void> {
         }
         setStatus(elements.status, "Ready");
     } catch (error) {
-        setStatus(elements.status, error instanceof Error ? error.message : String(error));
+        setStatus(elements.status, errorMessage(error));
         return;
     }
 
+    // Fires for *any* hash change, in-app navigate() calls and the browser's own Back/Forward alike —
+    // the two are indistinguishable at this level (see router.ts's own doc comment), which matters
+    // specifically for the transition to "home": Back from the Project route lands here too, not just
+    // the explicit Close-project button (main.ts's own click handler below already calls closeProject()
+    // itself before navigating, so this fires a second, harmless, idempotent call in that case — see
+    // POST /api/projects/close's own doc comment). Without this, Back would flip the *client* to Home
+    // while the *server* stayed in "project" mode indefinitely — its runtime server (if any) still
+    // holding its OS port, unseen. Errors are swallowed: this is a best-effort background sync, not a
+    // user-initiated action with its own error UI to report through.
     onRouteChange((route) => {
         showView(elements, route);
         if (route === "home") {
+            activeProjectTab = "overview";
+            closeProject(fetchImpl).catch(() => undefined);
             refreshHome();
         } else {
             pollProjectDashboard(PROJECT_POLL_MAX_ATTEMPTS);
@@ -684,7 +723,7 @@ async function main(): Promise<void> {
             return;
         }
         openAndNavigate(lastCreatedProjectRoot).catch((error: unknown) => {
-            renderCreateResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            renderCreateResult(elements, {status: "error", message: errorMessage(error)});
         });
     });
 
@@ -698,7 +737,7 @@ async function main(): Promise<void> {
             return;
         }
         openAndNavigate(lastInitializedProjectRoot).catch((error: unknown) => {
-            renderInitResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            renderInitResult(elements, {status: "error", message: errorMessage(error)});
         });
     });
 
@@ -708,6 +747,13 @@ async function main(): Promise<void> {
     });
 
     elements.homeBuildRunButton.addEventListener("click", () => {
+        const outDir = elements.homeBuildOutDir.value.trim() || undefined;
+        if (lastBuiltHomeOutDir !== undefined && lastBuiltHomeOutDir === outDir) {
+            const target = outDir ?? "the default output directory";
+            if (!confirmDangerousAction(`A package was already built at "${target}" this session. Rebuild and overwrite it?`)) {
+                return;
+            }
+        }
         runBuildProject();
     });
 
@@ -716,7 +762,7 @@ async function main(): Promise<void> {
             return;
         }
         openAndNavigate(lastBuiltProjectRoot).catch((error: unknown) => {
-            renderBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            renderBuildResult(elements, {status: "error", message: errorMessage(error)});
         });
     });
 
@@ -763,7 +809,7 @@ async function main(): Promise<void> {
                 }
             })
             .catch((error: unknown) => {
-                renderBlueprintLoadResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderBlueprintLoadResult(elements, {status: "error", message: errorMessage(error)});
             });
     });
 
@@ -772,6 +818,9 @@ async function main(): Promise<void> {
     });
 
     elements.blueprintSaveOverwriteButton.addEventListener("click", () => {
+        if (!confirmDangerousAction(`Overwrite the blueprint at "${elements.blueprintSavePath.value}"?`)) {
+            return;
+        }
         runSaveBlueprint(true);
     });
 
@@ -857,7 +906,7 @@ async function main(): Promise<void> {
                 renderBlueprintValidation(elements, describeValidation(result));
             })
             .catch((error: unknown) => {
-                renderBlueprintValidation(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderBlueprintValidation(elements, {status: "error", message: errorMessage(error)});
             });
     });
 
@@ -868,22 +917,30 @@ async function main(): Promise<void> {
                 renderBlueprintBuildPreview(elements, describeBuildPreview(preview));
             })
             .catch((error: unknown) => {
-                renderBlueprintBuildPreview(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderBlueprintBuildPreview(elements, {status: "error", message: errorMessage(error)});
             });
     });
 
     elements.blueprintBuildButton.addEventListener("click", () => {
+        const outDir = elements.blueprintOutDir.value.trim() || undefined;
+        if (lastBuiltBlueprintOutDir !== undefined && lastBuiltBlueprintOutDir === outDir) {
+            const target = outDir ?? "the default output directory";
+            if (!confirmDangerousAction(`A package was already built at "${target}" this session. Rebuild and overwrite it?`)) {
+                return;
+            }
+        }
         renderBlueprintBuildResult(elements, {status: "loading"});
-        buildBlueprint(fetchImpl, blueprintState.blueprint, elements.blueprintOutDir.value.trim() || undefined, blueprintPath)
+        buildBlueprint(fetchImpl, blueprintState.blueprint, outDir, blueprintPath)
             .then((result) => {
                 renderBlueprintBuildResult(elements, describeBuildResult(result));
                 if (result.status === "ok") {
                     lastBuiltBlueprintProjectRoot = result.projectRoot;
+                    lastBuiltBlueprintOutDir = outDir;
                     refreshHomeRecentProjects();
                 }
             })
             .catch((error: unknown) => {
-                renderBlueprintBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+                renderBlueprintBuildResult(elements, {status: "error", message: errorMessage(error)});
             });
     });
 
@@ -892,7 +949,7 @@ async function main(): Promise<void> {
             return;
         }
         openAndNavigate(lastBuiltBlueprintProjectRoot).catch((error: unknown) => {
-            renderBlueprintBuildResult(elements, {status: "error", message: error instanceof Error ? error.message : String(error)});
+            renderBlueprintBuildResult(elements, {status: "error", message: errorMessage(error)});
         });
     });
 
@@ -903,11 +960,18 @@ async function main(): Promise<void> {
         openAndNavigate(elements.homeOpenPath.value).catch((error: unknown) => {
             elements.homeOpenLoading.hidden = true;
             elements.homeOpenError.hidden = false;
-            elements.homeOpenError.textContent = error instanceof Error ? error.message : String(error);
+            elements.homeOpenError.textContent = errorMessage(error);
         });
     });
 
     elements.closeProjectButton.addEventListener("click", () => {
+        // The only reachable "leave a project with something running" gate: every Open action lives in
+        // the Home view, which is only ever shown after a close already happened (explicit, here, or via
+        // Back — see onRouteChange's own "home" branch), so by the time an Open button is clickable
+        // hasActiveProjectOperation() is already back to false. This is the one real decision point.
+        if (hasActiveProjectOperation() && !confirmDangerousAction("This project has an active simulation, replay, or running runtime. Close the project anyway?")) {
+            return;
+        }
         closeProject(fetchImpl)
             .then(() => {
                 navigate("home");
@@ -915,7 +979,7 @@ async function main(): Promise<void> {
                 refreshHome();
             })
             .catch((error: unknown) => {
-                setStatus(elements.status, error instanceof Error ? error.message : String(error));
+                setStatus(elements.status, errorMessage(error));
             });
     });
 
@@ -968,12 +1032,15 @@ async function main(): Promise<void> {
                 pushRuntimeHistory("Start", runtimeStateSummary(runtimeState));
             })
             .catch((error: unknown) => {
-                runtimeState = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                runtimeState = {status: "error", message: errorMessage(error)};
                 renderRuntimeState(elements, runtimeState);
             });
     });
 
     elements.runtimeStopButton.addEventListener("click", () => {
+        if (!confirmDangerousAction("Stop the running runtime server?")) {
+            return;
+        }
         stopRuntime(fetchImpl)
             .then((state) => {
                 runtimeState = describeRuntimeState(state);
@@ -982,7 +1049,7 @@ async function main(): Promise<void> {
                 resetRuntimeSessionView();
             })
             .catch((error: unknown) => {
-                runtimeState = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                runtimeState = {status: "error", message: errorMessage(error)};
                 renderRuntimeState(elements, runtimeState);
             });
     });
@@ -999,7 +1066,7 @@ async function main(): Promise<void> {
                 resetRuntimeSessionView();
             })
             .catch((error: unknown) => {
-                runtimeState = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                runtimeState = {status: "error", message: errorMessage(error)};
                 renderRuntimeState(elements, runtimeState);
             });
     });
@@ -1016,7 +1083,7 @@ async function main(): Promise<void> {
                 pushRuntimeHistory("Create Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
             })
             .catch((error: unknown) => {
-                runtimeSessionView = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                runtimeSessionView = {status: "error", message: errorMessage(error)};
                 renderRuntimeSession(elements, runtimeSessionView);
             });
     });
@@ -1036,7 +1103,7 @@ async function main(): Promise<void> {
                 pushRuntimeHistory("Load Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
             })
             .catch((error: unknown) => {
-                runtimeSessionView = {status: "error", message: error instanceof Error ? error.message : String(error)};
+                runtimeSessionView = {status: "error", message: errorMessage(error)};
                 renderRuntimeSession(elements, runtimeSessionView);
             });
     });
@@ -1075,10 +1142,13 @@ async function main(): Promise<void> {
         if (currentReplayId === undefined) {
             return;
         }
+        if (!confirmDangerousAction("Cancel the running replay?")) {
+            return;
+        }
         cancelReplay(fetchImpl, currentReplayId)
             .then((job) => renderReplayJob(job))
             .catch((error: unknown) => {
-                renderReplayError(elements, error instanceof Error ? error.message : String(error));
+                renderReplayError(elements, errorMessage(error));
             });
     });
 
@@ -1123,10 +1193,13 @@ async function main(): Promise<void> {
         if (currentSimulationId === undefined) {
             return;
         }
+        if (!confirmDangerousAction("Cancel the running simulation?")) {
+            return;
+        }
         cancelSimulation(fetchImpl, currentSimulationId)
             .then((job) => renderSimulationJob(job))
             .catch((error: unknown) => {
-                renderSimulationError(elements, error instanceof Error ? error.message : String(error));
+                renderSimulationError(elements, errorMessage(error));
             });
     });
 

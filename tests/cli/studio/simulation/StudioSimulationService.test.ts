@@ -372,6 +372,71 @@ describe("StudioSimulationService", () => {
         expect(service.getStatus(second.job.id)?.status).toBe("cancelled");
     });
 
+    describe("cancelActiveForProject / getActiveCount", () => {
+        it("cancels only the active job for the given projectRoot, leaving other projects untouched", async () => {
+            const gate = createControlledYield();
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createFakeGame(manifest)),
+                undefined,
+                10,
+                undefined,
+                gate.yieldToEventLoop,
+            );
+
+            const first = service.start("/a", {rounds: 25});
+            const second = service.start("/b", {rounds: 25});
+            if (first.status !== "created" || second.status !== "created") {
+                throw new Error("expected both jobs to be created");
+            }
+            await flushMacrotask();
+
+            service.cancelActiveForProject("/a");
+            gate.release();
+            gate.release();
+            await flushMacrotask();
+
+            expect(service.getStatus(first.job.id)?.status).toBe("cancelled");
+            expect(service.getStatus(second.job.id)?.status).toBe("running");
+        });
+
+        it("is a no-op when nothing is active for the given projectRoot", () => {
+            const service = new StudioSimulationService();
+
+            expect(() => service.cancelActiveForProject("/nowhere")).not.toThrow();
+        });
+
+        it("getActiveCount() reflects the number of currently queued/running jobs across all projects", async () => {
+            const gate = createControlledYield();
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createFakeGame(manifest)),
+                undefined,
+                10,
+                undefined,
+                gate.yieldToEventLoop,
+            );
+
+            expect(service.getActiveCount()).toBe(0);
+
+            const first = service.start("/a", {rounds: 25});
+            const second = service.start("/b", {rounds: 25});
+            if (first.status !== "created" || second.status !== "created") {
+                throw new Error("expected both jobs to be created");
+            }
+            await flushMacrotask();
+
+            expect(service.getActiveCount()).toBe(2);
+
+            service.cancelAll();
+            gate.release();
+            gate.release();
+            await flushMacrotask();
+
+            expect(service.getActiveCount()).toBe(0);
+        });
+    });
+
     describe("listReports / getReport", () => {
         it("lists a completed simulation's report summary", async () => {
             const service = new StudioSimulationService(

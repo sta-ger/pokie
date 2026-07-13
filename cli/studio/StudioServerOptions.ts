@@ -10,6 +10,11 @@ import type {StudioToolHandling} from "./StudioToolHandling.js";
 export type StudioServerOptions = {
     host?: string;
     port?: number;
+    // Embedded in GET /api/studio/diagnostics' studioVersion field — the same value StudioCommand
+    // already resolves via readOwnVersion() and threads into homeService/blueprintService below.
+    // Required rather than defaulted for the same reason those are: StudioServer has no business
+    // guessing a `pokie` version.
+    pokieVersion: string;
     // Where the compiled cli/studio-client assets live (dist/cli/studio-client at runtime) — same
     // "computed once by cli/pokie.ts, passed in" pattern as PokieClientServer's clientRoot.
     studioRoot: string;

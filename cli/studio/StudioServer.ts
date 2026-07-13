@@ -8,6 +8,7 @@ import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} fro
 import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
 import {validateSaveBlueprintRequest, SaveBlueprintRequestInput} from "./blueprint/validateSaveBlueprintRequest.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
+import type {StudioDiagnosticsView} from "./StudioDiagnosticsView.js";
 import {validateBuildRequest, BuildRequestInput} from "./home/validateBuildRequest.js";
 import {validateCreateProjectRequest, CreateProjectRequestInput} from "./home/validateCreateProjectRequest.js";
 import {validateInitProjectRequest, InitProjectRequestInput} from "./home/validateInitProjectRequest.js";
@@ -61,6 +62,7 @@ const CONTENT_TYPES: Record<string, string> = {
 export class StudioServer implements StudioServerHandling {
     private readonly host: string;
     private readonly port: number;
+    private readonly pokieVersion: string;
     private readonly studioRoot: string;
     private readonly homeService: StudioHomeService;
     private readonly blueprintService: StudioBlueprintService;
@@ -82,6 +84,7 @@ export class StudioServer implements StudioServerHandling {
     constructor(options: StudioServerOptions) {
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
+        this.pokieVersion = options.pokieVersion;
         this.studioRoot = path.resolve(options.studioRoot);
         this.homeService = options.homeService;
         this.blueprintService = options.blueprintService;
@@ -147,6 +150,43 @@ export class StudioServer implements StudioServerHandling {
         });
     }
 
+    // Called from both project-switch points (handleHomeOpenProject, /api/projects/close) *before*
+    // this.currentContext is mutated — a no-op unless currentContext is still "project" at the time of
+    // the call. Unlike StudioRuntimeManager (which holds an OS port and is always torn down on switch),
+    // StudioSimulationService/StudioReplayExecutionService jobs are otherwise only ever stopped on full
+    // Studio shutdown (see stop() above) — they're scoped by projectRoot so a job for a project you've
+    // switched away from is never *reachable* through this project's own routes again, but "unreachable"
+    // isn't "stopped": without this, its chunk loop would keep running in the background indefinitely,
+    // wasting CPU for a result nothing can ever read.
+    private cancelActiveJobsForOldProject(): void {
+        if (this.currentContext.mode !== "project") {
+            return;
+        }
+        this.simulationService.cancelActiveForProject(this.currentContext.projectRoot);
+        this.replayService.cancelActiveForProject(this.currentContext.projectRoot);
+    }
+
+    // Every field is a primitive already safe to expose — no stack traces, env vars, tokens, or service
+    // instances: studioVersion/nodeVersion/uptimeSeconds are ordinary version/process facts, mode/
+    // projectRoot/runtimeStatus mirror what /api/context and the Runtime tab already return to the
+    // client, the two active-job counts are plain numbers (see StudioSimulationService/
+    // StudioReplayExecutionService's own getActiveCount()), and recentProjectStoragePath is a fixed
+    // literal describing InMemoryRecentProjectsRepository's actual (non-persistent) storage — never a
+    // real filesystem path, since there isn't one.
+    private buildDiagnostics(): StudioDiagnosticsView {
+        return {
+            studioVersion: this.pokieVersion,
+            nodeVersion: process.version,
+            mode: this.currentContext.mode,
+            projectRoot: this.currentContext.mode === "project" ? this.currentContext.projectRoot : undefined,
+            activeSimulationCount: this.simulationService.getActiveCount(),
+            activeReplayCount: this.replayService.getActiveCount(),
+            runtimeStatus: this.runtimeManager.getState().status,
+            recentProjectStoragePath: "in-memory (no persistent path)",
+            uptimeSeconds: process.uptime(),
+        };
+    }
+
     private startProjectDashboardLoad(projectRoot: string): void {
         this.projectDashboard = {status: "loading", projectRoot};
         loadProjectDashboardContext(projectRoot, this.loadGame)
@@ -170,6 +210,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/context") {
             this.sendJson(res, 200, this.currentContext);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/studio/diagnostics") {
+            this.sendJson(res, 200, this.buildDiagnostics());
             return;
         }
 
@@ -230,11 +275,12 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/projects/close") {
             // Awaited before the context actually flips to "home": a runtime server belongs to the
-            // project being left, and — unlike Simulation/Replay's own jobs, which are merely scoped
-            // by projectRoot and never stopped on switch — it holds an OS port, so it must be fully
-            // torn down here rather than left running unseen (see StudioRuntimeManager's own doc
-            // comment).
+            // project being left and holds an OS port, so it must be fully torn down here rather than
+            // left running unseen (see StudioRuntimeManager's own doc comment). Simulation/Replay jobs
+            // for that same project are cancelled too — see cancelActiveJobsForOldProject()'s own doc
+            // comment for why this can't just rely on their existing projectRoot scoping alone.
             await this.runtimeManager.stopForProjectSwitch();
+            this.cancelActiveJobsForOldProject();
             this.currentContext = {mode: "home"};
             this.projectDashboard = undefined;
             this.sendJson(res, 200, {context: this.currentContext});
@@ -556,6 +602,7 @@ export class StudioServer implements StudioServerHandling {
         // never strands the previous project's runtime prematurely. Same reasoning as the
         // /api/projects/close branch's own call.
         await this.runtimeManager.stopForProjectSwitch();
+        this.cancelActiveJobsForOldProject();
 
         // The explicit Home → Project Studio context transition: mutates this same running server's
         // state in place — no new HTTP server or Studio process is ever started (see the class-level

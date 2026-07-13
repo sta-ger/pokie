@@ -553,6 +553,69 @@ describe("StudioReplayExecutionService", () => {
         expect(service.getStatus("/b", second.job.id)?.status).toBe("cancelled");
     });
 
+    describe("cancelActiveForProject / getActiveCount", () => {
+        it("cancels only the active replay for the given projectRoot, leaving other projects untouched", async () => {
+            const gate = createControlledYield();
+            const service = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createSeedAwareFakeGame(manifest)),
+                10,
+                undefined,
+                gate.yieldToEventLoop,
+            );
+
+            const first = service.start("/a", {round: 25});
+            const second = service.start("/b", {round: 25});
+            if (first.status !== "created" || second.status !== "created") {
+                throw new Error("expected both jobs to be created");
+            }
+            await flushMacrotask();
+
+            service.cancelActiveForProject("/a");
+            gate.release();
+            gate.release();
+            await flushMacrotask();
+
+            expect(service.getStatus("/a", first.job.id)?.status).toBe("cancelled");
+            expect(service.getStatus("/b", second.job.id)?.status).toBe("running");
+        });
+
+        it("is a no-op when nothing is active for the given projectRoot", () => {
+            const service = new StudioReplayExecutionService();
+
+            expect(() => service.cancelActiveForProject("/nowhere")).not.toThrow();
+        });
+
+        it("getActiveCount() reflects the number of currently queued/running replays across all projects", async () => {
+            const gate = createControlledYield();
+            const service = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createSeedAwareFakeGame(manifest)),
+                10,
+                undefined,
+                gate.yieldToEventLoop,
+            );
+
+            expect(service.getActiveCount()).toBe(0);
+
+            const first = service.start("/a", {round: 25});
+            const second = service.start("/b", {round: 25});
+            if (first.status !== "created" || second.status !== "created") {
+                throw new Error("expected both jobs to be created");
+            }
+            await flushMacrotask();
+
+            expect(service.getActiveCount()).toBe(2);
+
+            service.cancelAll();
+            gate.release();
+            gate.release();
+            await flushMacrotask();
+
+            expect(service.getActiveCount()).toBe(0);
+        });
+    });
+
     describe("listJobs", () => {
         it("lists a project's replays with the expected summary fields", async () => {
             const service = new StudioReplayExecutionService(

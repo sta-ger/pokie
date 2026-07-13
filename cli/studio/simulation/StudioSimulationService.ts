@@ -129,6 +129,23 @@ export class StudioSimulationService {
         }
     }
 
+    // Same reasoning as cancelAll(), scoped to one project — called from StudioServer whenever Studio
+    // switches away from `projectRoot` (a different project opened, or back to Home), so a simulation
+    // for the project just left doesn't keep running its chunk loop unseen and unreachable (its own
+    // job/report becomes unreachable through this project's own routes the moment the switch happens
+    // anyway — see getReport()/listReports()'s own projectRoot scoping — so leaving it running would
+    // only waste CPU, never remain usable). A no-op when nothing is active for that project.
+    public cancelActiveForProject(projectRoot: string): void {
+        const record = this.repository.findActiveByProjectRoot(projectRoot);
+        record?.abortController.abort();
+    }
+
+    // Process-wide (not scoped to one project) — feeds GET /api/studio/diagnostics, a plain count safe
+    // to expose regardless of which project (if any) is currently active.
+    public getActiveCount(): number {
+        return this.repository.listActive().length;
+    }
+
     // The Reports tab's list — only ever built from "completed" jobs (the only status with an actual
     // report to summarize); a failed/cancelled job simply never appears here, though it's still
     // tracked by the repository for retention purposes (see StudioSimulationRepository). Always
