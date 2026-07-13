@@ -60,4 +60,10 @@ describe("MaximumConsecutiveOccurrencesConstraint", () => {
         expect(violations).toHaveLength(1);
         expect(violations[0].details?.symbolId).toBe("B");
     });
+
+    describe("constructor validation", () => {
+        test.each([NaN, Infinity, -Infinity, 0, -1, 1.5])("rejects a maximumConsecutive of %p", (invalidMaximum) => {
+            expect(() => new MaximumConsecutiveOccurrencesConstraint(invalidMaximum)).toThrow(/maximumConsecutive must be a positive integer/);
+        });
+    });
 });

@@ -75,4 +75,16 @@ describe("RequiredAdjacencyConstraint", () => {
             expect(constraint.validate(strip)).toEqual([]);
         });
     });
+
+    test("undirected + wrapAround on a circular strip of length 2 does not duplicate the single other position", () => {
+        // On a 2-long circular strip, "previous" and "next" of any position both wrap around to the
+        // *same* other position -- it must be reported (and checked) only once, not twice.
+        const constraint = new RequiredAdjacencyConstraint([["W", "M"]]);
+        const strip = new ReelStrip(["W", "X"]);
+
+        const violations = constraint.validate(strip);
+        expect(violations).toHaveLength(1);
+        expect(violations[0].positions).toEqual([0, 1]);
+        expect(violations[0].details?.actualNeighbors).toEqual(["X"]);
+    });
 });

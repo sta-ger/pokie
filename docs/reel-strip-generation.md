@@ -256,20 +256,32 @@ path — they only ever read a `ReelStripDefinition` and report violations, whet
 | Constraint | Checks |
 |---|---|
 | `ExactSymbolCountsConstraint(expectedCounts)` | Every symbol's occurrence count matches exactly (a symbol present on the strip but absent from `expectedCounts` is expected to occur 0 times) |
-| `MinimumCircularDistanceConstraint(minimumDistance, symbolIds?, wrapAround = true)` | Every pair of occurrences of the same symbol is at least `minimumDistance` apart |
-| `MaximumCircularDistanceConstraint(maximumDistance, symbolIds?, wrapAround = true)` | Every pair of occurrences of the same symbol is at most `maximumDistance` apart — e.g. a scatter that must not go too long without reappearing. The mirror image of `MinimumCircularDistanceConstraint`; a symbol occurring 0 or 1 times has no gap to measure and is never flagged |
+| `MinimumCircularDistanceConstraint(minimumDistance, symbolIds?, wrapAround = true)` | The gap between every symbol occurrence and the *next* occurrence of that same symbol, going around the strip, is at least `minimumDistance` |
+| `MaximumCircularDistanceConstraint(maximumDistance, symbolIds?, wrapAround = true)` | The gap between every symbol occurrence and the *next* occurrence of that same symbol, going around the strip, is at most `maximumDistance` — e.g. a scatter that must not go too long without reappearing. The mirror image of `MinimumCircularDistanceConstraint`; a symbol occurring 0 or 1 times has no gap to measure and is never flagged |
 | `MaximumConsecutiveOccurrencesConstraint(maximumConsecutive, symbolIds?, wrapAround = true)` | No run of identical adjacent symbols exceeds `maximumConsecutive` |
 | `ForbiddenAdjacencyConstraint(pairs, wrapAround = true, directed = false)` | No adjacent pair of positions holds two symbols from the same forbidden pair |
 | `RequiredAdjacencyConstraint(pairs, directed = false, wrapAround = true)` | Every occurrence of a "subject" symbol has one of its required neighbor(s) actually adjacent to it |
 | `FixedPositionsConstraint(lockedPositions)` | Specific positions hold specific symbols — useful for validating a hand-authored strip outside `ReelStripGenerator`, which already enforces `request.lockedPositions` as a built-in invariant |
+
+**Both circular-distance constraints check consecutive occurrences only** — the arcs that partition the circle
+between one occurrence and the next — never the distance between arbitrary, non-consecutive occurrence pairs. With
+occurrences at positions 0, 5, and 9 on a 10-long strip, only the 0→5, 5→9, and 9→0 arcs are ever measured; there is
+no direct "0 to 9" check that skips over the occurrence at 5. For a *minimum*, that happens to be equivalent to
+checking every possible pair (the closest pair is always a consecutive one) — but for a *maximum* it is not, so
+`MaximumCircularDistanceConstraint` would give a different (and wrong) answer if it checked all pairs instead.
 
 `symbolIds` (where present) restricts the check to a subset of symbols, defaulting to every symbol on the strip. The
 two adjacency constraints have no separate `symbolIds` parameter — their `pairs` argument already determines exactly
 which symbols get inspected (a symbol that never appears as a pair member is never looked at).
 
 `wrapAround` (where present) controls whether the strip's last and first positions are treated as adjacent/circular
-(the default, matching a physical reel strip) or purely linear — e.g. `MaximumCircularDistanceConstraint`'s gaps, or
-whether the last/first symbols count as neighbors for `ForbiddenAdjacencyConstraint`/`RequiredAdjacencyConstraint`.
+(the default, matching a physical reel strip) or purely linear — e.g. whether the arc from the last occurrence back
+to the first counts for the circular-distance constraints, or whether the last/first symbols count as neighbors for
+`ForbiddenAdjacencyConstraint`/`RequiredAdjacencyConstraint`.
+
+**Fail-fast constructor validation:** `minimumDistance`, `maximumDistance`, and `maximumConsecutive` must each be a
+positive, finite integer — `NaN`, `Infinity`, `0`, negative, and fractional values all throw immediately from the
+constructor instead of being silently accepted as a nonsensical bound.
 
 ### Directed vs. undirected adjacency
 
@@ -344,6 +356,7 @@ type ReelStripAnalysis = {
     symbolCounts: Record<string, number>;
     symbolFrequencies: Record<string, number>;              // count / length, per symbol
     minimumCircularDistances: Record<string, number>;       // per symbol with 2+ occurrences
+    maximumCircularDistances: Record<string, number>;       // per symbol with 2+ occurrences
     maximumConsecutiveOccurrences: Record<string, number>;  // per symbol, longest run (wrap-aware)
 };
 ```
@@ -355,8 +368,11 @@ const analysis = ReelStripAnalyzer.analyze(new ReelStrip(["A", "A", "B", "A", "C
 analysis.symbolCounts;                 // {A: 3, B: 1, C: 1}
 analysis.symbolFrequencies;            // {A: 0.6, B: 0.2, C: 0.2}
 analysis.minimumCircularDistances;     // {A: 1} -- B/C occur once, so no distance applies
+analysis.maximumCircularDistances;     // {A: 2} -- B/C occur once, so no distance applies
 analysis.maximumConsecutiveOccurrences; // {A: 2, B: 1, C: 1}
 ```
 
-A symbol occurring 0 or 1 times is omitted from `minimumCircularDistances` — a distance needs at least two
-occurrences to be meaningful.
+Both `minimumCircularDistances` and `maximumCircularDistances` measure the same underlying gaps between consecutive
+occurrences of a symbol (going around the circle) — they only differ in whether the smallest or largest of those
+gaps is reported. A symbol occurring 0 or 1 times has no gap to measure and is omitted from both — matching exactly
+how `MinimumCircularDistanceConstraint`/`MaximumCircularDistanceConstraint` treat that same symbol.

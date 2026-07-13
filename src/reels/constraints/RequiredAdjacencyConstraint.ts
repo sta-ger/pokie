@@ -78,13 +78,16 @@ export class RequiredAdjacencyConstraint implements ReelStripConstraint {
             return [(position + 1) % length];
         }
 
-        const positions: number[] = [];
+        // A Set, not an array: on a circular strip of length 2, "previous" and "next" both wrap
+        // around to the same single other position, and it must only be counted (and reported)
+        // once rather than duplicated.
+        const positions = new Set<number>();
         if (this.wrapAround || position > 0) {
-            positions.push((position - 1 + length) % length);
+            positions.add((position - 1 + length) % length);
         }
         if (this.wrapAround || position < length - 1) {
-            positions.push((position + 1) % length);
+            positions.add((position + 1) % length);
         }
-        return positions;
+        return [...positions];
     }
 }

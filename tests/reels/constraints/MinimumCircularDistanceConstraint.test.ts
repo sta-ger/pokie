@@ -36,4 +36,10 @@ describe("MinimumCircularDistanceConstraint", () => {
         // Without wrap-around, only the single linear gap (0 -> 3, distance 3) is checked, which satisfies the constraint.
         expect(linear.validate(strip)).toEqual([]);
     });
+
+    describe("constructor validation", () => {
+        test.each([NaN, Infinity, -Infinity, 0, -1, 1.5])("rejects a minimumDistance of %p", (invalidDistance) => {
+            expect(() => new MinimumCircularDistanceConstraint(invalidDistance)).toThrow(/minimumDistance must be a positive integer/);
+        });
+    });
 });

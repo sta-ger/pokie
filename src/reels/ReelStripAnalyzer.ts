@@ -18,12 +18,16 @@ export class ReelStripAnalyzer {
             length,
             symbolCounts,
             symbolFrequencies,
-            minimumCircularDistances: ReelStripAnalyzer.getMinimumCircularDistances(strip),
+            minimumCircularDistances: ReelStripAnalyzer.getCircularDistances(strip, (gaps) => Math.min(...gaps)),
+            maximumCircularDistances: ReelStripAnalyzer.getCircularDistances(strip, (gaps) => Math.max(...gaps)),
             maximumConsecutiveOccurrences: ReelStripAnalyzer.getMaximumConsecutiveOccurrences(strip),
         };
     }
 
-    private static getMinimumCircularDistances(strip: ReelStripDefinition): Record<string, number> {
+    // Shared by minimumCircularDistances/maximumCircularDistances: both look at the same per-symbol
+    // set of gaps between consecutive occurrences (going around the circle) and differ only in how
+    // they aggregate them (Math.min vs Math.max).
+    private static getCircularDistances(strip: ReelStripDefinition, aggregate: (gaps: number[]) => number): Record<string, number> {
         const length = strip.getLength();
         const symbols = strip.toArray();
         const positionsBySymbol = new Map<string, number[]>();
@@ -39,7 +43,7 @@ export class ReelStripAnalyzer {
             if (gaps.length === 0) {
                 continue;
             }
-            result[symbolId] = Math.min(...gaps.map((gap) => gap.gap));
+            result[symbolId] = aggregate(gaps.map((gap) => gap.gap));
         }
         return result;
     }

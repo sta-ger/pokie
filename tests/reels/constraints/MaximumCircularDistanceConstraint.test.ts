@@ -34,15 +34,25 @@ describe("MaximumCircularDistanceConstraint", () => {
     });
 
     test("wrapAround = false ignores the gap that crosses the strip's end", () => {
-        const strip = new ReelStrip(["A", "B", "B", "A"]);
+        // "A" occurs at positions 0 and 2, both clustered near the front: the direct arc between
+        // them (0 -> 2) is only 2, within the maximum -- but the arc that wraps back around through
+        // the strip's end (2 -> 0, i.e. 2 -> 3 -> 4 -> 5 -> 0) is 4, exceeding it.
+        const strip = new ReelStrip(["A", "B", "A", "B", "B", "B"]);
 
         const wrapping = new MaximumCircularDistanceConstraint(2, ["A"], true);
         const linear = new MaximumCircularDistanceConstraint(2, ["A"], false);
 
-        // Linear gap (0 -> 3) is 3, which exceeds the maximum of 2.
-        expect(linear.validate(strip)).toHaveLength(1);
-        // The wrap gap (3 -> 0) is only 1, which does not exceed the maximum -- so with wrapAround
-        // considered too, the linear violation is still the only one (the wrap pair itself is fine).
+        // Without wrap-around, only the single linear arc (0 -> 2, distance 2) is checked, which
+        // satisfies the constraint.
+        expect(linear.validate(strip)).toEqual([]);
+        // With wrap-around, the wrap arc (2 -> 0, distance 4) is also checked and violates.
         expect(wrapping.validate(strip)).toHaveLength(1);
+        expect(wrapping.validate(strip)[0]).toMatchObject({details: {symbolId: "A", gap: 4, maximumDistance: 2}});
+    });
+
+    describe("constructor validation", () => {
+        test.each([NaN, Infinity, -Infinity, 0, -1, 1.5])("rejects a maximumDistance of %p", (invalidDistance) => {
+            expect(() => new MaximumCircularDistanceConstraint(invalidDistance)).toThrow(/maximumDistance must be a positive integer/);
+        });
     });
 });

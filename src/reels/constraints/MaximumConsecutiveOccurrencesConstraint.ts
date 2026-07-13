@@ -1,3 +1,4 @@
+import {assertPositiveFiniteInteger} from "../internal/assertPositiveFiniteInteger.js";
 import {getCircularRuns} from "../internal/circularRuns.js";
 import type {ReelStripConstraint} from "../ReelStripConstraint.js";
 import type {ReelStripConstraintViolation} from "../ReelStripConstraintViolation.js";
@@ -12,6 +13,7 @@ export class MaximumConsecutiveOccurrencesConstraint implements ReelStripConstra
     private readonly wrapAround: boolean;
 
     constructor(maximumConsecutive: number, symbolIds?: string[], wrapAround = true) {
+        assertPositiveFiniteInteger(maximumConsecutive, "maximumConsecutive");
         this.maximumConsecutive = maximumConsecutive;
         this.symbolIds = symbolIds ? [...symbolIds] : undefined;
         this.wrapAround = wrapAround;

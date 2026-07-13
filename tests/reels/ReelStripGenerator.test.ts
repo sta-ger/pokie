@@ -183,7 +183,7 @@ describe("ReelStripGenerator", () => {
         expect(result.strip!.getSymbolAt(1)).toBe("M");
 
         const analysis = ReelStripAnalyzer.analyze(result.strip!);
-        expect(analysis.minimumCircularDistances.S).toBeLessThanOrEqual(6);
+        expect(analysis.maximumCircularDistances.S).toBeLessThanOrEqual(6);
     });
 
     test("fails when RequiredAdjacencyConstraint demands a neighbor symbol that never appears in symbolCounts", () => {
