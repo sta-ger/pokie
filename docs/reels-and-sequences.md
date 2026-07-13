@@ -2,6 +2,10 @@
 
 # Reels & Symbol Sequences
 
+> Looking to *generate* a reel strip's symbol sequence under constraints (exact counts, minimum distance, max run
+> length, forbidden adjacency, locked positions) rather than spin an existing one? See
+> [Reel Strip Generation](reel-strip-generation.md) — a design-time tool, separate from everything below.
+
 ## `SymbolsSequence` — one reel's full strip
 
 A `SymbolsSequence` (implements `SymbolsSequenceRepresenting = SymbolsSequenceDescribing & SymbolsSequenceModifying`)

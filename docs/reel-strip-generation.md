@@ -1,0 +1,195 @@
+[← Back to docs index](README.md)
+
+# Reel Strip Generation
+
+A design-time tool for producing a physical reel strip's fixed symbol sequence under a set of constraints — exact
+symbol counts, minimum spacing between repeats, maximum run length, forbidden neighbors, locked positions. It is
+deliberately **not** part of the runtime spin path: the output is an immutable `ReelStripDefinition`, not a
+`SymbolsSequence` (see [Reels & Symbol Sequences](reels-and-sequences.md)). Once you're happy with a generated
+strip, feed its `toArray()` into `SymbolsSequence.fromArray(...)` to actually use it in a game.
+
+## Quick example
+
+```ts
+import {
+    ForbiddenAdjacencyConstraint,
+    MaximumConsecutiveOccurrencesConstraint,
+    MinimumCircularDistanceConstraint,
+    ReelStripAnalyzer,
+    ReelStripGenerator,
+} from "pokie";
+
+const generator = new ReelStripGenerator();
+
+const result = generator.generate({
+    length: 32,
+    symbolCounts: {W: 2, A: 6, K: 8, Q: 8, J: 8},
+    seed: 12345, // omit for non-deterministic generation
+    lockedPositions: {0: "W"}, // symbol "W" is pinned to position 0
+    constraints: [
+        new MinimumCircularDistanceConstraint(6, ["W"]), // wilds at least 6 apart, wrap-aware
+        new MaximumConsecutiveOccurrencesConstraint(3), // no symbol repeats more than 3 times in a row
+        new ForbiddenAdjacencyConstraint([["W", "W"]]), // redundant here, just for illustration
+    ],
+});
+
+if (result.success) {
+    console.log(result.strip!.toArray()); // the canonical, immutable symbol sequence
+} else {
+    // every attempt's violations are available for diagnosis
+    console.log(result.diagnostics.at(-1)!.violations);
+}
+```
+
+## `ReelStripDefinition` / `ReelStrip` — the canonical strip
+
+```ts
+interface ReelStripDefinition {
+    getLength(): number;
+    getSymbolAt(position: number): string;   // circular index resolution, like SymbolsSequence.getIndex
+    toArray(): string[];
+    getSymbolCounts(): Record<string, number>;
+}
+```
+
+`ReelStrip` is the immutable implementation: its constructor defensively copies the input array, and every getter
+returns a value that can't be used to mutate internal state.
+
+## `ReelStripGenerator` — the entry point
+
+```ts
+constructor(
+    strategy: ReelStripGenerationStrategy = new ShuffleReelStripGenerationStrategy(),
+    validator: ReelStripConstraintValidator = new CompositeReelStripConstraintValidator(),
+    scorer: ReelStripScorer = new ViolationCountReelStripScorer(),
+)
+generate(request: ReelStripGenerationRequest): ReelStripGenerationResult
+```
+
+```ts
+type ReelStripGenerationRequest = {
+    length: number;
+    symbolCounts: Record<string, number>;       // must sum to length
+    seed?: number;                              // same seed -> same result, deterministically
+    lockedPositions?: Record<number, string>;   // fixed/locked positions, honored by construction
+    constraints?: ReelStripConstraint[];
+    maxAttempts?: number;                       // default 200
+    scorer?: ReelStripScorer;                   // overrides the constructor-level scorer for this call
+};
+
+type ReelStripGenerationResult = {
+    success: boolean;                           // true iff some attempt satisfied every constraint
+    strip?: ReelStripDefinition;                // the best candidate found, even when success is false
+    attemptsUsed: number;
+    diagnostics: ReelStripGenerationDiagnostic[]; // one entry per attempt (or one, if the request itself was malformed)
+};
+```
+
+Each attempt asks `strategy` for one candidate strip, validates it against `constraints` via `validator`, and scores
+it via `scorer`. Generation stops early the first time a candidate satisfies every constraint; otherwise it keeps
+the highest-scoring candidate across all `maxAttempts` tries and reports `success: false`, with `strip` still set to
+that best candidate for inspection.
+
+Malformed requests (`symbolCounts` not summing to `length`, a locked position out of range or requesting more
+copies of a symbol than `symbolCounts` provides, a non-positive `length`/`maxAttempts`) are rejected up front with a
+single diagnostic (`attemptsUsed: 0`) — no candidate is ever generated for a request that couldn't possibly succeed
+structurally.
+
+### Determinism
+
+Pass `seed` for reproducible output — one seeded RNG (`SeededRandomNumberGenerator`, see
+[Reels & Symbol Sequences](reels-and-sequences.md#rngs)) drives every attempt in the call, so the same request
+always produces the same sequence of candidates and the same final result. Omit `seed` to use
+`PseudorandomNumberGenerator` (`Math.random()`-based) instead.
+
+### `ShuffleReelStripGenerationStrategy` — the default `ReelStripGenerationStrategy`
+
+Builds the exact symbol pool described by `symbolCounts`, seats locked symbols first, then Fisher–Yates-shuffles the
+remaining pool into the remaining positions. Exact counts and locked positions therefore hold **by construction**
+for every candidate — only constraints beyond that (distance, run length, adjacency, ...) can still fail and trigger
+another attempt. Swap in your own `ReelStripGenerationStrategy` to change how candidates are produced without
+touching `ReelStripGenerator` itself (Open/Closed: `ReelStripGenerator` never needs to know which strategy it's
+driving).
+
+## Constraints (`ReelStripConstraint`)
+
+```ts
+interface ReelStripConstraint {
+    getId(): string;
+    validate(strip: ReelStripDefinition): ReelStripConstraintViolation[];
+}
+```
+
+Built-in constraints, all under `constraints/` in the package:
+
+| Constraint | Checks |
+|---|---|
+| `ExactSymbolCountsConstraint(expectedCounts)` | Every symbol's occurrence count matches exactly (a symbol present on the strip but absent from `expectedCounts` is expected to occur 0 times) |
+| `MinimumCircularDistanceConstraint(minimumDistance, symbolIds?, wrapAround = true)` | Every pair of occurrences of the same symbol is at least `minimumDistance` apart |
+| `MaximumConsecutiveOccurrencesConstraint(maximumConsecutive, symbolIds?, wrapAround = true)` | No run of identical adjacent symbols exceeds `maximumConsecutive` |
+| `ForbiddenAdjacencyConstraint(pairs, wrapAround = true)` | No adjacent pair of positions holds two symbols from the same forbidden pair (order-independent) |
+| `FixedPositionsConstraint(lockedPositions)` | Specific positions hold specific symbols — a defensive re-check on top of whatever a strategy already guaranteed |
+
+`symbolIds` (where present) restricts the check to a subset of symbols, defaulting to every symbol on the strip.
+`wrapAround` (where present) controls whether the strip's last and first positions are treated as adjacent/circular
+(the default, matching a physical reel strip) or purely linear.
+
+Each violation is a plain, inspectable object:
+
+```ts
+type ReelStripConstraintViolation = {
+    constraintId: string;
+    message: string;             // human-readable explanation
+    positions?: number[];        // the offending position(s), if applicable
+    details?: Record<string, unknown>;
+};
+```
+
+Writing a custom constraint means implementing `ReelStripConstraint` — `ReelStripGenerator` and
+`CompositeReelStripConstraintValidator` (the default `ReelStripConstraintValidator`) never need to change to support
+it.
+
+## Scoring (`ReelStripScorer`)
+
+```ts
+interface ReelStripScorer {
+    score(strip: ReelStripDefinition, violations: ReelStripConstraintViolation[]): number;
+}
+```
+
+The default, `ViolationCountReelStripScorer`, scores `-violations.length` — higher is better, `0` (no violations) is
+the best possible score. Supply your own `ReelStripScorer` (via the constructor or per-call `request.scorer`) to
+prefer one imperfect candidate over another when nothing fully satisfies every constraint within `maxAttempts` — for
+example, weighting some constraints as more important than others.
+
+## `ReelStripAnalyzer` — inspecting any strip
+
+A static-methods-only utility (never instantiated, mirrors `SymbolsCombinationsAnalyzer`'s style) for analyzing
+**any** `ReelStripDefinition` — generated or hand-authored:
+
+```ts
+static analyze(strip: ReelStripDefinition): ReelStripAnalysis
+```
+
+```ts
+type ReelStripAnalysis = {
+    length: number;
+    symbolCounts: Record<string, number>;
+    symbolFrequencies: Record<string, number>;              // count / length, per symbol
+    minimumCircularDistances: Record<string, number>;       // per symbol with 2+ occurrences
+    maximumConsecutiveOccurrences: Record<string, number>;  // per symbol, longest run (wrap-aware)
+};
+```
+
+```ts
+import {ReelStrip, ReelStripAnalyzer} from "pokie";
+
+const analysis = ReelStripAnalyzer.analyze(new ReelStrip(["A", "A", "B", "A", "C"]));
+analysis.symbolCounts;                 // {A: 3, B: 1, C: 1}
+analysis.symbolFrequencies;            // {A: 0.6, B: 0.2, C: 0.2}
+analysis.minimumCircularDistances;     // {A: 1} -- B/C occur once, so no distance applies
+analysis.maximumConsecutiveOccurrences; // {A: 2, B: 1, C: 1}
+```
+
+A symbol occurring 0 or 1 times is omitted from `minimumCircularDistances` — a distance needs at least two
+occurrences to be meaningful.

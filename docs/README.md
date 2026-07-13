@@ -55,6 +55,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie serve <packageRoot>` (experimental), which starts a local/dev JSON HTTP server over a package — not a
     casino backend or RGS; `pokie client <packageRoot>` (experimental), a universal browser preview UI talking to
     a running `pokie serve`; and `pokie dev <packageRoot>` (experimental), which runs both together.
+14. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
+    symbol sequence under constraints (exact counts, minimum distance, max run length, forbidden adjacency, locked
+    positions), and `ReelStripAnalyzer` for inspecting any strip. A design-time tool, separate from the runtime spin
+    path.
 
 ## Core concepts at a glance
 
@@ -79,6 +83,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Local/dev JSON HTTP server over a package (experimental) | `pokie serve <packageRoot>` |
 | Browser preview UI for a running `pokie serve` (experimental) | `pokie client <packageRoot>` |
 | `pokie serve` + `pokie client` together, with a browser auto-opened (experimental) | `pokie dev <packageRoot>` |
+| Generating a reel strip's symbol sequence under constraints (design-time, not runtime spin) | `ReelStripGenerator`, `ReelStripAnalyzer` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.

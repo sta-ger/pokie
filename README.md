@@ -32,6 +32,10 @@ POKIE goes well beyond classic paylines:
 - **Network serialization** — `net/` serializers turning session state into plain-data DTOs for a game client.
 - **Validation primitives** around the win evaluation pipeline, surfacing incompatible-evaluator or misconfigured
   setups as structured issues instead of silent runtime surprises.
+- **[Reel strip generation](docs/reel-strip-generation.md)** — `ReelStripGenerator` produces a reel strip's fixed
+  symbol sequence under constraints (exact counts, minimum distance, max run length, forbidden adjacency, locked
+  positions), deterministically by seed, with clear diagnostics when a request can't be satisfied. A design-time
+  tool, separate from the runtime spin path.
 - **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
   `loadPokieGame` loader, so an external game can be loaded by a CLI, simulator, validator, or server without
   knowing about it in advance.
@@ -195,7 +199,7 @@ it's a local/dev tool, not a casino backend or RGS.
 
 See the [docs](docs/README.md) for the full reference: game session and configuration, reels and symbol sequences,
 paylines and line patterns, paytable and win calculation, free games, resizable grids, simulation, network
-serialization, extension points, and a walkthrough of modeling slot math with POKIE.
+serialization, extension points, reel strip generation, and a walkthrough of modeling slot math with POKIE.
 
 Recent runtime additions include a unified `WinEvaluationResult`, explicit mixed-evaluator aggregation policies,
 deterministic cascade runtime foundation (`CascadingSpinResolver`), and aggregate-only simulation primitives.
