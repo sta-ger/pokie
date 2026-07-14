@@ -45,6 +45,7 @@ export class StudioBlueprintService {
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly blueprintValidator: GameBlueprintValidating;
     private readonly gamePackageGenerator: GamePackageGenerating;
+    private readonly resolveReelStripGeneration: typeof resolveReelStripGeneration;
 
     constructor(
         pokieVersion: string,
@@ -53,6 +54,12 @@ export class StudioBlueprintService {
         loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
         blueprintValidator: GameBlueprintValidating = new GameBlueprintValidator(),
         gamePackageGenerator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
+        // Overridable purely so previewReelStripGeneration's per-reel isolation (see its own doc
+        // comment) can be exercised against an injected failure in tests, without needing to construct
+        // a genuinely crash-inducing malformed config against the real (already very defensive)
+        // ReelStripGenerator -- the real resolveReelStripGeneration is always what "pokie build" itself
+        // (and this service, by default) actually runs.
+        resolveReelStripGenerationFn: typeof resolveReelStripGeneration = resolveReelStripGeneration,
     ) {
         this.pokieVersion = pokieVersion;
         this.studioRoot = path.resolve(studioRoot);
@@ -60,6 +67,7 @@ export class StudioBlueprintService {
         this.loadBlueprint = loadBlueprint;
         this.blueprintValidator = blueprintValidator;
         this.gamePackageGenerator = gamePackageGenerator;
+        this.resolveReelStripGeneration = resolveReelStripGenerationFn;
     }
 
     public validate(blueprint: unknown): StudioBlueprintValidationView {
@@ -141,10 +149,17 @@ export class StudioBlueprintService {
     // every other, perfectly resolvable reel's result; `errors`/`warnings` are surfaced *alongside*
     // `reels`, not instead of them. A reelStripGeneration entry that isn't even a well-formed object
     // (realistic for a hand-edited JSON blueprint) is simply left out of `reels` rather than crashing
-    // the request, and the same holds if resolveReelStripGeneration itself throws on a sufficiently
-    // malformed "generated" config -- every literal reel is still resolved independently either way. A
-    // "generated" reel that can't satisfy its own constraints is reported inline (success: false, with
-    // ReelStripGenerator's own diagnostics/violations) rather than failing the whole preview.
+    // the request.
+    //
+    // Every "generated" reel is resolved via its own, isolated resolveReelStripGeneration() call --
+    // a single-entry reelStripGeneration array containing just that reel's own spec -- rather than one
+    // shared call over the whole array. Generation is already fully independent per reel (own
+    // seed/rng), so this produces identical results either way, but it also means a malformed or
+    // pathological config in ONE generated reel (however badly it fails, even a thrown exception) can
+    // never affect any OTHER reel's own result -- a shared call would otherwise let one reel's crash
+    // wipe out every other generated reel's summary too. A "generated" reel that can't satisfy its own
+    // constraints is reported inline (success: false, with ReelStripGenerator's own
+    // diagnostics/violations) rather than failing the whole preview.
     public previewReelStripGeneration(blueprint: unknown): StudioReelStripGenerationView {
         const validated = this.validate(blueprint);
         const errors = validated.status === "invalid" ? validated.errors : [];
@@ -157,18 +172,6 @@ export class StudioBlueprintService {
         const rawSpecs: unknown[] = Array.isArray(blueprint.reelStripGeneration) ? blueprint.reelStripGeneration : [];
         if (rawSpecs.length === 0) {
             return {status: "ok", errors, warnings, reels: []};
-        }
-
-        const sanitizedSpecs = rawSpecs.map((spec) => (isPlainObject(spec) ? spec : {type: "literal", strip: []}));
-        const summariesByReelIndex = new Map<number, ReelStripGenerationSummary>();
-        try {
-            const resolution = resolveReelStripGeneration({...blueprint, reelStripGeneration: sanitizedSpecs} as GameBlueprint);
-            for (const summary of (resolution.success ? resolution.reelStripGeneration?.reels : resolution.reels) ?? []) {
-                summariesByReelIndex.set(summary.reelIndex, summary);
-            }
-        } catch {
-            // Fall through with no summaries at all -- every literal reel below is still resolved and
-            // shown independently; every generated reel simply ends up reported as success: false.
         }
 
         const reels: StudioReelStripGenerationReelView[] = [];
@@ -186,7 +189,14 @@ export class StudioBlueprintService {
                 return;
             }
 
-            const summary = summariesByReelIndex.get(reelIndex);
+            let summary: ReelStripGenerationSummary | undefined;
+            try {
+                const resolution = this.resolveReelStripGeneration({...blueprint, reelStripGeneration: [rawSpec]} as GameBlueprint);
+                summary = (resolution.success ? resolution.reelStripGeneration?.reels : resolution.reels)?.[0];
+            } catch {
+                summary = undefined;
+            }
+
             if (summary === undefined || !summary.success || summary.strip === undefined) {
                 reels.push({
                     reelIndex,

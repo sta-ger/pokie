@@ -363,31 +363,54 @@ function asNumberRecord(value: unknown): Record<string, number> {
     return result;
 }
 
+// A reel's own previously entered configuration for whichever "side" isn't currently active (a
+// literal reel's last-known generated config, a generated reel's last-known literal strip, and a
+// generated reel's last-known symbolCounts/symbolWeights for whichever of the two isn't active right
+// now) -- kept entirely outside the authored blueprint (see setReelStripGenerationEntryType/
+// setReelStripGenerationSourceMode below) so `blueprint`/`jsonText` and everything downstream of them
+// (Validate, Preview, Save, Build) only ever see a clean, canonical GameBlueprint entry with no
+// editor-only bookkeeping fields and no inactive leftovers -- restoring a draft is a Reel Strip
+// Modeler UI nicety, never a property of the saved project. One Map, keyed by reelIndex, lives for the
+// lifetime of the currently loaded blueprint in main.ts (see its own doc comment for why it's reset on
+// New/Load).
+export type ReelStripGenerationDraft = {
+    generatedConfig?: Record<string, unknown>;
+    literalStrip?: string[];
+    inactiveSymbolCounts?: Record<string, number>;
+    inactiveSymbolWeights?: Record<string, number>;
+};
+export type ReelStripGenerationDrafts = Map<number, ReelStripGenerationDraft>;
+
 // Round-trips a reel's previously entered configuration for the type being *left*, instead of
-// resetting it to defaults: a literal entry's "strip" and a generated entry's own fields
-// (length/seed/symbolCounts-or-symbolWeights/lockedPositions/constraints/maxAttempts) simply keep
-// riding along as inert extra properties on the entry object while the other type is active --
-// GameBlueprintValidator's shape checks and resolveReelStripGeneration/materializeReelStrips only ever
-// read the fields relevant to the entry's current "type", so an unrelated leftover field never causes
-// a validation error or changes what actually gets built. Switching back later restores exactly what
-// was there.
-export function setReelStripGenerationEntryType(blueprint: Record<string, unknown>, reelIndex: number, type: "literal" | "generated"): void {
+// resetting it to defaults -- the type being left is stashed into `drafts` (never into the blueprint
+// itself) and restored from there the next time its type becomes active again. A no-op if `type`
+// already matches the reel's current type (so re-selecting the same radio never clobbers a
+// since-edited entry with a stale draft).
+export function setReelStripGenerationEntryType(
+    blueprint: Record<string, unknown>,
+    drafts: ReelStripGenerationDrafts,
+    reelIndex: number,
+    type: "literal" | "generated",
+): void {
     withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
-        if (type === "literal") {
-            return {...entry, type: "literal", strip: asStringArray(entry.strip)};
+        const currentType = entry.type === "generated" ? "generated" : "literal";
+        if (currentType === type) {
+            return entry;
         }
 
-        const next: Record<string, unknown> = {...entry, type: "generated"};
-        if (typeof next.length !== "number") {
-            next.length = 1;
+        const draft = drafts.get(reelIndex) ?? {};
+        if (type === "literal") {
+            const generatedConfig = {...entry};
+            Reflect.deleteProperty(generatedConfig, "type");
+            drafts.set(reelIndex, {...draft, generatedConfig});
+            return {type: "literal", strip: draft.literalStrip ?? []};
         }
-        if (typeof next.seed !== "number") {
-            next.seed = 1;
+
+        drafts.set(reelIndex, {...draft, literalStrip: asStringArray(entry.strip)});
+        if (draft.generatedConfig !== undefined) {
+            return {type: "generated", ...draft.generatedConfig};
         }
-        if (next.symbolCounts === undefined && next.symbolWeights === undefined) {
-            next.symbolCounts = {};
-        }
-        return next;
+        return {type: "generated", length: 1, seed: 1, symbolCounts: {}};
     });
 }
 
@@ -456,30 +479,36 @@ export function getReelStripGenerationSourceMode(entry: Record<string, unknown>)
 // Unlike the literal/generated "type" toggle above, symbolCounts and symbolWeights can't simply keep
 // both riding along together while inactive: GameBlueprintValidator rejects a generated entry that has
 // both (or neither) set -- "exactly one of these two must be set". So the side being *left* is stashed
-// under its own draft key (harmless extra properties GameBlueprintValidator/resolveReelStripGeneration
-// never look at) instead of being deleted outright, and restored from there the next time its mode
-// becomes active again -- switching Counts -> Weights -> Counts reproduces exactly what was entered
-// under Counts, not a reset to {}.
-const DRAFT_SYMBOL_COUNTS_KEY = "_reelStripGenerationSymbolCountsDraft";
-const DRAFT_SYMBOL_WEIGHTS_KEY = "_reelStripGenerationSymbolWeightsDraft";
-
-export function setReelStripGenerationSourceMode(blueprint: Record<string, unknown>, reelIndex: number, mode: ReelStripGenerationSourceMode): void {
+// in `drafts` (never in the blueprint) instead of being deleted outright, and restored from there the
+// next time its mode becomes active again -- switching Counts -> Weights -> Counts reproduces exactly
+// what was entered under Counts, not a reset to {}. A no-op if `mode` already matches the reel's
+// current source mode.
+export function setReelStripGenerationSourceMode(
+    blueprint: Record<string, unknown>,
+    drafts: ReelStripGenerationDrafts,
+    reelIndex: number,
+    mode: ReelStripGenerationSourceMode,
+): void {
     withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const currentMode = getReelStripGenerationSourceMode(entry);
+        if (currentMode === mode) {
+            return entry;
+        }
+
+        const draft = drafts.get(reelIndex) ?? {};
         const next = {...entry};
         if (mode === "symbolCounts") {
-            next.symbolCounts = asNumberRecord(entry.symbolCounts ?? entry[DRAFT_SYMBOL_COUNTS_KEY]);
             if (entry.symbolWeights !== undefined) {
-                next[DRAFT_SYMBOL_WEIGHTS_KEY] = entry.symbolWeights;
+                drafts.set(reelIndex, {...draft, inactiveSymbolWeights: asNumberRecord(entry.symbolWeights)});
             }
+            next.symbolCounts = draft.inactiveSymbolCounts ?? {};
             Reflect.deleteProperty(next, "symbolWeights");
-            Reflect.deleteProperty(next, DRAFT_SYMBOL_COUNTS_KEY);
         } else {
-            next.symbolWeights = asNumberRecord(entry.symbolWeights ?? entry[DRAFT_SYMBOL_WEIGHTS_KEY]);
             if (entry.symbolCounts !== undefined) {
-                next[DRAFT_SYMBOL_COUNTS_KEY] = entry.symbolCounts;
+                drafts.set(reelIndex, {...draft, inactiveSymbolCounts: asNumberRecord(entry.symbolCounts)});
             }
+            next.symbolWeights = draft.inactiveSymbolWeights ?? {};
             Reflect.deleteProperty(next, "symbolCounts");
-            Reflect.deleteProperty(next, DRAFT_SYMBOL_WEIGHTS_KEY);
         }
         return next;
     });

@@ -44,6 +44,7 @@ import {
     toggleScatterSymbol,
     toggleWildSymbol,
     type ReelGenerationMode,
+    type ReelStripGenerationDrafts,
 } from "./blueprintFormOps.js";
 import type {BlueprintLoadView, BlueprintSaveView, BlueprintValidationView, ReelStripGenerationPreviewView} from "./interpretBlueprintEditor.js";
 import type {BuildPreviewView, BuildProjectView, HomeRecentProjectsListView, ScaffoldActionView} from "./interpretHome.js";
@@ -1915,6 +1916,7 @@ function renderReelStripGenerationGeneratedEditor(
     reelIndex: number,
     symbols: string[],
     mutate: BlueprintMutate,
+    drafts: ReelStripGenerationDrafts,
 ): void {
     const fieldsRow = document.createElement("div");
     fieldsRow.className = "quick-actions";
@@ -1967,7 +1969,7 @@ function renderReelStripGenerationGeneratedEditor(
     countsRadio.type = "radio";
     countsRadio.name = `blueprint-reelstripgen-source-${reelIndex}`;
     countsRadio.checked = sourceMode === "symbolCounts";
-    countsRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationSourceMode(b, reelIndex, "symbolCounts")));
+    countsRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationSourceMode(b, drafts, reelIndex, "symbolCounts")));
     countsLabel.appendChild(countsRadio);
     countsLabel.append(" Counts");
     modeRow.appendChild(countsLabel);
@@ -1977,7 +1979,7 @@ function renderReelStripGenerationGeneratedEditor(
     weightsRadio.type = "radio";
     weightsRadio.name = `blueprint-reelstripgen-source-${reelIndex}`;
     weightsRadio.checked = sourceMode === "symbolWeights";
-    weightsRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationSourceMode(b, reelIndex, "symbolWeights")));
+    weightsRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationSourceMode(b, drafts, reelIndex, "symbolWeights")));
     weightsLabel.appendChild(weightsRadio);
     weightsLabel.append(" Weights");
     modeRow.appendChild(weightsLabel);
@@ -1989,7 +1991,12 @@ function renderReelStripGenerationGeneratedEditor(
     renderReelStripGenerationConstraints(container, entry, reelIndex, mutate);
 }
 
-export function renderBlueprintReelStripGeneration(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+export function renderBlueprintReelStripGeneration(
+    elements: Elements,
+    blueprint: Record<string, unknown>,
+    mutate: BlueprintMutate,
+    drafts: ReelStripGenerationDrafts,
+): void {
     const entries = Array.isArray(blueprint.reelStripGeneration) ? blueprint.reelStripGeneration.map((entry) => asRecord(entry)) : [];
     const symbols = asStringList(blueprint.symbols);
 
@@ -2010,7 +2017,7 @@ export function renderBlueprintReelStripGeneration(elements: Elements, blueprint
         literalRadio.type = "radio";
         literalRadio.name = `blueprint-reelstripgen-type-${reelIndex}`;
         literalRadio.checked = type === "literal";
-        literalRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationEntryType(b, reelIndex, "literal")));
+        literalRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationEntryType(b, drafts, reelIndex, "literal")));
         literalLabel.appendChild(literalRadio);
         literalLabel.append(" Literal");
         typeRow.appendChild(literalLabel);
@@ -2020,7 +2027,7 @@ export function renderBlueprintReelStripGeneration(elements: Elements, blueprint
         generatedRadio.type = "radio";
         generatedRadio.name = `blueprint-reelstripgen-type-${reelIndex}`;
         generatedRadio.checked = type === "generated";
-        generatedRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationEntryType(b, reelIndex, "generated")));
+        generatedRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationEntryType(b, drafts, reelIndex, "generated")));
         generatedLabel.appendChild(generatedRadio);
         generatedLabel.append(" Generated");
         typeRow.appendChild(generatedLabel);
@@ -2030,7 +2037,7 @@ export function renderBlueprintReelStripGeneration(elements: Elements, blueprint
         if (type === "literal") {
             renderReelStripGenerationLiteralEditor(fieldset, entry, reelIndex, mutate);
         } else {
-            renderReelStripGenerationGeneratedEditor(fieldset, entry, reelIndex, symbols, mutate);
+            renderReelStripGenerationGeneratedEditor(fieldset, entry, reelIndex, symbols, mutate, drafts);
         }
 
         elements.blueprintReelStripGenerationContainer.appendChild(fieldset);
@@ -2171,7 +2178,12 @@ export function renderBlueprintWeights(elements: Elements, blueprint: Record<str
     }
 }
 
-export function renderBlueprintGenerationMode(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+export function renderBlueprintGenerationMode(
+    elements: Elements,
+    blueprint: Record<string, unknown>,
+    mutate: BlueprintMutate,
+    reelStripGenerationDrafts: ReelStripGenerationDrafts,
+): void {
     const mode: ReelGenerationMode = getReelGenerationMode(blueprint);
     elements.blueprintModeDefaultRadio.checked = mode === "default";
     elements.blueprintModeReelStripsRadio.checked = mode === "reelStrips";
@@ -2184,7 +2196,7 @@ export function renderBlueprintGenerationMode(elements: Elements, blueprint: Rec
     if (mode === "reelStrips") {
         renderBlueprintReelStrips(elements, blueprint, mutate);
     } else if (mode === "reelStripGeneration") {
-        renderBlueprintReelStripGeneration(elements, blueprint, mutate);
+        renderBlueprintReelStripGeneration(elements, blueprint, mutate, reelStripGenerationDrafts);
     } else if (mode === "symbolWeights") {
         renderBlueprintWeights(elements, blueprint, mutate);
     }
@@ -2193,13 +2205,18 @@ export function renderBlueprintGenerationMode(elements: Elements, blueprint: Rec
 // The one function main.ts calls after every blueprint change — renders every Form section from the
 // current blueprint in one go. Cheap enough to always fully rebuild (these are small collections for a
 // single game's worth of symbols/bets/paylines/paytable entries, not a large dataset).
-export function renderBlueprintForm(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+export function renderBlueprintForm(
+    elements: Elements,
+    blueprint: Record<string, unknown>,
+    mutate: BlueprintMutate,
+    reelStripGenerationDrafts: ReelStripGenerationDrafts,
+): void {
     renderBlueprintMetadata(elements, blueprint);
     renderBlueprintSymbols(elements, blueprint, mutate);
     renderBlueprintBets(elements, blueprint, mutate);
     renderBlueprintPaylines(elements, blueprint, mutate);
     renderBlueprintPaytable(elements, blueprint, mutate);
-    renderBlueprintGenerationMode(elements, blueprint, mutate);
+    renderBlueprintGenerationMode(elements, blueprint, mutate, reelStripGenerationDrafts);
 }
 
 export function renderBlueprintJson(elements: Elements, jsonText: string, jsonError: string | undefined): void {

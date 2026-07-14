@@ -1,4 +1,4 @@
-import {GameBlueprint} from "pokie";
+import {GameBlueprint, resolveReelStripGeneration} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -144,6 +144,46 @@ describe("StudioBlueprintService", () => {
             expect(result.reels[0].type).toBe("literal");
             expect(result.reels[1]).toMatchObject({reelIndex: 1, type: "generated", success: false});
             expect(result.reels[2].type).toBe("literal");
+        });
+
+        it("resolves both flanking generated reels independently when the generated reel between them throws while being resolved", () => {
+            // Real ReelStripGenerator/resolveReelStripGeneration are defensive enough that a genuinely
+            // crash-inducing malformed config is hard to construct against them -- this injects a fake
+            // resolver that throws specifically for reel 1's own seed (mirroring what a pathological
+            // config could in principle do), while delegating to the real implementation for every
+            // other reel, to directly prove the isolation: reel 1's own crash never reaches reels 0/2.
+            const throwingResolver: typeof resolveReelStripGeneration = (blueprint, generator) => {
+                const spec = blueprint.reelStripGeneration?.[0];
+                if (spec !== undefined && spec.type === "generated" && spec.seed === 999) {
+                    throw new Error("simulated crash deep inside ReelStripGenerator for reel 1");
+                }
+                return resolveReelStripGeneration(blueprint, generator);
+            };
+            const service = new StudioBlueprintService(
+                "1.2.1",
+                studioRoot,
+                homeService,
+                undefined,
+                undefined,
+                undefined,
+                throwingResolver,
+            );
+            const blueprint = buildBlueprint({
+                reels: 3,
+                reelStripGeneration: [
+                    {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                    {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 999},
+                    {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 7},
+                ],
+            });
+
+            const result = service.previewReelStripGeneration(blueprint);
+
+            expect(result.status).toBe("ok");
+            expect(result.reels).toHaveLength(3);
+            expect(result.reels[0]).toMatchObject({reelIndex: 0, type: "generated", success: true});
+            expect(result.reels[1]).toMatchObject({reelIndex: 1, type: "generated", success: false, attemptsUsed: 0, diagnostics: []});
+            expect(result.reels[2]).toMatchObject({reelIndex: 2, type: "generated", success: true});
         });
 
         it("resolves a mix of literal and generated reels, reporting each reel's exact strip and symbol-count analysis", () => {

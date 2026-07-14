@@ -42,11 +42,11 @@ describe("interpretBlueprintEditor", () => {
     });
 
     describe("isStaleReelStripGenerationRequest", () => {
-        it("is not stale when the version is unchanged", () => {
+        it("is not stale when the revision is unchanged", () => {
             expect(isStaleReelStripGenerationRequest(3, 3)).toBe(false);
         });
 
-        it("is stale once the version has moved on, in either direction", () => {
+        it("is stale once the revision has moved on, in either direction", () => {
             expect(isStaleReelStripGenerationRequest(3, 4)).toBe(true);
             expect(isStaleReelStripGenerationRequest(4, 0)).toBe(true);
         });

@@ -49,6 +49,7 @@ import {
     setReelGenerationMode,
     setSymbolWeight,
     type ReelGenerationMode,
+    type ReelStripGenerationDrafts,
 } from "./blueprintFormOps.js";
 import {
     BlueprintMode,
@@ -194,9 +195,16 @@ async function main(): Promise<void> {
     let lastBuiltBlueprintProjectRoot: string | undefined;
     // Same reasoning as lastBuiltHomeOutDir above, for the Blueprint Editor's own Build action.
     let lastBuiltBlueprintOutDir: string | undefined;
+    // The Reel Strip Modeler's own editor-only bookkeeping -- a reel's last-known config for whichever
+    // side (literal/generated, symbolCounts/symbolWeights) isn't currently active, restored on toggling
+    // back rather than reset to defaults (see blueprintFormOps.ts's own doc comment on
+    // ReelStripGenerationDraft for why this never lives on `blueprintState.blueprint` itself). Cleared
+    // on New/Load since drafts are tied to a specific blueprint's reels, not the editor session as a
+    // whole.
+    const reelStripGenerationDrafts: ReelStripGenerationDrafts = new Map();
 
     const renderBlueprintEditor = (): void => {
-        renderBlueprintForm(elements, blueprintState.blueprint, blueprintMutate);
+        renderBlueprintForm(elements, blueprintState.blueprint, blueprintMutate, reelStripGenerationDrafts);
         renderBlueprintJson(elements, blueprintState.jsonText, blueprintState.jsonError);
     };
 
@@ -796,7 +804,8 @@ async function main(): Promise<void> {
     });
 
     elements.blueprintNewButton.addEventListener("click", () => {
-        blueprintState = createEmptyBlueprintEditorState();
+        blueprintState = createEmptyBlueprintEditorState(blueprintState.revision);
+        reelStripGenerationDrafts.clear();
         blueprintPath = undefined;
         blueprintOverwriteConfirmedForPath = undefined;
         elements.blueprintLoadPath.value = "";
@@ -815,7 +824,8 @@ async function main(): Promise<void> {
             .then((result) => {
                 renderBlueprintLoadResult(elements, describeLoadResult(result));
                 if (result.status === "ok") {
-                    blueprintState = loadBlueprintEditorState(result.blueprint);
+                    blueprintState = loadBlueprintEditorState(result.blueprint, blueprintState.revision);
+                    reelStripGenerationDrafts.clear();
                     blueprintPath = result.path;
                     blueprintOverwriteConfirmedForPath = result.path;
                     elements.blueprintSavePath.value = result.path;
@@ -918,19 +928,20 @@ async function main(): Promise<void> {
 
     elements.blueprintReelStripGenerationResolveButton.addEventListener("click", () => {
         // Captured now, before the request goes out -- if the blueprint changes (another edit, a
-        // New/Load) before this response comes back, blueprintState.version will have moved on by
-        // then, and the response is dropped as stale rather than clobbering whatever's now showing.
-        const requestedVersion = blueprintState.version;
+        // New/Load) before this response comes back, blueprintState.revision will have moved on by
+        // then (monotonically, never back to a number this request could coincidentally match), and
+        // the response is dropped as stale rather than clobbering whatever's now showing.
+        const requestedRevision = blueprintState.revision;
         renderReelStripGenerationPreview(elements, {status: "loading"});
         previewReelStripGeneration(fetchImpl, blueprintState.blueprint)
             .then((result) => {
-                if (isStaleReelStripGenerationRequest(requestedVersion, blueprintState.version)) {
+                if (isStaleReelStripGenerationRequest(requestedRevision, blueprintState.revision)) {
                     return;
                 }
                 renderReelStripGenerationPreview(elements, describeReelStripGenerationPreview(result));
             })
             .catch((error: unknown) => {
-                if (isStaleReelStripGenerationRequest(requestedVersion, blueprintState.version)) {
+                if (isStaleReelStripGenerationRequest(requestedRevision, blueprintState.revision)) {
                     return;
                 }
                 renderReelStripGenerationPreview(elements, {status: "error", message: errorMessage(error)});

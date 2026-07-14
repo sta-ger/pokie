@@ -50,6 +50,7 @@ import {
     setSymbolWeight,
     toggleScatterSymbol,
     toggleWildSymbol,
+    type ReelStripGenerationDrafts,
 } from "../../../cli/studio-client/blueprintFormOps.js";
 
 describe("blueprintFormOps", () => {
@@ -228,36 +229,47 @@ describe("blueprintFormOps", () => {
     describe("reelStripGeneration", () => {
         it("switches a reel's own entry between literal and generated, seeding defaults on a brand-new entry", () => {
             const b: Record<string, unknown> = {reelStripGeneration: [{type: "literal", strip: ["A"]}]};
+            const drafts: ReelStripGenerationDrafts = new Map();
 
-            setReelStripGenerationEntryType(b, 0, "generated");
-            expect(b.reelStripGeneration).toEqual([{type: "generated", strip: ["A"], length: 1, seed: 1, symbolCounts: {}}]);
+            setReelStripGenerationEntryType(b, drafts, 0, "generated");
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolCounts: {}}]);
 
-            setReelStripGenerationEntryType(b, 0, "literal");
-            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A"], length: 1, seed: 1, symbolCounts: {}}]);
+            setReelStripGenerationEntryType(b, drafts, 0, "literal");
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A"]}]);
         });
 
-        it("does not lose a literal strip or a generated config across repeated literal <-> generated switches", () => {
+        it("is a no-op when the requested type already matches the reel's current type", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 3, seed: 9, symbolCounts: {A: 3}}]};
+            const drafts: ReelStripGenerationDrafts = new Map();
+
+            setReelStripGenerationEntryType(b, drafts, 0, "generated");
+
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 3, seed: 9, symbolCounts: {A: 3}}]);
+        });
+
+        it("does not lose a literal strip or a generated config across repeated literal <-> generated switches, and the blueprint stays clean", () => {
             const b: Record<string, unknown> = {
                 reelStripGeneration: [{type: "generated", length: 5, seed: 7, symbolCounts: {A: 2, B: 3}, maxAttempts: 20}],
             };
+            const drafts: ReelStripGenerationDrafts = new Map();
 
-            setReelStripGenerationEntryType(b, 0, "literal");
+            setReelStripGenerationEntryType(b, drafts, 0, "literal");
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: []}]);
             addReelStripGenerationLiteralSymbol(b, 0, "A");
             addReelStripGenerationLiteralSymbol(b, 0, "B");
 
-            setReelStripGenerationEntryType(b, 0, "generated");
-            expect(b.reelStripGeneration).toEqual([
-                {type: "generated", strip: ["A", "B"], length: 5, seed: 7, symbolCounts: {A: 2, B: 3}, maxAttempts: 20},
-            ]);
+            setReelStripGenerationEntryType(b, drafts, 0, "generated");
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 5, seed: 7, symbolCounts: {A: 2, B: 3}, maxAttempts: 20}]);
 
-            setReelStripGenerationEntryType(b, 0, "literal");
-            expect((b.reelStripGeneration as Array<{strip: string[]}>)[0].strip).toEqual(["A", "B"]);
+            setReelStripGenerationEntryType(b, drafts, 0, "literal");
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A", "B"]}]);
         });
 
         it("does nothing for an out-of-range reel index", () => {
             const b: Record<string, unknown> = {reelStripGeneration: [{type: "literal", strip: ["A"]}]};
+            const drafts: ReelStripGenerationDrafts = new Map();
 
-            setReelStripGenerationEntryType(b, 5, "generated");
+            setReelStripGenerationEntryType(b, drafts, 5, "generated");
 
             expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A"]}]);
         });
@@ -296,29 +308,54 @@ describe("blueprintFormOps", () => {
             expect(getReelStripGenerationSourceMode({type: "generated", symbolWeights: {A: 3}})).toBe("symbolWeights");
         });
 
-        it("does not lose a side's own data across repeated symbolCounts <-> symbolWeights switches", () => {
+        it("is a no-op when the requested source mode already matches the reel's current mode", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}}]};
+            const drafts: ReelStripGenerationDrafts = new Map();
+
+            setReelStripGenerationSourceMode(b, drafts, 0, "symbolCounts");
+
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}}]);
+        });
+
+        it("does not lose a side's own data across repeated symbolCounts <-> symbolWeights switches, and the blueprint entry stays clean (no draft keys, no both-sides-set)", () => {
             const entry = {type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}};
             const b: Record<string, unknown> = {reelStripGeneration: [entry]};
+            const drafts: ReelStripGenerationDrafts = new Map();
 
             // First visit to Weights has nothing to restore yet -- starts empty, exactly like a
             // brand-new generated entry would.
-            setReelStripGenerationSourceMode(b, 0, "symbolWeights");
-            expect(getReelStripGenerationSourceMode((b.reelStripGeneration as Record<string, unknown>[])[0])).toBe("symbolWeights");
-            expect((b.reelStripGeneration as Array<{symbolWeights: unknown}>)[0].symbolWeights).toEqual({});
+            setReelStripGenerationSourceMode(b, drafts, 0, "symbolWeights");
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolWeights: {}}]);
 
             setReelStripGenerationSymbolWeight(b, 0, "A", 5);
 
-            // Switching back to Counts restores the original {A: 3} instead of resetting to {}.
-            setReelStripGenerationSourceMode(b, 0, "symbolCounts");
-            expect((b.reelStripGeneration as Array<{symbolCounts: unknown}>)[0].symbolCounts).toEqual({A: 3});
+            // Switching back to Counts restores the original {A: 3} instead of resetting to {}, and
+            // the entry itself never carries both symbolCounts and symbolWeights, or any extra key.
+            setReelStripGenerationSourceMode(b, drafts, 0, "symbolCounts");
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}}]);
+            expect(Object.keys((b.reelStripGeneration as Record<string, unknown>[])[0]).sort()).toEqual(["length", "seed", "symbolCounts", "type"]);
 
             // And switching back to Weights restores {A: 5}, not another reset to {}.
-            setReelStripGenerationSourceMode(b, 0, "symbolWeights");
-            expect((b.reelStripGeneration as Array<{symbolWeights: unknown}>)[0].symbolWeights).toEqual({A: 5});
+            setReelStripGenerationSourceMode(b, drafts, 0, "symbolWeights");
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolWeights: {A: 5}}]);
+        });
+
+        it("keeps two different toggle histories that end at the same active config byte-identical (drafts never leak into the blueprint or its hash)", () => {
+            const bViaCounts: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}}]};
+            const draftsA: ReelStripGenerationDrafts = new Map();
+            setReelStripGenerationSourceMode(bViaCounts, draftsA, 0, "symbolWeights");
+            setReelStripGenerationSymbolWeight(bViaCounts, 0, "A", 9);
+            setReelStripGenerationSourceMode(bViaCounts, draftsA, 0, "symbolCounts");
+            setReelStripGenerationSymbolCount(bViaCounts, 0, "A", 7);
+
+            const bDirect: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 1, seed: 1, symbolCounts: {A: 7}}]};
+
+            expect(JSON.stringify(bViaCounts)).toBe(JSON.stringify(bDirect));
         });
 
         it("sets and removes symbol counts and weights", () => {
             const b: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 1, seed: 1, symbolCounts: {A: 1}}]};
+            const drafts: ReelStripGenerationDrafts = new Map();
 
             setReelStripGenerationSymbolCount(b, 0, "B", 2);
             expect((b.reelStripGeneration as Array<{symbolCounts: unknown}>)[0].symbolCounts).toEqual({A: 1, B: 2});
@@ -326,7 +363,7 @@ describe("blueprintFormOps", () => {
             removeReelStripGenerationSymbolCount(b, 0, "A");
             expect((b.reelStripGeneration as Array<{symbolCounts: unknown}>)[0].symbolCounts).toEqual({B: 2});
 
-            setReelStripGenerationSourceMode(b, 0, "symbolWeights");
+            setReelStripGenerationSourceMode(b, drafts, 0, "symbolWeights");
             setReelStripGenerationSymbolWeight(b, 0, "C", 4);
             expect((b.reelStripGeneration as Array<{symbolWeights: unknown}>)[0].symbolWeights).toEqual({C: 4});
 
