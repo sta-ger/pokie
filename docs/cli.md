@@ -492,6 +492,99 @@ Each step is the same command documented elsewhere in this file, with the same o
 [`pokie diff`](#pokie-diff-leftreportjson-rightreportjson) the two reports, same as the [`create`/`init`
 workflow](#workflow) below.
 
+## `pokie par import <input.xlsx>` / `pokie par export <config.json>`
+
+Round-trips a `GameBlueprint` to/from a "PAR sheet" — a workbook laid out the way a game designer would author
+symbols/reel strips/paytable/paylines/bets in Excel, instead of hand-writing JSON. Supports the same subset of
+`GameBlueprint` as [`pokie build --init-blueprint`](#starter-template-pokie-build---init-blueprint-file)'s
+literal-`reelStrips` path — manifest, reels/rows, symbols (with wilds/scatters), literal `reelStrips`, `paytable`,
+`paylines`, and `availableBets`. `reelStripGeneration`/`symbolWeights` (procedural reel generation, see
+[`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)) are not supported by this command.
+
+```
+pokie par export examples/parsheets/starter.blueprint.json --out starter.par.xlsx
+pokie par import starter.par.xlsx --out starter.blueprint.json
+```
+
+See `examples/parsheets/` for a worked example (`starter.blueprint.json` and the `starter.par.xlsx` exported from
+it).
+
+### Workbook format
+
+A `.par.xlsx` workbook has up to seven sheets:
+
+| Sheet | Columns | Required | Maps to |
+|---|---|---|---|
+| `Manifest` | `Key`, `Value` (rows: `Id`, `Name`, `Version`, `Description`, `Author`, `Reels`, `Rows`) | yes | `manifest`, `reels`, `rows` |
+| `Symbols` | `Symbol`, `Wild`, `Scatter` — one row per symbol, in reel order | yes | `symbols`, `wilds`, `scatters` |
+| `Paytable` | `Symbol`, `Matches`, `Multiplier` — one row per payout tier | yes | `paytable` |
+| `ReelStrips` | `Reel 1`..`Reel N` — one row per strip position; a shorter (ragged) reel just leaves trailing blank cells | no | `reelStrips` (literal only) |
+| `Paylines` | `Line` (a 1-based label, not read back), `Reel 1`..`Reel N` (row index per reel) | no | `paylines` |
+| `AvailableBets` | `Bet` — one row per value | no | `availableBets` |
+| `Meta` | `Key`, `Value` (rows: `Schema Version`, `Pokie Version`, `Exported At`, `Source`, `Blueprint Hash`) | no | nothing — provenance only, see below |
+
+`pokie par export` always writes every sheet except `ReelStrips`, which it omits when the blueprint has no
+literal `reelStrips` (i.e. it only has `reelStripGeneration`/`symbolWeights`) — the rest of the workbook is still
+written, so the file is still useful for editing symbols/paytable/paylines/bets by hand even though this command
+can't represent that blueprint's reel data.
+
+### `pokie par import <input.xlsx>`
+
+Reads `<input.xlsx>`, maps every sheet above to a `GameBlueprint`, then runs the result through the same
+[`GameBlueprintValidator`](#validation) `pokie build` uses — so an imported PAR sheet gets the exact same
+reachability/paytable-quality/weighting checks as a hand-written blueprint. If there are no error-level issues,
+writes the resulting `GameBlueprint` JSON to `--out <file>` (default: `<input>` with its extension replaced by
+`.blueprint.json`).
+
+Options:
+
+- `--out <file>` — where to write the imported `GameBlueprint` JSON.
+- `--format json` — print the full `{blueprint, issues}` result as JSON instead of a human-readable summary.
+
+Exit code is non-zero (and nothing is written) if there are any error-level diagnostics.
+
+### `pokie par export <config.json>`
+
+Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-configjson)), validates it, and —
+provided it has no error-level issues — writes a `.par.xlsx` workbook to `--out <file>` (default: `<config.json>`
+with `.blueprint.json`/`.json` replaced by `.par.xlsx`). A missing literal `reelStrips` is reported as its own
+error (see above) but does not stop the rest of the workbook from being written.
+
+Options:
+
+- `--out <file>` — where to write the exported workbook.
+
+### Diagnostics
+
+Both directions report problems as `ValidationIssue`s (the same `{code, severity, message, details, suggestion}`
+shape as [`pokie build`'s validation](#validation)):
+
+- an unrecognized sheet name (`parsheet-unknown-sheet`, warning) or column (`parsheet-unknown-column`, warning);
+- a missing required sheet (`parsheet-missing-sheet`) or column (`parsheet-missing-column`);
+- a cell that can't be parsed as the type its column expects — e.g. a non-numeric `Multiplier`
+  (`parsheet-paytable-invalid-multiplier-cell`) or an unrecognizable `Wild`/`Scatter` flag
+  (`parsheet-symbol-invalid-flag`);
+- a blank cell in a required column, which drops that row (`parsheet-symbol-missing-id`,
+  `parsheet-paytable-missing-symbol`);
+- two rows that collide once turned into a single `GameBlueprint` field, e.g. the same `(Symbol, Matches)` pair
+  twice in `Paytable` (`parsheet-paytable-duplicate-entry`, warning — the last one wins) or the same key twice in
+  `Manifest`/`Meta` (`parsheet-manifest-duplicate-key`, warning);
+- a gap in `ReelStrips` — a blank cell followed by a non-blank one further down the same column
+  (`parsheet-reelstrips-gap`) — as opposed to a shorter (ragged) reel's trailing blank cells, which are fine;
+- everything `GameBlueprintValidator` itself already checks once the blueprint is assembled (unknown/duplicate
+  symbols, unreachable symbols, out-of-range match counts, paytable/weighting quality warnings, ...) — these use
+  the same `blueprint-*` codes documented under [Validation](#validation), not `parsheet-*`.
+
+### Provenance (`Meta` sheet)
+
+`pokie par export` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
+that exported it, an ISO 8601 export timestamp, the source blueprint's file path (when known), and a `sha256`
+hash of the exported blueprint (the same formula `GameBuildInfo`'s `blueprintHash` uses — see
+[`pokie build`](#pokie-build-configjson)). None of it is fed back into the imported `GameBlueprint`; `pokie par
+import` only ever surfaces it as a single informational `parsheet-provenance-present` issue (or a
+`parsheet-provenance-missing` warning if the sheet isn't there at all — e.g. a hand-authored PAR sheet that was
+never exported by `pokie par export` in the first place).
+
 ## `pokie init`
 
 Turns an existing npm project into a minimal POKIE-compatible game package.

@@ -1,0 +1,28 @@
+{
+    "manifest": {
+        "id": "par-sheet-starter",
+        "name": "PAR Sheet Starter",
+        "version": "0.1.0",
+        "description": "A pokie par export/import example: 3x3, a wild, literal reel strips, and 3 horizontal paylines."
+    },
+    "reels": 3,
+    "rows": 3,
+    "symbols": ["A", "K", "Q", "W"],
+    "wilds": ["W"],
+    "paytable": {
+        "A": {"3": 10},
+        "K": {"3": 6},
+        "Q": {"3": 3}
+    },
+    "paylines": [
+        [0, 0, 0],
+        [1, 1, 1],
+        [2, 2, 2]
+    ],
+    "reelStrips": [
+        ["A", "K", "Q", "K", "A", "Q", "K", "Q", "W"],
+        ["K", "Q", "A", "Q", "K", "A", "Q", "A", "W"],
+        ["Q", "A", "K", "A", "Q", "K", "A", "K", "W"]
+    ],
+    "availableBets": [1, 2, 5]
+}

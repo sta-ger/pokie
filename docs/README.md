@@ -55,7 +55,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie replay <packageRoot>`, which best-effort replays one round (by seed + round index) as a JSON artifact;
     `pokie serve <packageRoot>` (experimental), which starts a local/dev JSON HTTP server over a package — not a
     casino backend or RGS; `pokie client <packageRoot>` (experimental), a universal browser preview UI talking to
-    a running `pokie serve`; and `pokie dev <packageRoot>` (experimental), which runs both together.
+    a running `pokie serve`; `pokie dev <packageRoot>` (experimental), which runs both together; `pokie par
+    import <input.xlsx>`, which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable,
+    paylines, available bets) into a `GameBlueprint` JSON file; and `pokie par export <config.json>`, which
+    exports a `GameBlueprint` back to a PAR sheet XLSX workbook.
 14. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
@@ -78,6 +81,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | A sequence of stages within one round (cascades, multi-pick bonuses, ...) | `MultiStageRoundSessionSerializer`, `CascadeSessionSerializer` |
 | Loading an external game package by convention | `PokieGame`, `loadPokieGame` |
 | Generating a game package straight from a JSON blueprint (no compile step) | `pokie build <config.json>` CLI |
+| Importing/exporting a GameBlueprint as a PAR sheet XLSX workbook | `pokie par import <input.xlsx>` / `pokie par export <config.json>` |
 | Scaffolding a new game package | `pokie create <name>` / `pokie init` CLI |
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |
 | Rendering a sim report as Markdown/HTML | `pokie report <simulationReportJson>` |
