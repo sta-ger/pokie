@@ -7,6 +7,13 @@ export type BlueprintEditorState = {
     blueprint: Record<string, unknown>;
     jsonText: string;
     jsonError?: string;
+    // Increments every time `blueprint` itself actually changes (a Form edit, or a successful JSON
+    // apply) and resets whenever the blueprint is replaced wholesale (New/Load) -- either way, any
+    // mismatch between a version captured before some long-running request started (e.g. the Reel
+    // Strip Modeler's "Resolve reels") and this field's current value means the blueprint has since
+    // moved on, and that request's response is stale and should be discarded (see
+    // isStaleReelStripGenerationRequest in interpretBlueprintEditor.ts).
+    version: number;
 };
 
 // A minimal but structurally valid starting point for "New Blueprint" — small enough to edit by hand
@@ -26,10 +33,13 @@ export function createEmptyBlueprintEditorState(): BlueprintEditorState {
 }
 
 // Used both by "Load from path" (server-parsed JSON) and by a successful applyJsonText — the two ways
-// the editor's blueprint can be replaced wholesale rather than incrementally edited.
+// the editor's blueprint can be replaced wholesale rather than incrementally edited. Resets `version`
+// to 0 -- a wholesale replacement is always the freshest possible state, so any in-flight request
+// captured against whatever came before it must be treated as stale regardless of which way the
+// version number actually moves.
 export function loadBlueprintEditorState(blueprint: unknown): BlueprintEditorState {
     const record = toRecord(blueprint);
-    return {blueprint: record, jsonText: serialize(record)};
+    return {blueprint: record, jsonText: serialize(record), version: 0};
 }
 
 // Parses `text`; on success, `blueprint` becomes the parsed value and `jsonError` clears. On failure —
@@ -48,7 +58,7 @@ export function applyJsonText(state: BlueprintEditorState, text: string): Bluepr
         return {...state, jsonText: text, jsonError: "The blueprint must be a JSON object."};
     }
 
-    return {blueprint: parsed as Record<string, unknown>, jsonText: text, jsonError: undefined};
+    return {blueprint: parsed as Record<string, unknown>, jsonText: text, jsonError: undefined, version: state.version + 1};
 }
 
 // Every Form edit goes through this: clone the current blueprint, run a mutation from
@@ -58,7 +68,7 @@ export function applyJsonText(state: BlueprintEditorState, text: string): Bluepr
 export function withFieldUpdate(state: BlueprintEditorState, mutate: (blueprint: Record<string, unknown>) => void): BlueprintEditorState {
     const cloned = cloneRecord(state.blueprint);
     mutate(cloned);
-    return {blueprint: cloned, jsonText: serialize(cloned), jsonError: undefined};
+    return {blueprint: cloned, jsonText: serialize(cloned), jsonError: undefined, version: state.version + 1};
 }
 
 function serialize(blueprint: Record<string, unknown>): string {

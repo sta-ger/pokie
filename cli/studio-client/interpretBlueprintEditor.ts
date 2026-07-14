@@ -33,6 +33,15 @@ export function describeReelStripGenerationPreview(result: StudioReelStripGenera
     return result;
 }
 
+// A "Resolve reels" request captures BlueprintEditorState.version right before it's sent; by the time
+// its response arrives, the blueprint may have changed (another edit, a New/Load) -- comparing that
+// captured version against the editor's *current* version is how main.ts decides whether to apply the
+// response or silently drop it as stale, so an in-flight preview can never clobber a newer edit's
+// (already-cleared) result with a stale one after the fact.
+export function isStaleReelStripGenerationRequest(requestedVersion: number, currentVersion: number): boolean {
+    return requestedVersion !== currentVersion;
+}
+
 export type BlueprintLoadView =
     | {status: "idle"}
     | {status: "loading"}

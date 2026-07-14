@@ -86,15 +86,64 @@ describe("StudioBlueprintService", () => {
 
             const result = service.previewReelStripGeneration(buildBlueprint());
 
-            expect(result).toEqual({status: "ok", warnings: [], reels: []});
+            expect(result).toEqual({status: "ok", errors: [], warnings: [], reels: []});
         });
 
-        it("returns invalid for a structurally broken blueprint, without resolving anything", () => {
+        it("surfaces a structurally broken blueprint's errors but still resolves reelStripGeneration (unrelated errors never block the preview)", () => {
             const service = createService();
+            const blueprint = buildBlueprint({
+                // "reels: 0" is invalid on its own, but has nothing to do with reelStripGeneration --
+                // and reelStripGeneration itself here is perfectly well-formed.
+                reels: 0,
+                reelStripGeneration: [{type: "literal", strip: ["A", "B"]}],
+            });
 
-            const result = service.previewReelStripGeneration(buildBlueprint({reels: 0}));
+            const result = service.previewReelStripGeneration(blueprint);
 
-            expect(result.status).toBe("invalid");
+            expect(result.status).toBe("ok");
+            expect(result.errors.length).toBeGreaterThan(0);
+            expect(result.errors.some((issue) => issue.code === "blueprint-reels-invalid")).toBe(true);
+            expect(result.reels).toEqual([{reelIndex: 0, type: "literal", strip: ["A", "B"], analysis: expect.anything()}]);
+        });
+
+        it("resolves every well-formed reel and simply omits a reel whose reelStripGeneration entry isn't even an object", () => {
+            const service = createService();
+            const blueprint = buildBlueprint({
+                reels: 3,
+                reelStripGeneration: [{type: "literal", strip: ["A", "B"]}, null, {type: "literal", strip: ["B", "A"]}] as unknown as GameBlueprint["reelStripGeneration"],
+            });
+
+            const result = service.previewReelStripGeneration(blueprint);
+
+            expect(result.status).toBe("ok");
+            expect(result.reels.map((reel) => reel.reelIndex)).toEqual([0, 2]);
+        });
+
+        it("resolves every well-formed reel even when another reel's own config is unsatisfiable (mixed valid/invalid reels)", () => {
+            const service = createService();
+            const blueprint = buildBlueprint({
+                reels: 3,
+                reelStripGeneration: [
+                    {type: "literal", strip: ["A", "B"]},
+                    {
+                        type: "generated",
+                        length: 4,
+                        symbolCounts: {A: 2, B: 2},
+                        seed: 1,
+                        maxAttempts: 3,
+                        constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
+                    },
+                    {type: "literal", strip: ["B", "A"]},
+                ],
+            });
+
+            const result = service.previewReelStripGeneration(blueprint);
+
+            expect(result.status).toBe("ok");
+            expect(result.reels).toHaveLength(3);
+            expect(result.reels[0].type).toBe("literal");
+            expect(result.reels[1]).toMatchObject({reelIndex: 1, type: "generated", success: false});
+            expect(result.reels[2].type).toBe("literal");
         });
 
         it("resolves a mix of literal and generated reels, reporting each reel's exact strip and symbol-count analysis", () => {

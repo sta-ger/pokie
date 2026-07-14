@@ -1751,13 +1751,20 @@ same `--no-open` escape hatch) showing the **Home** view, with six tabs:
   **Generated** (that reel's own length, seed, max attempts, an exclusive counts-or-weights table, a locked-positions
   table, and its `constraints` array edited as raw JSON — there are seven constraint types with quite different
   fields, so this reuses the same JSON-editing affordance the whole-blueprint JSON view already has instead of one
-  bespoke widget per type). **Resolve reels** calls `POST /api/home/blueprints/reel-strip-generation-preview` (see
-  the API section), which runs the exact same `resolveReelStripGeneration`/`ReelStripGenerator`/`ReelStripAnalyzer`
-  `pokie build` itself uses — never a reimplementation — and shows every reel's exact resulting symbol sequence,
-  symbol-count analysis, and (for a generated reel whose constraints can't be satisfied) the same
-  diagnostics/violations a real `pokie build` failure would report, without writing anything. **Save** always writes
-  the *authored* `reelStripGeneration` array (counts/weights/seed/constraints), never a resolved/materialized strip —
-  identical to how `pokie build` itself keeps `blueprintHash` keyed on the authored blueprint.
+  bespoke widget per type). Switching a reel between Literal/Generated, or a generated reel's own source between
+  counts/weights, never discards what was already entered on the side being left — the previous configuration is
+  restored, not reset to defaults, the next time the toggle comes back around. **Resolve reels** calls `POST
+  /api/home/blueprints/reel-strip-generation-preview` (see the API section), which runs the exact same
+  `resolveReelStripGeneration`/`ReelStripGenerator`/`ReelStripAnalyzer` `pokie build` itself uses — never a
+  reimplementation — and shows every reel's exact resulting symbol sequence, symbol-count analysis, and (for a
+  generated reel whose constraints can't be satisfied) every generation attempt's own diagnostics/violations, the
+  same information a real `pokie build` failure would report, without writing anything; a blueprint-level problem
+  unrelated to reelStripGeneration itself never blocks this preview, only hides the (unrelated) affected reel if any.
+  Any further edit clears a previously shown preview outright (it described the blueprint as it was *before* that
+  edit), and a "Resolve reels" response that arrives after the blueprint has since changed is silently discarded
+  rather than shown. **Save** always writes the *authored* `reelStripGeneration` array
+  (counts/weights/seed/constraints), never a resolved/materialized strip — identical to how `pokie build` itself
+  keeps `blueprintHash` keyed on the authored blueprint.
 
 None of these ever shell out to `pokie create`/`init`/`build` as a subprocess, or duplicate their logic — see
 `StudioHomeService` (`cli/studio/home/StudioHomeService.ts`) for Create/Init/Build(path)/Open, and
@@ -2024,16 +2031,20 @@ client, even for a load/validation failure.
   "..."}` for an fs failure or a path resolving inside Studio's own internal directory (safe message, never a stack
   trace). `400 {"error": "..."}` only for a missing `path`/`blueprint`, or a non-boolean `overwrite`.
 - `POST /api/home/blueprints/reel-strip-generation-preview` `{"blueprint": <any JSON value>}` — same request shape
-  and shape-validation as `/validate` (`400 {"error": "..."}` only if `blueprint` itself is missing); on a
-  structurally valid blueprint, resolves `blueprint.reelStripGeneration` (if present) via the real
-  `resolveReelStripGeneration`/`ReelStripGenerator` and analyzes every reel's resulting strip via `ReelStripAnalyzer`
-  — never writes anything. `200 {"status": "invalid", "errors": [...], "warnings": [...]}` for a structurally broken
-  blueprint (the same shape errors `/validate` would report); otherwise `200 {"status": "ok", "warnings": [...],
-  "reels": [...]}`, `reels` empty when the blueprint has no `reelStripGeneration`. Each entry is either `{"reelIndex",
-  "type": "literal", "strip", "analysis"}` or, for a `"generated"` reel, `{"reelIndex", "type": "generated", "seed",
-  "success", "attemptsUsed", "diagnostics", "strip"?, "analysis"?}` — `strip`/`analysis` present if and only if
-  `success` is `true`; a failed reel's `diagnostics` carries the same violations a `pokie build` failure would print,
-  without failing the request as a whole (every other reel's result is still returned).
+  and shape-validation as `/validate` (`400 {"error": "..."}` only if `blueprint` itself is missing); resolves
+  `blueprint.reelStripGeneration` (if present) via the real `resolveReelStripGeneration`/`ReelStripGenerator` and
+  analyzes every reel's resulting strip via `ReelStripAnalyzer` — never writes anything. Always `200 {"status": "ok",
+  "errors": [...], "warnings": [...], "reels": [...]}`: `errors`/`warnings` are the same `GameBlueprintValidator`
+  issues `/validate` would report, but never block `reels` — a blueprint-level problem unrelated to
+  reelStripGeneration itself (a broken paytable, an invalid `availableBets`, ...) never hides every other,
+  resolvable reel's result. `reels` is empty when the blueprint has no `reelStripGeneration` at all; a
+  reelStripGeneration entry that isn't even a well-formed object (a hand-edited JSON blueprint) is simply left out
+  of `reels` rather than failing the request. Each remaining entry is either `{"reelIndex", "type": "literal",
+  "strip", "analysis"}` or, for a `"generated"` reel, `{"reelIndex", "type": "generated", "seed", "success",
+  "attemptsUsed", "diagnostics", "strip"?, "analysis"?}` — `strip`/`analysis` present if and only if `success` is
+  `true`; a failed reel's `diagnostics` carries every attempt made (not just the last one) with that attempt's own
+  violations, the same information a `pokie build` failure would print, without failing the request as a whole
+  (every other reel's result is still returned).
 - `POST /api/home/blueprints/build-preview` `{"blueprint": <any JSON value>, "outDir"?: string, "sourcePath"?:
   string}` — the same preview `POST /api/home/projects/build/preview` gives, except the blueprint is taken directly
   from the request body instead of loaded from a path (so it never needs to be saved first): `200 {"status":

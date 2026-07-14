@@ -226,14 +226,32 @@ describe("blueprintFormOps", () => {
     });
 
     describe("reelStripGeneration", () => {
-        it("switches a reel's own entry between literal and generated", () => {
+        it("switches a reel's own entry between literal and generated, seeding defaults on a brand-new entry", () => {
             const b: Record<string, unknown> = {reelStripGeneration: [{type: "literal", strip: ["A"]}]};
 
             setReelStripGenerationEntryType(b, 0, "generated");
-            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolCounts: {}}]);
+            expect(b.reelStripGeneration).toEqual([{type: "generated", strip: ["A"], length: 1, seed: 1, symbolCounts: {}}]);
 
             setReelStripGenerationEntryType(b, 0, "literal");
-            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: []}]);
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A"], length: 1, seed: 1, symbolCounts: {}}]);
+        });
+
+        it("does not lose a literal strip or a generated config across repeated literal <-> generated switches", () => {
+            const b: Record<string, unknown> = {
+                reelStripGeneration: [{type: "generated", length: 5, seed: 7, symbolCounts: {A: 2, B: 3}, maxAttempts: 20}],
+            };
+
+            setReelStripGenerationEntryType(b, 0, "literal");
+            addReelStripGenerationLiteralSymbol(b, 0, "A");
+            addReelStripGenerationLiteralSymbol(b, 0, "B");
+
+            setReelStripGenerationEntryType(b, 0, "generated");
+            expect(b.reelStripGeneration).toEqual([
+                {type: "generated", strip: ["A", "B"], length: 5, seed: 7, symbolCounts: {A: 2, B: 3}, maxAttempts: 20},
+            ]);
+
+            setReelStripGenerationEntryType(b, 0, "literal");
+            expect((b.reelStripGeneration as Array<{strip: string[]}>)[0].strip).toEqual(["A", "B"]);
         });
 
         it("does nothing for an out-of-range reel index", () => {
@@ -273,17 +291,30 @@ describe("blueprintFormOps", () => {
             expect(b.reelStripGeneration).toEqual([{type: "generated", length: 10, seed: 42, symbolCounts: {}}]);
         });
 
-        it("reports and switches between symbolCounts and symbolWeights, preserving each side's own data", () => {
-            const entry = {type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}};
-            expect(getReelStripGenerationSourceMode(entry)).toBe("symbolCounts");
+        it("reports the current source mode", () => {
+            expect(getReelStripGenerationSourceMode({type: "generated", symbolCounts: {A: 3}})).toBe("symbolCounts");
+            expect(getReelStripGenerationSourceMode({type: "generated", symbolWeights: {A: 3}})).toBe("symbolWeights");
+        });
 
+        it("does not lose a side's own data across repeated symbolCounts <-> symbolWeights switches", () => {
+            const entry = {type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}};
             const b: Record<string, unknown> = {reelStripGeneration: [entry]};
+
+            // First visit to Weights has nothing to restore yet -- starts empty, exactly like a
+            // brand-new generated entry would.
             setReelStripGenerationSourceMode(b, 0, "symbolWeights");
-            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolWeights: {}}]);
+            expect(getReelStripGenerationSourceMode((b.reelStripGeneration as Record<string, unknown>[])[0])).toBe("symbolWeights");
+            expect((b.reelStripGeneration as Array<{symbolWeights: unknown}>)[0].symbolWeights).toEqual({});
 
             setReelStripGenerationSymbolWeight(b, 0, "A", 5);
+
+            // Switching back to Counts restores the original {A: 3} instead of resetting to {}.
             setReelStripGenerationSourceMode(b, 0, "symbolCounts");
-            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolCounts: {}}]);
+            expect((b.reelStripGeneration as Array<{symbolCounts: unknown}>)[0].symbolCounts).toEqual({A: 3});
+
+            // And switching back to Weights restores {A: 5}, not another reset to {}.
+            setReelStripGenerationSourceMode(b, 0, "symbolWeights");
+            expect((b.reelStripGeneration as Array<{symbolWeights: unknown}>)[0].symbolWeights).toEqual({A: 5});
         });
 
         it("sets and removes symbol counts and weights", () => {

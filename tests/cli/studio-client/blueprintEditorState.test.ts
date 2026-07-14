@@ -13,6 +13,7 @@ describe("blueprintEditorState", () => {
             expect(state.blueprint).toMatchObject({reels: 5, rows: 3, symbols: []});
             expect(JSON.parse(state.jsonText)).toEqual(state.blueprint);
             expect(state.jsonError).toBeUndefined();
+            expect(state.version).toBe(0);
         });
     });
 
@@ -30,6 +31,17 @@ describe("blueprintEditorState", () => {
             expect(loadBlueprintEditorState("not an object").blueprint).toEqual({});
             expect(loadBlueprintEditorState(null).blueprint).toEqual({});
             expect(loadBlueprintEditorState([1, 2]).blueprint).toEqual({});
+        });
+
+        it("always resets version to 0, even replacing a state with a higher version", () => {
+            const edited = withFieldUpdate(createEmptyBlueprintEditorState(), (b) => {
+                b.reels = 7;
+            });
+            expect(edited.version).toBeGreaterThan(0);
+
+            const state = loadBlueprintEditorState({manifest: {id: "a"}});
+
+            expect(state.version).toBe(0);
         });
     });
 
@@ -62,6 +74,16 @@ describe("blueprintEditorState", () => {
 
             expect(next.blueprint).toEqual(state.blueprint);
             expect(next.jsonError).toBe("The blueprint must be a JSON object.");
+        });
+
+        it("increments version on a successful apply, but not on a failed one", () => {
+            const state = createEmptyBlueprintEditorState();
+
+            const failed = applyJsonText(state, "{not valid json");
+            expect(failed.version).toBe(state.version);
+
+            const succeeded = applyJsonText(state, JSON.stringify({manifest: {id: "b"}}));
+            expect(succeeded.version).toBe(state.version + 1);
         });
     });
 
@@ -98,6 +120,16 @@ describe("blueprintEditorState", () => {
             });
 
             expect(next.jsonError).toBeUndefined();
+        });
+
+        it("increments version on every edit", () => {
+            const state = createEmptyBlueprintEditorState();
+
+            const next = withFieldUpdate(state, (b) => {
+                b.reels = 7;
+            });
+
+            expect(next.version).toBe(state.version + 1);
         });
     });
 });

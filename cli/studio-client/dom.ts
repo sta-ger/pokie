@@ -53,6 +53,7 @@ import type {ReportListView} from "./interpretReports.js";
 import {isRuntimeRunning, describeRuntimeScreen, RuntimeSessionResultView, RuntimeSpinResultView, RuntimeStateView} from "./interpretRuntime.js";
 import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
 import type {
+    ReelStripGenerationDiagnostic,
     StudioHomeRecentProjectView,
     StudioReplayListEntry,
     StudioRuntimeSessionView,
@@ -1817,7 +1818,13 @@ function renderReelStripGenerationLockedPositions(
     const lockedPositions = asRecord(entry.lockedPositions);
     const table = document.createElement("table");
     const thead = document.createElement("thead");
-    thead.innerHTML = "<tr><th>Position</th><th>Symbol</th><th></th></tr>";
+    const headRow = document.createElement("tr");
+    for (const text of ["Position", "Symbol", ""]) {
+        const th = document.createElement("th");
+        th.textContent = text;
+        headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
@@ -1833,7 +1840,11 @@ function renderReelStripGenerationLockedPositions(
         symbolCell.textContent = symbolId;
         row.appendChild(symbolCell);
         appendRowActions(row, [
-            {label: "Remove", onClick: () => mutate((b) => removeReelStripGenerationLockedPosition(b, reelIndex, Number(position)))},
+            {
+                label: "Remove",
+                ariaLabel: `Remove locked position ${position} for reel ${reelIndex + 1}`,
+                onClick: () => mutate((b) => removeReelStripGenerationLockedPosition(b, reelIndex, Number(position))),
+            },
         ]);
         tbody.appendChild(row);
     }
@@ -1847,9 +1858,9 @@ function renderReelStripGenerationLockedPositions(
     positionInput.min = "0";
     positionInput.step = "1";
     positionInput.placeholder = "Position";
-    positionInput.setAttribute("aria-label", "Position");
+    positionInput.setAttribute("aria-label", `Position to lock for reel ${reelIndex + 1}`);
     const symbolSelect = document.createElement("select");
-    symbolSelect.setAttribute("aria-label", "Symbol");
+    symbolSelect.setAttribute("aria-label", `Symbol to lock for reel ${reelIndex + 1}`);
     renderSymbolOptions(symbolSelect, symbols);
     const addButton = document.createElement("button");
     addButton.type = "button";
@@ -2028,9 +2039,45 @@ export function renderBlueprintReelStripGeneration(elements: Elements, blueprint
 
 // The "Resolve reels" button's own result panel -- see ReelStripGenerationPreviewView's own doc
 // comment. Rebuilt fully on every render, same convention as every other dynamic collection here.
+// Shows every attempt's diagnostic (not just the last one) and every violation on each -- a
+// constraint-satisfaction search can reject several close-but-not-quite candidates before either
+// succeeding or exhausting maxAttempts, and each one carries its own distinct violations worth seeing,
+// not just the final attempt's.
+function renderReelStripGenerationDiagnostics(container: HTMLElement, diagnostics: ReelStripGenerationDiagnostic[]): void {
+    if (diagnostics.length === 0) {
+        return;
+    }
+
+    const fieldset = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = `Generation attempts (${diagnostics.length})`;
+    fieldset.appendChild(legend);
+
+    diagnostics.forEach((diagnostic) => {
+        const heading = document.createElement("p");
+        heading.textContent =
+            `Attempt ${diagnostic.attempt}${diagnostic.accepted ? " — accepted" : ""}` +
+            (diagnostic.score !== undefined ? ` (score ${diagnostic.score})` : "");
+        fieldset.appendChild(heading);
+
+        if (diagnostic.violations.length === 0) {
+            return;
+        }
+        const list = document.createElement("ul");
+        for (const violation of diagnostic.violations) {
+            const item = document.createElement("li");
+            item.textContent = `${violation.constraintId}: ${violation.message}`;
+            list.appendChild(item);
+        }
+        fieldset.appendChild(list);
+    });
+
+    container.appendChild(fieldset);
+}
+
 export function renderReelStripGenerationPreview(elements: Elements, view: ReelStripGenerationPreviewView): void {
     elements.blueprintReelStripGenerationLoading.hidden = view.status !== "loading";
-    elements.blueprintReelStripGenerationError.hidden = view.status !== "error" && view.status !== "invalid";
+    elements.blueprintReelStripGenerationError.hidden = view.status !== "error";
     elements.blueprintReelStripGenerationResults.textContent = "";
 
     if (view.status === "idle" || view.status === "loading") {
@@ -2040,10 +2087,23 @@ export function renderReelStripGenerationPreview(elements: Elements, view: ReelS
         elements.blueprintReelStripGenerationError.textContent = view.message;
         return;
     }
-    if (view.status === "invalid") {
-        elements.blueprintReelStripGenerationError.textContent =
-            `Blueprint is invalid (${view.errors.length} error(s)) -- fix it first (see Validate above).`;
-        return;
+
+    // Unrelated blueprint errors (a broken paytable, an invalid availableBets, ...) never block this
+    // preview -- they're shown here, alongside every reel that could still be resolved, rather than in
+    // place of them (see StudioReelStripGenerationView's own doc comment).
+    if (view.errors.length > 0) {
+        const errorsCard = document.createElement("fieldset");
+        const legend = document.createElement("legend");
+        legend.textContent = `Blueprint has ${view.errors.length} error(s) elsewhere`;
+        errorsCard.appendChild(legend);
+        const list = document.createElement("ul");
+        for (const issue of view.errors) {
+            const item = document.createElement("li");
+            item.textContent = `${issue.code}: ${issue.message}`;
+            list.appendChild(item);
+        }
+        errorsCard.appendChild(list);
+        elements.blueprintReelStripGenerationResults.appendChild(errorsCard);
     }
 
     view.reels.forEach((reel) => {
@@ -2066,17 +2126,10 @@ export function renderReelStripGenerationPreview(elements: Elements, view: ReelS
             const failure = document.createElement("p");
             failure.textContent = `Failed to generate after ${reel.attemptsUsed} attempt(s).`;
             card.appendChild(failure);
+        }
 
-            const lastDiagnostic = reel.diagnostics[reel.diagnostics.length - 1];
-            if (lastDiagnostic !== undefined && lastDiagnostic.violations.length > 0) {
-                const list = document.createElement("ul");
-                for (const violation of lastDiagnostic.violations) {
-                    const item = document.createElement("li");
-                    item.textContent = `${violation.constraintId}: ${violation.message}`;
-                    list.appendChild(item);
-                }
-                card.appendChild(list);
-            }
+        if (reel.type === "generated") {
+            renderReelStripGenerationDiagnostics(card, reel.diagnostics);
         }
 
         elements.blueprintReelStripGenerationResults.appendChild(card);

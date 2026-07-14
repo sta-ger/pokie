@@ -97,7 +97,13 @@ import {
     showProjectTab,
     showView,
 } from "./dom.js";
-import {describeLoadResult, describeReelStripGenerationPreview, describeSaveResult, describeValidation} from "./interpretBlueprintEditor.js";
+import {
+    describeLoadResult,
+    describeReelStripGenerationPreview,
+    describeSaveResult,
+    describeValidation,
+    isStaleReelStripGenerationRequest,
+} from "./interpretBlueprintEditor.js";
 import {describeBuildPreview, describeBuildResult, describeRecentProjectsList, describeScaffoldResult} from "./interpretHome.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
 import {describeReplayList, describeReplayProgress, describeReplayResult, isReplayActive, isReplayTerminal} from "./interpretReplay.js";
@@ -196,6 +202,10 @@ async function main(): Promise<void> {
 
     const blueprintMutate: BlueprintMutate = (mutate) => {
         blueprintState = withFieldUpdate(blueprintState, mutate);
+        // Any edit invalidates a previously shown Reel Strip Modeler preview -- it described the
+        // blueprint as it was *before* this change, so it's cleared rather than left showing
+        // (now-stale) results next to the just-edited Form/JSON.
+        renderReelStripGenerationPreview(elements, {status: "idle"});
         renderBlueprintEditor();
     };
 
@@ -830,6 +840,7 @@ async function main(): Promise<void> {
 
     elements.blueprintJsonApplyButton.addEventListener("click", () => {
         blueprintState = applyJsonText(blueprintState, elements.blueprintJsonTextarea.value);
+        renderReelStripGenerationPreview(elements, {status: "idle"});
         renderBlueprintEditor();
     });
 
@@ -906,12 +917,22 @@ async function main(): Promise<void> {
     elements.blueprintModeWeightsRadio.addEventListener("change", () => setBlueprintGenerationMode("symbolWeights"));
 
     elements.blueprintReelStripGenerationResolveButton.addEventListener("click", () => {
+        // Captured now, before the request goes out -- if the blueprint changes (another edit, a
+        // New/Load) before this response comes back, blueprintState.version will have moved on by
+        // then, and the response is dropped as stale rather than clobbering whatever's now showing.
+        const requestedVersion = blueprintState.version;
         renderReelStripGenerationPreview(elements, {status: "loading"});
         previewReelStripGeneration(fetchImpl, blueprintState.blueprint)
             .then((result) => {
+                if (isStaleReelStripGenerationRequest(requestedVersion, blueprintState.version)) {
+                    return;
+                }
                 renderReelStripGenerationPreview(elements, describeReelStripGenerationPreview(result));
             })
             .catch((error: unknown) => {
+                if (isStaleReelStripGenerationRequest(requestedVersion, blueprintState.version)) {
+                    return;
+                }
                 renderReelStripGenerationPreview(elements, {status: "error", message: errorMessage(error)});
             });
     });

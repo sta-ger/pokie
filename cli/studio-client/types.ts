@@ -164,9 +164,15 @@ export type StudioReelStripGenerationReelView =
           diagnostics: ReelStripGenerationDiagnostic[];
       };
 
-export type StudioReelStripGenerationView =
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "ok"; warnings: ValidationIssue[]; reels: StudioReelStripGenerationReelView[]};
+// Always "ok": `errors`/`warnings` are surfaced *alongside* `reels`, never instead of them -- a
+// blueprint-level problem unrelated to reelStripGeneration itself never hides every other,
+// resolvable reel's result. See StudioReelStripGenerationView.ts's own doc comment.
+export type StudioReelStripGenerationView = {
+    status: "ok";
+    errors: ValidationIssue[];
+    warnings: ValidationIssue[];
+    reels: StudioReelStripGenerationReelView[];
+};
 
 // POST /api/home/blueprints/load's own DTO — see cli/studio/blueprint/StudioBlueprintLoadView.ts's own
 // doc comment. `blueprint` is the raw parsed JSON value (unknown), not yet validated.

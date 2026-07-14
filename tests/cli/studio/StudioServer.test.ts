@@ -773,16 +773,18 @@ describe("StudioServer", () => {
                 });
 
                 expect(status).toBe(200);
-                expect(body).toEqual({status: "ok", warnings: [], reels: []});
+                expect(body).toEqual({status: "ok", errors: [], warnings: [], reels: []});
             });
 
-            it("returns invalid for a structurally broken blueprint", async () => {
+            it("surfaces a structurally broken blueprint's errors but still resolves an unrelated, well-formed reelStripGeneration", async () => {
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/reel-strip-generation-preview`, {
-                    blueprint: buildBlueprint({reels: 0}),
+                    blueprint: buildBlueprint({reels: 0, reelStripGeneration: [{type: "literal", strip: ["A", "B"]}]}),
                 });
 
                 expect(status).toBe(200);
-                expect(body).toMatchObject({status: "invalid"});
+                expect(body).toMatchObject({status: "ok"});
+                expect((body as {errors: Array<{code: string}>}).errors.length).toBeGreaterThan(0);
+                expect((body as {reels: Array<{reelIndex: number}>}).reels).toHaveLength(1);
             });
 
             it("resolves a mix of literal and generated reels without writing anything", async () => {

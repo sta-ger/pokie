@@ -363,10 +363,32 @@ function asNumberRecord(value: unknown): Record<string, number> {
     return result;
 }
 
+// Round-trips a reel's previously entered configuration for the type being *left*, instead of
+// resetting it to defaults: a literal entry's "strip" and a generated entry's own fields
+// (length/seed/symbolCounts-or-symbolWeights/lockedPositions/constraints/maxAttempts) simply keep
+// riding along as inert extra properties on the entry object while the other type is active --
+// GameBlueprintValidator's shape checks and resolveReelStripGeneration/materializeReelStrips only ever
+// read the fields relevant to the entry's current "type", so an unrelated leftover field never causes
+// a validation error or changes what actually gets built. Switching back later restores exactly what
+// was there.
 export function setReelStripGenerationEntryType(blueprint: Record<string, unknown>, reelIndex: number, type: "literal" | "generated"): void {
-    withReelStripGenerationEntry(blueprint, reelIndex, () =>
-        type === "literal" ? {type: "literal", strip: []} : {type: "generated", length: 1, seed: 1, symbolCounts: {}},
-    );
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        if (type === "literal") {
+            return {...entry, type: "literal", strip: asStringArray(entry.strip)};
+        }
+
+        const next: Record<string, unknown> = {...entry, type: "generated"};
+        if (typeof next.length !== "number") {
+            next.length = 1;
+        }
+        if (typeof next.seed !== "number") {
+            next.seed = 1;
+        }
+        if (next.symbolCounts === undefined && next.symbolWeights === undefined) {
+            next.symbolCounts = {};
+        }
+        return next;
+    });
 }
 
 // ---- Literal entries: the same per-symbol operations as top-level reelStrips, addressed by reelIndex ----
@@ -431,17 +453,33 @@ export function getReelStripGenerationSourceMode(entry: Record<string, unknown>)
     return entry.symbolWeights !== undefined ? "symbolWeights" : "symbolCounts";
 }
 
-// Exactly one of symbolCounts/symbolWeights may be set (mirrors the top-level reelStrips/symbolWeights
-// exclusivity) -- switching preserves whatever was already entered under the mode being kept.
+// Unlike the literal/generated "type" toggle above, symbolCounts and symbolWeights can't simply keep
+// both riding along together while inactive: GameBlueprintValidator rejects a generated entry that has
+// both (or neither) set -- "exactly one of these two must be set". So the side being *left* is stashed
+// under its own draft key (harmless extra properties GameBlueprintValidator/resolveReelStripGeneration
+// never look at) instead of being deleted outright, and restored from there the next time its mode
+// becomes active again -- switching Counts -> Weights -> Counts reproduces exactly what was entered
+// under Counts, not a reset to {}.
+const DRAFT_SYMBOL_COUNTS_KEY = "_reelStripGenerationSymbolCountsDraft";
+const DRAFT_SYMBOL_WEIGHTS_KEY = "_reelStripGenerationSymbolWeightsDraft";
+
 export function setReelStripGenerationSourceMode(blueprint: Record<string, unknown>, reelIndex: number, mode: ReelStripGenerationSourceMode): void {
     withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
         const next = {...entry};
         if (mode === "symbolCounts") {
-            next.symbolCounts = asNumberRecord(entry.symbolCounts);
+            next.symbolCounts = asNumberRecord(entry.symbolCounts ?? entry[DRAFT_SYMBOL_COUNTS_KEY]);
+            if (entry.symbolWeights !== undefined) {
+                next[DRAFT_SYMBOL_WEIGHTS_KEY] = entry.symbolWeights;
+            }
             Reflect.deleteProperty(next, "symbolWeights");
+            Reflect.deleteProperty(next, DRAFT_SYMBOL_COUNTS_KEY);
         } else {
-            next.symbolWeights = asNumberRecord(entry.symbolWeights);
+            next.symbolWeights = asNumberRecord(entry.symbolWeights ?? entry[DRAFT_SYMBOL_WEIGHTS_KEY]);
+            if (entry.symbolCounts !== undefined) {
+                next[DRAFT_SYMBOL_COUNTS_KEY] = entry.symbolCounts;
+            }
             Reflect.deleteProperty(next, "symbolCounts");
+            Reflect.deleteProperty(next, DRAFT_SYMBOL_WEIGHTS_KEY);
         }
         return next;
     });

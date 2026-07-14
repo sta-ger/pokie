@@ -30,9 +30,19 @@ export type StudioReelStripGenerationReelView =
 // POST /api/home/blueprints/reel-strip-generation-preview's own DTO -- reuses
 // GameBlueprintValidator.validate() for shape errors (see StudioBlueprintService.validate) and the
 // existing resolveReelStripGeneration()/ReelStripAnalyzer for everything else; neither is
-// reimplemented. "ok" is returned even when one or more generated reels failed to satisfy their
-// constraints -- that outcome is reported per-reel (StudioReelStripGenerationReelView's own success
-// flag), not as a top-level failure, so the modeler can still show every other reel's result at once.
-export type StudioReelStripGenerationView =
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "ok"; warnings: ValidationIssue[]; reels: StudioReelStripGenerationReelView[]};
+// reimplemented.
+//
+// Always "ok": `errors`/`warnings` are the exact same GameBlueprintValidator issues `/validate` would
+// report, surfaced *alongside* `reels` rather than blocking them -- a blueprint-level problem unrelated
+// to reelStripGeneration itself (a broken paytable, an invalid availableBets, ...) never prevents every
+// other, perfectly resolvable reel from being previewed. `reels` is only ever empty when
+// reelStripGeneration's own shape is broken (any "blueprint-reelstripgeneration*" error) or the
+// blueprint has no reelStripGeneration at all -- see StudioBlueprintService.previewReelStripGeneration's
+// own doc comment. A "generated" reel that fails to satisfy its own constraints is likewise reported
+// per-reel (its own success: false), not as a top-level failure.
+export type StudioReelStripGenerationView = {
+    status: "ok";
+    errors: ValidationIssue[];
+    warnings: ValidationIssue[];
+    reels: StudioReelStripGenerationReelView[];
+};
