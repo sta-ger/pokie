@@ -35,14 +35,17 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
    `pokie sim --workers`.
 9. **[Network Serialization](serialization.md)** — turning a session's state into plain-data payloads for a game
    client.
-10. **[Extension Points](extension-points.md)** — every injectable collaborator in the library, in one table, plus
+10. **[Round Artifacts](round-artifacts.md)** — `RoundArtifact`/`RoundStepArtifact`, the canonical hashable record
+    of a completed round built from already-computed runtime state (no second calculation path), the standard
+    `PokieJsonRoundArtifactProjector` JSON projection with a stable content hash, and `RoundArtifactValidator`.
+11. **[Extension Points](extension-points.md)** — every injectable collaborator in the library, in one table, plus
     `AbstractVideoSlotSessionDecorator` for writing a session wrapper without re-implementing every passthrough
     method.
-11. **[Modeling Slot Math with POKIE](math-modeling.md)** — a worked walkthrough of using POKIE to balance RTP,
+12. **[Modeling Slot Math with POKIE](math-modeling.md)** — a worked walkthrough of using POKIE to balance RTP,
     hit frequency, and volatility.
-12. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
+13. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
     `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
-13. **[CLI](cli.md)** — `pokie build <config.json>`, which generates a working game package straight from a JSON
+14. **[CLI](cli.md)** — `pokie build <config.json>`, which generates a working game package straight from a JSON
     `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated
     via `reelStripGeneration` and `ReelStripGenerator`), no compile step required; `pokie
     create <name>` (new directory) and `pokie init` (existing project), which scaffold
@@ -59,7 +62,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     import <input.xlsx>`, which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable,
     paylines, available bets) into a `GameBlueprint` JSON file; and `pokie par export <config.json>`, which
     exports a `GameBlueprint` back to a PAR sheet XLSX workbook.
-14. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
+15. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
     either from exact counts or from proportional `symbolWeights` (via
@@ -91,6 +94,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Browser preview UI for a running `pokie serve` (experimental) | `pokie client <packageRoot>` |
 | `pokie serve` + `pokie client` together, with a browser auto-opened (experimental) | `pokie dev <packageRoot>` |
 | Generating a reel strip's symbol sequence under constraints (design-time, not runtime spin) | `ReelStripGenerator`, `ReelStripAnalyzer` |
+| Canonical, hashable, storage/audit-grade record of a completed round | `RoundArtifact`, `buildRoundArtifactFromSession`, `PokieJsonRoundArtifactProjector` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.
