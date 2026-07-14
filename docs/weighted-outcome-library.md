@@ -31,9 +31,12 @@ type WeightedOutcomeLibrary<T = string> = {
 ```
 
 `weight` is relative, not a probability — an outcome's actual probability is its own `weight` divided by the
-library's total weight (see the analyzer below). `id` is always caller-supplied, the same way `RoundArtifact.roundId`
-is: never auto-generated, so a library rebuilt from the same source math data reproduces the exact same ids, and
-therefore the exact same library hash.
+library's total weight (see the analyzer below). It must be a finite number **greater than zero**: a weight of
+exactly `0` is rejected the same as a negative one, not silently accepted — an outcome that can never actually be
+drawn contributes nothing to any statistic, so admitting it would only let a caller believe some outcome (a
+jackpot, say) is "in" the library's analysis when it can never be. `id` is always caller-supplied, the same way
+`RoundArtifact.roundId` is: never auto-generated, so a library rebuilt from the same source math data reproduces
+the exact same ids, and therefore the exact same library hash.
 
 Both types are deeply readonly and deeply frozen once built — a `WeightedOutcome`'s own `artifact` isn't
 separately deep-copied, since a `RoundArtifact` is already immutable by construction (built via `buildRoundArtifact`).
@@ -59,23 +62,34 @@ function buildWeightedOutcomeLibrary<T = string>(options: {
     libraryId: string;
     outcomes: readonly {id: string; weight: number; artifact: RoundArtifact<T>}[];
     schemaVersion?: number;
-    artifactValidator?: ValidationRule<RoundArtifact<T>>; // defaults to a real RoundArtifactValidator
+    artifactValidator?: ValidationRule<RoundArtifact<T>>; // an *additional* check, never a replacement — see below
 }): WeightedOutcomeLibrary<T>;
 ```
 
 Fails fast with **`WeightedOutcomeLibraryBuildError`** (`getCode()`/`message`) on: an invalid `libraryId`/
 `schemaVersion` (only the current `WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION` is accepted), an empty `outcomes`
-list, an invalid or duplicate outcome `id`, an invalid `weight` or `artifact.payoutMultiplier` (both must be
-finite numbers `>= 0`), an invalid `artifact.stake` (must be finite and `> 0`), an artifact that fails
-`RoundArtifactValidator` (injectable via `artifactValidator` — so a malformed-but-JSON-safe artifact, e.g. one
-with a mismatched screen, is rejected here rather than silently entering the canonical library), inconsistent
-provenance/`betMode`/`stake` across outcomes (see "library homogeneity" above), a total weight that isn't a
-finite number greater than zero (covers both "sums to zero" and "the sum of otherwise-finite weights overflows
-to `Infinity`"), or content that isn't JSON-safe.
+list, an invalid or duplicate outcome `id`, an invalid `weight` (must be finite and `> 0`, never `0`) or
+`artifact.payoutMultiplier` (must be finite and `>= 0`), an invalid `artifact.stake` (must be finite and `> 0`),
+an artifact that fails validation (see "artifact validation" below), inconsistent provenance/`betMode`/`stake`
+across outcomes (see "library homogeneity" above), a total weight that isn't a finite number greater than zero
+(covers both "sums to zero" and "the sum of otherwise-finite weights overflows to `Infinity`"), or content that
+isn't JSON-safe.
 
-Outcomes are canonically sorted by `id` before the library is frozen, so building from the exact same set of
-outcomes always produces the exact same library — and therefore the exact same hash and
-`WeightedOutcomeLibraryAnalyzer` output — regardless of what order the caller happened to list them in.
+### Artifact validation always runs
+
+A real `RoundArtifactValidator` always validates every outcome's artifact, whether or not `artifactValidator` is
+given — that option can only ever add *further* checks on top of it, never replace it. A permissive custom
+validator (e.g. one that always reports no issues) can therefore never let a malformed `RoundArtifact` — a
+mismatched screen, an inconsistent `totalWin`, ... — through: it's rejected as `weighted-outcome-artifact-invalid`
+either way. Use `artifactValidator` to layer on extra, library- or game-specific invariants beyond what
+`RoundArtifactValidator` already covers, not to loosen its own checks.
+
+Outcomes are canonically sorted by `id` (plain code-point order, not locale-aware) before the library is frozen,
+so building from the exact same set of outcomes always produces the exact same library — and therefore the
+exact same hash and `WeightedOutcomeLibraryAnalyzer` output — regardless of what order the caller happened to
+list them in. `WeightedOutcomeLibraryValidator` checks this too: a hand-crafted library whose `outcomes` aren't
+already in that order is flagged as `weighted-outcome-library-outcomes-not-sorted`, since it could only have
+gotten that way by bypassing `buildWeightedOutcomeLibrary`.
 
 ```ts
 import {buildWeightedOutcomeLibrary} from "pokie";
@@ -156,20 +170,26 @@ guarantees) and does not re-validate; validate a library from an untrusted sourc
 
 ```ts
 class WeightedOutcomeLibraryValidator<T = string> implements ValidationRule<WeightedOutcomeLibrary<T>> {
+    // extraArtifactValidator is additive — RoundArtifactValidator always runs regardless, same as
+    // buildWeightedOutcomeLibrary's own artifactValidator option.
+    constructor(extraArtifactValidator?: ValidationRule<RoundArtifact<T>>);
     validate(library: WeightedOutcomeLibrary<T>): ValidationIssue[];
 }
 ```
 
 Reuses the existing generic `ValidationRule<T>` contract. Never throws, even for a malformed or hand-crafted
 library. Checks `libraryId`/`schemaVersion` (including that it's the currently supported version), that
-`outcomes` is non-empty with unique, non-empty `id`s and finite non-negative `weight`s summing to a finite
-number greater than zero (flagging the same `weighted-outcome-library-total-weight-invalid` issue whether the
-weights sum to zero *or* overflow to `Infinity`), that each outcome's `artifact.payoutMultiplier`/`artifact.stake`
-are finite (`stake` additionally must be `> 0`), that every outcome shares the same provenance/`betMode`/`stake`
-as the rest of the library (see "library homogeneity" above), and delegates full validation of each outcome's
-own `artifact` to `RoundArtifactValidator` (injectable via the constructor) — so "artifact consistency" is
-exactly `RoundArtifactValidator`'s own definition of validity, not a second one — plus an overall JSON-safety
-check.
+`outcomes` is non-empty with unique, non-empty `id`s **already in canonical ascending order**
+(`weighted-outcome-library-outcomes-not-sorted` otherwise) and finite `weight`s that are each strictly greater
+than zero, summing to a finite number greater than zero (flagging the same
+`weighted-outcome-library-total-weight-invalid` issue whether the weights sum to zero *or* overflow to
+`Infinity`), that each outcome's `artifact.payoutMultiplier`/`artifact.stake` are finite (`stake` additionally
+must be `> 0`), that every outcome shares the same provenance/`betMode`/`stake` as the rest of the library (see
+"library homogeneity" above), and always delegates full validation of each outcome's own `artifact` to a real
+`RoundArtifactValidator` — so "artifact consistency" is exactly `RoundArtifactValidator`'s own definition of
+validity, not a second one — plus an overall JSON-safety check. The constructor's `extraArtifactValidator` is
+additive the same way `buildWeightedOutcomeLibrary`'s `artifactValidator` option is (see "artifact validation
+always runs" above): it can only ever report *further* issues, never suppress `RoundArtifactValidator`'s own.
 
 ```ts
 const issues = new WeightedOutcomeLibraryValidator().validate(library);

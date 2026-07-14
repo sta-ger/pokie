@@ -4,6 +4,7 @@ import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {ValidationRule} from "../validation/ValidationRule.js";
+import {compareIds} from "./internal/compareIds.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION, type WeightedOutcomeLibrary} from "./WeightedOutcomeLibrary.js";
 import type {WeightedOutcome} from "./WeightedOutcome.js";
 
@@ -33,18 +34,22 @@ type OutcomeHomogeneityKey = {
 };
 
 // Structural invariants a WeightedOutcomeLibrary must satisfy regardless of how it was built or where it came
-// from — reuses the existing generic ValidationRule<T> contract (same as RoundArtifactValidator itself,
-// injected here rather than reimplemented) to validate each outcome's own RoundArtifact, so "artifact
-// consistency" is exactly RoundArtifactValidator's own definition of validity, not a second one. Never throws:
-// every check is defensive about the actual runtime shape of its input, and the top-level validate() wraps
-// everything in a catch-all so a genuinely malformed library still comes back as a ValidationIssue, not an
-// exception.
+// from — reuses the existing generic ValidationRule<T> contract (same as RoundArtifactValidator itself) to
+// validate each outcome's own RoundArtifact, so "artifact consistency" is exactly RoundArtifactValidator's own
+// definition of validity, not a second one. RoundArtifactValidator always runs, whether or not a constructor
+// `extraArtifactValidator` is given — that parameter can only ever add further issues on top, the same way
+// buildWeightedOutcomeLibrary's own `artifactValidator` option can't replace its RoundArtifactValidator run
+// either, so a permissive custom validator (e.g. one that always returns no issues) can never let a malformed
+// RoundArtifact through here. Never throws: every check is defensive about the actual runtime shape of its
+// input, and the top-level validate() wraps everything in a catch-all so a genuinely malformed library still
+// comes back as a ValidationIssue, not an exception.
 export class WeightedOutcomeLibraryValidator<T extends string | number = string>
 implements ValidationRule<WeightedOutcomeLibrary<T>> {
-    private readonly artifactValidator: ValidationRule<RoundArtifact<T>>;
+    private readonly roundArtifactValidator = new RoundArtifactValidator<T>();
+    private readonly extraArtifactValidator: ValidationRule<RoundArtifact<T>> | undefined;
 
-    constructor(artifactValidator: ValidationRule<RoundArtifact<T>> = new RoundArtifactValidator<T>()) {
-        this.artifactValidator = artifactValidator;
+    constructor(extraArtifactValidator?: ValidationRule<RoundArtifact<T>>) {
+        this.extraArtifactValidator = extraArtifactValidator;
     }
 
     public validate(library: WeightedOutcomeLibrary<T>): ValidationIssue[] {
@@ -119,6 +124,8 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
         const seenIds = new Set<string>();
         let totalWeight = 0;
         let reference: OutcomeHomogeneityKey | undefined;
+        let previousId: string | undefined;
+        let alreadyReportedUnsorted = false;
 
         l.outcomes.forEach((outcome: unknown, position: number) => {
             const o = outcome as Loose<WeightedOutcome<T>> | null;
@@ -139,22 +146,35 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
                     message: `outcome at position ${position} has an invalid id.`,
                     details: {position},
                 });
-            } else if (seenIds.has(o.id)) {
-                issues.push({
-                    code: "weighted-outcome-library-duplicate-id",
-                    severity: "error",
-                    message: `outcome id "${o.id}" is used by more than one outcome.`,
-                    details: {position, id: o.id},
-                });
             } else {
-                seenIds.add(o.id);
+                if (seenIds.has(o.id)) {
+                    issues.push({
+                        code: "weighted-outcome-library-duplicate-id",
+                        severity: "error",
+                        message: `outcome id "${o.id}" is used by more than one outcome.`,
+                        details: {position, id: o.id},
+                    });
+                } else {
+                    seenIds.add(o.id);
+                }
+
+                if (!alreadyReportedUnsorted && previousId !== undefined && compareIds(previousId, o.id) > 0) {
+                    issues.push({
+                        code: "weighted-outcome-library-outcomes-not-sorted",
+                        severity: "error",
+                        message: `outcomes must be canonically sorted by id — outcome at position ${position} ("${o.id}") comes before "${previousId}" at position ${position - 1}.`,
+                        details: {position},
+                    });
+                    alreadyReportedUnsorted = true;
+                }
+                previousId = o.id;
             }
 
-            if (!isFiniteNumber(o.weight) || o.weight < 0) {
+            if (!isFiniteNumber(o.weight) || o.weight <= 0) {
                 issues.push({
                     code: "weighted-outcome-weight-invalid",
                     severity: "error",
-                    message: `outcome at position ${position} has an invalid weight, got ${String(o.weight)}.`,
+                    message: `outcome at position ${position} has an invalid weight, got ${String(o.weight)}; must be a finite number > 0.`,
                     details: {position, weight: o.weight},
                 });
             } else {
@@ -212,13 +232,15 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
             });
         }
 
-        this.artifactValidator.validate(artifact as RoundArtifact<T>).forEach((issue) => {
-            issues.push({
-                ...issue,
-                message: `outcome at position ${position}: ${issue.message}`,
-                details: {...issue.details, outcomePosition: position},
-            });
-        });
+        [...this.roundArtifactValidator.validate(artifact as RoundArtifact<T>), ...(this.extraArtifactValidator?.validate(artifact as RoundArtifact<T>) ?? [])].forEach(
+            (issue) => {
+                issues.push({
+                    ...issue,
+                    message: `outcome at position ${position}: ${issue.message}`,
+                    details: {...issue.details, outcomePosition: position},
+                });
+            },
+        );
 
         const provenance = a.provenance as Loose<RoundArtifact<T>["provenance"]> | undefined;
         const game = provenance?.game as Loose<{id: unknown; version: unknown}> | undefined;

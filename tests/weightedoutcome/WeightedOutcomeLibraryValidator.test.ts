@@ -59,7 +59,7 @@ describe("WeightedOutcomeLibraryValidator", () => {
         expect(codesOf({...library, outcomes})).toContain("weighted-outcome-library-duplicate-id");
     });
 
-    it.each([-1, NaN, Infinity])("flags an invalid outcome weight %p", (weight) => {
+    it.each([0, -1, NaN, Infinity])("flags an invalid outcome weight %p", (weight) => {
         const library = validLibrary();
         const outcomes = [{...library.outcomes[0], weight}, ...library.outcomes.slice(1)];
         expect(codesOf({...library, outcomes})).toContain("weighted-outcome-weight-invalid");
@@ -173,12 +173,35 @@ describe("WeightedOutcomeLibraryValidator", () => {
         ).not.toThrow();
     });
 
-    it("accepts an injected artifact validator instead of the default RoundArtifactValidator", () => {
+    it("lets an injected extra artifact validator add its own issue on top of RoundArtifactValidator's own", () => {
         const alwaysFails = {validate: () => [{code: "custom-issue", severity: "error" as const, message: "nope"}]};
         const library = validLibrary();
 
         const issues = new WeightedOutcomeLibraryValidator(alwaysFails).validate(library);
 
         expect(issues.filter((issue) => issue.code === "custom-issue")).toHaveLength(library.outcomes.length);
+    });
+
+    it("still runs RoundArtifactValidator even with a permissive injected extra validator, catching a malformed artifact", () => {
+        const permissive = {validate: () => []};
+        const library = validLibrary();
+        const badArtifact = {...library.outcomes[0].artifact, screen: [["Z", "Z", "Z"]]};
+        const outcomes = [{...library.outcomes[0], artifact: badArtifact}, ...library.outcomes.slice(1)];
+
+        const issues = new WeightedOutcomeLibraryValidator(permissive).validate({...library, outcomes});
+
+        expect(issues.map((issue) => issue.code)).toContain("round-artifact-screen-mismatch");
+    });
+
+    it("flags a hand-crafted library whose outcomes are not canonically sorted by id", () => {
+        const library = validLibrary();
+        const reversed = [...library.outcomes].reverse();
+
+        expect(codesOf({...library, outcomes: reversed})).toContain("weighted-outcome-library-outcomes-not-sorted");
+    });
+
+    it("does not flag an already-sorted library as unsorted", () => {
+        const library = validLibrary();
+        expect(codesOf(library)).not.toContain("weighted-outcome-library-outcomes-not-sorted");
     });
 });

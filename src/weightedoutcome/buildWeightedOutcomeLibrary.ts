@@ -4,6 +4,7 @@ import {deepFreeze} from "../internal/deepFreeze.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationRule} from "../validation/ValidationRule.js";
+import {compareIds} from "./internal/compareIds.js";
 import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION, type WeightedOutcomeLibrary} from "./WeightedOutcomeLibrary.js";
 import {WeightedOutcomeLibraryBuildError} from "./WeightedOutcomeLibraryBuildError.js";
 import type {WeightedOutcome} from "./WeightedOutcome.js";
@@ -18,9 +19,10 @@ export type WeightedOutcomeLibraryBuildOptions<T extends string | number = strin
     libraryId: string;
     outcomes: readonly WeightedOutcomeInput<T>[];
     schemaVersion?: number;
-    // Injectable the same way WeightedOutcomeLibraryValidator's own artifact validator is — defaults to a real
-    // RoundArtifactValidator, so a malformed-but-JSON-safe artifact (mismatched screen, inconsistent totalWin,
-    // ...) is rejected here at build time rather than only being caught later by a separate validation pass.
+    // A real RoundArtifactValidator always runs against every outcome's artifact, regardless of this option —
+    // this is only ever an *additional* check, never a replacement for it (so a permissive custom validator can
+    // never let a malformed RoundArtifact through). Use it to layer on extra, library- or game-specific
+    // invariants beyond what RoundArtifactValidator already covers.
     artifactValidator?: ValidationRule<RoundArtifact<T>>;
 };
 
@@ -36,18 +38,6 @@ type OutcomeHomogeneityKey = {
     stake: number;
 };
 
-// Plain code-point comparison (not localeCompare, which can vary by locale/ICU version) — the canonical id
-// order needs to be identical everywhere this library might be built, not just consistent within one machine.
-function compareIds(a: string, b: string): number {
-    if (a < b) {
-        return -1;
-    }
-    if (a > b) {
-        return 1;
-    }
-    return 0;
-}
-
 function homogeneityKeyOf<T extends string | number>(artifact: RoundArtifact<T>): OutcomeHomogeneityKey {
     return {
         gameId: artifact.provenance.game.id,
@@ -62,11 +52,19 @@ function homogeneityKeyOf<T extends string | number>(artifact: RoundArtifact<T>)
 // The one place a WeightedOutcomeLibrary is assembled — always from already-built RoundArtifacts, never a
 // second calculation path. Fails fast with WeightedOutcomeLibraryBuildError — before any library is ever
 // returned — on: an invalid libraryId/schemaVersion, an empty outcomes list, an invalid or duplicate outcome
-// id, an invalid weight or artifact.payoutMultiplier, an invalid (non-finite or <= 0) artifact.stake, an
-// artifact that fails RoundArtifactValidator, a total weight that isn't a finite number > 0 (covers both
-// "sums to zero" and "the sum of otherwise-finite weights overflows to Infinity"), content that isn't
-// JSON-safe, or a library whose outcomes don't all share the same game id/version/configHash/pokieVersion/
-// betMode/stake.
+// id, an invalid (non-finite or <= 0) weight or artifact.payoutMultiplier, an invalid (non-finite or <= 0)
+// artifact.stake, an artifact that fails RoundArtifactValidator (always run — see "artifact validation" below),
+// a total weight that isn't a finite number > 0 (covers both "sums to zero" and "the sum of otherwise-finite
+// weights overflows to Infinity"), content that isn't JSON-safe, or a library whose outcomes don't all share
+// the same game id/version/configHash/pokieVersion/betMode/stake.
+//
+// A weight of exactly 0 is rejected, not just a negative one: a zero-weight outcome can never actually occur
+// (by definition) and contributes nothing to any statistic, so admitting it would only let a caller believe a
+// jackpot (or any other outcome) is "in" the library's analysis when it can never actually be drawn.
+//
+// Artifact validation — RoundArtifactValidator always runs against every outcome's artifact, whether or not an
+// `artifactValidator` option is given; that option can only ever add further checks on top; a permissive custom
+// validator (e.g. one that always returns no issues) can never let a malformed RoundArtifact through.
 //
 // That last check — "library homogeneity" — exists because a WeightedOutcomeLibrary models the distribution of
 // results for one specific paid bet (see docs/weighted-outcome-library.md): every outcome's artifact.stake must
@@ -103,7 +101,8 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
             `schemaVersion must be the current supported version (${WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION}), got ${String(schemaVersion)}.`,
         );
     }
-    const artifactValidator: ValidationRule<RoundArtifact<T>> = options.artifactValidator ?? new RoundArtifactValidator<T>();
+    const roundArtifactValidator = new RoundArtifactValidator<T>();
+    const extraArtifactValidator: ValidationRule<RoundArtifact<T>> | undefined = options.artifactValidator;
 
     const seenIds = new Set<string>();
     let reference: OutcomeHomogeneityKey | undefined;
@@ -122,10 +121,10 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
         }
         seenIds.add(input.id);
 
-        if (!Number.isFinite(input.weight) || input.weight < 0) {
+        if (!Number.isFinite(input.weight) || input.weight <= 0) {
             throw new WeightedOutcomeLibraryBuildError(
                 "weighted-outcome-weight-invalid",
-                `outcome "${input.id}" has an invalid weight (${input.weight}); must be a finite number >= 0.`,
+                `outcome "${input.id}" has an invalid weight (${input.weight}); must be a finite number > 0.`,
             );
         }
 
@@ -143,7 +142,10 @@ export function buildWeightedOutcomeLibrary<T extends string | number = string>(
             );
         }
 
-        const artifactIssues = artifactValidator.validate(input.artifact);
+        const artifactIssues = [
+            ...roundArtifactValidator.validate(input.artifact),
+            ...(extraArtifactValidator?.validate(input.artifact) ?? []),
+        ];
         if (artifactIssues.length > 0) {
             throw new WeightedOutcomeLibraryBuildError(
                 "weighted-outcome-artifact-invalid",

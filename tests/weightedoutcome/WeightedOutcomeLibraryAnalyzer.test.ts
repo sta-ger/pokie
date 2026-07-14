@@ -1,7 +1,23 @@
-import {WeightedOutcomeLibraryAnalyzer, buildWeightedOutcomeLibrary} from "pokie";
+import {WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryBuildError, buildWeightedOutcomeLibrary} from "pokie";
 import {artifactWithTotalWin} from "./WeightedOutcomeTestFixtures.js";
 
 describe("WeightedOutcomeLibraryAnalyzer", () => {
+    it("never lets a zero-weight jackpot reach analysis — buildWeightedOutcomeLibrary rejects it first", () => {
+        expect(() =>
+            buildWeightedOutcomeLibrary({
+                libraryId: "lib-zero-weight-jackpot",
+                outcomes: [
+                    {id: "no-win", weight: 95, artifact: artifactWithTotalWin("r1", 0)},
+                    {id: "small-win", weight: 5, artifact: artifactWithTotalWin("r2", 2)},
+                    {id: "jackpot", weight: 0, artifact: artifactWithTotalWin("r3", 10000)},
+                ],
+            }),
+        ).toThrow(WeightedOutcomeLibraryBuildError);
+        // Since the library can never be built, there is no WeightedOutcomeLibrary to hand to
+        // WeightedOutcomeLibraryAnalyzer.analyze() in the first place — the zero-weight jackpot can never
+        // silently show up in (or skew) any exact statistic.
+    });
+
     it("computes exact weighted statistics for a hand-computable 3-outcome library", () => {
         // weight 70: totalWin 0 (payoutMultiplier 0)
         // weight 25: totalWin 2 (payoutMultiplier 2, stake fixed at 1)

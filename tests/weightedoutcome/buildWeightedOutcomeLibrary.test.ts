@@ -111,20 +111,11 @@ describe("buildWeightedOutcomeLibrary", () => {
             ).toBe("weighted-outcome-library-duplicate-id");
         });
 
-        it.each([-1, NaN, Infinity])("throws for an outcome weight %p", (weight) => {
+        it.each([0, -1, NaN, Infinity])("throws for an outcome weight %p", (weight) => {
             const artifact = artifactWithTotalWin("r1", 0);
             expect(
                 getCode(() => buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight, artifact}]})),
             ).toBe("weighted-outcome-weight-invalid");
-        });
-
-        it("throws when every outcome weight is zero (total weight must be > 0)", () => {
-            const artifact = artifactWithTotalWin("r1", 0);
-            expect(
-                getCode(() =>
-                    buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 0, artifact}]}),
-                ),
-            ).toBe("weighted-outcome-library-total-weight-invalid");
         });
 
         it.each([-1, NaN, Infinity])("throws for an invalid artifact.payoutMultiplier %p", (payoutMultiplier) => {
@@ -306,6 +297,47 @@ describe("buildWeightedOutcomeLibrary", () => {
             });
 
             expect(library.outcomes.map((outcome) => outcome.id)).toEqual(["alpha", "bravo", "charlie"]);
+        });
+    });
+
+    describe("custom artifact validator", () => {
+        it("still rejects a malformed-but-JSON-safe artifact even with a permissive custom validator injected", () => {
+            const permissive = {validate: () => []};
+            const artifact = {...artifactWithTotalWin("r1", 0), screen: [["Z", "Z", "Z"]]};
+
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [{id: "a", weight: 1, artifact}],
+                        artifactValidator: permissive,
+                    }),
+                ),
+            ).toBe("weighted-outcome-artifact-invalid");
+        });
+
+        it("rejects an otherwise-valid artifact when the additional custom validator itself reports an issue", () => {
+            const alwaysFails = {
+                validate: () => [{code: "custom-rule-violated", severity: "error" as const, message: "nope"}],
+            };
+            const artifact = artifactWithTotalWin("r1", 0);
+
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [{id: "a", weight: 1, artifact}],
+                        artifactValidator: alwaysFails,
+                    }),
+                ),
+            ).toBe("weighted-outcome-artifact-invalid");
+        });
+
+        it("builds successfully without a custom validator when the artifact is genuinely valid", () => {
+            const artifact = artifactWithTotalWin("r1", 0);
+            expect(() =>
+                buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
+            ).not.toThrow();
         });
     });
 
