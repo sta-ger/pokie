@@ -38,6 +38,20 @@ therefore the exact same library hash.
 Both types are deeply readonly and deeply frozen once built — a `WeightedOutcome`'s own `artifact` isn't
 separately deep-copied, since a `RoundArtifact` is already immutable by construction (built via `buildRoundArtifact`).
 
+### Library homogeneity: one library is one paid bet
+
+Every outcome in a library must describe the **same** underlying, paid round: the same
+`provenance.game.id`/`provenance.game.version`/`provenance.configHash`/`provenance.pokieVersion`, the same
+`betMode`, and the same `stake` — and that `stake` must be a positive number, never `0`. A library mixes results
+for one specific bet; it isn't a place to combine spins from different games, configs, or bet sizes.
+
+In particular, **a free-games (or any other multi-step) round belongs inside the same `RoundArtifact` as the
+base-game spin that paid for it** — as additional `steps` (`RoundArtifact` already supports multi-step rounds
+natively, see [Round Artifacts](round-artifacts.md)) — not as a second, separate outcome with `stake: 0` mixed
+into this library. A `WeightedOutcome` with `stake: 0` would have no way to contribute to `rtp` correctly (its
+`payoutMultiplier` would be `0` regardless of how big its free-games win was), so `buildWeightedOutcomeLibrary`
+rejects it outright.
+
 ## Building
 
 ```ts
@@ -45,13 +59,23 @@ function buildWeightedOutcomeLibrary<T = string>(options: {
     libraryId: string;
     outcomes: readonly {id: string; weight: number; artifact: RoundArtifact<T>}[];
     schemaVersion?: number;
+    artifactValidator?: ValidationRule<RoundArtifact<T>>; // defaults to a real RoundArtifactValidator
 }): WeightedOutcomeLibrary<T>;
 ```
 
 Fails fast with **`WeightedOutcomeLibraryBuildError`** (`getCode()`/`message`) on: an invalid `libraryId`/
 `schemaVersion` (only the current `WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION` is accepted), an empty `outcomes`
 list, an invalid or duplicate outcome `id`, an invalid `weight` or `artifact.payoutMultiplier` (both must be
-finite numbers `>= 0`), a total weight that sums to zero, or content that isn't JSON-safe.
+finite numbers `>= 0`), an invalid `artifact.stake` (must be finite and `> 0`), an artifact that fails
+`RoundArtifactValidator` (injectable via `artifactValidator` — so a malformed-but-JSON-safe artifact, e.g. one
+with a mismatched screen, is rejected here rather than silently entering the canonical library), inconsistent
+provenance/`betMode`/`stake` across outcomes (see "library homogeneity" above), a total weight that isn't a
+finite number greater than zero (covers both "sums to zero" and "the sum of otherwise-finite weights overflows
+to `Infinity`"), or content that isn't JSON-safe.
+
+Outcomes are canonically sorted by `id` before the library is frozen, so building from the exact same set of
+outcomes always produces the exact same library — and therefore the exact same hash and
+`WeightedOutcomeLibraryAnalyzer` output — regardless of what order the caller happened to list them in.
 
 ```ts
 import {buildWeightedOutcomeLibrary} from "pokie";
@@ -104,17 +128,26 @@ class WeightedOutcomeLibraryAnalyzer<T = string> {
 
 `rtp`/`variance`/`standardDeviation` are all defined over each outcome's own `artifact.payoutMultiplier` (a
 stake-normalized return ratio) — the same convention `SimulationStatistics.rtp` uses (the mean of per-round
-payout/bet ratios, not `totalPayout/totalBet`), so the result stays correct even when outcomes mix different
-stakes (e.g. base-game spins alongside zero-stake free-games outcomes). `hitFrequency`/`zeroWinFrequency` are the
-weighted share of outcomes with `totalWin > 0` / `totalWin === 0` (they always sum to 1). `maxWin`/
-`maxWinProbability` are the one exception to the "everything is a ratio" rule: they report the raw currency
-`totalWin` (matching `SimulationStatistics.maxWin`'s own meaning) and the weighted probability of hitting it,
-since "the biggest win this library can produce" is inherently a statement about actual payout.
+payout/bet ratios, not `totalPayout/totalBet`). `hitFrequency`/`zeroWinFrequency` are the weighted share of
+outcomes with `totalWin > 0` / `totalWin === 0` (they always sum to 1). `maxWin`/`maxWinProbability` are the one
+exception to the "everything is a ratio" rule: they report the raw currency `totalWin` (matching
+`SimulationStatistics.maxWin`'s own meaning) and the weighted probability of hitting it, since "the biggest win
+this library can produce" is inherently a statement about actual payout — this is safe precisely *because*
+every outcome shares the same `stake` (see "library homogeneity" above), so comparing raw `totalWin` values
+across outcomes is meaningful.
 
-`payoutDistribution` is an **exact** probability mass function — one entry per distinct `payoutMultiplier` value
-actually present among the outcomes (grouped at a fixed floating-point precision, so division noise never splits
-one payout level into several near-identical buckets), sorted ascending, with `probability` values summing to 1 —
-not a binned histogram the way `pokie sim`'s Monte Carlo `payoutHistogram` is.
+Every weighted sum normalizes each outcome's weight (divides by `totalWeight`) *before* multiplying by whatever
+it's being weighted by, rather than summing raw `weight * value` products and dividing once at the end — so
+`rtp`/`variance`/`hitFrequency`/`maxWinProbability` can only come out `NaN`/`Infinity` if the true mathematical
+result actually is one of those, never as an artifact of summation order (a `weight` near `Number.MAX_VALUE`
+multiplied directly by a `payoutMultiplier` can overflow even when the correctly-computed weighted mean would
+not).
+
+`payoutDistribution` is an **exact** probability mass function — one entry per *exactly* distinct
+`payoutMultiplier` value actually present among the outcomes (grouped by strict numeric equality, not by
+rounding to some fixed precision — two outcomes whose multipliers differ by any amount, however small, always
+get separate entries), sorted ascending, with `probability` values summing to 1 — not a binned histogram the way
+`pokie sim`'s Monte Carlo `payoutHistogram` is.
 
 `WeightedOutcomeLibraryAnalyzer` assumes its input is already a validly-built library (as `buildWeightedOutcomeLibrary`
 guarantees) and does not re-validate; validate a library from an untrusted source first.
@@ -129,11 +162,14 @@ class WeightedOutcomeLibraryValidator<T = string> implements ValidationRule<Weig
 
 Reuses the existing generic `ValidationRule<T>` contract. Never throws, even for a malformed or hand-crafted
 library. Checks `libraryId`/`schemaVersion` (including that it's the currently supported version), that
-`outcomes` is non-empty with unique, non-empty `id`s and finite non-negative `weight`s summing to more than
-zero, that each outcome's `artifact.payoutMultiplier` is finite and non-negative, and delegates full validation
-of each outcome's own `artifact` to `RoundArtifactValidator` (injectable via the constructor) — so "artifact
-consistency" is exactly `RoundArtifactValidator`'s own definition of validity, not a second one — plus an
-overall JSON-safety check.
+`outcomes` is non-empty with unique, non-empty `id`s and finite non-negative `weight`s summing to a finite
+number greater than zero (flagging the same `weighted-outcome-library-total-weight-invalid` issue whether the
+weights sum to zero *or* overflow to `Infinity`), that each outcome's `artifact.payoutMultiplier`/`artifact.stake`
+are finite (`stake` additionally must be `> 0`), that every outcome shares the same provenance/`betMode`/`stake`
+as the rest of the library (see "library homogeneity" above), and delegates full validation of each outcome's
+own `artifact` to `RoundArtifactValidator` (injectable via the constructor) — so "artifact consistency" is
+exactly `RoundArtifactValidator`'s own definition of validity, not a second one — plus an overall JSON-safety
+check.
 
 ```ts
 const issues = new WeightedOutcomeLibraryValidator().validate(library);

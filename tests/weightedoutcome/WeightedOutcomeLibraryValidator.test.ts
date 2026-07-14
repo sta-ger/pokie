@@ -71,6 +71,48 @@ describe("WeightedOutcomeLibraryValidator", () => {
         expect(codesOf({...library, outcomes})).toContain("weighted-outcome-library-total-weight-invalid");
     });
 
+    it("flags a total weight that overflows to Infinity with the same code as summing to zero", () => {
+        const library = validLibrary();
+        const outcomes = library.outcomes.map((outcome) => ({...outcome, weight: Number.MAX_VALUE}));
+        expect(codesOf({...library, outcomes})).toContain("weighted-outcome-library-total-weight-invalid");
+    });
+
+    it.each([0, -1, NaN, Infinity])("flags an invalid artifact.stake %p", (stake) => {
+        const library = validLibrary();
+        const outcomes = [
+            {...library.outcomes[0], artifact: {...library.outcomes[0].artifact, stake}},
+            ...library.outcomes.slice(1),
+        ];
+        expect(codesOf({...library, outcomes})).toContain("weighted-outcome-stake-invalid");
+    });
+
+    it("flags an outcome with different provenance.game.id than the rest of the library", () => {
+        const library = validLibrary();
+        const inconsistentArtifact = {
+            ...library.outcomes[0].artifact,
+            provenance: {
+                ...library.outcomes[0].artifact.provenance,
+                game: {...library.outcomes[0].artifact.provenance.game, id: "other-game"},
+            },
+        };
+        const outcomes = [{...library.outcomes[0], artifact: inconsistentArtifact}, ...library.outcomes.slice(1)];
+        expect(codesOf({...library, outcomes})).toContain("weighted-outcome-library-inconsistent-provenance");
+    });
+
+    it("flags an outcome with different betMode than the rest of the library", () => {
+        const library = validLibrary();
+        const inconsistentArtifact = {...library.outcomes[0].artifact, betMode: "freeGames"};
+        const outcomes = [{...library.outcomes[0], artifact: inconsistentArtifact}, ...library.outcomes.slice(1)];
+        expect(codesOf({...library, outcomes})).toContain("weighted-outcome-library-inconsistent-bet-mode");
+    });
+
+    it("flags an outcome with different stake than the rest of the library", () => {
+        const library = validLibrary();
+        const inconsistentArtifact = {...library.outcomes[0].artifact, stake: library.outcomes[0].artifact.stake + 1};
+        const outcomes = [{...library.outcomes[0], artifact: inconsistentArtifact}, ...library.outcomes.slice(1)];
+        expect(codesOf({...library, outcomes})).toContain("weighted-outcome-library-inconsistent-stake");
+    });
+
     it.each([-1, NaN, Infinity])("flags an invalid artifact.payoutMultiplier %p", (payoutMultiplier) => {
         const library = validLibrary();
         const outcomes = [

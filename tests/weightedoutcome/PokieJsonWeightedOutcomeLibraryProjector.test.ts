@@ -60,6 +60,35 @@ describe("PokieJsonWeightedOutcomeLibraryProjector", () => {
         expect(computeWeightedOutcomeLibraryHash(reordered)).toBe(computeWeightedOutcomeLibraryHash(library));
     });
 
+    it("produces the same hash regardless of the order outcomes were supplied to the builder in", () => {
+        const a = artifactWithTotalWin("r1", 0);
+        const b = artifactWithTotalWin("r2", 2);
+        const c = artifactWithTotalWin("r3", 100);
+
+        const libraryOne = buildWeightedOutcomeLibrary({
+            libraryId: "lib-order",
+            outcomes: [
+                {id: "jackpot", weight: 5, artifact: c},
+                {id: "no-win", weight: 70, artifact: a},
+                {id: "small-win", weight: 25, artifact: b},
+            ],
+        });
+        const libraryTwo = buildWeightedOutcomeLibrary({
+            libraryId: "lib-order",
+            outcomes: [
+                {id: "small-win", weight: 25, artifact: b},
+                {id: "jackpot", weight: 5, artifact: c},
+                {id: "no-win", weight: 70, artifact: a},
+            ],
+        });
+
+        expect(libraryOne.outcomes.map((outcome) => outcome.id)).toEqual(libraryTwo.outcomes.map((outcome) => outcome.id));
+        expect(computeWeightedOutcomeLibraryHash(libraryOne)).toBe(computeWeightedOutcomeLibraryHash(libraryTwo));
+
+        const projector = new PokieJsonWeightedOutcomeLibraryProjector();
+        expect(projector.project(libraryOne).hash).toBe(projector.project(libraryTwo).hash);
+    });
+
     it("changes the hash when a semantic field changes", () => {
         const library = sampleLibrary();
         const changed: WeightedOutcomeLibrary<string> = {

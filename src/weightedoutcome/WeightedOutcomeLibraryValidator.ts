@@ -20,6 +20,18 @@ function isFiniteNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value);
 }
 
+// A single outcome's provenance/betMode/stake, compared against the library's first structurally-valid outcome
+// — mirrors buildWeightedOutcomeLibrary's own homogeneity key exactly, so the builder's fail-fast checks and
+// this validator's post-hoc diagnostics agree on what "homogeneous" means.
+type OutcomeHomogeneityKey = {
+    gameId: unknown;
+    gameVersion: unknown;
+    configHash: unknown;
+    pokieVersion: unknown;
+    betMode: unknown;
+    stake: unknown;
+};
+
 // Structural invariants a WeightedOutcomeLibrary must satisfy regardless of how it was built or where it came
 // from — reuses the existing generic ValidationRule<T> contract (same as RoundArtifactValidator itself,
 // injected here rather than reimplemented) to validate each outcome's own RoundArtifact, so "artifact
@@ -106,6 +118,7 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
 
         const seenIds = new Set<string>();
         let totalWeight = 0;
+        let reference: OutcomeHomogeneityKey | undefined;
 
         l.outcomes.forEach((outcome: unknown, position: number) => {
             const o = outcome as Loose<WeightedOutcome<T>> | null;
@@ -148,19 +161,26 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
                 totalWeight += o.weight;
             }
 
-            this.validateOutcomeArtifact(o.artifact, position, issues);
+            reference = this.validateOutcomeArtifact(o.artifact, position, reference, issues);
         });
 
-        if (totalWeight <= 0) {
+        if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
             issues.push({
                 code: "weighted-outcome-library-total-weight-invalid",
                 severity: "error",
-                message: `the sum of all outcome weights must be > 0, got ${totalWeight}.`,
+                message: `the sum of all outcome weights must be a finite number > 0, got ${totalWeight}.`,
             });
         }
     }
 
-    private validateOutcomeArtifact(artifact: unknown, position: number, issues: ValidationIssue[]): void {
+    // Returns the homogeneity reference to use for subsequent outcomes: the one passed in, unless this is the
+    // first structurally-valid artifact seen (in which case this outcome's own key becomes the reference).
+    private validateOutcomeArtifact(
+        artifact: unknown,
+        position: number,
+        reference: OutcomeHomogeneityKey | undefined,
+        issues: ValidationIssue[],
+    ): OutcomeHomogeneityKey | undefined {
         if (typeof artifact !== "object" || artifact === null) {
             issues.push({
                 code: "weighted-outcome-artifact-invalid",
@@ -168,16 +188,27 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
                 message: `outcome at position ${position} must have an artifact object.`,
                 details: {position},
             });
-            return;
+            return reference;
         }
+        const a = artifact as Loose<RoundArtifact<T>>;
 
-        const payoutMultiplier = (artifact as Loose<RoundArtifact<T>>).payoutMultiplier;
+        const payoutMultiplier = a.payoutMultiplier;
         if (!isFiniteNumber(payoutMultiplier) || payoutMultiplier < 0) {
             issues.push({
                 code: "weighted-outcome-payout-multiplier-invalid",
                 severity: "error",
                 message: `outcome at position ${position} has an invalid artifact.payoutMultiplier, got ${String(payoutMultiplier)}.`,
                 details: {position, payoutMultiplier},
+            });
+        }
+
+        const stake = a.stake;
+        if (!isFiniteNumber(stake) || stake <= 0) {
+            issues.push({
+                code: "weighted-outcome-stake-invalid",
+                severity: "error",
+                message: `outcome at position ${position} has an invalid artifact.stake, got ${String(stake)}; must be a finite number > 0.`,
+                details: {position, stake},
             });
         }
 
@@ -188,6 +219,53 @@ implements ValidationRule<WeightedOutcomeLibrary<T>> {
                 details: {...issue.details, outcomePosition: position},
             });
         });
+
+        const provenance = a.provenance as Loose<RoundArtifact<T>["provenance"]> | undefined;
+        const game = provenance?.game as Loose<{id: unknown; version: unknown}> | undefined;
+        const current: OutcomeHomogeneityKey = {
+            gameId: game?.id,
+            gameVersion: game?.version,
+            configHash: provenance?.configHash,
+            pokieVersion: provenance?.pokieVersion,
+            betMode: a.betMode,
+            stake,
+        };
+
+        if (reference === undefined) {
+            return current;
+        }
+
+        if (
+            current.gameId !== reference.gameId ||
+            current.gameVersion !== reference.gameVersion ||
+            current.configHash !== reference.configHash ||
+            current.pokieVersion !== reference.pokieVersion
+        ) {
+            issues.push({
+                code: "weighted-outcome-library-inconsistent-provenance",
+                severity: "error",
+                message: `outcome at position ${position} has different provenance (game id/version, configHash, or pokieVersion) than the library's other outcomes.`,
+                details: {position},
+            });
+        }
+        if (current.betMode !== reference.betMode) {
+            issues.push({
+                code: "weighted-outcome-library-inconsistent-bet-mode",
+                severity: "error",
+                message: `outcome at position ${position} has betMode ${JSON.stringify(current.betMode)}, expected ${JSON.stringify(reference.betMode)}.`,
+                details: {position},
+            });
+        }
+        if (current.stake !== reference.stake) {
+            issues.push({
+                code: "weighted-outcome-library-inconsistent-stake",
+                severity: "error",
+                message: `outcome at position ${position} has stake ${String(current.stake)}, expected ${String(reference.stake)}.`,
+                details: {position},
+            });
+        }
+
+        return reference;
     }
 
     private validateJsonSafety(library: WeightedOutcomeLibrary<T>, issues: ValidationIssue[]): void {

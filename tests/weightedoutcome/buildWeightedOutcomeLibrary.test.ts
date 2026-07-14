@@ -4,7 +4,11 @@ import {
     WeightedOutcomeLibraryBuildError,
     buildWeightedOutcomeLibrary,
 } from "pokie";
-import {artifactWithTotalWin} from "./WeightedOutcomeTestFixtures.js";
+import {
+    artifactWith,
+    artifactWithTotalWin,
+    testProvenance,
+} from "./WeightedOutcomeTestFixtures.js";
 
 function getCode(fn: () => unknown): string {
     try {
@@ -132,15 +136,176 @@ describe("buildWeightedOutcomeLibrary", () => {
             ).toBe("weighted-outcome-payout-multiplier-invalid");
         });
 
-        it("throws when a hand-crafted artifact is not JSON-safe (cyclic debug)", () => {
+        it("throws when a hand-crafted artifact is not JSON-safe (cyclic debug), caught by the per-outcome artifact validation", () => {
             const cyclic: Record<string, unknown> = {};
             cyclic.self = cyclic;
             const artifact = {...artifactWithTotalWin("r1", 0), debug: cyclic} as unknown as RoundArtifact<string>;
+            // RoundArtifactValidator itself checks JSON safety, so this is caught by the per-outcome delegation
+            // (item 5) before the library's own final toCanonicalJson pass would ever see it.
             expect(
                 getCode(() =>
                     buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
                 ),
-            ).toBe("weighted-outcome-library-not-json-safe");
+            ).toBe("weighted-outcome-artifact-invalid");
+        });
+
+        it.each([0, -1, NaN, Infinity])("throws for an invalid artifact.stake %p", (stake) => {
+            const artifact = {...artifactWithTotalWin("r1", 0), stake};
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
+                ),
+            ).toBe("weighted-outcome-stake-invalid");
+        });
+
+        it("throws for a malformed-but-JSON-safe artifact (mismatched screen), never reaching the canonical library", () => {
+            const artifact = {...artifactWithTotalWin("r1", 0), screen: [["Z", "Z", "Z"]]};
+            const code = getCode(() =>
+                buildWeightedOutcomeLibrary({libraryId: "lib-1", outcomes: [{id: "a", weight: 1, artifact}]}),
+            );
+            expect(code).toBe("weighted-outcome-artifact-invalid");
+        });
+
+        it("throws for a total weight that overflows to Infinity even though every individual weight is finite", () => {
+            const a = artifactWithTotalWin("r1", 1);
+            const b = artifactWithTotalWin("r2", 2);
+            expect(Number.isFinite(Number.MAX_VALUE)).toBe(true);
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [
+                            {id: "a", weight: Number.MAX_VALUE, artifact: a},
+                            {id: "b", weight: Number.MAX_VALUE, artifact: b},
+                        ],
+                    }),
+                ),
+            ).toBe("weighted-outcome-library-total-weight-invalid");
+        });
+    });
+
+    describe("library homogeneity", () => {
+        it("throws when outcomes have different provenance.game.id", () => {
+            const a = artifactWithTotalWin("r1", 0);
+            const b = artifactWith({
+                roundId: "r2",
+                totalWin: 0,
+                provenance: {...testProvenance, game: {...testProvenance.game, id: "other-game"}},
+            });
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [
+                            {id: "a", weight: 1, artifact: a},
+                            {id: "b", weight: 1, artifact: b},
+                        ],
+                    }),
+                ),
+            ).toBe("weighted-outcome-library-inconsistent-provenance");
+        });
+
+        it("throws when outcomes have different provenance.game.version", () => {
+            const a = artifactWithTotalWin("r1", 0);
+            const b = artifactWith({
+                roundId: "r2",
+                totalWin: 0,
+                provenance: {...testProvenance, game: {...testProvenance.game, version: "9.9.9"}},
+            });
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [
+                            {id: "a", weight: 1, artifact: a},
+                            {id: "b", weight: 1, artifact: b},
+                        ],
+                    }),
+                ),
+            ).toBe("weighted-outcome-library-inconsistent-provenance");
+        });
+
+        it("throws when outcomes have different provenance.configHash", () => {
+            const a = artifactWith({roundId: "r1", totalWin: 0, provenance: {...testProvenance, configHash: "hash-a"}});
+            const b = artifactWith({roundId: "r2", totalWin: 0, provenance: {...testProvenance, configHash: "hash-b"}});
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [
+                            {id: "a", weight: 1, artifact: a},
+                            {id: "b", weight: 1, artifact: b},
+                        ],
+                    }),
+                ),
+            ).toBe("weighted-outcome-library-inconsistent-provenance");
+        });
+
+        it("throws when outcomes have different provenance.pokieVersion", () => {
+            const a = artifactWithTotalWin("r1", 0);
+            const b = artifactWith({roundId: "r2", totalWin: 0, provenance: {...testProvenance, pokieVersion: "9.9.9"}});
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [
+                            {id: "a", weight: 1, artifact: a},
+                            {id: "b", weight: 1, artifact: b},
+                        ],
+                    }),
+                ),
+            ).toBe("weighted-outcome-library-inconsistent-provenance");
+        });
+
+        it("throws when outcomes have different betMode", () => {
+            const a = artifactWithTotalWin("r1", 0);
+            const b = artifactWith({roundId: "r2", totalWin: 0, betMode: "freeGames"});
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [
+                            {id: "a", weight: 1, artifact: a},
+                            {id: "b", weight: 1, artifact: b},
+                        ],
+                    }),
+                ),
+            ).toBe("weighted-outcome-library-inconsistent-bet-mode");
+        });
+
+        it("throws when outcomes have different stake", () => {
+            const a = artifactWithTotalWin("r1", 0);
+            const b = artifactWith({roundId: "r2", totalWin: 0, stake: 2});
+            expect(
+                getCode(() =>
+                    buildWeightedOutcomeLibrary({
+                        libraryId: "lib-1",
+                        outcomes: [
+                            {id: "a", weight: 1, artifact: a},
+                            {id: "b", weight: 1, artifact: b},
+                        ],
+                    }),
+                ),
+            ).toBe("weighted-outcome-library-inconsistent-stake");
+        });
+    });
+
+    describe("canonical ordering", () => {
+        it("sorts outcomes by id regardless of the input order", () => {
+            const a = artifactWithTotalWin("r1", 0);
+            const b = artifactWithTotalWin("r2", 1);
+            const c = artifactWithTotalWin("r3", 2);
+
+            const library = buildWeightedOutcomeLibrary({
+                libraryId: "lib-1",
+                outcomes: [
+                    {id: "charlie", weight: 1, artifact: c},
+                    {id: "alpha", weight: 1, artifact: a},
+                    {id: "bravo", weight: 1, artifact: b},
+                ],
+            });
+
+            expect(library.outcomes.map((outcome) => outcome.id)).toEqual(["alpha", "bravo", "charlie"]);
         });
     });
 

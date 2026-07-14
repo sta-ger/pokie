@@ -101,6 +101,47 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
         expect(analysis.payoutDistribution).toEqual([{payoutMultiplier: 0, probability: 1}]);
     });
 
+    it("keeps rtp/variance finite when weight*payoutMultiplier would overflow if multiplied before normalizing", () => {
+        // Sanity: the raw, unsafe product (weight * payoutMultiplier) really would overflow to Infinity.
+        expect(1e308 * 5).toBe(Infinity);
+
+        const library = buildWeightedOutcomeLibrary({
+            libraryId: "lib-overflow",
+            outcomes: [
+                {id: "a", weight: 1e308, artifact: artifactWithTotalWin("r1", 5)},
+                {id: "b", weight: 5e307, artifact: artifactWithTotalWin("r2", 2)},
+            ],
+        });
+
+        const analysis = new WeightedOutcomeLibraryAnalyzer().analyze(library);
+
+        expect(Number.isFinite(analysis.totalWeight)).toBe(true);
+        expect(Number.isFinite(analysis.rtp)).toBe(true);
+        expect(Number.isFinite(analysis.variance)).toBe(true);
+        expect(Number.isFinite(analysis.standardDeviation)).toBe(true);
+        // weight ratio is 2:1, so rtp = (2/3)*5 + (1/3)*2 = 4, variance = (2/3)*1 + (1/3)*4 = 2.
+        expect(analysis.rtp).toBeCloseTo(4, 5);
+        expect(analysis.variance).toBeCloseTo(2, 5);
+    });
+
+    it("keeps two payoutMultiplier values closer than 1e-9 apart as separate exact buckets", () => {
+        const library = buildWeightedOutcomeLibrary({
+            libraryId: "lib-precision",
+            outcomes: [
+                {id: "a", weight: 1, artifact: artifactWithTotalWin("r1", 2)},
+                {id: "b", weight: 1, artifact: artifactWithTotalWin("r2", 2 + 1e-10)},
+            ],
+        });
+
+        const analysis = new WeightedOutcomeLibraryAnalyzer().analyze(library);
+
+        expect(analysis.payoutDistribution).toHaveLength(2);
+        expect(analysis.payoutDistribution[0].payoutMultiplier).toBe(2);
+        expect(analysis.payoutDistribution[1].payoutMultiplier).toBe(2 + 1e-10);
+        expect(analysis.payoutDistribution[0].probability).toBeCloseTo(0.5, 10);
+        expect(analysis.payoutDistribution[1].probability).toBeCloseTo(0.5, 10);
+    });
+
     it("returns a deeply frozen analysis result", () => {
         const library = buildWeightedOutcomeLibrary({
             libraryId: "lib-5",
