@@ -1,13 +1,37 @@
 import {
+    InMemoryPreGeneratedSessionRepository,
     PokieDevServer,
     PokieGame,
     PokieGameManifest,
+    PreGeneratedLibraryProvenanceMismatchError,
     PreGeneratedRoundReplayer,
+    RoundArtifactProvenance,
+    VersionedPreGeneratedSessionRepository,
     WeightedOutcomeLibrary,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
 } from "pokie";
-import {artifactWith} from "../../weightedoutcome/WeightedOutcomeTestFixtures";
+import {artifactWith} from "../../weightedoutcome/WeightedOutcomeTestFixtures.js";
+
+// Mirrors PreGeneratedSpinCommandHandler.test.ts's own racing-repository helper, one level up: forces
+// a version conflict at the HTTP layer by sneaking in an unrelated saveVersioned() the first time
+// loadVersioned() is called for a sessionId.
+function createRacingSessionRepository(real: InMemoryPreGeneratedSessionRepository): VersionedPreGeneratedSessionRepository {
+    let raced = false;
+    return {
+        load: (sessionId) => real.load(sessionId),
+        save: (sessionId, state) => real.save(sessionId, state),
+        loadVersioned: async (sessionId) => {
+            const versioned = await real.loadVersioned(sessionId);
+            if (versioned !== undefined && !raced) {
+                raced = true;
+                await real.saveVersioned(sessionId, versioned.state, versioned.version);
+            }
+            return versioned;
+        },
+        saveVersioned: (sessionId, state, expectedVersion) => real.saveVersioned(sessionId, state, expectedVersion),
+    };
+}
 
 function buildLibrary(): WeightedOutcomeLibrary<string> {
     return buildWeightedOutcomeLibrary({
@@ -81,6 +105,42 @@ describe("PokieDevServer — pre-generated rounds (opt-in, additive)", () => {
             expect(status).toBe(404);
         });
 
+    });
+
+    describe("library provenance vs. loaded game manifest", () => {
+        it("throws PreGeneratedLibraryProvenanceMismatchError at construction when the library was built for a different game", () => {
+            const otherGameProvenance: RoundArtifactProvenance = {
+                game: {id: "a-different-game", name: "A Different Game", version: "9.9.9"},
+                pokieVersion: "1.3.0",
+            };
+            const mismatchedLibrary = buildWeightedOutcomeLibrary({
+                libraryId: "mismatched-library",
+                outcomes: [
+                    {id: "only", weight: 1, artifact: artifactWith({roundId: "only", totalWin: 0, stake: 1, provenance: otherGameProvenance})},
+                ],
+            });
+
+            expect(
+                () =>
+                    new PokieDevServer(createFakeGame(manifest), {
+                        host: "127.0.0.1",
+                        port: 0,
+                        preGeneratedOutcomeLibrary: mismatchedLibrary,
+                    }),
+            ).toThrow(PreGeneratedLibraryProvenanceMismatchError);
+        });
+
+        it("starts normally when the library's provenance matches the loaded game's manifest", () => {
+            const matchingLibrary = buildLibrary();
+            expect(
+                () =>
+                    new PokieDevServer(createFakeGame(manifest), {
+                        host: "127.0.0.1",
+                        port: 0,
+                        preGeneratedOutcomeLibrary: matchingLibrary,
+                    }),
+            ).not.toThrow();
+        });
     });
 
     describe("leaves the existing /sessions routes completely unaffected", () => {
@@ -188,6 +248,65 @@ describe("PokieDevServer — pre-generated rounds (opt-in, additive)", () => {
 
             const replayed = new PreGeneratedRoundReplayer().replay({library, libraryHash, seed: "replayable-seed", round: 1});
             expect(replayed.outcomeId).toBe(outcomeId);
+        });
+    });
+
+    describe("409 conflict responses", () => {
+        it("returns 409 when a session's own libraryId/libraryHash doesn't match the configured library", async () => {
+            const library = buildLibrary();
+            const sessionRepository = new InMemoryPreGeneratedSessionRepository();
+            const server = new PokieDevServer(createFakeGame(manifest), {
+                host: "127.0.0.1",
+                port: 0,
+                preGeneratedOutcomeLibrary: library,
+                preGeneratedSessionRepository: sessionRepository,
+            });
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            try {
+                // Simulates a session created against a library that has since been swapped out from
+                // under this server (or a stale session persisted from before a redeploy) — directly
+                // seeding a mismatched libraryHash rather than going through POST /pregenerated-sessions,
+                // which would always stamp the currently configured library's own hash.
+                await sessionRepository.save("stale-session", {
+                    libraryId: library.libraryId,
+                    libraryHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                    seed: "seed-1",
+                    roundsPlayed: 0,
+                });
+
+                const {status, body} = await postJson(`${baseUrl}/pregenerated-sessions/stale-session/spin`);
+
+                expect(status).toBe(409);
+                expect(typeof body.error).toBe("string");
+            } finally {
+                await server.stop();
+            }
+        });
+
+        it("returns 409 and leaves the wallet untouched when the session's version goes stale before it can save", async () => {
+            const library = buildLibrary();
+            const realRepository = new InMemoryPreGeneratedSessionRepository();
+            const racingRepository = createRacingSessionRepository(realRepository);
+            const server = new PokieDevServer(createFakeGame(manifest), {
+                host: "127.0.0.1",
+                port: 0,
+                preGeneratedOutcomeLibrary: library,
+                preGeneratedSessionRepository: racingRepository,
+            });
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            try {
+                const created = await postJson(`${baseUrl}/pregenerated-sessions`, {seed: "seed-1", initialBalance: 1000});
+                const sessionId = created.body.sessionId as string;
+
+                const {status, body} = await postJson(`${baseUrl}/pregenerated-sessions/${sessionId}/spin`);
+
+                expect(status).toBe(409);
+                expect(typeof body.error).toBe("string");
+            } finally {
+                await server.stop();
+            }
         });
     });
 });

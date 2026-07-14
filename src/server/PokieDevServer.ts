@@ -13,6 +13,7 @@ import type {PokieDevSessionResponse} from "./PokieDevSessionResponse.js";
 import type {PokieInternalSessionData} from "./PokieInternalSessionData.js";
 import {InMemoryIdempotencyRepository} from "./idempotency/InMemoryIdempotencyRepository.js";
 import {InMemoryPreGeneratedSessionRepository} from "./pregenerated/InMemoryPreGeneratedSessionRepository.js";
+import {PreGeneratedLibraryProvenanceMismatchError} from "./pregenerated/PreGeneratedLibraryProvenanceMismatchError.js";
 import type {PreGeneratedSessionRepository} from "./pregenerated/PreGeneratedSessionRepository.js";
 import type {PreGeneratedSessionResponse} from "./pregenerated/PreGeneratedSessionResponse.js";
 import {PreGeneratedSpinCommandHandler} from "./pregenerated/PreGeneratedSpinCommandHandler.js";
@@ -103,6 +104,7 @@ export class PokieDevServer implements PokieDevServerHandling {
     private readonly sessionSerializer: GameSessionSerializing | undefined;
     private readonly spinCommandHandler: SpinCommandHandling;
     private readonly preGeneratedOutcomeLibrary: WeightedOutcomeLibrary | undefined;
+    private readonly preGeneratedLibraryHash: string | undefined;
     private readonly preGeneratedSessionRepository: PreGeneratedSessionRepository | undefined;
     private readonly preGeneratedSpinCommandHandler: PreGeneratedSpinCommandHandling | undefined;
     private readonly preGeneratedProjector = new PreGeneratedRoundResultProjector();
@@ -132,11 +134,13 @@ export class PokieDevServer implements PokieDevServerHandling {
         );
 
         if (options.preGeneratedOutcomeLibrary !== undefined) {
+            this.assertLibraryMatchesGameManifest(options.preGeneratedOutcomeLibrary, game.getManifest());
             this.preGeneratedOutcomeLibrary = options.preGeneratedOutcomeLibrary;
+            this.preGeneratedLibraryHash = computeWeightedOutcomeLibraryHash(options.preGeneratedOutcomeLibrary);
             this.preGeneratedSessionRepository = options.preGeneratedSessionRepository ?? new InMemoryPreGeneratedSessionRepository();
             this.preGeneratedSpinCommandHandler = new PreGeneratedSpinCommandHandler(
                 options.preGeneratedOutcomeLibrary,
-                computeWeightedOutcomeLibraryHash(options.preGeneratedOutcomeLibrary),
+                this.preGeneratedLibraryHash,
                 transactionalWallet,
                 this.preGeneratedSessionRepository,
                 options.preGeneratedIdempotencyRepository ?? new InMemoryIdempotencyRepository(),
@@ -352,6 +356,22 @@ export class PokieDevServer implements PokieDevServerHandling {
         this.sendJson(res, 200, response);
     }
 
+    // Fails fast, before the server can ever start(): every outcome in a WeightedOutcomeLibrary shares
+    // the same provenance.game (guaranteed by buildWeightedOutcomeLibrary's own homogeneity check), so
+    // checking the first outcome is enough to catch a library built for a different game or a different
+    // version of this one — a configuration mistake that must never surface as a served round instead of
+    // a clear startup error.
+    private assertLibraryMatchesGameManifest(library: WeightedOutcomeLibrary, manifest: {id: string; version: string}): void {
+        const provenanceGame = library.outcomes[0]?.artifact.provenance.game;
+        if (provenanceGame === undefined || provenanceGame.id !== manifest.id || provenanceGame.version !== manifest.version) {
+            throw new PreGeneratedLibraryProvenanceMismatchError(
+                `preGeneratedOutcomeLibrary "${library.libraryId}" was built for game ` +
+                    `${JSON.stringify(provenanceGame)}, but the loaded game's manifest is ` +
+                    `{id: ${JSON.stringify(manifest.id)}, version: ${JSON.stringify(manifest.version)}}.`,
+            );
+        }
+    }
+
     // Creates a pre-generated session — no live GameSessionHandling is ever constructed for this path
     // (see the class doc comment, "Pre-generated rounds"). 404s (rather than 400) when no
     // preGeneratedOutcomeLibrary was configured, same as any other route this server doesn't have.
@@ -373,6 +393,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         const seed = request.seed ?? crypto.randomUUID();
         await this.preGeneratedSessionRepository.save(sessionId, {
             libraryId: this.preGeneratedOutcomeLibrary.libraryId,
+            libraryHash: this.preGeneratedLibraryHash!,
             seed,
             roundsPlayed: 0,
         });
@@ -411,6 +432,17 @@ export class PokieDevServer implements PokieDevServerHandling {
         const result = await this.preGeneratedSpinCommandHandler.handle(sessionId, requestId);
         if (result.status === "not-found") {
             this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
+            return;
+        }
+
+        if (result.status === "conflict") {
+            // Either a session/library mismatch (caught before anything was applied) or a versioned
+            // PreGeneratedSessionRepository rejecting this attempt's save because the session's version
+            // moved between load and save — see PreGeneratedSpinCommandResult's own doc comment for the
+            // distinction. Every wallet transaction this attempt applied was already reversed by
+            // PreGeneratedSpinCommandHandler before returning this, so there's nothing to roll back here;
+            // the client should retry.
+            this.sendJson(res, 409, {error: result.reason});
             return;
         }
 

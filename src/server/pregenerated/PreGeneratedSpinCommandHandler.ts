@@ -9,6 +9,8 @@ import {InMemoryIdempotencyRepository} from "../idempotency/InMemoryIdempotencyR
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
 import type {TransactionalWalletPort} from "../wallet/TransactionalWalletPort.js";
 import {InMemoryPreGeneratedSessionRepository} from "./InMemoryPreGeneratedSessionRepository.js";
+import {isVersionedPreGeneratedSessionRepository} from "./isVersionedPreGeneratedSessionRepository.js";
+import {PreGeneratedSessionVersionConflictError} from "./PreGeneratedSessionVersionConflictError.js";
 import type {PreGeneratedSessionRepository} from "./PreGeneratedSessionRepository.js";
 import type {PreGeneratedSessionState} from "./PreGeneratedSessionState.js";
 import type {PreGeneratedSpinCommandHandling} from "./PreGeneratedSpinCommandHandling.js";
@@ -19,8 +21,9 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // outcome from a fixed WeightedOutcomeLibrary (never running a game's own calculation path), settle the
 // wallet from that outcome's already-known stake/totalWin, and persist the new state together with the
 // idempotency result as one committed outcome. Mirrors SpinCommandHandler's own orchestration shape
-// (idempotency replay, per-session serialization, wallet settlement, best-effort compensation) applied
-// to a fixed, pre-enumerated library instead of a live GameSessionHandling.
+// (idempotency replay, per-session serialization, wallet settlement, best-effort compensation,
+// optimistic-locking conflict detection) applied to a fixed, pre-enumerated library instead of a live
+// GameSessionHandling.
 //
 // Every command for a given sessionId is serialized through a per-session queue (see enqueue()), same
 // mechanism and same rationale as SpinCommandHandler: it's what makes a concurrently repeated requestId
@@ -34,6 +37,23 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // seed (see deriveDeterministicSeed) is what PreGeneratedRoundReplayer reproduces later — the session
 // itself never stores anything about *which* outcome a past round drew, only how many rounds have been
 // played, since the outcome is always exactly reproducible from (seed, round) against the same library.
+//
+// Library identity check: before doing anything else, a loaded session's own `libraryId`/`libraryHash`
+// (stamped at creation) is compared against this handler's configured library. A mismatch — a session
+// created against a different library, or a same-id library since regenerated with different content —
+// returns a "conflict" result immediately, before any wallet transaction, rather than silently drawing
+// a round from content the session was never meant to be played against.
+//
+// Optimistic locking: when sessionRepository additionally implements VersionedPreGeneratedSessionRepository
+// (see isVersionedPreGeneratedSessionRepository.ts — InMemoryPreGeneratedSessionRepository does), the
+// state loaded at the start of an attempt is saved back via saveVersioned() with the version it was read
+// at, instead of the plain unconditional save(). This mainly protects a repository *shared across
+// multiple PreGeneratedSpinCommandHandler instances* — within one instance, every command for a given
+// sessionId is already serialized through enqueue()/sessionQueues above, so its own load-then-save can
+// never race against itself. A version mismatch (someone else's save landed in between) surfaces as a
+// PreGeneratedSessionVersionConflictError, caught below and turned into a "conflict"
+// PreGeneratedSpinCommandResult after the same wallet-reversal/session-eviction compensation any other
+// mid-flight failure gets — never a silent overwrite of whatever the other attempt committed.
 //
 // Best-effort compensation on failure mirrors SpinCommandHandler's own: every wallet transaction this
 // attempt applied is individually reversed, and an already-saved session state is restored to what it
@@ -89,17 +109,43 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
             }
         }
 
-        const state = await this.sessionRepository.load(sessionId);
+        const {state, version} = await this.loadState(sessionId);
         if (!state) {
             return {status: "not-found", sessionId};
         }
 
-        return this.selectAndSettle(sessionId, state, requestId);
+        // Checked before anything else mutates: nothing has been applied yet (no wallet transaction, no
+        // selection), so there's nothing to compensate — unlike the storage-level version conflict below,
+        // which can only be discovered after settlement has already run.
+        if (state.libraryId !== this.library.libraryId || state.libraryHash !== this.libraryHash) {
+            return {
+                status: "conflict",
+                sessionId,
+                reason:
+                    `Session "${sessionId}" was created against a different library than this handler is configured ` +
+                    `with (libraryId "${state.libraryId}"/hash "${state.libraryHash}" vs configured libraryId ` +
+                    `"${this.library.libraryId}"/hash "${this.libraryHash}").`,
+            };
+        }
+
+        return this.selectAndSettle(sessionId, state, version, requestId);
+    }
+
+    // Reads both the state and, when sessionRepository supports it, the version it was read at — a
+    // single call either way, never a redundant second read on the plain-repository path. Mirrors
+    // SpinCommandHandler's own loadState() exactly.
+    private async loadState(sessionId: string): Promise<{state: PreGeneratedSessionState | undefined; version: number | undefined}> {
+        if (isVersionedPreGeneratedSessionRepository(this.sessionRepository)) {
+            const versioned = await this.sessionRepository.loadVersioned(sessionId);
+            return {state: versioned?.state, version: versioned?.version};
+        }
+        return {state: await this.sessionRepository.load(sessionId), version: undefined};
     }
 
     private async selectAndSettle(
         sessionId: string,
         state: PreGeneratedSessionState,
+        expectedVersion: number | undefined,
         requestId: string | undefined,
     ): Promise<PreGeneratedSpinCommandResult<T>> {
         const round = state.roundsPlayed + 1;
@@ -140,11 +186,25 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
                 },
             });
 
-            const newState: PreGeneratedSessionState = {libraryId: this.library.libraryId, seed: state.seed, roundsPlayed: round};
-            await this.sessionRepository.save(sessionId, newState);
+            const newState: PreGeneratedSessionState = {
+                libraryId: this.library.libraryId,
+                libraryHash: this.libraryHash,
+                seed: state.seed,
+                roundsPlayed: round,
+            };
+
+            let newVersion: number | undefined;
+            if (isVersionedPreGeneratedSessionRepository(this.sessionRepository) && expectedVersion !== undefined) {
+                newVersion = await this.sessionRepository.saveVersioned(sessionId, newState, expectedVersion);
+            } else {
+                await this.sessionRepository.save(sessionId, newState);
+            }
             sessionStateSaved = true;
 
             const commandResult: PreGeneratedSpinCommandResult<T> = {status: "played", sessionId, result};
+            if (newVersion !== undefined) {
+                commandResult.version = newVersion;
+            }
             if (requestId !== undefined) {
                 await this.idempotencyRepository.save(sessionId, requestId, commandResult);
             }
@@ -154,6 +214,9 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
                 await this.restoreSessionState(sessionId, state);
             }
             await this.reverseApplied(sessionId, appliedTransactionIds);
+            if (error instanceof PreGeneratedSessionVersionConflictError) {
+                return {status: "conflict", sessionId, reason: error.message};
+            }
             throw error;
         }
     }

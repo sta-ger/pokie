@@ -1,6 +1,7 @@
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
+import {computeWeightedOutcomeLibraryHash} from "../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
 import type {WeightedOutcome} from "../weightedoutcome/WeightedOutcome.js";
 import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
 import {PreGeneratedRoundBuildError} from "./PreGeneratedRoundBuildError.js";
@@ -9,9 +10,10 @@ import type {PreGeneratedRoundRuntimeContext} from "./PreGeneratedRoundRuntimeCo
 
 export type PreGeneratedRoundBuildOptions<T extends string | number = string> = {
     library: WeightedOutcomeLibrary<T>;
-    // Precomputed rather than recomputed here: hashing a library is a whole-library canonical-JSON
-    // pass, wasteful to repeat on every round a caller serves from the same, unchanging library — see
-    // computeWeightedOutcomeLibraryHash, meant to be called once when a library is loaded/configured.
+    // The caller's claimed hash for `library` — verified against computeWeightedOutcomeLibraryHash(library)
+    // below rather than trusted as-is, so a stale or forged libraryHash (e.g. left over from a library that
+    // was since regenerated with different weights under the same libraryId) is rejected rather than
+    // silently stamped onto this result's provenance.
     libraryHash: string;
     outcome: WeightedOutcome<T>;
     runtime: PreGeneratedRoundRuntimeContext;
@@ -23,10 +25,11 @@ export type PreGeneratedRoundBuildOptions<T extends string | number = string> = 
 // (already deeply frozen/immutable by buildRoundArtifact/buildWeightedOutcomeLibrary), never copied or
 // mutated — the canonical library content this result was drawn from stays exactly as it was.
 //
-// Fails fast with PreGeneratedRoundBuildError — before any result is ever returned — on: an outcome
-// that isn't actually present in `library` (by id and by artifact identity — catches a caller passing
-// an outcome drawn from a different library instance under the same id), an invalid
-// runtime.roundId/sessionId, a non-finite runtime.balanceBefore/balanceAfter, a malformed
+// Fails fast with PreGeneratedRoundBuildError — before any result is ever returned — on: an `outcome`
+// that isn't the library's own object for that id (strict reference identity on the *whole* outcome,
+// not just its artifact — catches a forged weight riding along a genuine artifact reference, not only a
+// wholesale swap), a `libraryHash` that doesn't match the library's actual, freshly recomputed hash, an
+// invalid runtime.roundId/sessionId, a non-finite runtime.balanceBefore/balanceAfter, a malformed
 // runtime.transactions entry, or content that isn't JSON-safe.
 export function buildPreGeneratedRoundResult<T extends string | number = string>(
     options: PreGeneratedRoundBuildOptions<T>,
@@ -34,10 +37,18 @@ export function buildPreGeneratedRoundResult<T extends string | number = string>
     const {library, libraryHash, outcome, runtime} = options;
 
     const matched = library.outcomes.find((candidate) => candidate.id === outcome.id);
-    if (matched === undefined || matched.artifact !== outcome.artifact) {
+    if (matched === undefined || matched !== outcome) {
         throw new PreGeneratedRoundBuildError(
             "pre-generated-round-outcome-not-in-library",
             `Outcome "${outcome.id}" is not present in library "${library.libraryId}".`,
+        );
+    }
+
+    const actualLibraryHash = computeWeightedOutcomeLibraryHash(library);
+    if (libraryHash !== actualLibraryHash) {
+        throw new PreGeneratedRoundBuildError(
+            "pre-generated-round-library-hash-mismatch",
+            `libraryHash "${libraryHash}" does not match library "${library.libraryId}"'s actual hash "${actualLibraryHash}".`,
         );
     }
 

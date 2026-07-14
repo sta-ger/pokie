@@ -6,10 +6,10 @@ import {
     WeightedOutcomeSelector,
     buildWeightedOutcomeLibrary,
 } from "pokie";
-import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures";
+import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
-function fixedUnitSource(value: number): WeightedOutcomeRandomSource {
-    return {nextUnitInterval: () => value};
+function fixedIntSource(value: number): WeightedOutcomeRandomSource {
+    return {nextInt: () => value};
 }
 
 function libraryOf(weights: {id: string; weight: number; totalWin: number}[]): WeightedOutcomeLibrary<string> {
@@ -24,7 +24,7 @@ function libraryOf(weights: {id: string; weight: number; totalWin: number}[]): W
 }
 
 describe("WeightedOutcomeSelector", () => {
-    it("selects the outcome whose cumulative weight range contains the drawn point", () => {
+    it("selects the outcome whose exact integer cumulative-weight range contains the drawn point", () => {
         const library = libraryOf([
             {id: "a", weight: 70, totalWin: 0},
             {id: "b", weight: 25, totalWin: 5},
@@ -33,12 +33,42 @@ describe("WeightedOutcomeSelector", () => {
         const selector = new WeightedOutcomeSelector();
 
         // totalWeight = 100; cumulative ranges: a=[0,70), b=[70,95), c=[95,100)
-        expect(selector.select(library, fixedUnitSource(0)).id).toBe("a");
-        expect(selector.select(library, fixedUnitSource(0.69)).id).toBe("a");
-        expect(selector.select(library, fixedUnitSource(0.7)).id).toBe("b");
-        expect(selector.select(library, fixedUnitSource(0.94)).id).toBe("b");
-        expect(selector.select(library, fixedUnitSource(0.95)).id).toBe("c");
-        expect(selector.select(library, fixedUnitSource(0.999999)).id).toBe("c");
+        expect(selector.select(library, fixedIntSource(0)).id).toBe("a");
+        expect(selector.select(library, fixedIntSource(69)).id).toBe("a");
+        expect(selector.select(library, fixedIntSource(70)).id).toBe("b");
+        expect(selector.select(library, fixedIntSource(94)).id).toBe("b");
+        expect(selector.select(library, fixedIntSource(95)).id).toBe("c");
+        expect(selector.select(library, fixedIntSource(99)).id).toBe("c");
+    });
+
+    it("passes the library's own total weight as the exclusive upper bound", () => {
+        const library = libraryOf([
+            {id: "a", weight: 3, totalWin: 0},
+            {id: "b", weight: 7, totalWin: 0},
+        ]);
+        const selector = new WeightedOutcomeSelector();
+        let requestedBound: number | undefined;
+        const source: WeightedOutcomeRandomSource = {
+            nextInt: (exclusiveUpperBound) => {
+                requestedBound = exclusiveUpperBound;
+                return 0;
+            },
+        };
+
+        selector.select(library, source);
+        expect(requestedBound).toBe(10);
+    });
+
+    it("selects a rare outcome (weight 1) that sits at the very end of a large library exactly at its boundary", () => {
+        const library = libraryOf([
+            {id: "common", weight: 999999, totalWin: 0},
+            {id: "ultra-rare", weight: 1, totalWin: 1000000},
+        ]);
+        const selector = new WeightedOutcomeSelector();
+
+        // totalWeight = 1000000; "ultra-rare" only occupies the single point at index 999999.
+        expect(selector.select(library, fixedIntSource(999998)).id).toBe("common");
+        expect(selector.select(library, fixedIntSource(999999)).id).toBe("ultra-rare");
     });
 
     it("is deterministic given the same seeded random source sequence", () => {
@@ -80,7 +110,7 @@ describe("WeightedOutcomeSelector", () => {
         const library = libraryOf([{id: "only", weight: 1, totalWin: 3}]);
         const selector = new WeightedOutcomeSelector();
 
-        const outcome = selector.select(library, fixedUnitSource(0));
+        const outcome = selector.select(library, fixedIntSource(0));
         expect(outcome.artifact).toBe(library.outcomes[0].artifact);
     });
 
@@ -88,15 +118,26 @@ describe("WeightedOutcomeSelector", () => {
         const emptyLibrary = {schemaVersion: 1, libraryId: "empty", outcomes: []} as WeightedOutcomeLibrary<string>;
         const selector = new WeightedOutcomeSelector();
 
-        expect(() => selector.select(emptyLibrary, fixedUnitSource(0))).toThrow(WeightedOutcomeSelectionError);
+        expect(() => selector.select(emptyLibrary, fixedIntSource(0))).toThrow(WeightedOutcomeSelectionError);
     });
 
-    it("throws WeightedOutcomeSelectionError when the random source violates its [0, 1) contract", () => {
-        const library = libraryOf([{id: "a", weight: 1, totalWin: 0}]);
+    it("throws WeightedOutcomeSelectionError for a non-integer or non-positive weight", () => {
+        const selector = new WeightedOutcomeSelector();
+        const fractionalWeightLibrary = {
+            schemaVersion: 1,
+            libraryId: "fractional",
+            outcomes: [{id: "a", weight: 0.5, artifact: artifactWith({roundId: "a", totalWin: 0})}],
+        } as WeightedOutcomeLibrary<string>;
+
+        expect(() => selector.select(fractionalWeightLibrary, fixedIntSource(0))).toThrow(WeightedOutcomeSelectionError);
+    });
+
+    it("throws WeightedOutcomeSelectionError when the random source violates its [0, totalWeight) contract", () => {
+        const library = libraryOf([{id: "a", weight: 10, totalWin: 0}]);
         const selector = new WeightedOutcomeSelector();
 
-        expect(() => selector.select(library, fixedUnitSource(1))).toThrow(WeightedOutcomeSelectionError);
-        expect(() => selector.select(library, fixedUnitSource(-0.1))).toThrow(WeightedOutcomeSelectionError);
-        expect(() => selector.select(library, fixedUnitSource(NaN))).toThrow(WeightedOutcomeSelectionError);
+        expect(() => selector.select(library, fixedIntSource(10))).toThrow(WeightedOutcomeSelectionError);
+        expect(() => selector.select(library, fixedIntSource(-1))).toThrow(WeightedOutcomeSelectionError);
+        expect(() => selector.select(library, fixedIntSource(1.5))).toThrow(WeightedOutcomeSelectionError);
     });
 });

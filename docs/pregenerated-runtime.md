@@ -13,7 +13,7 @@ directly on top of a `WeightedOutcomeLibrary` as *content*, rather than as an an
 
 ```ts
 interface WeightedOutcomeRandomSource {
-    nextUnitInterval(): number; // must return a finite number in [0, 1)
+    nextInt(exclusiveUpperBound: number): number; // exact, unbiased integer in [0, exclusiveUpperBound)
 }
 
 class SeededWeightedOutcomeRandomSource implements WeightedOutcomeRandomSource {
@@ -27,14 +27,28 @@ class WeightedOutcomeSelector implements WeightedOutcomeSelecting {
 }
 ```
 
-`WeightedOutcomeSelector` draws exactly one `WeightedOutcome` from a library: it scales a single
-`randomSource.nextUnitInterval()` draw by the library's total weight and walks the (already canonically sorted)
-outcomes until the cumulative weight passes that point — proportional selection, with no game calculation
-involved. Randomness is injected, not hardwired: `SeededWeightedOutcomeRandomSource` (mulberry32) gives
-reproducible draws for replay/regression tests, `SecureWeightedOutcomeRandomSource` is for production. Assumes
-`library` is already validly built (see `buildWeightedOutcomeLibrary`) and throws `WeightedOutcomeSelectionError`
-only as a defensive backstop (an empty library, an invalid total weight, or a `randomSource` that breaks its own
-`[0, 1)` contract).
+`WeightedOutcomeSelector` draws exactly one `WeightedOutcome` from a library: it draws a single exact integer in
+`[0, totalWeight)` via `randomSource.nextInt()` and walks the (already canonically sorted) outcomes' exact integer
+cumulative sums until one contains that point — proportional selection, with no game calculation and no
+floating-point rounding anywhere in the decision. Selection requires every outcome's `weight` — and their sum — to
+be a positive safe integer (`Number.isSafeInteger`); this is *stricter* than `WeightedOutcomeLibrary` itself
+requires (`buildWeightedOutcomeLibrary`/`WeightedOutcomeLibraryAnalyzer` accept any finite weight > 0, since exact
+statistical analysis works over ratios, not draws) — a library meant to be *drawn from* at runtime needs integer
+weights so a draw can be exactly unbiased.
+
+Randomness is injected, not hardwired: `SeededWeightedOutcomeRandomSource` (mulberry32, with rejection sampling up
+to the full `2^53` safe-integer range) gives reproducible draws for replay/regression tests,
+`SecureWeightedOutcomeRandomSource` (`crypto.randomInt`) is for production — both are exact/unbiased for any
+`exclusiveUpperBound`, not just powers of two: a plain `Math.floor(nextFloat() * n)` would subtly favor smaller
+remainders whenever `n` doesn't evenly divide the underlying draw space, silently skewing outcome probabilities.
+
+Assumes `library` is otherwise already validly built (non-empty, canonically sorted — guaranteed by
+`buildWeightedOutcomeLibrary`) and does not re-validate that part; validate a library from an untrusted source
+first (`WeightedOutcomeLibraryValidator`). Still fails fast with `WeightedOutcomeSelectionError` — including on a
+non-integer/overflowing weight, or a `randomSource` that breaks its own contract — as a defensive backstop rather
+than silently producing a wrong or biased result. There is deliberately no fallback to "the last outcome": with
+exact integer arithmetic, every draw is provably within range, so anything that would have needed a fallback is a
+real bug surfaced as an error instead.
 
 ## The runtime result
 
@@ -66,15 +80,23 @@ type PreGeneratedRoundResult<T = string> = {
 ```
 
 `buildPreGeneratedRoundResult({library, libraryHash, outcome, runtime})` is the one place a `PreGeneratedRoundResult`
-is assembled. It fails fast with **`PreGeneratedRoundBuildError`** on: an `outcome` that isn't actually present in
-`library` (by id *and* artifact identity), an invalid `runtime.roundId`/`sessionId`, a non-finite balance, a
-malformed transaction entry, or content that isn't JSON-safe. `artifact` is always the exact object reference the
-library already holds — canonical library content is never copied, re-derived, or re-run through a second
-calculation path, and the library itself is never mutated.
+is assembled. It fails fast with **`PreGeneratedRoundBuildError`** on: an `outcome` that isn't the library's own
+object for that id (strict reference identity on the *whole* outcome, not just its artifact — a forged weight
+riding along a genuine artifact reference is rejected, not just a wholesale swap), a `libraryHash` that doesn't
+match the library's actual, freshly recomputed hash (`computeWeightedOutcomeLibraryHash(library)` — catches a
+stale hash left over from a library that was since regenerated with different weights under the same
+`libraryId`), an invalid `runtime.roundId`/`sessionId`, a non-finite balance, a malformed transaction entry, or
+content that isn't JSON-safe. `artifact` is always the exact object reference the library already holds —
+canonical library content is never copied, re-derived, or re-run through a second calculation path, and the
+library itself is never mutated.
 
 `PreGeneratedRoundResultValidator` checks the same invariants defensively, over an already-built (or
 untrusted/round-tripped) result, delegating `artifact`'s own validity to a real `RoundArtifactValidator` — never
-throws, same convention as `WeightedOutcomeLibraryValidator`.
+throws, same convention as `WeightedOutcomeLibraryValidator`. It additionally cross-checks fields no single-field
+check can catch on its own: `selection.probability === selection.weight / selection.totalWeight` (within a small
+epsilon), `selection.weight <= selection.totalWeight`, that `runtime.transactions`' total debit equals
+`artifact.stake` and total credit equals `artifact.totalWin`, that `runtime.balanceAfter` reconciles with
+`balanceBefore` and those same transactions, and that every transaction id in `runtime.transactions` is unique.
 
 ## Public/internal projection
 
@@ -108,11 +130,15 @@ library always reproduces the identical draw — no wallet, session, or idempote
 
 `PokieDevServer` gains two additive, opt-in-only routes when `PokieDevServerOptions.preGeneratedOutcomeLibrary`
 is configured — a separate namespace (`/pregenerated-sessions`) that never overlaps with the existing `/sessions`
-routes, which are completely unaffected either way:
+routes, which are completely unaffected either way. The constructor itself fails fast — before `start()` is ever
+called — with `PreGeneratedLibraryProvenanceMismatchError` if the configured library's own provenance (every
+outcome shares the same `provenance.game`, guaranteed by `buildWeightedOutcomeLibrary`'s homogeneity check) doesn't
+match the loaded `PokieGame`'s manifest: a library built for the wrong game, or the wrong version of this one, is a
+configuration mistake caught at startup, never something a caller discovers mid-round.
 
 - `POST /pregenerated-sessions` — body `{seed?: string; initialBalance?: number}` — creates a session with a tiny
-  persisted state (`{libraryId, seed, roundsPlayed}`; see `PreGeneratedSessionState`) and, when given, seeds the
-  wallet balance (there's no live session to default it from, unlike the `/sessions` path).
+  persisted state (`{libraryId, libraryHash, seed, roundsPlayed}`; see `PreGeneratedSessionState`) and, when given,
+  seeds the wallet balance (there's no live session to default it from, unlike the `/sessions` path).
 - `POST /pregenerated-sessions/:id/spin` — body `{requestId?: string}` — draws the session's next round
   deterministically (`WeightedOutcomeSelector`, seeded from the session's own `seed` and round index), settles
   the wallet (debit `artifact.stake`, credit `artifact.totalWin` when positive), and returns the public projection
@@ -123,3 +149,20 @@ routes, which are completely unaffected either way:
 wallet/session-state compensation on failure — the same shape as `SpinCommandHandler`'s own orchestration, applied
 to a fixed, pre-enumerated library instead of a live `GameSessionHandling`. No live session object is ever created
 for this path.
+
+### Conflicts (HTTP 409)
+
+A spin can come back `409` for two distinct reasons, both surfaced as a `"conflict"` `PreGeneratedSpinCommandResult`:
+
+- **Library mismatch**: the loaded session's own `libraryId`/`libraryHash` (stamped at creation) doesn't match the
+  library this handler is currently configured with — e.g. a session from before a redeploy that swapped the
+  library, or a same-id library regenerated with different weights. Caught immediately after load, before any
+  wallet transaction, so there's nothing to compensate.
+- **Optimistic-locking version conflict**: when the configured `PreGeneratedSessionRepository` additionally
+  implements `VersionedPreGeneratedSessionRepository` (`InMemoryPreGeneratedSessionRepository` does out of the
+  box — the same additive pattern as `VersionedSessionRepository`/`isVersionedSessionRepository` for the live spin
+  path), the state loaded at the start of an attempt is saved back via `saveVersioned()` with the version it was
+  read at. A mismatch — someone else's save landed in between, e.g. another `PreGeneratedSpinCommandHandler`
+  instance sharing this repository — throws `PreGeneratedSessionVersionConflictError`, caught and turned into a
+  `"conflict"` result only *after* every wallet transaction this attempt applied has already been reversed. A
+  played result's own `version` field carries the repository's new revision when one is available.

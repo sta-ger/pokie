@@ -10,17 +10,23 @@ import type {WeightedOutcomeSelecting} from "./WeightedOutcomeSelecting.js";
 // path — the returned WeightedOutcome (and its RoundArtifact) is exactly the one already stored in the
 // library, untouched.
 //
+// Selection requires every outcome's weight — and their sum — to be a positive safe integer (see
+// Number.isSafeInteger): a draw is an exact integer in [0, totalWeight) (see
+// WeightedOutcomeRandomSource.nextInt), walked against the outcomes' exact integer cumulative sums, in
+// their existing (canonically sorted, see buildWeightedOutcomeLibrary) order. This is stricter than
+// WeightedOutcomeLibrary itself requires (buildWeightedOutcomeLibrary/WeightedOutcomeLibraryAnalyzer
+// accept any finite weight > 0, since exact analysis works over ratios, not draws) — a library meant
+// to be *drawn from* at runtime must use integer weights so a draw can be exactly unbiased, with no
+// floating-point rounding anywhere in the decision.
+//
 // Deterministic given the same randomSource sequence — see SeededWeightedOutcomeRandomSource for
 // reproducible draws (replay, regression tests) and SecureWeightedOutcomeRandomSource for production.
-// A draw is a single `randomSource.nextUnitInterval()` call scaled by the library's total weight and
-// walked against outcomes in their existing (canonically sorted, see buildWeightedOutcomeLibrary)
-// order — so the same unit interval value always selects the same outcome, regardless of process or
-// machine.
 //
-// Assumes library is already validly built (non-empty, canonically sorted, finite positive total
-// weight — all guaranteed by buildWeightedOutcomeLibrary) and does not re-validate; validate a library
-// from an untrusted source first (WeightedOutcomeLibraryValidator). Still fails fast with
-// WeightedOutcomeSelectionError as a defensive backstop rather than silently producing a wrong result.
+// Assumes library is otherwise already validly built (non-empty, canonically sorted — guaranteed by
+// buildWeightedOutcomeLibrary) and does not re-validate that part; validate a library from an untrusted
+// source first (WeightedOutcomeLibraryValidator). Still fails fast with WeightedOutcomeSelectionError —
+// including on a non-integer/overflowing weight, or a randomSource that breaks its own contract — as a
+// defensive backstop rather than silently producing a wrong or biased result.
 export class WeightedOutcomeSelector implements WeightedOutcomeSelecting {
     public select<T extends string | number = string>(
         library: WeightedOutcomeLibrary<T>,
@@ -34,23 +40,31 @@ export class WeightedOutcomeSelector implements WeightedOutcomeSelecting {
             );
         }
 
-        const totalWeight = outcomes.reduce((sum, outcome) => sum + outcome.weight, 0);
-        if (!Number.isFinite(totalWeight) || totalWeight <= 0) {
-            throw new WeightedOutcomeSelectionError(
-                "weighted-outcome-selection-total-weight-invalid",
-                `Cannot select an outcome from library "${library.libraryId}": total weight must be a finite number > 0, got ${totalWeight}.`,
-            );
+        let totalWeight = 0;
+        for (const outcome of outcomes) {
+            if (!Number.isSafeInteger(outcome.weight) || outcome.weight <= 0) {
+                throw new WeightedOutcomeSelectionError(
+                    "weighted-outcome-selection-weight-invalid",
+                    `Cannot select from library "${library.libraryId}": outcome "${outcome.id}" has weight ${outcome.weight}, but selection requires a positive safe integer.`,
+                );
+            }
+            totalWeight += outcome.weight;
+            if (!Number.isSafeInteger(totalWeight)) {
+                throw new WeightedOutcomeSelectionError(
+                    "weighted-outcome-selection-total-weight-invalid",
+                    `Cannot select from library "${library.libraryId}": the sum of all outcome weights exceeds Number.MAX_SAFE_INTEGER.`,
+                );
+            }
         }
 
-        const unit = randomSource.nextUnitInterval();
-        if (!Number.isFinite(unit) || unit < 0 || unit >= 1) {
+        const point = randomSource.nextInt(totalWeight);
+        if (!Number.isInteger(point) || point < 0 || point >= totalWeight) {
             throw new WeightedOutcomeSelectionError(
                 "weighted-outcome-selection-random-source-invalid",
-                `randomSource.nextUnitInterval() must return a finite number in [0, 1), got ${unit}.`,
+                `randomSource.nextInt(${totalWeight}) must return an integer in [0, ${totalWeight}), got ${point}.`,
             );
         }
 
-        const point = unit * totalWeight;
         let cumulative = 0;
         for (const outcome of outcomes) {
             cumulative += outcome.weight;
@@ -58,8 +72,12 @@ export class WeightedOutcomeSelector implements WeightedOutcomeSelecting {
                 return outcome;
             }
         }
-        // Floating-point edge case only (point is always < totalWeight === the final cumulative sum in
-        // exact arithmetic) — fall back to the last outcome rather than throwing.
-        return outcomes[outcomes.length - 1];
+        // Unreachable given exact integer arithmetic — point is always < totalWeight, which is exactly
+        // the final cumulative sum — so this is a real error (e.g. a corrupted outcomes array mutated
+        // after the totalWeight loop above) rather than a silent fallback to some arbitrary outcome.
+        throw new WeightedOutcomeSelectionError(
+            "weighted-outcome-selection-unreachable",
+            `Cannot select from library "${library.libraryId}": no outcome's cumulative weight reached the drawn point ${point} (total weight ${totalWeight}).`,
+        );
     }
 }

@@ -1,5 +1,5 @@
 import {PreGeneratedRoundReplayer, WeightedOutcomeLibrary, buildWeightedOutcomeLibrary, computeWeightedOutcomeLibraryHash} from "pokie";
-import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures";
+import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
 function buildLibrary(): WeightedOutcomeLibrary<string> {
     return buildWeightedOutcomeLibrary({

@@ -4,7 +4,7 @@ import {
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
 } from "pokie";
-import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures";
+import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
 describe("PreGeneratedRoundResultProjector", () => {
     const library = buildWeightedOutcomeLibrary({

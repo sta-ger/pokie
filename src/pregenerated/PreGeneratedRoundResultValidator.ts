@@ -10,6 +10,8 @@ import {PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION, type PreGeneratedRoundResult}
 // for why every field here is read through this loosened view instead.
 type Loose<X> = {[K in keyof X]?: unknown};
 
+const FLOAT_EPSILON = 1e-9;
+
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
 }
@@ -56,6 +58,12 @@ implements ValidationRule<PreGeneratedRoundResult<T>> {
         } else {
             this.roundArtifactValidator.validate(r.artifact as PreGeneratedRoundResult<T>["artifact"]).forEach((issue) => issues.push(issue));
         }
+
+        this.validateTransactionConsistency(
+            r.runtime as Loose<PreGeneratedRoundResult<T>["runtime"]> | undefined,
+            r.artifact as Loose<PreGeneratedRoundResult<T>["artifact"]> | undefined,
+            issues,
+        );
 
         this.validateJsonSafety(result, issues);
 
@@ -109,18 +117,27 @@ implements ValidationRule<PreGeneratedRoundResult<T>> {
                 message: "selection.outcomeId must be a non-empty string.",
             });
         }
-        if (!isFiniteNumber(selection.weight) || selection.weight <= 0) {
+        const weightValid = isFiniteNumber(selection.weight) && selection.weight > 0;
+        if (!weightValid) {
             issues.push({
                 code: "pre-generated-round-selection-weight-invalid",
                 severity: "error",
                 message: `selection.weight must be a finite number > 0, got ${String(selection.weight)}.`,
             });
         }
-        if (!isFiniteNumber(selection.totalWeight) || selection.totalWeight <= 0) {
+        const totalWeightValid = isFiniteNumber(selection.totalWeight) && selection.totalWeight > 0;
+        if (!totalWeightValid) {
             issues.push({
                 code: "pre-generated-round-selection-total-weight-invalid",
                 severity: "error",
                 message: `selection.totalWeight must be a finite number > 0, got ${String(selection.totalWeight)}.`,
+            });
+        }
+        if (weightValid && totalWeightValid && (selection.weight as number) > (selection.totalWeight as number)) {
+            issues.push({
+                code: "pre-generated-round-selection-weight-exceeds-total",
+                severity: "error",
+                message: `selection.weight (${String(selection.weight)}) must not exceed selection.totalWeight (${String(selection.totalWeight)}).`,
             });
         }
         if (!isFiniteNumber(selection.probability) || selection.probability <= 0 || selection.probability > 1) {
@@ -129,6 +146,16 @@ implements ValidationRule<PreGeneratedRoundResult<T>> {
                 severity: "error",
                 message: `selection.probability must be a finite number in (0, 1], got ${String(selection.probability)}.`,
             });
+        } else if (weightValid && totalWeightValid) {
+            const expectedProbability = (selection.weight as number) / (selection.totalWeight as number);
+            if (Math.abs(selection.probability - expectedProbability) > FLOAT_EPSILON) {
+                issues.push({
+                    code: "pre-generated-round-selection-probability-mismatch",
+                    severity: "error",
+                    message: `selection.probability (${selection.probability}) does not match weight/totalWeight (${expectedProbability}).`,
+                    details: {probability: selection.probability, expected: expectedProbability},
+                });
+            }
         }
     }
 
@@ -172,6 +199,8 @@ implements ValidationRule<PreGeneratedRoundResult<T>> {
             issues.push({code: "pre-generated-round-transactions-invalid", severity: "error", message: "runtime.transactions must be an array."});
             return;
         }
+        const seenTransactionIds = new Set<string>();
+        let reportedDuplicate = false;
         runtime.transactions.forEach((transaction: unknown, index: number) => {
             const t = transaction as Loose<{id: unknown; type: unknown; amount: unknown}> | null;
             const valid =
@@ -188,8 +217,82 @@ implements ValidationRule<PreGeneratedRoundResult<T>> {
                     message: `runtime.transactions[${index}] is malformed.`,
                     details: {index},
                 });
+                return;
+            }
+            const id = (t as {id: string}).id;
+            if (seenTransactionIds.has(id)) {
+                if (!reportedDuplicate) {
+                    issues.push({
+                        code: "pre-generated-round-transaction-ids-not-unique",
+                        severity: "error",
+                        message: `runtime.transactions contains more than one entry with id "${id}".`,
+                        details: {id},
+                    });
+                    reportedDuplicate = true;
+                }
+            } else {
+                seenTransactionIds.add(id);
             }
         });
+    }
+
+    // Cross-checks runtime.transactions against artifact.stake/artifact.totalWin (and against each
+    // other, for balanceAfter) — invariants that span both the "selection" and "artifact" that no
+    // single-field check above can catch: a forged debit/credit amount, or a balanceAfter that doesn't
+    // actually reconcile with balanceBefore and the transactions that supposedly produced it. Skips
+    // silently (relying on validateRuntime's own per-entry check having already reported it) when
+    // runtime/artifact/transactions aren't even structurally sound enough to sum.
+    private validateTransactionConsistency(
+        runtime: Loose<PreGeneratedRoundResult<T>["runtime"]> | undefined,
+        artifact: Loose<PreGeneratedRoundResult<T>["artifact"]> | undefined,
+        issues: ValidationIssue[],
+    ): void {
+        if (typeof runtime !== "object" || runtime === null || !Array.isArray(runtime.transactions)) {
+            return;
+        }
+        if (typeof artifact !== "object" || artifact === null) {
+            return;
+        }
+
+        const transactions = runtime.transactions as Loose<{id: unknown; type: unknown; amount: unknown}>[];
+        const allEntriesValid = transactions.every(
+            (t) => typeof t === "object" && t !== null && (t.type === "debit" || t.type === "credit") && isFiniteNumber(t.amount) && (t.amount as number) >= 0,
+        );
+        if (!allEntriesValid) {
+            return;
+        }
+
+        const totalDebit = transactions.filter((t) => t.type === "debit").reduce((sum, t) => sum + (t.amount as number), 0);
+        const totalCredit = transactions.filter((t) => t.type === "credit").reduce((sum, t) => sum + (t.amount as number), 0);
+
+        if (isFiniteNumber(artifact.stake) && Math.abs(totalDebit - artifact.stake) > FLOAT_EPSILON) {
+            issues.push({
+                code: "pre-generated-round-transactions-debit-mismatch",
+                severity: "error",
+                message: `runtime.transactions' total debit (${totalDebit}) does not match artifact.stake (${artifact.stake}).`,
+                details: {totalDebit, stake: artifact.stake},
+            });
+        }
+        if (isFiniteNumber(artifact.totalWin) && Math.abs(totalCredit - artifact.totalWin) > FLOAT_EPSILON) {
+            issues.push({
+                code: "pre-generated-round-transactions-credit-mismatch",
+                severity: "error",
+                message: `runtime.transactions' total credit (${totalCredit}) does not match artifact.totalWin (${artifact.totalWin}).`,
+                details: {totalCredit, totalWin: artifact.totalWin},
+            });
+        }
+
+        if (isFiniteNumber(runtime.balanceBefore) && isFiniteNumber(runtime.balanceAfter)) {
+            const expectedBalanceAfter = runtime.balanceBefore - totalDebit + totalCredit;
+            if (Math.abs(runtime.balanceAfter - expectedBalanceAfter) > FLOAT_EPSILON) {
+                issues.push({
+                    code: "pre-generated-round-balance-mismatch",
+                    severity: "error",
+                    message: `runtime.balanceAfter (${runtime.balanceAfter}) does not reconcile with balanceBefore (${runtime.balanceBefore}) and transactions (expected ${expectedBalanceAfter}).`,
+                    details: {balanceBefore: runtime.balanceBefore, balanceAfter: runtime.balanceAfter, expected: expectedBalanceAfter},
+                });
+            }
+        }
     }
 
     private validateJsonSafety(result: PreGeneratedRoundResult<T>, issues: ValidationIssue[]): void {
