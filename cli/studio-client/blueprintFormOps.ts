@@ -322,13 +322,241 @@ export function removeSymbolWeight(blueprint: Record<string, unknown>, symbolId:
     blueprint.symbolWeights = weights;
 }
 
-// ---- Reel generation mode (reelStrips vs symbolWeights are mutually exclusive in practice) ----
+// ---- Reel strip generation (per-reel: each reel independently "literal" or "generated") ----
+//
+// Unlike reelStrips/symbolWeights (one shared shape for every reel), reelStripGeneration is an array
+// with exactly one entry per reel, each independently {type: "literal", strip} or {type: "generated",
+// length, seed, symbolCounts-or-symbolWeights, lockedPositions?, constraints?, maxAttempts?, ...} — see
+// src/generated/ReelStripGenerationSpec.ts. Every mutator below reads/writes one reel's own entry by
+// index, tolerant of a missing/malformed entry the same way the rest of this file is elsewhere.
 
-export type ReelGenerationMode = "reelStrips" | "symbolWeights" | "default";
+function asReelStripGenerationEntries(value: unknown): Record<string, unknown>[] {
+    return Array.isArray(value)
+        ? value.map((entry) => (typeof entry === "object" && entry !== null && !Array.isArray(entry) ? (entry as Record<string, unknown>) : {type: "literal", strip: []}))
+        : [];
+}
+
+function withReelStripGenerationEntry(
+    blueprint: Record<string, unknown>,
+    reelIndex: number,
+    update: (entry: Record<string, unknown>) => Record<string, unknown>,
+): void {
+    const entries = asReelStripGenerationEntries(blueprint.reelStripGeneration);
+    if (entries[reelIndex] === undefined) {
+        return;
+    }
+    const next = [...entries];
+    next[reelIndex] = update(entries[reelIndex]);
+    blueprint.reelStripGeneration = next;
+}
+
+function asNumberRecord(value: unknown): Record<string, number> {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return {};
+    }
+    const result: Record<string, number> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof val === "number") {
+            result[key] = val;
+        }
+    }
+    return result;
+}
+
+export function setReelStripGenerationEntryType(blueprint: Record<string, unknown>, reelIndex: number, type: "literal" | "generated"): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, () =>
+        type === "literal" ? {type: "literal", strip: []} : {type: "generated", length: 1, seed: 1, symbolCounts: {}},
+    );
+}
+
+// ---- Literal entries: the same per-symbol operations as top-level reelStrips, addressed by reelIndex ----
+
+export function addReelStripGenerationLiteralSymbol(blueprint: Record<string, unknown>, reelIndex: number, symbolId: string): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => ({...entry, strip: [...asStringArray(entry.strip), symbolId]}));
+}
+
+export function setReelStripGenerationLiteralSymbolAt(blueprint: Record<string, unknown>, reelIndex: number, position: number, symbolId: string): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const strip = [...asStringArray(entry.strip)];
+        strip[position] = symbolId;
+        return {...entry, strip};
+    });
+}
+
+export function removeReelStripGenerationLiteralSymbolAt(blueprint: Record<string, unknown>, reelIndex: number, position: number): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => ({...entry, strip: removeAt(asStringArray(entry.strip), position)}));
+}
+
+export function duplicateReelStripGenerationLiteralSymbolAt(blueprint: Record<string, unknown>, reelIndex: number, position: number): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const strip = [...asStringArray(entry.strip)];
+        if (strip[position] === undefined) {
+            return entry;
+        }
+        strip.splice(position + 1, 0, strip[position]);
+        return {...entry, strip};
+    });
+}
+
+export function moveReelStripGenerationLiteralSymbolAt(blueprint: Record<string, unknown>, reelIndex: number, fromPosition: number, toPosition: number): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => ({...entry, strip: moveItem(asStringArray(entry.strip), fromPosition, toPosition)}));
+}
+
+// ---- Generated entries: length/seed/maxAttempts, symbolCounts-or-symbolWeights, lockedPositions, constraints ----
+
+export function setReelStripGenerationLength(blueprint: Record<string, unknown>, reelIndex: number, length: number): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => ({...entry, length}));
+}
+
+export function setReelStripGenerationSeed(blueprint: Record<string, unknown>, reelIndex: number, seed: number): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => ({...entry, seed}));
+}
+
+// `undefined` removes maxAttempts entirely (it's optional -- falls back to ReelStripGenerator's own default).
+export function setReelStripGenerationMaxAttempts(blueprint: Record<string, unknown>, reelIndex: number, maxAttempts: number | undefined): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const next = {...entry};
+        if (maxAttempts === undefined) {
+            Reflect.deleteProperty(next, "maxAttempts");
+        } else {
+            next.maxAttempts = maxAttempts;
+        }
+        return next;
+    });
+}
+
+export type ReelStripGenerationSourceMode = "symbolCounts" | "symbolWeights";
+
+export function getReelStripGenerationSourceMode(entry: Record<string, unknown>): ReelStripGenerationSourceMode {
+    return entry.symbolWeights !== undefined ? "symbolWeights" : "symbolCounts";
+}
+
+// Exactly one of symbolCounts/symbolWeights may be set (mirrors the top-level reelStrips/symbolWeights
+// exclusivity) -- switching preserves whatever was already entered under the mode being kept.
+export function setReelStripGenerationSourceMode(blueprint: Record<string, unknown>, reelIndex: number, mode: ReelStripGenerationSourceMode): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const next = {...entry};
+        if (mode === "symbolCounts") {
+            next.symbolCounts = asNumberRecord(entry.symbolCounts);
+            Reflect.deleteProperty(next, "symbolWeights");
+        } else {
+            next.symbolWeights = asNumberRecord(entry.symbolWeights);
+            Reflect.deleteProperty(next, "symbolCounts");
+        }
+        return next;
+    });
+}
+
+export function setReelStripGenerationSymbolCount(blueprint: Record<string, unknown>, reelIndex: number, symbolId: string, count: number): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => ({...entry, symbolCounts: {...asNumberRecord(entry.symbolCounts), [symbolId]: count}}));
+}
+
+export function removeReelStripGenerationSymbolCount(blueprint: Record<string, unknown>, reelIndex: number, symbolId: string): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const counts = {...asNumberRecord(entry.symbolCounts)};
+        Reflect.deleteProperty(counts, symbolId);
+        return {...entry, symbolCounts: counts};
+    });
+}
+
+export function setReelStripGenerationSymbolWeight(blueprint: Record<string, unknown>, reelIndex: number, symbolId: string, weight: number): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => ({...entry, symbolWeights: {...asNumberRecord(entry.symbolWeights), [symbolId]: weight}}));
+}
+
+export function removeReelStripGenerationSymbolWeight(blueprint: Record<string, unknown>, reelIndex: number, symbolId: string): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const weights = {...asNumberRecord(entry.symbolWeights)};
+        Reflect.deleteProperty(weights, symbolId);
+        return {...entry, symbolWeights: weights};
+    });
+}
+
+function asLockedPositions(value: unknown): Record<string, string> {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return {};
+    }
+    const result: Record<string, string> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof val === "string") {
+            result[key] = val;
+        }
+    }
+    return result;
+}
+
+export function setReelStripGenerationLockedPosition(blueprint: Record<string, unknown>, reelIndex: number, position: number, symbolId: string): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => ({
+        ...entry,
+        lockedPositions: {...asLockedPositions(entry.lockedPositions), [String(position)]: symbolId},
+    }));
+}
+
+export function removeReelStripGenerationLockedPosition(blueprint: Record<string, unknown>, reelIndex: number, position: number): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const locked = {...asLockedPositions(entry.lockedPositions)};
+        Reflect.deleteProperty(locked, String(position));
+        return {...entry, lockedPositions: locked};
+    });
+}
+
+// Constraints are edited as a raw JSON array (ReelStripConstraintSpec[]) rather than one bespoke
+// widget per constraint type -- there are seven types with quite different fields (see
+// src/generated/ReelStripConstraintSpec.ts), and the Blueprint Editor already has a JSON-editing
+// affordance elsewhere (the whole-blueprint JSON view) whose shape errors surface the same way, via
+// the existing Validate action. This parser is pure/side-effect-free so a failed parse can be shown
+// inline without touching the blueprint -- see setReelStripGenerationConstraints for the actual mutator.
+export function parseReelStripGenerationConstraintsJson(jsonText: string): {ok: true; constraints: unknown[]} | {ok: false; error: string} {
+    if (jsonText.trim().length === 0) {
+        return {ok: true, constraints: []};
+    }
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(jsonText);
+    } catch (error) {
+        return {ok: false, error: error instanceof Error ? error.message : String(error)};
+    }
+    if (!Array.isArray(parsed)) {
+        return {ok: false, error: "Constraints must be a JSON array."};
+    }
+    return {ok: true, constraints: parsed};
+}
+
+export function setReelStripGenerationConstraints(blueprint: Record<string, unknown>, reelIndex: number, constraints: unknown[]): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
+        const next = {...entry};
+        if (constraints.length === 0) {
+            Reflect.deleteProperty(next, "constraints");
+        } else {
+            next.constraints = constraints;
+        }
+        return next;
+    });
+}
+
+// Keeps the outer array length in sync with `reels` -- same reasoning as resizeReelStripsToReelCount.
+export function resizeReelStripGenerationToReelCount(blueprint: Record<string, unknown>): void {
+    if (blueprint.reelStripGeneration === undefined) {
+        return;
+    }
+    const count = reelCount(blueprint);
+    const entries = asReelStripGenerationEntries(blueprint.reelStripGeneration);
+    const resized = entries.slice(0, count);
+    while (resized.length < count) {
+        resized.push({type: "literal", strip: []});
+    }
+    blueprint.reelStripGeneration = resized;
+}
+
+// ---- Reel generation mode (reelStrips/reelStripGeneration/symbolWeights are mutually exclusive in practice) ----
+
+export type ReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
 
 export function getReelGenerationMode(blueprint: Record<string, unknown>): ReelGenerationMode {
     if (blueprint.reelStrips !== undefined) {
         return "reelStrips";
+    }
+    if (blueprint.reelStripGeneration !== undefined) {
+        return "reelStripGeneration";
     }
     if (blueprint.symbolWeights !== undefined) {
         return "symbolWeights";
@@ -336,18 +564,29 @@ export function getReelGenerationMode(blueprint: Record<string, unknown>): ReelG
     return "default";
 }
 
-// Switching modes clears the field for the mode being left, so the blueprint never ends up carrying
-// both at once by accident (GameBlueprintValidator only warns about that, doesn't block it, but the
-// editor's own toggle is meant to make the choice explicit and exclusive).
+// Switching modes clears the fields for every mode being left, so the blueprint never ends up carrying
+// more than one at once by accident (GameBlueprintValidator only warns/errors about that combination,
+// doesn't always block it, but the editor's own toggle is meant to make the choice explicit and
+// exclusive).
 export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: ReelGenerationMode): void {
     if (mode === "reelStrips") {
         blueprint.reelStrips = blueprint.reelStrips !== undefined ? asReelStrips(blueprint.reelStrips) : new Array(reelCount(blueprint)).fill([]).map(() => []);
+        Reflect.deleteProperty(blueprint, "reelStripGeneration");
+        Reflect.deleteProperty(blueprint, "symbolWeights");
+    } else if (mode === "reelStripGeneration") {
+        blueprint.reelStripGeneration =
+            blueprint.reelStripGeneration !== undefined
+                ? asReelStripGenerationEntries(blueprint.reelStripGeneration)
+                : new Array(reelCount(blueprint)).fill(null).map(() => ({type: "literal", strip: []}));
+        Reflect.deleteProperty(blueprint, "reelStrips");
         Reflect.deleteProperty(blueprint, "symbolWeights");
     } else if (mode === "symbolWeights") {
         blueprint.symbolWeights = blueprint.symbolWeights !== undefined ? asSymbolWeights(blueprint.symbolWeights) : {};
         Reflect.deleteProperty(blueprint, "reelStrips");
+        Reflect.deleteProperty(blueprint, "reelStripGeneration");
     } else {
         Reflect.deleteProperty(blueprint, "reelStrips");
+        Reflect.deleteProperty(blueprint, "reelStripGeneration");
         Reflect.deleteProperty(blueprint, "symbolWeights");
     }
 }

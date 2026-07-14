@@ -1,4 +1,9 @@
-import {describeLoadResult, describeSaveResult, describeValidation} from "../../../cli/studio-client/interpretBlueprintEditor.js";
+import {
+    describeLoadResult,
+    describeReelStripGenerationPreview,
+    describeSaveResult,
+    describeValidation,
+} from "../../../cli/studio-client/interpretBlueprintEditor.js";
 
 describe("interpretBlueprintEditor", () => {
     describe("describeValidation", () => {
@@ -9,6 +14,18 @@ describe("interpretBlueprintEditor", () => {
         it("passes through an invalid result", () => {
             const errors = [{code: "blueprint-reels-invalid", severity: "error" as const, message: "bad"}];
             expect(describeValidation({status: "invalid", errors, warnings: []})).toEqual({status: "invalid", errors, warnings: []});
+        });
+    });
+
+    describe("describeReelStripGenerationPreview", () => {
+        it("passes through an ok result with its reels", () => {
+            const reels = [{reelIndex: 0, type: "literal" as const, strip: ["A"], analysis: {length: 1, symbolCounts: {A: 1}, symbolFrequencies: {A: 1}, minimumCircularDistances: {}, maximumCircularDistances: {}, maximumConsecutiveOccurrences: {A: 1}}}];
+            expect(describeReelStripGenerationPreview({status: "ok", warnings: [], reels})).toEqual({status: "ok", warnings: [], reels});
+        });
+
+        it("passes through an invalid result", () => {
+            const errors = [{code: "blueprint-reels-invalid", severity: "error" as const, message: "bad"}];
+            expect(describeReelStripGenerationPreview({status: "invalid", errors, warnings: []})).toEqual({status: "invalid", errors, warnings: []});
         });
     });
 

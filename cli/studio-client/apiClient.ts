@@ -11,6 +11,7 @@ import type {
     StudioBuildResult,
     StudioContext,
     StudioHomeRecentProjectView,
+    StudioReelStripGenerationView,
     StudioReplayJobView,
     StudioReplayListEntry,
     StudioRuntimeSessionView,
@@ -115,6 +116,18 @@ export async function validateBlueprint(fetchImpl: FetchLike, blueprint: unknown
         throw new Error(await extractErrorMessage(response, "Failed to validate blueprint"));
     }
     return (await response.json()) as StudioBlueprintValidationView;
+}
+
+export async function previewReelStripGeneration(fetchImpl: FetchLike, blueprint: unknown): Promise<StudioReelStripGenerationView> {
+    const response = await fetchImpl("/api/home/blueprints/reel-strip-generation-preview", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to resolve reel strip generation"));
+    }
+    return (await response.json()) as StudioReelStripGenerationView;
 }
 
 export async function loadBlueprint(fetchImpl: FetchLike, path: string): Promise<StudioBlueprintLoadView> {

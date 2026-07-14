@@ -116,6 +116,58 @@ export type StudioBlueprintValidationView =
     | {status: "ok"; warnings: ValidationIssue[]}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]};
 
+export type ReelStripConstraintViolation = {
+    constraintId: string;
+    message: string;
+    positions?: number[];
+    details?: Record<string, unknown>;
+};
+
+export type ReelStripGenerationDiagnostic = {
+    attempt: number;
+    accepted: boolean;
+    violations: ReelStripConstraintViolation[];
+    score?: number;
+};
+
+export type ReelStripAnalysis = {
+    length: number;
+    symbolCounts: Record<string, number>;
+    symbolFrequencies: Record<string, number>;
+    minimumCircularDistances: Record<string, number>;
+    maximumCircularDistances: Record<string, number>;
+    maximumConsecutiveOccurrences: Record<string, number>;
+};
+
+// POST /api/home/blueprints/reel-strip-generation-preview's own DTO — see
+// cli/studio/blueprint/StudioReelStripGenerationView.ts's own doc comment. Never the result of
+// anything being read/written on disk; a "generated" reel's success: false carries the same
+// diagnostics/violations "pokie build" itself would report for an unsatisfiable config.
+export type StudioReelStripGenerationReelView =
+    | {reelIndex: number; type: "literal"; strip: string[]; analysis: ReelStripAnalysis}
+    | {
+          reelIndex: number;
+          type: "generated";
+          seed: number;
+          success: true;
+          attemptsUsed: number;
+          diagnostics: ReelStripGenerationDiagnostic[];
+          strip: string[];
+          analysis: ReelStripAnalysis;
+      }
+    | {
+          reelIndex: number;
+          type: "generated";
+          seed: number;
+          success: false;
+          attemptsUsed: number;
+          diagnostics: ReelStripGenerationDiagnostic[];
+      };
+
+export type StudioReelStripGenerationView =
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
+    | {status: "ok"; warnings: ValidationIssue[]; reels: StudioReelStripGenerationReelView[]};
+
 // POST /api/home/blueprints/load's own DTO — see cli/studio/blueprint/StudioBlueprintLoadView.ts's own
 // doc comment. `blueprint` is the raw parsed JSON value (unknown), not yet validated.
 export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: unknown} | {status: "load-error"; error: string};

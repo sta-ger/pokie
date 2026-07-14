@@ -1,24 +1,43 @@
 import {
+    addReelStripGenerationLiteralSymbol,
     addReelStripSymbol,
     duplicateBetAt,
     duplicatePaylineAt,
     duplicatePaytablePayout,
+    duplicateReelStripGenerationLiteralSymbolAt,
     duplicateReelStripSymbolAt,
     duplicateSymbolAt,
     getReelGenerationMode,
+    getReelStripGenerationSourceMode,
     moveBetAt,
     movePaylineAt,
+    moveReelStripGenerationLiteralSymbolAt,
     moveReelStripSymbolAt,
     moveSymbolAt,
+    parseReelStripGenerationConstraintsJson,
     removeBetAt,
     removePaylineAt,
     removePaytablePayout,
+    removeReelStripGenerationLiteralSymbolAt,
+    removeReelStripGenerationLockedPosition,
+    removeReelStripGenerationSymbolCount,
+    removeReelStripGenerationSymbolWeight,
     removeReelStripSymbolAt,
     removeSymbolAt,
     removeSymbolWeight,
     setBetAt,
     setPaylineCell,
     setPaytablePayout,
+    setReelStripGenerationConstraints,
+    setReelStripGenerationEntryType,
+    setReelStripGenerationLength,
+    setReelStripGenerationLiteralSymbolAt,
+    setReelStripGenerationLockedPosition,
+    setReelStripGenerationMaxAttempts,
+    setReelStripGenerationSeed,
+    setReelStripGenerationSourceMode,
+    setReelStripGenerationSymbolCount,
+    setReelStripGenerationSymbolWeight,
     setReelStripSymbolAt,
     setSymbolAt,
     setSymbolWeight,
@@ -26,7 +45,7 @@ import {
     toggleWildSymbol,
     type ReelGenerationMode,
 } from "./blueprintFormOps.js";
-import type {BlueprintLoadView, BlueprintSaveView, BlueprintValidationView} from "./interpretBlueprintEditor.js";
+import type {BlueprintLoadView, BlueprintSaveView, BlueprintValidationView, ReelStripGenerationPreviewView} from "./interpretBlueprintEditor.js";
 import type {BuildPreviewView, BuildProjectView, HomeRecentProjectsListView, ScaffoldActionView} from "./interpretHome.js";
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
 import type {ReplayListView, ReplayProgressView, ReplayResultView} from "./interpretReplay.js";
@@ -336,9 +355,16 @@ export type Elements = {
     blueprintAddPaytableButton: HTMLButtonElement;
     blueprintModeDefaultRadio: HTMLInputElement;
     blueprintModeReelStripsRadio: HTMLInputElement;
+    blueprintModeReelStripGenerationRadio: HTMLInputElement;
     blueprintModeWeightsRadio: HTMLInputElement;
     blueprintReelStripsSection: HTMLElement;
     blueprintReelStripsContainer: HTMLElement;
+    blueprintReelStripGenerationSection: HTMLElement;
+    blueprintReelStripGenerationContainer: HTMLElement;
+    blueprintReelStripGenerationResolveButton: HTMLButtonElement;
+    blueprintReelStripGenerationLoading: HTMLElement;
+    blueprintReelStripGenerationError: HTMLElement;
+    blueprintReelStripGenerationResults: HTMLElement;
     blueprintWeightsSection: HTMLElement;
     blueprintWeightsBody: HTMLElement;
     blueprintAddWeightSymbol: HTMLSelectElement;
@@ -676,9 +702,16 @@ export function queryElements(): Elements {
         blueprintAddPaytableButton: requireElement("blueprint-add-paytable-button"),
         blueprintModeDefaultRadio: requireElement("blueprint-mode-default"),
         blueprintModeReelStripsRadio: requireElement("blueprint-mode-reelstrips"),
+        blueprintModeReelStripGenerationRadio: requireElement("blueprint-mode-reelstripgeneration"),
         blueprintModeWeightsRadio: requireElement("blueprint-mode-weights"),
         blueprintReelStripsSection: requireElement("blueprint-reelstrips-section"),
         blueprintReelStripsContainer: requireElement("blueprint-reelstrips-container"),
+        blueprintReelStripGenerationSection: requireElement("blueprint-reelstripgeneration-section"),
+        blueprintReelStripGenerationContainer: requireElement("blueprint-reelstripgeneration-container"),
+        blueprintReelStripGenerationResolveButton: requireElement("blueprint-reelstripgeneration-resolve-button"),
+        blueprintReelStripGenerationLoading: requireElement("blueprint-reelstripgeneration-loading"),
+        blueprintReelStripGenerationError: requireElement("blueprint-reelstripgeneration-error"),
+        blueprintReelStripGenerationResults: requireElement("blueprint-reelstripgeneration-results"),
         blueprintWeightsSection: requireElement("blueprint-weights-section"),
         blueprintWeightsBody: requireElement("blueprint-weights-body"),
         blueprintAddWeightSymbol: requireElement("blueprint-add-weight-symbol"),
@@ -1613,6 +1646,443 @@ export function renderBlueprintReelStrips(elements: Elements, blueprint: Record<
     });
 }
 
+// ---- Reel strip generation (per-reel: each reel independently "literal" or "generated") ----
+//
+// Renders one <fieldset> per reel: a type radio pair, then either the same per-symbol <ul> pattern as
+// renderBlueprintReelStrips (literal) or a small set of sub-widgets for that reel's own
+// ReelStripGenerationConfig (generated) -- length/seed/maxAttempts, a counts-or-weights table, a
+// lockedPositions table, and a constraints textarea (see parseReelStripGenerationConstraintsJson's own
+// doc comment for why constraints are edited as raw JSON rather than one widget per constraint type).
+
+function renderReelStripGenerationLiteralEditor(
+    container: HTMLElement,
+    entry: Record<string, unknown>,
+    reelIndex: number,
+    mutate: BlueprintMutate,
+): void {
+    const strip = asStringList(entry.strip);
+
+    const list = document.createElement("ul");
+    strip.forEach((symbolId, position) => {
+        const item = document.createElement("li");
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = symbolId;
+        input.addEventListener("change", () => mutate((b) => setReelStripGenerationLiteralSymbolAt(b, reelIndex, position, input.value)));
+        item.appendChild(input);
+
+        appendRowActions(item, [
+            {label: "Duplicate", onClick: () => mutate((b) => duplicateReelStripGenerationLiteralSymbolAt(b, reelIndex, position))},
+            {label: "Remove", onClick: () => mutate((b) => removeReelStripGenerationLiteralSymbolAt(b, reelIndex, position))},
+            {
+                label: "↑",
+                ariaLabel: `Move reel ${reelIndex + 1} symbol ${position + 1} up`,
+                onClick: () => mutate((b) => moveReelStripGenerationLiteralSymbolAt(b, reelIndex, position, position - 1)),
+            },
+            {
+                label: "↓",
+                ariaLabel: `Move reel ${reelIndex + 1} symbol ${position + 1} down`,
+                onClick: () => mutate((b) => moveReelStripGenerationLiteralSymbolAt(b, reelIndex, position, position + 1)),
+            },
+        ]);
+        list.appendChild(item);
+    });
+    container.appendChild(list);
+
+    const addRow = document.createElement("div");
+    addRow.className = "quick-actions";
+    const addInput = document.createElement("input");
+    addInput.type = "text";
+    addInput.placeholder = "Symbol id";
+    addInput.setAttribute("aria-label", `New symbol id for reel ${reelIndex + 1}`);
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.textContent = "Add symbol";
+    addButton.addEventListener("click", () => mutate((b) => addReelStripGenerationLiteralSymbol(b, reelIndex, addInput.value)));
+    addRow.appendChild(addInput);
+    addRow.appendChild(addButton);
+    container.appendChild(addRow);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function renderReelStripGenerationSourceTable(
+    container: HTMLElement,
+    entry: Record<string, unknown>,
+    reelIndex: number,
+    symbols: string[],
+    mutate: BlueprintMutate,
+): void {
+    const mode = getReelStripGenerationSourceMode(entry);
+    const label = mode === "symbolCounts" ? "Count" : "Weight";
+    const values = asRecord(mode === "symbolCounts" ? entry.symbolCounts : entry.symbolWeights);
+
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    for (const text of ["Symbol", label, ""]) {
+        const th = document.createElement("th");
+        th.textContent = text;
+        headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const [symbolId, value] of Object.entries(values)) {
+        if (typeof value !== "number") {
+            continue;
+        }
+        const row = document.createElement("tr");
+        const symbolCell = document.createElement("td");
+        symbolCell.textContent = symbolId;
+        row.appendChild(symbolCell);
+
+        const valueCell = document.createElement("td");
+        const valueInput = document.createElement("input");
+        valueInput.type = "number";
+        valueInput.step = mode === "symbolCounts" ? "1" : "any";
+        valueInput.value = String(value);
+        valueInput.addEventListener("change", () =>
+            mutate((b) =>
+                mode === "symbolCounts"
+                    ? setReelStripGenerationSymbolCount(b, reelIndex, symbolId, valueInput.valueAsNumber)
+                    : setReelStripGenerationSymbolWeight(b, reelIndex, symbolId, valueInput.valueAsNumber),
+            ),
+        );
+        valueCell.appendChild(valueInput);
+        row.appendChild(valueCell);
+
+        appendRowActions(row, [
+            {
+                label: "Remove",
+                onClick: () =>
+                    mutate((b) =>
+                        mode === "symbolCounts"
+                            ? removeReelStripGenerationSymbolCount(b, reelIndex, symbolId)
+                            : removeReelStripGenerationSymbolWeight(b, reelIndex, symbolId),
+                    ),
+            },
+        ]);
+        tbody.appendChild(row);
+    }
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    const addRow = document.createElement("div");
+    addRow.className = "quick-actions";
+    const addSelect = document.createElement("select");
+    addSelect.setAttribute("aria-label", "Symbol");
+    renderSymbolOptions(addSelect, symbols);
+    const addValueInput = document.createElement("input");
+    addValueInput.type = "number";
+    addValueInput.step = mode === "symbolCounts" ? "1" : "any";
+    addValueInput.placeholder = label;
+    addValueInput.setAttribute("aria-label", label);
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.textContent = mode === "symbolCounts" ? "Add count" : "Add weight";
+    addButton.addEventListener("click", () => {
+        const symbolId = addSelect.value;
+        const value = addValueInput.valueAsNumber;
+        if (symbolId.length === 0 || Number.isNaN(value)) {
+            return;
+        }
+        mutate((b) =>
+            mode === "symbolCounts"
+                ? setReelStripGenerationSymbolCount(b, reelIndex, symbolId, value)
+                : setReelStripGenerationSymbolWeight(b, reelIndex, symbolId, value),
+        );
+    });
+    addRow.appendChild(addSelect);
+    addRow.appendChild(addValueInput);
+    addRow.appendChild(addButton);
+    container.appendChild(addRow);
+}
+
+function renderReelStripGenerationLockedPositions(
+    container: HTMLElement,
+    entry: Record<string, unknown>,
+    reelIndex: number,
+    symbols: string[],
+    mutate: BlueprintMutate,
+): void {
+    const fieldset = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = "Locked positions";
+    fieldset.appendChild(legend);
+
+    const lockedPositions = asRecord(entry.lockedPositions);
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>Position</th><th>Symbol</th><th></th></tr>";
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const [position, symbolId] of Object.entries(lockedPositions)) {
+        if (typeof symbolId !== "string") {
+            continue;
+        }
+        const row = document.createElement("tr");
+        const positionCell = document.createElement("td");
+        positionCell.textContent = position;
+        row.appendChild(positionCell);
+        const symbolCell = document.createElement("td");
+        symbolCell.textContent = symbolId;
+        row.appendChild(symbolCell);
+        appendRowActions(row, [
+            {label: "Remove", onClick: () => mutate((b) => removeReelStripGenerationLockedPosition(b, reelIndex, Number(position)))},
+        ]);
+        tbody.appendChild(row);
+    }
+    table.appendChild(tbody);
+    fieldset.appendChild(table);
+
+    const addRow = document.createElement("div");
+    addRow.className = "quick-actions";
+    const positionInput = document.createElement("input");
+    positionInput.type = "number";
+    positionInput.min = "0";
+    positionInput.step = "1";
+    positionInput.placeholder = "Position";
+    positionInput.setAttribute("aria-label", "Position");
+    const symbolSelect = document.createElement("select");
+    symbolSelect.setAttribute("aria-label", "Symbol");
+    renderSymbolOptions(symbolSelect, symbols);
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.textContent = "Lock position";
+    addButton.addEventListener("click", () => {
+        const position = positionInput.valueAsNumber;
+        const symbolId = symbolSelect.value;
+        if (Number.isNaN(position) || symbolId.length === 0) {
+            return;
+        }
+        mutate((b) => setReelStripGenerationLockedPosition(b, reelIndex, position, symbolId));
+    });
+    addRow.appendChild(positionInput);
+    addRow.appendChild(symbolSelect);
+    addRow.appendChild(addButton);
+    fieldset.appendChild(addRow);
+
+    container.appendChild(fieldset);
+}
+
+function renderReelStripGenerationConstraints(container: HTMLElement, entry: Record<string, unknown>, reelIndex: number, mutate: BlueprintMutate): void {
+    const fieldset = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = "Constraints (JSON array)";
+    fieldset.appendChild(legend);
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 4;
+    textarea.value = Array.isArray(entry.constraints) ? JSON.stringify(entry.constraints, null, 2) : "";
+    const error = document.createElement("p");
+    error.hidden = true;
+
+    textarea.addEventListener("change", () => {
+        const result = parseReelStripGenerationConstraintsJson(textarea.value);
+        if (!result.ok) {
+            error.textContent = result.error;
+            error.hidden = false;
+            return;
+        }
+        error.hidden = true;
+        mutate((b) => setReelStripGenerationConstraints(b, reelIndex, result.constraints));
+    });
+
+    fieldset.appendChild(textarea);
+    fieldset.appendChild(error);
+    container.appendChild(fieldset);
+}
+
+function renderReelStripGenerationGeneratedEditor(
+    container: HTMLElement,
+    entry: Record<string, unknown>,
+    reelIndex: number,
+    symbols: string[],
+    mutate: BlueprintMutate,
+): void {
+    const fieldsRow = document.createElement("div");
+    fieldsRow.className = "quick-actions";
+
+    const lengthLabel = document.createElement("label");
+    lengthLabel.textContent = "Length ";
+    const lengthInput = document.createElement("input");
+    lengthInput.type = "number";
+    lengthInput.min = "1";
+    lengthInput.step = "1";
+    lengthInput.value = typeof entry.length === "number" ? String(entry.length) : "";
+    lengthInput.addEventListener("change", () => mutate((b) => setReelStripGenerationLength(b, reelIndex, lengthInput.valueAsNumber)));
+    lengthLabel.appendChild(lengthInput);
+    fieldsRow.appendChild(lengthLabel);
+
+    const seedLabel = document.createElement("label");
+    seedLabel.textContent = "Seed ";
+    const seedInput = document.createElement("input");
+    seedInput.type = "number";
+    seedInput.step = "1";
+    seedInput.value = typeof entry.seed === "number" ? String(entry.seed) : "";
+    seedInput.addEventListener("change", () => mutate((b) => setReelStripGenerationSeed(b, reelIndex, seedInput.valueAsNumber)));
+    seedLabel.appendChild(seedInput);
+    fieldsRow.appendChild(seedLabel);
+
+    const maxAttemptsLabel = document.createElement("label");
+    maxAttemptsLabel.textContent = "Max attempts ";
+    const maxAttemptsInput = document.createElement("input");
+    maxAttemptsInput.type = "number";
+    maxAttemptsInput.min = "1";
+    maxAttemptsInput.step = "1";
+    maxAttemptsInput.placeholder = "default";
+    maxAttemptsInput.value = typeof entry.maxAttempts === "number" ? String(entry.maxAttempts) : "";
+    maxAttemptsInput.addEventListener("change", () => {
+        const trimmed = maxAttemptsInput.value.trim();
+        mutate((b) => setReelStripGenerationMaxAttempts(b, reelIndex, trimmed.length === 0 ? undefined : maxAttemptsInput.valueAsNumber));
+    });
+    maxAttemptsLabel.appendChild(maxAttemptsInput);
+    fieldsRow.appendChild(maxAttemptsLabel);
+
+    container.appendChild(fieldsRow);
+
+    const sourceMode = getReelStripGenerationSourceMode(entry);
+    const modeRow = document.createElement("div");
+    modeRow.className = "quick-actions";
+    modeRow.setAttribute("role", "radiogroup");
+
+    const countsLabel = document.createElement("label");
+    const countsRadio = document.createElement("input");
+    countsRadio.type = "radio";
+    countsRadio.name = `blueprint-reelstripgen-source-${reelIndex}`;
+    countsRadio.checked = sourceMode === "symbolCounts";
+    countsRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationSourceMode(b, reelIndex, "symbolCounts")));
+    countsLabel.appendChild(countsRadio);
+    countsLabel.append(" Counts");
+    modeRow.appendChild(countsLabel);
+
+    const weightsLabel = document.createElement("label");
+    const weightsRadio = document.createElement("input");
+    weightsRadio.type = "radio";
+    weightsRadio.name = `blueprint-reelstripgen-source-${reelIndex}`;
+    weightsRadio.checked = sourceMode === "symbolWeights";
+    weightsRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationSourceMode(b, reelIndex, "symbolWeights")));
+    weightsLabel.appendChild(weightsRadio);
+    weightsLabel.append(" Weights");
+    modeRow.appendChild(weightsLabel);
+
+    container.appendChild(modeRow);
+
+    renderReelStripGenerationSourceTable(container, entry, reelIndex, symbols, mutate);
+    renderReelStripGenerationLockedPositions(container, entry, reelIndex, symbols, mutate);
+    renderReelStripGenerationConstraints(container, entry, reelIndex, mutate);
+}
+
+export function renderBlueprintReelStripGeneration(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
+    const entries = Array.isArray(blueprint.reelStripGeneration) ? blueprint.reelStripGeneration.map((entry) => asRecord(entry)) : [];
+    const symbols = asStringList(blueprint.symbols);
+
+    elements.blueprintReelStripGenerationContainer.textContent = "";
+    entries.forEach((entry, reelIndex) => {
+        const fieldset = document.createElement("fieldset");
+        const legend = document.createElement("legend");
+        legend.textContent = `Reel ${reelIndex + 1}`;
+        fieldset.appendChild(legend);
+
+        const type = entry.type === "generated" ? "generated" : "literal";
+        const typeRow = document.createElement("div");
+        typeRow.className = "quick-actions";
+        typeRow.setAttribute("role", "radiogroup");
+
+        const literalLabel = document.createElement("label");
+        const literalRadio = document.createElement("input");
+        literalRadio.type = "radio";
+        literalRadio.name = `blueprint-reelstripgen-type-${reelIndex}`;
+        literalRadio.checked = type === "literal";
+        literalRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationEntryType(b, reelIndex, "literal")));
+        literalLabel.appendChild(literalRadio);
+        literalLabel.append(" Literal");
+        typeRow.appendChild(literalLabel);
+
+        const generatedLabel = document.createElement("label");
+        const generatedRadio = document.createElement("input");
+        generatedRadio.type = "radio";
+        generatedRadio.name = `blueprint-reelstripgen-type-${reelIndex}`;
+        generatedRadio.checked = type === "generated";
+        generatedRadio.addEventListener("change", () => mutate((b) => setReelStripGenerationEntryType(b, reelIndex, "generated")));
+        generatedLabel.appendChild(generatedRadio);
+        generatedLabel.append(" Generated");
+        typeRow.appendChild(generatedLabel);
+
+        fieldset.appendChild(typeRow);
+
+        if (type === "literal") {
+            renderReelStripGenerationLiteralEditor(fieldset, entry, reelIndex, mutate);
+        } else {
+            renderReelStripGenerationGeneratedEditor(fieldset, entry, reelIndex, symbols, mutate);
+        }
+
+        elements.blueprintReelStripGenerationContainer.appendChild(fieldset);
+    });
+}
+
+// The "Resolve reels" button's own result panel -- see ReelStripGenerationPreviewView's own doc
+// comment. Rebuilt fully on every render, same convention as every other dynamic collection here.
+export function renderReelStripGenerationPreview(elements: Elements, view: ReelStripGenerationPreviewView): void {
+    elements.blueprintReelStripGenerationLoading.hidden = view.status !== "loading";
+    elements.blueprintReelStripGenerationError.hidden = view.status !== "error" && view.status !== "invalid";
+    elements.blueprintReelStripGenerationResults.textContent = "";
+
+    if (view.status === "idle" || view.status === "loading") {
+        return;
+    }
+    if (view.status === "error") {
+        elements.blueprintReelStripGenerationError.textContent = view.message;
+        return;
+    }
+    if (view.status === "invalid") {
+        elements.blueprintReelStripGenerationError.textContent =
+            `Blueprint is invalid (${view.errors.length} error(s)) -- fix it first (see Validate above).`;
+        return;
+    }
+
+    view.reels.forEach((reel) => {
+        const card = document.createElement("fieldset");
+        const legend = document.createElement("legend");
+        legend.textContent = `Reel ${reel.reelIndex + 1} (${reel.type})`;
+        card.appendChild(legend);
+
+        if (reel.type === "literal" || reel.success) {
+            const sequence = document.createElement("p");
+            sequence.textContent = `Sequence: ${reel.strip.join(", ")}`;
+            card.appendChild(sequence);
+
+            const counts = document.createElement("p");
+            counts.textContent = `Symbol counts: ${Object.entries(reel.analysis.symbolCounts)
+                .map(([symbolId, count]) => `${symbolId}=${count}`)
+                .join(", ")}`;
+            card.appendChild(counts);
+        } else {
+            const failure = document.createElement("p");
+            failure.textContent = `Failed to generate after ${reel.attemptsUsed} attempt(s).`;
+            card.appendChild(failure);
+
+            const lastDiagnostic = reel.diagnostics[reel.diagnostics.length - 1];
+            if (lastDiagnostic !== undefined && lastDiagnostic.violations.length > 0) {
+                const list = document.createElement("ul");
+                for (const violation of lastDiagnostic.violations) {
+                    const item = document.createElement("li");
+                    item.textContent = `${violation.constraintId}: ${violation.message}`;
+                    list.appendChild(item);
+                }
+                card.appendChild(list);
+            }
+        }
+
+        elements.blueprintReelStripGenerationResults.appendChild(card);
+    });
+}
+
 export function renderBlueprintWeights(elements: Elements, blueprint: Record<string, unknown>, mutate: BlueprintMutate): void {
     renderSymbolOptions(elements.blueprintAddWeightSymbol, asStringList(blueprint.symbols));
 
@@ -1652,12 +2122,16 @@ export function renderBlueprintGenerationMode(elements: Elements, blueprint: Rec
     const mode: ReelGenerationMode = getReelGenerationMode(blueprint);
     elements.blueprintModeDefaultRadio.checked = mode === "default";
     elements.blueprintModeReelStripsRadio.checked = mode === "reelStrips";
+    elements.blueprintModeReelStripGenerationRadio.checked = mode === "reelStripGeneration";
     elements.blueprintModeWeightsRadio.checked = mode === "symbolWeights";
     elements.blueprintReelStripsSection.hidden = mode !== "reelStrips";
+    elements.blueprintReelStripGenerationSection.hidden = mode !== "reelStripGeneration";
     elements.blueprintWeightsSection.hidden = mode !== "symbolWeights";
 
     if (mode === "reelStrips") {
         renderBlueprintReelStrips(elements, blueprint, mutate);
+    } else if (mode === "reelStripGeneration") {
+        renderBlueprintReelStripGeneration(elements, blueprint, mutate);
     } else if (mode === "symbolWeights") {
         renderBlueprintWeights(elements, blueprint, mutate);
     }

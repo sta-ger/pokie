@@ -80,6 +80,117 @@ describe("StudioBlueprintService", () => {
         });
     });
 
+    describe("previewReelStripGeneration", () => {
+        it("returns ok with an empty reels list when the blueprint has no reelStripGeneration", () => {
+            const service = createService();
+
+            const result = service.previewReelStripGeneration(buildBlueprint());
+
+            expect(result).toEqual({status: "ok", warnings: [], reels: []});
+        });
+
+        it("returns invalid for a structurally broken blueprint, without resolving anything", () => {
+            const service = createService();
+
+            const result = service.previewReelStripGeneration(buildBlueprint({reels: 0}));
+
+            expect(result.status).toBe("invalid");
+        });
+
+        it("resolves a mix of literal and generated reels, reporting each reel's exact strip and symbol-count analysis", () => {
+            const service = createService();
+            const blueprint = buildBlueprint({
+                reelStripGeneration: [
+                    {type: "literal", strip: ["A", "B"]},
+                    {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                    {type: "literal", strip: ["B", "A"]},
+                ],
+            });
+
+            const result = service.previewReelStripGeneration(blueprint);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                return;
+            }
+            expect(result.reels).toHaveLength(3);
+            expect(result.reels[0]).toEqual({
+                reelIndex: 0,
+                type: "literal",
+                strip: ["A", "B"],
+                analysis: expect.objectContaining({length: 2, symbolCounts: {A: 1, B: 1}}),
+            });
+            expect(result.reels[2]).toEqual({
+                reelIndex: 2,
+                type: "literal",
+                strip: ["B", "A"],
+                analysis: expect.objectContaining({length: 2, symbolCounts: {B: 1, A: 1}}),
+            });
+
+            const generated = result.reels[1];
+            expect(generated.type).toBe("generated");
+            if (generated.type !== "generated" || !generated.success) {
+                throw new Error("expected reel 1 to succeed");
+            }
+            expect(generated.strip).toHaveLength(2);
+            expect(generated.analysis.symbolCounts).toEqual({A: 1, B: 1});
+        });
+
+        it("reports a generated reel's failure (unsatisfiable constraints) with diagnostics, without failing the whole preview", () => {
+            const service = createService();
+            const blueprint = buildBlueprint({
+                reelStripGeneration: [
+                    {type: "literal", strip: ["A", "B"]},
+                    {
+                        type: "generated",
+                        length: 4,
+                        symbolCounts: {A: 2, B: 2},
+                        seed: 1,
+                        maxAttempts: 3,
+                        // Two "A"s on a 4-long strip always split the circle into two gaps summing to
+                        // 4, so both can never simultaneously be <= 1 -- unsatisfiable by construction.
+                        constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
+                    },
+                    {type: "literal", strip: ["B", "A"]},
+                ],
+            });
+
+            const result = service.previewReelStripGeneration(blueprint);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                return;
+            }
+            expect(result.reels).toHaveLength(3);
+            expect(result.reels[0].type).toBe("literal");
+            expect(result.reels[2].type).toBe("literal");
+
+            const failed = result.reels[1];
+            expect(failed.type).toBe("generated");
+            if (failed.type !== "generated" || failed.success) {
+                throw new Error("expected reel 1 to fail");
+            }
+            expect(failed.diagnostics.length).toBeGreaterThan(0);
+            expect(failed.diagnostics[failed.diagnostics.length - 1].violations[0].constraintId).toBe("maximum-circular-distance");
+        });
+
+        it("never touches the filesystem", () => {
+            const service = createService();
+
+            service.previewReelStripGeneration(
+                buildBlueprint({
+                    reelStripGeneration: [
+                        {type: "literal", strip: ["A", "B"]},
+                        {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                        {type: "literal", strip: ["B", "A"]},
+                    ],
+                }),
+            );
+
+            expect(fs.readdirSync(tmpDir)).toEqual([]);
+        });
+    });
+
     describe("load", () => {
         function writeBlueprintFile(dir: string, blueprint: unknown): string {
             const filePath = path.join(dir, "blueprint.json");

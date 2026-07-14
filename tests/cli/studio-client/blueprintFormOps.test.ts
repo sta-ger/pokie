@@ -1,30 +1,50 @@
 import {
     addBet,
     addPayline,
+    addReelStripGenerationLiteralSymbol,
     addReelStripSymbol,
     addSymbol,
     duplicateBetAt,
     duplicatePaylineAt,
     duplicatePaytablePayout,
+    duplicateReelStripGenerationLiteralSymbolAt,
     duplicateReelStripSymbolAt,
     duplicateSymbolAt,
     getReelGenerationMode,
+    getReelStripGenerationSourceMode,
     moveBetAt,
     movePaylineAt,
+    moveReelStripGenerationLiteralSymbolAt,
     moveReelStripSymbolAt,
     moveSymbolAt,
+    parseReelStripGenerationConstraintsJson,
     removeBetAt,
     removePaylineAt,
     removePaytablePayout,
+    removeReelStripGenerationLiteralSymbolAt,
+    removeReelStripGenerationLockedPosition,
+    removeReelStripGenerationSymbolCount,
+    removeReelStripGenerationSymbolWeight,
     removeReelStripSymbolAt,
     removeSymbolAt,
     removeSymbolWeight,
     resizePaylinesToReelCount,
+    resizeReelStripGenerationToReelCount,
     resizeReelStripsToReelCount,
     setBetAt,
     setPaylineCell,
     setPaytablePayout,
     setReelGenerationMode,
+    setReelStripGenerationConstraints,
+    setReelStripGenerationEntryType,
+    setReelStripGenerationLength,
+    setReelStripGenerationLiteralSymbolAt,
+    setReelStripGenerationLockedPosition,
+    setReelStripGenerationMaxAttempts,
+    setReelStripGenerationSeed,
+    setReelStripGenerationSourceMode,
+    setReelStripGenerationSymbolCount,
+    setReelStripGenerationSymbolWeight,
     setReelStripSymbolAt,
     setSymbolAt,
     setSymbolWeight,
@@ -205,40 +225,190 @@ describe("blueprintFormOps", () => {
         });
     });
 
+    describe("reelStripGeneration", () => {
+        it("switches a reel's own entry between literal and generated", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "literal", strip: ["A"]}]};
+
+            setReelStripGenerationEntryType(b, 0, "generated");
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolCounts: {}}]);
+
+            setReelStripGenerationEntryType(b, 0, "literal");
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: []}]);
+        });
+
+        it("does nothing for an out-of-range reel index", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "literal", strip: ["A"]}]};
+
+            setReelStripGenerationEntryType(b, 5, "generated");
+
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A"]}]);
+        });
+
+        it("adds, sets, removes, duplicates, and moves symbols on a literal reel's own strip", () => {
+            const b: Record<string, unknown> = {
+                reelStripGeneration: [{type: "literal", strip: ["A"]}, {type: "literal", strip: ["B"]}],
+            };
+
+            addReelStripGenerationLiteralSymbol(b, 0, "C");
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A", "C"]}, {type: "literal", strip: ["B"]}]);
+
+            setReelStripGenerationLiteralSymbolAt(b, 0, 1, "D");
+            duplicateReelStripGenerationLiteralSymbolAt(b, 0, 0);
+            moveReelStripGenerationLiteralSymbolAt(b, 0, 2, 0);
+            removeReelStripGenerationLiteralSymbolAt(b, 0, 0);
+
+            expect((b.reelStripGeneration as Array<{strip: string[]}>)[0].strip).toEqual(["A", "A"]);
+        });
+
+        it("sets length, seed, and maxAttempts on a generated reel", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 1, seed: 1, symbolCounts: {}}]};
+
+            setReelStripGenerationLength(b, 0, 10);
+            setReelStripGenerationSeed(b, 0, 42);
+            setReelStripGenerationMaxAttempts(b, 0, 50);
+
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 10, seed: 42, maxAttempts: 50, symbolCounts: {}}]);
+
+            setReelStripGenerationMaxAttempts(b, 0, undefined);
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 10, seed: 42, symbolCounts: {}}]);
+        });
+
+        it("reports and switches between symbolCounts and symbolWeights, preserving each side's own data", () => {
+            const entry = {type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}};
+            expect(getReelStripGenerationSourceMode(entry)).toBe("symbolCounts");
+
+            const b: Record<string, unknown> = {reelStripGeneration: [entry]};
+            setReelStripGenerationSourceMode(b, 0, "symbolWeights");
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolWeights: {}}]);
+
+            setReelStripGenerationSymbolWeight(b, 0, "A", 5);
+            setReelStripGenerationSourceMode(b, 0, "symbolCounts");
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolCounts: {}}]);
+        });
+
+        it("sets and removes symbol counts and weights", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 1, seed: 1, symbolCounts: {A: 1}}]};
+
+            setReelStripGenerationSymbolCount(b, 0, "B", 2);
+            expect((b.reelStripGeneration as Array<{symbolCounts: unknown}>)[0].symbolCounts).toEqual({A: 1, B: 2});
+
+            removeReelStripGenerationSymbolCount(b, 0, "A");
+            expect((b.reelStripGeneration as Array<{symbolCounts: unknown}>)[0].symbolCounts).toEqual({B: 2});
+
+            setReelStripGenerationSourceMode(b, 0, "symbolWeights");
+            setReelStripGenerationSymbolWeight(b, 0, "C", 4);
+            expect((b.reelStripGeneration as Array<{symbolWeights: unknown}>)[0].symbolWeights).toEqual({C: 4});
+
+            removeReelStripGenerationSymbolWeight(b, 0, "C");
+            expect((b.reelStripGeneration as Array<{symbolWeights: unknown}>)[0].symbolWeights).toEqual({});
+        });
+
+        it("sets and removes locked positions", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 4, seed: 1, symbolCounts: {}}]};
+
+            setReelStripGenerationLockedPosition(b, 0, 0, "W");
+            expect((b.reelStripGeneration as Array<{lockedPositions: unknown}>)[0].lockedPositions).toEqual({"0": "W"});
+
+            removeReelStripGenerationLockedPosition(b, 0, 0);
+            expect((b.reelStripGeneration as Array<{lockedPositions: unknown}>)[0].lockedPositions).toEqual({});
+        });
+
+        it("sets constraints from a parsed JSON array, and clears them for an empty array", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "generated", length: 1, seed: 1, symbolCounts: {}}]};
+
+            setReelStripGenerationConstraints(b, 0, [{type: "minimumCircularDistance", minimumDistance: 2}]);
+            expect((b.reelStripGeneration as Array<{constraints: unknown}>)[0].constraints).toEqual([
+                {type: "minimumCircularDistance", minimumDistance: 2},
+            ]);
+
+            setReelStripGenerationConstraints(b, 0, []);
+            expect((b.reelStripGeneration as Array<{constraints?: unknown}>)[0].constraints).toBeUndefined();
+        });
+
+        it("parses a valid constraints JSON array", () => {
+            expect(parseReelStripGenerationConstraintsJson('[{"type": "minimumCircularDistance", "minimumDistance": 2}]')).toEqual({
+                ok: true,
+                constraints: [{type: "minimumCircularDistance", minimumDistance: 2}],
+            });
+            expect(parseReelStripGenerationConstraintsJson("")).toEqual({ok: true, constraints: []});
+            expect(parseReelStripGenerationConstraintsJson("   ")).toEqual({ok: true, constraints: []});
+        });
+
+        it("reports a parse error for malformed JSON, without throwing", () => {
+            const result = parseReelStripGenerationConstraintsJson("{not valid json");
+            expect(result.ok).toBe(false);
+        });
+
+        it("reports an error when the parsed JSON isn't an array", () => {
+            const result = parseReelStripGenerationConstraintsJson('{"type": "minimumCircularDistance"}');
+            expect(result).toEqual({ok: false, error: "Constraints must be a JSON array."});
+        });
+
+        it("keeps the outer array length in sync with reels", () => {
+            const b: Record<string, unknown> = {reels: 3, reelStripGeneration: [{type: "literal", strip: ["A"]}]};
+
+            resizeReelStripGenerationToReelCount(b);
+
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A"]}, {type: "literal", strip: []}, {type: "literal", strip: []}]);
+        });
+
+        it("does nothing when reelStripGeneration isn't present", () => {
+            const b: Record<string, unknown> = {reels: 3};
+
+            resizeReelStripGenerationToReelCount(b);
+
+            expect(b.reelStripGeneration).toBeUndefined();
+        });
+    });
+
     describe("reel generation mode", () => {
-        it("reports default when neither field is set", () => {
+        it("reports default when no field is set", () => {
             expect(getReelGenerationMode({})).toBe("default");
         });
 
-        it("reports reelStrips/symbolWeights when set", () => {
+        it("reports reelStrips/reelStripGeneration/symbolWeights when set", () => {
             expect(getReelGenerationMode({reelStrips: []})).toBe("reelStrips");
+            expect(getReelGenerationMode({reelStripGeneration: []})).toBe("reelStripGeneration");
             expect(getReelGenerationMode({symbolWeights: {}})).toBe("symbolWeights");
         });
 
-        it("switching to reelStrips clears symbolWeights and seeds one empty strip per reel", () => {
+        it("switching to reelStrips clears reelStripGeneration/symbolWeights and seeds one empty strip per reel", () => {
             const b: Record<string, unknown> = {reels: 2, symbolWeights: {A: 1}};
 
             setReelGenerationMode(b, "reelStrips");
 
             expect(b.symbolWeights).toBeUndefined();
+            expect(b.reelStripGeneration).toBeUndefined();
             expect(b.reelStrips).toEqual([[], []]);
         });
 
-        it("switching to symbolWeights clears reelStrips", () => {
+        it("switching to reelStripGeneration clears reelStrips/symbolWeights and seeds one literal entry per reel", () => {
+            const b: Record<string, unknown> = {reels: 2, symbolWeights: {A: 1}};
+
+            setReelGenerationMode(b, "reelStripGeneration");
+
+            expect(b.symbolWeights).toBeUndefined();
+            expect(b.reelStrips).toBeUndefined();
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: []}, {type: "literal", strip: []}]);
+        });
+
+        it("switching to symbolWeights clears reelStrips/reelStripGeneration", () => {
             const b: Record<string, unknown> = {reelStrips: [["A"]]};
 
             setReelGenerationMode(b, "symbolWeights");
 
             expect(b.reelStrips).toBeUndefined();
+            expect(b.reelStripGeneration).toBeUndefined();
             expect(b.symbolWeights).toEqual({});
         });
 
-        it("switching to default clears both", () => {
-            const b: Record<string, unknown> = {reelStrips: [["A"]], symbolWeights: {A: 1}};
+        it("switching to default clears all three", () => {
+            const b: Record<string, unknown> = {reelStrips: [["A"]], reelStripGeneration: [], symbolWeights: {A: 1}};
 
             setReelGenerationMode(b, "default");
 
             expect(b.reelStrips).toBeUndefined();
+            expect(b.reelStripGeneration).toBeUndefined();
             expect(b.symbolWeights).toBeUndefined();
         });
     });

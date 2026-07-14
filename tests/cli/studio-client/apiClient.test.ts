@@ -25,6 +25,7 @@ import {
     openProject,
     previewBlueprintBuild,
     previewBuild,
+    previewReelStripGeneration,
     restartRuntime,
     runReplay,
     saveBlueprint,
@@ -280,6 +281,33 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprint" is required.'}}));
 
             await expect(validateBlueprint(fetchImpl, undefined)).rejects.toThrow('"blueprint" is required.');
+        });
+    });
+
+    describe("previewReelStripGeneration", () => {
+        it("POSTs the blueprint and returns the resolved reels", async () => {
+            const body = {status: "ok", warnings: [], reels: []};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await previewReelStripGeneration(fetchImpl, {manifest: {id: "a"}});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/reel-strip-generation-preview",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({blueprint: {manifest: {id: "a"}}}),
+                    },
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprint" is required.'}}));
+
+            await expect(previewReelStripGeneration(fetchImpl, undefined)).rejects.toThrow('"blueprint" is required.');
         });
     });
 

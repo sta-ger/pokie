@@ -268,6 +268,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/blueprints/reel-strip-generation-preview") {
+            await this.handleBlueprintReelStripGenerationPreview(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/blueprints/build") {
             await this.handleBlueprintBuild(req, res);
             return;
@@ -676,6 +681,21 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, this.blueprintService.previewBuild(validated.blueprint, validated.outDir, validated.sourcePath));
+    }
+
+    // Same request shape as /validate (just "blueprint") -- reuses validateBlueprintValidationRequest
+    // rather than a near-duplicate validator.
+    private async handleBlueprintReelStripGenerationPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintValidationRequest((body ?? {}) as BlueprintValidationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.previewReelStripGeneration(validated.blueprint));
     }
 
     private async handleBlueprintBuild(req: IncomingMessage, res: ServerResponse): Promise<void> {

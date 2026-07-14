@@ -759,6 +759,54 @@ describe("StudioServer", () => {
             });
         });
 
+        describe("POST /api/home/blueprints/reel-strip-generation-preview", () => {
+            it("rejects a body with no blueprint field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/reel-strip-generation-preview`, {});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"blueprint" is required.'});
+            });
+
+            it("returns ok with an empty reels list when the blueprint has no reelStripGeneration", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/reel-strip-generation-preview`, {
+                    blueprint: buildBlueprint(),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toEqual({status: "ok", warnings: [], reels: []});
+            });
+
+            it("returns invalid for a structurally broken blueprint", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/reel-strip-generation-preview`, {
+                    blueprint: buildBlueprint({reels: 0}),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "invalid"});
+            });
+
+            it("resolves a mix of literal and generated reels without writing anything", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/reel-strip-generation-preview`, {
+                    blueprint: buildBlueprint({
+                        reelStripGeneration: [
+                            {type: "literal", strip: ["A", "B"]},
+                            {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                            {type: "literal", strip: ["B", "A"]},
+                        ],
+                    }),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "ok"});
+                const reels = (body as {reels: Array<{reelIndex: number; type: string}>}).reels;
+                expect(reels).toHaveLength(3);
+                expect(reels[0]).toMatchObject({reelIndex: 0, type: "literal", strip: ["A", "B"]});
+                expect(reels[1]).toMatchObject({reelIndex: 1, type: "generated", success: true});
+                expect(reels[2]).toMatchObject({reelIndex: 2, type: "literal", strip: ["B", "A"]});
+                expect(fs.readdirSync(workDir)).toEqual([]);
+            });
+        });
+
         describe("POST /api/home/blueprints/build-preview", () => {
             it("returns an ok preview without writing anything", async () => {
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/build-preview`, {

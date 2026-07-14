@@ -1,4 +1,10 @@
-import type {StudioBlueprintLoadView, StudioBlueprintSaveView, StudioBlueprintValidationView, ValidationIssue} from "./types.js";
+import type {
+    StudioBlueprintLoadView,
+    StudioBlueprintSaveView,
+    StudioBlueprintValidationView,
+    StudioReelStripGenerationView,
+    ValidationIssue,
+} from "./types.js";
 
 // Pure view-model transforms for the Blueprint Editor tab — same role as interpretHome.ts's own
 // describe* functions (main.ts/dom.ts consume these instead of branching on the raw API DTOs
@@ -14,6 +20,16 @@ export type BlueprintValidationView =
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]};
 
 export function describeValidation(result: StudioBlueprintValidationView): BlueprintValidationView {
+    return result;
+}
+
+export type ReelStripGenerationPreviewView =
+    | {status: "idle"}
+    | {status: "loading"}
+    | {status: "error"; message: string}
+    | StudioReelStripGenerationView;
+
+export function describeReelStripGenerationPreview(result: StudioReelStripGenerationView): ReelStripGenerationPreviewView {
     return result;
 }
 

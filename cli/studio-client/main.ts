@@ -24,6 +24,7 @@ import {
     openProject,
     previewBlueprintBuild,
     previewBuild,
+    previewReelStripGeneration,
     restartRuntime,
     runReplay,
     saveBlueprint,
@@ -42,6 +43,7 @@ import {
     addPayline,
     addSymbol,
     resizePaylinesToReelCount,
+    resizeReelStripGenerationToReelCount,
     resizeReelStripsToReelCount,
     setPaytablePayout,
     setReelGenerationMode,
@@ -72,6 +74,7 @@ import {
     renderInitResult,
     renderInspectionResult,
     renderProjectHeader,
+    renderReelStripGenerationPreview,
     renderReplayError,
     renderReplayList,
     renderReplayListError,
@@ -94,7 +97,7 @@ import {
     showProjectTab,
     showView,
 } from "./dom.js";
-import {describeLoadResult, describeSaveResult, describeValidation} from "./interpretBlueprintEditor.js";
+import {describeLoadResult, describeReelStripGenerationPreview, describeSaveResult, describeValidation} from "./interpretBlueprintEditor.js";
 import {describeBuildPreview, describeBuildResult, describeRecentProjectsList, describeScaffoldResult} from "./interpretHome.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
 import {describeReplayList, describeReplayProgress, describeReplayResult, isReplayActive, isReplayTerminal} from "./interpretReplay.js";
@@ -791,6 +794,7 @@ async function main(): Promise<void> {
         renderBlueprintLoadResult(elements, {status: "idle"});
         renderBlueprintSaveResult(elements, {status: "idle"});
         renderBlueprintValidation(elements, {status: "idle"});
+        renderReelStripGenerationPreview(elements, {status: "idle"});
         renderBlueprintBuildPreview(elements, {status: "idle"});
         renderBlueprintBuildResult(elements, {status: "idle"});
         renderBlueprintEditor();
@@ -842,6 +846,7 @@ async function main(): Promise<void> {
             b.reels = elements.blueprintFieldReels.valueAsNumber;
             resizePaylinesToReelCount(b);
             resizeReelStripsToReelCount(b);
+            resizeReelStripGenerationToReelCount(b);
         });
     });
 
@@ -897,7 +902,19 @@ async function main(): Promise<void> {
     };
     elements.blueprintModeDefaultRadio.addEventListener("change", () => setBlueprintGenerationMode("default"));
     elements.blueprintModeReelStripsRadio.addEventListener("change", () => setBlueprintGenerationMode("reelStrips"));
+    elements.blueprintModeReelStripGenerationRadio.addEventListener("change", () => setBlueprintGenerationMode("reelStripGeneration"));
     elements.blueprintModeWeightsRadio.addEventListener("change", () => setBlueprintGenerationMode("symbolWeights"));
+
+    elements.blueprintReelStripGenerationResolveButton.addEventListener("click", () => {
+        renderReelStripGenerationPreview(elements, {status: "loading"});
+        previewReelStripGeneration(fetchImpl, blueprintState.blueprint)
+            .then((result) => {
+                renderReelStripGenerationPreview(elements, describeReelStripGenerationPreview(result));
+            })
+            .catch((error: unknown) => {
+                renderReelStripGenerationPreview(elements, {status: "error", message: errorMessage(error)});
+            });
+    });
 
     elements.blueprintValidateButton.addEventListener("click", () => {
         renderBlueprintValidation(elements, {status: "loading"});

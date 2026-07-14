@@ -262,15 +262,31 @@
 
                     <fieldset>
                         <legend>Reel generation</legend>
-                        <p class="notice">Optional — omit both to use the engine's default weighted reel generator.</p>
+                        <p class="notice">Optional — omit all three to use the engine's default weighted reel generator.</p>
                         <div id="blueprint-generation-mode" role="radiogroup">
                             <label><input type="radio" name="blueprint-generation-mode" id="blueprint-mode-default" value="default" /> Default</label>
                             <label><input type="radio" name="blueprint-generation-mode" id="blueprint-mode-reelstrips" value="reelStrips" /> Reel strips</label>
+                            <label><input type="radio" name="blueprint-generation-mode" id="blueprint-mode-reelstripgeneration" value="reelStripGeneration" /> Per-reel (Reel Strip Modeler)</label>
                             <label><input type="radio" name="blueprint-generation-mode" id="blueprint-mode-weights" value="symbolWeights" /> Symbol weights</label>
                         </div>
 
                         <div id="blueprint-reelstrips-section" hidden>
                             <div id="blueprint-reelstrips-container"></div>
+                        </div>
+
+                        <div id="blueprint-reelstripgeneration-section" hidden>
+                            <p class="notice">
+                                Each reel is independently a literal strip or a generated one (own length, seed,
+                                counts/weights, locked positions, constraints). Generation and validation always run
+                                through the same core API "pokie build" itself uses.
+                            </p>
+                            <div id="blueprint-reelstripgeneration-container"></div>
+                            <div class="quick-actions">
+                                <button id="blueprint-reelstripgeneration-resolve-button" type="button">Resolve reels</button>
+                            </div>
+                            <p id="blueprint-reelstripgeneration-loading" hidden>Working…</p>
+                            <p id="blueprint-reelstripgeneration-error" hidden></p>
+                            <div id="blueprint-reelstripgeneration-results"></div>
                         </div>
 
                         <div id="blueprint-weights-section" hidden>
