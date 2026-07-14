@@ -14,10 +14,14 @@ import type {JsonValue} from "./JsonValue.js";
 // turning NaN/Infinity into `null`, throwing a generic TypeError on cycles with no indication of where). Only
 // plain objects (object literals, `Object.create(null)`, or `JSON.parse` output — prototype is `Object.prototype`
 // or `null`) and dense arrays are accepted as containers: a `Date`/`Map`/`Set`/`RegExp`/class instance/any other
-// custom-prototype object, a symbol-keyed own property, or a sparse array (a hole from `[1, , 3]`) all throw too
-// — none of those round-trip through JSON the way the caller probably expects (a `Date` silently becomes a
-// string, a `Map`/`Set` silently becomes `{}`, a hole silently becomes `null`), so this rejects them instead of
-// guessing.
+// custom-prototype object, a symbol-keyed own property (on either a plain object or an array), a non-index own
+// property on an array (anything other than `"length"` and its `0..length-1` elements — e.g. `arr.foo = 1`), or
+// a sparse array (a hole from `[1, , 3]`) all throw too — none of those round-trip through JSON the way the
+// caller probably expects (a `Date` silently becomes a string, a `Map`/`Set` silently becomes `{}`, an extra
+// array property is silently dropped, a hole silently becomes `null`), so this rejects them instead of guessing.
+// Array density is checked via the array's own property keys (`Reflect.ownKeys`), never via the `in` operator —
+// `in` also matches inherited properties, so a hole at an index some prototype up the chain happens to define
+// (e.g. a polluted `Array.prototype`) would otherwise be invisible to the check.
 export function toCanonicalJson(value: unknown, path = "", seen: Set<object> = new Set()): JsonValue {
     if (value === null) {
         return null;
@@ -53,11 +57,30 @@ export function toCanonicalJson(value: unknown, path = "", seen: Set<object> = n
     seen.add(obj);
     try {
         if (Array.isArray(obj)) {
+            const ownKeys = Reflect.ownKeys(obj);
+            if (ownKeys.some((key) => typeof key === "symbol")) {
+                throw new InvalidJsonValueError(path, "a symbol-keyed property is not a valid JSON value");
+            }
+
+            const ownStringKeys = new Set(ownKeys as string[]);
+            const allowedKeys = new Set<string>(["length"]);
             for (let index = 0; index < obj.length; index++) {
-                if (!(index in obj)) {
+                allowedKeys.add(String(index));
+            }
+            const unexpectedKey = Array.from(ownStringKeys).find((key) => !allowedKeys.has(key));
+            if (unexpectedKey !== undefined) {
+                throw new InvalidJsonValueError(
+                    path,
+                    `an array's own property "${unexpectedKey}" is not a valid JSON value (only index elements and "length" are)`,
+                );
+            }
+
+            for (let index = 0; index < obj.length; index++) {
+                if (!ownStringKeys.has(String(index))) {
                     throw new InvalidJsonValueError(path, "a sparse array (with holes) is not a valid JSON value");
                 }
             }
+
             return obj.map((element, index) => toCanonicalJson(element, `${path}[${index}]`, seen));
         }
 

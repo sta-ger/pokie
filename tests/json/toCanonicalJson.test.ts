@@ -133,6 +133,46 @@ describe("toCanonicalJson", () => {
         });
     });
 
+    describe("array own properties", () => {
+        it("throws InvalidJsonValueError for an array with a custom string property", () => {
+            const withExtra = [1, 2, 3] as Array<number> & Record<string, unknown>;
+            withExtra.foo = "bar";
+
+            expect(() => toCanonicalJson(withExtra)).toThrow(InvalidJsonValueError);
+            expect(() => toCanonicalJson(withExtra)).toThrow(/"foo"/);
+        });
+
+        it("throws InvalidJsonValueError for an array with a symbol-keyed property", () => {
+            const withSymbol = [1, 2, 3] as Array<number> & Record<symbol, unknown>;
+            withSymbol[Symbol("hidden")] = "nope";
+
+            expect(() => toCanonicalJson(withSymbol)).toThrow(InvalidJsonValueError);
+            expect(() => toCanonicalJson(withSymbol)).toThrow(/symbol-keyed/);
+        });
+
+        it("treats a hole as sparse even when a numeric index is inherited via the prototype chain", () => {
+            const sparse = [1, 2, 3];
+            Reflect.deleteProperty(sparse, 1);
+            const pollutedProto: Record<string, unknown> = {1: "polluted"};
+            Reflect.setPrototypeOf(sparse, pollutedProto);
+
+            try {
+                // Sanity: `in` alone would be fooled by the inherited property — the whole reason the density
+                // check must use the array's own keys instead.
+                expect(1 in sparse).toBe(true);
+                expect(Reflect.apply(Object.prototype.hasOwnProperty, sparse, [1])).toBe(false);
+
+                expect(() => toCanonicalJson(sparse)).toThrow(/sparse array/);
+            } finally {
+                Reflect.setPrototypeOf(sparse, Array.prototype);
+            }
+        });
+
+        it("does not flag a normal dense array with no extra own properties", () => {
+            expect(toCanonicalJson([1, 2, 3])).toEqual([1, 2, 3]);
+        });
+    });
+
     describe('"__proto__" handling', () => {
         it("safely preserves a '__proto__' own property without polluting the canonical object's prototype", () => {
             const protoKey = "__proto__";
