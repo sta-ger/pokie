@@ -97,22 +97,44 @@ export type ReelColumn = {reelIndex: number; columnIndex: number};
 
 const REEL_COLUMN_PATTERN = /^reel\s+(\d+)$/i;
 
+// The same "how many reel slots should the mapper build" logic resolveReelColumns uses internally to
+// decide its own missing-column range — shared here so ReelStripsSheetMapper/PaylinesSheetMapper stay
+// consistent with it: a valid declared "reels" is authoritative (so e.g. a trailing-missing reel still
+// gets an empty placeholder slot), otherwise fall back to the highest "Reel <k>" actually found.
+export function resolveExpectedReelCount(reels: number, columns: ReelColumn[]): number {
+    if (Number.isInteger(reels) && reels > 0) {
+        return reels;
+    }
+    if (columns.length === 0) {
+        return 0;
+    }
+    return Math.max(...columns.map((column) => column.reelIndex));
+}
+
 // Matches a header row against the canonical "Reel 1".."Reel N" naming ReelStrips/Paylines both use
 // (one physical column per reel, in that exact name — not just "whatever non-blank column happens to
 // be there", which would silently let an unrelated column like "Notes" become reel data). Any header
 // cell that isn't a "Reel <k>" cell (and isn't one of `ignoreColumnIndexes`, e.g. Paylines' own
 // "Line" column) is reported as "parsheet-unknown-column" and excluded from the result entirely — it
 // never becomes game data. A "Reel <k>" name repeated more than once is "parsheet-reel-column-duplicate"
-// (only the first occurrence is used); a gap in the 1..maxReelIndex sequence (e.g. "Reel 1"/"Reel 3"
-// with no "Reel 2") is "parsheet-reel-column-missing" for every missing index. Both are errors, unlike
-// "parsheet-unknown-column", since — unlike an incidental extra column — they mean the reel data itself
-// can't be assembled correctly.
+// (only the first occurrence is used).
+//
+// "reels" is the blueprint's own declared reel count (from Manifest.Reels) — the source of truth for
+// how many "Reel <k>" columns *should* exist. When it's a valid positive integer: a "Reel <k>" with
+// k > reels is "parsheet-reel-column-out-of-range" (excluded from the result), and every index in
+// 1..reels without a column — whether an interior gap or missing entirely off the end ("trailing") —
+// is "parsheet-reel-column-missing". When "reels" isn't a valid positive integer (Manifest itself is
+// broken — already reported elsewhere, e.g. blueprint-reels-invalid), there's no reliable expected
+// count to check against, so this falls back to self-consistency only: no out-of-range check, and
+// "missing" only covers gaps up to whatever the highest actually-found "Reel <k>" is.
 export function resolveReelColumns(
     headerRow: unknown[],
     sheetName: string,
     issues: ValidationIssue[],
+    reels: number,
     ignoreColumnIndexes: ReadonlySet<number> = new Set(),
 ): ReelColumn[] {
+    const expectedReels = Number.isInteger(reels) && reels > 0 ? reels : undefined;
     const firstColumnForReelIndex = new Map<number, number>();
     const columns: ReelColumn[] = [];
 
@@ -137,6 +159,16 @@ export function resolveReelColumns(
             return;
         }
 
+        if (expectedReels !== undefined && reelIndex > expectedReels) {
+            issues.push({
+                code: "parsheet-reel-column-out-of-range",
+                severity: "error",
+                message: `Sheet "${sheetName}" has a "Reel ${reelIndex}" column, but the blueprint only has ${expectedReels} reel(s) (per Manifest).`,
+                details: {sheet: sheetName, reelIndex, reels: expectedReels},
+            });
+            return;
+        }
+
         if (firstColumnForReelIndex.has(reelIndex)) {
             issues.push({
                 code: "parsheet-reel-column-duplicate",
@@ -151,17 +183,15 @@ export function resolveReelColumns(
         columns.push({reelIndex, columnIndex});
     });
 
-    if (columns.length > 0) {
-        const maxReelIndex = Math.max(...columns.map((column) => column.reelIndex));
-        for (let reelIndex = 1; reelIndex <= maxReelIndex; reelIndex++) {
-            if (!firstColumnForReelIndex.has(reelIndex)) {
-                issues.push({
-                    code: "parsheet-reel-column-missing",
-                    severity: "error",
-                    message: `Sheet "${sheetName}" is missing a "Reel ${reelIndex}" column.`,
-                    details: {sheet: sheetName, reelIndex},
-                });
-            }
+    const maxReelIndexToCheck = resolveExpectedReelCount(reels, columns);
+    for (let reelIndex = 1; reelIndex <= maxReelIndexToCheck; reelIndex++) {
+        if (!firstColumnForReelIndex.has(reelIndex)) {
+            issues.push({
+                code: "parsheet-reel-column-missing",
+                severity: "error",
+                message: `Sheet "${sheetName}" is missing a "Reel ${reelIndex}" column.`,
+                details: {sheet: sheetName, reelIndex},
+            });
         }
     }
 

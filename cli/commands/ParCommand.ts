@@ -1,16 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {
-    GameBlueprint,
-    GameBlueprintValidating,
-    GameBlueprintValidator,
-    loadGameBlueprint,
-    ParSheetExporter,
-    ParSheetExporting,
-    ParSheetImporter,
-    ParSheetImporting,
-    ValidationIssue,
-} from "pokie";
+import {GameBlueprint, loadGameBlueprint, ParSheetExporter, ParSheetExporting, ParSheetImporter, ParSheetImporting, ValidationIssue} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 
 const USAGE =
@@ -31,7 +21,6 @@ export class ParCommand implements CliCommandHandling {
     private readonly importer: ParSheetImporting;
     private readonly exporter: ParSheetExporting;
     private readonly loadBlueprint: (filePath: string) => unknown;
-    private readonly validator: GameBlueprintValidating;
     private readonly writeFile: (filePath: string, contents: string) => void;
 
     constructor(
@@ -39,13 +28,11 @@ export class ParCommand implements CliCommandHandling {
         importer: ParSheetImporting = new ParSheetImporter(),
         exporter: ParSheetExporting = new ParSheetExporter(pokieVersion),
         loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
-        validator: GameBlueprintValidating = new GameBlueprintValidator(),
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
     ) {
         this.importer = importer;
         this.exporter = exporter;
         this.loadBlueprint = loadBlueprint;
-        this.validator = validator;
         this.writeFile = writeFile;
     }
 
@@ -99,25 +86,11 @@ export class ParCommand implements CliCommandHandling {
         const options = this.parseExportArgs(args);
         const blueprint = this.loadBlueprint(options.blueprintPath);
 
-        // Mirrors BuildCommand: a blueprint the validator already rejects is never handed to the
-        // exporter at all, since fields the exporter/mappers assume exist (symbols, paytable, ...)
-        // might not, unlike the "valid blueprint, just no literal reelStrips" case exportToFile
-        // itself reports as its own diagnostic (see ParSheetExporter).
-        const validationIssues = this.validator.validate(blueprint);
-        const validationErrors = validationIssues.filter((issue) => issue.severity === "error");
-        if (validationErrors.length > 0) {
-            console.error(`Blueprint "${options.blueprintPath}" has ${validationErrors.length} error(s):`);
-            for (const issue of validationErrors) {
-                console.error(`  - ${issue.code}: ${issue.message}`);
-            }
-            return 1;
-        }
-
-        // exportToFile itself never writes anything when it reports an error (see ParSheetExporter's
-        // preflight) — so on error, nothing was created/modified at options.outPath, and printing a
-        // success line here would be a lie.
-        const exportIssues = await this.exporter.exportToFile(blueprint as GameBlueprint, options.outPath, options.blueprintPath);
-        const issues = [...validationIssues, ...exportIssues];
+        // exporter.exportToFile validates the blueprint completely on its own (GameBlueprintValidator
+        // plus its own reel-source/lossy-export checks) and never writes anything when it reports an
+        // error — so on error, nothing was created/modified at options.outPath, and printing a success
+        // line here would be a lie.
+        const issues = await this.exporter.exportToFile(blueprint, options.outPath, options.blueprintPath);
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
 

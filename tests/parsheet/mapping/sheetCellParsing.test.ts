@@ -90,7 +90,7 @@ describe("sheetCellParsing", () => {
     describe("resolveReelColumns", () => {
         it("resolves canonical Reel 1..Reel N headers in physical column order", () => {
             const issues: ValidationIssue[] = [];
-            const columns = resolveReelColumns(["Reel 1", "Reel 2", "Reel 3"], "ReelStrips", issues);
+            const columns = resolveReelColumns(["Reel 1", "Reel 2", "Reel 3"], "ReelStrips", issues, 3);
 
             expect(columns).toEqual([
                 {reelIndex: 1, columnIndex: 0},
@@ -102,7 +102,7 @@ describe("sheetCellParsing", () => {
 
         it("resolves out-of-order Reel headers by reelIndex, not physical column order", () => {
             const issues: ValidationIssue[] = [];
-            const columns = resolveReelColumns(["Reel 2", "Reel 1"], "ReelStrips", issues);
+            const columns = resolveReelColumns(["Reel 2", "Reel 1"], "ReelStrips", issues, 2);
 
             expect(columns).toEqual([
                 {reelIndex: 1, columnIndex: 1},
@@ -112,7 +112,7 @@ describe("sheetCellParsing", () => {
 
         it("reports an unknown column and excludes it from the result", () => {
             const issues: ValidationIssue[] = [];
-            const columns = resolveReelColumns(["Reel 1", "Notes", "Reel 2"], "ReelStrips", issues);
+            const columns = resolveReelColumns(["Reel 1", "Notes", "Reel 2"], "ReelStrips", issues, 2);
 
             expect(columns).toEqual([
                 {reelIndex: 1, columnIndex: 0},
@@ -125,7 +125,7 @@ describe("sheetCellParsing", () => {
 
         it("reports a duplicate Reel column and only uses the first occurrence", () => {
             const issues: ValidationIssue[] = [];
-            const columns = resolveReelColumns(["Reel 1", "Reel 1", "Reel 2"], "ReelStrips", issues);
+            const columns = resolveReelColumns(["Reel 1", "Reel 1", "Reel 2"], "ReelStrips", issues, 2);
 
             expect(columns).toEqual([
                 {reelIndex: 1, columnIndex: 0},
@@ -134,9 +134,37 @@ describe("sheetCellParsing", () => {
             expect(issues).toEqual([expect.objectContaining({code: "parsheet-reel-column-duplicate", severity: "error", details: {sheet: "ReelStrips", reelIndex: 1}})]);
         });
 
-        it("reports every missing Reel index in the 1..maxReelIndex sequence", () => {
+        it("reports a trailing missing Reel column anchored to the declared reel count, not just interior gaps", () => {
             const issues: ValidationIssue[] = [];
-            const columns = resolveReelColumns(["Reel 1", "Reel 4"], "ReelStrips", issues);
+            const columns = resolveReelColumns(["Reel 1", "Reel 2"], "ReelStrips", issues, 5);
+
+            expect(columns).toEqual([
+                {reelIndex: 1, columnIndex: 0},
+                {reelIndex: 2, columnIndex: 1},
+            ]);
+            expect(issues).toEqual([
+                expect.objectContaining({code: "parsheet-reel-column-missing", severity: "error", details: {sheet: "ReelStrips", reelIndex: 3}}),
+                expect.objectContaining({code: "parsheet-reel-column-missing", severity: "error", details: {sheet: "ReelStrips", reelIndex: 4}}),
+                expect.objectContaining({code: "parsheet-reel-column-missing", severity: "error", details: {sheet: "ReelStrips", reelIndex: 5}}),
+            ]);
+        });
+
+        it("reports an out-of-range Reel column beyond the declared reel count and excludes it from the result", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns(["Reel 1", "Reel 2", "Reel 6"], "ReelStrips", issues, 2);
+
+            expect(columns).toEqual([
+                {reelIndex: 1, columnIndex: 0},
+                {reelIndex: 2, columnIndex: 1},
+            ]);
+            expect(issues).toEqual([
+                expect.objectContaining({code: "parsheet-reel-column-out-of-range", severity: "error", details: {sheet: "ReelStrips", reelIndex: 6, reels: 2}}),
+            ]);
+        });
+
+        it("falls back to self-consistency (no out-of-range check, missing bounded by the highest found index) when reels isn't a valid positive integer", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns(["Reel 1", "Reel 4"], "ReelStrips", issues, 0);
 
             expect(columns).toEqual([
                 {reelIndex: 1, columnIndex: 0},
@@ -150,15 +178,15 @@ describe("sheetCellParsing", () => {
 
         it("ignores the given column indexes entirely (e.g. Paylines' own Line column)", () => {
             const issues: ValidationIssue[] = [];
-            const columns = resolveReelColumns(["Line", "Reel 1"], "Paylines", issues, new Set([0]));
+            const columns = resolveReelColumns(["Line", "Reel 1"], "Paylines", issues, 1, new Set([0]));
 
             expect(columns).toEqual([{reelIndex: 1, columnIndex: 1}]);
             expect(issues).toEqual([]);
         });
 
-        it("returns nothing for an empty header row, without any missing-column diagnostics", () => {
+        it("returns nothing for an empty header row, without any missing-column diagnostics, when reels is unknown", () => {
             const issues: ValidationIssue[] = [];
-            const columns = resolveReelColumns([], "ReelStrips", issues);
+            const columns = resolveReelColumns([], "ReelStrips", issues, 0);
 
             expect(columns).toEqual([]);
             expect(issues).toEqual([]);

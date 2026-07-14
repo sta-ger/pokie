@@ -11,6 +11,12 @@ import type {GameBlueprint, GameBlueprintManifest} from "../generated/GameBluepr
 // raw insertion order would report a false "edited" mismatch on every untouched round trip. Array
 // element order (symbols, reelStrips, paylines, availableBets) is left as-is: those are semantically
 // order-sensitive, unlike a plain object's own key order.
+//
+// An empty optional array (e.g. `wilds: []`) and an omitted one hash identically, and likewise an
+// empty optional manifest string (`description: ""`) and an omitted one — because ParSheetImporter
+// never reconstructs an empty array/string for an optional field (see e.g. ManifestSheetMapper's own
+// "blank cell means omit the field" rule), so a source blueprint that used `[]`/`""` instead of
+// omitting the field would otherwise report a false "edited" mismatch on an untouched round trip too.
 export function computeBlueprintHash(blueprint: GameBlueprint): string {
     return `sha256:${crypto.createHash("sha256").update(JSON.stringify(canonicalizeBlueprint(blueprint))).digest("hex")}`;
 }
@@ -22,31 +28,27 @@ function canonicalizeBlueprint(blueprint: GameBlueprint): Record<string, unknown
         rows: blueprint.rows,
         symbols: blueprint.symbols,
     };
-    if (blueprint.wilds !== undefined) {
-        canonical.wilds = blueprint.wilds;
-    }
-    if (blueprint.scatters !== undefined) {
-        canonical.scatters = blueprint.scatters;
-    }
+    setIfNonEmptyArray(canonical, "wilds", blueprint.wilds);
+    setIfNonEmptyArray(canonical, "scatters", blueprint.scatters);
     canonical.paytable = canonicalizePaytable(blueprint.paytable);
-    if (blueprint.reelStrips !== undefined) {
-        canonical.reelStrips = blueprint.reelStrips;
-    }
-    if (blueprint.paylines !== undefined) {
-        canonical.paylines = blueprint.paylines;
-    }
-    if (blueprint.availableBets !== undefined) {
-        canonical.availableBets = blueprint.availableBets;
-    }
+    setIfNonEmptyArray(canonical, "reelStrips", blueprint.reelStrips);
+    setIfNonEmptyArray(canonical, "paylines", blueprint.paylines);
+    setIfNonEmptyArray(canonical, "availableBets", blueprint.availableBets);
     return canonical;
+}
+
+function setIfNonEmptyArray<T>(canonical: Record<string, unknown>, key: string, value: T[] | undefined): void {
+    if (value !== undefined && value.length > 0) {
+        canonical[key] = value;
+    }
 }
 
 function canonicalizeManifest(manifest: GameBlueprintManifest): Record<string, unknown> {
     const canonical: Record<string, unknown> = {id: manifest.id, name: manifest.name, version: manifest.version};
-    if (manifest.description !== undefined) {
+    if (manifest.description) {
         canonical.description = manifest.description;
     }
-    if (manifest.author !== undefined) {
+    if (manifest.author) {
         canonical.author = manifest.author;
     }
     return canonical;

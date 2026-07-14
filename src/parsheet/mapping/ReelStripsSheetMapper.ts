@@ -1,17 +1,19 @@
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 import type {ReelStripsSheetMapping} from "./ReelStripsSheetMapping.js";
-import {cellToText, resolveReelColumns} from "./sheetCellParsing.js";
+import {cellToText, resolveExpectedReelCount, resolveReelColumns} from "./sheetCellParsing.js";
 
 export class ReelStripsSheetMapper implements ReelStripsSheetMapping {
     public readonly sheetName = "ReelStrips";
 
-    public fromRows(rows: SheetGrid): {value: string[][]; issues: ValidationIssue[]} {
+    public fromRows(rows: SheetGrid, reels: number): {value: string[][]; issues: ValidationIssue[]} {
         const issues: ValidationIssue[] = [];
         const [header, ...dataRows] = rows;
-        const reelColumns = resolveReelColumns(header ?? [], this.sheetName, issues);
+        const reelColumns = resolveReelColumns(header ?? [], this.sheetName, issues, reels);
         const columnIndexByReelIndex = new Map(reelColumns.map((column) => [column.reelIndex, column.columnIndex]));
-        const maxReelIndex = reelColumns.length > 0 ? Math.max(...reelColumns.map((column) => column.reelIndex)) : 0;
+        // Same expected-count logic resolveReelColumns uses internally, so a valid "reels" produces a
+        // placeholder slot for every trailing-missing reel too, not just interior gaps.
+        const maxReelIndex = resolveExpectedReelCount(reels, reelColumns);
 
         const reelStrips: string[][] = [];
         for (let reelIndex = 1; reelIndex <= maxReelIndex; reelIndex++) {

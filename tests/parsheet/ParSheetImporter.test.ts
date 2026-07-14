@@ -238,6 +238,9 @@ describe("ParSheetImporter", () => {
                     expect.objectContaining({code: "parsheet-provenance-schema-mismatch", severity: "warning", details: {recorded: 99, expected: 1}}),
                 ]),
             );
+            // Requirement: "present" is withheld unless schema is supported *and* the hash matches —
+            // even though the recorded hash here is otherwise correct.
+            expect(issues.some((issue) => issue.code === "parsheet-provenance-present")).toBe(false);
         });
 
         it("reports a hash mismatch as a warning (well-formed but wrong hash), without an informational 'present' issue", async () => {
@@ -273,6 +276,88 @@ describe("ParSheetImporter", () => {
 
             expect(blueprint.paytable).toEqual({A: {"2": 999}});
             expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-provenance-hash-mismatch", severity: "warning"})]));
+        });
+
+        it("does not report a hash mismatch after an untouched round trip, even when the source blueprint used empty optional arrays/strings instead of omitting them", async () => {
+            // GameBlueprintValidator itself rejects an explicitly-empty (but present) "paylines"/
+            // "availableBets" array as invalid — so the only fields where "present but empty" vs.
+            // "omitted" ambiguity can arise from a *valid* blueprint are wilds/scatters (which
+            // GameBlueprintValidator tolerates empty) and manifest's optional strings.
+            const withEmptyOptionalFields: GameBlueprint = {
+                ...assembledBlueprint,
+                wilds: [],
+                scatters: [],
+                manifest: {...assembledBlueprint.manifest, description: "", author: ""},
+            };
+            const exporter = new ParSheetExporter("1.3.0");
+            const exportIssues = await exporter.exportToFile(withEmptyOptionalFields, filePath);
+            expect(exportIssues.filter((issue) => issue.severity === "error")).toEqual([]);
+
+            const importer = new ParSheetImporter();
+            const {issues} = await importer.importFromFile(filePath);
+
+            expect(issues.some((issue) => issue.code === "parsheet-provenance-hash-mismatch")).toBe(false);
+            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-provenance-present", severity: "info"})]));
+        });
+    });
+
+    describe("reel columns anchored to Manifest.Reels", () => {
+        it("reports every trailing missing Reel column when ReelStrips has fewer columns than Manifest.Reels", async () => {
+            await writeWorkbook({
+                ...validSheets,
+                Manifest: [
+                    ["Key", "Value"],
+                    ["Id", "crazy-fruits"],
+                    ["Name", "Crazy Fruits"],
+                    ["Version", "0.1.0"],
+                    ["Reels", 3],
+                    ["Rows", 2],
+                ],
+                // Only 2 of the declared 3 reel columns are present.
+                ReelStrips: [
+                    ["Reel 1", "Reel 2"],
+                    ["A", "W"],
+                    ["W", "A"],
+                ],
+            });
+            const importer = new ParSheetImporter();
+
+            const {issues} = await importer.importFromFile(filePath);
+
+            expect(issues).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({code: "parsheet-reel-column-missing", severity: "error", details: {sheet: "ReelStrips", reelIndex: 3}}),
+                ]),
+            );
+        });
+
+        it("reports an out-of-range Reel column when ReelStrips has more columns than Manifest.Reels", async () => {
+            await writeWorkbook({
+                ...validSheets,
+                // Manifest.Reels is 2, but a third "Reel 3" column is present.
+                ReelStrips: [
+                    ["Reel 1", "Reel 2", "Reel 3"],
+                    ["A", "W", "A"],
+                    ["W", "A", "W"],
+                ],
+            });
+            const importer = new ParSheetImporter();
+
+            const {blueprint, issues} = await importer.importFromFile(filePath);
+
+            expect(issues).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: "parsheet-reel-column-out-of-range",
+                        severity: "error",
+                        details: {sheet: "ReelStrips", reelIndex: 3, reels: 2},
+                    }),
+                ]),
+            );
+            expect(blueprint.reelStrips).toEqual([
+                ["A", "W"],
+                ["W", "A"],
+            ]);
         });
     });
 });

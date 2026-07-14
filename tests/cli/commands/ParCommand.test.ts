@@ -1,4 +1,4 @@
-import {GameBlueprint, GameBlueprintValidating, ParSheetExporting, ParSheetImporting, ParSheetImportResult, ValidationIssue} from "pokie";
+import {GameBlueprint, ParSheetExporting, ParSheetImporting, ParSheetImportResult, ValidationIssue} from "pokie";
 import {ParCommand} from "../../../cli/commands/ParCommand.js";
 
 function createStubImporter(result: ParSheetImportResult | Error): ParSheetImporting & {calledWith?: string} {
@@ -12,20 +12,11 @@ function createStubImporter(result: ParSheetImportResult | Error): ParSheetImpor
 
 function createStubExporter(
     issues: ValidationIssue[],
-): ParSheetExporting & {calledWith?: {blueprint: GameBlueprint; filePath: string; sourcePath?: string}} {
+): ParSheetExporting & {calledWith?: {blueprint: unknown; filePath: string; sourcePath?: string}} {
     return {
-        exportToFile(blueprint: GameBlueprint, filePath: string, sourcePath?: string) {
+        exportToFile(blueprint: unknown, filePath: string, sourcePath?: string) {
             this.calledWith = {blueprint, filePath, sourcePath};
             return Promise.resolve(issues);
-        },
-    };
-}
-
-function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating & {calledWith?: unknown} {
-    return {
-        validate(blueprint: unknown) {
-            this.calledWith = blueprint;
-            return issues;
         },
     };
 }
@@ -76,7 +67,7 @@ describe("ParCommand", () => {
         it("imports, writes the blueprint JSON to the default --out path, and returns 0", async () => {
             const importer = createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []});
             const writeFile = jest.fn();
-            const command = new ParCommand("1.3.0", importer, createStubExporter([]), () => rawBlueprint, createStubValidator([]), writeFile);
+            const command = new ParCommand("1.3.0", importer, createStubExporter([]), () => rawBlueprint, writeFile);
 
             const exitCode = await command.run(["import", "game.xlsx"]);
 
@@ -92,7 +83,6 @@ describe("ParCommand", () => {
                 createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}),
                 createStubExporter([]),
                 () => rawBlueprint,
-                createStubValidator([]),
                 writeFile,
             );
 
@@ -109,7 +99,6 @@ describe("ParCommand", () => {
                 createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues}),
                 createStubExporter([]),
                 () => rawBlueprint,
-                createStubValidator([]),
                 writeFile,
             );
 
@@ -120,14 +109,13 @@ describe("ParCommand", () => {
             expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("Errors (1)");
         });
 
-        it("--format json prints the full {blueprint, issues} result and still writes the file", async () => {
+        it("--format json prints the full {blueprint, provenance, issues} result and still writes the file", async () => {
             const writeFile = jest.fn();
             const command = new ParCommand(
                 "1.3.0",
                 createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}),
                 createStubExporter([]),
                 () => rawBlueprint,
-                createStubValidator([]),
                 writeFile,
             );
 
@@ -165,70 +153,46 @@ describe("ParCommand", () => {
     });
 
     describe("export", () => {
-        it("validates, exports, and returns 0 when there are no issues", async () => {
+        it("loads the blueprint and hands it straight to the exporter (no CLI-side validation) — returns 0 when there are no issues", async () => {
             const exporter = createStubExporter([]);
-            const validator = createStubValidator([]);
-            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint, validator);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
 
             const exitCode = await command.run(["export", "game.json"]);
 
             expect(exitCode).toBe(0);
-            expect(validator.calledWith).toBe(rawBlueprint);
             expect(exporter.calledWith).toEqual({blueprint: rawBlueprint, filePath: "game.par.xlsx", sourcePath: "game.json"});
         });
 
         it("honors a custom --out path", async () => {
             const exporter = createStubExporter([]);
-            const command = new ParCommand(
-                "1.3.0",
-                createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}),
-                exporter,
-                () => rawBlueprint,
-                createStubValidator([]),
-            );
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
 
             await command.run(["export", "game.json", "--out", "custom.xlsx"]);
 
             expect(exporter.calledWith?.filePath).toBe("custom.xlsx");
         });
 
-        it("does not call the exporter and returns 1 when validation reports errors", async () => {
-            const exporter = createStubExporter([]);
-            const validator = createStubValidator([{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}]);
-            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint, validator);
+        it("prints an error summary (no success line) and returns 1 when the exporter reports error-level issues", async () => {
+            const exporter = createStubExporter([{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}]);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
 
             const exitCode = await command.run(["export", "game.json"]);
 
             expect(exitCode).toBe(1);
-            expect(exporter.calledWith).toBeUndefined();
             expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("1 error(s)");
+            expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).not.toContain("Exported");
         });
 
-        it("still exports and returns 0 when validation reports only warnings", async () => {
-            const exporter = createStubExporter([]);
-            const validator = createStubValidator([{code: "blueprint-symbol-missing-payout", severity: "warning", message: "heads up"}]);
-            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint, validator);
+        it("prints a success line and any warnings, returning 0, when the exporter reports only warnings", async () => {
+            const exporter = createStubExporter([{code: "blueprint-symbol-missing-payout", severity: "warning", message: "heads up"}]);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
 
             const exitCode = await command.run(["export", "game.json"]);
 
             expect(exitCode).toBe(0);
-            expect(exporter.calledWith).toBeDefined();
-        });
-
-        it("exports but returns 1 when the exporter itself reports an error (e.g. missing reelStrips)", async () => {
-            const exporter = createStubExporter([{code: "parsheet-missing-reel-strips", severity: "error", message: "no reel strips"}]);
-            const command = new ParCommand(
-                "1.3.0",
-                createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}),
-                exporter,
-                () => rawBlueprint,
-                createStubValidator([]),
-            );
-
-            const exitCode = await command.run(["export", "game.json"]);
-
-            expect(exitCode).toBe(1);
-            expect(exporter.calledWith).toBeDefined();
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("Exported");
+            expect(printed).toContain("heads up");
         });
 
         it("throws a descriptive error when no blueprint path is given", async () => {

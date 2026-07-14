@@ -1,14 +1,14 @@
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 import type {PaylinesSheetMapping} from "./PaylinesSheetMapping.js";
-import {cellToNumber, cellToText, isBlankRow, resolveReelColumns} from "./sheetCellParsing.js";
+import {cellToNumber, cellToText, isBlankRow, resolveExpectedReelCount, resolveReelColumns} from "./sheetCellParsing.js";
 
 const LINE_COLUMN = "Line";
 
 export class PaylinesSheetMapper implements PaylinesSheetMapping {
     public readonly sheetName = "Paylines";
 
-    public fromRows(rows: SheetGrid): {value: number[][]; issues: ValidationIssue[]} {
+    public fromRows(rows: SheetGrid, reels: number): {value: number[][]; issues: ValidationIssue[]} {
         const issues: ValidationIssue[] = [];
         const [header, ...dataRows] = rows;
         const headerRow = header ?? [];
@@ -22,9 +22,11 @@ export class PaylinesSheetMapper implements PaylinesSheetMapping {
             });
         }
 
-        const reelColumns = resolveReelColumns(headerRow, this.sheetName, issues, lineIndex !== -1 ? new Set([lineIndex]) : undefined);
+        const reelColumns = resolveReelColumns(headerRow, this.sheetName, issues, reels, lineIndex !== -1 ? new Set([lineIndex]) : undefined);
         const columnIndexByReelIndex = new Map(reelColumns.map((column) => [column.reelIndex, column.columnIndex]));
-        const maxReelIndex = reelColumns.length > 0 ? Math.max(...reelColumns.map((column) => column.reelIndex)) : 0;
+        // Same expected-count logic resolveReelColumns uses internally, so a missing trailing reel
+        // (not just an interior gap) still makes every payline row invalid, not silently truncated.
+        const maxReelIndex = resolveExpectedReelCount(reels, reelColumns);
 
         const paylines: number[][] = [];
         dataRows.forEach((row, rowOffset) => {

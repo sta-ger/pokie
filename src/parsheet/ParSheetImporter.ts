@@ -120,12 +120,12 @@ export class ParSheetImporter implements ParSheetImporting {
         }
 
         if (sheetsByName.has("ReelStrips")) {
-            const reelStripsResult = this.reelStripsMapper.fromRows(gridFor("ReelStrips"));
+            const reelStripsResult = this.reelStripsMapper.fromRows(gridFor("ReelStrips"), manifestResult.value.reels);
             issues.push(...reelStripsResult.issues);
             blueprint.reelStrips = reelStripsResult.value;
         }
         if (sheetsByName.has("Paylines")) {
-            const paylinesResult = this.paylinesMapper.fromRows(gridFor("Paylines"));
+            const paylinesResult = this.paylinesMapper.fromRows(gridFor("Paylines"), manifestResult.value.reels);
             issues.push(...paylinesResult.issues);
             if (paylinesResult.value.length > 0) {
                 blueprint.paylines = paylinesResult.value;
@@ -187,7 +187,8 @@ export class ParSheetImporter implements ParSheetImporting {
         }
 
         const issues: ValidationIssue[] = [];
-        if (provenance.schemaVersion !== GAME_BLUEPRINT_SCHEMA_VERSION) {
+        const schemaSupported = provenance.schemaVersion === GAME_BLUEPRINT_SCHEMA_VERSION;
+        if (!schemaSupported) {
             issues.push({
                 code: "parsheet-provenance-schema-mismatch",
                 severity: "warning",
@@ -197,14 +198,19 @@ export class ParSheetImporter implements ParSheetImporting {
         }
 
         const recomputedHash = computeBlueprintHash(blueprint);
-        if (provenance.blueprintHash !== recomputedHash) {
+        const hashMatches = provenance.blueprintHash === recomputedHash;
+        if (!hashMatches) {
             issues.push({
                 code: "parsheet-provenance-hash-mismatch",
                 severity: "warning",
                 message: 'This workbook\'s recorded "Blueprint Hash" does not match the imported data — it may have been edited by hand since "pokie par export" produced it.',
                 details: {recorded: provenance.blueprintHash, recomputed: recomputedHash},
             });
-        } else {
+        }
+
+        // Only reported when *both* checks above pass — a schema version this pokie doesn't
+        // recognize is reason enough to withhold "present" even if the hash happens to still match.
+        if (schemaSupported && hashMatches) {
             issues.push({
                 code: "parsheet-provenance-present",
                 severity: "info",

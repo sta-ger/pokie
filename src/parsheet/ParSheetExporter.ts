@@ -1,5 +1,7 @@
 import ExcelJS from "exceljs";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
+import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
+import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {AvailableBetsSheetMapper} from "./mapping/AvailableBetsSheetMapper.js";
 import type {AvailableBetsSheetMapping} from "./mapping/AvailableBetsSheetMapping.js";
@@ -17,6 +19,7 @@ import {SymbolsSheetMapper} from "./mapping/SymbolsSheetMapper.js";
 import type {SymbolsSheetMapping} from "./mapping/SymbolsSheetMapping.js";
 import type {ParSheetExporting} from "./ParSheetExporting.js";
 import type {SheetGrid} from "./SheetGrid.js";
+import {writeFileAtomically} from "./writeFileAtomically.js";
 
 export class ParSheetExporter implements ParSheetExporting {
     private readonly pokieVersion: string;
@@ -27,6 +30,7 @@ export class ParSheetExporter implements ParSheetExporting {
     private readonly paylinesMapper: PaylinesSheetMapping;
     private readonly availableBetsMapper: AvailableBetsSheetMapping;
     private readonly provenanceMapper: ProvenanceSheetMapping;
+    private readonly validator: GameBlueprintValidating;
     private readonly now: () => Date;
     private readonly writeWorkbook: (workbook: ExcelJS.Workbook, filePath: string) => Promise<void>;
 
@@ -39,8 +43,10 @@ export class ParSheetExporter implements ParSheetExporting {
         paylinesMapper: PaylinesSheetMapping = new PaylinesSheetMapper(),
         availableBetsMapper: AvailableBetsSheetMapping = new AvailableBetsSheetMapper(),
         provenanceMapper: ProvenanceSheetMapping = new ProvenanceSheetMapper(),
+        validator: GameBlueprintValidating = new GameBlueprintValidator(),
         now: () => Date = () => new Date(),
-        writeWorkbook: (workbook: ExcelJS.Workbook, filePath: string) => Promise<void> = (workbook, filePath) => workbook.xlsx.writeFile(filePath),
+        writeWorkbook: (workbook: ExcelJS.Workbook, filePath: string) => Promise<void> = (workbook, filePath) =>
+            writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath)),
     ) {
         this.pokieVersion = pokieVersion;
         this.manifestMapper = manifestMapper;
@@ -50,43 +56,65 @@ export class ParSheetExporter implements ParSheetExporting {
         this.paylinesMapper = paylinesMapper;
         this.availableBetsMapper = availableBetsMapper;
         this.provenanceMapper = provenanceMapper;
+        this.validator = validator;
         this.now = now;
         this.writeWorkbook = writeWorkbook;
     }
 
-    // Preflights the *entire* export before touching the filesystem at all: if the blueprint fails
-    // any check below, this returns without ever constructing a workbook or calling writeWorkbook —
-    // no file is created, and an existing file at `filePath` is left completely untouched. There is
-    // no "partial" export; either every sheet gets written, or none do.
-    public async exportToFile(blueprint: GameBlueprint, filePath: string, sourcePath?: string): Promise<ValidationIssue[]> {
-        const issues = this.preflight(blueprint);
+    // Runs full validation itself — the caller (CLI or any other library consumer) never needs to
+    // validate first. Preflights the *entire* export before touching the filesystem at all: if the
+    // blueprint fails any check below, this returns without ever constructing a workbook or calling
+    // writeWorkbook — no file is created, and an existing file at `filePath` is left completely
+    // untouched (writeWorkbook's own default implementation is itself atomic — see
+    // writeFileAtomically.ts — so even a write/rename failure past this point can't leave a partial
+    // file behind either). There is no "partial" export; either every sheet gets written, or none do.
+    public async exportToFile(blueprint: unknown, filePath: string, sourcePath?: string): Promise<ValidationIssue[]> {
+        // Mirrors BuildCommand: a blueprint GameBlueprintValidator rejects is never treated as a
+        // well-shaped GameBlueprint at all, since fields the mappers below assume exist (symbols,
+        // paytable, ...) might not.
+        const validationIssues = this.validator.validate(blueprint);
+        if (validationIssues.some((issue) => issue.severity === "error")) {
+            return validationIssues;
+        }
+
+        const typedBlueprint = blueprint as GameBlueprint;
+        const reelSourceIssues = this.checkReelSource(typedBlueprint);
+        const issues = [...validationIssues, ...reelSourceIssues];
         if (issues.some((issue) => issue.severity === "error")) {
             return issues;
         }
 
         const workbook = new ExcelJS.Workbook();
-        addSheet(workbook, this.manifestMapper.sheetName, this.manifestMapper.toRows(blueprint.manifest, blueprint.reels, blueprint.rows));
+        addSheet(
+            workbook,
+            this.manifestMapper.sheetName,
+            this.manifestMapper.toRows(typedBlueprint.manifest, typedBlueprint.reels, typedBlueprint.rows),
+        );
         addSheet(
             workbook,
             this.symbolsMapper.sheetName,
-            this.symbolsMapper.toRows({symbols: blueprint.symbols, wilds: blueprint.wilds ?? [], scatters: blueprint.scatters ?? []}),
+            this.symbolsMapper.toRows({symbols: typedBlueprint.symbols, wilds: typedBlueprint.wilds ?? [], scatters: typedBlueprint.scatters ?? []}),
         );
-        addSheet(workbook, this.paytableMapper.sheetName, this.paytableMapper.toRows(blueprint.paytable));
-        // The preflight above guarantees reelStrips is defined whenever we get here.
-        addSheet(workbook, this.reelStripsMapper.sheetName, this.reelStripsMapper.toRows(blueprint.reelStrips as string[][]));
-        if (blueprint.paylines) {
-            addSheet(workbook, this.paylinesMapper.sheetName, this.paylinesMapper.toRows(blueprint.paylines));
+        addSheet(workbook, this.paytableMapper.sheetName, this.paytableMapper.toRows(typedBlueprint.paytable));
+        // checkReelSource above guarantees reelStrips is defined whenever we get here.
+        addSheet(workbook, this.reelStripsMapper.sheetName, this.reelStripsMapper.toRows(typedBlueprint.reelStrips as string[][]));
+        if (typedBlueprint.paylines) {
+            addSheet(workbook, this.paylinesMapper.sheetName, this.paylinesMapper.toRows(typedBlueprint.paylines));
         }
-        if (blueprint.availableBets) {
-            addSheet(workbook, this.availableBetsMapper.sheetName, this.availableBetsMapper.toRows(blueprint.availableBets));
+        if (typedBlueprint.availableBets) {
+            addSheet(workbook, this.availableBetsMapper.sheetName, this.availableBetsMapper.toRows(typedBlueprint.availableBets));
         }
-        addSheet(workbook, this.provenanceMapper.sheetName, this.provenanceMapper.toRows(blueprint, this.pokieVersion, this.now(), sourcePath));
+        addSheet(
+            workbook,
+            this.provenanceMapper.sheetName,
+            this.provenanceMapper.toRows(typedBlueprint, this.pokieVersion, this.now(), sourcePath),
+        );
 
         await this.writeWorkbook(workbook, filePath);
         return issues;
     }
 
-    private preflight(blueprint: GameBlueprint): ValidationIssue[] {
+    private checkReelSource(blueprint: GameBlueprint): ValidationIssue[] {
         // "pokie par export" only ever represents literal reelStrips (see docs/cli.md) — never
         // reelStripGeneration/symbolWeights. This is checked *before* looking at reelStrips at all:
         // a blueprint that has both a literal reelStrips (e.g. left over from a previous materialize

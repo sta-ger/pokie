@@ -42,13 +42,26 @@ describe("ParSheetExporter", () => {
         return workbook.worksheets.map((worksheet) => worksheet.name);
     }
 
-    it("writes every sheet, with no issues, for a fully-populated blueprint", async () => {
+    it("writes every sheet, with no error-level issues, for a fully-populated blueprint", async () => {
         const exporter = new ParSheetExporter("1.3.0");
 
         const issues = await exporter.exportToFile(blueprint, filePath, "config.json");
 
-        expect(issues).toEqual([]);
+        // exportToFile runs the same GameBlueprintValidator "pokie build" uses (see requirement that
+        // it validates fully on its own) — this fixture blueprint isn't tuned to be warning-free (see
+        // examples/parsheets/starter.blueprint.json, which isn't either), just error-free.
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
         expect(await readSheetNames()).toEqual(["Manifest", "Symbols", "Paytable", "ReelStrips", "Paylines", "AvailableBets", "Meta"]);
+    });
+
+    it("runs GameBlueprintValidator itself and rejects an invalid blueprint without writing anything", async () => {
+        const exporter = new ParSheetExporter("1.3.0");
+        const invalid = {...blueprint, symbols: []}; // "symbols" must be a non-empty array
+
+        const issues = await exporter.exportToFile(invalid, filePath);
+
+        expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "blueprint-symbols-invalid", severity: "error"})]));
+        expect(fs.existsSync(filePath)).toBe(false);
     });
 
     describe("preflight (no partial writes)", () => {
@@ -59,7 +72,7 @@ describe("ParSheetExporter", () => {
 
             const issues = await exporter.exportToFile(withoutReelStrips, filePath);
 
-            expect(issues).toEqual([expect.objectContaining({code: "parsheet-missing-reel-strips", severity: "error"})]);
+            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-missing-reel-strips", severity: "error"})]));
             expect(fs.existsSync(filePath)).toBe(false);
         });
 
@@ -76,9 +89,27 @@ describe("ParSheetExporter", () => {
             expect(fs.readFileSync(filePath, "utf-8")).toBe(sentinelContent);
         });
 
-        it("creates no file and reports an error when the blueprint uses reelStripGeneration, even though reelStrips is also present", async () => {
+        it("creates no file and reports an error when the blueprint uses reelStripGeneration instead of a literal reelStrips", async () => {
             const exporter = new ParSheetExporter("1.3.0");
-            const withGeneration: GameBlueprint = {
+            const withGeneration: GameBlueprint = {...blueprint};
+            Reflect.deleteProperty(withGeneration, "reelStrips");
+            withGeneration.reelStripGeneration = [
+                {type: "literal", strip: ["A", "W"]},
+                {type: "literal", strip: ["W", "A"]},
+            ];
+
+            const issues = await exporter.exportToFile(withGeneration, filePath);
+
+            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-unsupported-reel-source", severity: "error"})]));
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
+
+        // GameBlueprintValidator itself already rejects reelStrips + reelStripGeneration together as
+        // mutually exclusive (blueprint-reelstrips-and-generation, an error) — so that combination
+        // never even reaches ParSheetExporter's own reel-source check. Still: no file is written.
+        it("creates no file when the blueprint has both reelStrips and reelStripGeneration (GameBlueprintValidator rejects that combination first)", async () => {
+            const exporter = new ParSheetExporter("1.3.0");
+            const withBoth: GameBlueprint = {
                 ...blueprint,
                 reelStripGeneration: [
                     {type: "literal", strip: ["A", "W"]},
@@ -86,20 +117,42 @@ describe("ParSheetExporter", () => {
                 ],
             };
 
-            const issues = await exporter.exportToFile(withGeneration, filePath);
+            const issues = await exporter.exportToFile(withBoth, filePath);
 
-            expect(issues).toEqual([expect.objectContaining({code: "parsheet-unsupported-reel-source", severity: "error"})]);
+            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "blueprint-reelstrips-and-generation", severity: "error"})]));
             expect(fs.existsSync(filePath)).toBe(false);
         });
 
-        it("creates no file and reports an error when the blueprint uses symbolWeights", async () => {
+        it("creates no file and reports an error when the blueprint uses symbolWeights instead of a literal reelStrips", async () => {
             const exporter = new ParSheetExporter("1.3.0");
             const withWeights: GameBlueprint = {...blueprint, symbolWeights: {A: 5, W: 1}};
             Reflect.deleteProperty(withWeights, "reelStrips");
 
             const issues = await exporter.exportToFile(withWeights, filePath);
 
-            expect(issues).toEqual([expect.objectContaining({code: "parsheet-unsupported-reel-source", severity: "error"})]);
+            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-unsupported-reel-source", severity: "error"})]));
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
+
+        // Unlike reelStripGeneration, GameBlueprintValidator only *warns* about reelStrips +
+        // symbolWeights together (blueprint-reelstrips-and-weights) — so this combination does reach
+        // ParSheetExporter's own check, which still forbids it (exporting only reelStrips would
+        // silently drop the weighting data).
+        it("creates no file and reports an error when the blueprint has both reelStrips and symbolWeights", async () => {
+            const exporter = new ParSheetExporter("1.3.0");
+            const withBoth: GameBlueprint = {...blueprint, symbolWeights: {A: 5, W: 1}};
+
+            const issues = await exporter.exportToFile(withBoth, filePath);
+
+            expect(issues).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({
+                        code: "parsheet-unsupported-reel-source",
+                        severity: "error",
+                        details: expect.objectContaining({symbolWeights: true, reelStrips: true}),
+                    }),
+                ]),
+            );
             expect(fs.existsSync(filePath)).toBe(false);
         });
     });
@@ -127,5 +180,22 @@ describe("ParSheetExporter", () => {
         const manifestSheet = workbook.getWorksheet("Manifest")!;
         expect(manifestSheet.getRow(2).getCell(2).value).toBe("crazy-fruits");
         expect(manifestSheet.getRow(3).getCell(2).value).toBe("Crazy Fruits");
+    });
+
+    describe("write failure (real atomic writer, past preflight)", () => {
+        it("propagates the error and leaves an existing target untouched when the underlying write fails", async () => {
+            // A file can never be renamed onto an existing directory (EISDIR/ENOTEMPTY on every
+            // platform, regardless of user privileges) — a reliable way to force the real write path
+            // to fail *after* a fully valid blueprint has already passed every preflight check.
+            fs.mkdirSync(filePath);
+            fs.writeFileSync(path.join(filePath, "sentinel.txt"), "still here");
+            const exporter = new ParSheetExporter("1.3.0");
+
+            await expect(exporter.exportToFile(blueprint, filePath)).rejects.toThrow();
+
+            expect(fs.statSync(filePath).isDirectory()).toBe(true);
+            expect(fs.readFileSync(path.join(filePath, "sentinel.txt"), "utf-8")).toBe("still here");
+            expect(fs.readdirSync(dir).filter((name) => name.includes(".tmp-"))).toEqual([]);
+        });
     });
 });

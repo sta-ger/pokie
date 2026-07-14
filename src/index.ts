@@ -77,6 +77,7 @@ export * from "./parsheet/mapping/ReelStripsSheetMapping.js";
 export * from "./parsheet/mapping/SymbolsSheetMapper.js";
 export * from "./parsheet/mapping/SymbolsSheetMapping.js";
 export * from "./parsheet/mapping/sheetCellParsing.js";
+export * from "./parsheet/writeFileAtomically.js";
 export * from "./reels/CompositeReelStripConstraintValidator.js";
 export * from "./reels/LargestRemainderReelStripSymbolWeightsConverter.js";
 export * from "./reels/ReelStrip.js";
