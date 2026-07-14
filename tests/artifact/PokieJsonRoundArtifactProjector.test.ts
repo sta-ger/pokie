@@ -51,6 +51,17 @@ describe("PokieJsonRoundArtifactProjector", () => {
         expect(json).toEqual(artifact);
     });
 
+    it("returns a deeply frozen result", () => {
+        const json = new PokieJsonRoundArtifactProjector().project(sampleArtifact());
+
+        expect(() => {
+            (json as {hash: string}).hash = "tampered";
+        }).toThrow(TypeError);
+        expect(() => {
+            (json.wins as unknown[]).push({});
+        }).toThrow(TypeError);
+    });
+
     it("round-trips through JSON.stringify/parse to an identical hash", () => {
         const artifact = sampleArtifact();
         const json = new PokieJsonRoundArtifactProjector().project(artifact);
@@ -83,5 +94,22 @@ describe("PokieJsonRoundArtifactProjector", () => {
         const changed: RoundArtifact<string> = {...artifact, totalWin: artifact.totalWin + 1};
 
         expect(computeRoundArtifactHash(changed)).not.toBe(computeRoundArtifactHash(artifact));
+    });
+
+    it("fails fast (propagates InvalidJsonValueError) when the artifact contains a NaN", () => {
+        const artifact = sampleArtifact();
+        const invalid: RoundArtifact<string> = {...artifact, totalWin: NaN};
+
+        expect(() => computeRoundArtifactHash(invalid)).toThrow(/not valid canonical JSON/);
+        expect(() => new PokieJsonRoundArtifactProjector().project(invalid)).toThrow(/not valid canonical JSON/);
+    });
+
+    it("fails fast when the artifact contains a circular reference", () => {
+        const artifact = sampleArtifact();
+        const cyclic: Record<string, unknown> = {};
+        cyclic.self = cyclic;
+        const invalid = {...artifact, debug: cyclic} as unknown as RoundArtifact<string>;
+
+        expect(() => computeRoundArtifactHash(invalid)).toThrow(/circular reference/);
     });
 });

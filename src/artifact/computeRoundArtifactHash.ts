@@ -1,27 +1,15 @@
 import crypto from "crypto";
+import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {RoundArtifact} from "./RoundArtifact.js";
 
-// A sha256 hash of a RoundArtifact's content, stable regardless of the source object's own key order (own keys,
-// and any nested arbitrary Record<string, unknown> blob's keys — win/step "metadata", "debug", feature event
-// "data" — are all sorted before hashing) — NOT `JSON.stringify(artifact)` directly. Array order is left as-is
-// everywhere (steps, wins, screen, winning positions, ...): unlike a plain object's own key order, it's always
-// semantically meaningful here. Used both standalone and by PokieJsonRoundArtifactProjector to stamp its output.
+// A sha256 hash of a RoundArtifact's content, stable regardless of the source object's own key order — via
+// toCanonicalJson, the one canonical serializer this also shares with PokieJsonRoundArtifactProjector, so a
+// hash and its own JSON projection can never silently disagree on what counts as "valid" or how it's ordered.
+// Fails fast (propagates InvalidJsonValueError) on anything that isn't valid canonical JSON, same as the
+// projector — a RoundArtifact built via buildRoundArtifact is already guaranteed JSON-safe, so this only
+// actually throws for a hand-crafted artifact that bypassed that guarantee.
 export function computeRoundArtifactHash<T extends string | number | symbol = string>(
     artifact: RoundArtifact<T>,
 ): string {
-    return `sha256:${crypto.createHash("sha256").update(JSON.stringify(canonicalizeForHashing(artifact))).digest("hex")}`;
-}
-
-function canonicalizeForHashing(value: unknown): unknown {
-    if (Array.isArray(value)) {
-        return value.map(canonicalizeForHashing);
-    }
-    if (value !== null && typeof value === "object") {
-        const canonical: Record<string, unknown> = {};
-        for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-            canonical[key] = canonicalizeForHashing((value as Record<string, unknown>)[key]);
-        }
-        return canonical;
-    }
-    return value;
+    return `sha256:${crypto.createHash("sha256").update(JSON.stringify(toCanonicalJson(artifact))).digest("hex")}`;
 }

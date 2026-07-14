@@ -1,29 +1,62 @@
+import {canonicalizeJsonField} from "./internal/canonicalizeJsonField.js";
+import {deepFreeze} from "./internal/deepFreeze.js";
+import type {RoundArtifactFeatureEvent} from "./RoundArtifactFeatureEvent.js";
+import {RoundArtifactBuildError} from "./RoundArtifactBuildError.js";
 import type {RoundArtifactStepSource} from "./RoundArtifactStepSource.js";
 import type {RoundArtifactWin} from "./RoundArtifactWin.js";
 import type {RoundStepArtifact} from "./RoundStepArtifact.js";
 
 // Pure mapping from an already-computed WinEvaluationResult to one RoundStepArtifact — totalWin/wins are read
-// straight off the win evaluation pipeline's own output, never recalculated.
+// straight off the win evaluation pipeline's own output, never recalculated. Every nested value (positions,
+// multiplier breakdowns, metadata, feature event data, debug) is deep-copied — none of it shares references
+// with the win evaluation pipeline's own state or the caller's own input — and the returned RoundStepArtifact
+// is deeply frozen, so nothing can mutate it after the fact either. Throws RoundArtifactBuildError immediately
+// if any derived win amount isn't a finite, non-negative number, or if metadata/debug/feature event data isn't
+// JSON-safe (see canonicalizeJsonField) — never returns a step that would only fail later at hash/projection
+// time.
 export function buildRoundStepArtifact<T extends string | number | symbol = string>(
     index: number,
     source: RoundArtifactStepSource<T>,
 ): RoundStepArtifact<T> {
-    const wins: RoundArtifactWin<T>[] = source.winEvaluationResult.getWinComponents().map((component) => ({
-        type: component.getType(),
-        id: component.getId(),
-        symbolId: component.getSymbolId(),
-        winAmount: component.getWinAmount(),
-        winningPositions: component.getWinningPositions(),
-        multiplierBreakdown: component.getMultiplierBreakdown(),
-        metadata: component.getMetadata(),
+    const wins: RoundArtifactWin<T>[] = source.winEvaluationResult.getWinComponents().map((component) => {
+        const winAmount = component.getWinAmount();
+        if (!Number.isFinite(winAmount) || winAmount < 0) {
+            throw new RoundArtifactBuildError(
+                "round-artifact-win-amount-invalid",
+                `win "${component.getId()}" has an invalid winAmount (${winAmount}); must be a finite number >= 0.`,
+            );
+        }
+        return {
+            type: component.getType(),
+            id: component.getId(),
+            symbolId: component.getSymbolId(),
+            winAmount,
+            winningPositions: component.getWinningPositions().map((position) => [...position]),
+            multiplierBreakdown: component.getMultiplierBreakdown().map((breakdown) => ({
+                source: breakdown.source,
+                positions: breakdown.positions.map((position) => [...position]),
+                values: [...breakdown.values],
+                combinedMultiplier: breakdown.combinedMultiplier,
+            })),
+            metadata: canonicalizeJsonField(`win "${component.getId()}" metadata`, component.getMetadata()),
+        };
+    });
+
+    const featureEvents: RoundArtifactFeatureEvent[] | undefined = source.featureEvents?.map((event) => ({
+        type: event.type,
+        ...(event.data !== undefined
+            ? {data: canonicalizeJsonField(`step ${index} feature event "${event.type}" data`, event.data)}
+            : {}),
     }));
 
-    return {
+    const step: RoundStepArtifact<T> = {
         index,
         screen: source.screen.map((reel) => [...reel]),
         totalWin: source.winEvaluationResult.getTotalWin(),
         wins,
-        ...(source.featureEvents !== undefined ? {featureEvents: [...source.featureEvents]} : {}),
-        ...(source.debug !== undefined ? {debug: {...source.debug}} : {}),
+        ...(featureEvents !== undefined ? {featureEvents} : {}),
+        ...(source.debug !== undefined ? {debug: canonicalizeJsonField(`step ${index} debug`, source.debug)} : {}),
     };
+
+    return deepFreeze(step);
 }

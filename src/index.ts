@@ -1,5 +1,6 @@
 export * from "./artifact/PokieJsonRoundArtifactProjector.js";
 export * from "./artifact/RoundArtifact.js";
+export * from "./artifact/RoundArtifactBuildError.js";
 export * from "./artifact/RoundArtifactFeatureEvent.js";
 export * from "./artifact/RoundArtifactJson.js";
 export * from "./artifact/RoundArtifactProjector.js";
@@ -49,6 +50,9 @@ export * from "./generated/materializeReelStrips.js";
 export * from "./generated/renderGeneratedGameModule.js";
 export * from "./generated/renderGeneratedPackageReadme.js";
 export * from "./generated/resolveReelStripGeneration.js";
+export * from "./json/InvalidJsonValueError.js";
+export * from "./json/JsonValue.js";
+export * from "./json/toCanonicalJson.js";
 export * from "./net/GameNetworkData.js";
 export * from "./net/GameSessionSerializer.js";
 export * from "./net/GameSessionSerializing.js";

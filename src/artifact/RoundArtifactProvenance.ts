@@ -5,7 +5,7 @@ import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
 // GameBlueprint hash (see computeBlueprintHash) it was built from, so an artifact can be traced back to the
 // exact config that produced it.
 export type RoundArtifactProvenance = {
-    game: PokieGameManifest;
-    pokieVersion: string;
-    configHash?: string;
+    readonly game: Readonly<PokieGameManifest>;
+    readonly pokieVersion: string;
+    readonly configHash?: string;
 };

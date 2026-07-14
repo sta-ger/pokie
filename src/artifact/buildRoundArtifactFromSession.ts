@@ -3,7 +3,7 @@ import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessi
 import type {WonFreeGamesNumberDetermining} from "../session/WonFreeGamesNumberDetermining.js";
 import {buildRoundArtifact} from "./buildRoundArtifact.js";
 import type {RoundArtifact} from "./RoundArtifact.js";
-import type {RoundArtifactFeatureEvent} from "./RoundArtifactFeatureEvent.js";
+import type {RoundArtifactFeatureEventInput} from "./RoundArtifactFeatureEvent.js";
 import type {RoundArtifactProvenance} from "./RoundArtifactProvenance.js";
 
 export type RoundArtifactFromSessionOptions = {
@@ -46,7 +46,7 @@ export function buildRoundArtifactFromSession<T extends string | number | symbol
     });
 }
 
-function deriveStandardFeatureEvents(session: unknown): RoundArtifactFeatureEvent[] {
+function deriveStandardFeatureEvents(session: unknown): RoundArtifactFeatureEventInput[] {
     if (!supportsWonFreeGamesNumberDetermining(session)) {
         return [];
     }

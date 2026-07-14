@@ -4,5 +4,5 @@ import type {RoundArtifact} from "./RoundArtifact.js";
 // computeRoundArtifactHash) — what PokieJsonRoundArtifactProjector produces, and what a round-trip
 // (JSON.stringify → JSON.parse → re-hash) is expected to reproduce byte-for-hash-identically.
 export type RoundArtifactJson<T extends string | number | symbol = string> = RoundArtifact<T> & {
-    hash: string;
+    readonly hash: string;
 };

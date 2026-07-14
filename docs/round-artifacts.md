@@ -10,50 +10,63 @@ It's for persisting, diffing, or auditing a completed round later, not for drivi
 
 ## Data shapes
 
+Every field below is `readonly`, all the way down (arrays, nested arrays, positions, multiplier breakdowns,
+feature events, provenance, metadata/debug) — a `RoundArtifact` is a value, not a mutable record. `JsonValue`/
+`JsonObject` (see [Canonical JSON + hash](#canonical-json--hash) below) are the same canonical, deeply-readonly
+JSON types used everywhere in `pokie` that need a stable, hashable shape.
+
 ```ts
 type RoundArtifactWin<T = string> = {
-    type: string;
-    id: string;
-    symbolId: T;
-    winAmount: number;
-    winningPositions: number[][];
-    multiplierBreakdown: WinMultiplierBreakdown[];
-    metadata: Record<string, unknown>;
+    readonly type: string;
+    readonly id: string;
+    readonly symbolId: T;
+    readonly winAmount: number;
+    readonly winningPositions: readonly (readonly number[])[];
+    readonly multiplierBreakdown: readonly RoundArtifactMultiplierBreakdown[]; // readonly mirror of WinMultiplierBreakdown
+    readonly metadata: JsonObject;
 };
 
 type RoundArtifactFeatureEvent = {
-    type: string;
-    data?: Record<string, unknown>;
+    readonly type: string;
+    readonly data?: JsonObject;
+};
+
+// What a caller actually supplies before a feature event is built — "data" is a plain, permissive
+// Record<string, unknown> here; buildRoundArtifact/buildRoundStepArtifact validate and deep-copy it into the
+// JsonObject above, failing fast (RoundArtifactBuildError) if it isn't actually JSON-safe.
+type RoundArtifactFeatureEventInput = {
+    readonly type: string;
+    readonly data?: Record<string, unknown>;
 };
 
 type RoundArtifactProvenance = {
-    game: PokieGameManifest;    // id/name/version/description?/author? — reused, not duplicated
-    pokieVersion: string;
-    configHash?: string;        // e.g. computeBlueprintHash() output, for a "pokie build"-generated game
+    readonly game: Readonly<PokieGameManifest>; // id/name/version/description?/author? — reused, not duplicated
+    readonly pokieVersion: string;
+    readonly configHash?: string; // e.g. computeBlueprintHash() output, for a "pokie build"-generated game
 };
 
 type RoundStepArtifact<T = string> = {
-    index: number;
-    screen: T[][];
-    totalWin: number;
-    wins: RoundArtifactWin<T>[];
-    featureEvents?: RoundArtifactFeatureEvent[];
-    debug?: Record<string, unknown>;
+    readonly index: number;
+    readonly screen: readonly (readonly T[])[];
+    readonly totalWin: number;
+    readonly wins: readonly RoundArtifactWin<T>[];
+    readonly featureEvents?: readonly RoundArtifactFeatureEvent[];
+    readonly debug?: JsonObject;
 };
 
 type RoundArtifact<T = string> = {
-    schemaVersion: number;
-    roundId: string;
-    provenance: RoundArtifactProvenance;
-    betMode: string;             // caller-supplied, e.g. "base" / "freeGames" — never inferred
-    stake: number;
-    totalWin: number;
-    payoutMultiplier: number;    // stake > 0 ? totalWin / stake : 0
-    screen: T[][];               // the last step's screen
-    steps: RoundStepArtifact<T>[];
-    wins: RoundArtifactWin<T>[]; // flattened across all steps
-    featureEvents?: RoundArtifactFeatureEvent[];
-    debug?: Record<string, unknown>;
+    readonly schemaVersion: number;
+    readonly roundId: string;
+    readonly provenance: RoundArtifactProvenance;
+    readonly betMode: string;          // caller-supplied, e.g. "base" / "freeGames" — never inferred
+    readonly stake: number;
+    readonly totalWin: number;
+    readonly payoutMultiplier: number; // stake > 0 ? totalWin / stake : 0
+    readonly screen: readonly (readonly T[])[]; // the last step's screen
+    readonly steps: readonly RoundStepArtifact<T>[];
+    readonly wins: readonly RoundArtifactWin<T>[]; // flattened across all steps
+    readonly featureEvents?: readonly RoundArtifactFeatureEvent[];
+    readonly debug?: JsonObject;
 };
 ```
 
@@ -83,6 +96,27 @@ computed — `totalWin`/`wins` come from `WinEvaluationResult.getTotalWin()`/`ge
 given explicitly) comes from the same `determineStakeAmount` this library already uses for wallet debiting (see
 [Game Session & Configuration](game-session.md) and `StakeAmountDetermining`). Nothing here re-derives a win or a
 charge amount independently.
+
+Both builders fail fast with a **`RoundArtifactBuildError`** (`getCode()`/`message`) — before any `RoundArtifact`
+is ever returned — on: an empty `steps` list, an invalid `roundId`/`betMode`/`stake`/`schemaVersion`, an invalid
+(non-finite or negative) win amount, or `metadata`/`debug`/feature event `data` that isn't JSON-safe (see
+[Canonical JSON + hash](#canonical-json--hash)). A built `RoundArtifact` is always **fully isolated from its
+inputs** — every nested array/object is deep-copied, never shared with the caller's own objects or the win
+evaluation pipeline's internal state — and **deeply frozen** (`Object.freeze`, recursively): mutating it
+afterward throws a `TypeError`, and mutating whatever the caller originally passed in has no effect on the
+artifact:
+
+```ts
+import {RoundArtifactBuildError} from "pokie";
+
+try {
+    buildRoundArtifact({roundId: "", provenance, stake: 1, steps: []});
+} catch (error) {
+    if (error instanceof RoundArtifactBuildError) {
+        console.error(error.getCode(), error.message); // "round-artifact-steps-empty", "..."
+    }
+}
+```
 
 For the common single-step case, `buildRoundArtifactFromSession` builds straight from a played
 `VideoSlotSessionHandling`:
@@ -128,6 +162,13 @@ concatenation of each step's wins, and `screen` is the final step's screen.
 ## Canonical JSON + hash
 
 ```ts
+type JsonPrimitive = string | number | boolean | null;
+type JsonObject = {readonly [key: string]: JsonValue};
+type JsonArray = readonly JsonValue[];
+type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+
+function toCanonicalJson(value: unknown): JsonValue; // throws InvalidJsonValueError
+
 interface RoundArtifactProjector<T, TOutput> {
     project(artifact: RoundArtifact<T>): TOutput;
 }
@@ -139,16 +180,28 @@ class PokieJsonRoundArtifactProjector<T = string> implements RoundArtifactProjec
 function computeRoundArtifactHash<T = string>(artifact: RoundArtifact<T>): string; // "sha256:<hex>"
 ```
 
-`RoundArtifact` is transport/storage-agnostic; `PokieJsonRoundArtifactProjector` is the standard, ready-made
-projection to a plain JSON-safe object (`RoundArtifactJson` — the same fields, in a fixed order, plus `hash`).
-Implement `RoundArtifactProjector` directly for a different representation (a flat row for a data warehouse, for
-example) without touching `RoundArtifact` itself.
+`toCanonicalJson` (in `json/`, not `artifact/` — it's generic, not RoundArtifact-specific) is the **one canonical
+serializer** shared by both `computeRoundArtifactHash` and `PokieJsonRoundArtifactProjector`, so a hash and its
+own JSON projection can never silently disagree on what counts as "valid" JSON or how it's ordered. It:
 
-`computeRoundArtifactHash` hashes an artifact's content, not its source object's own key order — own keys, and any
-nested free-form `metadata`/`debug`/feature-event `data` blob's keys, are sorted before hashing (array order is
-always left as-is, since it's meaningful everywhere it appears — `steps`, `wins`, `screen`, winning positions).
-Two artifacts built from the same content hash identically regardless of construction order; changing any
-semantic field (an amount, a position, a screen symbol) changes the hash.
+- Sorts plain-object keys recursively (so two values with the same content but different construction/insertion
+  order canonicalize identically — the whole point for stable hashing), while always leaving array order exactly
+  as-is (`steps`, `wins`, `screen`, winning positions, ... are all order-sensitive).
+- **Fails fast** — throws `InvalidJsonValueError` (with `getPath()`/`getReason()`, e.g. `wins[2].metadata.rngSeed`)
+  — on anything JSON can't represent losslessly: `NaN`/`Infinity`, `bigint`, `symbol`, a function, `undefined`
+  where a value is required, or a circular reference. It never silently coerces these the way `JSON.stringify`
+  does (dropping `undefined`/functions, turning `NaN`/`Infinity` into `null`, throwing an unhelpful generic error
+  on cycles).
+
+`RoundArtifact` is transport/storage-agnostic; `PokieJsonRoundArtifactProjector` is the standard, ready-made
+projection to a plain JSON-safe object (`RoundArtifactJson` — the same fields, canonically ordered, plus `hash`),
+itself deeply frozen. Implement `RoundArtifactProjector` directly for a different representation (a flat row for
+a data warehouse, for example) without touching `RoundArtifact` itself.
+
+A `RoundArtifact` built via `buildRoundArtifact`/`buildRoundArtifactFromSession` is already guaranteed JSON-safe
+(they run every artifact through `toCanonicalJson` before returning it — see above), so `computeRoundArtifactHash`/
+`PokieJsonRoundArtifactProjector.project` only actually throw for a hand-crafted artifact that bypassed that
+guarantee.
 
 ```ts
 import {PokieJsonRoundArtifactProjector} from "pokie";
@@ -167,10 +220,27 @@ class RoundArtifactValidator<T = string> implements ValidationRule<RoundArtifact
 ```
 
 Reuses the existing generic `ValidationRule<T>` contract (same as `PokieGameContractValidationRule`/
-`GameBlueprintValidator` — see [Game Packages](game-packages.md)). Checks structural invariants: `roundId` and
-`provenance` fields are non-empty, `stake`/`totalWin` are non-negative, `payoutMultiplier` matches
-`totalWin / stake`, `steps` is non-empty with indices `0..n-1` in order, and the round-level `totalWin`/`wins`
-agree with the sum/concatenation of each step's own.
+`GameBlueprintValidator` — see [Game Packages](game-packages.md)). Unlike `buildRoundArtifact`'s own fail-fast
+checks, `validate()` **never throws** — not even for a completely malformed, hand-crafted, or JSON-round-tripped
+artifact that doesn't actually match `RoundArtifact`'s shape at runtime (missing fields, wrong types, `null`,
+even a circular object) — it always returns an array of `ValidationIssue`s instead (a catch-all "round-artifact-
+malformed" issue in the worst case). It checks:
+
+- `roundId`, `provenance.game.{id,name,version}`, `provenance.pokieVersion` are non-empty strings.
+- `schemaVersion` is a positive integer *and* matches the currently supported `ROUND_ARTIFACT_SCHEMA_VERSION`.
+- `stake`/`totalWin` are finite, non-negative numbers; `payoutMultiplier` matches `totalWin / stake`.
+- Every win's `winAmount` (both in `wins` and in each step's own `wins`) is a finite, non-negative number.
+- `steps` is non-empty, with indices `0..n-1` in order, and each step's own `totalWin` matches the sum of that
+  step's own wins.
+- The round-level `totalWin` matches the sum of each step's `totalWin`.
+- **`wins` is deeply equal to the flattened concatenation of every step's own `wins`** — not just the same
+  *count*: two artifacts can have the same number of wins per step while actually containing different wins, and
+  this catches that case specifically (`round-artifact-wins-mismatch`, distinct from the plain count check
+  `round-artifact-wins-count-mismatch`).
+- **`screen` matches the last step's `screen`** (`round-artifact-screen-mismatch`).
+- Every feature event (round-level and per-step) has a non-empty `type`.
+- The whole artifact is JSON-safe (via the same `toCanonicalJson` described above) — a JSON-safety violation
+  (`round-artifact-not-json-safe`) is reported as an issue, not thrown.
 
 ```ts
 const issues = new RoundArtifactValidator().validate(artifact);
