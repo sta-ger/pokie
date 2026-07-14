@@ -3,12 +3,20 @@ import http, {IncomingMessage, ServerResponse} from "http";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieGameContext} from "../gamepackage/PokieGameContext.js";
 import type {GameSessionSerializing} from "../net/GameSessionSerializing.js";
+import {PreGeneratedRoundResultProjector} from "../pregenerated/PreGeneratedRoundResultProjector.js";
+import {computeWeightedOutcomeLibraryHash} from "../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
+import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
 import type {PokieDevServerAddress} from "./PokieDevServerAddress.js";
 import type {PokieDevServerHandling} from "./PokieDevServerHandling.js";
 import type {PokieDevServerOptions} from "./PokieDevServerOptions.js";
 import type {PokieDevSessionResponse} from "./PokieDevSessionResponse.js";
 import type {PokieInternalSessionData} from "./PokieInternalSessionData.js";
 import {InMemoryIdempotencyRepository} from "./idempotency/InMemoryIdempotencyRepository.js";
+import {InMemoryPreGeneratedSessionRepository} from "./pregenerated/InMemoryPreGeneratedSessionRepository.js";
+import type {PreGeneratedSessionRepository} from "./pregenerated/PreGeneratedSessionRepository.js";
+import type {PreGeneratedSessionResponse} from "./pregenerated/PreGeneratedSessionResponse.js";
+import {PreGeneratedSpinCommandHandler} from "./pregenerated/PreGeneratedSpinCommandHandler.js";
+import type {PreGeneratedSpinCommandHandling} from "./pregenerated/PreGeneratedSpinCommandHandling.js";
 import {captureInitialPokieSessionState} from "./session/captureInitialPokieSessionState.js";
 import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js";
 import {isVersionedSessionRepository} from "./session/isVersionedSessionRepository.js";
@@ -69,6 +77,17 @@ const DEFAULT_PORT = 3000;
 // version moved between load and save (mainly a repository shared across multiple PokieDevServer
 // instances/processes), or the request itself declared an `expectedSessionVersion` that no longer
 // matches — see SpinCommandHandling.handle()'s own doc comment for the distinction.
+//
+// Pre-generated rounds (additive, opt-in-only — see PokieDevServerOptions.preGeneratedOutcomeLibrary):
+// when a WeightedOutcomeLibrary is configured, two further routes become active in their own separate
+// namespace, `POST /pregenerated-sessions` and `POST /pregenerated-sessions/:id/spin`, drawing rounds
+// from that fixed, already-built library (see WeightedOutcomeSelector/PreGeneratedSpinCommandHandler)
+// instead of running the loaded game's own calculation path — no live GameSessionHandling is ever
+// created for these. They share the same wallet/idempotency machinery as the live spin path (an
+// explicitly configured `wallet` is reused as-is; the default is this server's own InMemoryWallet) and
+// the same public/internal response split (PreGeneratedRoundResultProjector, `?debug=1`). Without
+// `preGeneratedOutcomeLibrary`, both routes 404 exactly like any other unknown route — the existing
+// `/sessions` routes are entirely unaffected either way.
 export class PokieDevServer implements PokieDevServerHandling {
     private readonly game: PokieGame;
     private readonly host: string;
@@ -83,6 +102,10 @@ export class PokieDevServer implements PokieDevServerHandling {
     private readonly usesDefaultWallet: boolean;
     private readonly sessionSerializer: GameSessionSerializing | undefined;
     private readonly spinCommandHandler: SpinCommandHandling;
+    private readonly preGeneratedOutcomeLibrary: WeightedOutcomeLibrary | undefined;
+    private readonly preGeneratedSessionRepository: PreGeneratedSessionRepository | undefined;
+    private readonly preGeneratedSpinCommandHandler: PreGeneratedSpinCommandHandling | undefined;
+    private readonly preGeneratedProjector = new PreGeneratedRoundResultProjector();
     private server: http.Server | undefined;
 
     constructor(game: PokieGame, options: PokieDevServerOptions = {}) {
@@ -107,6 +130,18 @@ export class PokieDevServer implements PokieDevServerHandling {
             transactionalWallet,
             options.idempotencyRepository ?? new InMemoryIdempotencyRepository(),
         );
+
+        if (options.preGeneratedOutcomeLibrary !== undefined) {
+            this.preGeneratedOutcomeLibrary = options.preGeneratedOutcomeLibrary;
+            this.preGeneratedSessionRepository = options.preGeneratedSessionRepository ?? new InMemoryPreGeneratedSessionRepository();
+            this.preGeneratedSpinCommandHandler = new PreGeneratedSpinCommandHandler(
+                options.preGeneratedOutcomeLibrary,
+                computeWeightedOutcomeLibraryHash(options.preGeneratedOutcomeLibrary),
+                transactionalWallet,
+                this.preGeneratedSessionRepository,
+                options.preGeneratedIdempotencyRepository ?? new InMemoryIdempotencyRepository(),
+            );
+        }
     }
 
     public start(): Promise<PokieDevServerAddress> {
@@ -190,6 +225,19 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
+        // Own separate namespace (`/pregenerated-sessions`) — never overlaps with the `/sessions`
+        // routes above, so this is a purely additive branch with no effect on the existing routes.
+        if (method === "POST" && url.pathname === "/pregenerated-sessions") {
+            await this.handleCreatePreGeneratedSession(req, res);
+            return;
+        }
+
+        const preGeneratedSpinSessionId = this.matchPreGeneratedSpinRoute(url.pathname);
+        if (method === "POST" && preGeneratedSpinSessionId !== undefined) {
+            await this.handlePreGeneratedSpin(preGeneratedSpinSessionId, req, res, includeInternal);
+            return;
+        }
+
         this.sendJson(res, 404, {error: `Not found: ${method} ${url.pathname}`});
     }
 
@@ -212,6 +260,14 @@ export class PokieDevServer implements PokieDevServerHandling {
     private matchSessionRoute(pathname: string): string | undefined {
         const segments = pathname.split("/").filter((segment) => segment.length > 0);
         if (segments.length === 2 && segments[0] === "sessions") {
+            return decodeURIComponent(segments[1]);
+        }
+        return undefined;
+    }
+
+    private matchPreGeneratedSpinRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (segments.length === 3 && segments[0] === "pregenerated-sessions" && segments[2] === "spin") {
             return decodeURIComponent(segments[1]);
         }
         return undefined;
@@ -294,6 +350,108 @@ export class PokieDevServer implements PokieDevServerHandling {
             response.internal = this.buildInternalSessionData(result.state, result.previousState, result.requestId, result.version);
         }
         this.sendJson(res, 200, response);
+    }
+
+    // Creates a pre-generated session — no live GameSessionHandling is ever constructed for this path
+    // (see the class doc comment, "Pre-generated rounds"). 404s (rather than 400) when no
+    // preGeneratedOutcomeLibrary was configured, same as any other route this server doesn't have.
+    private async handleCreatePreGeneratedSession(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (!this.preGeneratedSpinCommandHandler || !this.preGeneratedSessionRepository || !this.preGeneratedOutcomeLibrary) {
+            this.sendJson(res, 404, {error: "Not found: POST /pregenerated-sessions"});
+            return;
+        }
+
+        let request: {seed?: string; initialBalance?: number};
+        try {
+            request = await this.readCreatePreGeneratedSessionRequest(req);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const sessionId = crypto.randomUUID();
+        const seed = request.seed ?? crypto.randomUUID();
+        await this.preGeneratedSessionRepository.save(sessionId, {
+            libraryId: this.preGeneratedOutcomeLibrary.libraryId,
+            seed,
+            roundsPlayed: 0,
+        });
+        // Unlike a live session, there's no session-side "default credits" to seed the wallet from —
+        // an explicit `initialBalance` in the request body is the only way to start above the wallet's
+        // own default (0 for the default InMemoryWallet, or whatever a caller-configured wallet already
+        // returns for an id it's never seen).
+        if (request.initialBalance !== undefined) {
+            await this.wallet.setBalance(sessionId, request.initialBalance);
+        }
+
+        const credits = await this.wallet.getBalance(sessionId);
+        const response: PreGeneratedSessionResponse = {sessionId, game: this.preGeneratedGameSummary(), credits};
+        this.sendJson(res, 201, response);
+    }
+
+    private async handlePreGeneratedSpin(
+        sessionId: string,
+        req: IncomingMessage,
+        res: ServerResponse,
+        includeInternal: boolean,
+    ): Promise<void> {
+        if (!this.preGeneratedSpinCommandHandler) {
+            this.sendJson(res, 404, {error: `Not found: POST /pregenerated-sessions/${sessionId}/spin`});
+            return;
+        }
+
+        let requestId: string | undefined;
+        try {
+            ({requestId} = await this.readSpinRequest(req));
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.preGeneratedSpinCommandHandler.handle(sessionId, requestId);
+        if (result.status === "not-found") {
+            this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
+            return;
+        }
+
+        const publicView = this.preGeneratedProjector.projectPublic(result.result);
+        const response: PreGeneratedSessionResponse = {...publicView, game: this.preGeneratedGameSummary()};
+        if (includeInternal) {
+            response.internal = this.preGeneratedProjector.projectInternal(result.result);
+        }
+        this.sendJson(res, 200, response);
+    }
+
+    private preGeneratedGameSummary(): {id: string; name: string; version: string} {
+        const manifest = this.game.getManifest();
+        return {id: manifest.id, name: manifest.name, version: manifest.version};
+    }
+
+    private async readCreatePreGeneratedSessionRequest(req: IncomingMessage): Promise<{seed?: string; initialBalance?: number}> {
+        const raw = await this.readBody(req);
+        if (!raw) {
+            return {};
+        }
+
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(raw);
+        } catch {
+            throw new Error("Request body is not valid JSON.");
+        }
+        if (parsed === null || typeof parsed !== "object") {
+            return {};
+        }
+
+        const {seed, initialBalance} = parsed as {seed?: unknown; initialBalance?: unknown};
+        if (seed !== undefined && typeof seed !== "string") {
+            throw new Error('"seed" must be a string.');
+        }
+        if (initialBalance !== undefined && (typeof initialBalance !== "number" || !Number.isFinite(initialBalance))) {
+            throw new Error('"initialBalance" must be a finite number.');
+        }
+
+        return {seed: seed as string | undefined, initialBalance: initialBalance as number | undefined};
     }
 
     private async handleGetSession(sessionId: string, res: ServerResponse, includeInternal: boolean): Promise<void> {

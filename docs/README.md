@@ -72,6 +72,12 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     either from exact counts or from proportional `symbolWeights` (via
     `LargestRemainderReelStripSymbolWeightsConverter`), and `ReelStripAnalyzer` for inspecting any strip. A
     design-time tool, separate from the runtime spin path.
+17. **[Pre-Generated Runtime](pregenerated-runtime.md)** — `WeightedOutcomeSelector`, drawing a single round
+    deterministically from a `WeightedOutcomeLibrary` (seed/RNG-injected, no game calculation path involved),
+    `buildPreGeneratedRoundResult`/`PreGeneratedRoundResultValidator` for the runtime result this produces,
+    `PreGeneratedRoundResultProjector` for its public/internal response split, `PreGeneratedRoundReplayer` for
+    exact (not best-effort) reconstruction of a past round, and `PreGeneratedSpinCommandHandler`/
+    `PokieDevServer`'s additive `/pregenerated-sessions` routes for serving it over HTTP with idempotency.
 
 ## Core concepts at a glance
 
