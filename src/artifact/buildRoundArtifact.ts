@@ -2,6 +2,7 @@ import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {BASE_SIMULATION_CATEGORY} from "../simulation/SimulationCategoryNames.js";
 import {buildRoundStepArtifact} from "./buildRoundStepArtifact.js";
+import {assertValidFeatureEventInput} from "./internal/assertValidFeatureEventInput.js";
 import {canonicalizeJsonField} from "./internal/canonicalizeJsonField.js";
 import {deepFreeze} from "./internal/deepFreeze.js";
 import {ROUND_ARTIFACT_SCHEMA_VERSION, type RoundArtifact} from "./RoundArtifact.js";
@@ -10,7 +11,7 @@ import type {RoundArtifactFeatureEvent, RoundArtifactFeatureEventInput} from "./
 import type {RoundArtifactProvenance} from "./RoundArtifactProvenance.js";
 import type {RoundArtifactStepSource} from "./RoundArtifactStepSource.js";
 
-export type RoundArtifactBuildOptions<T extends string | number | symbol = string> = {
+export type RoundArtifactBuildOptions<T extends string | number = string> = {
     roundId: string;
     provenance: RoundArtifactProvenance;
     stake: number;
@@ -32,7 +33,7 @@ export type RoundArtifactBuildOptions<T extends string | number | symbol = strin
 // see the final toCanonicalJson pass below). The returned RoundArtifact is deeply copied from every input and
 // deeply frozen (see deepFreeze), so it can never be mutated afterward, whether via the artifact itself or via
 // whatever the caller originally passed in.
-export function buildRoundArtifact<T extends string | number | symbol = string>(
+export function buildRoundArtifact<T extends string | number = string>(
     options: RoundArtifactBuildOptions<T>,
 ): RoundArtifact<T> {
     if (options.steps.length === 0) {
@@ -58,12 +59,13 @@ export function buildRoundArtifact<T extends string | number | symbol = string>(
         );
     }
     const schemaVersion = options.schemaVersion ?? ROUND_ARTIFACT_SCHEMA_VERSION;
-    if (!Number.isInteger(schemaVersion) || schemaVersion < 1) {
+    if (schemaVersion !== ROUND_ARTIFACT_SCHEMA_VERSION) {
         throw new RoundArtifactBuildError(
             "round-artifact-schema-version-invalid",
-            `schemaVersion must be a positive integer, got ${schemaVersion}.`,
+            `schemaVersion must be the current supported version (${ROUND_ARTIFACT_SCHEMA_VERSION}), got ${String(schemaVersion)}.`,
         );
     }
+    (options.featureEvents ?? []).forEach((event) => assertValidFeatureEventInput(event, "round"));
 
     const steps = options.steps.map((step, index) => buildRoundStepArtifact(index, step));
     const totalWin = steps.reduce((sum, step) => sum + step.totalWin, 0);

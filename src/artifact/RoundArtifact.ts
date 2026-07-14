@@ -23,7 +23,7 @@ export const ROUND_ARTIFACT_SCHEMA_VERSION = 1;
 // rather than duplicated), but a third-party game may define its own. It is always a value the caller supplies
 // explicitly — never inferred from incidental session state (e.g. balance) — see determineStakeAmount's own
 // doc comment for why that inference is unsafe in general.
-export type RoundArtifact<T extends string | number | symbol = string> = {
+export type RoundArtifact<T extends string | number = string> = {
     readonly schemaVersion: number;
     readonly roundId: string;
     readonly provenance: RoundArtifactProvenance;

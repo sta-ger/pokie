@@ -52,7 +52,7 @@ function deepEqual(a: unknown, b: unknown, depth = 0): boolean {
 // about the actual runtime shape of its input (see Loose<X> above), and the top-level validate() wraps
 // everything in a catch-all so a genuinely malformed artifact still comes back as a ValidationIssue, not an
 // exception.
-export class RoundArtifactValidator<T extends string | number | symbol = string>
+export class RoundArtifactValidator<T extends string | number = string>
 implements ValidationRule<RoundArtifact<T>> {
     public validate(artifact: RoundArtifact<T>): ValidationIssue[] {
         try {

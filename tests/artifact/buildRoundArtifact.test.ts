@@ -1,4 +1,5 @@
 import {
+    ROUND_ARTIFACT_SCHEMA_VERSION,
     RoundArtifactBuildError,
     RoundArtifactProvenance,
     SymbolsCombination,
@@ -47,6 +48,23 @@ function losingResult() {
 function resultWithWinAmount(winAmount: number) {
     const winningValue = new WinningValue<string>("A", [[0, 0]], winAmount);
     const winEvaluationResult = new WinEvaluationResult<string>({
+        valueWins: [new ValueWinComponent<string>(winningValue)],
+    });
+    return {screen: [["A"]], winEvaluationResult};
+}
+
+// WinEvaluationResult.getTotalWin() always sums its own getWinComponents() by construction, so it can never
+// actually disagree with them through the real class — this override exists purely to exercise
+// buildRoundStepArtifact's defensive cross-check against a hypothetical future subclass (or a buggy custom win
+// evaluator) that doesn't uphold that invariant.
+function resultWithOverriddenTotalWin(totalWin: number) {
+    const winningValue = new WinningValue<string>("A", [[0, 0]], 5);
+    class OverriddenWinEvaluationResult extends WinEvaluationResult<string> {
+        public getTotalWin(): number {
+            return totalWin;
+        }
+    }
+    const winEvaluationResult = new OverriddenWinEvaluationResult({
         valueWins: [new ValueWinComponent<string>(winningValue)],
     });
     return {screen: [["A"]], winEvaluationResult};
@@ -134,6 +152,43 @@ describe("buildRoundStepArtifact", () => {
                 featureEvents: [{type: "custom", data: {value: BigInt(1) as unknown as number}}],
             }),
         ).toThrow(RoundArtifactBuildError);
+    });
+
+    it.each(["", "   "])("throws RoundArtifactBuildError for a feature event with type %p", (type) => {
+        try {
+            buildRoundStepArtifact(0, {...losingResult(), featureEvents: [{type}]});
+            fail("expected buildRoundStepArtifact to throw");
+        } catch (error) {
+            expect(error).toBeInstanceOf(RoundArtifactBuildError);
+            expect((error as InstanceType<typeof RoundArtifactBuildError>).getCode()).toBe(
+                "round-artifact-feature-event-type-invalid",
+            );
+        }
+    });
+
+    it("throws round-artifact-step-total-win-invalid for a negative totalWin", () => {
+        try {
+            buildRoundStepArtifact(0, resultWithOverriddenTotalWin(-5));
+            fail("expected buildRoundStepArtifact to throw");
+        } catch (error) {
+            expect(error).toBeInstanceOf(RoundArtifactBuildError);
+            expect((error as InstanceType<typeof RoundArtifactBuildError>).getCode()).toBe(
+                "round-artifact-step-total-win-invalid",
+            );
+        }
+    });
+
+    it("throws round-artifact-step-total-win-mismatch when totalWin disagrees with the sum of its own wins", () => {
+        try {
+            // resultWithOverriddenTotalWin's one win has winAmount 5, so 999 can never match its sum.
+            buildRoundStepArtifact(0, resultWithOverriddenTotalWin(999));
+            fail("expected buildRoundStepArtifact to throw");
+        } catch (error) {
+            expect(error).toBeInstanceOf(RoundArtifactBuildError);
+            expect((error as InstanceType<typeof RoundArtifactBuildError>).getCode()).toBe(
+                "round-artifact-step-total-win-mismatch",
+            );
+        }
     });
 });
 
@@ -247,10 +302,28 @@ describe("buildRoundArtifact", () => {
             );
         });
 
-        it.each([0, -1, 1.5])("throws RoundArtifactBuildError for schemaVersion %p", (schemaVersion) => {
+        it.each([0, -1, 1.5, 2])("throws RoundArtifactBuildError for schemaVersion %p", (schemaVersion) => {
+            try {
+                buildRoundArtifact({roundId: "r", provenance, stake: 1, schemaVersion, steps: [losingResult()]});
+                fail("expected buildRoundArtifact to throw");
+            } catch (error) {
+                expect(error).toBeInstanceOf(RoundArtifactBuildError);
+                expect((error as InstanceType<typeof RoundArtifactBuildError>).getCode()).toBe(
+                    "round-artifact-schema-version-invalid",
+                );
+            }
+        });
+
+        it("accepts the current ROUND_ARTIFACT_SCHEMA_VERSION explicitly", () => {
             expect(() =>
-                buildRoundArtifact({roundId: "r", provenance, stake: 1, schemaVersion, steps: [losingResult()]}),
-            ).toThrow(RoundArtifactBuildError);
+                buildRoundArtifact({
+                    roundId: "r",
+                    provenance,
+                    stake: 1,
+                    schemaVersion: ROUND_ARTIFACT_SCHEMA_VERSION,
+                    steps: [losingResult()],
+                }),
+            ).not.toThrow();
         });
 
         it("throws RoundArtifactBuildError when round-level debug is not JSON-safe (cyclic)", () => {
@@ -265,6 +338,30 @@ describe("buildRoundArtifact", () => {
             expect(() =>
                 buildRoundArtifact({roundId: "r", provenance, stake: 1, steps: [resultWithWinAmount(NaN)]}),
             ).toThrow(RoundArtifactBuildError);
+        });
+
+        it("propagates a step's mismatched totalWin as RoundArtifactBuildError", () => {
+            try {
+                buildRoundArtifact({roundId: "r", provenance, stake: 1, steps: [resultWithOverriddenTotalWin(999)]});
+                fail("expected buildRoundArtifact to throw");
+            } catch (error) {
+                expect(error).toBeInstanceOf(RoundArtifactBuildError);
+                expect((error as InstanceType<typeof RoundArtifactBuildError>).getCode()).toBe(
+                    "round-artifact-step-total-win-mismatch",
+                );
+            }
+        });
+
+        it.each(["", "  "])("throws RoundArtifactBuildError for a round-level feature event with type %p", (type) => {
+            try {
+                buildRoundArtifact({roundId: "r", provenance, stake: 1, steps: [losingResult()], featureEvents: [{type}]});
+                fail("expected buildRoundArtifact to throw");
+            } catch (error) {
+                expect(error).toBeInstanceOf(RoundArtifactBuildError);
+                expect((error as InstanceType<typeof RoundArtifactBuildError>).getCode()).toBe(
+                    "round-artifact-feature-event-type-invalid",
+                );
+            }
         });
     });
 

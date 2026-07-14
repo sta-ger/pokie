@@ -15,7 +15,7 @@ export type RoundArtifactMultiplierBreakdown = {
 // not a recomputation, so a RoundArtifact's wins are always exactly what the win evaluation pipeline already
 // produced. "metadata" is canonicalized via canonicalizeJsonField at build time: both deeply copied (isolated
 // from the win evaluation pipeline's own state) and validated as JSON-safe.
-export type RoundArtifactWin<T extends string | number | symbol = string> = {
+export type RoundArtifactWin<T extends string | number = string> = {
     readonly type: string;
     readonly id: string;
     readonly symbolId: T;

@@ -11,7 +11,13 @@ import type {JsonValue} from "./JsonValue.js";
 // RoundArtifact — steps, wins, screen rows, winning positions, ...). Fails fast — throws InvalidJsonValueError —
 // on anything JSON can't represent losslessly: NaN/Infinity, bigint, symbol, function, undefined, and circular
 // references, rather than silently coercing them the way `JSON.stringify` does (dropping undefined/functions,
-// turning NaN/Infinity into `null`, throwing a generic TypeError on cycles with no indication of where).
+// turning NaN/Infinity into `null`, throwing a generic TypeError on cycles with no indication of where). Only
+// plain objects (object literals, `Object.create(null)`, or `JSON.parse` output — prototype is `Object.prototype`
+// or `null`) and dense arrays are accepted as containers: a `Date`/`Map`/`Set`/`RegExp`/class instance/any other
+// custom-prototype object, a symbol-keyed own property, or a sparse array (a hole from `[1, , 3]`) all throw too
+// — none of those round-trip through JSON the way the caller probably expects (a `Date` silently becomes a
+// string, a `Map`/`Set` silently becomes `{}`, a hole silently becomes `null`), so this rejects them instead of
+// guessing.
 export function toCanonicalJson(value: unknown, path = "", seen: Set<object> = new Set()): JsonValue {
     if (value === null) {
         return null;
@@ -47,10 +53,30 @@ export function toCanonicalJson(value: unknown, path = "", seen: Set<object> = n
     seen.add(obj);
     try {
         if (Array.isArray(obj)) {
+            for (let index = 0; index < obj.length; index++) {
+                if (!(index in obj)) {
+                    throw new InvalidJsonValueError(path, "a sparse array (with holes) is not a valid JSON value");
+                }
+            }
             return obj.map((element, index) => toCanonicalJson(element, `${path}[${index}]`, seen));
         }
 
-        const canonical: Record<string, JsonValue> = {};
+        if (!isPlainObject(obj)) {
+            throw new InvalidJsonValueError(path, `${describe(obj)} is not a valid JSON value (only plain objects are)`);
+        }
+
+        const symbolKeys = Object.getOwnPropertySymbols(obj);
+        if (symbolKeys.length > 0) {
+            throw new InvalidJsonValueError(path, "a symbol-keyed property is not a valid JSON value");
+        }
+
+        // Object.create(null) rather than `{}`: a plain `{}` inherits Object.prototype's "__proto__" accessor, so
+        // `canonical["__proto__"] = ...` for a source key literally named "__proto__" would silently reassign the
+        // new object's own prototype instead of creating an own data property — losing the key entirely (and, had
+        // the value been attacker-controlled, a textbook prototype-pollution vector). A null-prototype object has
+        // no such accessor to intercept the assignment, so every key — including "__proto__" — becomes a real own
+        // property.
+        const canonical: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
         for (const key of Object.keys(obj).sort()) {
             canonical[key] = toCanonicalJson(
                 (obj as Record<string, unknown>)[key],
@@ -62,4 +88,15 @@ export function toCanonicalJson(value: unknown, path = "", seen: Set<object> = n
     } finally {
         seen.delete(obj);
     }
+}
+
+function isPlainObject(obj: object): boolean {
+    const proto = Reflect.getPrototypeOf(obj);
+    return proto === null || proto === Object.prototype;
+}
+
+function describe(obj: object): string {
+    const proto = Reflect.getPrototypeOf(obj) as {constructor?: {name?: string}} | null;
+    const name = proto?.constructor?.name;
+    return name ? `a ${name}` : "an object with a non-standard prototype";
 }

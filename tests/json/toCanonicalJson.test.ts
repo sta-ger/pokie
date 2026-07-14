@@ -75,4 +75,79 @@ describe("toCanonicalJson", () => {
             expect((error as InvalidJsonValueError).getPath()).toBe("wins[0].metadata.value");
         }
     });
+
+    describe("non-plain objects", () => {
+        it("throws InvalidJsonValueError for a Date", () => {
+            expect(() => toCanonicalJson(new Date())).toThrow(InvalidJsonValueError);
+            expect(() => toCanonicalJson({value: new Date()})).toThrow(InvalidJsonValueError);
+        });
+
+        it("throws InvalidJsonValueError for a Map", () => {
+            expect(() => toCanonicalJson(new Map([["a", 1]]))).toThrow(InvalidJsonValueError);
+        });
+
+        it("throws InvalidJsonValueError for a Set", () => {
+            expect(() => toCanonicalJson(new Set([1, 2]))).toThrow(InvalidJsonValueError);
+        });
+
+        it("throws InvalidJsonValueError for a RegExp", () => {
+            expect(() => toCanonicalJson(/abc/)).toThrow(InvalidJsonValueError);
+        });
+
+        it("throws InvalidJsonValueError for a class instance (custom prototype)", () => {
+            class Foo {
+                public value = 1;
+            }
+            expect(() => toCanonicalJson(new Foo())).toThrow(InvalidJsonValueError);
+        });
+
+        it("accepts a null-prototype object as a plain object", () => {
+            const obj: Record<string, unknown> = Object.create(null);
+            obj.a = 1;
+            expect(toCanonicalJson(obj)).toEqual({a: 1});
+        });
+    });
+
+    describe("symbol-keyed properties", () => {
+        it("throws InvalidJsonValueError for an object with a symbol-keyed own property", () => {
+            const obj: Record<string | symbol, unknown> = {a: 1};
+            obj[Symbol("hidden")] = "nope";
+            expect(() => toCanonicalJson(obj)).toThrow(InvalidJsonValueError);
+        });
+    });
+
+    describe("sparse arrays", () => {
+        it("throws InvalidJsonValueError for a sparse array (with a hole)", () => {
+            const sparse = [1, 2, 3];
+            Reflect.deleteProperty(sparse, 1);
+            expect(() => toCanonicalJson(sparse)).toThrow(InvalidJsonValueError);
+            expect(() => toCanonicalJson(sparse)).toThrow(/sparse array/);
+        });
+
+        it("distinguishes a dense array containing an explicit undefined from a sparse array", () => {
+            expect(() => toCanonicalJson([1, undefined, 3])).toThrow(/undefined is not a valid JSON value/);
+        });
+
+        it("does not flag a normal dense array", () => {
+            expect(() => toCanonicalJson([1, 2, 3])).not.toThrow();
+        });
+    });
+
+    describe('"__proto__" handling', () => {
+        it("safely preserves a '__proto__' own property without polluting the canonical object's prototype", () => {
+            const protoKey = "__proto__";
+            const withProtoKey = JSON.parse(`{${JSON.stringify(protoKey)}: "value", "safe": 1}`) as Record<string, unknown>;
+            // Sanity: JSON.parse creates a genuine own "__proto__" data property, not an actual prototype change.
+            expect(Reflect.getPrototypeOf(withProtoKey)).toBe(Object.prototype);
+            expect(Reflect.apply(Object.prototype.hasOwnProperty, withProtoKey, [protoKey])).toBe(true);
+
+            const canonical = toCanonicalJson(withProtoKey) as Record<string, unknown>;
+
+            expect(Reflect.getPrototypeOf(canonical)).not.toBe("value");
+            expect(Reflect.apply(Object.prototype.hasOwnProperty, canonical, [protoKey])).toBe(true);
+            expect(canonical[protoKey]).toBe("value");
+            expect(canonical.safe).toBe(1);
+            expect(JSON.stringify(canonical)).toBe('{"__proto__":"value","safe":1}');
+        });
+    });
 });

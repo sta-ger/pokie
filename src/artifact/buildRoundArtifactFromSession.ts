@@ -23,7 +23,7 @@ export type RoundArtifactFromSessionOptions = {
 // WonFreeGamesNumberDetermining and actually reports a win this round, mirroring the same
 // optional-interface pattern (see StakeAmountDetermining's own doc comment for why balance/state is never
 // used to infer this).
-export function buildRoundArtifactFromSession<T extends string | number | symbol = string>(
+export function buildRoundArtifactFromSession<T extends string | number = string>(
     session: VideoSlotSessionHandling<T>,
     options: RoundArtifactFromSessionOptions,
 ): RoundArtifact<T> {

@@ -8,7 +8,7 @@ import type {RoundArtifactWin} from "./RoundArtifactWin.js";
 // transport payload. Deeply readonly, and always deeply copied/frozen at build time (see
 // buildRoundStepArtifact) — a caller can never observe a step artifact change after the fact, whether by
 // mutating their own original input or by holding a reference to the artifact itself.
-export type RoundStepArtifact<T extends string | number | symbol = string> = {
+export type RoundStepArtifact<T extends string | number = string> = {
     readonly index: number;
     readonly screen: readonly (readonly T[])[];
     readonly totalWin: number;

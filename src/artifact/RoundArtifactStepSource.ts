@@ -9,7 +9,7 @@ import type {RoundArtifactFeatureEventInput} from "./RoundArtifactFeatureEvent.j
 // input shapes — buildRoundStepArtifact never mutates them, and validates/deep-copies "featureEvents[].data"/
 // "debug" into JsonObject at build time (see canonicalizeJsonField), so there's no need for the caller-facing
 // input type to be as strict as the output RoundStepArtifact.
-export type RoundArtifactStepSource<T extends string | number | symbol = string> = {
+export type RoundArtifactStepSource<T extends string | number = string> = {
     readonly screen: readonly (readonly T[])[];
     readonly winEvaluationResult: WinEvaluationResult<T>;
     readonly featureEvents?: readonly RoundArtifactFeatureEventInput[];

@@ -8,7 +8,7 @@ import type {RoundArtifact} from "./RoundArtifact.js";
 // Fails fast (propagates InvalidJsonValueError) on anything that isn't valid canonical JSON, same as the
 // projector — a RoundArtifact built via buildRoundArtifact is already guaranteed JSON-safe, so this only
 // actually throws for a hand-crafted artifact that bypassed that guarantee.
-export function computeRoundArtifactHash<T extends string | number | symbol = string>(
+export function computeRoundArtifactHash<T extends string | number = string>(
     artifact: RoundArtifact<T>,
 ): string {
     return `sha256:${crypto.createHash("sha256").update(JSON.stringify(toCanonicalJson(artifact))).digest("hex")}`;
