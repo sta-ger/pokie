@@ -113,7 +113,7 @@ describe("buildGameBuildInfo", () => {
             reels: [
                 {
                     reelIndex: 0,
-                    config: {length: 10, symbolCounts: {A: 5, B: 5}, seed: 1},
+                    config: {type: "generated" as const, length: 10, symbolCounts: {A: 5, B: 5}, seed: 1},
                     seed: 1,
                     success: true,
                     attemptsUsed: 1,

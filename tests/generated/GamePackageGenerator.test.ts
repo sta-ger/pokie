@@ -334,7 +334,7 @@ describe("GamePackageGenerator", () => {
             reels: [
                 {
                     reelIndex: 1,
-                    config: {length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                    config: {type: "generated" as const, length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
                     seed: 1,
                     success: true,
                     attemptsUsed: 1,
@@ -383,5 +383,108 @@ describe("GamePackageGenerator", () => {
         expect(result.buildInfo.reelStripGeneration).toBeUndefined();
         const buildInfoOnDisk = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
         expect(buildInfoOnDisk.reelStripGeneration).toBeUndefined();
+    });
+
+    it("self-resolves reelStripGeneration when called directly without a pre-resolved 5th argument", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint({
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "B"]},
+                {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                {type: "literal", strip: ["B", "A"]},
+            ],
+        });
+
+        const result = generator.generate(blueprint, cwd);
+
+        expect(result.buildInfo.reelStripGeneration?.reels).toHaveLength(1);
+        const [reel1] = result.buildInfo.reelStripGeneration!.reels;
+        expect(reel1.reelIndex).toBe(1);
+        expect(reel1.success).toBe(true);
+        expect(reel1.strip).toHaveLength(2);
+
+        const indexJs = fs.readFileSync(path.join(result.projectRoot, "src", "generated", "index.js"), "utf-8");
+        const embedded = JSON.parse(indexJs.match(/const blueprint = ([\s\S]*?);\n\n/)![1]);
+        expect(embedded.reelStrips[0]).toEqual(["A", "B"]);
+        expect(embedded.reelStrips[1]).toEqual(reel1.strip);
+        expect(embedded.reelStrips[2]).toEqual(["B", "A"]);
+    });
+
+    it("records the exact authored config, including type: \"generated\", for a self-resolved reel's provenance", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const generatedSpec = {type: "generated" as const, length: 2, symbolCounts: {A: 1, B: 1}, seed: 1};
+        const blueprint = buildBlueprint({
+            reelStripGeneration: [generatedSpec, {type: "literal", strip: ["B", "A"]}, {type: "literal", strip: ["A", "B"]}],
+        });
+
+        const result = generator.generate(blueprint, cwd);
+
+        expect(result.buildInfo.reelStripGeneration?.reels[0].config).toEqual(generatedSpec);
+    });
+
+    it("throws a clear error naming the failing reel and its diagnostics, and creates no files, when self-resolution can't satisfy a reel's constraints", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint({
+            reelStripGeneration: [
+                {
+                    type: "generated",
+                    length: 4,
+                    symbolCounts: {A: 2, B: 2},
+                    seed: 1,
+                    maxAttempts: 3,
+                    // Two "A"s on a 4-long strip always split the circle into two gaps summing to 4, so
+                    // both can never simultaneously be <= 1 -- no arrangement can ever satisfy this.
+                    constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
+                },
+            ],
+        });
+
+        let thrown: Error | undefined;
+        try {
+            generator.generate(blueprint, cwd);
+        } catch (error) {
+            thrown = error as Error;
+        }
+
+        expect(thrown?.message).toContain("reel 0");
+        expect(thrown?.message).toContain("maximum-circular-distance");
+        expect(fs.existsSync(path.join(cwd, "crazy-fruits"))).toBe(false);
+    });
+
+    it("throws and creates no files when a caller-supplied reelStripGeneration is missing an entry for a generated reel", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint({
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "B"]},
+                {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+            ],
+        });
+
+        expect(() => generator.generate(blueprint, cwd, undefined, undefined, {reels: []})).toThrow(/reelStripGeneration\[1\] is missing/);
+        expect(fs.existsSync(path.join(cwd, "crazy-fruits"))).toBe(false);
+    });
+
+    it("throws and creates no files when a caller-supplied reelStripGeneration reports an unsuccessful summary for a generated reel", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint({
+            reelStripGeneration: [{type: "generated", length: 2, symbolCounts: {A: 1, B: 1}, seed: 1}],
+        });
+        const failedResolution = {
+            reels: [
+                {
+                    reelIndex: 0,
+                    config: {type: "generated" as const, length: 2, symbolCounts: {A: 1, B: 1}, seed: 1},
+                    seed: 1,
+                    success: false,
+                    attemptsUsed: 3,
+                    diagnostics: [],
+                },
+            ],
+        };
+
+        expect(() => generator.generate(blueprint, cwd, undefined, undefined, failedResolution)).toThrow(
+            /reelStripGeneration\[0\] did not generate successfully/,
+        );
+        expect(fs.existsSync(path.join(cwd, "crazy-fruits"))).toBe(false);
     });
 });

@@ -12,6 +12,11 @@ import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGen
 // plain reelStrips/symbolWeights blueprint is entirely unaffected. The returned blueprint never
 // carries a reelStripGeneration field — the runtime game module (renderGeneratedGameModule.ts) only
 // ever sees a plain reelStrips array, exactly like a hand-authored one.
+//
+// Fails fast — throws — rather than materializing a reel as undefined, if the resolution doesn't
+// actually cover every "generated" entry with a successful strip: missing (no summary for that
+// reelIndex), duplicate (two summaries claiming the same reelIndex), or unsuccessful (success: false,
+// or success: true with no strip, which resolveReelStripGeneration never produces but callers could).
 export function materializeReelStrips(blueprint: GameBlueprint, reelStripGeneration: GameBuildInfoReelStripGeneration | undefined): GameBlueprint {
     const specs = blueprint.reelStripGeneration;
     if (specs === undefined) {
@@ -20,12 +25,28 @@ export function materializeReelStrips(blueprint: GameBlueprint, reelStripGenerat
 
     const stripsByReelIndex = new Map<number, string[]>();
     for (const summary of reelStripGeneration?.reels ?? []) {
-        if (summary.strip !== undefined) {
-            stripsByReelIndex.set(summary.reelIndex, summary.strip);
+        if (stripsByReelIndex.has(summary.reelIndex)) {
+            throw new Error(
+                `reelStripGeneration resolution has duplicate entries for reel ${summary.reelIndex}: cannot materialize reelStrips.`,
+            );
         }
+        if (!summary.success || summary.strip === undefined) {
+            throw new Error(`reelStripGeneration[${summary.reelIndex}] did not generate successfully: cannot materialize reelStrips.`);
+        }
+        stripsByReelIndex.set(summary.reelIndex, summary.strip);
     }
 
-    const reelStrips = specs.map((spec, reelIndex) => (spec.type === "literal" ? spec.strip : stripsByReelIndex.get(reelIndex)!));
+    const reelStrips = specs.map((spec, reelIndex) => {
+        if (spec.type === "literal") {
+            return spec.strip;
+        }
+
+        const strip = stripsByReelIndex.get(reelIndex);
+        if (strip === undefined) {
+            throw new Error(`reelStripGeneration[${reelIndex}] is missing from the resolved generation result: cannot materialize reelStrips.`);
+        }
+        return strip;
+    });
 
     const materialized: GameBlueprint = {...blueprint, reelStrips};
     Reflect.deleteProperty(materialized, "reelStripGeneration");
