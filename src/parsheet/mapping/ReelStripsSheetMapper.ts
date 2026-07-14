@@ -1,7 +1,7 @@
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 import type {ReelStripsSheetMapping} from "./ReelStripsSheetMapping.js";
-import {cellToText} from "./sheetCellParsing.js";
+import {cellToText, resolveReelColumns} from "./sheetCellParsing.js";
 
 export class ReelStripsSheetMapper implements ReelStripsSheetMapping {
     public readonly sheetName = "ReelStrips";
@@ -9,14 +9,21 @@ export class ReelStripsSheetMapper implements ReelStripsSheetMapping {
     public fromRows(rows: SheetGrid): {value: string[][]; issues: ValidationIssue[]} {
         const issues: ValidationIssue[] = [];
         const [header, ...dataRows] = rows;
-        const reelColumns: number[] = [];
-        (header ?? []).forEach((cell, index) => {
-            if (cellToText(cell) !== undefined) {
-                reelColumns.push(index);
-            }
-        });
+        const reelColumns = resolveReelColumns(header ?? [], this.sheetName, issues);
+        const columnIndexByReelIndex = new Map(reelColumns.map((column) => [column.reelIndex, column.columnIndex]));
+        const maxReelIndex = reelColumns.length > 0 ? Math.max(...reelColumns.map((column) => column.reelIndex)) : 0;
 
-        const reelStrips = reelColumns.map((columnIndex, reelIndex) => {
+        const reelStrips: string[][] = [];
+        for (let reelIndex = 1; reelIndex <= maxReelIndex; reelIndex++) {
+            const columnIndex = columnIndexByReelIndex.get(reelIndex);
+            if (columnIndex === undefined) {
+                // A missing "Reel <reelIndex>" column was already reported by resolveReelColumns —
+                // an empty placeholder strip keeps reelStrips[reelIndex - 1] positionally correct
+                // rather than silently shrinking the array.
+                reelStrips.push([]);
+                continue;
+            }
+
             const strip: string[] = [];
             let sawBlank = false;
             dataRows.forEach((row, rowOffset) => {
@@ -29,14 +36,14 @@ export class ReelStripsSheetMapper implements ReelStripsSheetMapping {
                     issues.push({
                         code: "parsheet-reelstrips-gap",
                         severity: "error",
-                        message: `Sheet "${this.sheetName}", reel ${reelIndex + 1}: row ${rowOffset + 2} has a value after a blank cell earlier in the column — a reel strip must not have gaps.`,
+                        message: `Sheet "${this.sheetName}", reel ${reelIndex}: row ${rowOffset + 2} has a value after a blank cell earlier in the column — a reel strip must not have gaps.`,
                         details: {sheet: this.sheetName, reelIndex, row: rowOffset + 2},
                     });
                 }
                 strip.push(cellText);
             });
-            return strip;
-        });
+            reelStrips.push(strip);
+        }
 
         return {value: reelStrips, issues};
     }

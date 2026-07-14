@@ -51,17 +51,57 @@ describe("ParSheetExporter", () => {
         expect(await readSheetNames()).toEqual(["Manifest", "Symbols", "Paytable", "ReelStrips", "Paylines", "AvailableBets", "Meta"]);
     });
 
-    it("omits the ReelStrips sheet and reports an error when the blueprint has no literal reelStrips", async () => {
-        const exporter = new ParSheetExporter("1.3.0");
-        const withoutReelStrips: GameBlueprint = {...blueprint};
-        Reflect.deleteProperty(withoutReelStrips, "reelStrips");
+    describe("preflight (no partial writes)", () => {
+        it("creates no file at all and reports an error when the blueprint has no literal reelStrips", async () => {
+            const exporter = new ParSheetExporter("1.3.0");
+            const withoutReelStrips: GameBlueprint = {...blueprint};
+            Reflect.deleteProperty(withoutReelStrips, "reelStrips");
 
-        const issues = await exporter.exportToFile(withoutReelStrips, filePath);
+            const issues = await exporter.exportToFile(withoutReelStrips, filePath);
 
-        expect(issues).toEqual([expect.objectContaining({code: "parsheet-missing-reel-strips", severity: "error"})]);
-        expect(await readSheetNames()).not.toContain("ReelStrips");
-        // The rest of the workbook is still written even though reelStrips is missing.
-        expect(await readSheetNames()).toEqual(["Manifest", "Symbols", "Paytable", "Paylines", "AvailableBets", "Meta"]);
+            expect(issues).toEqual([expect.objectContaining({code: "parsheet-missing-reel-strips", severity: "error"})]);
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
+
+        it("leaves an existing file at filePath completely untouched when export fails", async () => {
+            const exporter = new ParSheetExporter("1.3.0");
+            const withoutReelStrips: GameBlueprint = {...blueprint};
+            Reflect.deleteProperty(withoutReelStrips, "reelStrips");
+            const sentinelContent = "not a real xlsx file — a stand-in for whatever was already there";
+            fs.writeFileSync(filePath, sentinelContent);
+
+            const issues = await exporter.exportToFile(withoutReelStrips, filePath);
+
+            expect(issues.some((issue) => issue.severity === "error")).toBe(true);
+            expect(fs.readFileSync(filePath, "utf-8")).toBe(sentinelContent);
+        });
+
+        it("creates no file and reports an error when the blueprint uses reelStripGeneration, even though reelStrips is also present", async () => {
+            const exporter = new ParSheetExporter("1.3.0");
+            const withGeneration: GameBlueprint = {
+                ...blueprint,
+                reelStripGeneration: [
+                    {type: "literal", strip: ["A", "W"]},
+                    {type: "literal", strip: ["W", "A"]},
+                ],
+            };
+
+            const issues = await exporter.exportToFile(withGeneration, filePath);
+
+            expect(issues).toEqual([expect.objectContaining({code: "parsheet-unsupported-reel-source", severity: "error"})]);
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
+
+        it("creates no file and reports an error when the blueprint uses symbolWeights", async () => {
+            const exporter = new ParSheetExporter("1.3.0");
+            const withWeights: GameBlueprint = {...blueprint, symbolWeights: {A: 5, W: 1}};
+            Reflect.deleteProperty(withWeights, "reelStrips");
+
+            const issues = await exporter.exportToFile(withWeights, filePath);
+
+            expect(issues).toEqual([expect.objectContaining({code: "parsheet-unsupported-reel-source", severity: "error"})]);
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
     });
 
     it("omits the Paylines/AvailableBets sheets when the blueprint omits those optional fields", async () => {

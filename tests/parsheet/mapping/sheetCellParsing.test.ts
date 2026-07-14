@@ -1,5 +1,5 @@
 import type {ValidationIssue} from "../../../src/validation/ValidationIssue.js";
-import {cellToBoolean, cellToNumber, cellToText, isBlankRow, resolveColumnIndexes} from "../../../src/parsheet/mapping/sheetCellParsing.js";
+import {cellToBoolean, cellToNumber, cellToText, isBlankRow, resolveColumnIndexes, resolveReelColumns} from "../../../src/parsheet/mapping/sheetCellParsing.js";
 
 describe("sheetCellParsing", () => {
     describe("cellToText", () => {
@@ -84,6 +84,84 @@ describe("sheetCellParsing", () => {
             resolveColumnIndexes([], ["Symbol"], "Symbols", issues);
 
             expect(issues).toEqual([expect.objectContaining({code: "parsheet-missing-column", severity: "error"})]);
+        });
+    });
+
+    describe("resolveReelColumns", () => {
+        it("resolves canonical Reel 1..Reel N headers in physical column order", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns(["Reel 1", "Reel 2", "Reel 3"], "ReelStrips", issues);
+
+            expect(columns).toEqual([
+                {reelIndex: 1, columnIndex: 0},
+                {reelIndex: 2, columnIndex: 1},
+                {reelIndex: 3, columnIndex: 2},
+            ]);
+            expect(issues).toEqual([]);
+        });
+
+        it("resolves out-of-order Reel headers by reelIndex, not physical column order", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns(["Reel 2", "Reel 1"], "ReelStrips", issues);
+
+            expect(columns).toEqual([
+                {reelIndex: 1, columnIndex: 1},
+                {reelIndex: 2, columnIndex: 0},
+            ]);
+        });
+
+        it("reports an unknown column and excludes it from the result", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns(["Reel 1", "Notes", "Reel 2"], "ReelStrips", issues);
+
+            expect(columns).toEqual([
+                {reelIndex: 1, columnIndex: 0},
+                {reelIndex: 2, columnIndex: 2},
+            ]);
+            expect(issues).toEqual([
+                expect.objectContaining({code: "parsheet-unknown-column", severity: "warning", details: {sheet: "ReelStrips", column: "Notes"}}),
+            ]);
+        });
+
+        it("reports a duplicate Reel column and only uses the first occurrence", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns(["Reel 1", "Reel 1", "Reel 2"], "ReelStrips", issues);
+
+            expect(columns).toEqual([
+                {reelIndex: 1, columnIndex: 0},
+                {reelIndex: 2, columnIndex: 2},
+            ]);
+            expect(issues).toEqual([expect.objectContaining({code: "parsheet-reel-column-duplicate", severity: "error", details: {sheet: "ReelStrips", reelIndex: 1}})]);
+        });
+
+        it("reports every missing Reel index in the 1..maxReelIndex sequence", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns(["Reel 1", "Reel 4"], "ReelStrips", issues);
+
+            expect(columns).toEqual([
+                {reelIndex: 1, columnIndex: 0},
+                {reelIndex: 4, columnIndex: 1},
+            ]);
+            expect(issues).toEqual([
+                expect.objectContaining({code: "parsheet-reel-column-missing", severity: "error", details: {sheet: "ReelStrips", reelIndex: 2}}),
+                expect.objectContaining({code: "parsheet-reel-column-missing", severity: "error", details: {sheet: "ReelStrips", reelIndex: 3}}),
+            ]);
+        });
+
+        it("ignores the given column indexes entirely (e.g. Paylines' own Line column)", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns(["Line", "Reel 1"], "Paylines", issues, new Set([0]));
+
+            expect(columns).toEqual([{reelIndex: 1, columnIndex: 1}]);
+            expect(issues).toEqual([]);
+        });
+
+        it("returns nothing for an empty header row, without any missing-column diagnostics", () => {
+            const issues: ValidationIssue[] = [];
+            const columns = resolveReelColumns([], "ReelStrips", issues);
+
+            expect(columns).toEqual([]);
+            expect(issues).toEqual([]);
         });
     });
 });

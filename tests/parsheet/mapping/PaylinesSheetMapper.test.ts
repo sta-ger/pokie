@@ -33,6 +33,38 @@ describe("PaylinesSheetMapper", () => {
         expect(issues).toEqual([expect.objectContaining({code: "parsheet-payline-invalid-cell", severity: "error"})]);
     });
 
+    it("ignores an unrecognized column header — it never becomes reel data", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Line", "Reel 1", "Notes", "Reel 2"],
+            [1, 0, "ignore me", 1],
+        ]);
+
+        expect(value).toEqual([[0, 1]]);
+        expect(issues).toEqual([expect.objectContaining({code: "parsheet-unknown-column", severity: "warning"})]);
+    });
+
+    it("reports a duplicate Reel column and only uses the first occurrence's data", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Line", "Reel 1", "Reel 1"],
+            [1, 0, 2],
+        ]);
+
+        expect(value).toEqual([[0]]);
+        expect(issues).toEqual([expect.objectContaining({code: "parsheet-reel-column-duplicate", severity: "error"})]);
+    });
+
+    it("reports a missing Reel column and drops every payline (nothing to read for that reel)", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Line", "Reel 1", "Reel 3"],
+            [1, 0, 0],
+        ]);
+
+        expect(value).toEqual([]);
+        expect(issues).toEqual(
+            expect.arrayContaining([expect.objectContaining({code: "parsheet-reel-column-missing", severity: "error", details: {sheet: "Paylines", reelIndex: 2}})]),
+        );
+    });
+
     it("skips fully blank rows", () => {
         const {value, issues} = mapper.fromRows([
             ["Line", "Reel 1"],

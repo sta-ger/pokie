@@ -54,7 +54,7 @@ describe("ParCommand", () => {
     });
 
     it("has the expected name and description", () => {
-        const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, issues: []}), createStubExporter([]));
+        const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), createStubExporter([]));
 
         expect(command.getName()).toBe("par");
         expect(command.getDescription().length).toBeGreaterThan(0);
@@ -74,7 +74,7 @@ describe("ParCommand", () => {
 
     describe("import", () => {
         it("imports, writes the blueprint JSON to the default --out path, and returns 0", async () => {
-            const importer = createStubImporter({blueprint: fullBlueprint, issues: []});
+            const importer = createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []});
             const writeFile = jest.fn();
             const command = new ParCommand("1.3.0", importer, createStubExporter([]), () => rawBlueprint, createStubValidator([]), writeFile);
 
@@ -89,7 +89,7 @@ describe("ParCommand", () => {
             const writeFile = jest.fn();
             const command = new ParCommand(
                 "1.3.0",
-                createStubImporter({blueprint: fullBlueprint, issues: []}),
+                createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}),
                 createStubExporter([]),
                 () => rawBlueprint,
                 createStubValidator([]),
@@ -106,7 +106,7 @@ describe("ParCommand", () => {
             const issues: ValidationIssue[] = [{code: "parsheet-missing-sheet", severity: "error", message: "bad"}];
             const command = new ParCommand(
                 "1.3.0",
-                createStubImporter({blueprint: fullBlueprint, issues}),
+                createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues}),
                 createStubExporter([]),
                 () => rawBlueprint,
                 createStubValidator([]),
@@ -124,7 +124,7 @@ describe("ParCommand", () => {
             const writeFile = jest.fn();
             const command = new ParCommand(
                 "1.3.0",
-                createStubImporter({blueprint: fullBlueprint, issues: []}),
+                createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}),
                 createStubExporter([]),
                 () => rawBlueprint,
                 createStubValidator([]),
@@ -168,7 +168,7 @@ describe("ParCommand", () => {
         it("validates, exports, and returns 0 when there are no issues", async () => {
             const exporter = createStubExporter([]);
             const validator = createStubValidator([]);
-            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, issues: []}), exporter, () => rawBlueprint, validator);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint, validator);
 
             const exitCode = await command.run(["export", "game.json"]);
 
@@ -181,7 +181,7 @@ describe("ParCommand", () => {
             const exporter = createStubExporter([]);
             const command = new ParCommand(
                 "1.3.0",
-                createStubImporter({blueprint: fullBlueprint, issues: []}),
+                createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}),
                 exporter,
                 () => rawBlueprint,
                 createStubValidator([]),
@@ -195,7 +195,7 @@ describe("ParCommand", () => {
         it("does not call the exporter and returns 1 when validation reports errors", async () => {
             const exporter = createStubExporter([]);
             const validator = createStubValidator([{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}]);
-            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, issues: []}), exporter, () => rawBlueprint, validator);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint, validator);
 
             const exitCode = await command.run(["export", "game.json"]);
 
@@ -207,7 +207,7 @@ describe("ParCommand", () => {
         it("still exports and returns 0 when validation reports only warnings", async () => {
             const exporter = createStubExporter([]);
             const validator = createStubValidator([{code: "blueprint-symbol-missing-payout", severity: "warning", message: "heads up"}]);
-            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, issues: []}), exporter, () => rawBlueprint, validator);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint, validator);
 
             const exitCode = await command.run(["export", "game.json"]);
 
@@ -219,7 +219,7 @@ describe("ParCommand", () => {
             const exporter = createStubExporter([{code: "parsheet-missing-reel-strips", severity: "error", message: "no reel strips"}]);
             const command = new ParCommand(
                 "1.3.0",
-                createStubImporter({blueprint: fullBlueprint, issues: []}),
+                createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}),
                 exporter,
                 () => rawBlueprint,
                 createStubValidator([]),

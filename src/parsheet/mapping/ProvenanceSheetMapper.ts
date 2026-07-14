@@ -1,6 +1,6 @@
-import crypto from "crypto";
 import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "../../generated/GameBlueprint.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
+import {computeBlueprintHash} from "../computeBlueprintHash.js";
 import type {SheetGrid} from "../SheetGrid.js";
 import type {ParSheetProvenance} from "./ParSheetProvenance.js";
 import type {ProvenanceSheetMapping} from "./ProvenanceSheetMapping.js";
@@ -9,6 +9,12 @@ import {cellToNumber, cellToText, isBlankRow} from "./sheetCellParsing.js";
 const COLUMNS = ["Key", "Value"];
 const KNOWN_KEYS = ["Schema Version", "Pokie Version", "Exported At", "Source", "Blueprint Hash"];
 
+// A pure parse of the "Meta" sheet's Key/Value rows into ParSheetProvenance — no ValidationIssue of
+// its own, since every field here is optional/informational at the sheet-shape level (nothing here
+// is "wrong" the way a blank required Symbol cell would be). Whether the parsed provenance is
+// complete, whether its schema version/hash format are well-formed, and whether its hash matches the
+// just-imported blueprint are all judged by ParSheetImporter instead, once it has the fully
+// assembled blueprint to compare against (see ParSheetImporter.verifyProvenance).
 export class ProvenanceSheetMapper implements ProvenanceSheetMapping {
     public readonly sheetName = "Meta";
 
@@ -57,30 +63,17 @@ export class ProvenanceSheetMapper implements ProvenanceSheetMapping {
             provenance.blueprintHash = blueprintHash;
         }
 
-        const issues: ValidationIssue[] = [];
-        if (Object.keys(provenance).length > 0) {
-            issues.push({
-                code: "parsheet-provenance-present",
-                severity: "info",
-                message: `This file was exported by pokie${provenance.pokieVersion ? ` v${provenance.pokieVersion}` : ""}${
-                    provenance.exportedAt ? ` on ${provenance.exportedAt}` : ""
-                }.`,
-                details: {...provenance},
-            });
-        }
-
-        return {value: provenance, issues};
+        return {value: provenance, issues: []};
     }
 
     public toRows(blueprint: GameBlueprint, pokieVersion: string, exportedAt: Date, sourcePath: string | undefined): SheetGrid {
-        const blueprintHash = `sha256:${crypto.createHash("sha256").update(JSON.stringify(blueprint)).digest("hex")}`;
         return [
             COLUMNS,
             ["Schema Version", GAME_BLUEPRINT_SCHEMA_VERSION],
             ["Pokie Version", pokieVersion],
             ["Exported At", exportedAt.toISOString()],
             ["Source", sourcePath ?? ""],
-            ["Blueprint Hash", blueprintHash],
+            ["Blueprint Hash", computeBlueprintHash(blueprint)],
         ];
     }
 }

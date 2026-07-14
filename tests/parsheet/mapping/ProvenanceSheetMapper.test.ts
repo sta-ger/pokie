@@ -30,7 +30,7 @@ describe("ProvenanceSheetMapper", () => {
         expect(rows[4]).toEqual(["Source", ""]);
     });
 
-    it("parses the Meta sheet back into provenance and reports it as an informational issue", () => {
+    it("parses the Meta sheet back into provenance, with no issues of its own (judging it is ParSheetImporter's job)", () => {
         const rows = mapper.toRows(blueprint, "1.3.0", new Date("2026-01-01T00:00:00.000Z"), "config.json");
 
         const {value, issues} = mapper.fromRows(rows);
@@ -40,7 +40,7 @@ describe("ProvenanceSheetMapper", () => {
         expect(value.exportedAt).toBe("2026-01-01T00:00:00.000Z");
         expect(value.source).toBe("config.json");
         expect(value.blueprintHash).toMatch(/^sha256:[0-9a-f]{64}$/);
-        expect(issues).toEqual([expect.objectContaining({code: "parsheet-provenance-present", severity: "info"})]);
+        expect(issues).toEqual([]);
     });
 
     it("returns no value and no issues for an empty sheet", () => {

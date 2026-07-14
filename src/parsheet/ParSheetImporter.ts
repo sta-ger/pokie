@@ -1,12 +1,14 @@
 import ExcelJS from "exceljs";
-import type {GameBlueprint} from "../generated/GameBlueprint.js";
+import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "../generated/GameBlueprint.js";
 import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
+import {computeBlueprintHash} from "./computeBlueprintHash.js";
 import {AvailableBetsSheetMapper} from "./mapping/AvailableBetsSheetMapper.js";
 import type {AvailableBetsSheetMapping} from "./mapping/AvailableBetsSheetMapping.js";
 import {ManifestSheetMapper} from "./mapping/ManifestSheetMapper.js";
 import type {ManifestSheetMapping} from "./mapping/ManifestSheetMapping.js";
+import type {ParSheetProvenance} from "./mapping/ParSheetProvenance.js";
 import {PaylinesSheetMapper} from "./mapping/PaylinesSheetMapper.js";
 import type {PaylinesSheetMapping} from "./mapping/PaylinesSheetMapping.js";
 import {PaytableSheetMapper} from "./mapping/PaytableSheetMapper.js";
@@ -28,6 +30,7 @@ import type {SheetGrid} from "./SheetGrid.js";
 const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
 const OPTIONAL_SHEETS = ["ReelStrips", "Paylines", "AvailableBets", "Meta"];
 const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS];
+const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
 export class ParSheetImporter implements ParSheetImporting {
     private readonly manifestMapper: ManifestSheetMapping;
@@ -135,8 +138,10 @@ export class ParSheetImporter implements ParSheetImporting {
                 blueprint.availableBets = availableBetsResult.value;
             }
         }
+        let provenance: ParSheetProvenance | undefined;
         if (sheetsByName.has("Meta")) {
-            issues.push(...this.provenanceMapper.fromRows(gridFor("Meta")).issues);
+            provenance = this.provenanceMapper.fromRows(gridFor("Meta")).value;
+            issues.push(...this.verifyProvenance(provenance, blueprint));
         } else {
             issues.push({
                 code: "parsheet-provenance-missing",
@@ -147,7 +152,70 @@ export class ParSheetImporter implements ParSheetImporting {
 
         issues.push(...this.validator.validate(blueprint));
 
-        return {blueprint, issues};
+        return {blueprint, provenance, issues};
+    }
+
+    // Judges the "Meta" sheet's parsed provenance against the blueprint ParSheetImporter just
+    // assembled: incomplete/malformed provenance (missing/non-numeric schema version, missing/badly
+    // formatted hash) is reported once as "parsheet-provenance-malformed" and nothing further is
+    // checked (there's nothing reliable left to compare). Otherwise a schema version this pokie
+    // doesn't recognize is "parsheet-provenance-schema-mismatch", and a well-formed hash that doesn't
+    // match a fresh computeBlueprintHash(blueprint) is "parsheet-provenance-hash-mismatch" — the
+    // workbook was hand-edited (or otherwise changed) since "pokie par export" produced it. Only when
+    // every check passes is the informational "parsheet-provenance-present" issue reported.
+    private verifyProvenance(provenance: ParSheetProvenance, blueprint: GameBlueprint): ValidationIssue[] {
+        const problems: string[] = [];
+        if (provenance.schemaVersion === undefined) {
+            problems.push('"Schema Version" is missing or not a number');
+        }
+        const hashPresentAndWellFormed = provenance.blueprintHash !== undefined && BLUEPRINT_HASH_PATTERN.test(provenance.blueprintHash);
+        if (provenance.blueprintHash === undefined) {
+            problems.push('"Blueprint Hash" is missing');
+        } else if (!hashPresentAndWellFormed) {
+            problems.push('"Blueprint Hash" is not a well-formed sha256 hash');
+        }
+
+        if (problems.length > 0) {
+            return [
+                {
+                    code: "parsheet-provenance-malformed",
+                    severity: "warning",
+                    message: `The "Meta" sheet is present but its provenance is incomplete/invalid: ${problems.join("; ")}.`,
+                    details: {...provenance, problems},
+                },
+            ];
+        }
+
+        const issues: ValidationIssue[] = [];
+        if (provenance.schemaVersion !== GAME_BLUEPRINT_SCHEMA_VERSION) {
+            issues.push({
+                code: "parsheet-provenance-schema-mismatch",
+                severity: "warning",
+                message: `The "Meta" sheet records schema version ${provenance.schemaVersion}, but this "pokie" understands version ${GAME_BLUEPRINT_SCHEMA_VERSION}.`,
+                details: {recorded: provenance.schemaVersion, expected: GAME_BLUEPRINT_SCHEMA_VERSION},
+            });
+        }
+
+        const recomputedHash = computeBlueprintHash(blueprint);
+        if (provenance.blueprintHash !== recomputedHash) {
+            issues.push({
+                code: "parsheet-provenance-hash-mismatch",
+                severity: "warning",
+                message: 'This workbook\'s recorded "Blueprint Hash" does not match the imported data — it may have been edited by hand since "pokie par export" produced it.',
+                details: {recorded: provenance.blueprintHash, recomputed: recomputedHash},
+            });
+        } else {
+            issues.push({
+                code: "parsheet-provenance-present",
+                severity: "info",
+                message: `This file was exported by pokie${provenance.pokieVersion ? ` v${provenance.pokieVersion}` : ""}${
+                    provenance.exportedAt ? ` on ${provenance.exportedAt}` : ""
+                }, and its recorded hash matches the imported data.`,
+                details: {...provenance},
+            });
+        }
+
+        return issues;
     }
 }
 

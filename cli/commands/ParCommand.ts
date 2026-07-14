@@ -79,7 +79,7 @@ export class ParCommand implements CliCommandHandling {
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
         if (options.format === "json") {
-            console.log(JSON.stringify({blueprint: result.blueprint, issues: result.issues}, null, 4));
+            console.log(JSON.stringify(result, null, 4));
         } else {
             this.printImportSummary(options.inputPath, result.blueprint, errors, warnings);
         }
@@ -113,21 +113,25 @@ export class ParCommand implements CliCommandHandling {
             return 1;
         }
 
+        // exportToFile itself never writes anything when it reports an error (see ParSheetExporter's
+        // preflight) — so on error, nothing was created/modified at options.outPath, and printing a
+        // success line here would be a lie.
         const exportIssues = await this.exporter.exportToFile(blueprint as GameBlueprint, options.outPath, options.blueprintPath);
         const issues = [...validationIssues, ...exportIssues];
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
 
-        console.log(`Exported "${options.blueprintPath}" to "${options.outPath}".`);
-        for (const issue of warnings) {
-            console.log(`  warning  ${issue.code}: ${issue.message}`);
-        }
         if (errors.length > 0) {
-            console.error(`\n${errors.length} error(s):`);
+            console.error(`Could not export "${options.blueprintPath}" to "${options.outPath}" (${errors.length} error(s)):`);
             for (const issue of errors) {
                 console.error(`  - ${issue.code}: ${issue.message}`);
             }
             return 1;
+        }
+
+        console.log(`Exported "${options.blueprintPath}" to "${options.outPath}".`);
+        for (const issue of warnings) {
+            console.log(`  warning  ${issue.code}: ${issue.message}`);
         }
 
         return 0;

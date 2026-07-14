@@ -51,6 +51,42 @@ describe("ReelStripsSheetMapper", () => {
         expect(issues).toEqual([]);
     });
 
+    it("ignores an unrecognized column header — it never becomes reel data", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Reel 1", "Notes", "Reel 2"],
+            ["A", "ignore me", "K"],
+            ["K", "also ignore", "A"],
+        ]);
+
+        expect(value).toEqual([
+            ["A", "K"],
+            ["K", "A"],
+        ]);
+        expect(issues).toEqual([expect.objectContaining({code: "parsheet-unknown-column", severity: "warning"})]);
+    });
+
+    it("reports a duplicate Reel column and only uses the first occurrence's data", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Reel 1", "Reel 1"],
+            ["A", "Z"],
+            ["K", "Z"],
+        ]);
+
+        expect(value).toEqual([["A", "K"]]);
+        expect(issues).toEqual([expect.objectContaining({code: "parsheet-reel-column-duplicate", severity: "error"})]);
+    });
+
+    it("reports a missing Reel column and keeps its slot as an empty placeholder strip", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Reel 1", "Reel 3"],
+            ["A", "Q"],
+            ["K", "J"],
+        ]);
+
+        expect(value).toEqual([["A", "K"], [], ["Q", "J"]]);
+        expect(issues).toEqual([expect.objectContaining({code: "parsheet-reel-column-missing", severity: "error", details: {sheet: "ReelStrips", reelIndex: 2}})]);
+    });
+
     it("round-trips toRows -> fromRows back to the original strips, including a ragged reel", () => {
         const original = [
             ["A", "K", "Q"],

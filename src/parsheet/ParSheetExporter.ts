@@ -54,10 +54,17 @@ export class ParSheetExporter implements ParSheetExporting {
         this.writeWorkbook = writeWorkbook;
     }
 
+    // Preflights the *entire* export before touching the filesystem at all: if the blueprint fails
+    // any check below, this returns without ever constructing a workbook or calling writeWorkbook —
+    // no file is created, and an existing file at `filePath` is left completely untouched. There is
+    // no "partial" export; either every sheet gets written, or none do.
     public async exportToFile(blueprint: GameBlueprint, filePath: string, sourcePath?: string): Promise<ValidationIssue[]> {
-        const issues: ValidationIssue[] = [];
-        const workbook = new ExcelJS.Workbook();
+        const issues = this.preflight(blueprint);
+        if (issues.some((issue) => issue.severity === "error")) {
+            return issues;
+        }
 
+        const workbook = new ExcelJS.Workbook();
         addSheet(workbook, this.manifestMapper.sheetName, this.manifestMapper.toRows(blueprint.manifest, blueprint.reels, blueprint.rows));
         addSheet(
             workbook,
@@ -65,37 +72,70 @@ export class ParSheetExporter implements ParSheetExporting {
             this.symbolsMapper.toRows({symbols: blueprint.symbols, wilds: blueprint.wilds ?? [], scatters: blueprint.scatters ?? []}),
         );
         addSheet(workbook, this.paytableMapper.sheetName, this.paytableMapper.toRows(blueprint.paytable));
-
-        // "pokie par export" only supports literal reelStrips (see docs/cli.md) — a blueprint built
-        // around reelStripGeneration/symbolWeights instead has no literal strips to write. The rest of
-        // the workbook is still written; only the "ReelStrips" sheet is skipped.
-        if (blueprint.reelStrips) {
-            addSheet(workbook, this.reelStripsMapper.sheetName, this.reelStripsMapper.toRows(blueprint.reelStrips));
-        } else {
-            issues.push({
-                code: "parsheet-missing-reel-strips",
-                severity: "error",
-                message:
-                    'The blueprint has no literal "reelStrips" to export' +
-                    (blueprint.reelStripGeneration || blueprint.symbolWeights
-                        ? " (\"reelStripGeneration\"/\"symbolWeights\" are not supported by \"pokie par export\")"
-                        : "") +
-                    '; the "ReelStrips" sheet is omitted.',
-                suggestion: 'Run "pokie build --dry-run" or otherwise materialize the blueprint\'s reel strips into "reelStrips" first.',
-            });
-        }
-
+        // The preflight above guarantees reelStrips is defined whenever we get here.
+        addSheet(workbook, this.reelStripsMapper.sheetName, this.reelStripsMapper.toRows(blueprint.reelStrips as string[][]));
         if (blueprint.paylines) {
             addSheet(workbook, this.paylinesMapper.sheetName, this.paylinesMapper.toRows(blueprint.paylines));
         }
         if (blueprint.availableBets) {
             addSheet(workbook, this.availableBetsMapper.sheetName, this.availableBetsMapper.toRows(blueprint.availableBets));
         }
-
         addSheet(workbook, this.provenanceMapper.sheetName, this.provenanceMapper.toRows(blueprint, this.pokieVersion, this.now(), sourcePath));
 
         await this.writeWorkbook(workbook, filePath);
         return issues;
+    }
+
+    private preflight(blueprint: GameBlueprint): ValidationIssue[] {
+        // "pokie par export" only ever represents literal reelStrips (see docs/cli.md) — never
+        // reelStripGeneration/symbolWeights. This is checked *before* looking at reelStrips at all:
+        // a blueprint that has both a literal reelStrips (e.g. left over from a previous materialize
+        // step) and reelStripGeneration/symbolWeights would otherwise export "successfully" while
+        // silently dropping the generation/weighting data — exactly the lossy export this guards
+        // against, regardless of what reelStrips happens to contain.
+        const unsupportedFields: string[] = [];
+        if (blueprint.reelStripGeneration !== undefined) {
+            unsupportedFields.push('"reelStripGeneration"');
+        }
+        if (blueprint.symbolWeights !== undefined) {
+            unsupportedFields.push('"symbolWeights"');
+        }
+        if (unsupportedFields.length > 0) {
+            const alsoHasReelStrips = blueprint.reelStrips !== undefined;
+            return [
+                {
+                    code: "parsheet-unsupported-reel-source",
+                    severity: "error",
+                    message:
+                        `The blueprint uses ${unsupportedFields.join(" and ")}, which "pokie par export" cannot represent` +
+                        (alsoHasReelStrips
+                            ? ' — even though "reelStrips" is also present, exporting only that would silently drop the generation/weighting data'
+                            : "") +
+                        ".",
+                    details: {
+                        reelStripGeneration: blueprint.reelStripGeneration !== undefined,
+                        symbolWeights: blueprint.symbolWeights !== undefined,
+                        reelStrips: alsoHasReelStrips,
+                    },
+                    suggestion:
+                        'Materialize the blueprint into a literal "reelStrips" array first (e.g. via resolveReelStripGeneration + ' +
+                        'materializeReelStrips, or by hand), then export that.',
+                },
+            ];
+        }
+
+        if (!blueprint.reelStrips) {
+            return [
+                {
+                    code: "parsheet-missing-reel-strips",
+                    severity: "error",
+                    message: 'The blueprint has no literal "reelStrips" to export.',
+                    suggestion: 'Add a literal "reelStrips" array to the blueprint first.',
+                },
+            ];
+        }
+
+        return [];
     }
 }
 

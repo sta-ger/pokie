@@ -92,3 +92,78 @@ export function resolveColumnIndexes(
 
     return found;
 }
+
+export type ReelColumn = {reelIndex: number; columnIndex: number};
+
+const REEL_COLUMN_PATTERN = /^reel\s+(\d+)$/i;
+
+// Matches a header row against the canonical "Reel 1".."Reel N" naming ReelStrips/Paylines both use
+// (one physical column per reel, in that exact name — not just "whatever non-blank column happens to
+// be there", which would silently let an unrelated column like "Notes" become reel data). Any header
+// cell that isn't a "Reel <k>" cell (and isn't one of `ignoreColumnIndexes`, e.g. Paylines' own
+// "Line" column) is reported as "parsheet-unknown-column" and excluded from the result entirely — it
+// never becomes game data. A "Reel <k>" name repeated more than once is "parsheet-reel-column-duplicate"
+// (only the first occurrence is used); a gap in the 1..maxReelIndex sequence (e.g. "Reel 1"/"Reel 3"
+// with no "Reel 2") is "parsheet-reel-column-missing" for every missing index. Both are errors, unlike
+// "parsheet-unknown-column", since — unlike an incidental extra column — they mean the reel data itself
+// can't be assembled correctly.
+export function resolveReelColumns(
+    headerRow: unknown[],
+    sheetName: string,
+    issues: ValidationIssue[],
+    ignoreColumnIndexes: ReadonlySet<number> = new Set(),
+): ReelColumn[] {
+    const firstColumnForReelIndex = new Map<number, number>();
+    const columns: ReelColumn[] = [];
+
+    headerRow.forEach((cell, columnIndex) => {
+        if (ignoreColumnIndexes.has(columnIndex)) {
+            return;
+        }
+        const text = cellToText(cell);
+        if (text === undefined) {
+            return;
+        }
+
+        const match = REEL_COLUMN_PATTERN.exec(text);
+        const reelIndex = match ? Number(match[1]) : NaN;
+        if (!match || !Number.isInteger(reelIndex) || reelIndex < 1) {
+            issues.push({
+                code: "parsheet-unknown-column",
+                severity: "warning",
+                message: `Sheet "${sheetName}" has an unrecognized column "${text}", which is ignored.`,
+                details: {sheet: sheetName, column: text},
+            });
+            return;
+        }
+
+        if (firstColumnForReelIndex.has(reelIndex)) {
+            issues.push({
+                code: "parsheet-reel-column-duplicate",
+                severity: "error",
+                message: `Sheet "${sheetName}" has more than one "Reel ${reelIndex}" column; only the first one is used.`,
+                details: {sheet: sheetName, reelIndex},
+            });
+            return;
+        }
+
+        firstColumnForReelIndex.set(reelIndex, columnIndex);
+        columns.push({reelIndex, columnIndex});
+    });
+
+    if (columns.length > 0) {
+        const maxReelIndex = Math.max(...columns.map((column) => column.reelIndex));
+        for (let reelIndex = 1; reelIndex <= maxReelIndex; reelIndex++) {
+            if (!firstColumnForReelIndex.has(reelIndex)) {
+                issues.push({
+                    code: "parsheet-reel-column-missing",
+                    severity: "error",
+                    message: `Sheet "${sheetName}" is missing a "Reel ${reelIndex}" column.`,
+                    details: {sheet: sheetName, reelIndex},
+                });
+            }
+        }
+    }
+
+    return columns.sort((a, b) => a.reelIndex - b.reelIndex);
+}

@@ -60,6 +60,7 @@ export * from "./parsheet/ParSheetImportResult.js";
 export * from "./parsheet/ParSheetImporter.js";
 export * from "./parsheet/ParSheetImporting.js";
 export * from "./parsheet/SheetGrid.js";
+export * from "./parsheet/computeBlueprintHash.js";
 export * from "./parsheet/mapping/AvailableBetsSheetMapper.js";
 export * from "./parsheet/mapping/AvailableBetsSheetMapping.js";
 export * from "./parsheet/mapping/ManifestSheetMapper.js";

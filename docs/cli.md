@@ -518,15 +518,21 @@ A `.par.xlsx` workbook has up to seven sheets:
 | `Manifest` | `Key`, `Value` (rows: `Id`, `Name`, `Version`, `Description`, `Author`, `Reels`, `Rows`) | yes | `manifest`, `reels`, `rows` |
 | `Symbols` | `Symbol`, `Wild`, `Scatter` — one row per symbol, in reel order | yes | `symbols`, `wilds`, `scatters` |
 | `Paytable` | `Symbol`, `Matches`, `Multiplier` — one row per payout tier | yes | `paytable` |
-| `ReelStrips` | `Reel 1`..`Reel N` — one row per strip position; a shorter (ragged) reel just leaves trailing blank cells | no | `reelStrips` (literal only) |
+| `ReelStrips` | `Reel 1`..`Reel N` (exact names — see below) — one row per strip position; a shorter (ragged) reel just leaves trailing blank cells | no | `reelStrips` (literal only) |
 | `Paylines` | `Line` (a 1-based label, not read back), `Reel 1`..`Reel N` (row index per reel) | no | `paylines` |
 | `AvailableBets` | `Bet` — one row per value | no | `availableBets` |
 | `Meta` | `Key`, `Value` (rows: `Schema Version`, `Pokie Version`, `Exported At`, `Source`, `Blueprint Hash`) | no | nothing — provenance only, see below |
 
-`pokie par export` always writes every sheet except `ReelStrips`, which it omits when the blueprint has no
-literal `reelStrips` (i.e. it only has `reelStripGeneration`/`symbolWeights`) — the rest of the workbook is still
-written, so the file is still useful for editing symbols/paytable/paylines/bets by hand even though this command
-can't represent that blueprint's reel data.
+`ReelStrips`/`Paylines` columns must be named exactly `Reel 1`, `Reel 2`, ... `Reel N` (case-insensitive, one
+physical column per reel) — a column with any other name is never treated as reel data (see Diagnostics below).
+
+`pokie par export` preflights the *entire* export before writing anything: if the blueprint fails any check (see
+below), **no file is created and an existing file at the output path is left completely untouched** — there is no
+partial write. In particular, a blueprint built around `reelStripGeneration`/`symbolWeights` instead of a literal
+`reelStrips` fails export outright (`parsheet-unsupported-reel-source`) — even when a literal `reelStrips` is
+*also* present, since exporting only that would silently drop the generation/weighting data. Materialize the
+blueprint into a literal `reelStrips` first (e.g. via `resolveReelStripGeneration`/`materializeReelStrips`, or by
+hand) before exporting it.
 
 ### `pokie par import <input.xlsx>`
 
@@ -539,16 +545,18 @@ writes the resulting `GameBlueprint` JSON to `--out <file>` (default: `<input>` 
 Options:
 
 - `--out <file>` — where to write the imported `GameBlueprint` JSON.
-- `--format json` — print the full `{blueprint, issues}` result as JSON instead of a human-readable summary.
+- `--format json` — print the full `{blueprint, provenance, issues}` result as JSON instead of a human-readable
+  summary.
 
 Exit code is non-zero (and nothing is written) if there are any error-level diagnostics.
 
 ### `pokie par export <config.json>`
 
 Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-configjson)), validates it, and —
-provided it has no error-level issues — writes a `.par.xlsx` workbook to `--out <file>` (default: `<config.json>`
-with `.blueprint.json`/`.json` replaced by `.par.xlsx`). A missing literal `reelStrips` is reported as its own
-error (see above) but does not stop the rest of the workbook from being written.
+provided it has no error-level issues from either that validation or the exporter's own preflight (unsupported
+reel source, missing literal `reelStrips`) — writes a `.par.xlsx` workbook to `--out <file>` (default:
+`<config.json>` with `.blueprint.json`/`.json` replaced by `.par.xlsx`). On any error, nothing is written — see
+the atomicity guarantee above.
 
 Options:
 
@@ -559,8 +567,12 @@ Options:
 Both directions report problems as `ValidationIssue`s (the same `{code, severity, message, details, suggestion}`
 shape as [`pokie build`'s validation](#validation)):
 
-- an unrecognized sheet name (`parsheet-unknown-sheet`, warning) or column (`parsheet-unknown-column`, warning);
+- an unrecognized sheet name (`parsheet-unknown-sheet`, warning) or column (`parsheet-unknown-column`, warning) —
+  a column that isn't literally `Reel <k>` in `ReelStrips`/`Paylines` is reported this way too, and its data never
+  becomes part of the imported blueprint;
 - a missing required sheet (`parsheet-missing-sheet`) or column (`parsheet-missing-column`);
+- a `Reel <k>` column repeated more than once (`parsheet-reel-column-duplicate`, error — only the first occurrence
+  is used) or missing from the `1..N` sequence (`parsheet-reel-column-missing`, error, one per missing index);
 - a cell that can't be parsed as the type its column expects — e.g. a non-numeric `Multiplier`
   (`parsheet-paytable-invalid-multiplier-cell`) or an unrecognizable `Wild`/`Scatter` flag
   (`parsheet-symbol-invalid-flag`);
@@ -571,6 +583,10 @@ shape as [`pokie build`'s validation](#validation)):
   `Manifest`/`Meta` (`parsheet-manifest-duplicate-key`, warning);
 - a gap in `ReelStrips` — a blank cell followed by a non-blank one further down the same column
   (`parsheet-reelstrips-gap`) — as opposed to a shorter (ragged) reel's trailing blank cells, which are fine;
+- on export, a blueprint with no literal `reelStrips` at all (`parsheet-missing-reel-strips`) or one that uses
+  `reelStripGeneration`/`symbolWeights` (`parsheet-unsupported-reel-source`, even if `reelStrips` is also
+  present) — both abort the export with nothing written, see above;
+- on import, provenance problems — see below;
 - everything `GameBlueprintValidator` itself already checks once the blueprint is assembled (unknown/duplicate
   symbols, unreachable symbols, out-of-range match counts, paytable/weighting quality warnings, ...) — these use
   the same `blueprint-*` codes documented under [Validation](#validation), not `parsheet-*`.
@@ -579,11 +595,22 @@ shape as [`pokie build`'s validation](#validation)):
 
 `pokie par export` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
 that exported it, an ISO 8601 export timestamp, the source blueprint's file path (when known), and a `sha256`
-hash of the exported blueprint (the same formula `GameBuildInfo`'s `blueprintHash` uses — see
-[`pokie build`](#pokie-build-configjson)). None of it is fed back into the imported `GameBlueprint`; `pokie par
-import` only ever surfaces it as a single informational `parsheet-provenance-present` issue (or a
-`parsheet-provenance-missing` warning if the sheet isn't there at all — e.g. a hand-authored PAR sheet that was
-never exported by `pokie par export` in the first place).
+hash of the exported blueprint. That hash is computed over a canonical field order (not the source JSON's own key
+order — see `computeBlueprintHash`), so an untouched round trip always reproduces the same hash regardless of how
+the original file's keys were ordered.
+
+`pokie par import` returns this as structured `provenance` on the result (`ParSheetImportResult`), not just as an
+issue, and verifies it against the blueprint it just assembled:
+
+- no `Meta` sheet at all → `provenance` is `undefined`, and `parsheet-provenance-missing` (warning) — e.g. a
+  hand-authored PAR sheet that was never exported by `pokie par export` in the first place;
+- `Meta` present but missing/invalid `Schema Version`/`Blueprint Hash` → `parsheet-provenance-malformed` (warning);
+  no further hash/schema check is attempted;
+- a well-formed but unrecognized `Schema Version` → `parsheet-provenance-schema-mismatch` (warning);
+- a well-formed `Blueprint Hash` that doesn't match a fresh hash of the imported data →
+  `parsheet-provenance-hash-mismatch` (warning) — the workbook was likely hand-edited (or otherwise changed) since
+  `pokie par export` produced it;
+- otherwise, `parsheet-provenance-present` (info) — the recorded hash matches the imported data.
 
 ## `pokie init`
 

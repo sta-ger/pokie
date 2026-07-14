@@ -1,7 +1,7 @@
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 import type {PaylinesSheetMapping} from "./PaylinesSheetMapping.js";
-import {cellToNumber, cellToText, isBlankRow} from "./sheetCellParsing.js";
+import {cellToNumber, cellToText, isBlankRow, resolveReelColumns} from "./sheetCellParsing.js";
 
 const LINE_COLUMN = "Line";
 
@@ -22,12 +22,9 @@ export class PaylinesSheetMapper implements PaylinesSheetMapping {
             });
         }
 
-        const reelColumns: number[] = [];
-        headerRow.forEach((cell, index) => {
-            if (index !== lineIndex && cellToText(cell) !== undefined) {
-                reelColumns.push(index);
-            }
-        });
+        const reelColumns = resolveReelColumns(headerRow, this.sheetName, issues, lineIndex !== -1 ? new Set([lineIndex]) : undefined);
+        const columnIndexByReelIndex = new Map(reelColumns.map((column) => [column.reelIndex, column.columnIndex]));
+        const maxReelIndex = reelColumns.length > 0 ? Math.max(...reelColumns.map((column) => column.reelIndex)) : 0;
 
         const paylines: number[][] = [];
         dataRows.forEach((row, rowOffset) => {
@@ -37,20 +34,27 @@ export class PaylinesSheetMapper implements PaylinesSheetMapping {
             const rowNumber = rowOffset + 2;
             const line: number[] = [];
             let valid = true;
-            reelColumns.forEach((columnIndex, reelIndex) => {
+            for (let reelIndex = 1; reelIndex <= maxReelIndex; reelIndex++) {
+                const columnIndex = columnIndexByReelIndex.get(reelIndex);
+                if (columnIndex === undefined) {
+                    // A missing "Reel <reelIndex>" column was already reported by resolveReelColumns
+                    // — there is no cell to read, so this payline can't be assembled at all.
+                    valid = false;
+                    continue;
+                }
                 const value = cellToNumber(row[columnIndex]);
                 if (value === undefined || !Number.isInteger(value)) {
                     issues.push({
                         code: "parsheet-payline-invalid-cell",
                         severity: "error",
-                        message: `Sheet "${this.sheetName}", row ${rowNumber}: reel ${reelIndex + 1} is not a whole number, so this payline is ignored.`,
+                        message: `Sheet "${this.sheetName}", row ${rowNumber}: reel ${reelIndex} is not a whole number, so this payline is ignored.`,
                         details: {sheet: this.sheetName, row: rowNumber, reelIndex},
                     });
                     valid = false;
-                    return;
+                    continue;
                 }
                 line.push(value);
-            });
+            }
             if (valid) {
                 paylines.push(line);
             }
