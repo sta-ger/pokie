@@ -1,6 +1,6 @@
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {computeRoundArtifactHash} from "./computeRoundArtifactHash.js";
-import {deepFreeze} from "./internal/deepFreeze.js";
+import {deepFreeze} from "../internal/deepFreeze.js";
 import type {RoundArtifact} from "./RoundArtifact.js";
 import type {RoundArtifactJson} from "./RoundArtifactJson.js";
 import type {RoundArtifactProjector} from "./RoundArtifactProjector.js";

@@ -4,7 +4,7 @@ import {BASE_SIMULATION_CATEGORY} from "../simulation/SimulationCategoryNames.js
 import {buildRoundStepArtifact} from "./buildRoundStepArtifact.js";
 import {assertValidFeatureEventInput} from "./internal/assertValidFeatureEventInput.js";
 import {canonicalizeJsonField} from "./internal/canonicalizeJsonField.js";
-import {deepFreeze} from "./internal/deepFreeze.js";
+import {deepFreeze} from "../internal/deepFreeze.js";
 import {ROUND_ARTIFACT_SCHEMA_VERSION, type RoundArtifact} from "./RoundArtifact.js";
 import {RoundArtifactBuildError} from "./RoundArtifactBuildError.js";
 import type {RoundArtifactFeatureEvent, RoundArtifactFeatureEventInput} from "./RoundArtifactFeatureEvent.js";

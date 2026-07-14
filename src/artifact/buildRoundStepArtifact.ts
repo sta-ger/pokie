@@ -1,6 +1,6 @@
 import {assertValidFeatureEventInput} from "./internal/assertValidFeatureEventInput.js";
 import {canonicalizeJsonField} from "./internal/canonicalizeJsonField.js";
-import {deepFreeze} from "./internal/deepFreeze.js";
+import {deepFreeze} from "../internal/deepFreeze.js";
 import type {RoundArtifactFeatureEvent} from "./RoundArtifactFeatureEvent.js";
 import {RoundArtifactBuildError} from "./RoundArtifactBuildError.js";
 import type {RoundArtifactStepSource} from "./RoundArtifactStepSource.js";
