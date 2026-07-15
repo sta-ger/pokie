@@ -68,8 +68,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie stakeengine export <config.json>`,
     which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine math-sdk static file format;
     `pokie stakeengine import <stakeDir>`, which imports one back; `pokie outcomelibrary build <config.json>`,
-    which builds a canonical Outcome Library Bundle from one or more `WeightedOutcomeLibrary` JSON files; and
-    `pokie outcomelibrary validate <bundleDir>`, which validates one.
+    which builds a canonical Outcome Library Bundle from one or more `WeightedOutcomeLibrary` JSON files;
+    `pokie outcomelibrary validate <bundleDir>`, which validates one; `pokie certification build <bundleDir>
+    <config.json>`, which builds a certification/evidence bundle on top of an Outcome Library Bundle; and
+    `pokie certification verify <certDir>`, which verifies one against its live source bundle.
 16. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
@@ -97,6 +99,11 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     reader with full-streaming/single-outcome-random-access/weighted-draw/whole-library modes, and the one
     shared `loadWeightedOutcomeLibraryFromBundle` loader both the pre-generated runtime and the Stake Engine
     exporter use.
+21. **[Certification/Evidence Bundle](certification-evidence-bundle.md)** — building a deterministic evidence
+    package on top of an Outcome Library Bundle (game/library hashes, provenance, exact weighted metrics, the
+    source bundle's own deep-validation diagnostics, and deterministically sampled/individually verifiable
+    `RoundArtifact` records), with `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` and
+    `pokie certification build`/`pokie certification verify`.
 
 ## Core concepts at a glance
 
@@ -128,6 +135,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Exporting a `WeightedOutcomeLibrary` to the Stake Engine math-sdk static file format | `pokie stakeengine export <config.json>`, `StakeEngineExporter` |
 | Importing a `WeightedOutcomeLibrary` back from a Stake Engine export directory | `pokie stakeengine import <stakeDir>`, `StakeEngineImporter` |
 | Streaming, canonical on-disk persistence for a `WeightedOutcomeLibrary` (no full-library-in-memory load) | `pokie outcomelibrary build <config.json>`, `OutcomeLibraryBundleWriter`/`OutcomeLibraryBundleReader` |
+| Deterministic evidence package (metrics, diagnostics, sampled rounds) on top of an Outcome Library Bundle | `pokie certification build <bundleDir> <config.json>`, `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.

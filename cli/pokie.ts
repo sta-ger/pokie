@@ -4,6 +4,7 @@ import path from "path";
 import {fileURLToPath} from "url";
 import {CliCommandHandling} from "./CliCommandHandling.js";
 import {BuildCommand} from "./commands/BuildCommand.js";
+import {CertificationCommand} from "./commands/CertificationCommand.js";
 import {ClientCommand} from "./commands/ClientCommand.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
 import {DevCommand} from "./commands/DevCommand.js";
@@ -54,6 +55,7 @@ function printUsage(commands: CliCommandHandling[]): void {
 async function run(): Promise<number> {
     const commands: CliCommandHandling[] = [
         new BuildCommand(readOwnVersion()),
+        new CertificationCommand(readOwnVersion()),
         new ClientCommand(undefined, ownClientRoot()),
         new CreateCommand(readOwnVersion()),
         new DevCommand(undefined, undefined, {clientRoot: ownClientRoot()}),

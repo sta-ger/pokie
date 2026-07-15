@@ -767,6 +767,64 @@ Options:
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
+## `pokie certification build <bundleDir> <config.json>`
+
+Builds a canonical [Certification/Evidence Bundle](certification-evidence-bundle.md) on top of an already-built
+[Outcome Library Bundle](outcome-library-bundle.md) — a deterministic manifest (game/library hashes, provenance,
+per-mode exact weighted metrics, the source bundle's own deep-validation diagnostics) plus one JSONL file per
+mode of deterministically sampled, independently verifiable `RoundArtifact` records. Never a second calculation
+path: every hash/metric is read verbatim off the source bundle's own `manifest.json`, and every sample is drawn
+via the same weighted-draw algorithm the pre-generated runtime itself uses.
+
+```
+pokie certification build bundle certification-config.json --out certification
+```
+
+`<config.json>` lists one sample source per mode of `<bundleDir>`:
+
+```json
+{
+    "modes": [
+        {"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200},
+        {"modeName": "bonus", "seed": "cert-2026-07-15-bonus", "sampleCount": 50}
+    ]
+}
+```
+
+- `seed` — drives a `SeededWeightedOutcomeRandomSource` for this mode: the same `(bundleDir, seed, sampleCount)`
+  always reproduces the exact same sequence of sampled outcomes, byte-identically.
+- `sampleCount` — how many rounds to draw (with replacement) from this mode as evidence.
+
+Options:
+
+- `--out <dir>` — where to write the bundle (default: `<config.json>`'s directory plus `/certification`).
+
+Refuses to write anything (the source bundle's own deep validation is run first) if the source bundle doesn't
+validate cleanly, or if a requested mode isn't present in it — the same "no partial bundle" guarantee
+`outcomelibrary build` gives, published atomically the same way. On any error, the exit code is non-zero and
+nothing is written.
+
+## `pokie certification verify <certDir>`
+
+Verifies a certification/evidence bundle: first its own internal self-consistency (does every mode's samples
+file still hash to what its manifest recorded, does every embedded `RoundArtifact` still hash to its own
+recorded `artifactHash`), then cross-checks it against the *live* source Outcome Library Bundle it was built
+from, detecting drift in four places: the evidence bundle's own manifest fields, the source bundle's own on-disk
+files, its recorded metrics, and each individually sampled outcome. See
+[Certification/Evidence Bundle](certification-evidence-bundle.md#verification) for the full code table.
+
+```
+pokie certification verify certification
+pokie certification verify certification --source ../bundle
+```
+
+Options:
+
+- `--source <bundleDir>` — overrides the manifest's own recorded source bundle directory (useful if it moved
+  since the bundle was built).
+
+Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
+
 ## `pokie init`
 
 Turns an existing npm project into a minimal POKIE-compatible game package.
