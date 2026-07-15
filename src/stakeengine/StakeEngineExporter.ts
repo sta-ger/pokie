@@ -58,6 +58,8 @@ export class StakeEngineExporter<T extends string | number = string> implements 
     private readonly eventsProjector: StakeEngineRoundEventsProjecting<T>;
     private readonly now: () => Date;
     private readonly writeFile: (filePath: string, data: string | Buffer) => void;
+    private readonly renameDirectory: (from: string, to: string) => void;
+    private readonly removeDirectory: (dirPath: string) => void;
 
     constructor(
         pokieVersion: string,
@@ -65,12 +67,16 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         eventsProjector: StakeEngineRoundEventsProjecting<T> = new StakeEngineRoundEventsProjector<T>(),
         now: () => Date = () => new Date(),
         writeFile: (filePath: string, data: string | Buffer) => void = (filePath, data) => fs.writeFileSync(filePath, data),
+        renameDirectory: (from: string, to: string) => void = (from, to) => fs.renameSync(from, to),
+        removeDirectory: (dirPath: string) => void = (dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}),
     ) {
         this.pokieVersion = pokieVersion;
         this.validator = validator;
         this.eventsProjector = eventsProjector;
         this.now = now;
         this.writeFile = writeFile;
+        this.renameDirectory = renameDirectory;
+        this.removeDirectory = removeDirectory;
     }
 
     // Runs full validation itself (StakeEngineExportValidator, which always runs WeightedOutcomeLibraryValidator
@@ -127,9 +133,10 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             };
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
-            this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest);
+            const cleanupWarning = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest);
+            const finalIssues = cleanupWarning !== undefined ? [...allIssues, cleanupWarning] : allIssues;
 
-            return Promise.resolve({outDir, files: relativeFiles, manifest, issues: allIssues});
+            return Promise.resolve({outDir, files: relativeFiles, manifest, issues: finalIssues});
         } catch (error) {
             return Promise.reject(error);
         }
@@ -137,8 +144,16 @@ export class StakeEngineExporter<T extends string | number = string> implements 
 
     // Writes every file into a fresh temp sibling directory (never touching outDir itself), then swaps it into
     // place only once everything succeeded — see swapDirectoryIntoPlace. Any failure while writing removes the
-    // temp directory and rethrows, leaving outDir exactly as it was.
-    private writeToTempDirectoryThenSwap(outDir: string, builtModes: readonly BuiltMode[], index: StakeEngineIndex, manifest: StakeEngineManifest): void {
+    // temp directory (best-effort — see removeBestEffort) and rethrows, leaving outDir exactly as it was.
+    // Returns a warning ValidationIssue when the export itself succeeded but a purely cosmetic post-publish
+    // cleanup step failed (see swapDirectoryIntoPlace) — never thrown, since the export is already a success by
+    // that point.
+    private writeToTempDirectoryThenSwap(
+        outDir: string,
+        builtModes: readonly BuiltMode[],
+        index: StakeEngineIndex,
+        manifest: StakeEngineManifest,
+    ): ValidationIssue | undefined {
         const tempDir = `${outDir}.tmp-${crypto.randomBytes(6).toString("hex")}`;
         try {
             fs.mkdirSync(tempDir, {recursive: true});
@@ -149,29 +164,90 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             this.writeFile(path.join(tempDir, "index.json"), `${JSON.stringify(index, null, 4)}\n`);
             this.writeFile(path.join(tempDir, "pokie-manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
         } catch (error) {
-            fs.rmSync(tempDir, {recursive: true, force: true});
+            this.removeBestEffort(tempDir);
             throw error;
         }
 
-        this.swapDirectoryIntoPlace(tempDir, outDir);
+        return this.swapDirectoryIntoPlace(tempDir, outDir);
     }
 
     // Publishes a fully-built temp directory as outDir in as close to one atomic step as the filesystem allows:
-    // if outDir doesn't exist yet, a single rename does it. If it does (a re-export), the existing outDir is
-    // first renamed out of the way (itself a single atomic rename — from that instant on, nothing was left
-    // "partially updated", since outDir now simply doesn't exist for a moment), then the temp directory is
-    // renamed into outDir, and only then is the old, now-unreachable directory actually removed. A reader can
-    // therefore only ever observe the complete old directory or the complete new one, never a mix of the two.
-    private swapDirectoryIntoPlace(tempDir: string, outDir: string): void {
+    // if outDir doesn't exist yet, a single rename does it (any failure there just leaves outDir absent and
+    // tempDir cleaned up — nothing was ever published). If outDir already exists (a re-export), the existing
+    // directory is first renamed out of the way to a "stale" sibling path (itself a single atomic rename — from
+    // that instant on, outDir simply doesn't exist for a moment, never a partially-updated one), then the temp
+    // directory is renamed into outDir. A reader can therefore only ever observe the complete old directory or
+    // the complete new one, never a mix of the two.
+    //
+    // Two distinct failure modes past that first "move the old directory aside" rename get different treatment:
+    //   - the *publish* rename (tempDir -> outDir) failing is a real export failure — the new directory never
+    //     went live, so the old one is restored to outDir (a third rename) before the error propagates, and the
+    //     export is reported as failed. If that restore itself fails too (the one truly unrecoverable case),
+    //     the thrown error says exactly where the old directory's contents still are so they can be restored by
+    //     hand.
+    //   - removing the now-superseded stale directory, *after* the new one is already live at outDir, is pure
+    //     cleanup — the export already succeeded by that point, so a failure there is reported as a warning
+    //     ValidationIssue instead of failing the whole export.
+    private swapDirectoryIntoPlace(tempDir: string, outDir: string): ValidationIssue | undefined {
         if (!fs.existsSync(outDir)) {
-            fs.renameSync(tempDir, outDir);
-            return;
+            try {
+                this.renameDirectory(tempDir, outDir);
+            } catch (error) {
+                this.removeBestEffort(tempDir);
+                throw error;
+            }
+            return undefined;
         }
 
         const stalePath = `${outDir}.stale-${crypto.randomBytes(6).toString("hex")}`;
-        fs.renameSync(outDir, stalePath);
-        fs.renameSync(tempDir, outDir);
-        fs.rmSync(stalePath, {recursive: true, force: true});
+        try {
+            this.renameDirectory(outDir, stalePath);
+        } catch (error) {
+            // outDir was never actually moved — nothing to restore, just clean up the orphaned temp directory.
+            this.removeBestEffort(tempDir);
+            throw error;
+        }
+
+        try {
+            this.renameDirectory(tempDir, outDir);
+        } catch (publishError) {
+            try {
+                this.renameDirectory(stalePath, outDir);
+            } catch (restoreError) {
+                throw new Error(
+                    `Failed to publish the new Stake Engine export, and failed to restore the previous directory afterward: ` +
+                        `${publishError instanceof Error ? publishError.message : String(publishError)}; restore failure: ` +
+                        `${restoreError instanceof Error ? restoreError.message : String(restoreError)}. The previous directory's ` +
+                        `contents are still intact at "${stalePath}" — rename it back to "${outDir}" by hand.`,
+                );
+            }
+            this.removeBestEffort(tempDir);
+            throw publishError;
+        }
+
+        try {
+            this.removeDirectory(stalePath);
+            return undefined;
+        } catch (error) {
+            return {
+                code: "stakeengine-stale-export-cleanup-failed",
+                severity: "warning",
+                message:
+                    `The export to "${outDir}" succeeded, but the previous directory's stale backup at "${stalePath}" could not be removed: ` +
+                    `${error instanceof Error ? error.message : String(error)}. Remove it manually.`,
+                details: {stalePath},
+            };
+        }
+    }
+
+    // Best-effort cleanup used only on already-failing paths: never lets a secondary cleanup failure mask or
+    // replace the original error being thrown (see every call site above).
+    private removeBestEffort(dirPath: string): void {
+        try {
+            this.removeDirectory(dirPath);
+        } catch {
+            // best-effort only.
+        }
     }
 
     // Builds one mode's CSV/books content fully in memory (no disk access): projects every outcome's artifact

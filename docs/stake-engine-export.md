@@ -164,6 +164,27 @@ by mistake would have it wiped wholesale. An unrecognized non-empty directory is
 touched. Conceptually the same rebuild-safety guarantee as `GamePackageGenerator`'s own (see
 [Game Packages](game-packages.md)), just applied to a whole directory instead of a fixed list of filenames.
 
+### How the swap itself fails safely
+
+Re-exporting into an existing `--out` is really three filesystem operations, and each one has a distinct,
+deliberate failure behavior:
+
+1. **Move the existing directory aside** (to a `.stale-<random>` sibling). If this fails, `--out` was never
+   touched — nothing to restore, just the leftover temp directory is cleaned up (best-effort) before the error
+   propagates.
+2. **Move the freshly-built temp directory into `--out`** — the actual publish step. If *this* fails, the old
+   directory is restored back to `--out` (a third rename) before the error propagates, so the export still fails
+   with `--out` exactly as it was, byte for byte. In the one truly unrecoverable case — the restore itself also
+   fails — the thrown error names the `.stale-<random>` path the old directory's contents are still sitting at,
+   so it can be renamed back by hand.
+3. **Remove the now-superseded stale directory.** By this point the new export is already live at `--out` — a
+   failure here is cosmetic, not a failed export: it's reported as a `stakeengine-stale-export-cleanup-failed`
+   warning (not an error) in the result's `issues`, and the stale directory is simply left behind for manual
+   cleanup rather than causing the whole export to be reported as failed.
+
+Every one of these failure branches also guarantees the temp directory itself never lingers past the call that
+created it (removed best-effort, without ever masking whichever error is actually being thrown/returned).
+
 ## CLI usage
 
 ```

@@ -34,6 +34,13 @@ function readBookLines(filePath: string): StakeEngineBookLine[] {
         .map((line) => JSON.parse(line) as StakeEngineBookLine);
 }
 
+// Every ".tmp-*"/".stale-*" sibling directory a StakeEngineExporter might have left next to outDir.
+function siblingLeftovers(outDir: string): string[] {
+    const parentDir = path.dirname(outDir);
+    const base = path.basename(outDir);
+    return fs.readdirSync(parentDir).filter((name) => name !== base && name.startsWith(`${base}.`));
+}
+
 describe("StakeEngineExporter", () => {
     let outDir: string;
     let baseLibrary: WeightedOutcomeLibrary<string>;
@@ -282,10 +289,84 @@ describe("StakeEngineExporter", () => {
         }
 
         // No leftover ".tmp-*"/".stale-*" sibling directories either.
-        const parentDir = path.dirname(outDir);
-        const base = path.basename(outDir);
-        const leftovers = fs.readdirSync(parentDir).filter((name) => name !== base && name.startsWith(`${base}.`));
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("restores the old outDir byte-for-byte when the publish rename fails after the old directory was moved aside", async () => {
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+        await exporter.exportToDirectory(modes, outDir);
+        const filesBefore = fs.readdirSync(outDir).sort();
+        const contentsBefore = new Map(filesBefore.map((name) => [name, fs.readFileSync(path.join(outDir, name))]));
+
+        // Call 1 (outDir -> stale) is real; call 2 (tempDir -> outDir, the "publish" step) is the simulated
+        // failure; call 3, if our own recovery logic runs, is the restore (stale -> outDir) and must also be real.
+        let renameCallCount = 0;
+        const failingRenameDirectory = (from: string, to: string): void => {
+            renameCallCount++;
+            if (renameCallCount === 2) {
+                throw new Error("simulated publish rename failure");
+            }
+            fs.renameSync(from, to);
+        };
+        const failingExporter = new StakeEngineExporter<string>("1.3.0", undefined, undefined, undefined, undefined, failingRenameDirectory);
+
+        await expect(failingExporter.exportToDirectory(modes, outDir)).rejects.toThrow("simulated publish rename failure");
+
+        expect(renameCallCount).toBe(3);
+        expect(fs.readdirSync(outDir).sort()).toEqual(filesBefore);
+        for (const name of filesBefore) {
+            expect(fs.readFileSync(path.join(outDir, name))).toEqual(contentsBefore.get(name));
+        }
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("surfaces a warning (not a failed export) when removing the stale backup fails after a successful publish", async () => {
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+        await exporter.exportToDirectory(modes, outDir);
+
+        const failingRemoveDirectory = (): void => {
+            throw new Error("simulated stale-backup cleanup failure");
+        };
+        const failingExporter = new StakeEngineExporter<string>("1.3.0", undefined, undefined, undefined, undefined, undefined, failingRemoveDirectory);
+
+        const result = await failingExporter.exportToDirectory(modes, outDir);
+
+        // The export itself is a success — the new directory is fully live — despite the cleanup failure.
+        expect(result.manifest).toBeDefined();
+        expect(result.files.length).toBeGreaterThan(0);
+        expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
+        expect(result.issues.some((issue) => issue.code === "stakeengine-stale-export-cleanup-failed" && issue.severity === "warning")).toBe(true);
+
+        const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as StakeEngineIndex;
+        expect(index.modes.map((entry) => entry.name)).toEqual(["base", "bonus"]);
+
+        // The stale backup itself is left behind, intact, for manual removal — not lost or corrupted.
+        const staleDirs = siblingLeftovers(outDir).filter((name) => name.includes(".stale-"));
+        expect(staleDirs.length).toBe(1);
+    });
+
+    it("leaves no temp directory when the initial publish rename fails for an outDir that doesn't exist yet", async () => {
+        const freshOutDir = path.join(outDir, "fresh-subdir");
+        const failingRenameDirectory = (): void => {
+            throw new Error("simulated initial rename failure");
+        };
+        const exporter = new StakeEngineExporter<string>("1.3.0", undefined, undefined, undefined, undefined, failingRenameDirectory);
+
+        await expect(exporter.exportToDirectory(modes, freshOutDir)).rejects.toThrow("simulated initial rename failure");
+
+        expect(fs.existsSync(freshOutDir)).toBe(false);
+        const leftovers = fs.readdirSync(outDir).filter((name) => name.startsWith("fresh-subdir."));
         expect(leftovers).toEqual([]);
+    });
+
+    it("leaves no temp/stale sibling directories behind after a successful export or re-export", async () => {
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+
+        await exporter.exportToDirectory(modes, outDir);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+
+        await exporter.exportToDirectory(modes, outDir);
+        expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
     it("refuses to replace an existing non-empty directory that isn't recognized as its own prior output", async () => {
