@@ -1,6 +1,9 @@
 // Tracks this type's own shape (not the pokie package version), same convention as
-// OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION.
-export const OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION = 1;
+// OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION. Bumped 1 -> 2 for the addition of each entry's own
+// "recordHash" (see OutcomeLibraryBundleIndexEntry) — an index written before that addition doesn't carry a
+// recordHash at all, so it must be rejected as unsupported rather than silently read as if that field were
+// simply absent.
+export const OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION = 2;
 
 // One outcome's position inside "outcomes_<modeName>.jsonl" — carries "weight" directly (not just the byte
 // range) so a weighted draw only ever needs this small index, never the outcomes file itself, until exactly one
@@ -10,6 +13,11 @@ export type OutcomeLibraryBundleIndexEntry = {
     readonly weight: number;
     readonly byteOffset: number; // where this line's JSON begins in the outcomes file
     readonly byteLength: number; // exact byte length of the line's JSON (excludes the trailing "\n")
+    // sha256:<hex> of the exact canonical-JSON bytes this outcome was written as (the same bytes byteOffset/
+    // byteLength describe) — verified by readAndVerifyOutcomeAtByteRange before a byte-range read is ever
+    // returned to a caller, so a record whose *content* was tampered without changing its id/weight (or the
+    // file's own byte layout) is still caught, not just a swapped id or forged weight.
+    readonly recordHash: string;
 };
 
 // A small, always-fully-loadable per-mode index — the only file a streaming reader needs to open in order to

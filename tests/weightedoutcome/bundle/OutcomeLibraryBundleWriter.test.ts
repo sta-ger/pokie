@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -63,6 +64,10 @@ describe("OutcomeLibraryBundleWriter", () => {
         const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryBundleManifest;
         expect(manifest.generatedBy).toBe("pokie outcomelibrary build");
         expect(manifest.pokieVersion).toBe("1.3.0");
+        // The fixture's own outcomes were computed by pokieVersion "1.3.0" too, but this is a genuinely
+        // different field from manifest.pokieVersion above (which pokie *tool* version built this bundle file)
+        // — they only happen to share a value here because the fixture's provenance uses the same string.
+        expect(manifest.artifactPokieVersion).toBe("1.3.0");
         expect(manifest.modes.map((mode) => mode.modeName)).toEqual(["base", "bonus"]);
         expect(manifest.modes[0].outcomeCount).toBe(5);
         expect(manifest.modes[0].totalWeight).toBe(1000);
@@ -82,6 +87,7 @@ describe("OutcomeLibraryBundleWriter", () => {
             const parsedLine = JSON.parse(lineBuffer.toString("utf-8")) as {id: string; weight: number};
             expect(parsedLine.id).toBe(entry.id);
             expect(parsedLine.weight).toBe(entry.weight);
+            expect(entry.recordHash).toBe(`sha256:${crypto.createHash("sha256").update(lineBuffer).digest("hex")}`);
         }
     });
 

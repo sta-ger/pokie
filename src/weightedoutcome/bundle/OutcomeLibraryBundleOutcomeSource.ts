@@ -1,9 +1,11 @@
 import path from "path";
+import {PreGeneratedOutcomeSourceConflictError} from "../../pregenerated/PreGeneratedOutcomeSourceConflictError.js";
 import type {PreGeneratedOutcomeSelection} from "../../pregenerated/PreGeneratedOutcomeSelection.js";
 import type {PreGeneratedOutcomeSourcing} from "../../pregenerated/PreGeneratedOutcomeSourcing.js";
 import type {WeightedOutcomeRandomSource} from "../../pregenerated/WeightedOutcomeRandomSource.js";
 import {readAndVerifyOutcomeAtByteRange} from "./internal/readOutcomeAtByteRange.js";
 import {selectIndexEntryByCumulativeWeight} from "./internal/selectIndexEntryByCumulativeWeight.js";
+import {OutcomeLibraryBundleInvariantError} from "./OutcomeLibraryBundleInvariantError.js";
 import {OutcomeLibraryBundleReader} from "./OutcomeLibraryBundleReader.js";
 import type {OutcomeLibraryBundleReading} from "./OutcomeLibraryBundleReading.js";
 
@@ -31,7 +33,22 @@ export class OutcomeLibraryBundleOutcomeSource<T extends string | number = strin
         const index = await this.reader.readModeIndex(this.bundleDir, this.modeName);
         const winningEntry = selectIndexEntryByCumulativeWeight(this.modeName, index.entries, randomSource);
         const outcomesPath = path.join(this.bundleDir, index.outcomesFile);
-        const outcome = readAndVerifyOutcomeAtByteRange<T>(this.modeName, outcomesPath, winningEntry);
+
+        let outcome;
+        try {
+            outcome = readAndVerifyOutcomeAtByteRange<T>(this.modeName, outcomesPath, winningEntry);
+        } catch (error) {
+            // A drifted id/weight/recordHash at this exact byte range means the outcomes file changed since
+            // this call's own index read — e.g. the bundle was rebuilt mid-draw, or a hand-tampered record —
+            // never a bug in this class itself. Translated into the general PreGeneratedOutcomeSourcing
+            // contract's own conflict type, so PreGeneratedSpinCommandHandler can react to it uniformly
+            // regardless of which kind of source produced it.
+            if (error instanceof OutcomeLibraryBundleInvariantError) {
+                throw new PreGeneratedOutcomeSourceConflictError(error.message);
+            }
+            throw error;
+        }
+
         return {libraryId: index.libraryId, libraryHash: index.libraryHash, totalWeight: index.totalWeight, outcome};
     }
 }

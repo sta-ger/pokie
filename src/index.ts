@@ -99,6 +99,8 @@ export * from "./parsheet/writeFileAtomically.js";
 export * from "./pregenerated/InMemoryPreGeneratedOutcomeSource.js";
 export * from "./pregenerated/InMemoryPreGeneratedOutcomeSourceError.js";
 export * from "./pregenerated/PreGeneratedOutcomeSelection.js";
+export * from "./pregenerated/PreGeneratedOutcomeSelectionValidator.js";
+export * from "./pregenerated/PreGeneratedOutcomeSourceConflictError.js";
 export * from "./pregenerated/PreGeneratedOutcomeSourcing.js";
 export * from "./pregenerated/PreGeneratedRoundBuildError.js";
 export * from "./pregenerated/PreGeneratedRoundInternalView.js";

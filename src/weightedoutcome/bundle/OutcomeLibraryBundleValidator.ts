@@ -16,7 +16,9 @@ import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryBun
 import type {OutcomeLibraryBundleValidateOptions, OutcomeLibraryBundleValidating} from "./OutcomeLibraryBundleValidating.js";
 
 const MODE_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
-const LIBRARY_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
+// Shared shape for every sha256:<hex> hash this bundle format carries — a mode's own libraryHash and, since the
+// recordHash addition, each index entry's own per-record hash too.
+const SHA256_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
@@ -30,8 +32,8 @@ function isSafeNonNegativeInteger(value: unknown): value is number {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function isValidLibraryHash(value: unknown): value is string {
-    return typeof value === "string" && LIBRARY_HASH_PATTERN.test(value);
+function isValidSha256Hash(value: unknown): value is string {
+    return typeof value === "string" && SHA256_HASH_PATTERN.test(value);
 }
 
 // Validates a whole candidate outcome-library bundle directory. Two layers, mirroring the Stake Engine
@@ -193,7 +195,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             if (!isNonEmptyString(entry.libraryId)) {
                 fieldInvalid("libraryId", "must be a non-empty string");
             }
-            if (!isValidLibraryHash(entry.libraryHash)) {
+            if (!isValidSha256Hash(entry.libraryHash)) {
                 fieldInvalid("libraryHash", 'must match "sha256:<64 hex chars>"');
             }
             if (!isPositiveSafeInteger(entry.outcomeCount)) {
@@ -495,9 +497,12 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
     }
 
     // For every index entry, independently reads exactly that entry's own recorded byte range and verifies the
-    // record found there really is that entry's own {id, weight} — reusing readAndVerifyOutcomeAtByteRange, the
-    // exact same check OutcomeLibraryBundleReader itself relies on before ever handing a caller a drawn/looked-up
-    // outcome. This is deliberately independent of validateModeDeep's own sequential per-line pass below: that
+    // record found there really is that entry's own {id, weight}, and hashes to that entry's own recordHash —
+    // reusing readAndVerifyOutcomeAtByteRange, the exact same check OutcomeLibraryBundleReader itself relies on
+    // before ever handing a caller a drawn/looked-up outcome. The recordHash check is what catches a record
+    // tampered in place (its artifact rewritten) without touching id/weight at all — something an id/weight
+    // check alone would miss entirely. This is deliberately independent of validateModeDeep's own sequential
+    // per-line pass below: that
     // pass matches every record against the index *by id*, via a map, so it would never notice a file whose
     // lines were physically reordered (or otherwise shifted) while every id/weight still appears somewhere in
     // the file — exactly the corruption a byte-range random-access read (the whole point of this bundle format)
@@ -635,7 +640,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             !isNonEmptyString((parsed as {modeName?: unknown}).modeName) ||
             !isNonEmptyString((parsed as {libraryId?: unknown}).libraryId) ||
             !isPositiveSafeInteger((parsed as {librarySchemaVersion?: unknown}).librarySchemaVersion) ||
-            !isValidLibraryHash((parsed as {libraryHash?: unknown}).libraryHash) ||
+            !isValidSha256Hash((parsed as {libraryHash?: unknown}).libraryHash) ||
             !isPositiveSafeInteger((parsed as {outcomeCount?: unknown}).outcomeCount) ||
             !isPositiveSafeInteger((parsed as {totalWeight?: unknown}).totalWeight) ||
             !isNonEmptyString((parsed as {outcomesFile?: unknown}).outcomesFile)
@@ -669,12 +674,13 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                 !isPositiveSafeInteger(entry.weight) ||
                 !isSafeNonNegativeInteger(entry.byteOffset) ||
                 !isSafeNonNegativeInteger(entry.byteLength) ||
-                entry.byteLength === 0
+                entry.byteLength === 0 ||
+                !isValidSha256Hash(entry.recordHash)
             ) {
                 issues.push({
                     code: "outcome-library-bundle-mode-index-entry-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": index entry at position ${position} is not {id: non-empty string, weight: positive safe integer, byteOffset/byteLength: non-negative safe integers}.`,
+                    message: `mode "${modeName}": index entry at position ${position} is not {id: non-empty string, weight: positive safe integer, byteOffset/byteLength: non-negative safe integers, recordHash: "sha256:<64 hex chars>"}.`,
                     details: {modeName, position},
                 });
                 ok = false;
@@ -717,12 +723,13 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
     // pass (see streamModeOutcomesToTempFile's own doc comment for why a hash never needs a second pass, unlike
     // the exact analyzer statistics, which do — see computeOnlineWeightedOutcomeLibraryAnalysis). Also cross-
     // checks the outcomes' own common provenance/betMode/stake against manifest.json's own claimed game/
-    // configHash (top-level) and betMode/stake (per mode entry) — a check the cross-*outcome* consistency check
-    // above can never catch on its own, since it only ever compares outcomes against each other, never against
-    // the manifest itself. Deliberately does not compare against manifest.pokieVersion: that field records which
-    // pokie *tool* version built this bundle file, a different, unrelated quantity from an artifact's own
-    // provenance.pokieVersion (which pokie version *computed* that artifact) — the two are never required to
-    // match, so it would be wrong to treat a difference there as corruption.
+    // configHash/artifactPokieVersion (top-level) and betMode/stake (per mode entry) — a check the cross-
+    // *outcome* consistency check above can never catch on its own, since it only ever compares outcomes against
+    // each other, never against the manifest itself. Deliberately compares against manifest.artifactPokieVersion,
+    // never manifest.pokieVersion: the latter records which pokie *tool* version built this bundle file, a
+    // different, unrelated quantity from an artifact's own provenance.pokieVersion (which pokie version
+    // *computed* that artifact) — the two are never required to match, so it would be wrong to treat a
+    // difference there as corruption.
     private async validateModeDeep(
         outcomesPath: string,
         manifest: OutcomeLibraryBundleManifest,
@@ -836,14 +843,21 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                 // own claims is enough to catch a manifest whose game/version/configHash/betMode/stake doesn't
                 // actually match what this mode's outcomes were built from — a gap the existing cross-*outcome*
                 // consistency check alone can't catch, since it never reads manifest.json at all.
-                if (current.gameId !== manifest.game.id || current.gameVersion !== manifest.game.version || current.configHash !== manifest.configHash) {
+                if (
+                    current.gameId !== manifest.game.id ||
+                    current.gameVersion !== manifest.game.version ||
+                    current.configHash !== manifest.configHash ||
+                    current.pokieVersion !== manifest.artifactPokieVersion
+                ) {
                     issues.push({
                         code: "outcome-library-bundle-outcomes-manifest-provenance-mismatch",
                         severity: "error",
                         message:
                             `mode "${modeName}": this mode's outcomes have provenance (game id "${String(current.gameId)}", version ` +
-                            `"${String(current.gameVersion)}", configHash "${String(current.configHash)}") that does not match manifest.json's own ` +
-                            `game (id "${manifest.game.id}", version "${manifest.game.version}") / configHash ("${String(manifest.configHash)}").`,
+                            `"${String(current.gameVersion)}", configHash "${String(current.configHash)}", pokieVersion ` +
+                            `"${String(current.pokieVersion)}") that does not match manifest.json's own game (id "${manifest.game.id}", version ` +
+                            `"${manifest.game.version}") / configHash ("${String(manifest.configHash)}") / artifactPokieVersion ` +
+                            `("${String(manifest.artifactPokieVersion)}").`,
                         details: {modeName},
                     });
                     sawError = true;

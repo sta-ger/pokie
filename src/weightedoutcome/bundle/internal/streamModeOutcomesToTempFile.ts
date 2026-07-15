@@ -55,7 +55,11 @@ export type StreamModeOutcomesResult<T extends string | number> = {
 // "filePath" (never holding more than one outcome in memory at a time), and feeds that same line's exact bytes
 // into a running SHA-256 that reproduces computeWeightedOutcomeLibraryHash's own result exactly (verified by a
 // dedicated cross-check test) — computed online, in this same pass, since (unlike the exact analyzer statistics
-// in computeOnlineWeightedOutcomeLibraryAnalysis) a hash never needs to know the total weight up front.
+// in computeOnlineWeightedOutcomeLibraryAnalysis) a hash never needs to know the total weight up front. Each
+// entry's own "recordHash" is a separate, per-record SHA-256 of exactly that line's own bytes (the same bytes
+// its byteOffset/byteLength describe) — what lets a later byte-range read (readAndVerifyOutcomeAtByteRange)
+// verify the record found there hasn't been tampered with in place, even if its id/weight happen to be
+// unchanged.
 //
 // Never throws for a validation problem — collects every issue found (mirroring WeightedOutcomeLibraryValidator's
 // own "report everything, not just the first problem" style) and keeps consuming/writing so a caller sees every
@@ -196,7 +200,8 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
             const lineBuffer = Buffer.from(line, "utf-8");
             fs.writeSync(fd, lineBuffer);
             fs.writeSync(fd, "\n");
-            entries.push({id: outcome.id, weight: outcome.weight, byteOffset: offset, byteLength: lineBuffer.byteLength});
+            const recordHash = `sha256:${crypto.createHash("sha256").update(lineBuffer).digest("hex")}`;
+            entries.push({id: outcome.id, weight: outcome.weight, byteOffset: offset, byteLength: lineBuffer.byteLength, recordHash});
             offset += lineBuffer.byteLength + 1;
 
             if (hashedCount > 0) {

@@ -96,6 +96,31 @@ the same underlying snapshot. Two implementations ship out of the box:
   libraryHash, totalWeight, outcome}` result comes from that *one* index read, never a separately-fetched hash —
   see "Library identity" below for why that matters.
 
+### Source-level conflicts and selection validation
+
+```ts
+class PreGeneratedOutcomeSourceConflictError extends Error {}
+
+class PreGeneratedOutcomeSelectionValidator<T = string> implements ValidationRule<PreGeneratedOutcomeSelection<T>> {
+    validate(selection: PreGeneratedOutcomeSelection<T>): ValidationIssue[];
+}
+```
+
+`drawOutcome()` may throw `PreGeneratedOutcomeSourceConflictError` to signal that the content this draw relied on
+no longer matches what the source itself last promised — `OutcomeLibraryBundleOutcomeSource` throws it whenever
+the underlying byte-range read detects an id/weight/`recordHash` mismatch (the bundle changed mid-draw, or a
+record was tampered with in place — see [Outcome Library Bundle](outcome-library-bundle.md#validation)). Any
+other `PreGeneratedOutcomeSourcing` implementation — including a hand-written test double or a buggy custom
+source — can throw the same error for its own reasons and get identical treatment.
+
+`PreGeneratedOutcomeSelectionValidator` checks a drawn selection's own structural well-formedness: non-empty
+`libraryId`/`outcome.id`, a valid-format `libraryHash`, positive-safe-integer `weight`/`totalWeight`, `weight <=
+totalWeight`, and an `outcome.artifact` that passes `RoundArtifactValidator`. It runs in two places, deliberately:
+immediately after every draw in `PreGeneratedSpinCommandHandler` (see below), and again inside
+`buildPreGeneratedRoundResult` as a defensive backstop for any other caller of that function. A hand-crafted or
+forged `PreGeneratedOutcomeSourcing` implementation is just as capable of returning a structurally invalid
+selection as a real adapter drifting out of sync would be — this is what catches it either way.
+
 ## The runtime result
 
 ```ts
@@ -230,13 +255,21 @@ so a losing attempt's compensation can only ever touch its own.
 
 ### Conflicts (HTTP 409)
 
-A spin can come back `409` for two distinct reasons, both surfaced as a `"conflict"` `PreGeneratedSpinCommandResult`:
+A spin can come back `409` for four distinct reasons, all surfaced as a `"conflict"` `PreGeneratedSpinCommandResult`,
+and all — except the last — caught before the idempotency cache is consulted and before any wallet transaction,
+so there's nothing to compensate:
 
+- **Source-level conflict**: `drawOutcome()` itself threw `PreGeneratedOutcomeSourceConflictError` — the content
+  this draw relied on no longer matches what the source last promised (e.g. a bundle rewritten, or one of its
+  records tampered in place, between the index being read and the winning record's own byte range being read).
+- **Invalid selection**: the drawn selection failed `PreGeneratedOutcomeSelectionValidator` — a forged or buggy
+  custom `PreGeneratedOutcomeSourcing` implementation returned something structurally untrustworthy (an empty
+  `libraryId`, a weight exceeding `totalWeight`, an artifact that fails `RoundArtifactValidator`, ...).
 - **Library mismatch**: the loaded session's own `libraryId`/`libraryHash` (stamped at creation) doesn't match the
   identity the handler's outcome source reports for the round it just atomically drew — e.g. a session from
   before a redeploy that swapped the library/bundle, or a same-id library/bundle regenerated with different
-  weights. Caught immediately after that draw — before the idempotency cache is consulted and before any wallet
-  transaction — so there's nothing to compensate, and a stale cached result can never bypass it.
+  weights. A stale cached result can never bypass it either, since all three checks above run before the
+  idempotency cache is ever consulted.
 - **Optimistic-locking version conflict**: when the configured `PreGeneratedSessionRepository` additionally
   implements `VersionedPreGeneratedSessionRepository` (`InMemoryPreGeneratedSessionRepository` does out of the
   box — the same additive pattern as `VersionedSessionRepository`/`isVersionedSessionRepository` for the live spin

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import {compareIds} from "../../internal/compareIds.js";
 import type {WeightedOutcome} from "../../WeightedOutcome.js";
@@ -41,21 +42,26 @@ function isWeightedOutcomeShape(value: unknown): value is {id: string; weight: n
 // single-outcome random access rather than a full scan.
 //
 // Verifies the record actually found at that byte range is the one the index promised — its own "id" and
-// "weight" must match "entry" exactly — before ever returning it: a corrupted/mistaken byte range (a hand-
-// tampered index, an off-by-one in some future refactor, a filesystem returning stale data) would otherwise
-// silently hand back the *wrong* outcome with no indication anything was amiss, which is a real correctness
-// risk for anything feeding a live draw rather than a mere diagnostic. Throws OutcomeLibraryBundleInvariantError
-// rather than returning a mismatched result — the same "assume already validated, fail fast on a genuine
-// surprise" contract every other OutcomeLibraryBundleReader method has.
+// "weight" must match "entry" exactly, and its exact bytes must hash to "entry.recordHash" — before ever
+// returning it: a corrupted/mistaken byte range (a hand-tampered index, an off-by-one in some future refactor, a
+// filesystem returning stale data) would otherwise silently hand back the *wrong* outcome with no indication
+// anything was amiss, which is a real correctness risk for anything feeding a live draw rather than a mere
+// diagnostic. The recordHash check specifically catches content tampered in place without touching id/weight at
+// all (e.g. a rewritten artifact) — something the id/weight checks alone can't. Throws
+// OutcomeLibraryBundleInvariantError rather than returning a mismatched result — the same "assume already
+// validated, fail fast on a genuine surprise" contract every other OutcomeLibraryBundleReader method has; a
+// caller that specifically needs this surfaced as a source-level conflict (see PreGeneratedOutcomeSourcing)
+// translates it itself (see OutcomeLibraryBundleOutcomeSource).
 export function readAndVerifyOutcomeAtByteRange<T extends string | number = string>(
     modeName: string,
     outcomesFilePath: string,
     entry: OutcomeLibraryBundleIndexEntry,
 ): WeightedOutcome<T> {
     const fd = fs.openSync(outcomesFilePath, "r");
+    let buffer: Buffer;
     let value: unknown;
     try {
-        const buffer = Buffer.alloc(entry.byteLength);
+        buffer = Buffer.alloc(entry.byteLength);
         fs.readSync(fd, buffer, 0, entry.byteLength, entry.byteOffset);
         value = JSON.parse(buffer.toString("utf-8"));
     } finally {
@@ -75,6 +81,12 @@ export function readAndVerifyOutcomeAtByteRange<T extends string | number = stri
     if (value.weight !== entry.weight) {
         throw new OutcomeLibraryBundleInvariantError(
             `mode "${modeName}": outcome "${entry.id}"'s weight at its own recorded byte range (${value.weight}) does not match the index's (${entry.weight}) — the index and the outcomes file have drifted out of sync.`,
+        );
+    }
+    const actualRecordHash = `sha256:${crypto.createHash("sha256").update(buffer).digest("hex")}`;
+    if (actualRecordHash !== entry.recordHash) {
+        throw new OutcomeLibraryBundleInvariantError(
+            `mode "${modeName}": outcome "${entry.id}"'s own recorded byte range hashes to "${actualRecordHash}", not the index's recorded "${entry.recordHash}" — its content has changed since the index was built.`,
         );
     }
 

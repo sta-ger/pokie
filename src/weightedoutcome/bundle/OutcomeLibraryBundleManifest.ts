@@ -25,10 +25,19 @@ export type OutcomeLibraryBundleManifestModeEntry = {
 export type OutcomeLibraryBundleManifest = {
     readonly schemaVersion: number;
     readonly generatedBy: string;
+    // Which pokie release built *this bundle file* — i.e. ran "pokie outcomelibrary build". Deliberately never
+    // compared against artifactPokieVersion below: a bundle can legitimately be (re)packaged by a newer/different
+    // pokie release than the one that originally computed its outcomes.
     readonly pokieVersion: string;
     readonly generatedAt: string;
     readonly game: PokieGameManifest;
     readonly configHash?: string;
+    // Which pokie release *computed* the outcomes themselves — read from the first outcome's own
+    // artifact.provenance.pokieVersion (guaranteed identical across every outcome in every mode by the writer's
+    // own cross-outcome/cross-mode homogeneity checks) and cross-checked, in deep validation, against every
+    // outcome's own provenance.pokieVersion. A distinct quantity from pokieVersion above — see that field's own
+    // doc comment for why they're never required to match.
+    readonly artifactPokieVersion: string;
     readonly modes: readonly OutcomeLibraryBundleManifestModeEntry[];
     readonly files: readonly string[];
 };

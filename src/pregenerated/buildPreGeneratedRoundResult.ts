@@ -1,8 +1,8 @@
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
-import {isPositiveSafeInteger} from "./internal/isPositiveSafeInteger.js";
 import type {PreGeneratedOutcomeSelection} from "./PreGeneratedOutcomeSelection.js";
+import {PreGeneratedOutcomeSelectionValidator} from "./PreGeneratedOutcomeSelectionValidator.js";
 import {PreGeneratedRoundBuildError} from "./PreGeneratedRoundBuildError.js";
 import {PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION, type PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
 import type {PreGeneratedRoundRuntimeContext} from "./PreGeneratedRoundRuntimeContext.js";
@@ -28,16 +28,18 @@ export type PreGeneratedRoundBuildOptions<T extends string | number = string> = 
 // buildRoundArtifact/buildWeightedOutcomeLibrary), never copied or mutated.
 //
 // Fails fast with PreGeneratedRoundBuildError — before any result is ever returned — on: a `selection` whose
-// own libraryId/libraryHash doesn't match the caller's expected identity, an invalid runtime.roundId/sessionId,
-// a non-finite runtime.balanceBefore/balanceAfter, a malformed runtime.transactions entry, a non-positive-safe-
-// integer selection.outcome.weight/selection.totalWeight (stricter than WeightedOutcomeLibrary itself requires
-// — see WeightedOutcomeSelector's own doc comment for why a library meant to be *drawn from* needs integer
-// weights), or content that isn't JSON-safe. There is no longer a "the outcome must be the library's own array
-// element" reference-identity check — without a full library there's no array to check against — but that
-// guarantee now comes structurally from PreGeneratedOutcomeSourcing itself: the only way to obtain a
-// PreGeneratedOutcomeSelection at all is a real source's own drawOutcome(), which always produces a genuine,
-// already-verified outcome (WeightedOutcomeSelector.select for the in-memory adapter,
-// readAndVerifyOutcomeAtByteRange for the bundle adapter).
+// own libraryId/libraryHash doesn't match the caller's expected identity, a `selection` that fails
+// PreGeneratedOutcomeSelectionValidator (non-empty libraryId/outcome.id, valid-format libraryHash, positive-safe-
+// integer weight/totalWeight, weight <= totalWeight, or an artifact that fails RoundArtifactValidator — the same
+// check PreGeneratedSpinCommandHandler itself already runs immediately after drawing, redundant here on purpose
+// as a defensive backstop for any other caller of this function), an invalid runtime.roundId/sessionId, a
+// non-finite runtime.balanceBefore/balanceAfter, a malformed runtime.transactions entry, or content that isn't
+// JSON-safe. There is no longer a "the outcome must be the library's own array element" reference-identity check
+// — without a full library there's no array to check against — but that guarantee now comes structurally from
+// PreGeneratedOutcomeSourcing itself: the only way to obtain a PreGeneratedOutcomeSelection at all is a real
+// source's own drawOutcome(), which always produces a genuine, already-verified outcome
+// (WeightedOutcomeSelector.select for the in-memory adapter, readAndVerifyOutcomeAtByteRange for the bundle
+// adapter).
 export function buildPreGeneratedRoundResult<T extends string | number = string>(
     options: PreGeneratedRoundBuildOptions<T>,
 ): PreGeneratedRoundResult<T> {
@@ -48,6 +50,14 @@ export function buildPreGeneratedRoundResult<T extends string | number = string>
             "pre-generated-round-source-identity-mismatch",
             `selection was drawn against libraryId "${selection.libraryId}"/hash "${selection.libraryHash}", but ` +
                 `expected libraryId "${expectedLibraryId}"/hash "${expectedLibraryHash}".`,
+        );
+    }
+
+    const selectionIssues = new PreGeneratedOutcomeSelectionValidator<T>().validate(selection);
+    if (selectionIssues.length > 0) {
+        throw new PreGeneratedRoundBuildError(
+            "pre-generated-round-selection-invalid",
+            `selection failed validation: ${selectionIssues.map((issue) => issue.code).join(", ")}.`,
         );
     }
 
@@ -101,20 +111,6 @@ export function buildPreGeneratedRoundResult<T extends string | number = string>
             );
         }
     });
-
-    if (!isPositiveSafeInteger(selection.outcome.weight)) {
-        throw new PreGeneratedRoundBuildError(
-            "pre-generated-round-selection-weight-invalid",
-            `selection.outcome.weight must be a positive safe integer, got ${selection.outcome.weight}.`,
-        );
-    }
-
-    if (!isPositiveSafeInteger(selection.totalWeight)) {
-        throw new PreGeneratedRoundBuildError(
-            "pre-generated-round-selection-total-weight-invalid",
-            `selection.totalWeight must be a positive safe integer, got ${selection.totalWeight}.`,
-        );
-    }
 
     const candidate: PreGeneratedRoundResult<T> = {
         schemaVersion: PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION,

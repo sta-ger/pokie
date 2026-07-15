@@ -95,6 +95,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             let firstMode: {readonly provenanceKey: ModeProvenanceKey; readonly firstOutcome: unknown} | undefined;
             let gameManifest: OutcomeLibraryBundleManifest["game"] | undefined;
             let configHash: string | undefined;
+            let artifactPokieVersion: string | undefined;
 
             for (const mode of modes) {
                 const schemaVersion = mode.schemaVersion ?? WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION;
@@ -121,6 +122,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                     firstMode = {provenanceKey: current, firstOutcome: result.built.firstOutcome};
                     gameManifest = (result.built.firstOutcome as {artifact: {provenance: {game: OutcomeLibraryBundleManifest["game"]}}}).artifact.provenance.game;
                     configHash = (result.built.firstOutcome as {artifact: {provenance: {configHash?: string}}}).artifact.provenance.configHash;
+                    artifactPokieVersion = current.pokieVersion;
                 } else if (
                     current.gameId !== firstMode.provenanceKey.gameId ||
                     current.gameVersion !== firstMode.provenanceKey.gameVersion ||
@@ -168,7 +170,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 this.writeFile(path.join(stagingDir, indexFile), `${JSON.stringify(index, null, 4)}\n`);
             }
 
-            if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined) {
+            if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined || artifactPokieVersion === undefined) {
                 return {outDir, files: [], manifest: undefined, issues};
             }
 
@@ -180,6 +182,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 generatedAt: this.now().toISOString(),
                 game: gameManifest,
                 ...(configHash !== undefined ? {configHash} : {}),
+                artifactPokieVersion,
                 modes: manifestEntries,
                 files: relativeFiles,
             };

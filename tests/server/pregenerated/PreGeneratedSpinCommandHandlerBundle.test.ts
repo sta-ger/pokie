@@ -9,8 +9,12 @@ import {
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
     OutcomeLibraryBundleWriter,
+    PreGeneratedOutcomeSelection,
+    PreGeneratedOutcomeSourceConflictError,
+    PreGeneratedOutcomeSourcing,
     PreGeneratedSpinCommandHandler,
     WeightedOutcomeInput,
+    WeightedOutcomeRandomSource,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
 } from "pokie";
@@ -138,6 +142,100 @@ describe("PreGeneratedSpinCommandHandler against a canonical outcome-library bun
         const result = await handler.handle("s1");
 
         expect(result.status).toBe("conflict");
+        expect(await wallet.getBalance("s1")).toBe(balanceBefore);
+        expect((await sessionRepository.load("s1"))?.roundsPlayed).toBe(0);
+    });
+
+    // recordHash's own reason for existing, exercised end to end: a record tampered in place, with the id/weight
+    // the index already knew about left completely untouched, must still be rejected — as a conflict, with no
+    // wallet write — even though nothing about the session's own stamped libraryId/libraryHash changed at all.
+    it("returns conflict, without any wallet write, when a record's content is tampered in place (same id/weight, same libraryHash)", async () => {
+        const reader = new OutcomeLibraryBundleReader();
+        const index = await reader.readModeIndex(bundleDir, "base");
+        const entry = index.entries.find((candidate) => candidate.id === "jackpot")!;
+        const outcomesPath = path.join(bundleDir, "outcomes_base.jsonl");
+        const buffer = fs.readFileSync(outcomesPath);
+        const original = buffer.subarray(entry.byteOffset, entry.byteOffset + entry.byteLength).toString("utf-8");
+        const parsed = JSON.parse(original) as {artifact: {roundId: string}};
+        const tamperedRoundId = "t".repeat(parsed.artifact.roundId.length);
+        const tampered = original.replace(JSON.stringify(parsed.artifact.roundId), JSON.stringify(tamperedRoundId));
+        expect(tampered).not.toBe(original);
+        buffer.write(tampered, entry.byteOffset, entry.byteLength, "utf-8");
+        fs.writeFileSync(outcomesPath, buffer);
+
+        const wallet = new InMemoryWallet(1000);
+        const sessionRepository = new InMemoryPreGeneratedSessionRepository();
+        const realBundleSource = new OutcomeLibraryBundleOutcomeSource(bundleDir, "base");
+        // Ignores the handler's own derived randomSource and always resolves to cumulative point 0 — which,
+        // sorted by canonical id ("jackpot" < "no-win" < "small-win"), always lands on the tampered "jackpot"
+        // entry regardless of the session's own seed — so this test doesn't depend on guessing a seed that
+        // happens to draw it.
+        const forcedFirstEntrySource: PreGeneratedOutcomeSourcing<string> = {
+            drawOutcome: () => realBundleSource.drawOutcome({nextInt: () => 0}),
+        };
+        const handler = new PreGeneratedSpinCommandHandler(forcedFirstEntrySource, wallet, sessionRepository);
+        await sessionRepository.save("s1", {libraryId: "bundle-lib", libraryHash: index.libraryHash, seed: "seed-1", roundsPlayed: 0});
+        const balanceBefore = await wallet.getBalance("s1");
+
+        const result = await handler.handle("s1");
+
+        expect(result.status).toBe("conflict");
+        expect(await wallet.getBalance("s1")).toBe(balanceBefore);
+        expect((await sessionRepository.load("s1"))?.roundsPlayed).toBe(0);
+    });
+
+    // A hand-crafted PreGeneratedOutcomeSourcing implementation — standing in for a buggy or malicious custom
+    // source — that returns a structurally invalid selection (weight exceeding totalWeight). The handler must
+    // reject it as a conflict before ever touching the wallet, exactly as it would a real source's own detected
+    // corruption.
+    it("returns conflict, without any wallet write, for a forged custom PreGeneratedOutcomeSourcing that returns an invalid selection", async () => {
+        const forgedSource: PreGeneratedOutcomeSourcing<string> = {
+            drawOutcome: () =>
+                Promise.resolve({
+                    libraryId: "bundle-lib",
+                    libraryHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                    totalWeight: 10,
+                    outcome: {id: "forged", weight: 999, artifact: artifactWith({roundId: "forged", totalWin: 0, stake: 1})},
+                } satisfies PreGeneratedOutcomeSelection<string>),
+        };
+        const wallet = new InMemoryWallet(1000);
+        const sessionRepository = new InMemoryPreGeneratedSessionRepository();
+        const handler = new PreGeneratedSpinCommandHandler(forgedSource, wallet, sessionRepository);
+        await sessionRepository.save("s1", {
+            libraryId: "bundle-lib",
+            libraryHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            seed: "seed-1",
+            roundsPlayed: 0,
+        });
+        const balanceBefore = await wallet.getBalance("s1");
+
+        const result = await handler.handle("s1");
+
+        expect(result.status).toBe("conflict");
+        expect(await wallet.getBalance("s1")).toBe(balanceBefore);
+        expect((await sessionRepository.load("s1"))?.roundsPlayed).toBe(0);
+    });
+
+    // A custom source directly throwing PreGeneratedOutcomeSourceConflictError — proving the handler's own
+    // catch is keyed on the error type, not on which concrete PreGeneratedOutcomeSourcing implementation raised
+    // it (OutcomeLibraryBundleOutcomeSource is only one of potentially many).
+    it("returns conflict, without any wallet write, when a custom source throws PreGeneratedOutcomeSourceConflictError directly", async () => {
+        const throwingSource: PreGeneratedOutcomeSourcing<string> = {
+            drawOutcome: (_randomSource: WeightedOutcomeRandomSource) =>
+                Promise.reject(new PreGeneratedOutcomeSourceConflictError("simulated custom source conflict")),
+        };
+        const wallet = new InMemoryWallet(1000);
+        const sessionRepository = new InMemoryPreGeneratedSessionRepository();
+        const handler = new PreGeneratedSpinCommandHandler(throwingSource, wallet, sessionRepository);
+        await sessionRepository.save("s1", {libraryId: "bundle-lib", libraryHash: "sha256:whatever", seed: "seed-1", roundsPlayed: 0});
+        const balanceBefore = await wallet.getBalance("s1");
+
+        const result = await handler.handle("s1");
+
+        expect(result.status).toBe("conflict");
+        if (result.status === "conflict") {
+            expect(result.reason).toContain("simulated custom source conflict");
+        }
         expect(await wallet.getBalance("s1")).toBe(balanceBefore);
         expect((await sessionRepository.load("s1"))?.roundsPlayed).toBe(0);
     });

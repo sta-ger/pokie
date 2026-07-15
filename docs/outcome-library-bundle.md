@@ -66,6 +66,25 @@ type OutcomeLibraryBundleManifestModeEntry = {
 };
 ```
 
+The manifest also carries two distinct, deliberately-never-conflated pokie-version fields:
+
+```ts
+type OutcomeLibraryBundleManifest = {
+    // ...
+    pokieVersion: string;         // which pokie release built *this bundle file* (ran "pokie outcomelibrary build")
+    artifactPokieVersion: string; // which pokie release *computed* the outcomes themselves
+    // ...
+};
+```
+
+`pokieVersion` is the same "who generated this file" stamp every manifest in this codebase carries
+(`StakeEngineManifest`'s own convention). `artifactPokieVersion` is read straight off the first outcome's own
+`artifact.provenance.pokieVersion` (guaranteed identical across every outcome, by the writer's own homogeneity
+checks) and cross-checked, in deep validation, against every outcome's own provenance. The two are never required
+to match: a bundle can legitimately be (re)packaged by a newer or different pokie release than the one that
+originally computed its outcomes (e.g. outcomes simulated once, bundled repeatedly afterward) — treating a
+difference there as corruption would reject a perfectly valid bundle.
+
 `index_<modeName>.json` is deliberately small — every field is a number or a short string, never a full
 `RoundArtifact` — so it's always cheap to load in full, even for a library with millions of outcomes:
 
@@ -75,12 +94,23 @@ type OutcomeLibraryBundleIndexEntry = {
     weight: number;
     byteOffset: number; // where this line's JSON begins in the outcomes file
     byteLength: number; // exact byte length of the line's JSON (excludes the trailing "\n")
+    recordHash: string; // sha256:<hex> of exactly those byteOffset/byteLength bytes
 };
 ```
 
 `libraryHash`/`librarySchemaVersion` are duplicated onto the index (not only the manifest), so a caller that only
 ever needs one mode — the pre-generated runtime, typically — can load and self-identify a mode from just its own
 `index_<modeName>.json` + `outcomes_<modeName>.jsonl`, without ever reading `manifest.json`.
+
+Each entry's own `recordHash` exists specifically to close a gap the id/weight checks alone can't: a record's
+*content* tampered in place (its artifact rewritten) while its id/weight — and the outcomes file's own byte
+layout — stay exactly as the index already recorded. `libraryHash` alone can't catch this at read time either:
+it's only ever recomputed by the (opt-in, expensive) deep validator, never by a single-record random-access read,
+so without a per-record hash a tampered record would otherwise be served unnoticed by every runtime read path.
+`readAndVerifyOutcomeAtByteRange` recomputes it from the exact bytes read and compares before ever returning a
+result (see Streaming reader below); `OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION` was bumped 1 → 2 for this
+addition, so an index written before it exists is rejected outright rather than silently treated as missing the
+field.
 
 ## Determinism, hashing, and metrics — no second calculation path
 
@@ -114,9 +144,10 @@ interface OutcomeLibraryBundleReading<T extends string | number = string> {
   that's exactly what "never materialize the whole file" sequential reading requires.
 - `readOutcomeById` binary-searches the mode's own small index (already sorted by id) for the matching entry,
   then does a single `fs.read` for exactly that byte range — never touching any other part of the outcomes file.
-  The record found there is verified to have exactly the `id`/`weight` the index entry promised before it's ever
-  returned; a mismatch (a corrupted byte range, an index and outcomes file that have drifted out of sync) throws
-  `OutcomeLibraryBundleInvariantError` rather than silently handing back the wrong outcome.
+  The record found there is verified to have exactly the `id`/`weight` the index entry promised, and to hash to
+  that entry's own `recordHash`, before it's ever returned; a mismatch (a corrupted byte range, a record tampered
+  in place, an index and outcomes file that have drifted out of sync) throws `OutcomeLibraryBundleInvariantError`
+  rather than silently handing back the wrong (or altered) outcome.
 - `drawOutcome` picks a winning outcome by walking exact integer cumulative weights against
   `randomSource.nextInt(totalWeight)` — the same algorithm
   [`WeightedOutcomeSelector`](pregenerated-runtime.md) uses, deliberately mirrored rather than called directly
@@ -161,6 +192,15 @@ materializing a `WeightedOutcomeLibrary`. Reading the index exactly once per dra
 `PreGeneratedSpinCommandHandler`'s own session-identity check relate to the *exact* bundle version a draw was
 made against — if the bundle is rebuilt between two calls, the very next draw's own atomic result reflects that
 immediately, rather than a separately-fetched, possibly stale identity.
+
+If the byte-range read underneath throws `OutcomeLibraryBundleInvariantError` (an id/weight/recordHash mismatch —
+the bundle changed between the index being read and the winning record's own byte range being read, or a record
+was tampered in place), `drawOutcome()` translates it into `PreGeneratedOutcomeSourceConflictError`, the general
+[`PreGeneratedOutcomeSourcing`](pregenerated-runtime.md#pregeneratedoutcomesourcing--decoupling-the-runtime-from-a-full-library)
+contract's own conflict type — `PreGeneratedSpinCommandHandler` catches specifically this error, and only this,
+right after drawing, turning it into a `"conflict"` result before any wallet transaction. Any other custom
+`PreGeneratedOutcomeSourcing` implementation can throw the same error for its own reasons and get the identical
+treatment.
 
 ## Streaming writer
 
@@ -216,7 +256,7 @@ opens an outcomes file's content, only an exact byte-layout check against the in
 | `outcome-library-bundle-mode-index-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | the same five outcomes, for a mode's own index file |
 | `outcome-library-bundle-mode-index-library-schema-version-unsupported` | the index's `librarySchemaVersion` isn't the currently-supported `WeightedOutcomeLibrary` schema version |
 | `outcome-library-bundle-mode-index-mode-name-mismatch` / `-library-id-mismatch` / `-hash-mismatch-with-manifest` / `-outcomes-file-mismatch` | the index and the manifest disagree on a mode's `modeName`/`libraryId`/`libraryHash`/`outcomesFile` |
-| `outcome-library-bundle-mode-index-entry-invalid` | an index entry isn't `{id: non-empty string, weight: positive safe integer, byteOffset/byteLength: non-negative safe integers}` |
+| `outcome-library-bundle-mode-index-entry-invalid` | an index entry isn't `{id: non-empty string, weight: positive safe integer, byteOffset/byteLength: non-negative safe integers, recordHash: "sha256:<64 hex chars>"}` |
 | `outcome-library-bundle-mode-index-duplicate-id` / `-entries-not-sorted` | the index's own entries have a duplicate id, or aren't canonically sorted by id |
 | `outcome-library-bundle-mode-index-count-mismatch` / `-total-weight-overflow` / `-total-weight-mismatch` | the index's own entry count/weight sum disagrees with its own (or the manifest's) recorded `outcomeCount`/`totalWeight`, or the weight sum itself overflows a safe integer |
 | `outcome-library-bundle-outcomes-file-missing` | a mode's outcomes file is absent |
@@ -226,21 +266,22 @@ opens an outcomes file's content, only an exact byte-layout check against the in
 
 **Deep (`{deep: true}`, opt-in, expensive)** — additionally, for every index entry, independently reads exactly
 that entry's own recorded byte range and verifies the record found there really is that entry's own `{id,
-weight}` (the same check `readOutcomeById`/`drawOutcome` themselves rely on — see `outcome-library-bundle-outcomes-byte-range-mismatch`
-below), **and** streams every outcomes line sequentially, matching each record against the index **by id**
-(never by byte offset or row position) to catch corruption a per-entry byte-range check alone can't (an id
-present in the file but absent from the index, or vice versa):
+weight}`, and hashes to that entry's own `recordHash` (the same check `readOutcomeById`/`drawOutcome` themselves
+rely on — see `outcome-library-bundle-outcomes-byte-range-mismatch` below), **and** streams every outcomes line
+sequentially, matching each record against the index **by id** (never by byte offset or row position) to catch
+corruption a per-entry byte-range check alone can't (an id present in the file but absent from the index, or vice
+versa):
 
 | Code | Meaning |
 |---|---|
-| `outcome-library-bundle-outcomes-byte-range-mismatch` | an index entry's own recorded byte range, read directly, decodes to a different id/weight than that entry promises — e.g. a reordered or shifted outcomes file where every id is still present *somewhere*, just not where its own index entry says |
+| `outcome-library-bundle-outcomes-byte-range-mismatch` | an index entry's own recorded byte range, read directly, decodes to a different id/weight than that entry promises, or hashes to something other than that entry's own `recordHash` — e.g. a reordered/shifted outcomes file where every id is still present *somewhere* just not where its own index entry says, or a record whose content was tampered in place with its id/weight left untouched |
 | `outcome-library-bundle-outcomes-line-invalid-json` / `-line-malformed` | a line isn't valid JSON at all, vs. parses but isn't `{id, weight, artifact}` — reported as two distinct codes rather than collapsed into one |
 | `outcome-library-bundle-outcomes-duplicate-id` | the same id appears twice in the outcomes file |
 | `outcome-library-bundle-outcomes-extra-id` / `-missing-id` | an id is in the outcomes file but not the index, or in the index but not the outcomes file — matched **by id**, never by row position |
 | `outcome-library-bundle-outcomes-weight-mismatch` | the same id's weight disagrees between the outcomes file and the index |
 | `outcome-library-bundle-outcomes-artifact-invalid` | an outcome's artifact fails `RoundArtifactValidator` — never a second definition of "valid" |
 | `outcome-library-bundle-outcomes-inconsistent-provenance` / `-inconsistent-bet-mode` / `-inconsistent-stake` | an outcome's game/config/pokieVersion, `betMode`, or `stake` disagrees with this mode's other outcomes |
-| `outcome-library-bundle-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash doesn't match `manifest.json`'s own top-level `game`/`configHash` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the manifest. Deliberately does not compare `manifest.pokieVersion` (which pokie *tool* version built this bundle file) against `artifact.provenance.pokieVersion` (which pokie version *computed* that artifact) — the two measure different things and are never required to match |
+| `outcome-library-bundle-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash/pokieVersion doesn't match `manifest.json`'s own top-level `game`/`configHash`/`artifactPokieVersion` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the manifest. Deliberately never compares against `manifest.pokieVersion` (which pokie *tool* version built this bundle file, a different, unrelated quantity from `artifactPokieVersion`) |
 | `outcome-library-bundle-outcomes-manifest-mode-mismatch` | this mode's outcomes' own betMode/stake doesn't match `manifest.json`'s own per-mode `betMode`/`stake` entry |
 | `outcome-library-bundle-outcomes-not-json-safe` | an outcome can't be re-canonicalized via `toCanonicalJson` (used to recompute the hash) |
 | `outcome-library-bundle-outcomes-count-mismatch` | the outcomes file's own valid-record count disagrees with the index's entry count |

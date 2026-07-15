@@ -6,9 +6,17 @@ import {
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
     OutcomeLibraryBundleWriter,
+    PreGeneratedOutcomeSourceConflictError,
     SeededWeightedOutcomeRandomSource,
+    WeightedOutcomeInput,
+    WeightedOutcomeRandomSource,
 } from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
+
+// Always resolves to the first (lowest-cumulative-weight, canonical-id-order) entry — entry "0" in this
+// fixture's own outcomes — so a test can deterministically target one specific record instead of depending on
+// a seed happening to land there.
+const alwaysFirstEntry: WeightedOutcomeRandomSource = {nextInt: () => 0};
 
 describe("OutcomeLibraryBundleOutcomeSource", () => {
     let outDir: string;
@@ -94,5 +102,58 @@ describe("OutcomeLibraryBundleOutcomeSource", () => {
         await source.drawOutcome(new SeededWeightedOutcomeRandomSource("seed-1"));
 
         expect(readModeIndexCalls).toBe(1);
+    });
+
+    // recordHash exists specifically to catch this: content tampered in place, with the id/weight the index
+    // already knew about left completely untouched — something the pre-recordHash id/weight-only check would
+    // have silently let through as long as the byte layout itself stayed intact.
+    it("throws PreGeneratedOutcomeSourceConflictError when a record's content changed since the index was written, even with the same id/weight", async () => {
+        const reader = new OutcomeLibraryBundleReader();
+        const index = await reader.readModeIndex(outDir, "base");
+        const entry = index.entries[0];
+        const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
+        const buffer = fs.readFileSync(outcomesPath);
+        const original = buffer.subarray(entry.byteOffset, entry.byteOffset + entry.byteLength).toString("utf-8");
+        const parsed = JSON.parse(original) as {id: string; weight: number; artifact: {roundId: string}};
+        const tamperedRoundId = "t".repeat(parsed.artifact.roundId.length);
+        const tampered = original.replace(JSON.stringify(parsed.artifact.roundId), JSON.stringify(tamperedRoundId));
+        expect(tampered.length).toBe(original.length);
+        expect(tampered).not.toBe(original);
+        buffer.write(tampered, entry.byteOffset, entry.byteLength, "utf-8");
+        fs.writeFileSync(outcomesPath, buffer);
+
+        const source = new OutcomeLibraryBundleOutcomeSource(outDir, "base");
+
+        await expect(source.drawOutcome(alwaysFirstEntry)).rejects.toThrow(PreGeneratedOutcomeSourceConflictError);
+    });
+
+    // The bundle-swap-mid-draw race: a caller holding onto an index it already read (e.g. cached briefly, or —
+    // as simulated here — served by a reader stub that always returns the same snapshot) must still be caught
+    // when the bundle underneath has since been rewritten with different content, even though nothing about
+    // *this* drawOutcome() call's own index read looks stale on its own.
+    it("throws PreGeneratedOutcomeSourceConflictError when a stale index snapshot is used against a bundle rewritten since it was read", async () => {
+        const realReader = new OutcomeLibraryBundleReader();
+        const staleIndex = await realReader.readModeIndex(outDir, "base");
+
+        // Rewrite the same bundleDir/mode with different outcomes (different weights, so the file's own byte
+        // layout shifts) — simulating a redeploy that regenerated the bundle out from under a caller still
+        // holding the old index.
+        const rewrittenModes = [buildOutcomeLibraryBundleModeInput("base", "base-lib")].map((mode) => ({
+            ...mode,
+            outcomes: (mode.outcomes as WeightedOutcomeInput<string>[]).map((outcome) => ({...outcome, weight: outcome.weight + 1})),
+        }));
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(rewrittenModes, outDir);
+
+        const staleReader: OutcomeLibraryBundleReading = {
+            readManifest: (bundleDir) => realReader.readManifest(bundleDir),
+            readModeIndex: () => Promise.resolve(staleIndex),
+            iterateModeOutcomes: (bundleDir, modeName) => realReader.iterateModeOutcomes(bundleDir, modeName),
+            readOutcomeById: (bundleDir, modeName, id) => realReader.readOutcomeById(bundleDir, modeName, id),
+            drawOutcome: (bundleDir, modeName, randomSource) => realReader.drawOutcome(bundleDir, modeName, randomSource),
+            readLibrary: (bundleDir, modeName) => realReader.readLibrary(bundleDir, modeName),
+        };
+        const source = new OutcomeLibraryBundleOutcomeSource(outDir, "base", staleReader);
+
+        await expect(source.drawOutcome(alwaysFirstEntry)).rejects.toThrow(PreGeneratedOutcomeSourceConflictError);
     });
 });

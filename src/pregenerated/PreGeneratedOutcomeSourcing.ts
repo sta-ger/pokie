@@ -16,5 +16,11 @@ export interface PreGeneratedOutcomeSourcing<T extends string | number = string>
     // draw was made against. "Atomic" here means: a caller comparing this result's libraryId/libraryHash against
     // some previously-recorded expectation is always comparing against the *same* version the outcome itself was
     // drawn from — never a separately-fetched, potentially staler or newer, snapshot.
+    //
+    // May throw PreGeneratedOutcomeSourceConflictError to signal a genuine source-level conflict — the
+    // underlying content this draw relied on no longer matches what the source itself last promised (e.g. a
+    // bundle rewritten mid-read) — which PreGeneratedSpinCommandHandler catches specifically and turns into a
+    // graceful "conflict" result, before the idempotency cache is consulted and before any wallet transaction.
+    // Any other thrown error propagates unchanged, as a genuine fault rather than an operational conflict.
     drawOutcome(randomSource: WeightedOutcomeRandomSource): Promise<PreGeneratedOutcomeSelection<T>>;
 }

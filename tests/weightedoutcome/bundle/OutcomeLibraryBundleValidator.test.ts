@@ -157,6 +157,20 @@ describe("OutcomeLibraryBundleValidator", () => {
             );
         });
 
+        it("reports outcome-library-bundle-mode-index-entry-invalid for a missing/malformed recordHash", async () => {
+            const index = readIndex(outDir, "base");
+            const {recordHash: _recordHash, ...entryWithoutRecordHash} = index.entries[0];
+            writeIndex(outDir, "base", {...index, entries: [entryWithoutRecordHash, ...index.entries.slice(1)]});
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-mode-index-entry-invalid"}),
+            );
+
+            writeIndex(outDir, "base", {...index, entries: [{...index.entries[0], recordHash: "not-a-sha256-hash"}, ...index.entries.slice(1)]});
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-mode-index-entry-invalid"}),
+            );
+        });
+
         it("reports outcome-library-bundle-mode-index-duplicate-id", async () => {
             const index = readIndex(outDir, "base");
             writeIndex(outDir, "base", {...index, entries: [index.entries[0], index.entries[0]]});
@@ -331,6 +345,24 @@ describe("OutcomeLibraryBundleValidator", () => {
             expect(issues).toContainEqual(expect.objectContaining({code: "outcome-library-bundle-outcomes-byte-range-mismatch"}));
         });
 
+        it("reports outcome-library-bundle-outcomes-byte-range-mismatch when a record's own content is tampered while its id/weight stay exactly the same (recordHash catches it)", async () => {
+            const index = readIndex(outDir, "base");
+            const entry = index.entries[0];
+            const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
+            const buffer = fs.readFileSync(outcomesPath);
+            const original = buffer.subarray(entry.byteOffset, entry.byteOffset + entry.byteLength).toString("utf-8");
+            const parsed = JSON.parse(original) as {artifact: {roundId: string}};
+            const tamperedRoundId = "t".repeat(parsed.artifact.roundId.length);
+            const tampered = original.replace(JSON.stringify(parsed.artifact.roundId), JSON.stringify(tamperedRoundId));
+            expect(tampered.length).toBe(original.length);
+            expect(tampered).not.toBe(original);
+            buffer.write(tampered, entry.byteOffset, entry.byteLength, "utf-8");
+            fs.writeFileSync(outcomesPath, buffer);
+
+            const issues = await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true});
+            expect(issues).toContainEqual(expect.objectContaining({code: "outcome-library-bundle-outcomes-byte-range-mismatch"}));
+        });
+
         it("reports outcome-library-bundle-outcomes-line-malformed for a line that's valid JSON but the wrong shape", async () => {
             overwriteLineBytes(1, '"not an object at all"');
             expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toContainEqual(
@@ -402,6 +434,21 @@ describe("OutcomeLibraryBundleValidator", () => {
             const manifest = readManifest(outDir);
             writeManifest(outDir, {...manifest, configHash: "sha256:tampered-config-hash"});
 
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-outcomes-manifest-provenance-mismatch"}),
+            );
+        });
+
+        it("reports outcome-library-bundle-outcomes-manifest-provenance-mismatch when manifest.json's own artifactPokieVersion doesn't match the outcomes (but never flags manifest.pokieVersion, a different quantity)", async () => {
+            const manifest = readManifest(outDir);
+
+            // Tampering the *tool* version (which pokie release built this bundle file) must never be treated
+            // as corruption — it's legitimately allowed to differ from the version that computed the outcomes.
+            const toolVersionOnly = {...manifest, pokieVersion: "999.0.0"};
+            writeManifest(outDir, toolVersionOnly);
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toEqual([]);
+
+            writeManifest(outDir, {...manifest, artifactPokieVersion: "999.0.0"});
             expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toContainEqual(
                 expect.objectContaining({code: "outcome-library-bundle-outcomes-manifest-provenance-mismatch"}),
             );

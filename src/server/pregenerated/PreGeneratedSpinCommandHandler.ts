@@ -1,7 +1,9 @@
 import crypto from "crypto";
 import {buildPreGeneratedRoundResult} from "../../pregenerated/buildPreGeneratedRoundResult.js";
 import {deriveDeterministicSeed} from "../../pregenerated/internal/deriveDeterministicSeed.js";
+import {PreGeneratedOutcomeSelectionValidator} from "../../pregenerated/PreGeneratedOutcomeSelectionValidator.js";
 import type {PreGeneratedOutcomeSelection} from "../../pregenerated/PreGeneratedOutcomeSelection.js";
+import {PreGeneratedOutcomeSourceConflictError} from "../../pregenerated/PreGeneratedOutcomeSourceConflictError.js";
 import type {PreGeneratedOutcomeSourcing} from "../../pregenerated/PreGeneratedOutcomeSourcing.js";
 import type {PreGeneratedRoundTransaction} from "../../pregenerated/PreGeneratedRoundTransaction.js";
 import {SeededWeightedOutcomeRandomSource} from "../../pregenerated/SeededWeightedOutcomeRandomSource.js";
@@ -64,6 +66,14 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // library/bundle content, or the same libraryId since regenerated with different weights — returns a
 // "conflict" result immediately, with nothing left to compensate.
 //
+// Two more checks run in that same pre-wallet window, immediately after the draw: a PreGeneratedOutcomeSourceConflictError
+// thrown by drawOutcome() itself (a source-level conflict — e.g. a bundle whose outcomes file changed between
+// the index being read and the winning record's own byte range being read, mid-draw, within that single call —
+// see OutcomeLibraryBundleOutcomeSource) is caught and turned into "conflict" the same way; and the drawn
+// selection is run through PreGeneratedOutcomeSelectionValidator, so a forged or malformed selection (a buggy or
+// malicious custom PreGeneratedOutcomeSourcing implementation is just as capable of producing one as a real
+// adapter drifting out of sync) is rejected before it ever reaches the wallet either.
+//
 // Optimistic locking: when sessionRepository additionally implements VersionedPreGeneratedSessionRepository
 // (see isVersionedPreGeneratedSessionRepository.ts — InMemoryPreGeneratedSessionRepository does), the
 // state loaded at the start of an attempt is saved back via saveVersioned() with the version it was read
@@ -84,6 +94,7 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
     private readonly wallet: TransactionalWalletPort;
     private readonly sessionRepository: PreGeneratedSessionRepository;
     private readonly idempotencyRepository: IdempotencyRepository<PreGeneratedSpinCommandResult<T>>;
+    private readonly selectionValidator = new PreGeneratedOutcomeSelectionValidator<T>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
     constructor(
@@ -123,16 +134,41 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
             return {status: "not-found", sessionId};
         }
 
-        // The draw always happens first — deterministic, no wallet/session side effects — so the identity
-        // check right below always compares against the *exact* version this same draw came from, never a
-        // separately, independently re-fetched one. Checked before consulting the idempotency cache: a cached
-        // result was necessarily computed against whatever the source reported at the time, which a stale
-        // cache entry has no way to reverify on its own. Nothing has been applied yet at this point (no wallet
-        // transaction), so there's nothing to compensate — unlike the storage-level version conflict below,
-        // which can only be discovered after settlement has already run.
+        // The draw always happens first — deterministic, no wallet/session side effects — so every check below
+        // always relates to the *exact* version this same draw came from, never a separately, independently
+        // re-fetched one. All of it runs before consulting the idempotency cache: a cached result was
+        // necessarily computed against whatever the source reported at the time, which a stale cache entry has
+        // no way to reverify on its own. Nothing has been applied yet at this point (no wallet transaction), so
+        // there's nothing to compensate — unlike the storage-level version conflict below, which can only be
+        // discovered after settlement has already run.
         const round = state.roundsPlayed + 1;
         const randomSource = new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(state.seed, round));
-        const selection = await this.outcomeSource.drawOutcome(randomSource);
+
+        let selection: PreGeneratedOutcomeSelection<T>;
+        try {
+            selection = await this.outcomeSource.drawOutcome(randomSource);
+        } catch (error) {
+            // A source-level conflict (see PreGeneratedOutcomeSourceConflictError's own doc comment) — the
+            // content this draw relied on no longer matches what the source itself last promised (e.g. a
+            // bundle rewritten mid-draw). Any other error is a genuine fault, not an operational conflict, and
+            // propagates unchanged.
+            if (error instanceof PreGeneratedOutcomeSourceConflictError) {
+                return {status: "conflict", sessionId, reason: error.message};
+            }
+            throw error;
+        }
+
+        // A forged/malformed selection — a buggy or malicious custom PreGeneratedOutcomeSourcing implementation
+        // is just as capable of producing one as a real adapter drifting out of sync — is treated the same way:
+        // this source cannot be trusted for this draw, so nothing proceeds.
+        const selectionIssues = this.selectionValidator.validate(selection);
+        if (selectionIssues.length > 0) {
+            return {
+                status: "conflict",
+                sessionId,
+                reason: `Session "${sessionId}"'s outcome source returned an invalid selection: ${selectionIssues.map((issue) => issue.code).join(", ")}.`,
+            };
+        }
 
         if (selection.libraryId !== state.libraryId || selection.libraryHash !== state.libraryHash) {
             return {
