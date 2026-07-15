@@ -214,6 +214,11 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             try {
                 this.renameDirectory(stalePath, outDir);
             } catch (restoreError) {
+                // Neither the publish nor the rollback succeeded — the temp directory is done for (removed
+                // best-effort, same as every other failure branch), but stalePath is deliberately left alone: it
+                // still holds the previous export's contents, byte for byte, and is the only way to recover
+                // manually (see the thrown error below).
+                this.removeBestEffort(tempDir);
                 throw new Error(
                     `Failed to publish the new Stake Engine export, and failed to restore the previous directory afterward: ` +
                         `${publishError instanceof Error ? publishError.message : String(publishError)}; restore failure: ` +

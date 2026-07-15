@@ -320,6 +320,56 @@ describe("StakeEngineExporter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
+    it("cleans up the temp directory but preserves the stale backup byte-for-byte when both the publish rename and the rollback rename fail", async () => {
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+        await exporter.exportToDirectory(modes, outDir);
+        const filesBefore = fs.readdirSync(outDir).sort();
+        const contentsBefore = new Map(filesBefore.map((name) => [name, fs.readFileSync(path.join(outDir, name))]));
+
+        // Call 1 (outDir -> stale) is real; call 2 (the publish rename) fails; call 3 (our own rollback attempt,
+        // stale -> outDir) fails too — the one truly unrecoverable-without-help case.
+        let renameCallCount = 0;
+        const failingRenameDirectory = (from: string, to: string): void => {
+            renameCallCount++;
+            if (renameCallCount === 1) {
+                fs.renameSync(from, to);
+                return;
+            }
+            throw new Error(renameCallCount === 2 ? "simulated publish failure" : "simulated rollback failure");
+        };
+        const failingExporter = new StakeEngineExporter<string>("1.3.0", undefined, undefined, undefined, undefined, failingRenameDirectory);
+
+        let thrown: Error | undefined;
+        try {
+            await failingExporter.exportToDirectory(modes, outDir);
+        } catch (error) {
+            thrown = error as Error;
+        }
+
+        expect(renameCallCount).toBe(3);
+        expect(thrown).toBeDefined();
+        expect(thrown?.message).toContain("simulated publish failure");
+        expect(thrown?.message).toContain("simulated rollback failure");
+
+        // outDir itself is gone (never restored) — that's exactly why this case needs manual recovery.
+        expect(fs.existsSync(outDir)).toBe(false);
+
+        // The temp directory must not linger...
+        const siblings = siblingLeftovers(outDir);
+        expect(siblings.filter((name) => name.includes(".tmp-"))).toEqual([]);
+
+        // ...but the stale backup must: it's the only remaining copy of the previous export, byte for byte, and
+        // the thrown error must say exactly where to find it.
+        const staleSiblings = siblings.filter((name) => name.includes(".stale-"));
+        expect(staleSiblings.length).toBe(1);
+        const stalePath = path.join(path.dirname(outDir), staleSiblings[0]);
+        expect(thrown?.message).toContain(stalePath);
+        expect(fs.readdirSync(stalePath).sort()).toEqual(filesBefore);
+        for (const name of filesBefore) {
+            expect(fs.readFileSync(path.join(stalePath, name))).toEqual(contentsBefore.get(name));
+        }
+    });
+
     it("surfaces a warning (not a failed export) when removing the stale backup fails after a successful publish", async () => {
         const exporter = new StakeEngineExporter<string>("1.3.0");
         await exporter.exportToDirectory(modes, outDir);
