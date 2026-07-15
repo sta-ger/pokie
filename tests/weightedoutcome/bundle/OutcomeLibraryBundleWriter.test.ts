@@ -1,8 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleModeInput, OutcomeLibraryBundleWriter} from "pokie";
-import {buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
+import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleModeInput, OutcomeLibraryBundleWriter, WeightedOutcomeInput} from "pokie";
+import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
 
 function siblingLeftovers(outDir: string): string[] {
     const parentDir = path.dirname(outDir);
@@ -26,16 +26,33 @@ describe("OutcomeLibraryBundleWriter", () => {
     });
 
     function modes(): OutcomeLibraryBundleModeInput[] {
-        return [
-            {modeName: "base", library: buildOutcomeLibraryBundleTestLibrary("base-lib")},
-            {modeName: "bonus", library: buildOutcomeLibraryBundleTestLibrary("bonus-lib")},
-        ];
+        return [buildOutcomeLibraryBundleModeInput("base", "base-lib"), buildOutcomeLibraryBundleModeInput("bonus", "bonus-lib")];
     }
 
-    it("writes manifest.json, one index_<mode>.json, and one streaming outcomes_<mode>.jsonl per mode", async () => {
-        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+    // A genuinely async source — forces a real await boundary between outcomes, the same way a caller streaming
+    // from a database cursor or a network response would, rather than a plain array that happens to also satisfy
+    // Iterable.
+    async function *asyncOutcomes<T>(items: Iterable<T>): AsyncGenerator<T> {
+        for (const item of items) {
+            await new Promise((resolve) => {
+                setTimeout(resolve, 0);
+            });
+            yield item;
+        }
+    }
 
-        const result = await writer.writeToDirectory(modes(), outDir);
+    it("writes manifest.json, one index_<mode>.json, and one streaming outcomes_<mode>.jsonl per mode, consuming a genuinely async source", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        const base = buildOutcomeLibraryBundleModeInput("base", "base-lib");
+        const bonus = buildOutcomeLibraryBundleModeInput("bonus", "bonus-lib");
+
+        const result = await writer.writeToDirectory(
+            [
+                {...base, outcomes: asyncOutcomes(base.outcomes as WeightedOutcomeInput[])},
+                {...bonus, outcomes: asyncOutcomes(bonus.outcomes as WeightedOutcomeInput[])},
+            ],
+            outDir,
+        );
 
         expect(result.issues).toEqual([]);
         expect(new Set(result.files)).toEqual(
@@ -68,13 +85,51 @@ describe("OutcomeLibraryBundleWriter", () => {
         }
     });
 
+    it("reports outcome-library-bundle-write-outcomes-not-sorted / -duplicate-outcome-id for a source that doesn't arrive in canonical order", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        const outOfOrder = buildOutcomeLibraryBundleModeInput("base", "lib");
+
+        const result = await writer.writeToDirectory(
+            [{...outOfOrder, outcomes: [outOfOrder.outcomes[1], outOfOrder.outcomes[0], outOfOrder.outcomes[0]]}],
+            outDir,
+        );
+
+        expect(result.issues.map((issue) => issue.code)).toEqual(
+            expect.arrayContaining(["outcome-library-bundle-write-outcomes-not-sorted", "outcome-library-bundle-write-duplicate-outcome-id"]),
+        );
+        expect(fs.existsSync(outDir)).toBe(false);
+    });
+
+    it("reports outcome-library-bundle-write-weight-invalid for a non-positive-safe-integer weight", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        const mode = buildOutcomeLibraryBundleModeInput("base", "lib");
+        const outcomes = mode.outcomes as WeightedOutcomeInput[];
+
+        const result = await writer.writeToDirectory([{...mode, outcomes: [{...outcomes[0], weight: 1.5}, ...outcomes.slice(1)]}], outDir);
+
+        expect(result.issues.some((issue) => issue.code === "outcome-library-bundle-write-weight-invalid")).toBe(true);
+        expect(fs.existsSync(outDir)).toBe(false);
+    });
+
+    it("reports outcome-library-bundle-write-total-weight-overflow for individually-valid weights whose sum overflows a safe integer", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        const mode = buildOutcomeLibraryBundleModeInput("base", "lib");
+        const outcomes = mode.outcomes as WeightedOutcomeInput[];
+        const hugeWeight = Number.MAX_SAFE_INTEGER;
+
+        const result = await writer.writeToDirectory(
+            [{...mode, outcomes: [{...outcomes[0], weight: hugeWeight}, {...outcomes[1], weight: hugeWeight}, ...outcomes.slice(2)]}],
+            outDir,
+        );
+
+        expect(result.issues.some((issue) => issue.code === "outcome-library-bundle-write-total-weight-overflow")).toBe(true);
+        expect(fs.existsSync(outDir)).toBe(false);
+    });
+
     it("reports outcome-library-bundle-duplicate-mode-name / -mode-name-case-collision and writes nothing", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
-        const duplicate = [{modeName: "base", library: buildOutcomeLibraryBundleTestLibrary("a")}, {modeName: "base", library: buildOutcomeLibraryBundleTestLibrary("b")}];
-        const caseCollision = [
-            {modeName: "base", library: buildOutcomeLibraryBundleTestLibrary("a")},
-            {modeName: "BASE", library: buildOutcomeLibraryBundleTestLibrary("b")},
-        ];
+        const duplicate = [buildOutcomeLibraryBundleModeInput("base", "a"), buildOutcomeLibraryBundleModeInput("base", "b")];
+        const caseCollision = [buildOutcomeLibraryBundleModeInput("base", "a"), {...buildOutcomeLibraryBundleModeInput("bonus", "b"), modeName: "BASE"}];
 
         const duplicateResult = await writer.writeToDirectory(duplicate, outDir);
         expect(duplicateResult.issues.some((issue) => issue.code === "outcome-library-bundle-duplicate-mode-name")).toBe(true);
@@ -86,7 +141,7 @@ describe("OutcomeLibraryBundleWriter", () => {
         expect(fs.existsSync(outDir)).toBe(false);
     });
 
-    it("leaves no temp/stale sibling directories behind after a successful write or re-write", async () => {
+    it("leaves no temp/stale/staging sibling directories behind after a successful write or re-write", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
 
         await writer.writeToDirectory([modes()[0]], outDir);
@@ -136,10 +191,15 @@ describe("OutcomeLibraryBundleWriter", () => {
         await writer.writeToDirectory(modes(), outDir);
         const filesBefore = fs.readdirSync(outDir).sort();
 
+        // For a single-mode re-write, writeFilesIntoTempDir renames exactly 3 staged files (index_base.json,
+        // outcomes_base.jsonl, manifest.json) into publishDirectoryAtomically's own temp dir *before* that
+        // helper's own atomic swap even begins — so the swap's own two renames (outDir -> stale, temp -> outDir)
+        // are calls #4 and #5, not #1 and #2. Failing call #5 (the actual publish) exercises the "restore the
+        // old directory" path; the restore itself is call #6.
         let renameCallCount = 0;
         const failingRenameDirectory = (from: string, to: string): void => {
             renameCallCount++;
-            if (renameCallCount === 2) {
+            if (renameCallCount === 5) {
                 throw new Error("simulated publish failure");
             }
             fs.renameSync(from, to);
@@ -148,7 +208,7 @@ describe("OutcomeLibraryBundleWriter", () => {
 
         await expect(failingWriter.writeToDirectory([modes()[0]], outDir)).rejects.toThrow("simulated publish failure");
 
-        expect(renameCallCount).toBe(3);
+        expect(renameCallCount).toBe(6);
         expect(fs.readdirSync(outDir).sort()).toEqual(filesBefore);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });

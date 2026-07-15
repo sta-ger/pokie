@@ -2,7 +2,6 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-    OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriter,
     SeededWeightedOutcomeRandomSource,
@@ -10,7 +9,7 @@ import {
     WeightedOutcomeSelector,
     computeWeightedOutcomeLibraryHash,
 } from "pokie";
-import {buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
 
 describe("OutcomeLibraryBundleReader", () => {
     let outDir: string;
@@ -20,7 +19,7 @@ describe("OutcomeLibraryBundleReader", () => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-reader-test-"));
         fs.rmdirSync(outDir);
         library = buildOutcomeLibraryBundleTestLibrary("base-lib");
-        const modes: OutcomeLibraryBundleModeInput[] = [{modeName: "base", library}];
+        const modes = [buildOutcomeLibraryBundleModeInput("base", "base-lib")];
         await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes, outDir);
     });
 

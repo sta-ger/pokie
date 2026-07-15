@@ -634,7 +634,21 @@ pokie stakeengine export stake-config.json --out stakeengine
 }
 ```
 
-`libraryPath` entries resolve relative to `<config.json>`'s own directory. Options:
+`libraryPath` entries resolve relative to `<config.json>`'s own directory.
+
+A mode entry can load from a canonical [Outcome Library Bundle](outcome-library-bundle.md) instead — replace
+`libraryPath` with `bundleDir` (and optionally `bundleModeName`, which defaults to `modeName`):
+
+```json
+{"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
+```
+
+Exactly one of `libraryPath`/`bundleDir` is required per mode. When **every** mode in the config uses
+`bundleDir`, the export streams each mode's outcomes directly from its bundle — never materializing a
+`WeightedOutcomeLibrary`, never calling `readLibrary()`. Mixing even one `libraryPath` mode into the same export
+falls back to the existing (non-streaming) path; both produce byte-identical output.
+
+Options:
 
 - `--out <dir>` — where to write the export (default: `<config.json>`'s directory plus `/stakeengine`).
 
@@ -696,24 +710,33 @@ reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the 
 ## `pokie outcomelibrary build <config.json>`
 
 Builds a canonical [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
-small per-mode index, and one streaming JSONL outcomes file per mode — from one or more plain
-`WeightedOutcomeLibrary` JSON files. This is the one canonical bundle format both the pre-generated runtime and
-`pokie stakeengine export` (via a mode's `bundleDir`/`bundleModeName`) load from.
+small per-mode index, and one streaming JSONL outcomes file per mode — streaming each mode's outcomes straight to
+disk one at a time, never materializing a full `WeightedOutcomeLibrary` in memory to do it. This is the one
+canonical bundle format both the pre-generated runtime and `pokie stakeengine export` (via a mode's
+`bundleDir`/`bundleModeName`) load from.
 
 ```
 pokie outcomelibrary build outcomelibrary-config.json --out bundle
 ```
 
-`<config.json>`:
+`<config.json>` lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file (fully
+loaded into memory) or a streaming JSONL file of outcomes for a mode too large to hold in memory at once:
 
 ```json
 {
     "modes": [
         {"modeName": "base", "libraryPath": "./libraries/base.json"},
-        {"modeName": "bonus", "libraryPath": "./libraries/bonus.json"}
+        {"modeName": "bonus", "outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}
     ]
 }
 ```
+
+- `libraryPath` — a plain `WeightedOutcomeLibrary` JSON file, resolved relative to `<config.json>`.
+- `outcomesPath` — a JSONL file of outcomes, one canonical `{"id", "weight", "artifact"}` record per line, **not**
+  wrapped in a library object, resolved relative to `<config.json>` and streamed line by line. Requires a string
+  `libraryId` alongside it (there's no wrapping library object to read one from); `schemaVersion` is optional.
+
+Exactly one of `libraryPath`/`outcomesPath` is required per mode.
 
 Options:
 
@@ -722,7 +745,7 @@ Options:
 Published atomically as a whole directory (temp-dir-then-swap, same discipline as `stakeengine export`): a write
 failure never leaves partial files behind and never alters an existing `--out` in place, and a mode dropped from
 the source no longer leaves a stale `index_<name>.json`/`outcomes_<name>.jsonl` behind. On any error-level
-`ValidationIssue` (a malformed library, a duplicate/case-colliding mode name), nothing is written and the exit
+`ValidationIssue` (an invalid outcome, a duplicate/case-colliding mode name), nothing is written and the exit
 code is non-zero.
 
 ## `pokie outcomelibrary validate <bundleDir>`

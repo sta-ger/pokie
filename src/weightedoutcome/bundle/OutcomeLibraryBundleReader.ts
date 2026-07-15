@@ -5,7 +5,7 @@ import {buildWeightedOutcomeLibrary} from "../buildWeightedOutcomeLibrary.js";
 import type {WeightedOutcome} from "../WeightedOutcome.js";
 import type {WeightedOutcomeLibrary} from "../WeightedOutcomeLibrary.js";
 import {iterateOutcomesJsonl} from "./internal/iterateOutcomesJsonl.js";
-import {findIndexEntryById, readOutcomeAtByteRange} from "./internal/readOutcomeAtByteRange.js";
+import {findIndexEntryById, readAndVerifyOutcomeAtByteRange} from "./internal/readOutcomeAtByteRange.js";
 import {selectIndexEntryByCumulativeWeight} from "./internal/selectIndexEntryByCumulativeWeight.js";
 import {OutcomeLibraryBundleInvariantError} from "./OutcomeLibraryBundleInvariantError.js";
 import type {OutcomeLibraryBundleManifest} from "./OutcomeLibraryBundleManifest.js";
@@ -64,24 +64,14 @@ export class OutcomeLibraryBundleReader<T extends string | number = string> impl
             return undefined;
         }
         const outcomesPath = path.join(bundleDir, index.outcomesFile);
-        const value = readOutcomeAtByteRange(outcomesPath, entry);
-        if (!isWeightedOutcomeShape(value)) {
-            throw new OutcomeLibraryBundleInvariantError(`mode "${modeName}": outcome "${id}" at its own recorded byte range is not {id, weight, artifact}.`);
-        }
-        return value as unknown as WeightedOutcome<T>;
+        return readAndVerifyOutcomeAtByteRange<T>(modeName, outcomesPath, entry);
     }
 
     public async drawOutcome(bundleDir: string, modeName: string, randomSource: WeightedOutcomeRandomSource): Promise<WeightedOutcome<T>> {
         const index = await this.readModeIndex(bundleDir, modeName);
         const winningEntry = selectIndexEntryByCumulativeWeight(modeName, index.entries, randomSource);
         const outcomesPath = path.join(bundleDir, index.outcomesFile);
-        const value = readOutcomeAtByteRange(outcomesPath, winningEntry);
-        if (!isWeightedOutcomeShape(value)) {
-            throw new OutcomeLibraryBundleInvariantError(
-                `mode "${modeName}": drawn outcome "${winningEntry.id}" at its own recorded byte range is not {id, weight, artifact}.`,
-            );
-        }
-        return value as unknown as WeightedOutcome<T>;
+        return readAndVerifyOutcomeAtByteRange<T>(modeName, outcomesPath, winningEntry);
     }
 
     public async readLibrary(bundleDir: string, modeName: string): Promise<WeightedOutcomeLibrary<T>> {

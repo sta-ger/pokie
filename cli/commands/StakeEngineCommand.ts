@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import {
     loadWeightedOutcomeLibraryFromBundle,
+    StakeEngineBundleStreamingExporter,
+    StakeEngineBundleStreamingExporting,
     StakeEngineExporter,
     StakeEngineExporting,
     StakeEngineExportModeInput,
@@ -48,6 +50,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly loadJson: (filePath: string) => unknown;
     private readonly importWriter: StakeEngineImportWriting;
     private readonly loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary>;
+    private readonly bundleStreamingExporter: StakeEngineBundleStreamingExporting;
 
     constructor(
         pokieVersion: string,
@@ -57,12 +60,14 @@ export class StakeEngineCommand implements CliCommandHandling {
         importWriter: StakeEngineImportWriting = new StakeEngineImportWriter(),
         loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary> = (bundleDir, modeName) =>
             loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName),
+        bundleStreamingExporter: StakeEngineBundleStreamingExporting = new StakeEngineBundleStreamingExporter(pokieVersion),
     ) {
         this.exporter = exporter;
         this.importer = importer;
         this.loadJson = loadJson;
         this.importWriter = importWriter;
         this.loadLibraryFromBundle = loadLibraryFromBundle;
+        this.bundleStreamingExporter = bundleStreamingExporter;
     }
 
     public getName(): string {
@@ -93,18 +98,38 @@ export class StakeEngineCommand implements CliCommandHandling {
         const descriptor = this.loadDescriptor(options.configPath);
         const configDir = path.dirname(options.configPath);
 
-        const modes: StakeEngineExportModeInput[] = await Promise.all(
-            descriptor.modes.map(async (entry) => ({
-                modeName: entry.modeName,
-                cost: entry.cost,
-                library:
-                    entry.libraryPath !== undefined
-                        ? (this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary)
-                        : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
-            })),
-        );
+        // When every mode in this run comes from a canonical outcome-library bundle, stream each one directly
+        // from its bundle (see StakeEngineBundleStreamingExporter) — never materializing a WeightedOutcomeLibrary,
+        // never calling readLibrary(). Mixing in even one "libraryPath" mode falls back to the existing,
+        // already-stabilized path (StakeEngineExporter), which needs every mode's library fully in memory anyway
+        // — a deliberate scope boundary, not an oversight: it keeps this CLI command from having to reconcile
+        // two different per-mode construction mechanisms into one combined index.json/manifest.
+        const allBundleSourced = descriptor.modes.every((entry) => entry.bundleDir !== undefined);
 
-        const result = await this.exporter.exportToDirectory(modes, options.outDir);
+        const result = allBundleSourced
+            ? await this.bundleStreamingExporter.exportToDirectory(
+                descriptor.modes.map((entry) => ({
+                    modeName: entry.modeName,
+                    cost: entry.cost,
+                    bundleDir: path.resolve(configDir, entry.bundleDir as string),
+                    bundleModeName: entry.bundleModeName ?? entry.modeName,
+                })),
+                options.outDir,
+            )
+            : await this.exporter.exportToDirectory(
+                await Promise.all(
+                    descriptor.modes.map(async (entry): Promise<StakeEngineExportModeInput> => ({
+                        modeName: entry.modeName,
+                        cost: entry.cost,
+                        library:
+                            entry.libraryPath !== undefined
+                                ? (this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary)
+                                : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                    })),
+                ),
+                options.outDir,
+            );
+
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 

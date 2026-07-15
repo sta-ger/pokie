@@ -393,6 +393,9 @@ export * from "./simulation/playstrategy/PlayUntilAnyLosingCombinationStrategy.j
 export * from "./simulation/playstrategy/PlayUntilAnyWinStrategy.js";
 export * from "./simulation/playstrategy/PlayUntilSymbolWinStrategy.js";
 export * from "./stakeengine/StakeEngineBookLine.js";
+export * from "./stakeengine/StakeEngineBundleModeInput.js";
+export * from "./stakeengine/StakeEngineBundleStreamingExporter.js";
+export * from "./stakeengine/StakeEngineBundleStreamingExporting.js";
 export * from "./stakeengine/StakeEngineEvent.js";
 export * from "./stakeengine/StakeEngineExportInvariantError.js";
 export * from "./stakeengine/StakeEngineExportModeInput.js";
@@ -436,6 +439,8 @@ export * from "./weightedoutcome/bundle/OutcomeLibraryBundleInvariantError.js";
 export * from "./weightedoutcome/bundle/OutcomeLibraryBundleManifest.js";
 export * from "./weightedoutcome/bundle/OutcomeLibraryBundleModeIndex.js";
 export * from "./weightedoutcome/bundle/OutcomeLibraryBundleModeInput.js";
+export * from "./weightedoutcome/bundle/OutcomeLibraryBundleOutcomeSource.js";
+export * from "./weightedoutcome/bundle/OutcomeLibraryBundleOutcomeSourcing.js";
 export * from "./weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 export * from "./weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
 export * from "./weightedoutcome/bundle/OutcomeLibraryBundleValidating.js";

@@ -100,8 +100,8 @@ describe("OutcomeLibraryCommand", () => {
             expect(exitCode).toBe(0);
             expect(writer.calledWith?.outDir).toBe("/project/outcomelibrary");
             expect(writer.calledWith?.modes).toEqual([
-                {modeName: "base", library: BASE_LIBRARY},
-                {modeName: "bonus", library: BONUS_LIBRARY},
+                {modeName: "base", libraryId: BASE_LIBRARY.libraryId, schemaVersion: BASE_LIBRARY.schemaVersion, outcomes: BASE_LIBRARY.outcomes},
+                {modeName: "bonus", libraryId: BONUS_LIBRARY.libraryId, schemaVersion: BONUS_LIBRARY.schemaVersion, outcomes: BONUS_LIBRARY.outcomes},
             ]);
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("Built an outcome library bundle");
@@ -195,7 +195,47 @@ describe("OutcomeLibraryCommand", () => {
             const loadJson = createStubJsonStore({[CONFIG_PATH]: {modes: [{modeName: "base"}]}});
             const command = new OutcomeLibraryCommand("1.3.0", createStubWriter(successResult), undefined, loadJson);
 
-            await expect(command.run(["build", CONFIG_PATH])).rejects.toThrow(/modes\[0\] must be/);
+            await expect(command.run(["build", CONFIG_PATH])).rejects.toThrow(/must specify exactly one of "libraryPath" or "outcomesPath"/);
+        });
+
+        it("streams outcomes from an outcomesPath file, using the entry's libraryId/schemaVersion, resolved relative to the config file", async () => {
+            const writer = createStubWriter(successResult);
+            const loadJson = createStubJsonStore({
+                [CONFIG_PATH]: {
+                    modes: [{modeName: "bonus", outcomesPath: "./outcomes-bonus.jsonl", libraryId: "bonus-lib", schemaVersion: 2}],
+                },
+            });
+            const streamedOutcomes = [{id: "0", weight: 1, artifact: {}}];
+            const streamOutcomes = jest.fn(async function *() {
+                for (const outcome of streamedOutcomes) {
+                    yield outcome;
+                }
+            });
+            const command = new OutcomeLibraryCommand("1.3.0", writer, undefined, loadJson, streamOutcomes as never);
+
+            const exitCode = await command.run(["build", CONFIG_PATH]);
+
+            expect(exitCode).toBe(0);
+            expect(streamOutcomes).toHaveBeenCalledWith("/project/outcomes-bonus.jsonl");
+            expect(writer.calledWith?.modes).toHaveLength(1);
+            const mode = writer.calledWith?.modes[0];
+            expect(mode?.modeName).toBe("bonus");
+            expect(mode?.libraryId).toBe("bonus-lib");
+            expect(mode?.schemaVersion).toBe(2);
+            const collected: unknown[] = [];
+            for await (const outcome of mode?.outcomes as AsyncGenerator<unknown>) {
+                collected.push(outcome);
+            }
+            expect(collected).toEqual(streamedOutcomes);
+        });
+
+        it("throws a descriptive error when outcomesPath is used without a string libraryId", async () => {
+            const loadJson = createStubJsonStore({
+                [CONFIG_PATH]: {modes: [{modeName: "bonus", outcomesPath: "./outcomes-bonus.jsonl"}]},
+            });
+            const command = new OutcomeLibraryCommand("1.3.0", createStubWriter(successResult), undefined, loadJson);
+
+            await expect(command.run(["build", CONFIG_PATH])).rejects.toThrow(/requires a string "libraryId"/);
         });
     });
 

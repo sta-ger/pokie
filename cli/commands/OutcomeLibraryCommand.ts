@@ -7,22 +7,34 @@ import {
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleWriting,
     ValidationIssue,
+    WeightedOutcomeInput,
     WeightedOutcomeLibrary,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {streamJsonlOutcomes} from "./internal/streamJsonlOutcomes.js";
 
 const USAGE = "Usage: pokie outcomelibrary build <config.json> [--out <dir>]\n   or: pokie outcomelibrary validate <bundleDir> [--deep]";
 const BUILD_USAGE = "Usage: pokie outcomelibrary build <config.json> [--out <dir>]";
 const VALIDATE_USAGE = "Usage: pokie outcomelibrary validate <bundleDir> [--deep]";
 const CONFIG_HINT =
-    '<config.json> lists one WeightedOutcomeLibrary JSON file per mode: ' +
-    '{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}, ...]} — ' +
-    "see docs/outcome-library-bundle.md for the format.";
+    '<config.json> lists one outcome source per mode, either a plain WeightedOutcomeLibrary JSON file — ' +
+    '{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}, ...]} — which is fully loaded into ' +
+    'memory, or a streaming JSONL file of outcomes (one canonical {"id","weight","artifact"} record per line, ' +
+    'not wrapped in a library object) for a mode too large to hold in memory at once — {"modeName": "bonus", ' +
+    '"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"} ("libraryId" is required for this form, ' +
+    'since there\'s no wrapping library object to read it from; "schemaVersion" is optional). Exactly one of ' +
+    '"libraryPath"/"outcomesPath" is required per mode — see docs/outcome-library-bundle.md for the format.';
 
 type BuildOptions = {configPath: string; outDir: string};
 type ValidateOptions = {bundleDir: string; deep: boolean};
 
-type BuildDescriptorModeEntry = {modeName: string; libraryPath: string};
+type BuildDescriptorModeEntry = {
+    modeName: string;
+    libraryPath?: string;
+    outcomesPath?: string;
+    libraryId?: string;
+    schemaVersion?: number;
+};
 type BuildDescriptor = {modes: BuildDescriptorModeEntry[]};
 
 // Two CLI verbs ("pokie outcomelibrary build"/"pokie outcomelibrary validate") sharing one command, the same
@@ -32,16 +44,19 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private readonly writer: OutcomeLibraryBundleWriting;
     private readonly validator: OutcomeLibraryBundleValidating;
     private readonly loadJson: (filePath: string) => unknown;
+    private readonly streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput>;
 
     constructor(
         pokieVersion: string,
         writer: OutcomeLibraryBundleWriting = new OutcomeLibraryBundleWriter(pokieVersion),
         validator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
+        streamOutcomes: (filePath: string) => AsyncGenerator<WeightedOutcomeInput> = streamJsonlOutcomes,
     ) {
         this.writer = writer;
         this.validator = validator;
         this.loadJson = loadJson;
+        this.streamOutcomes = streamOutcomes;
     }
 
     public getName(): string {
@@ -72,10 +87,19 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         const descriptor = this.loadDescriptor(options.configPath);
         const configDir = path.dirname(options.configPath);
 
-        const modes: OutcomeLibraryBundleModeInput[] = descriptor.modes.map((entry) => ({
-            modeName: entry.modeName,
-            library: this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary,
-        }));
+        const modes: OutcomeLibraryBundleModeInput[] = descriptor.modes.map((entry) => {
+            if (entry.libraryPath !== undefined) {
+                const library = this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary;
+                return {modeName: entry.modeName, libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes};
+            }
+            return {
+                modeName: entry.modeName,
+                // Safe: loadDescriptor already requires libraryId whenever outcomesPath is present.
+                libraryId: entry.libraryId as string,
+                schemaVersion: entry.schemaVersion,
+                outcomes: this.streamOutcomes(path.resolve(configDir, entry.outcomesPath as string)),
+            };
+        });
 
         const result = await this.writer.writeToDirectory(modes, options.outDir);
         const errors = result.issues.filter((issue) => issue.severity === "error");
@@ -131,15 +155,28 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }
 
         const modes = (parsed as {modes: unknown[]}).modes.map((entry, position) => {
-            if (
-                typeof entry !== "object" ||
-                entry === null ||
-                typeof (entry as {modeName?: unknown}).modeName !== "string" ||
-                typeof (entry as {libraryPath?: unknown}).libraryPath !== "string"
-            ) {
-                throw new Error(`"${configPath}": modes[${position}] must be {"modeName": string, "libraryPath": string}. ${CONFIG_HINT}`);
+            if (typeof entry !== "object" || entry === null || typeof (entry as {modeName?: unknown}).modeName !== "string") {
+                throw new Error(`"${configPath}": modes[${position}] must be an object with a string "modeName". ${CONFIG_HINT}`);
             }
-            return entry as BuildDescriptorModeEntry;
+            const e = entry as {modeName: string; libraryPath?: unknown; outcomesPath?: unknown; libraryId?: unknown; schemaVersion?: unknown};
+
+            const hasLibraryPath = typeof e.libraryPath === "string";
+            const hasOutcomesPath = typeof e.outcomesPath === "string";
+            if (hasLibraryPath === hasOutcomesPath) {
+                throw new Error(`"${configPath}": modes[${position}] must specify exactly one of "libraryPath" or "outcomesPath". ${CONFIG_HINT}`);
+            }
+            if (hasOutcomesPath && typeof e.libraryId !== "string") {
+                throw new Error(`"${configPath}": modes[${position}] uses "outcomesPath" and so requires a string "libraryId". ${CONFIG_HINT}`);
+            }
+            if (e.schemaVersion !== undefined && typeof e.schemaVersion !== "number") {
+                throw new Error(`"${configPath}": modes[${position}]'s "schemaVersion" must be a number when present. ${CONFIG_HINT}`);
+            }
+
+            return {
+                modeName: e.modeName,
+                ...(hasLibraryPath ? {libraryPath: e.libraryPath as string} : {outcomesPath: e.outcomesPath as string, libraryId: e.libraryId as string}),
+                ...(e.schemaVersion !== undefined ? {schemaVersion: e.schemaVersion as number} : {}),
+            };
         });
 
         return {modes};

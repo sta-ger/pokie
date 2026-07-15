@@ -218,8 +218,14 @@ to `modeName`):
 {"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
 ```
 
-Exactly one of `libraryPath`/`bundleDir` is required per mode; both loading paths converge on the same
-`StakeEngineExportModeInput[]`, so the rest of the export behaves identically either way.
+Exactly one of `libraryPath`/`bundleDir` is required per mode. When **every** mode in the config uses
+`bundleDir`, the export streams each mode's outcomes directly from its bundle via
+`StakeEngineBundleStreamingExporter` — reading `libraryHash`/`libraryId`/`outcomeCount` straight from the
+bundle's own index and never calling `readLibrary()`, never materializing a `WeightedOutcomeLibrary`. Mixing even
+one `libraryPath` mode into the same export falls back to the existing `StakeEngineExporter` path (loading every
+`bundleDir` mode's library fully via `loadWeightedOutcomeLibraryFromBundle` first) — both paths produce
+byte-identical `index.json`/CSV/books output, so which one runs is purely a performance/memory concern, never a
+behavioral one.
 
 ## Programmatic usage
 
@@ -241,3 +247,30 @@ if (result.issues.some((issue) => issue.severity === "error")) {
     console.log(result.files); // every file this run wrote, relative to "./stakeengine"
 }
 ```
+
+### Streaming directly from a bundle
+
+`StakeEngineBundleStreamingExporter` implements the same `StakeEngineExportResult`-returning shape but takes a
+bundle reference per mode instead of a `WeightedOutcomeLibrary`, and streams each mode's outcomes straight from
+the bundle's own `iterateModeOutcomes` into that mode's CSV/books — never buffering a whole mode's CSV/books
+content in memory (the books file streams through Node's native zstd `Transform` stream) and never calling
+`readLibrary()`:
+
+```ts
+import {StakeEngineBundleStreamingExporter} from "pokie";
+
+const exporter = new StakeEngineBundleStreamingExporter(pokieVersion);
+const result = await exporter.exportToDirectory(
+    [
+        {modeName: "base", cost: 1, bundleDir: "./bundle", bundleModeName: "base"},
+        {modeName: "bonus", cost: 100, bundleDir: "./bundle", bundleModeName: "bonus"},
+    ],
+    "./stakeengine",
+);
+```
+
+It reuses the same low-level pieces as `StakeEngineExporter` (`convertRatioToStakeUnits`,
+`parseStakeEngineOutcomeId`, `StakeEngineRoundEventsProjector`, the atomic-publish machinery) and the same
+mode-name/cost validation rules, but is a deliberately separate class rather than a variant grafted onto
+`StakeEngineExporter` — that class's own array-based "every mode's library fully in memory" contract is already
+stabilized and untouched by this streaming path.

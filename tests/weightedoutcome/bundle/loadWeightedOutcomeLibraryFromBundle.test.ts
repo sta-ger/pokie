@@ -4,14 +4,13 @@ import path from "path";
 import {
     InMemoryPreGeneratedSessionRepository,
     InMemoryWallet,
-    OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleWriter,
     PreGeneratedSpinCommandHandler,
     WeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
     loadWeightedOutcomeLibraryFromBundle,
 } from "pokie";
-import {buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
 
 describe("loadWeightedOutcomeLibraryFromBundle", () => {
     let outDir: string;
@@ -21,7 +20,7 @@ describe("loadWeightedOutcomeLibraryFromBundle", () => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-loader-test-"));
         fs.rmdirSync(outDir);
         library = buildOutcomeLibraryBundleTestLibrary("base-lib");
-        const modes: OutcomeLibraryBundleModeInput[] = [{modeName: "base", library}];
+        const modes = [buildOutcomeLibraryBundleModeInput("base", "base-lib")];
         await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes, outDir);
     });
 

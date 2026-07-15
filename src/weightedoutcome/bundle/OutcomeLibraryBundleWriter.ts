@@ -1,43 +1,62 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {publishDirectoryAtomically} from "../../stakeengine/internal/publishDirectoryAtomically.js";
-import {computeWeightedOutcomeLibraryHash} from "../computeWeightedOutcomeLibraryHash.js";
-import type {WeightedOutcome} from "../WeightedOutcome.js";
-import {WeightedOutcomeLibraryAnalyzer} from "../WeightedOutcomeLibraryAnalyzer.js";
-import {writeOutcomesJsonl} from "./internal/writeOutcomesJsonl.js";
+import type {ValidationIssue} from "../../validation/ValidationIssue.js";
+import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
+import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
+import {streamModeOutcomesToTempFile} from "./internal/streamModeOutcomesToTempFile.js";
 import {OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION, type OutcomeLibraryBundleManifest, type OutcomeLibraryBundleManifestModeEntry} from "./OutcomeLibraryBundleManifest.js";
-import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryBundleIndexEntry, type OutcomeLibraryBundleModeIndex} from "./OutcomeLibraryBundleModeIndex.js";
+import {OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION, type OutcomeLibraryBundleModeIndex} from "./OutcomeLibraryBundleModeIndex.js";
 import type {OutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleModeInput.js";
-import {OutcomeLibraryBundleInvariantError} from "./OutcomeLibraryBundleInvariantError.js";
 import type {OutcomeLibraryBundleWriteResult} from "./OutcomeLibraryBundleWriteResult.js";
 import type {OutcomeLibraryBundleWriteValidating} from "./OutcomeLibraryBundleWriteValidating.js";
 import {OutcomeLibraryBundleWriteValidator} from "./OutcomeLibraryBundleWriteValidator.js";
 import type {OutcomeLibraryBundleWriting} from "./OutcomeLibraryBundleWriting.js";
 
-type BuiltMode<T extends string | number = string> = {
-    readonly modeName: string;
-    readonly outcomes: readonly WeightedOutcome<T>[];
-    readonly librarySchemaVersion: number;
-    readonly manifestEntry: OutcomeLibraryBundleManifestModeEntry;
+// A single mode's provenance, read off its own first outcome — used to check every mode written into one
+// bundle shares the same underlying game/config/pokieVersion (betMode/stake are expected to differ per mode).
+// Mirrors StakeEngineExportValidator's own ModeProvenanceKey exactly. Only known once a mode's stream has
+// actually started producing outcomes, so (unlike mode-name validation) this can't be checked upfront.
+type ModeProvenanceKey = {
+    readonly gameId: string;
+    readonly gameVersion: string;
+    readonly configHash: string | undefined;
+    readonly pokieVersion: string;
 };
 
-// Persists one or more WeightedOutcomeLibrary instances (one per mode) as the canonical POKIE outcome-library
-// bundle: a small manifest.json, one small index_<modeName>.json per mode, and one streaming
-// outcomes_<modeName>.jsonl per mode. This is the ONE writer both the pre-generated runtime and the Stake
-// Engine exporter's own loaded data ultimately trace back to (see loadWeightedOutcomeLibraryFromBundle) — never
-// a second calculation path: every hash/metric/outcome written here already exists on the library's own
-// outcomes/artifacts, computed by the same functions (computeWeightedOutcomeLibraryHash,
-// WeightedOutcomeLibraryAnalyzer) used everywhere else in this codebase.
+function provenanceKeyOf(firstOutcome: {readonly artifact: {readonly provenance: {readonly game: {readonly id: string; readonly version: string}; readonly configHash?: string; readonly pokieVersion: string}}}): ModeProvenanceKey {
+    return {
+        gameId: firstOutcome.artifact.provenance.game.id,
+        gameVersion: firstOutcome.artifact.provenance.game.version,
+        configHash: firstOutcome.artifact.provenance.configHash,
+        pokieVersion: firstOutcome.artifact.provenance.pokieVersion,
+    };
+}
+
+// Persists one or more streaming outcome sources (one per mode) as the canonical POKIE outcome-library bundle:
+// a small manifest.json, one small index_<modeName>.json per mode, and one streaming outcomes_<modeName>.jsonl
+// per mode. This is the ONE writer both the pre-generated runtime and the Stake Engine exporter's own loaded
+// data ultimately trace back to (see loadWeightedOutcomeLibraryFromBundle) — never a second calculation path:
+// every hash/metric/outcome written here is derived directly from the outcomes the caller streams in, by the
+// same logic (see streamModeOutcomesToTempFile/computeOnlineWeightedOutcomeLibraryAnalysis) used everywhere a
+// WeightedOutcomeLibrary is built/analyzed elsewhere in this codebase.
 //
-// The whole output directory is replaced atomically via the shared publishDirectoryAtomically (also used by
-// StakeEngineImportWriter) — everything is built into a fresh temporary sibling directory first, and only
-// swapped into place once every file has been written successfully. A failure at any point before the swap
-// leaves an existing outDir completely untouched; a re-write into the same outDir starts from nothing, so a
-// mode that no longer appears in this run never leaves its old index/outcomes files behind.
+// End-to-end streaming: each mode's "outcomes" (an Iterable or AsyncIterable — see OutcomeLibraryBundleModeInput)
+// is consumed exactly once, one outcome at a time, validated and written to disk as it arrives — this class
+// never builds an in-memory array of a mode's outcomes, however many there are. Because publishDirectoryAtomically
+// (the atomic swap this writer shares with StakeEngineImportWriter) needs a *synchronous* callback to populate
+// its own temp directory, the actual (necessarily async) streaming work happens first, into a separate staging
+// directory this class manages itself; publishing then becomes a purely synchronous rename of each already-
+// written file from staging into publishDirectoryAtomically's own temp dir — so the atomic-publish contract
+// itself is reused unmodified, never touched or forked. The staging directory is removed (best-effort) whether
+// the write succeeds or fails — on success it's already empty (every file was renamed out of it); on failure,
+// whatever was staged is simply discarded and an existing outDir is left completely untouched, the same
+// no-partial-bundle guarantee as before.
 //
-// Each mode's outcomes are streamed to disk one canonical-JSON line at a time (see internal/writeOutcomesJsonl)
-// — never buffered as one giant string, however many outcomes a mode has.
+// This is genuinely "async" (unlike StakeEngineExporter/the previous version of this class) rather than "returns
+// a Promise but every step is synchronous fs work" — consuming an arbitrary caller-supplied AsyncIterable is real
+// asynchronous work, not just an interface-consistency wrapper.
 export class OutcomeLibraryBundleWriter<T extends string | number = string> implements OutcomeLibraryBundleWriting<T> {
     private readonly pokieVersion: string;
     private readonly validator: OutcomeLibraryBundleWriteValidating<T>;
@@ -45,7 +64,6 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
     private readonly writeFile: (filePath: string, contents: string) => void;
     private readonly renameDirectory: (from: string, to: string) => void;
     private readonly removeDirectory: (dirPath: string) => void;
-    private readonly writeOutcomes: (filePath: string, outcomes: readonly WeightedOutcome<T>[]) => readonly OutcomeLibraryBundleIndexEntry[];
 
     constructor(
         pokieVersion: string,
@@ -54,7 +72,6 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         renameDirectory: (from: string, to: string) => void = (from, to) => fs.renameSync(from, to),
         removeDirectory: (dirPath: string) => void = (dirPath) => fs.rmSync(dirPath, {recursive: true, force: true}),
-        writeOutcomes: (filePath: string, outcomes: readonly WeightedOutcome<T>[]) => readonly OutcomeLibraryBundleIndexEntry[] = writeOutcomesJsonl,
     ) {
         this.pokieVersion = pokieVersion;
         this.validator = validator;
@@ -62,103 +79,136 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         this.writeFile = writeFile;
         this.renameDirectory = renameDirectory;
         this.removeDirectory = removeDirectory;
-        this.writeOutcomes = writeOutcomes;
     }
 
-    // Not "async" — same reasoning as StakeEngineExporter/StakeEngineImportWriter: synchronous fs work
-    // throughout (publishDirectoryAtomically's own contract), still returns a Promise, still rejects rather than
-    // throws synchronously.
-    public writeToDirectory(modes: readonly OutcomeLibraryBundleModeInput<T>[], outDir: string): Promise<OutcomeLibraryBundleWriteResult> {
+    public async writeToDirectory(modes: readonly OutcomeLibraryBundleModeInput<T>[], outDir: string): Promise<OutcomeLibraryBundleWriteResult> {
+        const upfrontIssues = this.validator.validate(modes);
+        if (upfrontIssues.some((issue) => issue.severity === "error")) {
+            return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
+        }
+
+        const stagingDir = `${outDir}.staging-${crypto.randomBytes(6).toString("hex")}`;
+        fs.mkdirSync(stagingDir, {recursive: true});
         try {
-            const structuralIssues = this.validator.validate(modes);
-            if (structuralIssues.some((issue) => issue.severity === "error")) {
-                return Promise.resolve({outDir, files: [], manifest: undefined, issues: structuralIssues});
+            const issues: ValidationIssue[] = [...upfrontIssues];
+            const manifestEntries: OutcomeLibraryBundleManifestModeEntry[] = [];
+            let firstMode: {readonly provenanceKey: ModeProvenanceKey; readonly firstOutcome: unknown} | undefined;
+            let gameManifest: OutcomeLibraryBundleManifest["game"] | undefined;
+            let configHash: string | undefined;
+
+            for (const mode of modes) {
+                const schemaVersion = mode.schemaVersion ?? WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION;
+                if (schemaVersion !== WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION) {
+                    issues.push({
+                        code: "outcome-library-bundle-write-schema-version-invalid",
+                        severity: "error",
+                        message: `mode "${mode.modeName}": schemaVersion must be the current supported version (${WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION}), got ${String(schemaVersion)}.`,
+                        details: {modeName: mode.modeName},
+                    });
+                    continue;
+                }
+
+                const outcomesFile = `outcomes_${mode.modeName}.jsonl`;
+                const outcomesPath = path.join(stagingDir, outcomesFile);
+                const result = await streamModeOutcomesToTempFile(mode.modeName, mode.libraryId, mode.outcomes, schemaVersion, outcomesPath);
+                issues.push(...result.issues);
+                if (result.built === undefined) {
+                    continue;
+                }
+
+                const current = provenanceKeyOf(result.built.firstOutcome as never);
+                if (firstMode === undefined) {
+                    firstMode = {provenanceKey: current, firstOutcome: result.built.firstOutcome};
+                    gameManifest = (result.built.firstOutcome as {artifact: {provenance: {game: OutcomeLibraryBundleManifest["game"]}}}).artifact.provenance.game;
+                    configHash = (result.built.firstOutcome as {artifact: {provenance: {configHash?: string}}}).artifact.provenance.configHash;
+                } else if (
+                    current.gameId !== firstMode.provenanceKey.gameId ||
+                    current.gameVersion !== firstMode.provenanceKey.gameVersion ||
+                    current.configHash !== firstMode.provenanceKey.configHash ||
+                    current.pokieVersion !== firstMode.provenanceKey.pokieVersion
+                ) {
+                    issues.push({
+                        code: "outcome-library-bundle-cross-mode-provenance-mismatch",
+                        severity: "error",
+                        message: `mode "${mode.modeName}" has different provenance (game id/version, configHash, or pokieVersion) than the bundle's other modes.`,
+                        details: {modeName: mode.modeName},
+                    });
+                    continue;
+                }
+
+                const analysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, result.built.totalWeight);
+                const indexFile = `index_${mode.modeName}.json`;
+                const firstOutcome = result.built.firstOutcome as {artifact: {betMode: string; stake: number}};
+
+                const manifestEntry: OutcomeLibraryBundleManifestModeEntry = {
+                    modeName: mode.modeName,
+                    betMode: firstOutcome.artifact.betMode,
+                    stake: firstOutcome.artifact.stake,
+                    libraryId: mode.libraryId,
+                    libraryHash: result.built.libraryHash,
+                    outcomeCount: result.built.entries.length,
+                    totalWeight: result.built.totalWeight,
+                    analysis,
+                    indexFile,
+                    outcomesFile,
+                };
+                manifestEntries.push(manifestEntry);
+
+                const index: OutcomeLibraryBundleModeIndex = {
+                    schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
+                    modeName: mode.modeName,
+                    libraryId: mode.libraryId,
+                    librarySchemaVersion: schemaVersion,
+                    libraryHash: result.built.libraryHash,
+                    outcomeCount: result.built.entries.length,
+                    totalWeight: result.built.totalWeight,
+                    outcomesFile,
+                    entries: result.built.entries,
+                };
+                this.writeFile(path.join(stagingDir, indexFile), `${JSON.stringify(index, null, 4)}\n`);
             }
 
-            const builtModes = modes.map((mode) => this.buildMode(mode));
+            if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined) {
+                return {outDir, files: [], manifest: undefined, issues};
+            }
 
-            const relativeFiles = [...builtModes.flatMap((built) => [built.manifestEntry.indexFile, built.manifestEntry.outcomesFile]), "manifest.json"];
-
-            const firstOutcome = modes[0].library.outcomes[0];
+            const relativeFiles = [...manifestEntries.flatMap((entry) => [entry.indexFile, entry.outcomesFile]), "manifest.json"];
             const manifest: OutcomeLibraryBundleManifest = {
                 schemaVersion: OUTCOME_LIBRARY_BUNDLE_MANIFEST_SCHEMA_VERSION,
                 generatedBy: "pokie outcomelibrary build",
                 pokieVersion: this.pokieVersion,
                 generatedAt: this.now().toISOString(),
-                game: firstOutcome.artifact.provenance.game,
-                ...(firstOutcome.artifact.provenance.configHash !== undefined ? {configHash: firstOutcome.artifact.provenance.configHash} : {}),
-                modes: builtModes.map((built) => built.manifestEntry),
+                game: gameManifest,
+                ...(configHash !== undefined ? {configHash} : {}),
+                modes: manifestEntries,
                 files: relativeFiles,
             };
+            this.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
 
             const {cleanupWarning} = publishDirectoryAtomically({
                 outDir,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
-                writeFilesIntoTempDir: (tempDir) => this.writeModesIntoTempDir(tempDir, builtModes, manifest),
+                writeFilesIntoTempDir: (tempDir) => {
+                    for (const file of relativeFiles) {
+                        this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
+                    }
+                },
             });
 
-            const issues: ValidationIssue[] =
+            const finalIssues =
                 cleanupWarning !== undefined
-                    ? [{code: "outcome-library-bundle-write-stale-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}]
-                    : [];
+                    ? [...issues, {code: "outcome-library-bundle-write-stale-cleanup-failed", severity: "warning" as const, message: cleanupWarning, details: {outDir}}]
+                    : issues;
 
-            return Promise.resolve({outDir, files: relativeFiles, manifest, issues});
-        } catch (error) {
-            return Promise.reject(error);
+            return {outDir, files: relativeFiles, manifest, issues: finalIssues};
+        } finally {
+            try {
+                this.removeDirectory(stagingDir);
+            } catch {
+                // best-effort only — the staging directory is purely internal scratch space, never part of the
+                // published result either way.
+            }
         }
-    }
-
-    // Builds one mode's manifest entry fully in memory (no disk access): computes the same hash/analysis every
-    // other reader of this library would compute — never a second, differently-derived value.
-    private buildMode(mode: OutcomeLibraryBundleModeInput<T>): BuiltMode<T> {
-        const firstOutcome = mode.library.outcomes[0];
-        if (firstOutcome === undefined) {
-            // Unreachable: WeightedOutcomeLibraryValidator (always run by OutcomeLibraryBundleWriteValidator
-            // above) already rejects an empty outcomes array.
-            throw new OutcomeLibraryBundleInvariantError(`mode "${mode.modeName}": library has no outcomes after successful validation.`);
-        }
-
-        const analysis = new WeightedOutcomeLibraryAnalyzer<T>().analyze(mode.library);
-        const libraryHash = computeWeightedOutcomeLibraryHash(mode.library);
-        const indexFile = `index_${mode.modeName}.json`;
-        const outcomesFile = `outcomes_${mode.modeName}.jsonl`;
-
-        return {
-            modeName: mode.modeName,
-            outcomes: mode.library.outcomes,
-            librarySchemaVersion: mode.library.schemaVersion,
-            manifestEntry: {
-                modeName: mode.modeName,
-                betMode: firstOutcome.artifact.betMode,
-                stake: firstOutcome.artifact.stake,
-                libraryId: mode.library.libraryId,
-                libraryHash,
-                outcomeCount: mode.library.outcomes.length,
-                totalWeight: analysis.totalWeight,
-                analysis,
-                indexFile,
-                outcomesFile,
-            },
-        };
-    }
-
-    private writeModesIntoTempDir(tempDir: string, builtModes: readonly BuiltMode<T>[], manifest: OutcomeLibraryBundleManifest): void {
-        for (const built of builtModes) {
-            const entries = this.writeOutcomes(path.join(tempDir, built.manifestEntry.outcomesFile), built.outcomes);
-            const index: OutcomeLibraryBundleModeIndex = {
-                schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
-                modeName: built.modeName,
-                libraryId: built.manifestEntry.libraryId,
-                librarySchemaVersion: built.librarySchemaVersion,
-                libraryHash: built.manifestEntry.libraryHash,
-                outcomeCount: built.manifestEntry.outcomeCount,
-                totalWeight: built.manifestEntry.totalWeight,
-                outcomesFile: built.manifestEntry.outcomesFile,
-                entries,
-            };
-            this.writeFile(path.join(tempDir, built.manifestEntry.indexFile), `${JSON.stringify(index, null, 4)}\n`);
-        }
-        this.writeFile(path.join(tempDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
     }
 }

@@ -1,8 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleModeInput, OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter} from "pokie";
-import {buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
+import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter} from "pokie";
+import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
 
 function readManifest(outDir: string): OutcomeLibraryBundleManifest {
     return JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryBundleManifest;
@@ -19,6 +19,18 @@ function writeIndex(outDir: string, modeName: string, index: unknown): void {
 function issueCodes(issues: readonly {code: string}[]): string[] {
     return issues.map((issue) => issue.code);
 }
+// Corrupts every record's own bytes in place, leaving each index entry's byteOffset/byteLength — and, crucially,
+// the newline byte immediately after it — completely untouched. This is what isolates "the outcomes file's JSON
+// content is wrong" from "the outcomes file's byte layout is wrong": shallow mode only ever checks the latter.
+function corruptContentPreservingByteLayout(outDir: string, modeName: string): void {
+    const index = readIndex(outDir, modeName);
+    const filePath = path.join(outDir, `outcomes_${modeName}.jsonl`);
+    const buffer = fs.readFileSync(filePath);
+    for (const entry of index.entries) {
+        buffer.fill("x".charCodeAt(0), entry.byteOffset, entry.byteOffset + entry.byteLength);
+    }
+    fs.writeFileSync(filePath, buffer);
+}
 
 describe("OutcomeLibraryBundleValidator", () => {
     let outDir: string;
@@ -26,7 +38,7 @@ describe("OutcomeLibraryBundleValidator", () => {
     beforeEach(async () => {
         outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcomelibrary-validator-test-"));
         fs.rmdirSync(outDir);
-        const modes: OutcomeLibraryBundleModeInput[] = [{modeName: "base", library: buildOutcomeLibraryBundleTestLibrary("base-lib")}];
+        const modes = [buildOutcomeLibraryBundleModeInput("base", "base-lib")];
         await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes, outDir);
     });
 
@@ -173,15 +185,52 @@ describe("OutcomeLibraryBundleValidator", () => {
             );
         });
 
-        it("never opens the outcomes file's content in shallow mode, even when it's corrupted", async () => {
-            const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
-            const validSize = fs.statSync(outcomesPath).size;
-            // Corrupt the content without shrinking the file (so the cheap size check alone can't catch it) —
-            // shallow mode must still report no issues, since it never reads this file's content at all.
-            const corrupted = Buffer.alloc(validSize, "x");
-            fs.writeFileSync(outcomesPath, corrupted);
+        it("never opens the outcomes file's JSON content in shallow mode, even when every record's content (not its byte layout) is corrupted", async () => {
+            corruptContentPreservingByteLayout(outDir, "base");
 
             expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toEqual([]);
+        });
+
+        it("reports outcome-library-bundle-mode-index-byte-range-not-contiguous when an entry's byteOffset no longer follows the previous entry's own range", async () => {
+            const index = readIndex(outDir, "base");
+            const entries = index.entries.map((entry, position) => (position === 2 ? {...entry, byteOffset: entry.byteOffset + 5} : entry));
+            writeIndex(outDir, "base", {...index, entries});
+
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-mode-index-byte-range-not-contiguous"}),
+            );
+        });
+
+        it("reports outcome-library-bundle-mode-index-entry-not-newline-terminated when the byte right after a recorded range isn't a newline", async () => {
+            const index = readIndex(outDir, "base");
+            const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
+            const buffer = fs.readFileSync(outcomesPath);
+            const entry = index.entries[0];
+            buffer[entry.byteOffset + entry.byteLength] = "X".charCodeAt(0);
+            fs.writeFileSync(outcomesPath, buffer);
+
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-mode-index-entry-not-newline-terminated"}),
+            );
+        });
+
+        it("reports outcome-library-bundle-outcomes-file-has-trailing-bytes for extra bytes past the index's own last recorded range", async () => {
+            const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
+            fs.appendFileSync(outcomesPath, "extra\n");
+
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-outcomes-file-has-trailing-bytes"}),
+            );
+        });
+
+        it("reports outcome-library-bundle-mode-index-total-weight-overflow for individually-valid weights whose sum overflows a safe integer", async () => {
+            const index = readIndex(outDir, "base");
+            const entries = index.entries.map((entry, position) => (position < 2 ? {...entry, weight: Number.MAX_SAFE_INTEGER} : entry));
+            writeIndex(outDir, "base", {...index, entries});
+
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-mode-index-total-weight-overflow"}),
+            );
         });
     });
 
@@ -193,9 +242,35 @@ describe("OutcomeLibraryBundleValidator", () => {
                 .filter((line) => line.length > 0)
                 .map((line) => JSON.parse(line));
         }
+        // Rewrites the whole outcomes file AND recomputes the index's own byteOffset/byteLength to match the new
+        // layout exactly (byte-for-byte contiguous/newline-terminated/exact-sized) — keeping every entry's own
+        // id/weight exactly as originally recorded, regardless of what a deliberately-tampered line now actually
+        // contains at that position. This is what isolates "the outcomes file's *content* disagrees with the
+        // index" (what these tests exist to catch) from "the outcomes file's *byte layout* disagrees with the
+        // index" (a different, already-covered corruption) — a line whose serialized length changed (e.g. a
+        // shorter/longer id or an extra artifact field) would otherwise also trip the byte-layout checks and mask
+        // the very mismatch each test is asserting on. A rewrite with more lines than the index has entries (see
+        // the duplicate-id test below) leaves the extra line's bytes uncovered by any entry on purpose — that
+        // test only asserts on deep-mode results, which run independently of byte-layout correctness.
         function writeLines(lines: readonly unknown[]): void {
-            const jsonl = `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`;
-            fs.writeFileSync(path.join(outDir, "outcomes_base.jsonl"), jsonl);
+            const filePath = path.join(outDir, "outcomes_base.jsonl");
+            const originalIndex = readIndex(outDir, "base");
+            let offset = 0;
+            const chunks: string[] = [];
+            const entries: unknown[] = [];
+            lines.forEach((line, position) => {
+                const json = JSON.stringify(line);
+                const byteLength = Buffer.byteLength(json, "utf-8");
+                const byteOffset = offset;
+                offset += byteLength + 1;
+                chunks.push(json);
+                const original = originalIndex.entries[position];
+                if (original !== undefined) {
+                    entries.push({...original, byteOffset, byteLength});
+                }
+            });
+            fs.writeFileSync(filePath, `${chunks.join("\n")}\n`);
+            writeIndex(outDir, "base", {...originalIndex, entries});
         }
         // Overwrites exactly one entry's own byte range in place — unlike writeLines (which rewrites the whole
         // file and can shift every later byte offset), this never changes the file's overall size, so a
@@ -213,12 +288,30 @@ describe("OutcomeLibraryBundleValidator", () => {
         }
 
         it("catches content corruption shallow mode misses", async () => {
-            const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
-            const validSize = fs.statSync(outcomesPath).size;
-            fs.writeFileSync(outcomesPath, Buffer.alloc(validSize, "x"));
+            corruptContentPreservingByteLayout(outDir, "base");
 
             expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toEqual([]);
             expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).not.toEqual([]);
+        });
+
+        it("reports outcome-library-bundle-outcomes-byte-range-mismatch when an entry's own recorded byte range decodes to a different id (a reordered/shifted outcomes file)", async () => {
+            const index = readIndex(outDir, "base");
+            const entry = index.entries[0];
+            const outcomesPath = path.join(outDir, "outcomes_base.jsonl");
+            const buffer = fs.readFileSync(outcomesPath);
+            const original = buffer.subarray(entry.byteOffset, entry.byteOffset + entry.byteLength).toString("utf-8");
+            // Every id in this fixture is a single digit, so swapping it for another single digit tampers the
+            // record's identity without touching its byte length — isolating "this range's content now belongs
+            // to a different outcome" from any byte-layout corruption (already covered by the shallow tests
+            // above), the same way a physically reordered/shifted outcomes file would silently return the wrong
+            // record for a byte-range read that itself looks perfectly well-formed.
+            const tampered = original.replace(`"id":"${entry.id}"`, '"id":"9"');
+            expect(tampered.length).toBe(original.length);
+            buffer.write(tampered, entry.byteOffset, entry.byteLength, "utf-8");
+            fs.writeFileSync(outcomesPath, buffer);
+
+            const issues = await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true});
+            expect(issues).toContainEqual(expect.objectContaining({code: "outcome-library-bundle-outcomes-byte-range-mismatch"}));
         });
 
         it("reports outcome-library-bundle-outcomes-line-malformed for a line that's valid JSON but the wrong shape", async () => {

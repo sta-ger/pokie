@@ -1,4 +1,6 @@
 import {
+    StakeEngineBundleModeInput,
+    StakeEngineBundleStreamingExporting,
     StakeEngineExportModeInput,
     StakeEngineExporting,
     StakeEngineExportResult,
@@ -25,6 +27,17 @@ function createStubJsonStore(entries: Record<string, unknown>): (filePath: strin
 function createStubExporter(result: StakeEngineExportResult): StakeEngineExporting & {calledWith?: {modes: StakeEngineExportModeInput[]; outDir: string}} {
     return {
         exportToDirectory(modes: StakeEngineExportModeInput[], outDir: string) {
+            this.calledWith = {modes, outDir};
+            return Promise.resolve(result);
+        },
+    };
+}
+
+function createStubBundleStreamingExporter(
+    result: StakeEngineExportResult,
+): StakeEngineBundleStreamingExporting & {calledWith?: {modes: StakeEngineBundleModeInput[]; outDir: string}} {
+    return {
+        exportToDirectory(modes: StakeEngineBundleModeInput[], outDir: string) {
             this.calledWith = {modes, outDir};
             return Promise.resolve(result);
         },
@@ -231,8 +244,8 @@ describe("StakeEngineCommand", () => {
             );
         });
 
-        it("loads a mode's library from a canonical outcome-library bundle when bundleDir is given, resolved relative to the config file, defaulting bundleModeName to modeName", async () => {
-            const exporter = createStubExporter(successResult);
+        it("streams the export directly from a canonical outcome-library bundle when every mode specifies bundleDir, resolved relative to the config file, defaulting bundleModeName to modeName", async () => {
+            const bundleStreamingExporter = createStubBundleStreamingExporter(successResult);
             const loadJson = createStubJsonStore({
                 [CONFIG_PATH]: {
                     modes: [
@@ -241,20 +254,42 @@ describe("StakeEngineCommand", () => {
                     ],
                 },
             });
-            const loadLibraryFromBundle = jest.fn((bundleDir: string, modeName: string) =>
-                Promise.resolve(modeName === "canonicalBase" ? BASE_LIBRARY : BONUS_LIBRARY),
-            );
-            const command = new StakeEngineCommand("1.3.0", exporter, undefined, loadJson, undefined, loadLibraryFromBundle);
+            const command = new StakeEngineCommand("1.3.0", undefined, undefined, loadJson, undefined, undefined, bundleStreamingExporter);
 
             const exitCode = await command.run(["export", CONFIG_PATH]);
 
             expect(exitCode).toBe(0);
-            expect(loadLibraryFromBundle).toHaveBeenCalledWith("/project/bundle", "canonicalBase");
+            expect(bundleStreamingExporter.calledWith?.modes).toEqual([
+                {modeName: "base", cost: 1, bundleDir: "/project/bundle", bundleModeName: "canonicalBase"},
+                {modeName: "bonus", cost: 100, bundleDir: "/project/bundle", bundleModeName: "bonus"},
+            ]);
+            expect(bundleStreamingExporter.calledWith?.outDir).toBe("/project/stakeengine");
+        });
+
+        it("falls back to loading a mode's library from a bundle (via the non-streaming exporter) when the export mixes libraryPath and bundleDir modes", async () => {
+            const exporter = createStubExporter(successResult);
+            const bundleStreamingExporter = createStubBundleStreamingExporter(successResult);
+            const loadJson = createStubJsonStore({
+                [CONFIG_PATH]: {
+                    modes: [
+                        {modeName: "base", cost: 1, libraryPath: "./libraries/base.json"},
+                        {modeName: "bonus", cost: 100, bundleDir: "./bundle"},
+                    ],
+                },
+                "/project/libraries/base.json": BASE_LIBRARY,
+            });
+            const loadLibraryFromBundle = jest.fn(() => Promise.resolve(BONUS_LIBRARY));
+            const command = new StakeEngineCommand("1.3.0", exporter, undefined, loadJson, undefined, loadLibraryFromBundle, bundleStreamingExporter);
+
+            const exitCode = await command.run(["export", CONFIG_PATH]);
+
+            expect(exitCode).toBe(0);
             expect(loadLibraryFromBundle).toHaveBeenCalledWith("/project/bundle", "bonus");
             expect(exporter.calledWith?.modes).toEqual([
                 {modeName: "base", cost: 1, library: BASE_LIBRARY},
                 {modeName: "bonus", cost: 100, library: BONUS_LIBRARY},
             ]);
+            expect(bundleStreamingExporter.calledWith).toBeUndefined();
         });
     });
 
