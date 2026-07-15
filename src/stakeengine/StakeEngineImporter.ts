@@ -42,6 +42,17 @@ type ImportModeContext = {
     readonly manifest: StakeEngineManifest;
 };
 
+// The exact raw bytes assembleBundle actually read off disk for each file — captured once, at the only point
+// this importer ever touches the filesystem, so computeSourceProvenance can hash precisely what was parsed/
+// decompressed and built from, never a fresh read of whatever happens to be on disk afterward (which could have
+// changed in the meantime, or simply be a wasted second syscall).
+type RawModeBytes = {readonly csvBuffer: Buffer | undefined; readonly booksBuffer: Buffer | undefined};
+type RawSourceBytes = {
+    readonly indexBuffer: Buffer | undefined;
+    readonly manifestBuffer: Buffer | undefined;
+    readonly modes: ReadonlyMap<string, RawModeBytes>;
+};
+
 // Imports a Stake Engine export directory (index.json, per-mode lookup CSV, per-mode zstd-compressed JSONL
 // books, and its own sibling pokie-manifest.json) back into one WeightedOutcomeLibrary per mode — the reverse of
 // StakeEngineExporter. Only ever round-trips a directory "pokie stakeengine export" itself produced: betMode/
@@ -77,7 +88,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
     // discipline, as StakeEngineExporter.exportToDirectory.
     public importFromDirectory(stakeDir: string): Promise<StakeEngineImportResult<T>> {
         try {
-            const bundle = this.assembleBundle(stakeDir);
+            const {bundle, rawBytes} = this.assembleBundle(stakeDir);
 
             const structuralIssues = this.validator.validate(bundle);
             if (structuralIssues.some((issue) => issue.severity === "error")) {
@@ -114,7 +125,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                 return Promise.resolve({stakeDir, manifest: undefined, modes: [], sourceProvenance: undefined, issues: allIssues});
             }
 
-            const sourceProvenance = this.computeSourceProvenance(stakeDir, index);
+            const sourceProvenance = this.computeSourceProvenance(index, rawBytes);
             return Promise.resolve({stakeDir, manifest, modes: builtModes, sourceProvenance, issues: allIssues});
         } catch (error) {
             return Promise.reject(error);
@@ -122,20 +133,30 @@ export class StakeEngineImporter<T extends string | number = string> implements 
     }
 
     // SHA-256 of each raw file this import actually read, exactly as it sat on disk — before any JSON-parsing/
-    // decompression. Only ever called once validation has already confirmed every one of these paths is safe
-    // and readable, so re-reading them here (rather than threading raw bytes through the whole bundle) is both
-    // simple and guaranteed not to fail.
-    private computeSourceProvenance(stakeDir: string, index: {modes: readonly StakeEngineIndexModeEntry[]}): StakeEngineImportSourceProvenance {
-        const hashOf = (filePath: string): string => `sha256:${crypto.createHash("sha256").update(this.readFile(filePath)).digest("hex")}`;
+    // decompression — computed from the very buffers assembleBundle captured while reading each file for real
+    // parsing/decompression, never from a second, later read: the file could have changed on disk in the
+    // meantime (a real TOCTOU risk, not just a hypothetical), and a second read is also simply wasted work once
+    // the bytes are already in hand.
+    private computeSourceProvenance(index: {modes: readonly StakeEngineIndexModeEntry[]}, rawBytes: RawSourceBytes): StakeEngineImportSourceProvenance {
+        const hashOf = (buffer: Buffer | undefined): string => {
+            if (buffer === undefined) {
+                // Unreachable: computeSourceProvenance only ever runs once every file involved has already been
+                // read successfully (a build/validation error short-circuits before this point).
+                throw new StakeEngineImportInvariantError("source provenance requested for a file that was never actually read during import.");
+            }
+            return `sha256:${crypto.createHash("sha256").update(buffer).digest("hex")}`;
+        };
         return {
-            indexHash: hashOf(path.join(stakeDir, "index.json")),
-            manifestHash: hashOf(path.join(stakeDir, "pokie-manifest.json")),
-            modes: index.modes.map((mode) => ({
-                modeName: mode.name,
-                // Safe: already validated as a safe, existing path.
-                csvHash: hashOf(resolveSafeStakeEngineFilePath(stakeDir, mode.weights) as string),
-                booksHash: hashOf(resolveSafeStakeEngineFilePath(stakeDir, mode.events) as string),
-            })),
+            indexHash: hashOf(rawBytes.indexBuffer),
+            manifestHash: hashOf(rawBytes.manifestBuffer),
+            modes: index.modes.map((mode) => {
+                const modeBytes = rawBytes.modes.get(mode.name);
+                if (modeBytes === undefined) {
+                    // Unreachable, same reasoning as hashOf's own guard above.
+                    throw new StakeEngineImportInvariantError(`mode "${mode.name}": source bytes were never captured during import.`);
+                }
+                return {modeName: mode.name, csvHash: hashOf(modeBytes.csvBuffer), booksHash: hashOf(modeBytes.booksBuffer)};
+            }),
         };
     }
 
@@ -279,13 +300,19 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         }
     }
 
-    private assembleBundle(stakeDir: string): StakeEngineImportBundle {
+    private assembleBundle(stakeDir: string): {bundle: StakeEngineImportBundle; rawBytes: RawSourceBytes} {
         const index = this.readJsonFile(path.join(stakeDir, "index.json"));
         const manifest = this.readJsonFile(path.join(stakeDir, "pokie-manifest.json"));
 
         const modeFiles: StakeEngineImportModeFiles[] = [];
-        if (index.status === "ok" && typeof index.value === "object" && index.value !== null && Array.isArray((index.value as {modes?: unknown}).modes)) {
-            for (const rawMode of (index.value as {modes: unknown[]}).modes) {
+        const modeBytes = new Map<string, RawModeBytes>();
+        if (
+            index.result.status === "ok" &&
+            typeof index.result.value === "object" &&
+            index.result.value !== null &&
+            Array.isArray((index.result.value as {modes?: unknown}).modes)
+        ) {
+            for (const rawMode of (index.result.value as {modes: unknown[]}).modes) {
                 const modeName = (rawMode as {name?: unknown} | null)?.name;
                 const eventsFile = (rawMode as {events?: unknown} | null)?.events;
                 const weightsFile = (rawMode as {weights?: unknown} | null)?.weights;
@@ -293,15 +320,17 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                     continue;
                 }
 
-                modeFiles.push({
-                    modeName,
-                    csv: this.readCsvFile(stakeDir, weightsFile),
-                    books: this.readBooksFile(stakeDir, eventsFile),
-                });
+                const csv = this.readCsvFile(stakeDir, weightsFile);
+                const books = this.readBooksFile(stakeDir, eventsFile);
+                modeFiles.push({modeName, csv: csv.result, books: books.result});
+                modeBytes.set(modeName, {csvBuffer: csv.rawBuffer, booksBuffer: books.rawBuffer});
             }
         }
 
-        return {stakeDir, index, manifest, modeFiles};
+        return {
+            bundle: {stakeDir, index: index.result, manifest: manifest.result, modeFiles},
+            rawBytes: {indexBuffer: index.rawBuffer, manifestBuffer: manifest.rawBuffer, modes: modeBytes},
+        };
     }
 
     // Path-safety is checked *before* any filesystem access — resolveSafeStakeEngineFilePath refuses absolute
@@ -312,43 +341,51 @@ export class StakeEngineImporter<T extends string | number = string> implements 
     // this — the "unreadable" result here is this method's own defense-in-depth backstop, not the primary
     // reporting path (unreachable in practice once validation runs, since it rejects an unsafe filename before
     // this mode's files would ever be cross-checked).
-    private readCsvFile(stakeDir: string, fileName: string): StakeEngineImportFileResult<readonly string[]> {
+    //
+    // Every read helper below returns its own raw buffer alongside the usual StakeEngineImportFileResult — the
+    // exact bytes read off disk, before any parsing/decompression — so computeSourceProvenance can hash exactly
+    // what was actually used to build the result, without ever reading a file a second time (see RawSourceBytes).
+    private readCsvFile(stakeDir: string, fileName: string): {result: StakeEngineImportFileResult<readonly string[]>; rawBuffer: Buffer | undefined} {
         const resolvedPath = resolveSafeStakeEngineFilePath(stakeDir, fileName);
         if (resolvedPath === undefined) {
-            return {status: "unreadable", error: `unsafe filename: ${JSON.stringify(fileName)}`};
+            return {result: {status: "unreadable", error: `unsafe filename: ${JSON.stringify(fileName)}`}, rawBuffer: undefined};
         }
         if (!fs.existsSync(resolvedPath)) {
-            return {status: "missing"};
+            return {result: {status: "missing"}, rawBuffer: undefined};
         }
         try {
-            const lines = this.readFile(resolvedPath).toString("utf-8").split("\n").filter((line) => line.length > 0);
-            return {status: "ok", value: lines};
+            const raw = this.readFile(resolvedPath);
+            const lines = raw.toString("utf-8").split("\n").filter((line) => line.length > 0);
+            return {result: {status: "ok", value: lines}, rawBuffer: raw};
         } catch (error) {
-            return {status: "unreadable", error: error instanceof Error ? error.message : String(error)};
+            return {result: {status: "unreadable", error: error instanceof Error ? error.message : String(error)}, rawBuffer: undefined};
         }
     }
 
-    private readBooksFile(stakeDir: string, fileName: string): StakeEngineImportFileResult<readonly StakeEngineImportBookLineResult[]> {
+    private readBooksFile(
+        stakeDir: string,
+        fileName: string,
+    ): {result: StakeEngineImportFileResult<readonly StakeEngineImportBookLineResult[]>; rawBuffer: Buffer | undefined} {
         const resolvedPath = resolveSafeStakeEngineFilePath(stakeDir, fileName);
         if (resolvedPath === undefined) {
-            return {status: "unreadable", error: `unsafe filename: ${JSON.stringify(fileName)}`};
+            return {result: {status: "unreadable", error: `unsafe filename: ${JSON.stringify(fileName)}`}, rawBuffer: undefined};
         }
         if (!fs.existsSync(resolvedPath)) {
-            return {status: "missing"};
+            return {result: {status: "missing"}, rawBuffer: undefined};
         }
 
         let raw: Buffer;
         try {
             raw = this.readFile(resolvedPath);
         } catch (error) {
-            return {status: "unreadable", error: error instanceof Error ? error.message : String(error)};
+            return {result: {status: "unreadable", error: error instanceof Error ? error.message : String(error)}, rawBuffer: undefined};
         }
 
         let decompressed: Buffer;
         try {
             decompressed = this.decompress(raw);
         } catch (error) {
-            return {status: "invalid", error: error instanceof Error ? error.message : String(error)};
+            return {result: {status: "invalid", error: error instanceof Error ? error.message : String(error)}, rawBuffer: raw};
         }
 
         const lines: StakeEngineImportBookLineResult[] = decompressed
@@ -362,25 +399,25 @@ export class StakeEngineImporter<T extends string | number = string> implements 
                     return {status: "invalid", error: error instanceof Error ? error.message : String(error)};
                 }
             });
-        return {status: "ok", value: lines};
+        return {result: {status: "ok", value: lines}, rawBuffer: raw};
     }
 
-    private readJsonFile(filePath: string): StakeEngineImportFileResult<unknown> {
+    private readJsonFile(filePath: string): {result: StakeEngineImportFileResult<unknown>; rawBuffer: Buffer | undefined} {
         if (!fs.existsSync(filePath)) {
-            return {status: "missing"};
+            return {result: {status: "missing"}, rawBuffer: undefined};
         }
 
         let raw: Buffer;
         try {
             raw = this.readFile(filePath);
         } catch (error) {
-            return {status: "unreadable", error: error instanceof Error ? error.message : String(error)};
+            return {result: {status: "unreadable", error: error instanceof Error ? error.message : String(error)}, rawBuffer: undefined};
         }
 
         try {
-            return {status: "ok", value: JSON.parse(raw.toString("utf-8"))};
+            return {result: {status: "ok", value: JSON.parse(raw.toString("utf-8"))}, rawBuffer: raw};
         } catch (error) {
-            return {status: "invalid", error: error instanceof Error ? error.message : String(error)};
+            return {result: {status: "invalid", error: error instanceof Error ? error.message : String(error)}, rawBuffer: raw};
         }
     }
 }

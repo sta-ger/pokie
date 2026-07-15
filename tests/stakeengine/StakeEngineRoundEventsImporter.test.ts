@@ -220,4 +220,26 @@ describe("StakeEngineRoundEventsImporter", () => {
         ];
         expectImportCode(() => importer.importEvents(events, {cost: 1, stake: 1}), "stakeengine-import-total-win-mismatch");
     });
+
+    it("safely reconstructs a feature event's data field literally named \"__proto__\" as a real own property, never as a prototype reassignment", () => {
+        const protoKey = "__proto__";
+        // JSON.parse (exactly how a real books.jsonl line is read — see StakeEngineImporter's own readBooksFile)
+        // uses CreateDataProperty internally, so this really does produce an event with an *own* property named
+        // "__proto__" (a plain JS object literal with a "__proto__" key would instead set the object's own
+        // prototype — this is why the raw JSONL text is parsed here rather than written as a TS object literal).
+        const events = JSON.parse(
+            `[{"index":0,"type":"reveal","board":[["A"]]},` +
+                `{"index":1,"type":"customFeature",${JSON.stringify(protoKey)}:{"polluted":true}},` +
+                `{"index":2,"type":"finalWin","amount":0,"payoutMultiplier":0}]`,
+        ) as StakeEngineEvent[];
+
+        const imported = importer.importEvents(events, {cost: 1, stake: 1});
+
+        const featureEvent = imported.steps[0].featureEvents[0];
+        expect(featureEvent.type).toBe("customFeature");
+        const data = featureEvent.data as Record<string, unknown>;
+        expect(Reflect.getPrototypeOf(data)).toBeNull();
+        expect(Reflect.apply(Object.prototype.hasOwnProperty, data, [protoKey])).toBe(true);
+        expect(data[protoKey]).toEqual({polluted: true});
+    });
 });

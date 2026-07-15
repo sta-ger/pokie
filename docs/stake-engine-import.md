@@ -81,6 +81,13 @@ last. `StakeEngineRoundEventsImporter` reverses this with a single scan, no look
 | any other type | a feature event (`{type, data}}`, `data` reconstructed from every key except `index`/`type` — the exact inverse of the forward projector's `{...data, type}` spread) — attributed to the currently-open step if its window hasn't closed yet, otherwise to the round |
 | `{type: "finalWin", amount, payoutMultiplier}` | closes the round: reversed `totalWin`/`payoutMultiplier` (`amount`/`payoutMultiplier` must be numerically equal, exactly as the forward projector always writes them), cross-checked against the sum of the reconstructed steps' own `totalWin` |
 
+`data` is rebuilt into an `Object.create(null)` object, not a plain `{}` — the same convention `toCanonicalJson`
+itself uses, and for the same reason: a source event field literally named `"__proto__"` is a genuine own
+property once `JSON.parse` reads it off a real books line, and a plain `{}`'s inherited `Object.prototype.__proto__`
+accessor would silently reinterpret an assignment to that key as reassigning the new object's own prototype
+instead of storing the value — losing the key entirely. A null-prototype object has no such accessor to
+intercept the assignment, so every key, including `"__proto__"`, becomes a real own data property.
+
 `"reveal"`/`"win"`/`"finalWin"` are reserved structural markers in this encoding — `StakeEngineRoundEventsProjector`
 now rejects, at export time, any `RoundArtifactFeatureEvent` whose own `type` is one of those three (rename the
 feature event before exporting). This closes what used to be a real ambiguity: it can no longer occur for anything
@@ -121,6 +128,18 @@ The same helper defends `modeName` a second time on the way out, before `StakeEn
 constructs a `libraries/<modeName>.json` path, so a hand-built `StakeEngineImportResult` that bypassed the
 importer entirely still can't write outside `libraries/`.
 
+Beyond bare path safety, a mode's own `weights`/`events` filename must match Stake's naming convention
+*exactly* — the same one `StakeEngineExporter` itself always writes: a mode named `"base"` must use
+`"lookup_base.csv"`/`"books_base.jsonl.zst"`, checked independently in both `index.json` and
+`pokie-manifest.json` (mismatch reported as `stakeengine-import-mode-filename-mismatch`). Since mode names are
+already required unique (including case-insensitively — see above), this makes filename reuse structurally
+unreachable between two validly-named modes; `StakeEngineImportValidator` still tracks every filename it sees
+explicitly and reports a dedicated `stakeengine-import-filename-reused` / `stakeengine-import-filename-case-collision`
+diagnostic rather than relying on that as an implicit side effect. One consequence: `index.json` and the
+manifest disagreeing on a mode's own `events`/`weights` filename (while both are otherwise valid) is no longer
+reachable either — whichever file's filename doesn't match its own naming convention is rejected first, with a
+more specific diagnostic than a bare mismatch would have been.
+
 ## Source provenance
 
 Every successful import carries a `sourceProvenance` alongside its `modes` — the SHA-256 of every raw file this
@@ -137,6 +156,12 @@ type StakeEngineImportSourceProvenance = {
 `pokie stakeengine import`'s CLI writer persists this as `<outDir>/source-provenance.json` whenever it's present,
 so the exact Stake source bytes an import was built from stay traceable after the fact.
 
+These hashes come from the exact same buffers the importer already read once to parse/decompress and build
+from — never a second, later read of whatever happens to be on disk by then. A file that changed on disk
+between the initial read and hash computation could otherwise make `sourceProvenance` describe bytes that were
+never actually used to build the result; capturing the buffer at the only point this importer ever touches the
+filesystem closes that gap entirely, rather than just making it unlikely.
+
 ## Validation
 
 Two layers, mirroring the exporter's own "validate everything before building" discipline.
@@ -151,13 +176,17 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-duplicate-mode-name` / `stakeengine-import-mode-name-case-collision` | two modes share the same name, or names differ only by case (`"Base"` vs `"base"`) |
 | `stakeengine-import-mode-cost-invalid` / `stakeengine-import-mode-stake-invalid` | a `cost`/`stake` isn't a finite positive number |
 | `stakeengine-import-mode-filename-unsafe` | a mode's `weights`/`events` filename (in `index.json` or the manifest) is absolute, contains `..`, contains a path separator, or otherwise resolves outside `stakeDir` — see "Path safety" above |
+| `stakeengine-import-mode-filename-mismatch` | a mode's `weights`/`events` filename doesn't exactly match `lookup_<name>.csv`/`books_<name>.jsonl.zst` |
+| `stakeengine-import-filename-reused` / `stakeengine-import-filename-case-collision` | two modes' `weights`/`events` filenames are exactly the same, or differ only in case |
 | `stakeengine-import-manifest-missing` / `stakeengine-import-manifest-unreadable` / `stakeengine-import-manifest-invalid-json` | `pokie-manifest.json` doesn't exist / couldn't be read / doesn't parse as JSON |
 | `stakeengine-import-manifest-unrecognized` | it parses but wasn't written by `"pokie stakeengine export"`, or its `modes` isn't an array |
 | `stakeengine-import-manifest-schema-version-unsupported` | its `schemaVersion` isn't the currently supported one |
-| `stakeengine-import-manifest-field-invalid` | a required top-level manifest field (`game`, `pokieVersion`, `generatedAt`, ...) is missing or the wrong type |
-| `stakeengine-import-manifest-mode-field-invalid` / `stakeengine-import-manifest-library-id-invalid` / `stakeengine-import-manifest-library-hash-invalid` / `stakeengine-import-manifest-outcome-count-invalid` | a manifest mode entry, or one of its `libraryId`/`libraryHash`/`outcomeCount` fields specifically, is missing or malformed (`libraryHash` must match `^sha256:[0-9a-f]{64}$`) |
+| `stakeengine-import-manifest-field-invalid` | a required top-level manifest field (`game`, `pokieVersion`, `generatedAt`, `files`, ...) is missing or the wrong type |
+| `stakeengine-import-manifest-mode-field-invalid` / `stakeengine-import-manifest-library-id-invalid` / `stakeengine-import-manifest-library-hash-invalid` / `stakeengine-import-manifest-outcome-count-invalid` | a manifest mode entry, or one of its `libraryId`/`libraryHash`/`outcomeCount` fields specifically, is missing or malformed (`libraryHash` must match `^sha256:[0-9a-f]{64}$`; `outcomeCount` must be a *positive* safe integer — zero outcomes is rejected, not silently accepted) |
+| `stakeengine-import-manifest-files-duplicate` / `stakeengine-import-manifest-files-entry-unsafe` | `pokie-manifest.json`'s own `files` list has an exact or case-only duplicate entry, or an entry that isn't itself a safe filename |
+| `stakeengine-import-manifest-files-missing-entry` / `stakeengine-import-manifest-files-unexpected-entry` | `files` doesn't match the exact expected set — `index.json`, `pokie-manifest.json`, and every *current* mode's own CSV/books filename, nothing missing, nothing extra |
 | `stakeengine-import-mode-missing-in-manifest` / `stakeengine-import-mode-missing-in-index` | a mode name is in one file but not the other |
-| `stakeengine-import-mode-cost-mismatch` / `stakeengine-import-mode-events-filename-mismatch` / `stakeengine-import-mode-weights-filename-mismatch` | `index.json` and the manifest disagree on a mode's `cost`/filenames |
+| `stakeengine-import-mode-cost-mismatch` | `index.json` and the manifest disagree on a mode's `cost` |
 | `stakeengine-import-csv-missing` / `stakeengine-import-csv-unreadable` | a mode's lookup CSV is absent / couldn't be read |
 | `stakeengine-import-books-missing` / `stakeengine-import-books-unreadable` / `stakeengine-import-books-invalid-zstd` | a mode's books file is absent / couldn't be read / isn't a valid zstd frame |
 | `stakeengine-import-csv-malformed-row` | a CSV row isn't exactly three comma-separated integer fields |

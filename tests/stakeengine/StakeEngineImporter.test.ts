@@ -209,7 +209,11 @@ describe("StakeEngineImporter", () => {
         it("reports stakeengine-import-mode-missing-in-manifest when a mode in index.json is renamed", async () => {
             await exportSingleOutcome(1, 5);
             const indexPath = path.join(outDir, "index.json");
-            fs.writeFileSync(indexPath, fs.readFileSync(indexPath, "utf-8").replace('"base"', '"renamed"'));
+            // Renames "base" everywhere in index.json (name *and* its own events/weights filenames, consistently
+            // with Stake's naming convention) — a real disk rename of the same two files would need to follow,
+            // but doesn't here, which is exactly the point: index.json now names a mode pokie-manifest.json has
+            // never heard of.
+            fs.writeFileSync(indexPath, fs.readFileSync(indexPath, "utf-8").replace(/base/g, "renamed"));
 
             const result = await new StakeEngineImporter().importFromDirectory(outDir);
 
@@ -286,5 +290,75 @@ describe("StakeEngineImporter", () => {
             expect(result.issues.some((issue) => issue.code === "stakeengine-import-duplicate-csv-id")).toBe(true);
             expect(result.modes).toEqual([]);
         });
+
+        it("reports stakeengine-import-manifest-outcome-count-invalid when the manifest's outcomeCount is edited to zero", async () => {
+            await exportSingleOutcome(1, 5);
+            const manifestPath = path.join(outDir, "pokie-manifest.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as StakeEngineManifest;
+            fs.writeFileSync(manifestPath, JSON.stringify({...manifest, modes: [{...manifest.modes[0], outcomeCount: 0}]}));
+
+            const result = await new StakeEngineImporter().importFromDirectory(outDir);
+
+            expect(result.issues.some((issue) => issue.code === "stakeengine-import-manifest-outcome-count-invalid")).toBe(true);
+            expect(result.modes).toEqual([]);
+        });
+
+        it("reports stakeengine-import-manifest-files-missing-entry when the manifest's own files list drops a current mode's file", async () => {
+            await exportSingleOutcome(1, 5);
+            const manifestPath = path.join(outDir, "pokie-manifest.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as StakeEngineManifest;
+            fs.writeFileSync(manifestPath, JSON.stringify({...manifest, files: manifest.files.filter((file) => file !== "books_base.jsonl.zst")}));
+
+            const result = await new StakeEngineImporter().importFromDirectory(outDir);
+
+            expect(result.issues.some((issue) => issue.code === "stakeengine-import-manifest-files-missing-entry")).toBe(true);
+            expect(result.modes).toEqual([]);
+        });
+
+        it("reports stakeengine-import-filename-reused when a second mode's own weights is retargeted at the first mode's own CSV", async () => {
+            const baseLibrary = buildSingleOutcomeStakeEngineLibrary({libraryId: "tamper-lib-base", betMode: "base", stake: 1, totalWin: 5});
+            const bonusLibrary = buildSingleOutcomeStakeEngineLibrary({libraryId: "tamper-lib-bonus", betMode: "base", stake: 1, totalWin: 5});
+            const modes: StakeEngineExportModeInput[] = [
+                {modeName: "base", cost: 1, library: baseLibrary},
+                {modeName: "bonus", cost: 100, library: bonusLibrary},
+            ];
+            await new StakeEngineExporter("1.3.0").exportToDirectory(modes, outDir);
+
+            const indexPath = path.join(outDir, "index.json");
+            const index = JSON.parse(fs.readFileSync(indexPath, "utf-8")) as {modes: {name: string; weights: string}[]};
+            index.modes = index.modes.map((mode) => (mode.name === "bonus" ? {...mode, weights: "lookup_base.csv"} : mode));
+            fs.writeFileSync(indexPath, JSON.stringify(index));
+
+            const result = await new StakeEngineImporter().importFromDirectory(outDir);
+
+            expect(result.issues.some((issue) => issue.code === "stakeengine-import-filename-reused")).toBe(true);
+            expect(result.modes).toEqual([]);
+        });
+    });
+
+    it("computes sourceProvenance from the exact bytes read for parsing/building, never re-reading a file afterward", async () => {
+        const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "no-reread-lib", betMode: "base", stake: 1, totalWin: 5});
+        const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 1, library}];
+        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, outDir);
+
+        const readCounts = new Map<string, number>();
+        const countingReadFile = (filePath: string): Buffer => {
+            const count = (readCounts.get(filePath) ?? 0) + 1;
+            readCounts.set(filePath, count);
+            if (count > 1) {
+                throw new Error(`"${filePath}" was read more than once — StakeEngineImporter must never re-read a file it has already read.`);
+            }
+            return fs.readFileSync(filePath);
+        };
+
+        const importer = new StakeEngineImporter(undefined, undefined, countingReadFile);
+        const result = await importer.importFromDirectory(outDir);
+
+        expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
+        expect(result.sourceProvenance).toBeDefined();
+        expect(result.sourceProvenance?.indexHash).toBe(`sha256:${crypto.createHash("sha256").update(fs.readFileSync(path.join(outDir, "index.json"))).digest("hex")}`);
+        for (const filePath of [path.join(outDir, "index.json"), path.join(outDir, "pokie-manifest.json"), path.join(outDir, "lookup_base.csv"), path.join(outDir, "books_base.jsonl.zst")]) {
+            expect(readCounts.get(filePath)).toBe(1);
+        }
     });
 });

@@ -133,6 +133,31 @@ describe("StakeEngineImportValidator", () => {
                 );
             }
         });
+
+        it("reports stakeengine-import-mode-filename-mismatch for a safe filename that doesn't follow lookup_<mode>.csv / books_<mode>.jsonl.zst", () => {
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], weights: "custom.csv"}]})})).toContain(
+                "stakeengine-import-mode-filename-mismatch",
+            );
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], events: "custom.jsonl.zst"}]})})).toContain(
+                "stakeengine-import-mode-filename-mismatch",
+            );
+        });
+
+        it("reports stakeengine-import-filename-reused / stakeengine-import-filename-case-collision when two modes' filenames collide", () => {
+            const bonus = {name: "bonus", cost: 100, events: "books_bonus.jsonl.zst", weights: "lookup_bonus.csv"};
+            expect(
+                issueCodes({
+                    ...baseBundle(),
+                    index: ok({modes: [{...VALID_INDEX.modes[0], weights: "lookup_bonus.csv"}, bonus]}),
+                }),
+            ).toContain("stakeengine-import-filename-reused");
+            expect(
+                issueCodes({
+                    ...baseBundle(),
+                    index: ok({modes: [VALID_INDEX.modes[0], {...bonus, weights: "LOOKUP_BASE.CSV"}]}),
+                }),
+            ).toContain("stakeengine-import-filename-case-collision");
+        });
     });
 
     describe("pokie-manifest.json", () => {
@@ -192,12 +217,54 @@ describe("StakeEngineImportValidator", () => {
             expect(
                 issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], outcomeCount: -1}]})}),
             ).toContain("stakeengine-import-manifest-outcome-count-invalid");
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], outcomeCount: 0}]})}),
+            ).toContain("stakeengine-import-manifest-outcome-count-invalid");
         });
 
         it("reports stakeengine-import-mode-filename-unsafe for absolute/traversal/nested filenames in the manifest", () => {
             expect(
                 issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], events: "../evil.jsonl.zst"}]})}),
             ).toContain("stakeengine-import-mode-filename-unsafe");
+        });
+    });
+
+    describe("manifest.files", () => {
+        it("reports stakeengine-import-manifest-field-invalid when files is missing, empty, or has a non-string/empty-string entry", () => {
+            const {files: _files, ...manifestWithoutFiles} = VALID_MANIFEST;
+            expect(issueCodes({...baseBundle(), manifest: ok(manifestWithoutFiles)})).toContain("stakeengine-import-manifest-field-invalid");
+            expect(issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, files: []})})).toContain("stakeengine-import-manifest-field-invalid");
+            expect(issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, files: [""]})})).toContain("stakeengine-import-manifest-field-invalid");
+        });
+
+        it("reports stakeengine-import-manifest-files-duplicate for an exact or case-only duplicate entry", () => {
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, files: [...VALID_MANIFEST.files, "lookup_base.csv"]})}),
+            ).toContain("stakeengine-import-manifest-files-duplicate");
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, files: [...VALID_MANIFEST.files, "LOOKUP_BASE.CSV"]})}),
+            ).toContain("stakeengine-import-manifest-files-duplicate");
+        });
+
+        it("reports stakeengine-import-manifest-files-entry-unsafe for an absolute/traversal/nested entry", () => {
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, files: [...VALID_MANIFEST.files, "../evil.csv"]})}),
+            ).toContain("stakeengine-import-manifest-files-entry-unsafe");
+        });
+
+        it("reports stakeengine-import-manifest-files-missing-entry when an expected file is absent", () => {
+            expect(
+                issueCodes({
+                    ...baseBundle(),
+                    manifest: ok({...VALID_MANIFEST, files: VALID_MANIFEST.files.filter((file) => file !== "books_base.jsonl.zst")}),
+                }),
+            ).toContain("stakeengine-import-manifest-files-missing-entry");
+        });
+
+        it("reports stakeengine-import-manifest-files-unexpected-entry for a file outside index.json/pokie-manifest.json/current mode files", () => {
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, files: [...VALID_MANIFEST.files, "leftover_bonus.csv"]})}),
+            ).toContain("stakeengine-import-manifest-files-unexpected-entry");
         });
     });
 
@@ -212,21 +279,28 @@ describe("StakeEngineImportValidator", () => {
             expect(
                 issueCodes({
                     ...baseBundle(),
-                    manifest: ok({...VALID_MANIFEST, modes: [...VALID_MANIFEST.modes, {...VALID_MANIFEST.modes[0], name: "bonus"}]}),
+                    manifest: ok({
+                        ...VALID_MANIFEST,
+                        modes: [...VALID_MANIFEST.modes, {...VALID_MANIFEST.modes[0], name: "bonus", events: "books_bonus.jsonl.zst", weights: "lookup_bonus.csv"}],
+                        files: [...VALID_MANIFEST.files, "books_bonus.jsonl.zst", "lookup_bonus.csv"],
+                    }),
                 }),
             ).toContain("stakeengine-import-mode-missing-in-index");
         });
 
-        it("reports stakeengine-import-mode-cost-mismatch/events-filename-mismatch/weights-filename-mismatch", () => {
+        it("reports stakeengine-import-mode-cost-mismatch when index.json and the manifest disagree on a mode's cost", () => {
             expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], cost: 2}]})})).toContain(
                 "stakeengine-import-mode-cost-mismatch",
             );
-            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], events: "books_other.jsonl.zst"}]})})).toContain(
-                "stakeengine-import-mode-events-filename-mismatch",
-            );
-            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], weights: "lookup_other.csv"}]})})).toContain(
-                "stakeengine-import-mode-weights-filename-mismatch",
-            );
+        });
+
+        it("an events/weights filename disagreement between index.json and the manifest is unreachable: whichever file's filename doesn't match its own naming convention fails first", () => {
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], events: "books_other.jsonl.zst"}]})})).toEqual([
+                "stakeengine-import-mode-filename-mismatch",
+            ]);
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], weights: "lookup_other.csv"}]})})).toEqual([
+                "stakeengine-import-mode-filename-mismatch",
+            ]);
         });
     });
 

@@ -24,6 +24,10 @@ function isSafeNonNegativeInteger(value: unknown): value is number {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isSafePositiveInteger(value: unknown): value is number {
+    return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
 // Validates a whole candidate Stake Engine export directory — assembled into a StakeEngineImportBundle by
 // StakeEngineImporter (the only place that touches the filesystem) — additively: index.json/pokie-manifest.json
 // field-level shape (every required field and its type, not just "is this an object"), path-safety of every
@@ -127,6 +131,12 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         return issues;
     }
 
+    // Doesn't cross-check events/weights filenames between index.json and the manifest: both are now
+    // independently required (in validateModeFilename) to be exactly "books_<name>.jsonl.zst"/"lookup_<name>.csv"
+    // for their own mode's own name — so once both files individually validate for the same modeName, their
+    // filenames are already guaranteed identical (the same deterministic formula, applied to the same name).
+    // A genuine disagreement is unreachable: whichever file uses a different filename fails its own
+    // stakeengine-import-mode-filename-mismatch check first, and validation never even reaches this method.
     private crossCheckMode(indexMode: StakeEngineIndexModeEntry, manifestMode: StakeEngineManifestModeEntry | undefined, issues: ValidationIssue[]): void {
         if (manifestMode === undefined) {
             issues.push({
@@ -142,22 +152,6 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 code: "stakeengine-import-mode-cost-mismatch",
                 severity: "error",
                 message: `mode "${indexMode.name}": index.json's cost (${indexMode.cost}) does not match pokie-manifest.json's (${manifestMode.cost}).`,
-                details: {modeName: indexMode.name},
-            });
-        }
-        if (indexMode.events !== manifestMode.events) {
-            issues.push({
-                code: "stakeengine-import-mode-events-filename-mismatch",
-                severity: "error",
-                message: `mode "${indexMode.name}": index.json's events filename ("${indexMode.events}") does not match pokie-manifest.json's ("${manifestMode.events}").`,
-                details: {modeName: indexMode.name},
-            });
-        }
-        if (indexMode.weights !== manifestMode.weights) {
-            issues.push({
-                code: "stakeengine-import-mode-weights-filename-mismatch",
-                severity: "error",
-                message: `mode "${indexMode.name}": index.json's weights filename ("${indexMode.weights}") does not match pokie-manifest.json's ("${manifestMode.weights}").`,
                 details: {modeName: indexMode.name},
             });
         }
@@ -458,7 +452,21 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         return false;
     }
 
-    private validateModeFilename(stakeDir: string, modeName: string, field: "events" | "weights", fileName: unknown, issues: ValidationIssue[]): boolean {
+    // Beyond bare path-safety, a mode's own "events"/"weights" filename must match Stake's own naming
+    // convention exactly (the same one StakeEngineExporter itself always writes — see its buildMode): a mode
+    // named "base" must use "books_base.jsonl.zst"/"lookup_base.csv", nothing else. This closes filename reuse
+    // structurally (two distinct, already-unique mode names can never derive the same filename), but "seenFiles"
+    // (scoped per source — index.json and pokie-manifest.json each get their own map, mirroring how mode-name
+    // collisions are tracked per source) still catches it explicitly and reports a dedicated diagnostic, rather
+    // than relying solely on the naming-convention check to make it structurally unreachable.
+    private validateModeFilename(
+        stakeDir: string,
+        modeName: string,
+        field: "events" | "weights",
+        fileName: unknown,
+        seenFiles: Map<string, {modeName: string; field: "events" | "weights"; fileName: string}>,
+        issues: ValidationIssue[],
+    ): boolean {
         if (!isNonEmptyString(fileName) || resolveSafeStakeEngineFilePath(stakeDir, fileName) === undefined) {
             issues.push({
                 code: "stakeengine-import-mode-filename-unsafe",
@@ -468,7 +476,43 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             });
             return false;
         }
-        return true;
+
+        let ok = true;
+
+        const expected = field === "events" ? `books_${modeName}.jsonl.zst` : `lookup_${modeName}.csv`;
+        if (fileName !== expected) {
+            issues.push({
+                code: "stakeengine-import-mode-filename-mismatch",
+                severity: "error",
+                message: `mode "${modeName}"'s "${field}" filename ("${fileName}") must be exactly "${expected}" — Stake's own naming convention, derived from the mode's name.`,
+                details: {modeName, field, fileName, expected},
+            });
+            ok = false;
+        }
+
+        const lowerFileName = fileName.toLowerCase();
+        const existing = seenFiles.get(lowerFileName);
+        if (existing === undefined) {
+            seenFiles.set(lowerFileName, {modeName, field, fileName});
+        } else if (existing.fileName === fileName) {
+            issues.push({
+                code: "stakeengine-import-filename-reused",
+                severity: "error",
+                message: `"${fileName}" is used by more than one mode/field: mode "${existing.modeName}"'s "${existing.field}", and mode "${modeName}"'s "${field}".`,
+                details: {fileName, modeName, field, reusedFrom: existing.modeName},
+            });
+            ok = false;
+        } else {
+            issues.push({
+                code: "stakeengine-import-filename-case-collision",
+                severity: "error",
+                message: `"${fileName}" (mode "${modeName}"'s "${field}") and "${existing.fileName}" (mode "${existing.modeName}"'s "${existing.field}") differ only in case and would collide on a case-insensitive filesystem.`,
+                details: {fileName, modeName, field, collidesWith: existing.fileName},
+            });
+            ok = false;
+        }
+
+        return ok;
     }
 
     private parseIndex(stakeDir: string, rawIndex: unknown, issues: ValidationIssue[]): StakeEngineIndex | undefined {
@@ -484,6 +528,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         }
 
         const seenNames = new Map<string, string>();
+        const seenFiles = new Map<string, {modeName: string; field: "events" | "weights"; fileName: string}>();
         const modes: StakeEngineIndexModeEntry[] = [];
         let sawError = false;
 
@@ -517,8 +562,8 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 return;
             }
 
-            const eventsOk = this.validateModeFilename(stakeDir, modeName, "events", mode.events, issues);
-            const weightsOk = this.validateModeFilename(stakeDir, modeName, "weights", mode.weights, issues);
+            const eventsOk = this.validateModeFilename(stakeDir, modeName, "events", mode.events, seenFiles, issues);
+            const weightsOk = this.validateModeFilename(stakeDir, modeName, "weights", mode.weights, seenFiles, issues);
             if (!eventsOk || !weightsOk) {
                 sawError = true;
                 return;
@@ -581,11 +626,17 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
         if (manifest.configHash !== undefined && typeof manifest.configHash !== "string") {
             fieldInvalid("configHash", "must be a string when present");
         }
-        if (manifest.files !== undefined && (!Array.isArray(manifest.files) || manifest.files.some((file) => typeof file !== "string"))) {
-            fieldInvalid("files", "must be an array of strings when present");
+        if (
+            manifest.files === undefined ||
+            !Array.isArray(manifest.files) ||
+            manifest.files.length === 0 ||
+            manifest.files.some((file) => typeof file !== "string" || file.trim().length === 0)
+        ) {
+            fieldInvalid("files", "must be present as a non-empty array of non-empty strings");
         }
 
         const seenNames = new Map<string, string>();
+        const seenFiles = new Map<string, {modeName: string; field: "events" | "weights"; fileName: string}>();
         const modes: StakeEngineManifestModeEntry[] = [];
 
         manifest.modes.forEach((rawMode, position) => {
@@ -649,11 +700,11 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 });
                 sawError = true;
             }
-            if (!isSafeNonNegativeInteger(mode.outcomeCount)) {
+            if (!isSafePositiveInteger(mode.outcomeCount)) {
                 issues.push({
                     code: "stakeengine-import-manifest-outcome-count-invalid",
                     severity: "error",
-                    message: `mode "${modeName}": pokie-manifest.json's outcomeCount (${JSON.stringify(mode.outcomeCount)}) must be a non-negative safe integer.`,
+                    message: `mode "${modeName}": pokie-manifest.json's outcomeCount (${JSON.stringify(mode.outcomeCount)}) must be a positive safe integer.`,
                     details: {modeName},
                 });
                 sawError = true;
@@ -676,8 +727,8 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 });
                 sawError = true;
             }
-            const eventsOk = this.validateModeFilename(stakeDir, modeName, "events", mode.events, issues);
-            const weightsOk = this.validateModeFilename(stakeDir, modeName, "weights", mode.weights, issues);
+            const eventsOk = this.validateModeFilename(stakeDir, modeName, "events", mode.events, seenFiles, issues);
+            const weightsOk = this.validateModeFilename(stakeDir, modeName, "weights", mode.weights, seenFiles, issues);
             if (!eventsOk || !weightsOk) {
                 sawError = true;
             }
@@ -686,7 +737,7 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
                 isNonEmptyString(mode.betMode) &&
                 isFinitePositiveNumber(mode.stake) &&
                 isFinitePositiveNumber(mode.cost) &&
-                isSafeNonNegativeInteger(mode.outcomeCount) &&
+                isSafePositiveInteger(mode.outcomeCount) &&
                 isNonEmptyString(mode.libraryId) &&
                 isNonEmptyString(mode.libraryHash) &&
                 eventsOk &&
@@ -706,6 +757,14 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             }
         });
 
+        // Only reached once every top-level field and every mode entry validated cleanly — "files" is guaranteed
+        // a non-empty array of non-empty strings at this point, and "modes" is guaranteed complete (one entry
+        // per manifest.modes[], each with a validated, safe, convention-matching events/weights filename), so
+        // the exact-set comparison below has a trustworthy expected set to compare against.
+        if (!sawError && this.validateManifestFilesSet(stakeDir, manifest.files as string[], modes, issues)) {
+            sawError = true;
+        }
+
         if (sawError) {
             return undefined;
         }
@@ -718,7 +777,78 @@ export class StakeEngineImportValidator implements StakeEngineImportValidating {
             game: game as {id: string; name: string; version: string},
             ...(manifest.configHash !== undefined ? {configHash: manifest.configHash as string} : {}),
             modes,
-            files: (manifest.files as string[] | undefined) ?? [],
+            files: manifest.files as string[],
         };
+    }
+
+    // Validates pokie-manifest.json's own "files" field as an exact, unique set: index.json, pokie-manifest.json
+    // itself, and every *current* mode's own CSV/books filenames — nothing missing, nothing extra, no duplicate
+    // or case-colliding entry, and no entry that isn't itself a safe filename. This is deliberately independent
+    // of index.json's own filenames (which are cross-checked against the manifest's own mode entries elsewhere,
+    // in crossCheckMode) — "files" describes the manifest's own understanding of what this export directory
+    // should contain, exactly the same convention StakeEngineExporter's own manifest.files already follows.
+    private validateManifestFilesSet(stakeDir: string, files: readonly string[], modes: readonly StakeEngineManifestModeEntry[], issues: ValidationIssue[]): boolean {
+        let sawError = false;
+        const seen = new Map<string, string>();
+        const actual = new Set<string>();
+
+        for (const file of files) {
+            const lowerFile = file.toLowerCase();
+            const existing = seen.get(lowerFile);
+            if (existing !== undefined) {
+                issues.push({
+                    code: "stakeengine-import-manifest-files-duplicate",
+                    severity: "error",
+                    message:
+                        existing === file
+                            ? `pokie-manifest.json's "files" lists "${file}" more than once.`
+                            : `pokie-manifest.json's "files" lists "${file}" and "${existing}", which differ only in case and would collide on a case-insensitive filesystem.`,
+                    details: {file},
+                });
+                sawError = true;
+                continue;
+            }
+            seen.set(lowerFile, file);
+
+            if (resolveSafeStakeEngineFilePath(stakeDir, file) === undefined) {
+                issues.push({
+                    code: "stakeengine-import-manifest-files-entry-unsafe",
+                    severity: "error",
+                    message: `pokie-manifest.json's "files" entry "${file}" is not a safe filename — absolute paths, ".."/nested paths, and anything resolving outside the export directory are refused.`,
+                    details: {file},
+                });
+                sawError = true;
+                continue;
+            }
+
+            actual.add(file);
+        }
+
+        const expected = new Set<string>(["index.json", "pokie-manifest.json", ...modes.flatMap((mode) => [mode.weights, mode.events])]);
+
+        for (const file of expected) {
+            if (!actual.has(file)) {
+                issues.push({
+                    code: "stakeengine-import-manifest-files-missing-entry",
+                    severity: "error",
+                    message: `pokie-manifest.json's "files" is missing the expected entry "${file}".`,
+                    details: {file},
+                });
+                sawError = true;
+            }
+        }
+        for (const file of actual) {
+            if (!expected.has(file)) {
+                issues.push({
+                    code: "stakeengine-import-manifest-files-unexpected-entry",
+                    severity: "error",
+                    message: `pokie-manifest.json's "files" lists "${file}", which is not index.json, pokie-manifest.json, or a current mode's own CSV/books file.`,
+                    details: {file},
+                });
+                sawError = true;
+            }
+        }
+
+        return sawError;
     }
 }

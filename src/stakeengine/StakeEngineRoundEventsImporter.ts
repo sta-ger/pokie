@@ -227,12 +227,22 @@ export class StakeEngineRoundEventsImporter<T extends string | number = string> 
     }
 
     private parseFeatureEvent(event: StakeEngineEvent): RoundArtifactFeatureEventInput {
-        const data: Record<string, unknown> = {};
-        for (const [key, value] of Object.entries(event)) {
-            if (key !== "index" && key !== "type") {
-                data[key] = value;
-            }
+        const entries = Object.entries(event).filter(([key]) => key !== "index" && key !== "type");
+        if (entries.length === 0) {
+            return {type: event.type};
         }
-        return Object.keys(data).length > 0 ? {type: event.type, data} : {type: event.type};
+
+        // Object.create(null) rather than `{}` — same reasoning as toCanonicalJson: a plain `{}` inherits
+        // Object.prototype's "__proto__" accessor, so `data["__proto__"] = ...` for a source event field
+        // literally named "__proto__" (a real own property here, since "event" came from JSON.parse, which
+        // always uses CreateDataProperty rather than [[Set]]) would silently reassign data's own prototype
+        // instead of creating a real own property, losing the key entirely. A null-prototype object has no such
+        // accessor to intercept the assignment, so every key — including "__proto__" — becomes a real own
+        // property.
+        const data: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+        for (const [key, value] of entries) {
+            data[key] = value;
+        }
+        return {type: event.type, data};
     }
 }
