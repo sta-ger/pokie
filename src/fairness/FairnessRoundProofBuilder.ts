@@ -11,6 +11,7 @@ import type {FairnessRoundProofBuilding} from "./FairnessRoundProofBuilding.js";
 import {FAIRNESS_ROUND_PROOF_SCHEMA_VERSION, type FairnessRoundProof} from "./FairnessRoundProof.js";
 import {FairnessBundleDriftError} from "./internal/FairnessBundleDriftError.js";
 import {drawPinnedFairnessOutcome} from "./internal/drawPinnedFairnessOutcome.js";
+import {FairnessModeIndexInvalidError} from "./internal/FairnessModeIndexInvalidError.js";
 import {HmacFairnessRandomSource} from "./internal/HmacFairnessRandomSource.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
@@ -18,31 +19,39 @@ import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 // FairnessCommitment plus the now-revealed serverSeed that commitment's own serverSeedHash committed to, drawn
 // against one pinned snapshot of a live source Outcome Library Bundle (see drawPinnedFairnessOutcome). Fails
 // fast (FairnessRoundProofBuildError) rather than ever returning a proof for: a commitment that doesn't validate
-// on its own (FairnessCommitmentValidating — the same strict check FairnessRoundProofVerifying later re-applies
-// to whatever commitment it's given), a serverSeed that doesn't match its commitment, a live bundle whose mode no
-// longer matches the commitment's own pinned libraryId/libraryHash, or a bundle that drifted between reading its
-// index and reading the outcome selected against it.
+// on its own, a serverSeed that doesn't match its commitment, a live mode index that doesn't validate on its own
+// (see validatePinnedFairnessModeIndex), a live bundle whose mode no longer matches the commitment's own pinned
+// libraryId/libraryHash, or a bundle that drifted between reading its index and reading the outcome selected
+// against it.
+//
+// FairnessCommitmentValidator ALWAYS runs against the given commitment — hardcoded, not swappable via
+// constructor injection, so a caller can never accidentally (or maliciously) build a proof from a commitment
+// that doesn't actually validate. "additionalCommitmentValidator" is the one caller-extensible hook: a custom
+// check layered ON TOP of the mandatory one, whose own issues are always merged in alongside it — a permissive
+// additionalCommitmentValidator that always returns [] can never suppress a mandatory issue, only ever fail to
+// add more of its own.
 export class FairnessRoundProofBuilder implements FairnessRoundProofBuilding {
-    private readonly commitmentValidator: FairnessCommitmentValidating;
+    private readonly mandatoryCommitmentValidator: FairnessCommitmentValidating = new FairnessCommitmentValidator();
     private readonly reader: OutcomeLibraryBundleReading;
     private readonly randomSourceFactory: (serverSeed: string, clientSeed: string, nonce: number) => WeightedOutcomeRandomSource;
+    private readonly additionalCommitmentValidator: FairnessCommitmentValidating | undefined;
 
     constructor(
-        commitmentValidator: FairnessCommitmentValidating = new FairnessCommitmentValidator(),
         reader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         randomSourceFactory: (
             serverSeed: string,
             clientSeed: string,
             nonce: number,
         ) => WeightedOutcomeRandomSource = (serverSeed, clientSeed, nonce) => new HmacFairnessRandomSource(serverSeed, clientSeed, nonce),
+        additionalCommitmentValidator: FairnessCommitmentValidating | undefined = undefined,
     ) {
-        this.commitmentValidator = commitmentValidator;
         this.reader = reader;
         this.randomSourceFactory = randomSourceFactory;
+        this.additionalCommitmentValidator = additionalCommitmentValidator;
     }
 
     public async build(commitment: FairnessCommitment, serverSeed: string, sourceBundleDir: string): Promise<FairnessRoundProof> {
-        const commitmentIssues = this.commitmentValidator.validate(commitment);
+        const commitmentIssues = [...this.mandatoryCommitmentValidator.validate(commitment), ...(this.additionalCommitmentValidator?.validate(commitment) ?? [])];
         if (commitmentIssues.some((issue) => issue.severity === "error")) {
             throw new FairnessRoundProofBuildError(
                 "fairness-round-proof-commitment-invalid",
@@ -65,6 +74,9 @@ export class FairnessRoundProofBuilder implements FairnessRoundProofBuilding {
         } catch (error) {
             if (error instanceof FairnessBundleDriftError) {
                 throw new FairnessRoundProofBuildError("fairness-round-proof-bundle-drift", error.message);
+            }
+            if (error instanceof FairnessModeIndexInvalidError) {
+                throw new FairnessRoundProofBuildError("fairness-round-proof-mode-index-invalid", error.message);
             }
             throw error;
         }

@@ -120,8 +120,57 @@ describe("FairnessRoundProofBuilder", () => {
             drawOutcome: (dir, modeName, randomSource) => reader.drawOutcome(dir, modeName, randomSource),
             readLibrary: (dir, modeName) => reader.readLibrary(dir, modeName),
         };
-        const builder = new FairnessRoundProofBuilder(undefined, driftingReader);
+        const builder = new FairnessRoundProofBuilder(driftingReader);
 
         await expect(builder.build(commitment, serverSeed, bundleDir)).rejects.toThrow(FairnessRoundProofBuildError);
+    });
+
+    it("still rejects a malformed commitment even when a permissive custom validator is injected", async () => {
+        const serverSeed = "server-seed-permissive-validator";
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed});
+        const malformedCommitment = {...commitment, extra: "field"} as unknown as FairnessCommitment;
+        const alwaysValidCommitmentValidator = {validate: () => []};
+        const builder = new FairnessRoundProofBuilder(undefined, undefined, alwaysValidCommitmentValidator);
+
+        // The mandatory FairnessCommitmentValidator always runs first and can never be suppressed — an
+        // "additional" validator that always reports no issues of its own is still only ever additive.
+        await expect(builder.build(malformedCommitment, serverSeed, bundleDir)).rejects.toThrow(FairnessRoundProofBuildError);
+    });
+
+    it("rejects a modeName that doesn't match this bundle format's own canonical rule, without reading any file", async () => {
+        const serverSeed = "server-seed-path-traversal";
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed});
+        let readerWasCalled = false;
+        const neverCalledReader: OutcomeLibraryBundleReading = {
+            readManifest: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+            readModeIndex: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+            iterateModeOutcomes: () => {
+                readerWasCalled = true;
+                throw new Error("should never be called");
+            },
+            readOutcomeById: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+            drawOutcome: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+            readLibrary: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+        };
+        const tampered: FairnessCommitment = {...commitment, modeName: "../../outside"};
+        const builder = new FairnessRoundProofBuilder(neverCalledReader);
+
+        await expect(builder.build(tampered, serverSeed, bundleDir)).rejects.toThrow(FairnessRoundProofBuildError);
+        expect(readerWasCalled).toBe(false);
     });
 });

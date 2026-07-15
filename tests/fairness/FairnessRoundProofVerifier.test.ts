@@ -74,7 +74,7 @@ describe("FairnessRoundProofVerifier", () => {
 
     it("rejects a candidate that isn't shaped like a proof, without touching the bundle", async () => {
         let readerWasCalled = false;
-        const isolatedVerifier = new FairnessRoundProofVerifier(undefined, undefined, createNeverCalledReader(() => (readerWasCalled = true)));
+        const isolatedVerifier = new FairnessRoundProofVerifier(createNeverCalledReader(() => (readerWasCalled = true)));
 
         const issues = await isolatedVerifier.verify({not: "a proof"}, {commitment, sourceBundleDir: bundleDir});
 
@@ -84,7 +84,7 @@ describe("FairnessRoundProofVerifier", () => {
 
     it("short-circuits on an invalid seed without attempting a commitment or bundle cross-check", async () => {
         let readerWasCalled = false;
-        const isolatedVerifier = new FairnessRoundProofVerifier(undefined, undefined, createNeverCalledReader(() => (readerWasCalled = true)));
+        const isolatedVerifier = new FairnessRoundProofVerifier(createNeverCalledReader(() => (readerWasCalled = true)));
 
         const issues = await isolatedVerifier.verify({...proof, serverSeed: "wrong-seed"}, {commitment, sourceBundleDir: bundleDir});
 
@@ -94,7 +94,7 @@ describe("FairnessRoundProofVerifier", () => {
 
     it("short-circuits on an unsupported algorithmVersion without attempting a commitment or bundle cross-check", async () => {
         let readerWasCalled = false;
-        const isolatedVerifier = new FairnessRoundProofVerifier(undefined, undefined, createNeverCalledReader(() => (readerWasCalled = true)));
+        const isolatedVerifier = new FairnessRoundProofVerifier(createNeverCalledReader(() => (readerWasCalled = true)));
 
         const issues = await isolatedVerifier.verify(
             {...proof, algorithmVersion: "some-other-algorithm-v1"},
@@ -107,7 +107,7 @@ describe("FairnessRoundProofVerifier", () => {
 
     it("requires an explicit commitment and reads nothing without one", async () => {
         let readerWasCalled = false;
-        const isolatedVerifier = new FairnessRoundProofVerifier(undefined, undefined, createNeverCalledReader(() => (readerWasCalled = true)));
+        const isolatedVerifier = new FairnessRoundProofVerifier(createNeverCalledReader(() => (readerWasCalled = true)));
 
         const issues = await isolatedVerifier.verify(proof, {sourceBundleDir: bundleDir});
 
@@ -122,7 +122,7 @@ describe("FairnessRoundProofVerifier", () => {
 
     it("rejects a commitment that doesn't validate on its own, without touching the bundle", async () => {
         let readerWasCalled = false;
-        const isolatedVerifier = new FairnessRoundProofVerifier(undefined, undefined, createNeverCalledReader(() => (readerWasCalled = true)));
+        const isolatedVerifier = new FairnessRoundProofVerifier(createNeverCalledReader(() => (readerWasCalled = true)));
 
         const issues = await isolatedVerifier.verify(proof, {commitment: {...commitment, extra: "field"}, sourceBundleDir: bundleDir});
 
@@ -132,7 +132,7 @@ describe("FairnessRoundProofVerifier", () => {
 
     it("requires an explicit sourceBundleDir once the commitment checks out, and reads nothing without one", async () => {
         let readerWasCalled = false;
-        const isolatedVerifier = new FairnessRoundProofVerifier(undefined, undefined, createNeverCalledReader(() => (readerWasCalled = true)));
+        const isolatedVerifier = new FairnessRoundProofVerifier(createNeverCalledReader(() => (readerWasCalled = true)));
 
         const issues = await isolatedVerifier.verify(proof, {commitment});
 
@@ -274,7 +274,14 @@ describe("FairnessRoundProofVerifier", () => {
     it("detects an outcome id no longer present in the live bundle's mode index", async () => {
         const indexPath = path.join(bundleDir, "index_base.json");
         const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        const removedEntry = index.entries.find((entry: {id: string}) => entry.id === proof.outcomeId);
+        // Keeps the index itself structurally valid (outcomeCount/totalWeight still match the remaining
+        // entries) — otherwise validatePinnedFairnessModeIndex's own count/weight cross-check would report
+        // "fairness-verify-mode-index-invalid" first, before ever reaching the outcome-missing check this test
+        // means to exercise (a bundle legitimately rebuilt without one outcome looks exactly like this).
         index.entries = index.entries.filter((entry: {id: string}) => entry.id !== proof.outcomeId);
+        index.outcomeCount -= 1;
+        index.totalWeight -= removedEntry.weight;
         fs.writeFileSync(indexPath, JSON.stringify(index));
 
         const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
@@ -302,7 +309,7 @@ describe("FairnessRoundProofVerifier", () => {
             drawOutcome: (dir, modeName, randomSource) => reader.drawOutcome(dir, modeName, randomSource),
             readLibrary: (dir, modeName) => reader.readLibrary(dir, modeName),
         };
-        const isolatedVerifier = new FairnessRoundProofVerifier(undefined, undefined, driftingReader);
+        const isolatedVerifier = new FairnessRoundProofVerifier(driftingReader);
 
         const issues = await isolatedVerifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
 
@@ -322,5 +329,81 @@ describe("FairnessRoundProofVerifier", () => {
         const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
 
         expect(issues).toEqual([]);
+    });
+
+    it("still rejects a malformed proof/commitment even when permissive custom validators are injected", async () => {
+        const alwaysValidProofValidator = {validate: () => []};
+        const alwaysValidCommitmentValidator = {validate: () => []};
+        const isolatedVerifier = new FairnessRoundProofVerifier(undefined, undefined, alwaysValidProofValidator, alwaysValidCommitmentValidator);
+
+        const malformedProofIssues = await isolatedVerifier.verify(
+            {...proof, extra: "field"},
+            {commitment, sourceBundleDir: bundleDir},
+        );
+        const malformedCommitmentIssues = await isolatedVerifier.verify(proof, {commitment: {...commitment, extra: "field"}, sourceBundleDir: bundleDir});
+
+        // The mandatory FairnessRoundProofValidator/FairnessCommitmentValidator always run first and can never
+        // be suppressed — an "additional" validator that always reports no issues of its own is still only ever
+        // additive.
+        expect(malformedProofIssues.map((issue) => issue.code)).toContain("fairness-round-proof-malformed");
+        expect(malformedCommitmentIssues.map((issue) => issue.code)).toContain("fairness-verify-commitment-invalid");
+    });
+
+    it("rejects a proof/commitment modeName that doesn't match this bundle format's own canonical rule, without reading any file", async () => {
+        let readerWasCalled = false;
+        const isolatedVerifier = new FairnessRoundProofVerifier(createNeverCalledReader(() => (readerWasCalled = true)));
+
+        const tamperedProof: FairnessRoundProof = {...proof, modeName: "../../outside"};
+        const issues = await isolatedVerifier.verify(tamperedProof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(readerWasCalled).toBe(false);
+        expect(issues.map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);
+    });
+
+    it("rejects a mode index with an outcomesFile that doesn't match the canonical outcomes_<modeName>.jsonl convention", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        index.outcomesFile = "../outside.jsonl";
+        fs.writeFileSync(indexPath, JSON.stringify(index));
+
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("rejects a mode index that carries an extra, unexpected field (closed shape)", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        index.extra = "field";
+        fs.writeFileSync(indexPath, JSON.stringify(index));
+
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("rejects a mode index with an unsupported schemaVersion/librarySchemaVersion", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+
+        fs.writeFileSync(indexPath, JSON.stringify({...index, schemaVersion: 999}));
+        const schemaIssues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        fs.writeFileSync(indexPath, JSON.stringify({...index, librarySchemaVersion: 999}));
+        const librarySchemaIssues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(schemaIssues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+        expect(librarySchemaIssues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("rejects a mode index whose entries are no longer canonically sorted by id", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        index.entries = [...index.entries].reverse();
+        fs.writeFileSync(indexPath, JSON.stringify(index));
+
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
     });
 });

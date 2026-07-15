@@ -75,6 +75,13 @@ describe("FairnessRoundProofValidator", () => {
         expect(issues.map((issue) => issue.code)).toContain("fairness-round-proof-server-seed-mismatch");
     });
 
+    it("rejects a modeName that doesn't match this bundle format's own canonical rule ([A-Za-z0-9_-]+)", () => {
+        // modeName is later embedded in a filename (index_<modeName>.json/outcomes_<modeName>.jsonl) — a "/" or
+        // ".." here would otherwise be a path-traversal vector once a live draw is attempted.
+        expect(validator.validate({...validProof, modeName: "../outside"}).map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);
+        expect(validator.validate({...validProof, modeName: "mode/name"}).map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);
+    });
+
     it("rejects a negative or malformed nonce", () => {
         expect(validator.validate({...validProof, nonce: -1}).map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);
         expect(validator.validate({...validProof, nonce: 1.5}).map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);

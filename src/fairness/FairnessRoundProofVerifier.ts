@@ -14,6 +14,7 @@ import type {FairnessRoundProofValidating} from "./FairnessRoundProofValidating.
 import type {FairnessVerifyOptions, FairnessRoundProofVerifying} from "./FairnessRoundProofVerifying.js";
 import {FairnessBundleDriftError} from "./internal/FairnessBundleDriftError.js";
 import {drawPinnedFairnessOutcome, type PinnedFairnessDraw} from "./internal/drawPinnedFairnessOutcome.js";
+import {FairnessModeIndexInvalidError} from "./internal/FairnessModeIndexInvalidError.js";
 import {HmacFairnessRandomSource} from "./internal/HmacFairnessRandomSource.js";
 
 // "as const", not a wider "(keyof FairnessCommitment)[]" annotation: narrows to exactly this literal tuple, so
@@ -27,26 +28,35 @@ const COMMITMENT_FIELDS = ["algorithmVersion", "serverSeedHash", "clientSeed", "
 // Never throws — every fallible step (reading the live mode index, redrawing against it) is individually
 // guarded, and a top-level try/catch is the final safety net, same "never throw, return diagnostics" contract
 // CertificationEvidenceBundleVerifier itself follows.
+//
+// FairnessRoundProofValidator and FairnessCommitmentValidator ALWAYS run — hardcoded, not swappable via
+// constructor injection, so a caller can never accidentally (or maliciously) accept a proof/commitment that
+// doesn't actually validate by supplying a permissive replacement. "additionalProofValidator"/
+// "additionalCommitmentValidator" are the two caller-extensible hooks: custom checks layered ON TOP of the
+// mandatory ones, whose own issues are always merged in alongside them — a permissive additional validator that
+// always returns [] can never suppress a mandatory issue, only ever fail to add more of its own.
 export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
-    private readonly proofValidator: FairnessRoundProofValidating;
-    private readonly commitmentValidator: FairnessCommitmentValidating;
+    private readonly mandatoryProofValidator: FairnessRoundProofValidating = new FairnessRoundProofValidator();
+    private readonly mandatoryCommitmentValidator: FairnessCommitmentValidating = new FairnessCommitmentValidator();
     private readonly reader: OutcomeLibraryBundleReading;
     private readonly randomSourceFactory: (serverSeed: string, clientSeed: string, nonce: number) => WeightedOutcomeRandomSource;
+    private readonly additionalProofValidator: FairnessRoundProofValidating | undefined;
+    private readonly additionalCommitmentValidator: FairnessCommitmentValidating | undefined;
 
     constructor(
-        proofValidator: FairnessRoundProofValidating = new FairnessRoundProofValidator(),
-        commitmentValidator: FairnessCommitmentValidating = new FairnessCommitmentValidator(),
         reader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         randomSourceFactory: (
             serverSeed: string,
             clientSeed: string,
             nonce: number,
         ) => WeightedOutcomeRandomSource = (serverSeed, clientSeed, nonce) => new HmacFairnessRandomSource(serverSeed, clientSeed, nonce),
+        additionalProofValidator: FairnessRoundProofValidating | undefined = undefined,
+        additionalCommitmentValidator: FairnessCommitmentValidating | undefined = undefined,
     ) {
-        this.proofValidator = proofValidator;
-        this.commitmentValidator = commitmentValidator;
         this.reader = reader;
         this.randomSourceFactory = randomSourceFactory;
+        this.additionalProofValidator = additionalProofValidator;
+        this.additionalCommitmentValidator = additionalCommitmentValidator;
     }
 
     public async verify(candidate: unknown, options?: FairnessVerifyOptions): Promise<ValidationIssue[]> {
@@ -64,7 +74,7 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
     }
 
     private async verifyInternal(candidate: unknown, options: FairnessVerifyOptions | undefined): Promise<ValidationIssue[]> {
-        const structuralIssues = this.proofValidator.validate(candidate);
+        const structuralIssues = [...this.mandatoryProofValidator.validate(candidate), ...(this.additionalProofValidator?.validate(candidate) ?? [])];
         // A proof this malformed (bad shape, unsupported schema/algorithm, or a seed that doesn't match its own
         // commitment) can't be meaningfully cross-checked against anything — short-circuits rather than
         // attempting a partial cross-check, mirroring CertificationEvidenceBundleVerifier's own
@@ -93,7 +103,10 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
             ];
         }
 
-        const commitmentIssues = this.commitmentValidator.validate(options.commitment);
+        const commitmentIssues = [
+            ...this.mandatoryCommitmentValidator.validate(options.commitment),
+            ...(this.additionalCommitmentValidator?.validate(options.commitment) ?? []),
+        ];
         if (commitmentIssues.some((issue) => issue.severity === "error")) {
             return [
                 ...structuralIssues,
@@ -199,12 +212,13 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
     }
 
     // Wraps drawPinnedFairnessOutcome, translating its own failure modes into the specific diagnostic each one
-    // deserves: bundle drift (the pinned snapshot itself was caught changing mid-draw), a broken selection/
-    // byte-range invariant (OutcomeLibraryBundleInvariantError/WeightedOutcomeSelectionError — the live bundle's
-    // own index/outcomes file have drifted out of sync, or an empty/invalid library), or the index simply being
-    // unreadable in the first place (a missing bundle/mode, any other I/O failure). Returns undefined — after
-    // already pushing the one issue that applies — rather than throwing, so the caller can return early without
-    // its own try/catch.
+    // deserves: bundle drift (the pinned snapshot itself was caught changing mid-draw), an untrustworthy mode
+    // index (FairnessModeIndexInvalidError — a malformed/hand-tampered index_<modeName>.json, or a modeName that
+    // never should have reached a file read at all), a broken selection/byte-range invariant
+    // (OutcomeLibraryBundleInvariantError/WeightedOutcomeSelectionError — the live bundle's own index/outcomes
+    // file have drifted out of sync, or an empty/invalid library), or the index simply being unreadable in the
+    // first place (a missing bundle/mode, any other I/O failure). Returns undefined — after already pushing the
+    // one issue that applies — rather than throwing, so the caller can return early without its own try/catch.
     private async tryDraw(
         sourceBundleDir: string,
         modeName: string,
@@ -216,6 +230,8 @@ export class FairnessRoundProofVerifier implements FairnessRoundProofVerifying {
         } catch (error) {
             if (error instanceof FairnessBundleDriftError) {
                 issues.push({code: "fairness-verify-bundle-drift", severity: "error", message: error.message});
+            } else if (error instanceof FairnessModeIndexInvalidError) {
+                issues.push({code: "fairness-verify-mode-index-invalid", severity: "error", message: error.message});
             } else if (error instanceof OutcomeLibraryBundleInvariantError || error instanceof WeightedOutcomeSelectionError) {
                 issues.push({
                     code: "fairness-verify-source-bundle-outcome-invariant",

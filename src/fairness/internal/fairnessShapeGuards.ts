@@ -1,6 +1,7 @@
 import {isPositiveSafeInteger} from "../../pregenerated/internal/isPositiveSafeInteger.js";
 import type {FairnessCommitment} from "../FairnessCommitment.js";
 import type {FairnessRoundProof} from "../FairnessRoundProof.js";
+import type {FairnessServerSeedCommitment} from "../FairnessServerSeedCommitment.js";
 
 // Shared, deliberately strict runtime shape guards for a candidate (possibly hand-crafted, possibly tampered)
 // FairnessCommitment/FairnessRoundProof — used by FairnessCommitmentValidator and FairnessRoundProofValidator
@@ -15,6 +16,18 @@ import type {FairnessRoundProof} from "../FairnessRoundProof.js";
 // unknown, smuggled-in field would otherwise be invisible to all of them.
 
 const SHA256_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
+
+// The exact same canonical bundle rule OutcomeLibraryBundleValidator/CertificationEvidenceBundleValidator/
+// StakeEngineImportValidator each enforce for a modeName (duplicated here rather than imported — each bundle
+// format's own "internal" is scoped to that format alone, same discipline sha256OfBytes already follows). A
+// modeName is read straight off an untrusted FairnessCommitment/FairnessRoundProof and later used to build a
+// filename (index_<modeName>.json, outcomes_<modeName>.jsonl) — rejecting anything outside this pattern here,
+// before that filename is ever built, is what keeps a "/", "..", or absolute-path modeName from ever reaching
+// path.join/fs in the first place (see drawPinnedFairnessOutcome's own redundant, defense-in-depth check for the
+// same rule, for a caller that somehow invokes it without going through either validator first).
+const MODE_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+const FAIRNESS_SERVER_SEED_COMMITMENT_KEYS = new Set(["schemaVersion", "algorithmVersion", "serverSeedHash", "issuedAt"]);
 
 const FAIRNESS_COMMITMENT_KEYS = new Set([
     "schemaVersion",
@@ -62,6 +75,10 @@ export function isValidSha256Hash(value: unknown): value is string {
     return typeof value === "string" && SHA256_HASH_PATTERN.test(value);
 }
 
+export function isValidModeName(value: unknown): value is string {
+    return typeof value === "string" && MODE_NAME_PATTERN.test(value);
+}
+
 // Strict — not just "anything Date.parse can make sense of" (which also accepts non-ISO, locale-dependent, and
 // otherwise ambiguous formats): a value only passes if re-serializing it as a Date reproduces the exact same
 // string, i.e. it's already in the one canonical form `Date.prototype.toISOString()` itself produces.
@@ -74,6 +91,19 @@ export function isIsoTimestamp(value: unknown): value is string {
 }
 
 export {isPositiveSafeInteger};
+
+export function isFairnessServerSeedCommitmentShape(value: unknown): value is FairnessServerSeedCommitment {
+    if (typeof value !== "object" || value === null || !hasOnlyAllowedKeys(value, FAIRNESS_SERVER_SEED_COMMITMENT_KEYS)) {
+        return false;
+    }
+    const commitment = value as Record<string, unknown>;
+    return (
+        typeof commitment.schemaVersion === "number" &&
+        isNonEmptyString(commitment.algorithmVersion) &&
+        isValidSha256Hash(commitment.serverSeedHash) &&
+        isIsoTimestamp(commitment.issuedAt)
+    );
+}
 
 export function isFairnessCommitmentShape(value: unknown): value is FairnessCommitment {
     if (typeof value !== "object" || value === null || !hasOnlyAllowedKeys(value, FAIRNESS_COMMITMENT_KEYS)) {
@@ -88,7 +118,7 @@ export function isFairnessCommitmentShape(value: unknown): value is FairnessComm
         isNonNegativeSafeInteger(commitment.nonce) &&
         isNonEmptyString(commitment.libraryId) &&
         isValidSha256Hash(commitment.libraryHash) &&
-        isNonEmptyString(commitment.modeName) &&
+        isValidModeName(commitment.modeName) &&
         isIsoTimestamp(commitment.issuedAt)
     );
 }
@@ -107,7 +137,7 @@ export function isFairnessRoundProofShape(value: unknown): value is FairnessRoun
         isNonNegativeSafeInteger(proof.nonce) &&
         isNonEmptyString(proof.libraryId) &&
         isValidSha256Hash(proof.libraryHash) &&
-        isNonEmptyString(proof.modeName) &&
+        isValidModeName(proof.modeName) &&
         isValidSha256Hash(proof.indexHash) &&
         isNonEmptyString(proof.outcomeId) &&
         isPositiveSafeInteger(proof.weight) &&

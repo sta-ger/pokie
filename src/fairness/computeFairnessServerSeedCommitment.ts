@@ -1,6 +1,7 @@
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {POKIE_FAIRNESS_ALGORITHM_VERSION} from "./FairnessAlgorithmVersion.js";
 import {FAIRNESS_SERVER_SEED_COMMITMENT_SCHEMA_VERSION, type FairnessServerSeedCommitment} from "./FairnessServerSeedCommitment.js";
+import {isIsoTimestamp} from "./internal/fairnessShapeGuards.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 export type FairnessServerSeedCommitmentInput = {
@@ -21,6 +22,13 @@ export type FairnessServerSeedCommitmentInput = {
 export function computeFairnessServerSeedCommitment(input: FairnessServerSeedCommitmentInput): FairnessServerSeedCommitment {
     if (typeof input.serverSeed !== "string" || input.serverSeed.length === 0) {
         throw new RangeError("serverSeed must be a non-empty string.");
+    }
+    // Rejected here, immediately, rather than silently carried into the returned commitment: a bad custom
+    // issuedAt would otherwise produce an object that looks successfully built but fails
+    // FairnessServerSeedCommitmentValidating the moment anyone actually checks it — the same "fail fast, never
+    // return a doomed artifact" discipline every other builder in this codebase follows.
+    if (input.issuedAt !== undefined && !isIsoTimestamp(input.issuedAt)) {
+        throw new RangeError(`issuedAt must be a valid canonical ISO timestamp (e.g. new Date().toISOString()), got ${JSON.stringify(input.issuedAt)}.`);
     }
 
     return deepFreeze({

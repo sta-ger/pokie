@@ -58,6 +58,14 @@ describe("FairnessCommitmentValidator", () => {
         expect(validator.validate({...validCommitment, modeName: ""}).map((issue) => issue.code)).toEqual(["fairness-commitment-malformed"]);
     });
 
+    it("rejects a modeName that doesn't match this bundle format's own canonical rule ([A-Za-z0-9_-]+)", () => {
+        // modeName is later embedded in a filename (index_<modeName>.json/outcomes_<modeName>.jsonl) — a "/" or
+        // ".." here would otherwise be a path-traversal vector once a draw is attempted against a live bundle.
+        expect(validator.validate({...validCommitment, modeName: "../outside"}).map((issue) => issue.code)).toEqual(["fairness-commitment-malformed"]);
+        expect(validator.validate({...validCommitment, modeName: "mode/name"}).map((issue) => issue.code)).toEqual(["fairness-commitment-malformed"]);
+        expect(validator.validate({...validCommitment, modeName: "mode name"}).map((issue) => issue.code)).toEqual(["fairness-commitment-malformed"]);
+    });
+
     it("rejects a negative or non-integer nonce", () => {
         expect(validator.validate({...validCommitment, nonce: -1}).map((issue) => issue.code)).toEqual(["fairness-commitment-malformed"]);
         expect(validator.validate({...validCommitment, nonce: 1.5}).map((issue) => issue.code)).toEqual(["fairness-commitment-malformed"]);

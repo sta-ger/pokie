@@ -35,4 +35,15 @@ describe("computeFairnessServerSeedCommitment", () => {
     it("rejects an empty serverSeed", () => {
         expect(() => computeFairnessServerSeedCommitment({serverSeed: ""})).toThrow(RangeError);
     });
+
+    it("rejects an invalid custom issuedAt, without ever needing a bundle", () => {
+        expect(() => computeFairnessServerSeedCommitment({serverSeed: "a-secret-server-seed", issuedAt: "not a date"})).toThrow(RangeError);
+        expect(() => computeFairnessServerSeedCommitment({serverSeed: "a-secret-server-seed", issuedAt: "2024-01-01"})).toThrow(RangeError);
+    });
+
+    it("accepts a valid custom issuedAt", () => {
+        const issuedAt = "2026-01-01T00:00:00.000Z";
+        const commitment = computeFairnessServerSeedCommitment({serverSeed: "a-secret-server-seed", issuedAt});
+        expect(commitment.issuedAt).toBe(issuedAt);
+    });
 });

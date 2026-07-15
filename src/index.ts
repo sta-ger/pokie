@@ -42,6 +42,8 @@ export * from "./fairness/FairnessRoundProofValidator.js";
 export * from "./fairness/FairnessRoundProofVerifier.js";
 export * from "./fairness/FairnessRoundProofVerifying.js";
 export * from "./fairness/FairnessServerSeedCommitment.js";
+export * from "./fairness/FairnessServerSeedCommitmentValidating.js";
+export * from "./fairness/FairnessServerSeedCommitmentValidator.js";
 export * from "./fairness/computeFairnessCommitment.js";
 export * from "./fairness/computeFairnessCommitmentHash.js";
 export * from "./fairness/computeFairnessIndexHash.js";

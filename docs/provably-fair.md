@@ -123,13 +123,30 @@ codebase shares.
 Both `FairnessRoundProofBuilder` and `FairnessRoundProofVerifier` draw through the same internal
 `drawPinnedFairnessOutcome` helper — never `OutcomeLibraryBundleReading.drawOutcome` itself, which re-reads a
 fresh index on every call and could therefore observe a genuinely different index between selecting an entry and
-reading it. Instead:
+reading it. `modeName` (and, through it, the index/outcomes file this eventually reads) is never trusted blindly:
+it comes straight off an untrusted `FairnessCommitment`/`FairnessRoundProof`, and every step below is guarded
+accordingly.
 
-1. a mode's own index is read exactly **once** and held in memory;
+0. `modeName` is checked against this bundle format's own canonical rule (`[A-Za-z0-9_-]+`) **before any file is
+   read at all**. `FairnessCommitmentValidating`/`FairnessRoundProofValidating` already enforce this same rule, so
+   in practice this is a redundant, defense-in-depth check — but it's what makes `drawPinnedFairnessOutcome`
+   itself provably safe regardless of what validated it first.
+1. a mode's own index is read exactly **once** and validated via an internal `validatePinnedFairnessModeIndex`
+   check — never trusted blindly: `OutcomeLibraryBundleReader.readModeIndex` itself does no runtime shape
+   checking at all (a raw `JSON.parse` + type-cast), so a malformed or hand-tampered `index_<modeName>.json`
+   would otherwise be trusted as-is. This check mirrors the relevant parts of
+   [`OutcomeLibraryBundleValidator`](outcome-library-bundle.md)'s own per-mode checks — closed shape, current
+   schema/library-schema versions, `index.modeName` matching the mode actually requested, `index.outcomesFile`
+   matching `outcomes_<modeName>.jsonl` **exactly** (not just "a safe-looking string"), positive safe
+   `outcomeCount`/`totalWeight`/entry weights, and canonically sorted, unique, well-shaped entries — then the
+   validated index is held in memory;
 2. a winning entry is selected against that captured index via `selectIndexEntryByCumulativeWeight` (the exact
    cumulative-weight walk `OutcomeLibraryBundleReader.drawOutcome` uses internally);
-3. that exact entry's own byte range is read and verified via `readAndVerifyOutcomeAtByteRange` (the same
-   byte-range read + `recordHash` check `readOutcomeById`/`drawOutcome` themselves rely on);
+3. that exact entry's own byte range is read and verified via `readAndVerifyOutcomeAtByteRange`, against a path
+   resolved via `resolveSafeStakeEngineFilePath` — **never a plain `path.join` of `index.outcomesFile`**. Step 1
+   already pins `outcomesFile` to one exact, self-constructed filename, but resolving it through the same
+   safe-path helper every other bundle-reading class in this codebase uses is a second, independent guard against
+   ever opening a path outside `sourceBundleDir`;
 4. the mode's own index is read a **second** time and re-hashed (`computeFairnessIndexHash` — the whole object,
    not just `libraryHash`, which a hand-tampered index could leave stale while its entries were rewritten
    underneath it) — any difference from the first hash throws/reports bundle drift, and nothing is
@@ -168,22 +185,55 @@ const proof = await new FairnessRoundProofBuilder().build(commitment, serverSeed
 
 `FairnessRoundProofBuilder.build` always validates the given commitment via `FairnessCommitmentValidating` first
 (never builds against a malformed commitment), and throws `FairnessRoundProofBuildError` if: the commitment
-doesn't validate, the revealed `serverSeed` doesn't hash to the commitment's own `serverSeedHash`, the live
-bundle's mode no longer matches the commitment's own pinned `libraryId`/`libraryHash`, or the pinned draw itself
-detects bundle drift (see "Pinned-snapshot drawing" above).
+doesn't validate, the revealed `serverSeed` doesn't hash to the commitment's own `serverSeedHash`, the live mode
+index doesn't validate on its own (see "Pinned-snapshot drawing" above), the live bundle's mode no longer matches
+the commitment's own pinned `libraryId`/`libraryHash`, or the pinned draw itself detects bundle drift.
+
+`computeFairnessCommitment`/`computeFairnessServerSeedCommitment` both reject an invalid custom `issuedAt`
+immediately (a `RangeError`, no bundle ever touched) rather than silently returning an artifact that looks
+successfully built but fails its own validator the moment anyone checks it.
+
+### Mandatory vs. additive validation
+
+`FairnessRoundProofBuilder`/`FairnessRoundProofVerifier` both always run their own mandatory validators
+(`FairnessCommitmentValidator`, and for the verifier `FairnessRoundProofValidator` too) — hardcoded internally,
+**not** swappable via constructor injection, so a caller can never accidentally (or maliciously) bypass them by
+supplying a permissive replacement. Each constructor's trailing `additionalCommitmentValidator`/
+`additionalProofValidator` parameters are the one caller-extensible hook: a custom check layered **on top of**
+the mandatory one, whose issues are always merged in alongside it. An `additionalCommitmentValidator` that always
+returns `[]` can never suppress a mandatory issue — it can only ever fail to add more of its own.
+
+## Server-seed commitment validation
+
+`FairnessServerSeedCommitmentValidating.validate(candidate)` checks a `FairnessServerSeedCommitment` **by
+itself** — closed shape (a smuggled-in `clientSeed`/`nonce`/library/mode field is exactly as invalid as a missing
+required one — this is the check that keeps the "published before `clientSeed`/`nonce`" type split in "Three
+artifacts, not two" meaningful, not just cosmetic), current schema/algorithm versions, a valid `sha256:<hex>`
+`serverSeedHash`, and a strictly canonical ISO timestamp. `computeFairnessCommitment` always runs this validator
+against its own `serverSeedCommitment` input — never an ad-hoc, separately-maintained field check that could
+silently drift from what this validator actually enforces. Never throws.
+
+| Code | Meaning |
+|---|---|
+| `fairness-server-seed-commitment-malformed` | the candidate doesn't match `FairnessServerSeedCommitment`'s own shape |
+| `fairness-server-seed-commitment-schema-version-unsupported` | `schemaVersion` isn't the current supported version |
+| `fairness-server-seed-commitment-algorithm-unsupported` | `algorithmVersion` isn't `"pokie-fairness-hmac-sha256-v1"` |
 
 ## Commitment validation
 
 `FairnessCommitmentValidating.validate(candidate)` checks a commitment **by itself** — closed shape (an extra,
 unexpected field is exactly as invalid as a missing one), current schema/algorithm versions, valid `sha256:<hex>`
-hashes, non-empty `clientSeed`/`libraryId`/`modeName`, a non-negative safe `nonce`, and a strictly canonical ISO
-timestamp. Used both by `FairnessRoundProofBuilder` (always, before building) and `FairnessRoundProofVerifying`
-(always, before trusting a caller-given commitment for any cross-check) — the same commitment can never be judged
-well-formed by one and malformed by the other. Never throws.
+hashes, non-empty `clientSeed`/`libraryId`, a `modeName` matching this bundle format's own canonical rule
+(`[A-Za-z0-9_-]+` — the same rule `OutcomeLibraryBundleValidator`/`CertificationEvidenceBundleValidator` enforce;
+`modeName` ends up embedded in a filename the moment a draw is attempted, so anything else is rejected here,
+before it ever could be), a non-negative safe `nonce`, and a strictly canonical ISO timestamp. Used both by
+`FairnessRoundProofBuilder` (always, before building) and `FairnessRoundProofVerifying` (always, before trusting
+a caller-given commitment for any cross-check) — the same commitment can never be judged well-formed by one and
+malformed by the other. Never throws.
 
 | Code | Meaning |
 |---|---|
-| `fairness-commitment-malformed` | the candidate doesn't match `FairnessCommitment`'s own shape |
+| `fairness-commitment-malformed` | the candidate doesn't match `FairnessCommitment`'s own shape (including an invalid `modeName`) |
 | `fairness-commitment-schema-version-unsupported` | `schemaVersion` isn't the current supported version |
 | `fairness-commitment-algorithm-unsupported` | `algorithmVersion` isn't `"pokie-fairness-hmac-sha256-v1"` |
 
@@ -227,6 +277,7 @@ pokie fairness verify proof.json --commitment commitment.json --source bundle
 | `fairness-verify-source-bundle-dir-required` | no `sourceBundleDir` was given |
 | `fairness-verify-source-bundle-unreadable` | the source bundle's own mode index couldn't be read at `sourceBundleDir` |
 | `fairness-verify-bundle-drift` | the mode's own index changed between the pinned draw's first read and its post-draw re-verification |
+| `fairness-verify-mode-index-invalid` | the live mode's own index doesn't validate on its own (closed shape, schema/library-schema version, expected `modeName`, exact `outcomes_<modeName>.jsonl`, positive safe counts/weights, canonical entries) |
 | `fairness-verify-library-mismatch` | the live mode's own `libraryId`/`libraryHash` no longer matches this proof's own recorded values |
 | `fairness-verify-index-hash-mismatch` | the live mode's own index no longer hashes to this proof's own recorded `indexHash` |
 | `fairness-verify-outcome-missing` | the proof's own `outcomeId` is no longer present in the live bundle's mode |
