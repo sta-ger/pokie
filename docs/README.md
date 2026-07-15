@@ -64,8 +64,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     casino backend or RGS; `pokie client <packageRoot>` (experimental), a universal browser preview UI talking to
     a running `pokie serve`; `pokie dev <packageRoot>` (experimental), which runs both together; `pokie par
     import <input.xlsx>`, which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable,
-    paylines, available bets) into a `GameBlueprint` JSON file; and `pokie par export <config.json>`, which
-    exports a `GameBlueprint` back to a PAR sheet XLSX workbook.
+    paylines, available bets) into a `GameBlueprint` JSON file; `pokie par export <config.json>`, which
+    exports a `GameBlueprint` back to a PAR sheet XLSX workbook; and `pokie stakeengine export <config.json>`,
+    which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine math-sdk static file format.
 16. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
@@ -78,6 +79,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `PreGeneratedRoundResultProjector` for its public/internal response split, `PreGeneratedRoundReplayer` for
     exact (not best-effort) reconstruction of a past round, and `PreGeneratedSpinCommandHandler`/
     `PokieDevServer`'s additive `/pregenerated-sessions` routes for serving it over HTTP with idempotency.
+18. **[Stake Engine Export](stake-engine-export.md)** — exporting a canonical `WeightedOutcomeLibrary` (one per
+    bet mode) to the real Stake Engine math-sdk static file format (`index.json`, per-mode lookup CSV, zstd-
+    compressed JSONL books), `StakeEngineRoundEventsProjector`'s generic `RoundArtifact` → Stake "events"
+    mapping, and `StakeEngineExporter`/`StakeEngineExportValidator`.
 
 ## Core concepts at a glance
 
@@ -106,6 +111,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Generating a reel strip's symbol sequence under constraints (design-time, not runtime spin) | `ReelStripGenerator`, `ReelStripAnalyzer` |
 | Canonical, hashable, storage/audit-grade record of a completed round | `RoundArtifact`, `buildRoundArtifactFromSession`, `PokieJsonRoundArtifactProjector` |
 | Exact (no Monte Carlo) RTP/volatility/payout-distribution over every possible outcome | `WeightedOutcomeLibrary`, `buildWeightedOutcomeLibrary`, `WeightedOutcomeLibraryAnalyzer` |
+| Exporting a `WeightedOutcomeLibrary` to the Stake Engine math-sdk static file format | `pokie stakeengine export <config.json>`, `StakeEngineExporter` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.

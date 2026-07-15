@@ -612,6 +612,37 @@ issue, and verifies it against the blueprint it just assembled:
   `pokie par export` produced it;
 - otherwise, `parsheet-provenance-present` (info) — the recorded hash matches the imported data.
 
+## `pokie stakeengine export <config.json>`
+
+Exports one or more canonical [`WeightedOutcomeLibrary`](weighted-outcome-library.md) JSON files (one per bet
+mode) to the real [Stake Engine math-sdk static file format](https://stakeengine.github.io/math-sdk/rgs_docs/data_format/)
+— see [Stake Engine Export](stake-engine-export.md) for the full output layout, validation rules, and the
+`RoundArtifact` → Stake "events" mapping.
+
+```
+pokie stakeengine export stake-config.json --out stakeengine
+```
+
+`<config.json>` lists one `WeightedOutcomeLibrary` JSON file per mode:
+
+```json
+{
+    "modes": [
+        {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
+        {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
+    ]
+}
+```
+
+`libraryPath` entries resolve relative to `<config.json>`'s own directory. Options:
+
+- `--out <dir>` — where to write the export (default: `<config.json>`'s directory plus `/stakeengine`).
+
+Preflights the entire export before writing anything — on any error-level `ValidationIssue` (see
+[Stake Engine Export](stake-engine-export.md#validation)), nothing is written and the exit code is non-zero.
+Re-running into the same `--out` directory overwrites cleanly (it recognizes its own prior `pokie-manifest.json`);
+a directory containing an unrecognized file it's about to write is refused instead.
+
 ## `pokie init`
 
 Turns an existing npm project into a minimal POKIE-compatible game package.
