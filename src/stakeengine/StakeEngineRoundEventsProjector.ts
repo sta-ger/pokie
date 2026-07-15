@@ -1,9 +1,10 @@
 import type {RoundArtifact} from "../artifact/RoundArtifact.js";
 import type {RoundArtifactFeatureEvent} from "../artifact/RoundArtifactFeatureEvent.js";
-import type {RoundArtifactProjector} from "../artifact/RoundArtifactProjector.js";
 import type {RoundStepArtifact} from "../artifact/RoundStepArtifact.js";
 import type {JsonObject} from "../json/JsonValue.js";
+import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
+import type {StakeEngineRoundEventsProjecting, StakeEngineRoundProjectionContext} from "./StakeEngineRoundEventsProjecting.js";
 
 // An event's own fields before its final "index" (position in the sequence) is known.
 type PendingStakeEngineEvent = JsonObject & {readonly type: string};
@@ -12,18 +13,32 @@ function featureEventToStakeEvent(featureEvent: RoundArtifactFeatureEvent): Pend
     return {...(featureEvent.data ?? {}), type: featureEvent.type};
 }
 
-// The standard RoundArtifact -> Stake Engine "events" projection, implementing the same RoundArtifactProjector
-// extension point PokieJsonRoundArtifactProjector uses (see its own doc comment: "implement this directly for
-// a different representation ... without touching RoundArtifact itself"). Stake's own math-sdk doesn't
-// standardize an event schema — every game defines its own mechanic-specific vocabulary (anticipation,
-// tumble-specific fields, ...) — so this deliberately only maps what RoundArtifact itself already models
-// generically, in order:
+// Converts a raw currency amount (a step's or the round's own totalWin) into Stake Engine's integer unit
+// convention: (amount / stake) * cost * 100 — the same convertRatioToStakeUnits every other Stake amount in
+// this package goes through, so a win event and the round's own payoutMultiplier can never silently disagree on
+// units. Throws (rather than silently emitting a fractional or rounded value) when the exact result isn't a
+// non-negative safe integer — see convertRatioToStakeUnits's own doc comment on why this never rounds.
+function stakeAmount(rawAmount: number, stake: number, cost: number, description: string): number {
+    const converted = convertRatioToStakeUnits(rawAmount / stake, cost);
+    if (converted === undefined) {
+        throw new Error(
+            `${description} (${rawAmount} / ${stake} stake * ${cost} cost * 100) is not representable as a non-negative safe integer in Stake units.`,
+        );
+    }
+    return converted;
+}
+
+// The standard RoundArtifact -> Stake Engine "events" projection (see StakeEngineRoundEventsProjecting for the
+// interface this implements and why it takes an explicit context). Stake's own math-sdk doesn't standardize an
+// event schema — every game defines its own mechanic-specific vocabulary (anticipation, tumble-specific fields,
+// ...) — so this deliberately only maps what RoundArtifact itself already models generically, in order:
 //   1. per step (in order): a "reveal" event carrying that step's screen, then that step's own featureEvents
-//      (passed through as-is, spread into the event alongside their own "type"), then a "win" event if the
-//      step paid out anything.
+//      (passed through as-is, spread into the event alongside their own "type"), then a "win" event — its
+//      amount converted to Stake units — if the step paid out anything.
 //   2. any round-level-only featureEvents (i.e. passed directly to buildRoundArtifact's own "featureEvents"
 //      option, rather than attached to a step).
-//   3. exactly one "finalWin" event carrying the round's total win and payout multiplier.
+//   3. exactly one "finalWin" event carrying the round's total win and payout multiplier, both converted to
+//      Stake units.
 // Every event is stamped with its own "index" (its position in the final sequence) last, so it always reflects
 // the true position even if a passed-through featureEvent's data happened to carry its own "index" field.
 //
@@ -31,9 +46,8 @@ function featureEventToStakeEvent(featureEvent: RoundArtifactFeatureEvent): Pend
 // ones (see buildRoundArtifact: `featureEvents = [...stepFeatureEvents, ...optionFeatureEvents]`) — so once
 // each step's own featureEvents have already been emitted in the loop below, only the tail past that same
 // count is genuinely round-level-only; re-emitting the whole array here would double-count every step's events.
-export class StakeEngineRoundEventsProjector<T extends string | number = string>
-implements RoundArtifactProjector<T, readonly StakeEngineEvent[]> {
-    public project(artifact: RoundArtifact<T>): readonly StakeEngineEvent[] {
+export class StakeEngineRoundEventsProjector<T extends string | number = string> implements StakeEngineRoundEventsProjecting<T> {
+    public project(artifact: RoundArtifact<T>, context: StakeEngineRoundProjectionContext): readonly StakeEngineEvent[] {
         const events: PendingStakeEngineEvent[] = [];
         let stepFeatureEventCount = 0;
 
@@ -44,7 +58,7 @@ implements RoundArtifactProjector<T, readonly StakeEngineEvent[]> {
                 stepFeatureEventCount++;
             });
             if (step.totalWin > 0) {
-                events.push({type: "win", amount: step.totalWin});
+                events.push({type: "win", amount: stakeAmount(step.totalWin, artifact.stake, context.cost, `step ${step.index}'s win amount`)});
             }
         });
 
@@ -52,7 +66,17 @@ implements RoundArtifactProjector<T, readonly StakeEngineEvent[]> {
             events.push(featureEventToStakeEvent(featureEvent));
         });
 
-        events.push({type: "finalWin", amount: artifact.totalWin, payoutMultiplier: artifact.payoutMultiplier});
+        const finalPayoutMultiplier = convertRatioToStakeUnits(artifact.payoutMultiplier, context.cost);
+        if (finalPayoutMultiplier === undefined) {
+            throw new Error(
+                `round ${artifact.roundId}'s payoutMultiplier (${artifact.payoutMultiplier} * ${context.cost} cost * 100) is not representable as a non-negative safe integer in Stake units.`,
+            );
+        }
+        events.push({
+            type: "finalWin",
+            amount: stakeAmount(artifact.totalWin, artifact.stake, context.cost, "the round's final win amount"),
+            payoutMultiplier: finalPayoutMultiplier,
+        });
 
         return events.map((event, index) => ({...event, index}));
     }

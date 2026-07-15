@@ -20,8 +20,9 @@ function winEvaluationResultFor(totalWin: number): WinEvaluationResult<string> {
         : new WinEvaluationResult<string>({valueWins: [new ValueWinComponent<string>(new WinningValue<string>("A", [[0, 0]], totalWin))]});
 }
 
-// A single-step artifact. "totalWin" is always chosen as a multiple of "stake" by the fixtures below, so
-// payoutMultiplier (totalWin / stake) stays a whole number, as StakeEngineExportValidator requires.
+// A single-step artifact. "totalWin"/"stake" are chosen by each fixture below so that payoutMultiplier
+// (totalWin / stake), once converted to Stake units (* cost * 100), lands on a whole number for the mode costs
+// these fixtures are actually exported with in the tests that use them.
 function stakeEngineArtifact(options: {roundId: string; totalWin: number; stake: number; betMode: string}): RoundArtifact<string> {
     return buildRoundArtifact({
         roundId: options.roundId,
@@ -52,8 +53,24 @@ function stakeEngineMultiStepArtifact(options: {roundId: string; stake: number; 
     });
 }
 
+// A single-outcome library — the simplest fixture for exercising a specific payoutMultiplier/cost combination
+// (e.g. the exact Stake-unit-conversion examples in docs/stake-engine-export.md).
+export function buildSingleOutcomeStakeEngineLibrary(options: {libraryId: string; betMode: string; stake: number; totalWin: number}): WeightedOutcomeLibrary<string> {
+    return buildWeightedOutcomeLibrary({
+        libraryId: options.libraryId,
+        outcomes: [
+            {
+                id: "0",
+                weight: 1,
+                artifact: stakeEngineArtifact({roundId: `${options.libraryId}-0`, totalWin: options.totalWin, stake: options.stake, betMode: options.betMode}),
+            },
+        ],
+    });
+}
+
 // A small, hand-computable WeightedOutcomeLibrary for one Stake mode: a loss, a plain win, and a multi-step win
-// with feature events — ids/weights/payoutMultipliers are all already Stake-Engine-integer-safe.
+// with feature events — ids/weights are all Stake-Engine-integer-safe, and payoutMultipliers are chosen to stay
+// exact once converted to Stake units at cost 1 or cost 100 (the only costs the tests using this fixture use).
 export function buildStakeEngineTestLibrary(options: {libraryId: string; betMode: string; stake: number}): WeightedOutcomeLibrary<string> {
     return buildWeightedOutcomeLibrary({
         libraryId: options.libraryId,

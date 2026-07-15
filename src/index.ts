@@ -403,6 +403,7 @@ export * from "./stakeengine/StakeEngineExporter.js";
 export * from "./stakeengine/StakeEngineExporting.js";
 export * from "./stakeengine/StakeEngineIndex.js";
 export * from "./stakeengine/StakeEngineManifest.js";
+export * from "./stakeengine/StakeEngineRoundEventsProjecting.js";
 export * from "./stakeengine/StakeEngineRoundEventsProjector.js";
 export * from "./validation/ValidationIssue.js";
 export * from "./validation/ValidationIssueSeverity.js";

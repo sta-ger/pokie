@@ -640,8 +640,16 @@ pokie stakeengine export stake-config.json --out stakeengine
 
 Preflights the entire export before writing anything — on any error-level `ValidationIssue` (see
 [Stake Engine Export](stake-engine-export.md#validation)), nothing is written and the exit code is non-zero.
-Re-running into the same `--out` directory overwrites cleanly (it recognizes its own prior `pokie-manifest.json`);
-a directory containing an unrecognized file it's about to write is refused instead.
+Every `payoutMultiplier`/amount is converted into Stake's own integer unit convention (`ratio * cost * 100`,
+never rounded — see [Stake unit conversion](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded))
+before it's written.
+
+The whole `--out` directory is replaced atomically: built into a temporary directory first, then swapped into
+place only once everything succeeded, so a failed export never leaves `--out` partially updated. Re-running into
+the same `--out` directory overwrites cleanly (it recognizes its own prior `pokie-manifest.json`) — including
+removing a mode's `lookup_*.csv`/`books_*.jsonl.zst` when that mode is no longer part of the export. An
+unrecognized non-empty `--out` directory is refused outright, with nothing touched — see
+[Rebuild safety](stake-engine-export.md#rebuild-safety--the-whole-directory-is-replaced-atomically).
 
 ## `pokie init`
 

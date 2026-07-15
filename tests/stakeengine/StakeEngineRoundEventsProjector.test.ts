@@ -14,8 +14,8 @@ function artifactWithNoWin(): RoundArtifact<string> {
 describe("StakeEngineRoundEventsProjector", () => {
     const projector = new StakeEngineRoundEventsProjector<string>();
 
-    it("projects a single-step, no-win artifact to a reveal + finalWin sequence", () => {
-        const events = projector.project(artifactWithNoWin());
+    it("projects a single-step, no-win artifact to a reveal + finalWin sequence, with cost folded into finalWin", () => {
+        const events = projector.project(artifactWithNoWin(), {cost: 1});
 
         expect(events).toEqual([
             {index: 0, type: "reveal", board: [["A"]]},
@@ -23,7 +23,7 @@ describe("StakeEngineRoundEventsProjector", () => {
         ]);
     });
 
-    it("emits a win event per step that pays out, feature events passed through with their data spread, and one final finalWin", () => {
+    it("converts win/finalWin amounts and the finalWin payoutMultiplier into Stake units (ratio * cost * 100)", () => {
         const artifact = buildRoundArtifact({
             roundId: "multi-step",
             provenance: stakeEngineTestProvenance,
@@ -42,15 +42,17 @@ describe("StakeEngineRoundEventsProjector", () => {
             featureEvents: [{type: "freeGamesTriggered", data: {count: 10}}],
         });
 
-        const events = projector.project(artifact);
+        const events = projector.project(artifact, {cost: 100});
 
+        // stake 1, totalWin 5 -> payoutMultiplier 5; at cost 100: (5/1)*100*100 = 50000 for both the step win
+        // and the final amount/payoutMultiplier — they're the same ratio, so they always agree exactly.
         expect(events).toEqual([
             {index: 0, type: "reveal", board: [["A"]]},
             {index: 1, type: "cascadeStep", step: 0},
-            {index: 2, type: "win", amount: 5},
+            {index: 2, type: "win", amount: 50000},
             {index: 3, type: "reveal", board: [["B"]]},
             {index: 4, type: "freeGamesTriggered", count: 10},
-            {index: 5, type: "finalWin", amount: 5, payoutMultiplier: 5},
+            {index: 5, type: "finalWin", amount: 50000, payoutMultiplier: 50000},
         ]);
     });
 
@@ -69,9 +71,29 @@ describe("StakeEngineRoundEventsProjector", () => {
             ],
         });
 
-        const events = projector.project(artifact);
+        const events = projector.project(artifact, {cost: 1});
 
         expect(events[1].index).toBe(1);
         expect(events[1].type).toBe("custom");
+    });
+
+    it("throws when a win amount is not representable as a non-negative safe integer once converted to Stake units", () => {
+        const artifact = buildRoundArtifact({
+            roundId: "unrepresentable",
+            provenance: stakeEngineTestProvenance,
+            betMode: "base",
+            stake: 1,
+            steps: [
+                {
+                    screen: [["A"]],
+                    winEvaluationResult: new WinEvaluationResult<string>({
+                        valueWins: [new ValueWinComponent<string>(new WinningValue<string>("A", [[0, 0]], 0.001))],
+                    }),
+                },
+            ],
+        });
+
+        // (0.001 / 1) * 1 * 100 = 0.1 — not a safe integer.
+        expect(() => projector.project(artifact, {cost: 1})).toThrow(/not representable as a non-negative safe integer/);
     });
 });

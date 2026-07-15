@@ -1,5 +1,6 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {WeightedOutcomeLibraryValidator} from "../weightedoutcome/WeightedOutcomeLibraryValidator.js";
+import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
 import type {StakeEngineExportModeInput} from "./StakeEngineExportModeInput.js";
 import type {StakeEngineExportValidating} from "./StakeEngineExportValidating.js";
@@ -141,8 +142,8 @@ export class StakeEngineExportValidator<T extends string | number = string> impl
         } else {
             issues.push({
                 code: "stakeengine-mode-name-case-collision",
-                severity: "warning",
-                message: `modeName "${mode.modeName}" differs only in case from modeName "${existing}"; these would collide on a case-insensitive filesystem.`,
+                severity: "error",
+                message: `modeName "${mode.modeName}" differs only in case from modeName "${existing}"; these would write the same files ("lookup_${mode.modeName}.csv"/"books_${mode.modeName}.jsonl.zst") on a case-insensitive filesystem, so the export is refused rather than risk one mode silently overwriting the other's output.`,
                 details: {modeName: mode.modeName, collidesWith: existing},
             });
         }
@@ -168,12 +169,15 @@ export class StakeEngineExportValidator<T extends string | number = string> impl
                 });
             }
 
-            if (!Number.isInteger(outcome.artifact.payoutMultiplier)) {
+            if (convertRatioToStakeUnits(outcome.artifact.payoutMultiplier, mode.cost) === undefined) {
                 issues.push({
-                    code: "stakeengine-outcome-payout-multiplier-not-integer",
+                    code: "stakeengine-outcome-payout-multiplier-not-representable",
                     severity: "error",
-                    message: `mode "${mode.modeName}": outcome "${outcome.id}" has a non-integer artifact.payoutMultiplier (${outcome.artifact.payoutMultiplier}); Stake Engine requires an integer payout multiplier.`,
-                    details: {modeName: mode.modeName, id: outcome.id, payoutMultiplier: outcome.artifact.payoutMultiplier},
+                    message:
+                        `mode "${mode.modeName}": outcome "${outcome.id}"'s artifact.payoutMultiplier (${outcome.artifact.payoutMultiplier}) is not representable as a ` +
+                        `non-negative safe integer once converted to Stake units (payoutMultiplier * cost (${mode.cost}) * 100), and Stake Engine requires an exact ` +
+                        "integer — POKIE never rounds this conversion.",
+                    details: {modeName: mode.modeName, id: outcome.id, payoutMultiplier: outcome.artifact.payoutMultiplier, cost: mode.cost},
                 });
             }
         });

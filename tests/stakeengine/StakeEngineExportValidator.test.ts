@@ -49,13 +49,13 @@ describe("StakeEngineExportValidator", () => {
         expect(issueCodes(validator, [mode, {...mode, library: bonusMode().library}])).toContain("stakeengine-duplicate-mode-name");
     });
 
-    it("reports stakeengine-mode-name-case-collision (warning) for names differing only in case", () => {
+    it("reports stakeengine-mode-name-case-collision as an error (files would really conflict) for names differing only in case", () => {
         const mode = baseMode();
         const issues = validator.validate([mode, {...mode, modeName: "BASE", library: bonusMode().library}]);
         const collision = issues.find((issue) => issue.code === "stakeengine-mode-name-case-collision");
 
         expect(collision).toBeDefined();
-        expect(collision?.severity).toBe("warning");
+        expect(collision?.severity).toBe("error");
     });
 
     it("reports stakeengine-mode-cost-invalid for a non-positive cost", () => {
@@ -92,15 +92,27 @@ describe("StakeEngineExportValidator", () => {
         expect(issueCodes(validator, [{...mode, library}])).toContain("stakeengine-outcome-weight-not-integer");
     });
 
-    it("reports stakeengine-outcome-payout-multiplier-not-integer for a fractional payoutMultiplier", () => {
+    it("reports stakeengine-outcome-payout-multiplier-not-representable when payoutMultiplier * cost * 100 isn't a safe integer", () => {
         const mode = baseMode();
         const library = {
             ...mode.library,
             outcomes: mode.library.outcomes.map((outcome) =>
-                outcome.id === "1" ? {...outcome, artifact: {...outcome.artifact, payoutMultiplier: 1.5}} : outcome,
+                // 0.001 * 1 (this mode's cost) * 100 = 0.1 — not representable without rounding.
+                outcome.id === "1" ? {...outcome, artifact: {...outcome.artifact, payoutMultiplier: 0.001}} : outcome,
             ),
         };
 
-        expect(issueCodes(validator, [{...mode, library}])).toContain("stakeengine-outcome-payout-multiplier-not-integer");
+        expect(issueCodes(validator, [{...mode, library}])).toContain("stakeengine-outcome-payout-multiplier-not-representable");
+    });
+
+    it("accepts a fractional payoutMultiplier that becomes an exact integer once converted to Stake units", () => {
+        const mode = baseMode();
+        const library = {
+            ...mode.library,
+            // 0.1 * 1 (this mode's cost) * 100 = 10 — exact, even though the raw payoutMultiplier is fractional.
+            outcomes: mode.library.outcomes.map((outcome) => (outcome.id === "1" ? {...outcome, artifact: {...outcome.artifact, payoutMultiplier: 0.1}} : outcome)),
+        };
+
+        expect(issueCodes(validator, [{...mode, library}])).not.toContain("stakeengine-outcome-payout-multiplier-not-representable");
     });
 });
