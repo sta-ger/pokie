@@ -30,11 +30,11 @@ function hasExactKeys(event: StakeEngineEvent, keys: readonly string[]): boolean
 // then roundOnlyFeature*, then exactly one finalWin, always last. See StakeEngineRoundEventsImporting.ts for the
 // interface/context this implements and why it never builds a RoundArtifact itself.
 //
-// Two disclosed, pre-existing limitations of the export encoding itself (neither is something this importer
-// could detect or work around):
-//   - "reveal"/"win"/"finalWin" are reserved by convention only in the forward projector's own vocabulary — a
-//     custom RoundArtifactFeatureEvent literally typed one of those would be indistinguishable on import from
-//     the real structural event.
+// One disclosed, pre-existing limitation of the export encoding itself (not something this importer could
+// detect or work around) — "reveal"/"win"/"finalWin" are this projector's own reserved structural vocabulary
+// (StakeEngineRoundEventsProjector now rejects a RoundArtifactFeatureEvent whose own type collides with one of
+// them at export time, so the ambiguity described below can no longer actually occur for anything this package
+// itself exports — only a hand-crafted or otherwise-produced Stake package could still exhibit it):
 //   - A step's own feature-collecting window closes on its own "win" event, or — for every step but the last —
 //     on the *next* step's "reveal" regardless of win. The *last* step has neither signal available if it never
 //     wins: any feature events between its "reveal" and the round's "finalWin" are then genuinely ambiguous

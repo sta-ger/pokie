@@ -1,4 +1,31 @@
-import {StakeEngineImportBundle, StakeEngineImportModeFiles, StakeEngineImportValidator} from "pokie";
+import {
+    StakeEngineImportBookLineResult,
+    StakeEngineImportBundle,
+    StakeEngineImportFileResult,
+    StakeEngineImportModeFiles,
+    StakeEngineImportValidator,
+} from "pokie";
+
+function ok<T>(value: T): StakeEngineImportFileResult<T> {
+    return {status: "ok", value};
+}
+function missing<T>(): StakeEngineImportFileResult<T> {
+    return {status: "missing"};
+}
+function unreadable<T>(error = "permission denied"): StakeEngineImportFileResult<T> {
+    return {status: "unreadable", error};
+}
+function invalid<T>(error = "boom"): StakeEngineImportFileResult<T> {
+    return {status: "invalid", error};
+}
+function okLine(value: unknown): StakeEngineImportBookLineResult {
+    return {status: "ok", value};
+}
+function invalidLine(error = "boom"): StakeEngineImportBookLineResult {
+    return {status: "invalid", error};
+}
+
+const VALID_HASH = `sha256:${"a".repeat(64)}`;
 
 const VALID_INDEX = {
     modes: [{name: "base", cost: 1, events: "books_base.jsonl.zst", weights: "lookup_base.csv"}],
@@ -18,7 +45,7 @@ const VALID_MANIFEST = {
             cost: 1,
             outcomeCount: 1,
             libraryId: "base-lib",
-            libraryHash: "sha256:abc",
+            libraryHash: VALID_HASH,
             events: "books_base.jsonl.zst",
             weights: "lookup_base.csv",
         },
@@ -26,21 +53,26 @@ const VALID_MANIFEST = {
     files: ["index.json", "pokie-manifest.json", "lookup_base.csv", "books_base.jsonl.zst"],
 };
 
+const VALID_BOOK_LINE = {
+    id: 0,
+    events: [
+        {index: 0, type: "reveal", board: [["A"]]},
+        {index: 1, type: "finalWin", amount: 0, payoutMultiplier: 0},
+    ],
+    payoutMultiplier: 0,
+};
+
 const VALID_MODE_FILES: StakeEngineImportModeFiles = {
     modeName: "base",
-    csvFileExists: true,
-    csvLines: ["0,1,0"],
-    booksFileExists: true,
-    bookLines: [{id: 0, events: [{index: 0, type: "reveal", board: [["A"]]}, {index: 1, type: "finalWin", amount: 0, payoutMultiplier: 0}], payoutMultiplier: 0}],
+    csv: ok(["0,1,0"]),
+    books: ok([okLine(VALID_BOOK_LINE)]),
 };
 
 function baseBundle(): StakeEngineImportBundle {
     return {
         stakeDir: "/stake",
-        indexFileExists: true,
-        rawIndex: VALID_INDEX,
-        manifestFileExists: true,
-        rawManifest: VALID_MANIFEST,
+        index: ok(VALID_INDEX),
+        manifest: ok(VALID_MANIFEST),
         modeFiles: [VALID_MODE_FILES],
     };
 }
@@ -54,154 +86,243 @@ describe("StakeEngineImportValidator", () => {
         expect(new StakeEngineImportValidator().validate(baseBundle())).toEqual([]);
     });
 
-    it("reports stakeengine-import-index-missing when index.json doesn't exist", () => {
-        expect(issueCodes({...baseBundle(), indexFileExists: false, rawIndex: undefined})).toEqual(["stakeengine-import-index-missing"]);
+    describe("index.json", () => {
+        it("reports stakeengine-import-index-missing/unreadable/invalid-json for each file-read outcome", () => {
+            expect(issueCodes({...baseBundle(), index: missing()})).toEqual(["stakeengine-import-index-missing"]);
+            expect(issueCodes({...baseBundle(), index: unreadable()})).toEqual(["stakeengine-import-index-unreadable"]);
+            expect(issueCodes({...baseBundle(), index: invalid()})).toEqual(["stakeengine-import-index-invalid-json"]);
+        });
+
+        it("reports stakeengine-import-index-malformed for a missing modes array, an empty one, or a non-object entry", () => {
+            expect(issueCodes({...baseBundle(), index: ok({})})).toContain("stakeengine-import-index-malformed");
+            expect(issueCodes({...baseBundle(), index: ok({modes: []})})).toContain("stakeengine-import-index-malformed");
+            expect(issueCodes({...baseBundle(), index: ok({modes: [null]})})).toContain("stakeengine-import-index-malformed");
+        });
+
+        it("reports stakeengine-import-mode-name-invalid for a missing/malformed modeName", () => {
+            expect(
+                issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], name: "not valid!"}]})}),
+            ).toContain("stakeengine-import-mode-name-invalid");
+        });
+
+        it("reports stakeengine-import-duplicate-mode-name / stakeengine-import-mode-name-case-collision", () => {
+            expect(
+                issueCodes({...baseBundle(), index: ok({modes: [VALID_INDEX.modes[0], VALID_INDEX.modes[0]]})}),
+            ).toContain("stakeengine-import-duplicate-mode-name");
+            expect(
+                issueCodes({
+                    ...baseBundle(),
+                    index: ok({modes: [VALID_INDEX.modes[0], {...VALID_INDEX.modes[0], name: "BASE"}]}),
+                }),
+            ).toContain("stakeengine-import-mode-name-case-collision");
+        });
+
+        it("reports stakeengine-import-mode-cost-invalid for a non-finite/non-positive cost", () => {
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], cost: 0}]})})).toContain(
+                "stakeengine-import-mode-cost-invalid",
+            );
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], cost: "1"}]})})).toContain(
+                "stakeengine-import-mode-cost-invalid",
+            );
+        });
+
+        it("reports stakeengine-import-mode-filename-unsafe for absolute/traversal/nested filenames in index.json", () => {
+            for (const badPath of ["/etc/passwd", "../../etc/passwd", "sub/dir.csv", "..", "."]) {
+                expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], weights: badPath}]})})).toContain(
+                    "stakeengine-import-mode-filename-unsafe",
+                );
+            }
+        });
     });
 
-    it("reports stakeengine-import-index-malformed for a missing modes array, an empty one, a bad entry, or a duplicate name", () => {
-        expect(issueCodes({...baseBundle(), rawIndex: {}})).toContain("stakeengine-import-index-malformed");
-        expect(issueCodes({...baseBundle(), rawIndex: {modes: []}})).toContain("stakeengine-import-index-malformed");
-        expect(issueCodes({...baseBundle(), rawIndex: {modes: [{name: "base"}]}})).toContain("stakeengine-import-index-malformed");
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                rawIndex: {modes: [VALID_INDEX.modes[0], VALID_INDEX.modes[0]]},
-            }),
-        ).toContain("stakeengine-import-index-malformed");
+    describe("pokie-manifest.json", () => {
+        it("reports stakeengine-import-manifest-missing/unreadable/invalid-json for each file-read outcome", () => {
+            expect(issueCodes({...baseBundle(), manifest: missing()})).toContain("stakeengine-import-manifest-missing");
+            expect(issueCodes({...baseBundle(), manifest: unreadable()})).toContain("stakeengine-import-manifest-unreadable");
+            expect(issueCodes({...baseBundle(), manifest: invalid()})).toContain("stakeengine-import-manifest-invalid-json");
+        });
+
+        it("reports stakeengine-import-manifest-unrecognized when generatedBy doesn't match or modes isn't an array", () => {
+            expect(issueCodes({...baseBundle(), manifest: ok({generatedBy: "someone else"})})).toContain("stakeengine-import-manifest-unrecognized");
+            expect(issueCodes({...baseBundle(), manifest: ok({generatedBy: "pokie stakeengine export"})})).toContain(
+                "stakeengine-import-manifest-unrecognized",
+            );
+        });
+
+        it("reports stakeengine-import-manifest-schema-version-unsupported", () => {
+            expect(issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, schemaVersion: 999})})).toEqual([
+                "stakeengine-import-manifest-schema-version-unsupported",
+            ]);
+        });
+
+        it("reports stakeengine-import-manifest-field-invalid for each malformed top-level field", () => {
+            expect(issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, pokieVersion: ""})})).toContain(
+                "stakeengine-import-manifest-field-invalid",
+            );
+            expect(issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, generatedAt: 123})})).toContain(
+                "stakeengine-import-manifest-field-invalid",
+            );
+            expect(issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, game: {id: "x"}})})).toContain(
+                "stakeengine-import-manifest-field-invalid",
+            );
+            expect(issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, configHash: 123})})).toContain(
+                "stakeengine-import-manifest-field-invalid",
+            );
+            expect(issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, files: [123]})})).toContain(
+                "stakeengine-import-manifest-field-invalid",
+            );
+        });
+
+        it("reports stakeengine-import-manifest-mode-field-invalid for a malformed mode entry, and the specific dedicated codes for cost/stake/libraryId/libraryHash/outcomeCount", () => {
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], betMode: ""}]})}),
+            ).toContain("stakeengine-import-manifest-mode-field-invalid");
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], stake: 0}]})}),
+            ).toContain("stakeengine-import-mode-stake-invalid");
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], cost: -1}]})}),
+            ).toContain("stakeengine-import-mode-cost-invalid");
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], libraryId: ""}]})}),
+            ).toContain("stakeengine-import-manifest-library-id-invalid");
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], libraryHash: "not-a-hash"}]})}),
+            ).toContain("stakeengine-import-manifest-library-hash-invalid");
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], outcomeCount: -1}]})}),
+            ).toContain("stakeengine-import-manifest-outcome-count-invalid");
+        });
+
+        it("reports stakeengine-import-mode-filename-unsafe for absolute/traversal/nested filenames in the manifest", () => {
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], events: "../evil.jsonl.zst"}]})}),
+            ).toContain("stakeengine-import-mode-filename-unsafe");
+        });
     });
 
-    it("reports stakeengine-import-manifest-missing when pokie-manifest.json doesn't exist", () => {
-        expect(issueCodes({...baseBundle(), manifestFileExists: false, rawManifest: undefined})).toContain("stakeengine-import-manifest-missing");
+    describe("cross-checks", () => {
+        it("reports stakeengine-import-mode-missing-in-manifest / stakeengine-import-mode-missing-in-index", () => {
+            expect(
+                issueCodes({
+                    ...baseBundle(),
+                    index: ok({modes: [...VALID_INDEX.modes, {name: "bonus", cost: 100, events: "books_bonus.jsonl.zst", weights: "lookup_bonus.csv"}]}),
+                }),
+            ).toContain("stakeengine-import-mode-missing-in-manifest");
+            expect(
+                issueCodes({
+                    ...baseBundle(),
+                    manifest: ok({...VALID_MANIFEST, modes: [...VALID_MANIFEST.modes, {...VALID_MANIFEST.modes[0], name: "bonus"}]}),
+                }),
+            ).toContain("stakeengine-import-mode-missing-in-index");
+        });
+
+        it("reports stakeengine-import-mode-cost-mismatch/events-filename-mismatch/weights-filename-mismatch", () => {
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], cost: 2}]})})).toContain(
+                "stakeengine-import-mode-cost-mismatch",
+            );
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], events: "books_other.jsonl.zst"}]})})).toContain(
+                "stakeengine-import-mode-events-filename-mismatch",
+            );
+            expect(issueCodes({...baseBundle(), index: ok({modes: [{...VALID_INDEX.modes[0], weights: "lookup_other.csv"}]})})).toContain(
+                "stakeengine-import-mode-weights-filename-mismatch",
+            );
+        });
     });
 
-    it("reports stakeengine-import-manifest-unrecognized when the manifest doesn't parse or wasn't generated by pokie stakeengine export", () => {
-        expect(issueCodes({...baseBundle(), rawManifest: undefined})).toContain("stakeengine-import-manifest-unrecognized");
-        expect(issueCodes({...baseBundle(), rawManifest: {generatedBy: "someone else"}})).toContain("stakeengine-import-manifest-unrecognized");
-    });
+    describe("per-mode files", () => {
+        it("reports stakeengine-import-csv-missing/unreadable and stakeengine-import-books-missing/unreadable/invalid-zstd", () => {
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: missing()}]})).toContain("stakeengine-import-csv-missing");
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: unreadable()}]})).toContain("stakeengine-import-csv-unreadable");
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, books: missing()}]})).toContain("stakeengine-import-books-missing");
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, books: unreadable()}]})).toContain("stakeengine-import-books-unreadable");
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, books: invalid("bad zstd frame")}]})).toContain(
+                "stakeengine-import-books-invalid-zstd",
+            );
+        });
 
-    it("reports stakeengine-import-manifest-schema-version-unsupported for an unrecognized schemaVersion", () => {
-        expect(issueCodes({...baseBundle(), rawManifest: {...VALID_MANIFEST, schemaVersion: 999}})).toEqual([
-            "stakeengine-import-manifest-schema-version-unsupported",
-        ]);
-    });
+        it("reports stakeengine-import-csv-malformed-row for a row that isn't exactly 3 comma-separated integer fields", () => {
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["0,1"])}]})).toContain("stakeengine-import-csv-malformed-row");
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["a,b,c"])}]})).toContain("stakeengine-import-csv-malformed-row");
+        });
 
-    it("reports stakeengine-import-mode-missing-in-manifest when a mode in index.json has no manifest counterpart", () => {
-        const bundle = baseBundle();
-        expect(
-            issueCodes({
-                ...bundle,
-                rawIndex: {modes: [...VALID_INDEX.modes, {name: "bonus", cost: 100, events: "books_bonus.jsonl.zst", weights: "lookup_bonus.csv"}]},
-            }),
-        ).toContain("stakeengine-import-mode-missing-in-manifest");
-    });
+        it("reports stakeengine-import-books-invalid-json-line for an unparseable books line, distinct from a malformed-shape one", () => {
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, books: ok([invalidLine("Unexpected token")])}]})).toContain(
+                "stakeengine-import-books-invalid-json-line",
+            );
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, books: ok([okLine({foo: 1})])}]})).toContain(
+                "stakeengine-import-books-malformed-line",
+            );
+        });
 
-    it("reports stakeengine-import-mode-missing-in-index when a mode in the manifest has no index.json counterpart", () => {
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                rawManifest: {
-                    ...VALID_MANIFEST,
-                    modes: [...VALID_MANIFEST.modes, {...VALID_MANIFEST.modes[0], name: "bonus"}],
-                },
-            }),
-        ).toContain("stakeengine-import-mode-missing-in-index");
-    });
+        it("reports stakeengine-import-outcome-id-not-integer for a non-canonical CSV id or a negative book line id", () => {
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["01,1,0"])}]})).toContain(
+                "stakeengine-import-outcome-id-not-integer",
+            );
+            expect(
+                issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, books: ok([okLine({...VALID_BOOK_LINE, id: -1})])}]}),
+            ).toContain("stakeengine-import-outcome-id-not-integer");
+        });
 
-    it("reports stakeengine-import-mode-cost-mismatch when index.json and the manifest disagree on a mode's cost", () => {
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                rawIndex: {modes: [{...VALID_INDEX.modes[0], cost: 2}]},
-            }),
-        ).toContain("stakeengine-import-mode-cost-mismatch");
-    });
+        it("reports stakeengine-import-duplicate-csv-id / stakeengine-import-duplicate-book-id", () => {
+            expect(
+                issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["0,1,0", "0,1,0"])}]}),
+            ).toContain("stakeengine-import-duplicate-csv-id");
+            expect(
+                issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, books: ok([okLine(VALID_BOOK_LINE), okLine(VALID_BOOK_LINE)])}]}),
+            ).toContain("stakeengine-import-duplicate-book-id");
+        });
 
-    it("reports stakeengine-import-mode-events-filename-mismatch when index.json and the manifest disagree on a mode's events filename", () => {
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                rawIndex: {modes: [{...VALID_INDEX.modes[0], events: "books_other.jsonl.zst"}]},
-            }),
-        ).toContain("stakeengine-import-mode-events-filename-mismatch");
-    });
+        it("reports stakeengine-import-outcome-weight-not-positive-integer for a zero, negative, or unsafe weight", () => {
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["0,0,0"])}]})).toContain(
+                "stakeengine-import-outcome-weight-not-positive-integer",
+            );
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok([`0,${Number.MAX_SAFE_INTEGER}9,0`])}]})).toContain(
+                "stakeengine-import-outcome-weight-not-positive-integer",
+            );
+        });
 
-    it("reports stakeengine-import-mode-weights-filename-mismatch when index.json and the manifest disagree on a mode's weights filename", () => {
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                rawIndex: {modes: [{...VALID_INDEX.modes[0], weights: "lookup_other.csv"}]},
-            }),
-        ).toContain("stakeengine-import-mode-weights-filename-mismatch");
-    });
+        it("reports stakeengine-import-outcome-payout-multiplier-not-safe-integer for an unsafe CSV/book payoutMultiplier", () => {
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok([`0,1,${Number.MAX_SAFE_INTEGER}9`])}]})).toContain(
+                "stakeengine-import-outcome-payout-multiplier-not-safe-integer",
+            );
+        });
 
-    it("reports stakeengine-import-csv-missing/stakeengine-import-books-missing when a mode's files are absent", () => {
-        expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csvFileExists: false}]})).toContain("stakeengine-import-csv-missing");
-        expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, booksFileExists: false}]})).toContain("stakeengine-import-books-missing");
-    });
+        it("reports stakeengine-import-total-weight-overflow when the sum of weights overflows a safe integer", () => {
+            const csvLines = [
+                `0,${Number.MAX_SAFE_INTEGER},0`,
+                "1,1,0",
+            ];
+            expect(
+                issueCodes({
+                    ...baseBundle(),
+                    modeFiles: [{...VALID_MODE_FILES, csv: ok(csvLines), books: ok([okLine(VALID_BOOK_LINE), okLine({...VALID_BOOK_LINE, id: 1})])}],
+                }),
+            ).toContain("stakeengine-import-total-weight-overflow");
+        });
 
-    it("reports stakeengine-import-csv-malformed-row for a row that isn't exactly 3 comma-separated integer fields", () => {
-        expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csvLines: ["0,1"]}]})).toContain("stakeengine-import-csv-malformed-row");
-        expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csvLines: ["a,b,c"]}]})).toContain("stakeengine-import-csv-malformed-row");
-    });
+        it("reports stakeengine-import-csv-books-count-mismatch when the CSV and books have different row/line counts", () => {
+            expect(
+                issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["0,1,0", "1,1,0"])}]}),
+            ).toContain("stakeengine-import-csv-books-count-mismatch");
+        });
 
-    it("reports stakeengine-import-books-malformed-line for a books line that isn't {id, events, payoutMultiplier}-shaped", () => {
-        expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, bookLines: [{foo: 1}]}]})).toContain("stakeengine-import-books-malformed-line");
-    });
+        it("reports stakeengine-import-csv-books-id-set-mismatch when an id exists on only one side", () => {
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["1,1,0"])}]})).toContain(
+                "stakeengine-import-csv-books-id-set-mismatch",
+            );
+        });
 
-    it("reports stakeengine-import-outcome-id-not-integer for a non-canonical CSV id or a negative book line id", () => {
-        expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csvLines: ["01,1,0"]}]})).toContain("stakeengine-import-outcome-id-not-integer");
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                modeFiles: [
-                    {
-                        ...VALID_MODE_FILES,
-                        bookLines: [{id: -1, events: [{index: 0, type: "reveal", board: [["A"]]}, {index: 1, type: "finalWin", amount: 0, payoutMultiplier: 0}], payoutMultiplier: 0}],
-                    },
-                ],
-            }),
-        ).toContain("stakeengine-import-outcome-id-not-integer");
-    });
+        it("reports stakeengine-import-csv-books-payout-multiplier-mismatch when the same id disagrees between CSV and books", () => {
+            expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csv: ok(["0,1,5"])}]})).toContain(
+                "stakeengine-import-csv-books-payout-multiplier-mismatch",
+            );
+        });
 
-    it("reports stakeengine-import-outcome-weight-not-positive-integer for a zero or negative weight", () => {
-        expect(issueCodes({...baseBundle(), modeFiles: [{...VALID_MODE_FILES, csvLines: ["0,0,0"]}]})).toContain(
-            "stakeengine-import-outcome-weight-not-positive-integer",
-        );
-    });
-
-    it("reports stakeengine-import-csv-books-count-mismatch when the CSV and books have different row/line counts", () => {
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                modeFiles: [{...VALID_MODE_FILES, csvLines: ["0,1,0", "1,1,0"]}],
-            }),
-        ).toContain("stakeengine-import-csv-books-count-mismatch");
-    });
-
-    it("reports stakeengine-import-csv-books-id-set-mismatch when an id exists on only one side", () => {
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                modeFiles: [{...VALID_MODE_FILES, csvLines: ["1,1,0"]}],
-            }),
-        ).toContain("stakeengine-import-csv-books-id-set-mismatch");
-    });
-
-    it("reports stakeengine-import-csv-books-payout-multiplier-mismatch when the same id disagrees between CSV and books", () => {
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                modeFiles: [{...VALID_MODE_FILES, csvLines: ["0,1,5"]}],
-            }),
-        ).toContain("stakeengine-import-csv-books-payout-multiplier-mismatch");
-    });
-
-    it("reports stakeengine-import-outcome-count-mismatch when the manifest's outcomeCount disagrees with the actual row/line count", () => {
-        expect(
-            issueCodes({
-                ...baseBundle(),
-                rawManifest: {...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], outcomeCount: 5}]},
-            }),
-        ).toContain("stakeengine-import-outcome-count-mismatch");
+        it("reports stakeengine-import-outcome-count-mismatch when the manifest's outcomeCount disagrees with the actual row/line count", () => {
+            expect(
+                issueCodes({...baseBundle(), manifest: ok({...VALID_MANIFEST, modes: [{...VALID_MANIFEST.modes[0], outcomeCount: 5}]})}),
+            ).toContain("stakeengine-import-outcome-count-mismatch");
+        });
     });
 });

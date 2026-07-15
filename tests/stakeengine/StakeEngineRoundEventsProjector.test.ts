@@ -1,4 +1,12 @@
-import {RoundArtifact, StakeEngineRoundEventsProjector, ValueWinComponent, WinEvaluationResult, WinningValue, buildRoundArtifact} from "pokie";
+import {
+    RoundArtifact,
+    StakeEngineRoundEventsImporter,
+    StakeEngineRoundEventsProjector,
+    ValueWinComponent,
+    WinEvaluationResult,
+    WinningValue,
+    buildRoundArtifact,
+} from "pokie";
 import {stakeEngineTestProvenance} from "./StakeEngineTestFixtures.js";
 
 function artifactWithNoWin(): RoundArtifact<string> {
@@ -95,5 +103,46 @@ describe("StakeEngineRoundEventsProjector", () => {
 
         // (0.001 / 1) * 1 * 100 = 0.1 — not a safe integer.
         expect(() => projector.project(artifact, {cost: 1})).toThrow(/not representable as a non-negative safe integer/);
+    });
+
+    describe.each(["reveal", "win", "finalWin"])('reserved featureEvent type "%s"', (reservedType) => {
+        it("is rejected by the projector rather than silently emitted", () => {
+            const artifact = buildRoundArtifact({
+                roundId: "reserved-type",
+                provenance: stakeEngineTestProvenance,
+                betMode: "base",
+                stake: 1,
+                steps: [
+                    {
+                        screen: [["A"]],
+                        winEvaluationResult: new WinEvaluationResult<string>(),
+                        featureEvents: [{type: reservedType, data: {sneaky: true}}],
+                    },
+                ],
+            });
+
+            expect(() => projector.project(artifact, {cost: 1})).toThrow(/reserved/);
+        });
+
+        it("round-trips cleanly once renamed to a non-reserved type (confirms the rejection is specific to the reserved word, not the data shape)", () => {
+            const artifact = buildRoundArtifact({
+                roundId: "renamed-type",
+                provenance: stakeEngineTestProvenance,
+                betMode: "base",
+                stake: 1,
+                steps: [
+                    {
+                        screen: [["A"]],
+                        winEvaluationResult: new WinEvaluationResult<string>(),
+                        featureEvents: [{type: `custom-${reservedType}`, data: {sneaky: true}}],
+                    },
+                ],
+            });
+
+            const events = projector.project(artifact, {cost: 1});
+            const imported = new StakeEngineRoundEventsImporter<string>().importEvents(events, {cost: 1, stake: 1});
+
+            expect(imported.steps[0].featureEvents).toEqual([{type: `custom-${reservedType}`, data: {sneaky: true}}]);
+        });
     });
 });

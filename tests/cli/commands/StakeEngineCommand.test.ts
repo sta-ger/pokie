@@ -4,6 +4,7 @@ import {
     StakeEngineExportResult,
     StakeEngineImportResult,
     StakeEngineImporting,
+    StakeEngineImportWriting,
     ValidationIssue,
 } from "pokie";
 import {StakeEngineCommand} from "../../../cli/commands/StakeEngineCommand.js";
@@ -53,6 +54,17 @@ function createStubImporter(result: StakeEngineImportResult): StakeEngineImporti
     };
 }
 
+function createStubImportWriter(
+    issues: ValidationIssue[] = [],
+): StakeEngineImportWriting & {calledWith?: {importResult: StakeEngineImportResult; outDir: string}} {
+    return {
+        writeToDirectory(importResult: StakeEngineImportResult, outDir: string) {
+            this.calledWith = {importResult, outDir};
+            return Promise.resolve({issues});
+        },
+    };
+}
+
 const successImportResult: StakeEngineImportResult = {
     stakeDir: "/project/stake",
     manifest: undefined,
@@ -60,6 +72,7 @@ const successImportResult: StakeEngineImportResult = {
         {modeName: "base", cost: 1, library: BASE_LIBRARY},
         {modeName: "bonus", cost: 100, library: BONUS_LIBRARY},
     ],
+    sourceProvenance: undefined,
     issues: [],
 };
 
@@ -206,69 +219,51 @@ describe("StakeEngineCommand", () => {
     });
 
     describe("import", () => {
-        it("imports and writes libraries/<mode>.json plus config.json to the default --out dir", async () => {
+        it("imports and hands the result to the writer for the default --out dir", async () => {
             const importer = createStubImporter(successImportResult);
-            const writeFile = jest.fn();
-            const makeDirectory = jest.fn();
-            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, writeFile, makeDirectory);
+            const writer = createStubImportWriter();
+            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, writer);
 
             const exitCode = await command.run(["import", "/project/stake"]);
 
             expect(exitCode).toBe(0);
             expect(importer.calledWith).toBe("/project/stake");
-            expect(makeDirectory).toHaveBeenCalledWith("/project/stake-imported/libraries");
-            expect(writeFile).toHaveBeenCalledWith("/project/stake-imported/libraries/base.json", `${JSON.stringify(BASE_LIBRARY, null, 4)}\n`);
-            expect(writeFile).toHaveBeenCalledWith("/project/stake-imported/libraries/bonus.json", `${JSON.stringify(BONUS_LIBRARY, null, 4)}\n`);
-            expect(writeFile).toHaveBeenCalledWith(
-                "/project/stake-imported/config.json",
-                `${JSON.stringify(
-                    {
-                        modes: [
-                            {modeName: "base", cost: 1, libraryPath: "./libraries/base.json"},
-                            {modeName: "bonus", cost: 100, libraryPath: "./libraries/bonus.json"},
-                        ],
-                    },
-                    null,
-                    4,
-                )}\n`,
-            );
+            expect(writer.calledWith?.outDir).toBe("/project/stake-imported");
+            expect(writer.calledWith?.importResult).toBe(successImportResult);
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("Imported");
             expect(printed).toContain("config.json");
             expect(printed).toContain("libraries/base.json");
+            expect(printed).toContain("libraries/bonus.json");
         });
 
         it("honors a custom --out path", async () => {
             const importer = createStubImporter(successImportResult);
-            const writeFile = jest.fn();
-            const makeDirectory = jest.fn();
-            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, writeFile, makeDirectory);
+            const writer = createStubImportWriter();
+            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, writer);
 
             await command.run(["import", "/project/stake", "--out", "/custom/out"]);
 
-            expect(makeDirectory).toHaveBeenCalledWith("/custom/out/libraries");
-            expect(writeFile).toHaveBeenCalledWith("/custom/out/config.json", expect.any(String));
+            expect(writer.calledWith?.outDir).toBe("/custom/out");
         });
 
-        it("prints an error summary and returns 1 when the importer reports error-level issues, writing nothing", async () => {
+        it("prints an error summary and returns 1 when the importer reports error-level issues, never calling the writer", async () => {
             const issues: ValidationIssue[] = [{code: "stakeengine-import-manifest-missing", severity: "error", message: "no manifest"}];
-            const importer = createStubImporter({stakeDir: "/project/stake", manifest: undefined, modes: [], issues});
-            const writeFile = jest.fn();
-            const makeDirectory = jest.fn();
-            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, writeFile, makeDirectory);
+            const importer = createStubImporter({stakeDir: "/project/stake", manifest: undefined, modes: [], sourceProvenance: undefined, issues});
+            const writer = createStubImportWriter();
+            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, writer);
 
             const exitCode = await command.run(["import", "/project/stake"]);
 
             expect(exitCode).toBe(1);
             expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("no manifest");
-            expect(writeFile).not.toHaveBeenCalled();
-            expect(makeDirectory).not.toHaveBeenCalled();
+            expect(writer.calledWith).toBeUndefined();
         });
 
-        it("prints info issues alongside a success line", async () => {
+        it("prints info issues from the importer alongside a success line", async () => {
             const issues: ValidationIssue[] = [{code: "stakeengine-import-library-hash-differs-from-manifest", severity: "info", message: "heads up"}];
             const importer = createStubImporter({...successImportResult, issues});
-            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, jest.fn(), jest.fn());
+            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, createStubImportWriter());
 
             const exitCode = await command.run(["import", "/project/stake"]);
 
@@ -276,6 +271,21 @@ describe("StakeEngineCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("Imported");
             expect(printed).toContain("heads up");
+        });
+
+        it("prints warnings the writer itself reports (e.g. a stale-cleanup failure) without failing the command", async () => {
+            const writerIssues: ValidationIssue[] = [
+                {code: "stakeengine-import-write-stale-cleanup-failed", severity: "warning", message: "could not remove stale backup"},
+            ];
+            const importer = createStubImporter(successImportResult);
+            const command = new StakeEngineCommand("1.3.0", undefined, importer, undefined, createStubImportWriter(writerIssues));
+
+            const exitCode = await command.run(["import", "/project/stake"]);
+
+            expect(exitCode).toBe(0);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("Imported");
+            expect(printed).toContain("could not remove stale backup");
         });
 
         it("throws a descriptive error when no stakeDir is given", async () => {

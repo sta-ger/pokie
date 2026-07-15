@@ -110,6 +110,11 @@ like the top-level `payoutMultiplier` conversion, an amount that isn't represent
 integer once converted throws — `StakeEngineExporter` treats that (or any other error a projector throws) as a
 blocking `ValidationIssue`, never a crash (see Validation below).
 
+`"reveal"`/`"win"`/`"finalWin"` are reserved structural markers in this encoding: a `RoundArtifactFeatureEvent`
+whose own `type` is one of those three throws rather than being exported, since it would otherwise be
+indistinguishable on import from the real structural event of the same name. Rename the feature event's `type`
+before exporting.
+
 This is a deliberate non-goal: no invented game-specific event vocabulary. A game with mechanic-specific events
 Stake's own front-end expects (anticipation reels, per-symbol tumble animations, ...) needs its own projector —
 implement `StakeEngineRoundEventsProjecting<T>` directly, the same way you'd implement any other custom

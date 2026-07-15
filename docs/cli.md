@@ -674,9 +674,16 @@ Writes exactly the shape `pokie stakeengine export` reads back in:
 }
 ```
 
+Also writes `source-provenance.json` (SHA-256 hashes of the raw `index.json`/manifest/CSV/books bytes this import
+read — see [Source provenance](stake-engine-import.md#source-provenance)) whenever the import produced one.
+
 Options:
 
 - `--out <dir>` — where to write `config.json`/`libraries/*.json` (default: `<stakeDir>` plus `-imported`).
+
+`--out` is published atomically as a whole directory (temp-dir-then-swap, same discipline as `export`): a write
+failure never leaves partial files behind and never alters an existing `--out` in place, and a mode dropped from
+the source no longer leaves a stale `libraries/<name>.json` file.
 
 On any error-level `ValidationIssue` (see [Stake Engine Import](stake-engine-import.md#validation)), nothing is
 written and the exit code is non-zero. The result's `modes` can be fed straight back into

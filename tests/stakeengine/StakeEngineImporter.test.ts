@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -121,6 +122,27 @@ describe("StakeEngineImporter", () => {
         expect(stripVolatileFields(reExportedManifest)).toEqual(stripVolatileFields(originalManifest));
     });
 
+    it("computes sourceProvenance as the exact SHA-256 of every raw file it read, before any parsing/decompression", async () => {
+        const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "provenance-lib", betMode: "base", stake: 1, totalWin: 5});
+        const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 1, library}];
+        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, outDir);
+
+        const result = await new StakeEngineImporter().importFromDirectory(outDir);
+
+        expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
+        const hashOf = (filePath: string) => `sha256:${crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
+
+        expect(result.sourceProvenance?.indexHash).toBe(hashOf(path.join(outDir, "index.json")));
+        expect(result.sourceProvenance?.manifestHash).toBe(hashOf(path.join(outDir, "pokie-manifest.json")));
+        expect(result.sourceProvenance?.modes).toEqual([
+            {
+                modeName: "base",
+                csvHash: hashOf(path.join(outDir, "lookup_base.csv")),
+                booksHash: hashOf(path.join(outDir, "books_base.jsonl.zst")),
+            },
+        ]);
+    });
+
     it("round-trips a POKIE 0.1x payoutMultiplier at cost 1 (0.1x -> 10 Stake units and back)", async () => {
         const library = buildSingleOutcomeStakeEngineLibrary({libraryId: "tenth-lib", betMode: "base", stake: 1, totalWin: 0.1});
         const modes: StakeEngineExportModeInput[] = [{modeName: "base", cost: 1, library}];
@@ -210,6 +232,58 @@ describe("StakeEngineImporter", () => {
             const result = await new StakeEngineImporter().importFromDirectory(outDir);
 
             expect(result.issues.some((issue) => issue.code === "stakeengine-import-payout-multiplier-not-invertible")).toBe(true);
+            expect(result.modes).toEqual([]);
+        });
+
+        it("reports stakeengine-import-books-invalid-zstd when the books file is corrupted (not valid zstd)", async () => {
+            await exportSingleOutcome(1, 5);
+            const booksPath = path.join(outDir, "books_base.jsonl.zst");
+            fs.writeFileSync(booksPath, Buffer.from("this is not a zstd frame at all"));
+
+            const result = await new StakeEngineImporter().importFromDirectory(outDir);
+
+            expect(result.issues.some((issue) => issue.code === "stakeengine-import-books-invalid-zstd")).toBe(true);
+            expect(result.modes).toEqual([]);
+        });
+
+        it("reports stakeengine-import-books-invalid-json-line when a books line isn't valid JSON at all", async () => {
+            await exportSingleOutcome(1, 5);
+            const booksPath = path.join(outDir, "books_base.jsonl.zst");
+            const jsonl = "{not valid json at all}\n";
+            fs.writeFileSync(booksPath, zlib.zstdCompressSync(Buffer.from(jsonl, "utf-8")));
+
+            const result = await new StakeEngineImporter().importFromDirectory(outDir);
+
+            expect(result.issues.some((issue) => issue.code === "stakeengine-import-books-invalid-json-line")).toBe(true);
+            expect(result.modes).toEqual([]);
+        });
+
+        it("reports stakeengine-import-mode-filename-unsafe when index.json's weights field is a path-traversal attempt, and never reads outside stakeDir", async () => {
+            await exportSingleOutcome(1, 5);
+            const outsideFile = path.join(path.dirname(outDir), "outside-secret.csv");
+            fs.writeFileSync(outsideFile, "should never be read");
+            const indexPath = path.join(outDir, "index.json");
+            fs.writeFileSync(
+                indexPath,
+                fs.readFileSync(indexPath, "utf-8").replace('"lookup_base.csv"', JSON.stringify(`../${path.basename(outsideFile)}`)),
+            );
+
+            const result = await new StakeEngineImporter().importFromDirectory(outDir);
+
+            expect(result.issues.some((issue) => issue.code === "stakeengine-import-mode-filename-unsafe")).toBe(true);
+            expect(result.modes).toEqual([]);
+            fs.rmSync(outsideFile, {force: true});
+        });
+
+        it("reports stakeengine-import-duplicate-csv-id when the lookup CSV has the same id twice", async () => {
+            await exportSingleOutcome(1, 5);
+            const csvPath = path.join(outDir, "lookup_base.csv");
+            const originalRow = fs.readFileSync(csvPath, "utf-8").trim();
+            fs.writeFileSync(csvPath, `${originalRow}\n${originalRow}\n`);
+
+            const result = await new StakeEngineImporter().importFromDirectory(outDir);
+
+            expect(result.issues.some((issue) => issue.code === "stakeengine-import-duplicate-csv-id")).toBe(true);
             expect(result.modes).toEqual([]);
         });
     });

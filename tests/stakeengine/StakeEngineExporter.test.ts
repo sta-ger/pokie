@@ -12,9 +12,12 @@ import {
     StakeEngineRoundEventsProjecting,
     StakeEngineRoundEventsProjector,
     WeightedOutcomeLibrary,
+    WinEvaluationResult,
+    buildRoundArtifact,
+    buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
 } from "pokie";
-import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary} from "./StakeEngineTestFixtures.js";
+import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary, stakeEngineTestProvenance} from "./StakeEngineTestFixtures.js";
 
 const eventsProjector = new StakeEngineRoundEventsProjector<string>();
 
@@ -222,6 +225,38 @@ describe("StakeEngineExporter", () => {
         expect(result.files).toEqual([]);
         expect(result.manifest).toBeUndefined();
         expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-invalid" && issue.severity === "error")).toBe(true);
+        expect(fs.readdirSync(outDir)).toEqual([]);
+    });
+
+    it("blocks export (via the real, default events projector) when an outcome's own featureEvents use a reserved type", async () => {
+        const library = buildWeightedOutcomeLibrary({
+            libraryId: "reserved-type-lib",
+            outcomes: [
+                {
+                    id: "0",
+                    weight: 1,
+                    artifact: buildRoundArtifact({
+                        roundId: "reserved-type-round",
+                        provenance: stakeEngineTestProvenance,
+                        betMode: "base",
+                        stake: 1,
+                        steps: [
+                            {
+                                screen: [["A"]],
+                                winEvaluationResult: new WinEvaluationResult<string>(),
+                                featureEvents: [{type: "finalWin", data: {sneaky: true}}],
+                            },
+                        ],
+                    }),
+                },
+            ],
+        });
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+
+        const result = await exporter.exportToDirectory([{modeName: "base", cost: 1, library}], outDir);
+
+        expect(result.files).toEqual([]);
+        expect(result.issues.some((issue) => issue.code === "stakeengine-outcome-events-invalid" && issue.message.includes("reserved"))).toBe(true);
         expect(fs.readdirSync(outDir)).toEqual([]);
     });
 

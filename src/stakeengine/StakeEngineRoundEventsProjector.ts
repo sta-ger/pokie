@@ -9,7 +9,20 @@ import type {StakeEngineRoundEventsProjecting, StakeEngineRoundProjectionContext
 // An event's own fields before its final "index" (position in the sequence) is known.
 type PendingStakeEngineEvent = JsonObject & {readonly type: string};
 
+// "reveal"/"win"/"finalWin" are this projector's own structural vocabulary — StakeEngineRoundEventsImporter
+// relies on them to unambiguously tell a real feature event apart from a reveal/win/finalWin marker while
+// reconstructing a book line's events. A featureEvent whose own type happened to collide with one of these
+// would be silently misread as the structural event on import (see the "reserved by convention" limitation this
+// closes) — so it's rejected outright here, at the one place such a collision could ever be introduced.
+const RESERVED_STAKE_EVENT_TYPES: ReadonlySet<string> = new Set(["reveal", "win", "finalWin"]);
+
 function featureEventToStakeEvent(featureEvent: RoundArtifactFeatureEvent): PendingStakeEngineEvent {
+    if (RESERVED_STAKE_EVENT_TYPES.has(featureEvent.type)) {
+        throw new Error(
+            `featureEvent type "${featureEvent.type}" is reserved by the Stake events encoding ("reveal"/"win"/"finalWin" are structural markers, ` +
+                "never a real feature event) — rename this feature event's type before exporting.",
+        );
+    }
     return {...(featureEvent.data ?? {}), type: featureEvent.type};
 }
 

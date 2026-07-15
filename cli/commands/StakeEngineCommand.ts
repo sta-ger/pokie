@@ -6,6 +6,8 @@ import {
     StakeEngineExportModeInput,
     StakeEngineImporter,
     StakeEngineImporting,
+    StakeEngineImportWriter,
+    StakeEngineImportWriting,
     ValidationIssue,
     WeightedOutcomeLibrary,
 } from "pokie";
@@ -35,22 +37,19 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly exporter: StakeEngineExporting;
     private readonly importer: StakeEngineImporting;
     private readonly loadJson: (filePath: string) => unknown;
-    private readonly writeFile: (filePath: string, contents: string) => void;
-    private readonly makeDirectory: (dirPath: string) => void;
+    private readonly importWriter: StakeEngineImportWriting;
 
     constructor(
         pokieVersion: string,
         exporter: StakeEngineExporting = new StakeEngineExporter(pokieVersion),
         importer: StakeEngineImporting = new StakeEngineImporter(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
-        writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
-        makeDirectory: (dirPath: string) => void = (dirPath) => fs.mkdirSync(dirPath, {recursive: true}),
+        importWriter: StakeEngineImportWriting = new StakeEngineImportWriter(),
     ) {
         this.exporter = exporter;
         this.importer = importer;
         this.loadJson = loadJson;
-        this.writeFile = writeFile;
-        this.makeDirectory = makeDirectory;
+        this.importWriter = importWriter;
     }
 
     public getName(): string {
@@ -109,10 +108,12 @@ export class StakeEngineCommand implements CliCommandHandling {
     }
 
     // Writes exactly the shape "pokie stakeengine export" already reads back (see loadDescriptor/parseExportArgs
-    // above) — libraries/<modeName>.json per mode, plus a config.json naming them — so the import's own output
-    // can be fed straight back into "pokie stakeengine export <outDir>/config.json" with no further editing.
-    // Unlike export's own directory publishing, this is a plain (non-atomic) write: the output here is always
-    // just these two small JSON shapes, not a wholesale directory replacement.
+    // above) — libraries/<modeName>.json per mode, a config.json naming them, and (when available) a
+    // source-provenance.json — so the import's own output can be fed straight back into
+    // "pokie stakeengine export <outDir>/config.json" with no further editing. Written via StakeEngineImportWriter,
+    // which publishes the whole --out directory atomically (temp-dir-then-swap, the same discipline
+    // StakeEngineExporter uses) — a failure never leaves partial files, never alters an existing --out, and a
+    // mode no longer present in this import never leaves its old library file behind.
     private async runImport(args: string[]): Promise<number> {
         const options = this.parseImportArgs(args);
         const result = await this.importer.importFromDirectory(options.stakeDir);
@@ -125,20 +126,17 @@ export class StakeEngineCommand implements CliCommandHandling {
             return 1;
         }
 
-        this.makeDirectory(path.join(options.outDir, "libraries"));
-        const modeEntries: ExportDescriptorModeEntry[] = result.modes.map((mode) => {
-            const libraryPath = `./libraries/${mode.modeName}.json`;
-            this.writeFile(path.join(options.outDir, "libraries", `${mode.modeName}.json`), `${JSON.stringify(mode.library, null, 4)}\n`);
-            return {modeName: mode.modeName, cost: mode.cost, libraryPath};
-        });
-        this.writeFile(path.join(options.outDir, "config.json"), `${JSON.stringify({modes: modeEntries}, null, 4)}\n`);
+        const written = await this.importWriter.writeToDirectory(result, options.outDir);
 
         console.log(`Imported "${options.stakeDir}" to "${options.outDir}":`);
         console.log(`  wrote  config.json`);
         for (const mode of result.modes) {
             console.log(`  wrote  libraries/${mode.modeName}.json`);
         }
-        for (const issue of infos) {
+        if (result.sourceProvenance !== undefined) {
+            console.log(`  wrote  source-provenance.json`);
+        }
+        for (const issue of [...infos, ...written.issues]) {
             console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
         }
 
