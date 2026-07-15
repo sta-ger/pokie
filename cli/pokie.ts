@@ -15,7 +15,7 @@ import {ReplayCommand} from "./commands/ReplayCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
 import {ServeCommand} from "./commands/ServeCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
-import {StakeEngineExportCommand} from "./commands/StakeEngineExportCommand.js";
+import {StakeEngineCommand} from "./commands/StakeEngineCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
 import {resolveCliInvocation} from "./resolveCliInvocation.js";
@@ -64,7 +64,7 @@ async function run(): Promise<number> {
         new ReportCommand(),
         new ServeCommand(),
         new SimCommand(),
-        new StakeEngineExportCommand(readOwnVersion()),
+        new StakeEngineCommand(readOwnVersion()),
         new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot()}),
         new ValidateCommand(),
     ];

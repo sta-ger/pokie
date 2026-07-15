@@ -651,6 +651,41 @@ removing a mode's `lookup_*.csv`/`books_*.jsonl.zst` when that mode is no longer
 unrecognized non-empty `--out` directory is refused outright, with nothing touched — see
 [Rebuild safety](stake-engine-export.md#rebuild-safety--the-whole-directory-is-replaced-atomically).
 
+## `pokie stakeengine import <stakeDir>`
+
+Imports a Stake Engine export directory (`index.json`, per-mode lookup CSV/books, and its own sibling
+`pokie-manifest.json`) back into one `WeightedOutcomeLibrary` per mode — see
+[Stake Engine Import](stake-engine-import.md) for the full lossy/lossless boundary, the events reconstruction,
+and the validation-code table. Only ever round-trips a directory `pokie stakeengine export` itself produced —
+`pokie-manifest.json` is required, not optional.
+
+```
+pokie stakeengine import stakeengine --out imported
+```
+
+Writes exactly the shape `pokie stakeengine export` reads back in:
+
+```json
+{
+    "modes": [
+        {"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"},
+        {"modeName": "bonus", "cost": 100, "libraryPath": "./libraries/bonus.json"}
+    ]
+}
+```
+
+Options:
+
+- `--out <dir>` — where to write `config.json`/`libraries/*.json` (default: `<stakeDir>` plus `-imported`).
+
+On any error-level `ValidationIssue` (see [Stake Engine Import](stake-engine-import.md#validation)), nothing is
+written and the exit code is non-zero. The result's `modes` can be fed straight back into
+`pokie stakeengine export <outDir>/config.json` — importing and re-exporting the same directory reproduces
+byte-identical `index.json`/CSVs/books (see
+[The real round-trip property](stake-engine-import.md#the-real-round-trip-property)), even though the
+reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the original pre-export library (see
+[Lossy vs. lossless](stake-engine-import.md#lossy-vs-lossless--read-this-before-anything-else)).
+
 ## `pokie init`
 
 Turns an existing npm project into a minimal POKIE-compatible game package.

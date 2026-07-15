@@ -65,8 +65,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     a running `pokie serve`; `pokie dev <packageRoot>` (experimental), which runs both together; `pokie par
     import <input.xlsx>`, which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable,
     paylines, available bets) into a `GameBlueprint` JSON file; `pokie par export <config.json>`, which
-    exports a `GameBlueprint` back to a PAR sheet XLSX workbook; and `pokie stakeengine export <config.json>`,
-    which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine math-sdk static file format.
+    exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie stakeengine export <config.json>`,
+    which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine math-sdk static file format;
+    and `pokie stakeengine import <stakeDir>`, which imports one back.
 16. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
@@ -83,6 +84,11 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     bet mode) to the real Stake Engine math-sdk static file format (`index.json`, per-mode lookup CSV, zstd-
     compressed JSONL books), `StakeEngineRoundEventsProjector`'s generic `RoundArtifact` → Stake "events"
     mapping, and `StakeEngineExporter`/`StakeEngineExportValidator`.
+19. **[Stake Engine Import](stake-engine-import.md)** — reconstructing a `WeightedOutcomeLibrary` back from a
+    Stake Engine export directory via `StakeEngineImporter`/`StakeEngineRoundEventsImporter`, the disclosed
+    lossy-vs-lossless boundary (`roundId`/win breakdown/`provenance.pokieVersion` are substituted, everything
+    else round-trips exactly), and the real round-trip property: import then re-export reproduces byte-identical
+    Stake output.
 
 ## Core concepts at a glance
 
@@ -112,6 +118,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Canonical, hashable, storage/audit-grade record of a completed round | `RoundArtifact`, `buildRoundArtifactFromSession`, `PokieJsonRoundArtifactProjector` |
 | Exact (no Monte Carlo) RTP/volatility/payout-distribution over every possible outcome | `WeightedOutcomeLibrary`, `buildWeightedOutcomeLibrary`, `WeightedOutcomeLibraryAnalyzer` |
 | Exporting a `WeightedOutcomeLibrary` to the Stake Engine math-sdk static file format | `pokie stakeengine export <config.json>`, `StakeEngineExporter` |
+| Importing a `WeightedOutcomeLibrary` back from a Stake Engine export directory | `pokie stakeengine import <stakeDir>`, `StakeEngineImporter` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.
