@@ -2,13 +2,14 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
-    computeFairnessCommitment,
     FairnessCommitment,
     FairnessRoundProofBuildError,
     FairnessRoundProofBuilder,
+    OutcomeLibraryBundleModeIndex,
     OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
 } from "pokie";
-import {buildFairnessSourceBundle} from "./FairnessRoundProofTestFixtures.js";
+import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "./FairnessRoundProofTestFixtures.js";
 
 describe("FairnessRoundProofBuilder", () => {
     let tmpRoot: string;
@@ -24,21 +25,9 @@ describe("FairnessRoundProofBuilder", () => {
         fs.rmSync(tmpRoot, {recursive: true, force: true});
     });
 
-    async function commitmentFor(serverSeed: string, nonce = 0): Promise<FairnessCommitment> {
-        const index = await new OutcomeLibraryBundleReader().readModeIndex(bundleDir, "base");
-        return computeFairnessCommitment({
-            serverSeed,
-            clientSeed: "player-client-seed",
-            nonce,
-            libraryId: index.libraryId,
-            libraryHash: index.libraryHash,
-            modeName: "base",
-        });
-    }
-
-    it("builds a proof that reveals the seed and pins the mode/library/index it was drawn from", async () => {
+    it("builds a proof that reveals the seed, links its own commitmentHash, and pins the mode/library/index it was drawn from", async () => {
         const serverSeed = "server-seed-1";
-        const commitment = await commitmentFor(serverSeed);
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed});
         const builder = new FairnessRoundProofBuilder();
 
         const proof = await builder.build(commitment, serverSeed, bundleDir);
@@ -58,7 +47,7 @@ describe("FairnessRoundProofBuilder", () => {
 
     it("is deterministic — the same commitment/serverSeed/bundle always produces the exact same draw", async () => {
         const serverSeed = "server-seed-determinism";
-        const commitment = await commitmentFor(serverSeed);
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed});
         const builder = new FairnessRoundProofBuilder();
 
         const first = await builder.build(commitment, serverSeed, bundleDir);
@@ -68,11 +57,12 @@ describe("FairnessRoundProofBuilder", () => {
         expect(second.weight).toBe(first.weight);
         expect(second.recordHash).toBe(first.recordHash);
         expect(second.indexHash).toBe(first.indexHash);
+        expect(second.commitmentHash).toBe(first.commitmentHash);
     });
 
     it("returns a deeply frozen proof", async () => {
         const serverSeed = "server-seed-frozen";
-        const commitment = await commitmentFor(serverSeed);
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed});
         const proof = await new FairnessRoundProofBuilder().build(commitment, serverSeed, bundleDir);
 
         expect(Object.isFrozen(proof)).toBe(true);
@@ -81,8 +71,19 @@ describe("FairnessRoundProofBuilder", () => {
         }).toThrow();
     });
 
+    it("rejects a commitment that doesn't validate on its own", async () => {
+        const serverSeed = "server-seed-invalid-commitment";
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed});
+        const malformedCommitment = {...commitment, extra: "field"};
+        const builder = new FairnessRoundProofBuilder();
+
+        await expect(builder.build(malformedCommitment as unknown as FairnessCommitment, serverSeed, bundleDir)).rejects.toThrow(
+            FairnessRoundProofBuildError,
+        );
+    });
+
     it("rejects a revealed serverSeed that doesn't hash to the commitment's own serverSeedHash", async () => {
-        const commitment = await commitmentFor("server-seed-committed");
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed: "server-seed-committed"});
         const builder = new FairnessRoundProofBuilder();
 
         await expect(builder.build(commitment, "a-different-seed-entirely", bundleDir)).rejects.toThrow(FairnessRoundProofBuildError);
@@ -90,10 +91,37 @@ describe("FairnessRoundProofBuilder", () => {
 
     it("rejects a commitment whose libraryId/libraryHash no longer matches the live bundle's own mode index", async () => {
         const serverSeed = "server-seed-3";
-        const commitment = await commitmentFor(serverSeed);
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed});
         const tampered: FairnessCommitment = {...commitment, libraryHash: `sha256:${"0".repeat(64)}`};
         const builder = new FairnessRoundProofBuilder();
 
         await expect(builder.build(tampered, serverSeed, bundleDir)).rejects.toThrow(FairnessRoundProofBuildError);
+    });
+
+    it("aborts with bundle drift when the mode index changes between the first read and the post-draw re-verification", async () => {
+        const serverSeed = "server-seed-drift";
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed});
+        const reader = new OutcomeLibraryBundleReader();
+        const originalIndex = await reader.readModeIndex(bundleDir, "base");
+        const tamperedIndex: OutcomeLibraryBundleModeIndex = {
+            ...originalIndex,
+            entries: originalIndex.entries.map((entry) => (entry === originalIndex.entries[0] ? {...entry, weight: entry.weight + 1} : entry)),
+        };
+
+        let call = 0;
+        const driftingReader: OutcomeLibraryBundleReading = {
+            readManifest: (dir) => reader.readManifest(dir),
+            readModeIndex: () => {
+                call++;
+                return Promise.resolve(call === 1 ? originalIndex : tamperedIndex);
+            },
+            iterateModeOutcomes: (dir, modeName) => reader.iterateModeOutcomes(dir, modeName),
+            readOutcomeById: (dir, modeName, id) => reader.readOutcomeById(dir, modeName, id),
+            drawOutcome: (dir, modeName, randomSource) => reader.drawOutcome(dir, modeName, randomSource),
+            readLibrary: (dir, modeName) => reader.readLibrary(dir, modeName),
+        };
+        const builder = new FairnessRoundProofBuilder(undefined, driftingReader);
+
+        await expect(builder.build(commitment, serverSeed, bundleDir)).rejects.toThrow(FairnessRoundProofBuildError);
     });
 });

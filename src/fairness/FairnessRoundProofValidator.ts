@@ -2,7 +2,7 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {POKIE_FAIRNESS_ALGORITHM_VERSION} from "./FairnessAlgorithmVersion.js";
 import type {FairnessRoundProofValidating} from "./FairnessRoundProofValidating.js";
 import {FAIRNESS_ROUND_PROOF_SCHEMA_VERSION} from "./FairnessRoundProof.js";
-import {isFairnessRoundProofShape} from "./internal/fairnessRoundProofShapeGuards.js";
+import {isFairnessRoundProofShape} from "./internal/fairnessShapeGuards.js";
 import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 // Never throws (top-level shape guard first, same "never throw, return diagnostics" contract every other

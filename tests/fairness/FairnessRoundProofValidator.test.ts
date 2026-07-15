@@ -1,14 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {
-    computeFairnessCommitment,
-    FairnessRoundProof,
-    FairnessRoundProofBuilder,
-    FairnessRoundProofValidator,
-    OutcomeLibraryBundleReader,
-} from "pokie";
-import {buildFairnessSourceBundle} from "./FairnessRoundProofTestFixtures.js";
+import {FairnessRoundProof, FairnessRoundProofBuilder, FairnessRoundProofValidator} from "pokie";
+import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "./FairnessRoundProofTestFixtures.js";
 
 describe("FairnessRoundProofValidator", () => {
     let tmpRoot: string;
@@ -22,15 +16,7 @@ describe("FairnessRoundProofValidator", () => {
         await buildFairnessSourceBundle(bundleDir, ["base"]);
 
         const serverSeed = "server-seed-validator";
-        const index = await new OutcomeLibraryBundleReader().readModeIndex(bundleDir, "base");
-        const commitment = computeFairnessCommitment({
-            serverSeed,
-            clientSeed: "client-seed",
-            nonce: 0,
-            libraryId: index.libraryId,
-            libraryHash: index.libraryHash,
-            modeName: "base",
-        });
+        const commitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed, clientSeed: "client-seed"});
         validProof = await new FairnessRoundProofBuilder().build(commitment, serverSeed, bundleDir);
     });
 
@@ -58,6 +44,17 @@ describe("FairnessRoundProofValidator", () => {
         expect(validator.validate(withoutServerSeed).map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);
     });
 
+    it("rejects a proof missing its own commitmentHash", () => {
+        const {commitmentHash: _commitmentHash, ...withoutCommitmentHash} = validProof;
+        expect(validator.validate(withoutCommitmentHash).map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);
+    });
+
+    it("rejects a commitmentHash that isn't a well-formed sha256:<hex>", () => {
+        expect(validator.validate({...validProof, commitmentHash: "not-a-hash"}).map((issue) => issue.code)).toEqual([
+            "fairness-round-proof-malformed",
+        ]);
+    });
+
     it("rejects an unsupported schemaVersion", () => {
         const issues = validator.validate({...validProof, schemaVersion: 999});
         expect(issues.map((issue) => issue.code)).toContain("fairness-round-proof-schema-version-unsupported");
@@ -81,5 +78,11 @@ describe("FairnessRoundProofValidator", () => {
     it("rejects a negative or malformed nonce", () => {
         expect(validator.validate({...validProof, nonce: -1}).map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);
         expect(validator.validate({...validProof, nonce: 1.5}).map((issue) => issue.code)).toEqual(["fairness-round-proof-malformed"]);
+    });
+
+    it("rejects a revealedAt that isn't a valid canonical ISO timestamp", () => {
+        expect(validator.validate({...validProof, revealedAt: "not a date"}).map((issue) => issue.code)).toEqual([
+            "fairness-round-proof-malformed",
+        ]);
     });
 });

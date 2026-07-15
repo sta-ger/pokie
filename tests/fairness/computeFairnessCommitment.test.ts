@@ -1,13 +1,9 @@
-import crypto from "crypto";
-import {computeFairnessCommitment, POKIE_FAIRNESS_ALGORITHM_VERSION} from "pokie";
-
-function sha256OfBytes(bytes: string): string {
-    return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
-}
+import {computeFairnessCommitment, computeFairnessServerSeedCommitment, FairnessServerSeedCommitment, POKIE_FAIRNESS_ALGORITHM_VERSION} from "pokie";
 
 describe("computeFairnessCommitment", () => {
+    const serverSeedCommitment: FairnessServerSeedCommitment = computeFairnessServerSeedCommitment({serverSeed: "a-secret-server-seed"});
     const baseInput = {
-        serverSeed: "a-secret-server-seed",
+        serverSeedCommitment,
         clientSeed: "a-client-seed",
         nonce: 0,
         libraryId: "base-lib",
@@ -15,11 +11,10 @@ describe("computeFairnessCommitment", () => {
         modeName: "base",
     };
 
-    it("fixes serverSeedHash from serverSeed, never exposing the seed itself", () => {
+    it("carries serverSeedHash forward unchanged from the given serverSeedCommitment, never touching a raw serverSeed", () => {
         const commitment = computeFairnessCommitment(baseInput);
 
-        expect(commitment.serverSeedHash).toBe(sha256OfBytes(baseInput.serverSeed));
-        expect(JSON.stringify(commitment)).not.toContain(baseInput.serverSeed);
+        expect(commitment.serverSeedHash).toBe(serverSeedCommitment.serverSeedHash);
         expect(Object.keys(commitment)).not.toContain("serverSeed");
     });
 
@@ -49,13 +44,25 @@ describe("computeFairnessCommitment", () => {
         }).toThrow();
     });
 
-    it("rejects an empty serverSeed/clientSeed", () => {
-        expect(() => computeFairnessCommitment({...baseInput, serverSeed: ""})).toThrow(RangeError);
+    it("rejects a malformed serverSeedCommitment", () => {
+        expect(() => computeFairnessCommitment({...baseInput, serverSeedCommitment: null as unknown as FairnessServerSeedCommitment})).toThrow(RangeError);
+        expect(() =>
+            computeFairnessCommitment({...baseInput, serverSeedCommitment: {...serverSeedCommitment, serverSeedHash: ""}}),
+        ).toThrow(RangeError);
+    });
+
+    it("rejects an empty clientSeed", () => {
         expect(() => computeFairnessCommitment({...baseInput, clientSeed: ""})).toThrow(RangeError);
     });
 
     it("rejects a negative or non-integer nonce", () => {
         expect(() => computeFairnessCommitment({...baseInput, nonce: -1})).toThrow(RangeError);
         expect(() => computeFairnessCommitment({...baseInput, nonce: 1.5})).toThrow(RangeError);
+    });
+
+    it("rejects an empty libraryId/libraryHash/modeName", () => {
+        expect(() => computeFairnessCommitment({...baseInput, libraryId: ""})).toThrow(RangeError);
+        expect(() => computeFairnessCommitment({...baseInput, libraryHash: ""})).toThrow(RangeError);
+        expect(() => computeFairnessCommitment({...baseInput, modeName: ""})).toThrow(RangeError);
     });
 });

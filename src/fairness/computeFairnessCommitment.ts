@@ -1,15 +1,13 @@
 import {deepFreeze} from "../internal/deepFreeze.js";
-import {POKIE_FAIRNESS_ALGORITHM_VERSION} from "./FairnessAlgorithmVersion.js";
 import {FAIRNESS_COMMITMENT_SCHEMA_VERSION, type FairnessCommitment} from "./FairnessCommitment.js";
-import {sha256OfBytes} from "./internal/sha256OfBytes.js";
+import type {FairnessServerSeedCommitment} from "./FairnessServerSeedCommitment.js";
 
 export type FairnessCommitmentInput = {
-    // Stays secret — read here exactly once to compute its own hash, and never stored on the returned
-    // commitment. This package never generates a serverSeed itself, the same "caller owns entropy" split
-    // SecureWeightedOutcomeRandomSource/SeededWeightedOutcomeRandomSource already have with their own random
-    // sources — a caller typically draws it via crypto.randomBytes(32).toString("hex") and holds onto it
-    // server-side until the round is revealed (see FairnessRoundProofBuilder.build).
-    readonly serverSeed: string;
+    // The already-published server-seed commitment this round commitment carries forward — never a raw
+    // serverSeed (see FairnessServerSeedCommitment's own doc comment for why: this function's own signature is
+    // what makes publishing that commitment first, before clientSeed/nonce are even known, the only way to use
+    // this API at all).
+    readonly serverSeedCommitment: FairnessServerSeedCommitment;
     readonly clientSeed: string;
     readonly nonce: number;
     readonly libraryId: string;
@@ -18,14 +16,22 @@ export type FairnessCommitmentInput = {
     readonly issuedAt?: string;
 };
 
-// The one place a FairnessCommitment is built — always from a caller-supplied serverSeed, reduced immediately to
-// its own serverSeedHash via the shared sha256:<hex> convention (see computeWeightedOutcomeLibraryHash). Fails
-// fast on a malformed serverSeed/clientSeed/nonce, before any commitment is ever returned — the same
-// "commitment integrity" a valid FairnessRoundProof.serverSeedHash later re-derives and cross-checks (see
-// FairnessRoundProofValidator).
+// The one place a FairnessCommitment is built — always from an already-published FairnessServerSeedCommitment,
+// carrying its own serverSeedHash/algorithmVersion forward unchanged (never recomputed from a raw serverSeed
+// here). Fails fast on a malformed serverSeedCommitment/clientSeed/nonce/libraryId/libraryHash/modeName, before
+// any commitment is ever returned — the same "commitment integrity" a valid FairnessRoundProof.serverSeedHash
+// later re-derives and cross-checks (see FairnessRoundProofValidator), now paired with the strict, closed-shape
+// checks FairnessCommitmentValidator applies to the object this function returns.
 export function computeFairnessCommitment(input: FairnessCommitmentInput): FairnessCommitment {
-    if (typeof input.serverSeed !== "string" || input.serverSeed.length === 0) {
-        throw new RangeError("serverSeed must be a non-empty string.");
+    const serverSeedCommitment = input.serverSeedCommitment;
+    if (typeof serverSeedCommitment !== "object" || serverSeedCommitment === null) {
+        throw new RangeError("serverSeedCommitment must be a FairnessServerSeedCommitment object.");
+    }
+    if (typeof serverSeedCommitment.serverSeedHash !== "string" || serverSeedCommitment.serverSeedHash.length === 0) {
+        throw new RangeError("serverSeedCommitment.serverSeedHash must be a non-empty string.");
+    }
+    if (typeof serverSeedCommitment.algorithmVersion !== "string" || serverSeedCommitment.algorithmVersion.length === 0) {
+        throw new RangeError("serverSeedCommitment.algorithmVersion must be a non-empty string.");
     }
     if (typeof input.clientSeed !== "string" || input.clientSeed.length === 0) {
         throw new RangeError("clientSeed must be a non-empty string.");
@@ -45,8 +51,8 @@ export function computeFairnessCommitment(input: FairnessCommitmentInput): Fairn
 
     return deepFreeze({
         schemaVersion: FAIRNESS_COMMITMENT_SCHEMA_VERSION,
-        algorithmVersion: POKIE_FAIRNESS_ALGORITHM_VERSION,
-        serverSeedHash: sha256OfBytes(input.serverSeed),
+        algorithmVersion: serverSeedCommitment.algorithmVersion,
+        serverSeedHash: serverSeedCommitment.serverSeedHash,
         clientSeed: input.clientSeed,
         nonce: input.nonce,
         libraryId: input.libraryId,

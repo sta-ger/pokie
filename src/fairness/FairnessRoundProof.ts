@@ -3,12 +3,13 @@
 export const FAIRNESS_ROUND_PROOF_SCHEMA_VERSION = 1;
 
 // Published to the player AFTER the round is settled — the "reveal" half of the commit-reveal scheme
-// FairnessCommitment starts (see that type's own doc comment). Self-contained: everything
-// FairnessRoundProofVerifying needs to reproduce the exact deterministic draw and check its result against a
-// live Outcome Library Bundle, without ever needing the original FairnessCommitment object back — though
-// serverSeedHash is still carried here too, so a verifier (or a player who kept the original commitment) can
-// independently confirm this reveal's own serverSeed actually hashes to what was committed *before* the round
-// was played, not chosen afterwards to favor a particular result.
+// FairnessCommitment starts (see that type's own doc comment). Carries its own copy of every field the
+// commitment pinned (clientSeed/nonce/libraryId/libraryHash/modeName/serverSeedHash), so a self-consistency
+// check (FairnessRoundProofValidating — does the revealed serverSeed hash to serverSeedHash) never needs the
+// original commitment back. Full verification against a live bundle, however, always requires it: commitmentHash
+// binds this exact proof to one exact FairnessCommitment object, and FairnessRoundProofVerifying refuses to
+// cross-check a proof against a bundle without the matching commitment also being given (see that type's own
+// doc comment for why a proof's own internal consistency alone can never substitute for it).
 export type FairnessRoundProof = {
     readonly schemaVersion: number;
     readonly algorithmVersion: string;
@@ -23,5 +24,6 @@ export type FairnessRoundProof = {
     readonly outcomeId: string;
     readonly weight: number;
     readonly recordHash: string; // the drawn outcome's own OutcomeLibraryBundleIndexEntry.recordHash
+    readonly commitmentHash: string; // computeFairnessCommitmentHash of the exact FairnessCommitment this round was built from
     readonly revealedAt: string;
 };

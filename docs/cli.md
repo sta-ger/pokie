@@ -826,22 +826,30 @@ Options:
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
-## `pokie fairness verify <proof.json> --source <bundleDir>`
+## `pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>`
 
 Verifies a [Provably Fair](provably-fair.md) round proof: first its own self-consistency (does the shape match,
 is `algorithmVersion` supported, does the revealed `serverSeed` actually hash to its own recorded
-`serverSeedHash`), then cross-checks it against the *live* source Outcome Library Bundle it claims to have been
-drawn from — the pinned `libraryHash`/index hash (bundle drift), the drawn outcome's own recorded
-`weight`/`recordHash` (a substituted outcome), and a full reproduction of the deterministic HMAC-SHA256 draw
-itself (a forged proof). No game/win calculation is ever involved. See
-[Provably Fair](provably-fair.md#verification) for the full code table.
+`serverSeedHash`), then cross-checks it against the given `FairnessCommitment` (is this proof genuinely bound to
+that exact commitment — `commitmentHash` plus an exact field-by-field match of
+`algorithmVersion`/`serverSeedHash`/`clientSeed`/`nonce`/`libraryId`/`libraryHash`/`modeName` — never just a
+proof's own, unverifiable copies of those fields), and finally against the *live* source Outcome Library Bundle
+it claims to have been drawn from — the pinned `libraryHash`/index hash (bundle drift), the drawn outcome's own
+recorded `weight`/`recordHash` (a substituted outcome), and a full reproduction of the deterministic HMAC-SHA256
+draw itself, against one pinned snapshot of the live bundle (a forged proof). No game/win calculation is ever
+involved. See [Provably Fair](provably-fair.md#verification) for the full code table.
 
 ```
-pokie fairness verify proof.json --source ../bundle
+pokie fairness verify proof.json --commitment commitment.json --source ../bundle
 ```
 
 Options:
 
+- `--commitment <commitment.json>` — **required.** The original `FairnessCommitment` this proof claims to have
+  been built from. A `FairnessRoundProof` carries its own copies of the fields a commitment pins, but copies
+  alone can't prove they match anything that was ever actually committed to — without `--commitment`, full
+  verification is impossible and the command fails with a usage error (or, programmatically, a
+  `fairness-verify-commitment-required` diagnostic without reading anything).
 - `--source <bundleDir>` — **required.** Where the live source Outcome Library Bundle actually is. A
   `FairnessRoundProof` carries no bundle location of its own — omitting `--source` fails with a usage error, and
   running `verify` without it programmatically reports a diagnostic instead of reading anything.

@@ -2,7 +2,9 @@ import {FairnessVerifyOptions, ValidationIssue} from "pokie";
 import {FairnessCommand} from "../../../cli/commands/FairnessCommand.js";
 
 const PROOF_PATH = "/project/proof.json";
+const COMMITMENT_PATH = "/project/commitment.json";
 const proofDocument = {outcomeId: "0"};
+const commitmentDocument = {clientSeed: "seed"};
 
 function createStubJsonStore(entries: Record<string, unknown>): (filePath: string) => unknown {
     return (filePath: string) => {
@@ -24,6 +26,8 @@ function createStubVerifier(issues: ValidationIssue[]): {
         },
     };
 }
+
+const defaultJsonStore = createStubJsonStore({[PROOF_PATH]: proofDocument, [COMMITMENT_PATH]: commitmentDocument});
 
 describe("FairnessCommand", () => {
     let logSpy: jest.SpyInstance;
@@ -59,34 +63,34 @@ describe("FairnessCommand", () => {
     });
 
     describe("verify", () => {
-        it("verifies the given proof file and prints a success line when there are no issues", async () => {
+        it("verifies the given proof against the given commitment/bundle and prints a success line when there are no issues", async () => {
             const verifier = createStubVerifier([]);
-            const loadJson = createStubJsonStore({[PROOF_PATH]: proofDocument});
-            const command = new FairnessCommand(verifier, loadJson);
+            const command = new FairnessCommand(verifier, defaultJsonStore);
 
-            const exitCode = await command.run(["verify", PROOF_PATH, "--source", "/project/bundle"]);
+            const exitCode = await command.run(["verify", PROOF_PATH, "--commitment", COMMITMENT_PATH, "--source", "/project/bundle"]);
 
             expect(exitCode).toBe(0);
-            expect(verifier.calledWith).toEqual({candidate: proofDocument, options: {sourceBundleDir: "/project/bundle"}});
+            expect(verifier.calledWith).toEqual({
+                candidate: proofDocument,
+                options: {commitment: commitmentDocument, sourceBundleDir: "/project/bundle"},
+            });
             expect(logSpy.mock.calls.flat().join("\n")).toContain("verified successfully");
         });
 
-        it("passes --source through to the verifier", async () => {
+        it("passes --commitment and --source through to the verifier", async () => {
             const verifier = createStubVerifier([]);
-            const loadJson = createStubJsonStore({[PROOF_PATH]: proofDocument});
-            const command = new FairnessCommand(verifier, loadJson);
+            const command = new FairnessCommand(verifier, defaultJsonStore);
 
-            await command.run(["verify", PROOF_PATH, "--source", "/project/bundle"]);
+            await command.run(["verify", PROOF_PATH, "--commitment", COMMITMENT_PATH, "--source", "/project/bundle"]);
 
-            expect(verifier.calledWith?.options).toEqual({sourceBundleDir: "/project/bundle"});
+            expect(verifier.calledWith?.options).toEqual({commitment: commitmentDocument, sourceBundleDir: "/project/bundle"});
         });
 
         it("prints an error summary and returns 1 when the verifier reports error-level issues", async () => {
             const verifier = createStubVerifier([{code: "fairness-verify-selection-mismatch", severity: "error", message: "boom"}]);
-            const loadJson = createStubJsonStore({[PROOF_PATH]: proofDocument});
-            const command = new FairnessCommand(verifier, loadJson);
+            const command = new FairnessCommand(verifier, defaultJsonStore);
 
-            const exitCode = await command.run(["verify", PROOF_PATH, "--source", "/project/bundle"]);
+            const exitCode = await command.run(["verify", PROOF_PATH, "--commitment", COMMITMENT_PATH, "--source", "/project/bundle"]);
 
             expect(exitCode).toBe(1);
             expect(errorSpy.mock.calls.flat().join("\n")).toContain("fairness-verify-selection-mismatch");
@@ -94,10 +98,9 @@ describe("FairnessCommand", () => {
 
         it("prints warnings alongside a success line when the verifier reports only warnings", async () => {
             const verifier = createStubVerifier([{code: "fairness-some-warning", severity: "warning", message: "heads up"}]);
-            const loadJson = createStubJsonStore({[PROOF_PATH]: proofDocument});
-            const command = new FairnessCommand(verifier, loadJson);
+            const command = new FairnessCommand(verifier, defaultJsonStore);
 
-            const exitCode = await command.run(["verify", PROOF_PATH, "--source", "/project/bundle"]);
+            const exitCode = await command.run(["verify", PROOF_PATH, "--commitment", COMMITMENT_PATH, "--source", "/project/bundle"]);
 
             expect(exitCode).toBe(0);
             expect(logSpy.mock.calls.flat().join("\n")).toContain("heads up");
@@ -109,25 +112,40 @@ describe("FairnessCommand", () => {
             await expect(command.run(["verify"])).rejects.toThrow(/Usage: pokie fairness verify/);
         });
 
-        it("throws a descriptive error when --source is omitted", async () => {
-            const loadJson = createStubJsonStore({[PROOF_PATH]: proofDocument});
-            const command = new FairnessCommand(createStubVerifier([]), loadJson);
+        it("throws a descriptive error when --commitment is omitted", async () => {
+            const command = new FairnessCommand(createStubVerifier([]), defaultJsonStore);
 
-            await expect(command.run(["verify", PROOF_PATH])).rejects.toThrow(/--source <bundleDir> is required/);
+            await expect(command.run(["verify", PROOF_PATH, "--source", "/project/bundle"])).rejects.toThrow(
+                /--commitment <commitment.json> is required/,
+            );
+        });
+
+        it("throws a descriptive error when --source is omitted", async () => {
+            const command = new FairnessCommand(createStubVerifier([]), defaultJsonStore);
+
+            await expect(command.run(["verify", PROOF_PATH, "--commitment", COMMITMENT_PATH])).rejects.toThrow(/--source <bundleDir> is required/);
+        });
+
+        it("throws on --commitment with no value", async () => {
+            const command = new FairnessCommand(createStubVerifier([]), defaultJsonStore);
+
+            await expect(command.run(["verify", PROOF_PATH, "--commitment"])).rejects.toThrow(/--commitment requires a file path/);
         });
 
         it("throws on --source with no value", async () => {
-            const loadJson = createStubJsonStore({[PROOF_PATH]: proofDocument});
-            const command = new FairnessCommand(createStubVerifier([]), loadJson);
+            const command = new FairnessCommand(createStubVerifier([]), defaultJsonStore);
 
-            await expect(command.run(["verify", PROOF_PATH, "--source"])).rejects.toThrow(/--source requires a directory path/);
+            await expect(command.run(["verify", PROOF_PATH, "--commitment", COMMITMENT_PATH, "--source"])).rejects.toThrow(
+                /--source requires a directory path/,
+            );
         });
 
         it("throws on an unknown option", async () => {
-            const loadJson = createStubJsonStore({[PROOF_PATH]: proofDocument});
-            const command = new FairnessCommand(createStubVerifier([]), loadJson);
+            const command = new FairnessCommand(createStubVerifier([]), defaultJsonStore);
 
-            await expect(command.run(["verify", PROOF_PATH, "--source", "/project/bundle", "--bogus"])).rejects.toThrow(/Unknown option/);
+            await expect(
+                command.run(["verify", PROOF_PATH, "--commitment", COMMITMENT_PATH, "--source", "/project/bundle", "--bogus"]),
+            ).rejects.toThrow(/Unknown option/);
         });
     });
 });

@@ -2,10 +2,10 @@ import fs from "fs";
 import {FairnessRoundProofVerifier, FairnessRoundProofVerifying, ValidationIssue} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 
-const USAGE = "Usage: pokie fairness verify <proof.json> --source <bundleDir>";
+const USAGE = "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>";
 const VERIFY_USAGE = USAGE;
 
-type VerifyOptions = {proofPath: string; sourceBundleDir: string};
+type VerifyOptions = {proofPath: string; commitmentPath: string; sourceBundleDir: string};
 
 // One CLI verb today ("pokie fairness verify"), kept as its own subcommand switch — the same shape
 // OutcomeLibraryCommand/CertificationCommand/StakeEngineCommand already use for their own noun-plus-verb
@@ -29,8 +29,8 @@ export class FairnessCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Verify a Provably Fair round proof against its live source outcome-library bundle " +
-            '("pokie fairness verify <proof.json> --source <bundleDir>").'
+            "Verify a Provably Fair round proof against its original commitment and its live source " +
+            'outcome-library bundle ("pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>").'
         );
     }
 
@@ -46,8 +46,9 @@ export class FairnessCommand implements CliCommandHandling {
 
     private async runVerify(args: string[]): Promise<number> {
         const options = this.parseVerifyArgs(args);
-        const candidate = this.loadJson(options.proofPath);
-        const issues = await this.verifier.verify(candidate, {sourceBundleDir: options.sourceBundleDir});
+        const proofCandidate = this.loadJson(options.proofPath);
+        const commitmentCandidate = this.loadJson(options.commitmentPath);
+        const issues = await this.verifier.verify(proofCandidate, {commitment: commitmentCandidate, sourceBundleDir: options.sourceBundleDir});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 
@@ -77,11 +78,20 @@ export class FairnessCommand implements CliCommandHandling {
             throw new Error(VERIFY_USAGE);
         }
 
+        let commitmentPath: string | undefined;
         let sourceBundleDir: string | undefined;
         for (let i = 0; i < rest.length; i++) {
             const flag = rest[i];
             const value = rest[i + 1];
             switch (flag) {
+                case "--commitment": {
+                    if (value === undefined) {
+                        throw new Error(`--commitment requires a file path. ${VERIFY_USAGE}`);
+                    }
+                    commitmentPath = value;
+                    i++;
+                    break;
+                }
                 case "--source": {
                     if (value === undefined) {
                         throw new Error(`--source requires a directory path. ${VERIFY_USAGE}`);
@@ -95,10 +105,13 @@ export class FairnessCommand implements CliCommandHandling {
             }
         }
 
+        if (commitmentPath === undefined) {
+            throw new Error(`--commitment <commitment.json> is required. ${VERIFY_USAGE}`);
+        }
         if (sourceBundleDir === undefined) {
             throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
         }
 
-        return {proofPath, sourceBundleDir};
+        return {proofPath, commitmentPath, sourceBundleDir};
     }
 }
