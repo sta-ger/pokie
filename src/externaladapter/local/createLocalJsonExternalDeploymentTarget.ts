@@ -1,4 +1,3 @@
-import {StandardExternalArtifactValidator} from "../StandardExternalArtifactValidator.js";
 import {
     MULTI_MODE_DEPLOYMENT_CAPABILITY,
     ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY,
@@ -26,6 +25,10 @@ export type LocalJsonExternalDeploymentTargetOptions = {
 // Declares every optional capability this SDK currently knows about (feature events, debug metadata, multi-mode)
 // since its own JSON projection has no reason to reject any of them — a real target should only declare the
 // capabilities its own format genuinely supports.
+//
+// Has no "artifactValidator" of its own — StandardExternalArtifactValidator's generic checks are already
+// everything this target's output needs, and ExternalDeploymentService always runs that validator regardless
+// (see that class's own doc comment), so declaring it again here would just duplicate every issue it reports.
 export function createLocalJsonExternalDeploymentTarget<T extends string | number = string>(
     options: LocalJsonExternalDeploymentTargetOptions,
 ): ExternalDeploymentTarget<T> {
@@ -37,8 +40,7 @@ export function createLocalJsonExternalDeploymentTarget<T extends string | numbe
         requirements: {requiresHomogeneousProvenance: true},
         capabilities: [ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY, ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY, MULTI_MODE_DEPLOYMENT_CAPABILITY],
         roundProjector,
-        artifactGenerator: new LocalJsonExternalArtifactGenerator<T>(roundProjector),
-        artifactValidator: new StandardExternalArtifactValidator(),
+        artifactGenerator: new LocalJsonExternalArtifactGenerator<T>(),
         runtimeAdapter: new LocalFileExternalDeploymentRuntimeAdapter(options.outDir),
         diagnostic: new LocalExternalDeploymentDiagnostic(options.outDir),
     };

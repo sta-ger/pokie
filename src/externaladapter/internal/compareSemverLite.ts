@@ -21,3 +21,11 @@ export function compareSemverLite(a: string, b: string): number | undefined {
     }
     return 0;
 }
+
+// Whether "version" at least starts with a "major.minor.patch" this lite comparator can actually read — used by
+// ExternalDeploymentTargetDescriptorValidator to reject a target's own requirements.minPokieVersion up front,
+// rather than let it silently produce an "external-deployment-pokie-version-not-comparable" issue on every
+// single deployment attempted against that target later.
+export function isValidSemverLite(version: string): boolean {
+    return VERSION_PATTERN.test(version.trim());
+}

@@ -1,3 +1,4 @@
+import type {ExternalArtifactGenerationContext} from "./ExternalArtifactGenerationContext.js";
 import type {ExternalArtifactGenerationResult} from "./ExternalArtifactGenerationResult.js";
 import type {ExternalDeploymentModeInput} from "./ExternalDeploymentModeInput.js";
 
@@ -10,8 +11,13 @@ import type {ExternalDeploymentModeInput} from "./ExternalDeploymentModeInput.js
 // actually published, and lets the same generator be reused unmodified by a target that later swaps its
 // transport (local disk today, an HTTP push tomorrow).
 //
-// Implementations must run every content through their target's own ExternalRoundProjector — see that
-// interface's own doc comment for why generation must never gain a second, independent calculation path.
+// "context.roundProjector" is always the caller's one source of truth for which projector to use — a generator
+// implementation must have no round projector of its own (no constructor-injected default, no fallback) to
+// generate a round through, precisely so a target can never declare one projector as its own "roundProjector"
+// while its generator secretly (or accidentally) uses a different one, or none at all. See
+// ExternalRoundProjector's own doc comment for why generation must never gain a second, independent calculation
+// path in the first place; this context is what makes that a structural guarantee rather than a convention a
+// generator author has to remember to follow.
 export interface ExternalArtifactGenerator<T extends string | number = string> {
-    generate(modes: readonly ExternalDeploymentModeInput<T>[]): ExternalArtifactGenerationResult;
+    generate(modes: readonly ExternalDeploymentModeInput<T>[], context: ExternalArtifactGenerationContext<T>): ExternalArtifactGenerationResult;
 }

@@ -2,44 +2,55 @@ import {InvalidJsonValueError} from "../../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {computeWeightedOutcomeLibraryHash} from "../../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
+import type {ExternalArtifactGenerationContext} from "../ExternalArtifactGenerationContext.js";
 import type {ExternalArtifactGenerationResult} from "../ExternalArtifactGenerationResult.js";
 import type {ExternalArtifactGenerator} from "../ExternalArtifactGenerator.js";
 import type {ExternalDeploymentModeInput} from "../ExternalDeploymentModeInput.js";
 import type {ExternalGeneratedArtifact} from "../ExternalGeneratedArtifact.js";
-import type {ExternalRoundProjector} from "../ExternalRoundProjector.js";
-import {LocalJsonExternalRoundProjector} from "./LocalJsonExternalRoundProjector.js";
+import {encodeLocalExternalDeploymentPathSegment} from "./internal/encodeLocalExternalDeploymentPathSegment.js";
+
+type ModeOutcomeIndexEntry = {
+    readonly id: string; // the outcome's own original, raw id — never itself used as a path segment
+    readonly file: string; // the safe, deterministically encoded file name (relative to "directory" below)
+};
 
 type ModeIndexEntry = {
-    readonly modeName: string;
+    readonly modeName: string; // the mode's own original, raw name — never itself used as a path segment
+    readonly directory: string; // the safe, deterministically encoded directory name derived from modeName
     readonly libraryId: string;
     readonly libraryHash: string;
     readonly outcomeCount: number;
-    readonly outcomes: string; // relative directory holding this mode's own "<outcomeId>.json" files
+    readonly outcomes: readonly ModeOutcomeIndexEntry[];
 };
 
 // The example local target's own ExternalArtifactGenerator: for every mode, projects each outcome's
-// RoundArtifact through the injected ExternalRoundProjector (never recomputed independently — see that
-// interface's own doc comment) and writes it as its own pretty-printed JSON file at
-// "<modeName>/<outcomeId>.json", plus one top-level "index.json" listing every mode's own libraryId/libraryHash/
-// outcome count. Entirely in-memory (see ExternalArtifactGenerator's own doc comment on why generation itself
-// never touches disk) — LocalFileExternalDeploymentRuntimeAdapter is what actually persists the result.
+// RoundArtifact through `context.roundProjector` — always the caller's own, never a projector this class holds
+// itself (see ExternalArtifactGenerationContext's own doc comment) — and writes it as its own pretty-printed
+// JSON file, plus one top-level "index.json" listing every mode's own libraryId/libraryHash/outcome count.
+//
+// Neither a mode's own "modeName" nor an outcome's own "id" is ever used directly as a path segment: both are
+// caller-supplied strings this SDK has no reason to trust as path-safe (a modeName of ".." or an outcome id
+// containing "/" would otherwise let caller-controlled data steer where a file lands on disk). Every directory/
+// file name here is instead `encodeLocalExternalDeploymentPathSegment(...)` — a deterministic, always-path-safe
+// sha256-hex encoding — with the original raw modeName/outcome id preserved in "index.json" so nothing is lost,
+// just no longer trusted as a literal path fragment.
+//
+// Entirely in-memory (see ExternalArtifactGenerator's own doc comment on why generation itself never touches
+// disk) — LocalFileExternalDeploymentRuntimeAdapter is what actually persists the result.
 export class LocalJsonExternalArtifactGenerator<T extends string | number = string> implements ExternalArtifactGenerator<T> {
-    private readonly roundProjector: ExternalRoundProjector<T>;
-
-    constructor(roundProjector: ExternalRoundProjector<T> = new LocalJsonExternalRoundProjector<T>()) {
-        this.roundProjector = roundProjector;
-    }
-
-    public generate(modes: readonly ExternalDeploymentModeInput<T>[]): ExternalArtifactGenerationResult {
+    public generate(modes: readonly ExternalDeploymentModeInput<T>[], context: ExternalArtifactGenerationContext<T>): ExternalArtifactGenerationResult {
         const issues: ValidationIssue[] = [];
         const artifacts: ExternalGeneratedArtifact[] = [];
         const indexEntries: ModeIndexEntry[] = [];
 
         modes.forEach((mode) => {
+            const modeDirectory = encodeLocalExternalDeploymentPathSegment(mode.modeName);
+            const outcomeEntries: ModeOutcomeIndexEntry[] = [];
+
             mode.library.outcomes.forEach((outcome) => {
                 let projected;
                 try {
-                    projected = this.roundProjector.project(outcome.artifact);
+                    projected = context.roundProjector.project(outcome.artifact);
                 } catch (error) {
                     issues.push({
                         code: "local-json-target-projection-failed",
@@ -63,18 +74,21 @@ export class LocalJsonExternalArtifactGenerator<T extends string | number = stri
                     return;
                 }
 
+                const outcomeFile = `${encodeLocalExternalDeploymentPathSegment(outcome.id)}.json`;
                 artifacts.push({
-                    relativePath: `${mode.modeName}/${outcome.id}.json`,
+                    relativePath: `${modeDirectory}/${outcomeFile}`,
                     content: `${JSON.stringify(json, null, 4)}\n`,
                 });
+                outcomeEntries.push({id: outcome.id, file: outcomeFile});
             });
 
             indexEntries.push({
                 modeName: mode.modeName,
+                directory: `${modeDirectory}/`,
                 libraryId: mode.library.libraryId,
                 libraryHash: computeWeightedOutcomeLibraryHash(mode.library),
                 outcomeCount: mode.library.outcomes.length,
-                outcomes: `${mode.modeName}/`,
+                outcomes: outcomeEntries,
             });
         });
 

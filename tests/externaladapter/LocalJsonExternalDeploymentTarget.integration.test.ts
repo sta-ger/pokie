@@ -1,16 +1,24 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {
-    ExternalDeploymentCompatibilityValidator,
-    ExternalDeploymentModeInput,
-    ExternalDeploymentTargetRegistry,
-    StandardExternalArtifactValidator,
-    createLocalJsonExternalDeploymentTarget,
-} from "pokie";
+import {ExternalDeploymentModeInput, ExternalDeploymentService, ExternalDeploymentTargetRegistry, createLocalJsonExternalDeploymentTarget} from "pokie";
 import {externalAdapterTestLibrary} from "./ExternalAdapterTestFixtures.js";
 
-describe("createLocalJsonExternalDeploymentTarget (end-to-end SDK pipeline)", () => {
+function sha256Hex(raw: string): string {
+    return crypto.createHash("sha256").update(raw, "utf8").digest("hex");
+}
+
+type LocalIndex = {
+    readonly modes: readonly {
+        readonly modeName: string;
+        readonly directory: string;
+        readonly outcomeCount: number;
+        readonly outcomes: readonly {readonly id: string; readonly file: string}[];
+    }[];
+};
+
+describe("createLocalJsonExternalDeploymentTarget (end-to-end SDK pipeline via ExternalDeploymentService)", () => {
     let outDir: string;
 
     beforeEach(() => {
@@ -21,74 +29,103 @@ describe("createLocalJsonExternalDeploymentTarget (end-to-end SDK pipeline)", ()
         fs.rmSync(outDir, {recursive: true, force: true});
     });
 
-    it("registers, validates compatibility, generates, validates output, diagnoses, and delivers a single-mode deployment", async () => {
+    it("registers, deploys, and delivers a single-mode deployment end to end", async () => {
         const target = createLocalJsonExternalDeploymentTarget({outDir});
         const registry = new ExternalDeploymentTargetRegistry();
         registry.register(target);
-
         expect(registry.get("local-json-example")).toBe(target);
 
         const modes: ExternalDeploymentModeInput[] = [{modeName: "base", library: externalAdapterTestLibrary({libraryId: "lib"})}];
+        const result = await new ExternalDeploymentService().deploy(target, modes);
 
-        const compatibilityIssues = new ExternalDeploymentCompatibilityValidator().validate({target, modes});
-        expect(compatibilityIssues).toEqual([]);
+        expect(result.descriptorIssues).toEqual([]);
+        expect(result.compatibilityIssues).toEqual([]);
+        expect(result.generation?.issues).toEqual([]);
+        expect(result.artifactIssues).toEqual([]);
+        expect(result.diagnostic?.ok).toBe(true);
+        expect(result.delivery?.delivered).toBe(true);
 
-        const generationResult = target.artifactGenerator.generate(modes);
-        expect(generationResult.issues).toEqual([]);
-        expect(generationResult.artifacts.map((artifact) => artifact.relativePath).sort()).toEqual(["base/loss.json", "base/win.json", "index.json"]);
+        const modeDirectory = sha256Hex("base");
+        const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as LocalIndex;
+        expect(index.modes).toHaveLength(1);
+        expect(index.modes[0].modeName).toBe("base");
+        expect(index.modes[0].directory).toBe(`${modeDirectory}/`);
+        expect(index.modes[0].outcomeCount).toBe(2);
 
-        const artifactIssues = (target.artifactValidator ?? new StandardExternalArtifactValidator()).validate(generationResult);
-        expect(artifactIssues).toEqual([]);
+        // Neither raw outcome id ever appears as a literal path segment on disk — only the encoded file name in
+        // "outcomes[].file" does, with the original id preserved as data in "outcomes[].id".
+        const winEntry = index.modes[0].outcomes.find((entry) => entry.id === "win");
+        expect(winEntry).toBeDefined();
+        expect(fs.existsSync(path.join(outDir, "base", "win.json"))).toBe(false);
 
-        const diagnosticReport = await target.diagnostic?.diagnose();
-        expect(diagnosticReport?.ok).toBe(true);
-
-        const deliveryResult = await target.runtimeAdapter?.deliver(generationResult);
-        expect(deliveryResult?.delivered).toBe(true);
-
-        const written = fs.readFileSync(path.join(outDir, "base", "win.json"), "utf-8");
+        const written = fs.readFileSync(path.join(outDir, modeDirectory, winEntry?.file ?? ""), "utf-8");
         const parsed = JSON.parse(written) as {roundId: string; totalWin: number; hash: string};
         expect(parsed.roundId).toBe("lib-1");
         expect(parsed.totalWin).toBe(2);
         expect(typeof parsed.hash).toBe("string");
-
-        const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as {modes: {modeName: string; outcomeCount: number}[]};
-        expect(index.modes).toEqual([expect.objectContaining({modeName: "base", outcomeCount: 2})]);
     });
 
-    it("rejects two targets with case-colliding ids in the same registry", () => {
-        const registry = new ExternalDeploymentTargetRegistry();
-        registry.register(createLocalJsonExternalDeploymentTarget({id: "acme-target", outDir}));
-
-        expect(() => registry.register(createLocalJsonExternalDeploymentTarget({id: "Acme-Target", outDir}))).toThrow();
-    });
-
-    it("fails compatibility validation before generation when multiple modes are given without declaring multi-mode support", () => {
-        // The local example target *does* declare multiModeDeployment, so simulate a stricter target by
-        // stripping that capability off a copy — proving compatibility runs strictly before any file exists.
+    it("does not call the generator or write anything when compatibility validation fails", async () => {
         const target = {...createLocalJsonExternalDeploymentTarget({outDir}), capabilities: []};
         const modes: ExternalDeploymentModeInput[] = [
             {modeName: "base", library: externalAdapterTestLibrary({libraryId: "lib-1"})},
             {modeName: "bonus", library: externalAdapterTestLibrary({libraryId: "lib-2"})},
         ];
 
-        const issues = new ExternalDeploymentCompatibilityValidator().validate({target, modes});
-        expect(issues.map((issue) => issue.code)).toContain("external-deployment-multi-mode-unsupported");
+        const result = await new ExternalDeploymentService().deploy(target, modes);
+
+        expect(result.compatibilityIssues.map((issue) => issue.code)).toContain("external-deployment-multi-mode-unsupported");
+        expect(result.generation).toBeUndefined();
+        expect(result.delivery).toBeUndefined();
         expect(fs.readdirSync(outDir)).toEqual([]);
     });
 
-    it("diagnoses a non-writable output directory as failing", async () => {
+    it("rejects two targets with case-colliding ids in the same registry", () => {
+        const registry = new ExternalDeploymentTargetRegistry();
+        registry.register(createLocalJsonExternalDeploymentTarget({id: "acme-target", outDir}));
+        expect(() => registry.register(createLocalJsonExternalDeploymentTarget({id: "Acme-Target", outDir}))).toThrow();
+    });
+
+    it("diagnoses a non-writable output directory as failing and skips delivery entirely", async () => {
         const unwritableParent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-externaladapter-unwritable-"));
         const nestedOutDir = path.join(unwritableParent, "does-not-exist-yet");
         fs.chmodSync(unwritableParent, 0o500);
 
         try {
             const target = createLocalJsonExternalDeploymentTarget({outDir: nestedOutDir});
-            const report = await target.diagnostic?.diagnose();
-            expect(report?.ok).toBe(false);
+            const modes: ExternalDeploymentModeInput[] = [{modeName: "base", library: externalAdapterTestLibrary({libraryId: "lib"})}];
+            const result = await new ExternalDeploymentService().deploy(target, modes);
+
+            expect(result.diagnostic?.ok).toBe(false);
+            expect(result.delivery).toBeUndefined();
         } finally {
             fs.chmodSync(unwritableParent, 0o700);
             fs.rmSync(unwritableParent, {recursive: true, force: true});
         }
+    });
+
+    it("encodes an unsafe modeName/outcome id into safe deterministic paths and preserves the raw ids in index.json", async () => {
+        const target = createLocalJsonExternalDeploymentTarget({outDir});
+        const library = externalAdapterTestLibrary({libraryId: "unsafe-lib"});
+        const unsafeLibrary = {
+            ...library,
+            outcomes: [{...library.outcomes[0], id: "../../etc/passwd"}, library.outcomes[1]],
+        };
+        const modes: ExternalDeploymentModeInput[] = [{modeName: "../escape", library: unsafeLibrary}];
+
+        const result = await new ExternalDeploymentService().deploy(target, modes);
+
+        expect(result.artifactIssues).toEqual([]);
+        expect(result.delivery?.delivered).toBe(true);
+
+        const modeDirectory = sha256Hex("../escape");
+        expect(fs.existsSync(path.join(outDir, modeDirectory))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "..", "escape"))).toBe(false);
+
+        const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as LocalIndex;
+        expect(index.modes[0].modeName).toBe("../escape");
+        const unsafeEntry = index.modes[0].outcomes.find((entry) => entry.id === "../../etc/passwd");
+        expect(unsafeEntry).toBeDefined();
+        expect(unsafeEntry?.file).toMatch(/^[0-9a-f]{64}\.json$/);
     });
 });
