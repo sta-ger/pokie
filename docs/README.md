@@ -110,6 +110,14 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `FairnessRoundProof` (the revealed round, deterministically drawn via a pinned-snapshot HMAC-SHA256 byte
     stream and bound to its commitment via `commitmentHash`), and `FairnessCommitmentValidator`/
     `FairnessRoundProofValidator`/`Verifier` for independently checking one, with `pokie fairness verify`.
+23. **[External Adapter SDK](external-adapter-sdk.md)** — a generic set of contracts (`ExternalDeploymentTarget`,
+    `ExternalRoundProjector`, `ExternalArtifactGenerator`, `ExternalArtifactValidator`,
+    `ExternalDeploymentDiagnostic`, an optional `ExternalDeploymentRuntimeAdapter` transport contract) for
+    deploying a `WeightedOutcomeLibrary` to an external format/RGS-style target, plus
+    `ExternalDeploymentTargetRegistry` (duplicate/case-collision-safe registration) and
+    `ExternalDeploymentCompatibilityValidator` (checked before any file is generated) — and one fully working
+    local-filesystem example target, `createLocalJsonExternalDeploymentTarget`. Ships no private RGS integration;
+    implement the contracts directly for a real target.
 
 ## Core concepts at a glance
 
@@ -143,6 +151,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Streaming, canonical on-disk persistence for a `WeightedOutcomeLibrary` (no full-library-in-memory load) | `pokie outcomelibrary build <config.json>`, `OutcomeLibraryBundleWriter`/`OutcomeLibraryBundleReader` |
 | Deterministic evidence package (metrics, diagnostics, sampled rounds) on top of an Outcome Library Bundle | `pokie certification build <bundleDir> <config.json>`, `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` |
 | Commit-reveal Provably Fair proof for a single round, independently verifiable against its commitment and a live Outcome Library Bundle | `pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>`, `computeFairnessServerSeedCommitment`, `computeFairnessCommitment`, `FairnessRoundProofBuilder`/`Validator`/`Verifier` |
+| Deploying a `WeightedOutcomeLibrary` to a pluggable external format/RGS-style target | `ExternalDeploymentTargetRegistry`, `ExternalDeploymentCompatibilityValidator`, `createLocalJsonExternalDeploymentTarget` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.
