@@ -6,6 +6,7 @@ import {
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleManifest,
     CertificationEvidenceBundleModeSampleInput,
+    CertificationEvidenceBundleValidating,
     CertificationEvidenceSampleRecord,
     computeRoundArtifactHash,
     OutcomeLibraryBundleReader,
@@ -316,6 +317,124 @@ describe("CertificationEvidenceBundleBuilder", () => {
 
         expect(result.manifest).toBeUndefined();
         expect(result.issues.map((issue) => issue.code)).toContain("certification-evidence-build-source-bundle-drift");
+        expect(fs.existsSync(certDir)).toBe(false);
+    });
+
+    it("succeeds unaffected when the source bundle changes and reverts back to its exact original bytes before any sampling reads it again", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const backupDir = path.join(tmpRoot, "bundle-backup");
+        copyDirectoryShallow(bundleDir, backupDir);
+
+        const realReader = new OutcomeLibraryBundleReader();
+        let readManifestCalls = 0;
+        // Intercepts only the very first readManifest call (the initial snapshot, before readModeIndexes or any
+        // sampling runs) to simulate the bundle transiently changing and reverting back to its exact original
+        // bytes entirely within that window — proving sampling (which pins one in-memory index snapshot per
+        // mode and never re-reads it) is completely unaffected either way, and the final pre-publish check
+        // (seeing the bundle back in its original state) reports no drift.
+        const flickeringReader: OutcomeLibraryBundleReading = {
+            readManifest: async (dir: string) => {
+                readManifestCalls++;
+                if (readManifestCalls === 1) {
+                    await new OutcomeLibraryBundleWriter(CERTIFICATION_TEST_POKIE_VERSION).writeToDirectory(
+                        [buildOutcomeLibraryBundleModeInput("base", "base-lib-transient")],
+                        dir,
+                    );
+                    for (const file of fs.readdirSync(backupDir)) {
+                        fs.copyFileSync(path.join(backupDir, file), path.join(dir, file));
+                    }
+                }
+                return realReader.readManifest(dir);
+            },
+            readModeIndex: (dir, modeName) => realReader.readModeIndex(dir, modeName),
+            iterateModeOutcomes: (dir, modeName) => realReader.iterateModeOutcomes(dir, modeName),
+            readOutcomeById: (dir, modeName, id) => realReader.readOutcomeById(dir, modeName, id),
+            drawOutcome: (dir, modeName, randomSource) => realReader.drawOutcome(dir, modeName, randomSource),
+            readLibrary: (dir, modeName) => realReader.readLibrary(dir, modeName),
+        };
+
+        const modes: CertificationEvidenceBundleModeSampleInput[] = [{modeName: "base", seed: "cert-seed-1", sampleCount: 10}];
+        const cleanResult = await new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION).buildFromBundle(
+            bundleDir,
+            modes,
+            path.join(tmpRoot, "cert-clean"),
+        );
+        const flickeringResult = await new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, flickeringReader).buildFromBundle(
+            bundleDir,
+            modes,
+            path.join(tmpRoot, "cert-flickering"),
+        );
+
+        expect(flickeringResult.manifest).toBeDefined();
+        expect(flickeringResult.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        expect(flickeringResult.manifest!.evidenceContentHash).toBe(cleanResult.manifest!.evidenceContentHash);
+    });
+
+    it("detects index drift at the final pre-publish check even when the index's own libraryHash field is left unchanged", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const realReader = new OutcomeLibraryBundleReader();
+        let readModeIndexCalls = 0;
+        // The first readModeIndex call (the initial, pre-sampling snapshot) sees the real index untouched, so
+        // sampling itself proceeds against genuine content; every call after that (the final pre-publish
+        // re-check) sees two entries' own byteOffset/byteLength/recordHash swapped, while "libraryHash" — a
+        // single string field elsewhere in the same object — is left completely untouched, simulating a
+        // hand-tampered index file a libraryHash-only comparison would never catch.
+        const tamperedFinalIndexReader: OutcomeLibraryBundleReading = {
+            readManifest: (dir) => realReader.readManifest(dir),
+            readModeIndex: async (dir, modeName) => {
+                readModeIndexCalls++;
+                const realIndex = await realReader.readModeIndex(dir, modeName);
+                if (readModeIndexCalls <= 1) {
+                    return realIndex;
+                }
+                const [first, second] = realIndex.entries;
+                const swapped = realIndex.entries.map((entry, index) => {
+                    if (index === 0) {
+                        return {...entry, byteOffset: second.byteOffset, byteLength: second.byteLength, recordHash: second.recordHash};
+                    }
+                    if (index === 1) {
+                        return {...entry, byteOffset: first.byteOffset, byteLength: first.byteLength, recordHash: first.recordHash};
+                    }
+                    return entry;
+                });
+                return {...realIndex, entries: swapped};
+            },
+            iterateModeOutcomes: (dir, modeName) => realReader.iterateModeOutcomes(dir, modeName),
+            readOutcomeById: (dir, modeName, id) => realReader.readOutcomeById(dir, modeName, id),
+            drawOutcome: (dir, modeName, randomSource) => realReader.drawOutcome(dir, modeName, randomSource),
+            readLibrary: (dir, modeName) => realReader.readLibrary(dir, modeName),
+        };
+
+        const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, tamperedFinalIndexReader);
+        const result = await builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], certDir);
+
+        expect(result.manifest).toBeUndefined();
+        expect(result.issues.map((issue) => issue.code)).toContain("certification-evidence-build-source-bundle-drift");
+        expect(fs.existsSync(certDir)).toBe(false);
+    });
+
+    it("aborts without publishing when the staging directory itself fails self-validation", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const failingSelfValidator: CertificationEvidenceBundleValidating = {
+            validate: () => Promise.resolve([{code: "certification-evidence-bundle-content-hash-mismatch", severity: "error", message: "forced failure for this test"}]),
+        };
+        const builder = new CertificationEvidenceBundleBuilder(
+            CERTIFICATION_TEST_POKIE_VERSION,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            failingSelfValidator,
+        );
+
+        const result = await builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "s", sampleCount: 3}], certDir);
+
+        expect(result.manifest).toBeUndefined();
+        expect(result.issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-content-hash-mismatch");
         expect(fs.existsSync(certDir)).toBe(false);
     });
 });

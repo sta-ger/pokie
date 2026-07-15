@@ -10,10 +10,11 @@ and one JSONL file per mode of deterministically sampled, individually verifiabl
 
 Like every other exporter/bundle format in this codebase (`StakeEngineExporter`, `OutcomeLibraryBundleWriter`),
 it never introduces a second calculation path: every hash and metric it writes is read verbatim off the source
-bundle's own `manifest.json`, and every sampled round is drawn via `OutcomeLibraryBundleReading.drawOutcome` —
-the exact same weighted-draw algorithm the [pre-generated runtime](pregenerated-runtime.md) itself uses — seeded
-with `SeededWeightedOutcomeRandomSource` so the same `(bundleDir, seed, sampleCount)` input always reproduces the
-exact same, byte-identical output.
+bundle's own `manifest.json`, and every sampled round is selected/read via the exact same algorithms
+`OutcomeLibraryBundleReader.drawOutcome` uses internally (`selectIndexEntryByCumulativeWeight` /
+`readAndVerifyOutcomeAtByteRange`), invoked directly against one pinned, in-memory snapshot of each mode's own
+index (see "Pinned-snapshot sampling" below) — seeded with `SeededWeightedOutcomeRandomSource` so the same
+`(bundleDir, seed, sampleCount)` input always reproduces the exact same, byte-identical output.
 
 ## Bundle directory layout
 
@@ -127,17 +128,45 @@ a requested mode isn't present in the source bundle's own manifest, nothing is w
 already carry. The whole output directory is then published atomically via the same `publishDirectoryAtomically`
 helper every other bundle/export format in this codebase shares.
 
+### Pinned-snapshot sampling
+
+Each requested mode's own index (`index_<modeName>.json`) is read exactly **once**, before any sampling begins,
+and held in memory for the rest of the build. Every one of that mode's `sampleCount` draws:
+
+1. selects a winning index entry via `selectIndexEntryByCumulativeWeight` against that same captured index's own
+   `entries` — the exact cumulative-weight walk `OutcomeLibraryBundleReader.drawOutcome` itself uses internally,
+   invoked directly against the pinned snapshot;
+2. reads and verifies that exact entry's own byte range via `readAndVerifyOutcomeAtByteRange` — the same
+   byte-range read + `recordHash` check `readOutcomeById`/`drawOutcome` themselves rely on.
+
+Neither step ever calls `drawOutcome`/`readOutcomeById` themselves, since both would re-read a fresh copy of the
+index on every single call — which could observe a *different* index mid-mode if the source bundle changed
+between two draws. Reading the index once and sampling against that one in-memory object for the mode's entire
+`sampleCount` is what makes "this evidence reflects one exact bundle state" true by construction, not just by a
+before/after check.
+
 ### Snapshot consistency
 
 A bundle directory is plain files on disk, not a transaction — nothing stops another process from rebuilding or
-otherwise mutating the source bundle while sampling is in progress. The builder captures the source bundle's own
-manifest hash and each requested mode's own index (`libraryHash`/`outcomeCount`/`totalWeight`) **before** any
-sampling begins, then re-reads and compares both again, once more, immediately **before** publishing. If anything
-differs — the whole-manifest hash, any requested mode's own `libraryHash`, or even the source bundle becoming
-unreadable in between — the build aborts with `certification-evidence-build-source-bundle-drift` and **nothing
-is written**, the same "no partial artifact" discipline a deep-validation error already triggers. Evidence sampled
-partly against one snapshot and partly against another (or against a snapshot that no longer exists by the time
-publishing would happen) is not trustworthy evidence of either state.
+otherwise mutating the source bundle while sampling is in progress. The builder hashes the source bundle's own
+manifest and each requested mode's own index — the *whole object*, not just one field like `libraryHash` (a
+single string field that a hand-tampered index could leave stale while its `entries` were rewritten underneath
+it) — once, before any sampling begins, and re-reads and re-hashes both again, once more, immediately **before**
+publishing. If anything differs — either exact hash, or even the source bundle becoming unreadable in between —
+the build aborts with `certification-evidence-build-source-bundle-drift` and **nothing is written**, the same
+"no partial artifact" discipline a deep-validation error already triggers. Evidence sampled partly against one
+snapshot and partly against another (or against a snapshot that no longer exists by the time publishing would
+happen) is not trustworthy evidence of either state. A transient change that reverts back to the exact original
+bytes before this final check — and before pinned-snapshot sampling ever had reason to re-read anything — leaves
+the build entirely unaffected, byte-for-byte identical to one run against an undisturbed bundle.
+
+### Publish-time self-check
+
+Immediately before publishing, the fully-assembled staging directory is itself validated via
+`CertificationEvidenceBundleValidating` — the exact same self-consistency check any other consumer would run
+against a published bundle. An internal inconsistency there (a bug in this class producing a manifest that
+doesn't hash to its own `evidenceContentHash`, say) aborts the publish exactly like any other error; a broken
+bundle is never made visible at `outDir`.
 
 ```ts
 import {CertificationEvidenceBundleBuilder} from "pokie";
@@ -161,7 +190,7 @@ needs the source Outcome Library Bundle it was built from. Never throws (top-lev
 | `certification-evidence-bundle-manifest-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | `manifest.json` doesn't exist / couldn't be read / doesn't parse / doesn't match the expected shape / has an unsupported `schemaVersion` |
 | `certification-evidence-bundle-content-hash-mismatch` | the manifest no longer hashes to its own recorded `evidenceContentHash` — some field (`game`/`configHash`/`artifactPokieVersion`/`sourceBundleManifestHash`/a mode's own metrics or `samplesHash`/the deep-validation issues) was changed |
 | `certification-evidence-bundle-content-hash-not-computable` | the manifest can't be re-canonicalized to even attempt the check above |
-| `certification-evidence-bundle-mode-field-invalid` | a manifest mode entry doesn't match the expected shape (every numeric field is checked precisely: `outcomeCount`/`totalWeight`/a sample's own `weight` must be a positive safe integer, `stake` a positive finite number, `sampleIndex` a non-negative safe integer, `analysis`/`game`/`deepValidation` each checked field-by-field) |
+| `certification-evidence-bundle-mode-field-invalid` | a manifest mode entry doesn't match the expected shape (every numeric field is checked precisely: `outcomeCount`/`totalWeight`/a sample's own `weight` must be a positive safe integer, `stake` a positive finite number, `sampleIndex` a non-negative safe integer, `analysis`/`game`/`deepValidation` each checked field-by-field) — every shape guard is *closed*: an object carrying any field beyond the ones its own schema defines (`details` on a `ValidationIssue` is the one deliberate exception) is rejected exactly like one missing a required field |
 | `certification-evidence-bundle-mode-name-invalid` / `-duplicate-mode-name` / `-mode-name-case-collision` | a mode name doesn't match `[A-Za-z0-9_-]+`, is used more than once, or two mode names differ only in case |
 | `certification-evidence-bundle-mode-filename-mismatch` | a mode's `samplesFile` isn't exactly `samples_<modeName>.jsonl` |
 | `certification-evidence-bundle-path-unsafe` | a mode's `samplesFile` is absolute, contains `..`, or otherwise resolves outside `certDir` |
@@ -179,10 +208,16 @@ needs the source Outcome Library Bundle it was built from. Never throws (top-lev
 
 ## Verification
 
-`CertificationEvidenceBundleVerifying.verify(certDir, {sourceBundleDir?})` composes the validator above (a
-structurally broken evidence bundle can't be meaningfully cross-checked against anything, so verification
-short-circuits on those codes) with a cross-check against the **live** source Outcome Library Bundle —
-`sourceBundleDir` defaults to the manifest's own recorded one, but can be overridden if the source bundle moved.
+`CertificationEvidenceBundleVerifying.verify(certDir, options)` composes the validator above (a structurally
+broken evidence bundle can't be meaningfully cross-checked against anything, so verification short-circuits on
+those codes) with a cross-check against the **live** source Outcome Library Bundle.
+
+**`options.sourceBundleDir` is required to cross-check against a live bundle at all.** A certification bundle's
+own `manifest.sourceBundleDir` is purely informational — a hand-crafted or tampered manifest could point it
+anywhere — and is **never** read or trusted here; there is deliberately no fallback to it. Without an explicit
+`sourceBundleDir`, `verify()` runs only the structural self-consistency check above, returns a
+`certification-evidence-verify-source-bundle-dir-required` diagnostic, and reads nothing beyond `certDir` itself.
+
 Never throws and never reads outside `certDir`/`sourceBundleDir`: every step (re-reading `manifest.json`, reading
 a mode's own samples file, parsing a sample line, reading the live bundle) is individually guarded, a filename
 read off manifest data is always re-checked through the same path-safety guard the validator itself uses, and a
@@ -191,6 +226,7 @@ verification.
 
 | Code | Meaning |
 |---|---|
+| `certification-evidence-verify-source-bundle-dir-required` | no `sourceBundleDir` was given — the manifest's own recorded one is never used as a fallback; nothing outside `certDir` was read |
 | `certification-evidence-verify-manifest-unreadable` | `manifest.json` could no longer be re-read/re-parsed to the expected shape (a defensive re-check; the validator pass above normally catches this first) |
 | `certification-evidence-verify-source-bundle-unreadable` | the source bundle's own `manifest.json` couldn't be read at `sourceBundleDir` |
 | `outcome-library-bundle-*` | any issue the *source* bundle's own (shallow) `OutcomeLibraryBundleValidating` reports against its current on-disk files, forwarded as-is |
@@ -230,8 +266,11 @@ library — is caught only by the second.
 
 ```
 pokie certification build <bundleDir> <config.json> [--out <dir>]
-pokie certification verify <certDir> [--source <bundleDir>]
+pokie certification verify <certDir> --source <bundleDir>
 ```
+
+`--source <bundleDir>` is required for `verify` — the CLI, like the programmatic API, never falls back to the
+manifest's own recorded `sourceBundleDir`.
 
 See [CLI](cli.md#pokie-certification-build-bundledir-configjson) for full option details.
 
@@ -249,5 +288,7 @@ const result = await builder.buildFromBundle(
 console.log(result.manifest?.evidenceContentHash); // stable across a rebuild at a different time/path
 
 const selfConsistent = await new CertificationEvidenceBundleValidator().validate("./certification");
-const stillMatchesSourceBundle = await new CertificationEvidenceBundleVerifier().verify("./certification");
+// sourceBundleDir must always be given explicitly — manifest.sourceBundleDir is informational only and is
+// never used as a fallback.
+const stillMatchesSourceBundle = await new CertificationEvidenceBundleVerifier().verify("./certification", {sourceBundleDir: "./bundle"});
 ```

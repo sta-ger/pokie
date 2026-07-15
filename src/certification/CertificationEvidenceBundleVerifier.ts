@@ -40,12 +40,16 @@ function canonicalJsonEqual(a: unknown, b: unknown): boolean {
 }
 
 // Verifies a certification/evidence bundle against the live source Outcome Library Bundle it was built from.
-// Never throws — every fallible step (re-reading manifest.json, reading a samples file, parsing a sample line,
-// reading the live bundle) is individually guarded, and a top-level try/catch is the final safety net — and
-// never reads a path outside certDir/sourceBundleDir: every filename this class reads off manifest data
-// (a mode's own samplesFile) is resolved through resolveSafeStakeEngineFilePath first, the same guard
-// CertificationEvidenceBundleValidator itself uses, independently re-checked here rather than assumed from the
-// validator's own earlier pass (a re-read of the same file could in principle observe something different).
+// Requires an explicit options.sourceBundleDir — the manifest's own recorded sourceBundleDir is purely
+// informational (a hand-crafted or tampered manifest could point it anywhere) and is NEVER read or trusted
+// here; without it, verify() returns a diagnostic and reads nothing beyond certDir's own structural self-
+// consistency check. Never throws — every fallible step (re-reading manifest.json, reading a samples file,
+// parsing a sample line, reading the live bundle) is individually guarded, and a top-level try/catch is the
+// final safety net — and never reads a path outside certDir/sourceBundleDir: every filename this class reads
+// off manifest data (a mode's own samplesFile) is resolved through resolveSafeStakeEngineFilePath first, the
+// same guard CertificationEvidenceBundleValidator itself uses, independently re-checked here rather than
+// assumed from the validator's own earlier pass (a re-read of the same file could in principle observe
+// something different).
 // A structurally invalid mode entry or an invalid sample line is skipped — with a diagnostic — rather than
 // aborting the whole verification; the rest of the bundle is still cross-checked.
 //
@@ -100,6 +104,26 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
             return structuralIssues;
         }
 
+        // manifest.sourceBundleDir is informational only (see its own doc comment) and is NEVER read or
+        // trusted here — a caller must always give an explicit sourceBundleDir. Checked before anything else
+        // below touches a path outside certDir (including re-parsing manifest.json, which is only ever needed
+        // for the live cross-check that follows), so a caller who omits it gets a diagnostic without this class
+        // ever reading anything beyond certDir's own structural self-consistency check above.
+        if (options?.sourceBundleDir === undefined) {
+            return [
+                ...structuralIssues,
+                {
+                    code: "certification-evidence-verify-source-bundle-dir-required",
+                    severity: "error",
+                    message:
+                        "no sourceBundleDir was given. This evidence bundle's own manifest.sourceBundleDir is " +
+                        "informational only and is never trusted for verification — pass an explicit " +
+                        '{sourceBundleDir} (or "--source <bundleDir>" on the CLI) to cross-check against the live source bundle.',
+                },
+            ];
+        }
+        const sourceBundleDir = options.sourceBundleDir;
+
         let manifest: CertificationEvidenceBundleManifest;
         try {
             const parsed: unknown = JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf-8"));
@@ -125,7 +149,6 @@ export class CertificationEvidenceBundleVerifier implements CertificationEvidenc
             ];
         }
 
-        const sourceBundleDir = options?.sourceBundleDir ?? manifest.sourceBundleDir;
         const issues: ValidationIssue[] = [...structuralIssues];
 
         let sourceManifest: OutcomeLibraryBundleManifest;

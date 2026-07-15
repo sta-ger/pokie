@@ -13,16 +13,16 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 
 const USAGE =
     "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
-    "   or: pokie certification verify <certDir> [--source <bundleDir>]";
+    "   or: pokie certification verify <certDir> --source <bundleDir>";
 const BUILD_USAGE = "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]";
-const VERIFY_USAGE = "Usage: pokie certification verify <certDir> [--source <bundleDir>]";
+const VERIFY_USAGE = "Usage: pokie certification verify <certDir> --source <bundleDir>";
 const CONFIG_HINT =
     '<config.json> lists one sample source per mode of the given outcome-library bundle — {"modes": ' +
     '[{"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200}, ...]} — see ' +
     "docs/certification-evidence-bundle.md for the format.";
 
 type BuildOptions = {bundleDir: string; configPath: string; outDir: string};
-type VerifyOptions = {certDir: string; sourceBundleDir?: string};
+type VerifyOptions = {certDir: string; sourceBundleDir: string};
 
 type BuildDescriptorModeEntry = {modeName: string; seed: string; sampleCount: number};
 type BuildDescriptor = {modes: BuildDescriptorModeEntry[]};
@@ -198,6 +198,10 @@ export class CertificationCommand implements CliCommandHandling {
                 default:
                     throw new Error(`Unknown option "${flag}". ${VERIFY_USAGE}`);
             }
+        }
+
+        if (sourceBundleDir === undefined) {
+            throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
         }
 
         return {certDir, sourceBundleDir};

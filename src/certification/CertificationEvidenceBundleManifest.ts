@@ -47,9 +47,11 @@ export type CertificationEvidenceBundleManifest = {
     readonly game: PokieGameManifest;
     readonly configHash?: string;
     readonly artifactPokieVersion: string;
-    // Where the source Outcome Library Bundle was read from at build time — informational (a directory can
-    // move), never itself compared at verify time; see CertificationEvidenceVerifyOptions.sourceBundleDir for
-    // how a verifier is actually pointed at the source bundle.
+    // Where the source Outcome Library Bundle was read from at *build* time — purely informational (a
+    // directory can move, and this field is only ever as trustworthy as whoever last wrote this manifest.json).
+    // CertificationEvidenceBundleVerifying.verify NEVER reads this field and never falls back to it: a caller
+    // must always give an explicit CertificationEvidenceVerifyOptions.sourceBundleDir (or "--source <bundleDir>"
+    // on the CLI), or verification reports a diagnostic and reads nothing outside certDir.
     readonly sourceBundleDir: string;
     // sha256 of the source bundle's own manifest.json, canonicalized the same way computeWeightedOutcomeLibraryHash
     // hashes a library — lets a verifier confirm the exact source-bundle-manifest state this evidence was built

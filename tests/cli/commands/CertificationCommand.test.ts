@@ -187,10 +187,10 @@ describe("CertificationCommand", () => {
             const verifier = createStubVerifier([]);
             const command = new CertificationCommand("1.3.0", undefined, verifier);
 
-            const exitCode = await command.run(["verify", "/project/certification"]);
+            const exitCode = await command.run(["verify", "/project/certification", "--source", "/project/bundle"]);
 
             expect(exitCode).toBe(0);
-            expect(verifier.calledWith).toEqual({certDir: "/project/certification", options: {sourceBundleDir: undefined}});
+            expect(verifier.calledWith).toEqual({certDir: "/project/certification", options: {sourceBundleDir: "/project/bundle"}});
             expect(logSpy.mock.calls.flat().join("\n")).toContain("verified successfully");
         });
 
@@ -207,7 +207,7 @@ describe("CertificationCommand", () => {
             const verifier = createStubVerifier([{code: "certification-evidence-verify-sample-outcome-changed", severity: "error", message: "boom"}]);
             const command = new CertificationCommand("1.3.0", undefined, verifier);
 
-            const exitCode = await command.run(["verify", "/project/certification"]);
+            const exitCode = await command.run(["verify", "/project/certification", "--source", "/project/bundle"]);
 
             expect(exitCode).toBe(1);
             expect(errorSpy.mock.calls.flat().join("\n")).toContain("certification-evidence-verify-sample-outcome-changed");
@@ -219,10 +219,16 @@ describe("CertificationCommand", () => {
             await expect(command.run(["verify"])).rejects.toThrow(/Usage: pokie certification verify/);
         });
 
+        it("throws a descriptive error when --source is omitted", async () => {
+            const command = new CertificationCommand("1.3.0");
+
+            await expect(command.run(["verify", "/project/certification"])).rejects.toThrow(/--source <bundleDir> is required/);
+        });
+
         it("throws on an unknown option", async () => {
             const command = new CertificationCommand("1.3.0");
 
-            await expect(command.run(["verify", "/project/certification", "--bogus"])).rejects.toThrow(/Unknown option/);
+            await expect(command.run(["verify", "/project/certification", "--source", "/project/bundle", "--bogus"])).rejects.toThrow(/Unknown option/);
         });
     });
 });

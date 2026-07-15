@@ -804,7 +804,7 @@ validate cleanly, or if a requested mode isn't present in it — the same "no pa
 `outcomelibrary build` gives, published atomically the same way. On any error, the exit code is non-zero and
 nothing is written.
 
-## `pokie certification verify <certDir>`
+## `pokie certification verify <certDir> --source <bundleDir>`
 
 Verifies a certification/evidence bundle: first its own internal self-consistency (does every mode's samples
 file still hash to what its manifest recorded, does every embedded `RoundArtifact` still hash to its own
@@ -814,14 +814,15 @@ files, its recorded metrics, and each individually sampled outcome. See
 [Certification/Evidence Bundle](certification-evidence-bundle.md#verification) for the full code table.
 
 ```
-pokie certification verify certification
 pokie certification verify certification --source ../bundle
 ```
 
 Options:
 
-- `--source <bundleDir>` — overrides the manifest's own recorded source bundle directory (useful if it moved
-  since the bundle was built).
+- `--source <bundleDir>` — **required.** Where the live source Outcome Library Bundle actually is. The
+  certification bundle's own recorded `manifest.sourceBundleDir` is informational only and is never used as a
+  fallback — omitting `--source` fails with a usage error, and running `verify` without it programmatically
+  reports a diagnostic instead of reading anything outside `<certDir>`.
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 

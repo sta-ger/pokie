@@ -203,4 +203,54 @@ describe("CertificationEvidenceBundleValidator", () => {
         const issues = await validator.validate(certDir);
         expect(issues.map((issue) => issue.code)).not.toContain("certification-evidence-bundle-content-hash-mismatch");
     });
+
+    it("rejects an unknown top-level field in manifest.json", async () => {
+        const manifest = readManifest(certDir);
+        writeManifest(certDir, {...manifest, unexpectedTopLevelField: "surprise"} as unknown as CertificationEvidenceBundleManifest);
+
+        const issues = await validator.validate(certDir);
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-manifest-malformed");
+    });
+
+    it("rejects an unknown field on a mode entry", async () => {
+        const manifest = readManifest(certDir);
+        const tamperedModes = manifest.modes.map((entry) => ({...entry, unexpectedModeField: "surprise"}));
+        writeManifest(certDir, {...manifest, modes: tamperedModes} as unknown as CertificationEvidenceBundleManifest);
+
+        const issues = await validator.validate(certDir);
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-mode-field-invalid");
+    });
+
+    it("rejects an unknown field on a sample record", async () => {
+        const manifest = readManifest(certDir);
+        const modeEntry = manifest.modes[0];
+        const samplesPath = path.join(certDir, modeEntry.samplesFile);
+        const lines = fs
+            .readFileSync(samplesPath, "utf-8")
+            .split("\n")
+            .filter((line) => line.length > 0);
+        const record = JSON.parse(lines[0]);
+        record.unexpectedSampleField = "surprise";
+        lines[0] = JSON.stringify(record);
+        fs.writeFileSync(samplesPath, `${lines.join("\n")}\n`);
+
+        // Re-fix the samples hash (and evidenceContentHash) so this test isolates the sample-shape rejection
+        // from an incidental samples-hash-mismatch/content-hash-mismatch that would fire regardless.
+        const newSamplesHash = sha256OfBytes(fs.readFileSync(samplesPath));
+        const updatedModes = manifest.modes.map((entry) => (entry.modeName === modeEntry.modeName ? {...entry, samplesHash: newSamplesHash} : entry));
+        const draft = {...manifest, modes: updatedModes};
+        writeManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
+
+        const issues = await validator.validate(certDir);
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-sample-line-malformed");
+    });
+
+    it("rejects an unknown field on a mode's own analysis object", async () => {
+        const manifest = readManifest(certDir);
+        const tamperedModes = manifest.modes.map((entry) => ({...entry, analysis: {...entry.analysis, unexpectedAnalysisField: 1}}));
+        writeManifest(certDir, {...manifest, modes: tamperedModes} as unknown as CertificationEvidenceBundleManifest);
+
+        const issues = await validator.validate(certDir);
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-mode-field-invalid");
+    });
 });

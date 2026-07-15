@@ -12,7 +12,9 @@ import {
     computeRoundArtifactHash,
     OutcomeLibraryBundleManifest,
     OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
     OutcomeLibraryBundleWriter,
+    WeightedOutcome,
 } from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "./CertificationEvidenceBundleTestFixtures.js";
@@ -89,34 +91,69 @@ describe("CertificationEvidenceBundleVerifier", () => {
     });
 
     it("verifies cleanly right after a build, against the unchanged source bundle", async () => {
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
         expect(issues).toEqual([]);
     });
 
     it("short-circuits on a structurally broken evidence bundle without attempting a source-bundle cross-check", async () => {
         fs.rmSync(path.join(certDir, "manifest.json"));
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
 
         expect(issues).toEqual([{code: "certification-evidence-bundle-manifest-missing", severity: "error", message: expect.any(String)}]);
     });
 
-    it("honors an explicit sourceBundleDir override instead of the manifest's own recorded one", async () => {
-        const movedBundleDir = path.join(tmpRoot, "bundle-moved");
-        fs.renameSync(bundleDir, movedBundleDir);
+    it("requires an explicit sourceBundleDir and reads nothing outside certDir without one", async () => {
+        let readerWasCalled = false;
+        const neverCalledReader: OutcomeLibraryBundleReading = {
+            readManifest: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+            readModeIndex: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+            iterateModeOutcomes: (): AsyncIterable<WeightedOutcome> => {
+                readerWasCalled = true;
+                throw new Error("should never be called");
+            },
+            readOutcomeById: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+            drawOutcome: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+            readLibrary: () => {
+                readerWasCalled = true;
+                return Promise.reject(new Error("should never be called"));
+            },
+        };
+        const isolatedVerifier = new CertificationEvidenceBundleVerifier(undefined, undefined, neverCalledReader);
 
-        const failed = await verifier.verify(certDir);
-        expect(failed.map((issue) => issue.code)).toContain("certification-evidence-verify-source-bundle-unreadable");
+        const issues = await isolatedVerifier.verify(certDir);
 
-        const succeeded = await verifier.verify(certDir, {sourceBundleDir: movedBundleDir});
-        expect(succeeded).toEqual([]);
+        expect(readerWasCalled).toBe(false);
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-verify-source-bundle-dir-required");
+        expect(issues.map((issue) => issue.code)).not.toContain("certification-evidence-verify-source-bundle-unreadable");
+    });
+
+    it("ignores a spoofed manifest.sourceBundleDir entirely, using only the explicitly given option", async () => {
+        const manifest = readCertManifest(certDir);
+        writeCertManifest(certDir, {...manifest, sourceBundleDir: path.join(tmpRoot, "does-not-exist-and-should-never-be-read")});
+
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
+
+        expect(issues).toEqual([]);
     });
 
     it("detects that the source bundle's own manifest.json changed since certification", async () => {
         const sourceManifest = readSourceManifest(bundleDir);
         writeSourceManifest(bundleDir, {...sourceManifest, generatedAt: new Date(0).toISOString()});
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
 
         expect(issues.map((issue) => issue.code)).toContain("certification-evidence-verify-source-bundle-manifest-changed");
     });
@@ -128,7 +165,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
         );
         writeSourceManifest(bundleDir, {...sourceManifest, modes: tamperedModes});
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
         const codes = issues.map((issue) => issue.code);
 
         expect(codes).toContain("certification-evidence-verify-source-bundle-manifest-changed");
@@ -143,7 +180,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
         const rebuiltMode = buildOutcomeLibraryBundleModeInput("base", "base-lib-rebuilt");
         await new OutcomeLibraryBundleWriter(CERTIFICATION_TEST_POKIE_VERSION).writeToDirectory([rebuiltMode], bundleDir);
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
         const codes = issues.map((issue) => issue.code);
 
         expect(codes).toContain("certification-evidence-verify-source-bundle-manifest-changed");
@@ -156,7 +193,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
         const otherMode = buildOutcomeLibraryBundleModeInput("bonus", "bonus-lib");
         await new OutcomeLibraryBundleWriter(CERTIFICATION_TEST_POKIE_VERSION).writeToDirectory([otherMode], bundleDir);
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
 
         expect(issues.map((issue) => issue.code)).toContain("certification-evidence-verify-source-mode-missing");
     });
@@ -167,7 +204,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
         writeCertManifest(certDir, {...manifest, modes: tamperedModes});
         fs.writeFileSync(path.join(tmpRoot, "outside.jsonl"), "should never be read\n");
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
 
         expect(issues.map((issue) => issue.code)).toContain("certification-evidence-verify-path-unsafe");
     });
@@ -183,7 +220,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
         lines[2] = "not json{{{";
         fs.writeFileSync(samplesPath, `${lines.join("\n")}\n`);
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
         const codes = issues.map((issue) => issue.code);
 
         expect(codes).toContain("certification-evidence-bundle-sample-line-invalid-json");
@@ -205,7 +242,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
         const updatedRecords = records.map((record, index) => (index === 0 ? forgedRecord : record));
         rewriteCertSamplesAndFixUpHashes(certDir, manifest, modeEntry.modeName, updatedRecords);
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
         const codes = issues.map((issue) => issue.code);
 
         // Self-consistent (weight/recordHash agree with each other), so nothing in
@@ -238,7 +275,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
         const updatedRecords = records.map((record, index2) => (index2 === 0 ? substitutedRecord : record));
         rewriteCertSamplesAndFixUpHashes(certDir, manifest, modeEntry.modeName, updatedRecords);
 
-        const issues = await verifier.verify(certDir);
+        const issues = await verifier.verify(certDir, {sourceBundleDir: bundleDir});
         const codes = issues.map((issue) => issue.code);
 
         // The substituted outcome is completely genuine and untampered — only "this isn't what position 0's
