@@ -9,10 +9,20 @@ import {
     CertificationEvidenceSampleRecord,
     computeRoundArtifactHash,
     OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
     OutcomeLibraryBundleValidating,
+    OutcomeLibraryBundleWriter,
     ValidationIssue,
 } from "pokie";
+import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "./CertificationEvidenceBundleTestFixtures.js";
+
+function copyDirectoryShallow(fromDir: string, toDir: string): void {
+    fs.mkdirSync(toDir, {recursive: true});
+    for (const file of fs.readdirSync(fromDir)) {
+        fs.copyFileSync(path.join(fromDir, file), path.join(toDir, file));
+    }
+}
 
 function siblingLeftovers(outDir: string): string[] {
     const parent = path.dirname(outDir);
@@ -256,5 +266,56 @@ describe("CertificationEvidenceBundleBuilder", () => {
 
         expect(result.manifest!.deepValidation.issues).toEqual([]);
         expect(result.manifest!.deepValidation.ranAt).toBe(result.manifest!.generatedAt);
+    });
+
+    it("produces the same evidenceContentHash regardless of generatedAt or the source bundle's own path (deterministic content identity)", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const bundleDirCopy = path.join(tmpRoot, "bundle-copy");
+        copyDirectoryShallow(bundleDir, bundleDirCopy);
+        const modes: CertificationEvidenceBundleModeSampleInput[] = [{modeName: "base", seed: "cert-seed-1", sampleCount: 10}];
+
+        const builderA = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, () => new Date("2026-01-01T00:00:00.000Z"));
+        const builderB = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, undefined, undefined, undefined, () => new Date("2027-06-15T12:00:00.000Z"));
+
+        const resultA = await builderA.buildFromBundle(bundleDir, modes, path.join(tmpRoot, "cert-a"));
+        const resultB = await builderB.buildFromBundle(bundleDirCopy, modes, path.join(tmpRoot, "cert-b"));
+
+        expect(resultA.manifest!.generatedAt).not.toBe(resultB.manifest!.generatedAt);
+        expect(resultA.manifest!.sourceBundleDir).not.toBe(resultB.manifest!.sourceBundleDir);
+        expect(resultA.manifest!.evidenceContentHash).toBe(resultB.manifest!.evidenceContentHash);
+    });
+
+    it("aborts without writing anything when the source bundle drifts between the initial snapshot and the final pre-publish check", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const realReader = new OutcomeLibraryBundleReader();
+        let readManifestCalls = 0;
+        // Simulates a concurrent rebuild landing exactly between the initial snapshot (capture before
+        // sampling) and the final pre-publish re-check (both of which call readManifest — see
+        // CertificationEvidenceBundleBuilder.detectSourceBundleDrift) by actually rewriting the bundle on disk
+        // via the real writer right before the second call's own read.
+        const driftingReader: OutcomeLibraryBundleReading = {
+            readManifest: async (dir: string) => {
+                readManifestCalls++;
+                if (readManifestCalls === 2) {
+                    await new OutcomeLibraryBundleWriter(CERTIFICATION_TEST_POKIE_VERSION).writeToDirectory(
+                        [buildOutcomeLibraryBundleModeInput("base", "base-lib-drifted")],
+                        dir,
+                    );
+                }
+                return realReader.readManifest(dir);
+            },
+            readModeIndex: (dir, modeName) => realReader.readModeIndex(dir, modeName),
+            iterateModeOutcomes: (dir, modeName) => realReader.iterateModeOutcomes(dir, modeName),
+            readOutcomeById: (dir, modeName, id) => realReader.readOutcomeById(dir, modeName, id),
+            drawOutcome: (dir, modeName, randomSource) => realReader.drawOutcome(dir, modeName, randomSource),
+            readLibrary: (dir, modeName) => realReader.readLibrary(dir, modeName),
+        };
+
+        const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION, driftingReader);
+        const result = await builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}], certDir);
+
+        expect(result.manifest).toBeUndefined();
+        expect(result.issues.map((issue) => issue.code)).toContain("certification-evidence-build-source-bundle-drift");
+        expect(fs.existsSync(certDir)).toBe(false);
     });
 });

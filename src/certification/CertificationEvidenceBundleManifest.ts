@@ -58,4 +58,11 @@ export type CertificationEvidenceBundleManifest = {
     readonly modes: readonly CertificationEvidenceBundleModeEntry[];
     readonly deepValidation: CertificationEvidenceDeepValidation;
     readonly files: readonly string[];
+    // computeCertificationEvidenceContentHash(this manifest) — a deterministic identity over every field above
+    // except "generatedAt"/"sourceBundleDir" (and "deepValidation.ranAt", a timestamp for the same reason):
+    // the same source-bundle snapshot sampled with the same modes/seeds/sampleCounts always produces the same
+    // evidenceContentHash, regardless of when or where it was (re)built. Recomputed and compared by
+    // CertificationEvidenceBundleValidator as a single, unified self-consistency check covering every other
+    // field in this manifest at once.
+    readonly evidenceContentHash: string;
 };

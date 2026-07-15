@@ -1,8 +1,18 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {CertificationEvidenceBundleBuilder, CertificationEvidenceBundleManifest, CertificationEvidenceBundleValidator} from "pokie";
+import {
+    CertificationEvidenceBundleBuilder,
+    CertificationEvidenceBundleManifest,
+    CertificationEvidenceBundleValidator,
+    computeCertificationEvidenceContentHash,
+} from "pokie";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "./CertificationEvidenceBundleTestFixtures.js";
+
+function sha256OfBytes(bytes: Buffer): string {
+    return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
+}
 
 function readManifest(certDir: string): CertificationEvidenceBundleManifest {
     return JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf-8")) as CertificationEvidenceBundleManifest;
@@ -141,5 +151,56 @@ describe("CertificationEvidenceBundleValidator", () => {
 
         const issues = await validator.validate(certDir);
         expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-manifest-files-missing-entry");
+    });
+
+    it("detects a forged recordHash that no longer matches its own {outcomeId, weight, artifact}, even with a matching samplesHash", async () => {
+        const manifest = readManifest(certDir);
+        const modeEntry = manifest.modes[0];
+        const samplesPath = path.join(certDir, modeEntry.samplesFile);
+        const lines = fs
+            .readFileSync(samplesPath, "utf-8")
+            .split("\n")
+            .filter((line) => line.length > 0);
+        const record = JSON.parse(lines[0]);
+        record.recordHash = `sha256:${"0".repeat(64)}`;
+        lines[0] = JSON.stringify(record);
+        fs.writeFileSync(samplesPath, `${lines.join("\n")}\n`);
+
+        // Update samplesHash/evidenceContentHash so the file-level and manifest-level hash checks stay clean,
+        // isolating the forged recordHash as the one thing this validator's own per-sample check must catch.
+        const newSamplesHash = sha256OfBytes(fs.readFileSync(samplesPath));
+        const updatedModes = manifest.modes.map((entry) => (entry.modeName === modeEntry.modeName ? {...entry, samplesHash: newSamplesHash} : entry));
+        const draft = {...manifest, modes: updatedModes};
+        writeManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
+
+        const issues = await validator.validate(certDir);
+        const codes = issues.map((issue) => issue.code);
+        expect(codes).toContain("certification-evidence-bundle-sample-record-hash-mismatch");
+        expect(codes).not.toContain("certification-evidence-bundle-samples-hash-mismatch");
+    });
+
+    it("detects a manifest-level analysis tamper via the unified evidenceContentHash check, with no other field touched", async () => {
+        const manifest = readManifest(certDir);
+        const tamperedModes = manifest.modes.map((entry, index) => (index === 0 ? {...entry, analysis: {...entry.analysis, rtp: entry.analysis.rtp + 1}} : entry));
+        writeManifest(certDir, {...manifest, modes: tamperedModes}); // evidenceContentHash deliberately left stale
+
+        const issues = await validator.validate(certDir);
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-content-hash-mismatch");
+    });
+
+    it("detects tampering of deepValidation.issues via the unified evidenceContentHash check", async () => {
+        const manifest = readManifest(certDir);
+        writeManifest(certDir, {
+            ...manifest,
+            deepValidation: {...manifest.deepValidation, issues: [{code: "forged-issue", severity: "warning", message: "forged"}]},
+        });
+
+        const issues = await validator.validate(certDir);
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-content-hash-mismatch");
+    });
+
+    it("reports no content-hash-mismatch for a freshly built, untouched bundle", async () => {
+        const issues = await validator.validate(certDir);
+        expect(issues.map((issue) => issue.code)).not.toContain("certification-evidence-bundle-content-hash-mismatch");
     });
 });

@@ -24,6 +24,8 @@ export * from "./certification/CertificationEvidenceBundleVerifier.js";
 export * from "./certification/CertificationEvidenceBundleVerifying.js";
 export * from "./certification/CertificationEvidenceSampleRecord.js";
 export * from "./certification/CertificationEvidenceVerifyOptions.js";
+export * from "./certification/computeCertificationEvidenceContentHash.js";
+export * from "./certification/computeCertificationSampleRecordHash.js";
 export * from "./diff/SimulationReportDiff.js";
 export * from "./diff/SimulationReportDiffer.js";
 export * from "./diff/SimulationReportDiffing.js";

@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {computeRoundArtifactHash} from "../artifact/computeRoundArtifactHash.js";
@@ -6,111 +5,23 @@ import type {RoundArtifact} from "../artifact/RoundArtifact.js";
 import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
 import {resolveSafeStakeEngineFilePath} from "../stakeengine/internal/resolveSafeStakeEngineFilePath.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
-import {
-    CERTIFICATION_EVIDENCE_BUNDLE_MANIFEST_SCHEMA_VERSION,
-    type CertificationEvidenceBundleManifest,
-    type CertificationEvidenceBundleModeEntry,
-} from "./CertificationEvidenceBundleManifest.js";
+import {computeCertificationEvidenceContentHash} from "./computeCertificationEvidenceContentHash.js";
+import {computeCertificationSampleRecordHash} from "./computeCertificationSampleRecordHash.js";
+import {CERTIFICATION_EVIDENCE_BUNDLE_MANIFEST_SCHEMA_VERSION, type CertificationEvidenceBundleModeEntry} from "./CertificationEvidenceBundleManifest.js";
 import type {CertificationEvidenceBundleValidating} from "./CertificationEvidenceBundleValidating.js";
-
-const MODE_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
-const SHA256_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
-
-function sha256OfBytes(bytes: string | Buffer): string {
-    return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
-}
-
-function isNonEmptyString(value: unknown): value is string {
-    return typeof value === "string" && value.trim().length > 0;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-    return typeof value === "number" && Number.isFinite(value);
-}
-
-function isValidSha256Hash(value: unknown): value is string {
-    return typeof value === "string" && SHA256_HASH_PATTERN.test(value);
-}
-
-function isModeEntryShape(value: unknown): value is CertificationEvidenceBundleModeEntry {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-    const entry = value as Partial<Record<keyof CertificationEvidenceBundleModeEntry, unknown>>;
-    return (
-        isNonEmptyString(entry.modeName) &&
-        isNonEmptyString(entry.betMode) &&
-        isFiniteNumber(entry.stake) &&
-        isNonEmptyString(entry.libraryId) &&
-        isValidSha256Hash(entry.libraryHash) &&
-        Number.isSafeInteger(entry.outcomeCount) &&
-        isFiniteNumber(entry.totalWeight) &&
-        typeof entry.analysis === "object" &&
-        entry.analysis !== null &&
-        isNonEmptyString(entry.sampleSeed) &&
-        Number.isSafeInteger(entry.sampleCount) &&
-        (entry.sampleCount as number) > 0 &&
-        isNonEmptyString(entry.samplesFile) &&
-        isValidSha256Hash(entry.samplesHash)
-    );
-}
-
-function isManifestShape(value: unknown): value is CertificationEvidenceBundleManifest {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-    const manifest = value as Partial<Record<keyof CertificationEvidenceBundleManifest, unknown>>;
-    return (
-        typeof manifest.schemaVersion === "number" &&
-        isNonEmptyString(manifest.generatedBy) &&
-        isNonEmptyString(manifest.pokieVersion) &&
-        isNonEmptyString(manifest.generatedAt) &&
-        typeof manifest.game === "object" &&
-        manifest.game !== null &&
-        isNonEmptyString(manifest.artifactPokieVersion) &&
-        isNonEmptyString(manifest.sourceBundleDir) &&
-        isValidSha256Hash(manifest.sourceBundleManifestHash) &&
-        Array.isArray(manifest.modes) &&
-        typeof manifest.deepValidation === "object" &&
-        manifest.deepValidation !== null &&
-        isNonEmptyString((manifest.deepValidation as {ranAt?: unknown}).ranAt) &&
-        Array.isArray((manifest.deepValidation as {issues?: unknown}).issues) &&
-        Array.isArray(manifest.files)
-    );
-}
-
-function isSampleRecordShape(value: unknown): value is {
-    modeName: string;
-    sampleIndex: number;
-    seed: string;
-    outcomeId: string;
-    weight: number;
-    recordHash: string;
-    artifactHash: string;
-    artifact: unknown;
-} {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-    const record = value as Record<string, unknown>;
-    return (
-        isNonEmptyString(record.modeName) &&
-        Number.isSafeInteger(record.sampleIndex) &&
-        isNonEmptyString(record.seed) &&
-        isNonEmptyString(record.outcomeId) &&
-        isFiniteNumber(record.weight) &&
-        isValidSha256Hash(record.recordHash) &&
-        isValidSha256Hash(record.artifactHash) &&
-        typeof record.artifact === "object" &&
-        record.artifact !== null
-    );
-}
+import {isModeEntryShape, isManifestShape, isNonEmptyString, isSampleRecordShape, MODE_NAME_PATTERN} from "./internal/certificationEvidenceBundleShapeGuards.js";
+import {sha256OfBytes} from "./internal/sha256OfBytes.js";
 
 // Validates a candidate certification/evidence bundle directory *by itself* — never throws (top-level
 // catch-all "certification-evidence-bundle-malformed"), mirroring OutcomeLibraryBundleValidator's own
 // never-throw contract. Reads manifest.json plus every mode's own samples_<modeName>.jsonl, recomputing:
+// - the whole manifest's own evidenceContentHash (covers schemaVersion/pokieVersion/game/configHash/
+//   artifactPokieVersion/sourceBundleManifestHash/every mode's own metrics+samplesHash/deep-validation issues in
+//   one unified check — see computeCertificationEvidenceContentHash);
 // - each mode's own samplesHash, over the exact bytes of its samples file (never a second, differently-derived
 //   hash);
+// - each sample's own recordHash, recomputed from its own {outcomeId, weight, artifact} — see
+//   computeCertificationSampleRecordHash — the same hash an Outcome Library Bundle's own index entry carries;
 // - each sample's own artifactHash, via computeRoundArtifactHash — the same content hash every other
 //   RoundArtifact consumer in this codebase computes and compares;
 // - each sample's own artifact against RoundArtifactValidator — never a second definition of "a valid
@@ -187,6 +98,23 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
 
         const manifest = parsed;
         const issues: ValidationIssue[] = [];
+
+        try {
+            const recomputedContentHash = computeCertificationEvidenceContentHash(manifest);
+            if (recomputedContentHash !== manifest.evidenceContentHash) {
+                issues.push({
+                    code: "certification-evidence-bundle-content-hash-mismatch",
+                    severity: "error",
+                    message: `"${manifestPath}" does not hash to its own recorded evidenceContentHash — some field of the manifest (game/configHash/artifactPokieVersion/sourceBundleManifestHash/a mode's own metrics or samplesHash/deep-validation issues) was changed since this evidence was built.`,
+                });
+            }
+        } catch (error) {
+            issues.push({
+                code: "certification-evidence-bundle-content-hash-not-computable",
+                severity: "error",
+                message: `"${manifestPath}" can't be re-canonicalized to recompute its own evidenceContentHash: ${error instanceof Error ? error.message : String(error)}.`,
+            });
+        }
 
         const seenExact = new Set<string>();
         const seenCaseInsensitive = new Map<string, string>();
@@ -341,6 +269,25 @@ export class CertificationEvidenceBundleValidator implements CertificationEviden
                     code: "certification-evidence-bundle-sample-seed-mismatch",
                     severity: "error",
                     message: `mode "${modeEntry.modeName}": line ${position}'s own seed doesn't match this mode's recorded sampleSeed.`,
+                    details: {modeName: modeEntry.modeName, position},
+                });
+            }
+
+            try {
+                const recomputedRecordHash = computeCertificationSampleRecordHash({id: parsedLine.outcomeId, weight: parsedLine.weight, artifact: parsedLine.artifact});
+                if (recomputedRecordHash !== parsedLine.recordHash) {
+                    issues.push({
+                        code: "certification-evidence-bundle-sample-record-hash-mismatch",
+                        severity: "error",
+                        message: `mode "${modeEntry.modeName}": line ${position}'s own {outcomeId, weight, artifact} doesn't hash to its own recorded recordHash.`,
+                        details: {modeName: modeEntry.modeName, position},
+                    });
+                }
+            } catch (error) {
+                issues.push({
+                    code: "certification-evidence-bundle-sample-record-not-json-safe",
+                    severity: "error",
+                    message: `mode "${modeEntry.modeName}": line ${position}'s own {outcomeId, weight, artifact} can't be re-canonicalized: ${error instanceof Error ? error.message : String(error)}.`,
                     details: {modeName: modeEntry.modeName, position},
                 });
             }

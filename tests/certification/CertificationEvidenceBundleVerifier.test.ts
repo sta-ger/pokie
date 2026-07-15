@@ -1,7 +1,19 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {CertificationEvidenceBundleBuilder, CertificationEvidenceBundleVerifier, OutcomeLibraryBundleManifest, OutcomeLibraryBundleWriter} from "pokie";
+import {
+    CertificationEvidenceBundleBuilder,
+    CertificationEvidenceBundleManifest,
+    CertificationEvidenceBundleVerifier,
+    CertificationEvidenceSampleRecord,
+    computeCertificationEvidenceContentHash,
+    computeCertificationSampleRecordHash,
+    computeRoundArtifactHash,
+    OutcomeLibraryBundleManifest,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleWriter,
+} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "./CertificationEvidenceBundleTestFixtures.js";
 
@@ -11,6 +23,48 @@ function readSourceManifest(bundleDir: string): OutcomeLibraryBundleManifest {
 
 function writeSourceManifest(bundleDir: string, manifest: OutcomeLibraryBundleManifest): void {
     fs.writeFileSync(path.join(bundleDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+}
+
+function readCertManifest(certDir: string): CertificationEvidenceBundleManifest {
+    return JSON.parse(fs.readFileSync(path.join(certDir, "manifest.json"), "utf-8")) as CertificationEvidenceBundleManifest;
+}
+
+function writeCertManifest(certDir: string, manifest: CertificationEvidenceBundleManifest): void {
+    fs.writeFileSync(path.join(certDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+}
+
+function readCertSampleLines(certDir: string, samplesFile: string): CertificationEvidenceSampleRecord[] {
+    return fs
+        .readFileSync(path.join(certDir, samplesFile), "utf-8")
+        .split("\n")
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as CertificationEvidenceSampleRecord);
+}
+
+function writeCertSampleLines(certDir: string, samplesFile: string, records: readonly CertificationEvidenceSampleRecord[]): void {
+    fs.writeFileSync(path.join(certDir, samplesFile), records.map((record) => `${JSON.stringify(record)}\n`).join(""));
+}
+
+function sha256OfBytes(bytes: Buffer): string {
+    return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+// Rewrites samplesHash/evidenceContentHash to match "records"/"updatedModes" so the rest of the manifest stays
+// internally self-consistent (per CertificationEvidenceBundleValidator's own checks) — isolating whatever the
+// caller actually tampered as the one thing left for the live cross-check (CertificationEvidenceBundleVerifier)
+// to catch, rather than also tripping an unrelated self-consistency issue.
+function rewriteCertSamplesAndFixUpHashes(
+    certDir: string,
+    manifest: CertificationEvidenceBundleManifest,
+    modeName: string,
+    records: readonly CertificationEvidenceSampleRecord[],
+): void {
+    const modeEntry = manifest.modes.find((entry) => entry.modeName === modeName)!;
+    writeCertSampleLines(certDir, modeEntry.samplesFile, records);
+    const newSamplesHash = sha256OfBytes(fs.readFileSync(path.join(certDir, modeEntry.samplesFile)));
+    const updatedModes = manifest.modes.map((entry) => (entry.modeName === modeName ? {...entry, samplesHash: newSamplesHash} : entry));
+    const draft = {...manifest, modes: updatedModes};
+    writeCertManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
 }
 
 describe("CertificationEvidenceBundleVerifier", () => {
@@ -94,7 +148,7 @@ describe("CertificationEvidenceBundleVerifier", () => {
 
         expect(codes).toContain("certification-evidence-verify-source-bundle-manifest-changed");
         expect(codes).toContain("certification-evidence-verify-manifest-mode-mismatch");
-        expect(codes).toContain("certification-evidence-verify-sample-outcome-changed");
+        expect(codes).toContain("certification-evidence-verify-sample-record-hash-mismatch");
         expect(codes).not.toContain("certification-evidence-verify-metrics-mismatch");
     });
 
@@ -105,5 +159,92 @@ describe("CertificationEvidenceBundleVerifier", () => {
         const issues = await verifier.verify(certDir);
 
         expect(issues.map((issue) => issue.code)).toContain("certification-evidence-verify-source-mode-missing");
+    });
+
+    it("rejects an unsafe samplesFile path in the manifest without ever reading outside certDir", async () => {
+        const manifest = readCertManifest(certDir);
+        const tamperedModes = manifest.modes.map((entry) => ({...entry, samplesFile: "../outside.jsonl"}));
+        writeCertManifest(certDir, {...manifest, modes: tamperedModes});
+        fs.writeFileSync(path.join(tmpRoot, "outside.jsonl"), "should never be read\n");
+
+        const issues = await verifier.verify(certDir);
+
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-verify-path-unsafe");
+    });
+
+    it("handles an invalid JSON sample line during verify without throwing, still cross-checking the rest of the mode", async () => {
+        const manifest = readCertManifest(certDir);
+        const modeEntry = manifest.modes[0];
+        const samplesPath = path.join(certDir, modeEntry.samplesFile);
+        const lines = fs
+            .readFileSync(samplesPath, "utf-8")
+            .split("\n")
+            .filter((line) => line.length > 0);
+        lines[2] = "not json{{{";
+        fs.writeFileSync(samplesPath, `${lines.join("\n")}\n`);
+
+        const issues = await verifier.verify(certDir);
+        const codes = issues.map((issue) => issue.code);
+
+        expect(codes).toContain("certification-evidence-bundle-sample-line-invalid-json");
+        expect(codes).not.toContain("certification-evidence-verify-malformed");
+        expect(codes).not.toContain("certification-evidence-verify-sample-sequence-mismatch");
+    });
+
+    it("detects a recordHash forged self-consistently with its own {id, weight, artifact}, via the live index cross-check", async () => {
+        const manifest = readCertManifest(certDir);
+        const modeEntry = manifest.modes[0];
+        const records = readCertSampleLines(certDir, modeEntry.samplesFile);
+        const original = records[0];
+        const forgedWeight = original.weight + 1;
+        const forgedRecord: CertificationEvidenceSampleRecord = {
+            ...original,
+            weight: forgedWeight,
+            recordHash: computeCertificationSampleRecordHash({id: original.outcomeId, weight: forgedWeight, artifact: original.artifact}),
+        };
+        const updatedRecords = records.map((record, index) => (index === 0 ? forgedRecord : record));
+        rewriteCertSamplesAndFixUpHashes(certDir, manifest, modeEntry.modeName, updatedRecords);
+
+        const issues = await verifier.verify(certDir);
+        const codes = issues.map((issue) => issue.code);
+
+        // Self-consistent (weight/recordHash agree with each other), so nothing in
+        // CertificationEvidenceBundleValidator's own offline checks can catch this — only the live index
+        // cross-check (this evidence's recordHash no longer matches the live bundle's own index entry) can.
+        expect(codes.filter((code) => code.startsWith("certification-evidence-bundle-"))).toEqual([]);
+        expect(codes).toContain("certification-evidence-verify-sample-record-hash-mismatch");
+    });
+
+    it("detects a sample substituted with a different, individually valid, still-existing outcome id (sequence mismatch)", async () => {
+        const manifest = readCertManifest(certDir);
+        const modeEntry = manifest.modes[0];
+        const records = readCertSampleLines(certDir, modeEntry.samplesFile);
+        const reader = new OutcomeLibraryBundleReader();
+        const index = await reader.readModeIndex(bundleDir, modeEntry.modeName);
+        const substituteId = index.entries.map((entry) => entry.id).find((id) => id !== records[0].outcomeId)!;
+        const substituteOutcome = (await reader.readOutcomeById(bundleDir, modeEntry.modeName, substituteId))!;
+        const substituteIndexEntry = index.entries.find((entry) => entry.id === substituteId)!;
+
+        const substitutedRecord: CertificationEvidenceSampleRecord = {
+            modeName: modeEntry.modeName,
+            sampleIndex: 0,
+            seed: modeEntry.sampleSeed,
+            outcomeId: substituteOutcome.id,
+            weight: substituteOutcome.weight,
+            recordHash: substituteIndexEntry.recordHash,
+            artifactHash: computeRoundArtifactHash(substituteOutcome.artifact),
+            artifact: substituteOutcome.artifact,
+        };
+        const updatedRecords = records.map((record, index2) => (index2 === 0 ? substitutedRecord : record));
+        rewriteCertSamplesAndFixUpHashes(certDir, manifest, modeEntry.modeName, updatedRecords);
+
+        const issues = await verifier.verify(certDir);
+        const codes = issues.map((issue) => issue.code);
+
+        // The substituted outcome is completely genuine and untampered — only "this isn't what position 0's
+        // own seed would actually draw" (the sequence check) can tell the two apart.
+        expect(codes.filter((code) => code.startsWith("certification-evidence-bundle-"))).toEqual([]);
+        expect(codes).not.toContain("certification-evidence-verify-sample-record-hash-mismatch");
+        expect(codes).toContain("certification-evidence-verify-sample-sequence-mismatch");
     });
 });
