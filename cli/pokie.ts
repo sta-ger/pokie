@@ -9,6 +9,7 @@ import {ClientCommand} from "./commands/ClientCommand.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
 import {DevCommand} from "./commands/DevCommand.js";
 import {DiffCommand} from "./commands/DiffCommand.js";
+import {FairnessCommand} from "./commands/FairnessCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
 import {OutcomeLibraryCommand} from "./commands/OutcomeLibraryCommand.js";
@@ -60,6 +61,7 @@ async function run(): Promise<number> {
         new CreateCommand(readOwnVersion()),
         new DevCommand(undefined, undefined, {clientRoot: ownClientRoot()}),
         new DiffCommand(),
+        new FairnessCommand(),
         new InitCommand(readOwnVersion()),
         new InspectCommand(),
         new OutcomeLibraryCommand(readOwnVersion()),

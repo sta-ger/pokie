@@ -826,6 +826,28 @@ Options:
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
+## `pokie fairness verify <proof.json> --source <bundleDir>`
+
+Verifies a [Provably Fair](provably-fair.md) round proof: first its own self-consistency (does the shape match,
+is `algorithmVersion` supported, does the revealed `serverSeed` actually hash to its own recorded
+`serverSeedHash`), then cross-checks it against the *live* source Outcome Library Bundle it claims to have been
+drawn from — the pinned `libraryHash`/index hash (bundle drift), the drawn outcome's own recorded
+`weight`/`recordHash` (a substituted outcome), and a full reproduction of the deterministic HMAC-SHA256 draw
+itself (a forged proof). No game/win calculation is ever involved. See
+[Provably Fair](provably-fair.md#verification) for the full code table.
+
+```
+pokie fairness verify proof.json --source ../bundle
+```
+
+Options:
+
+- `--source <bundleDir>` — **required.** Where the live source Outcome Library Bundle actually is. A
+  `FairnessRoundProof` carries no bundle location of its own — omitting `--source` fails with a usage error, and
+  running `verify` without it programmatically reports a diagnostic instead of reading anything.
+
+Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
+
 ## `pokie init`
 
 Turns an existing npm project into a minimal POKIE-compatible game package.

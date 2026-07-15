@@ -104,6 +104,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     source bundle's own deep-validation diagnostics, and deterministically sampled/individually verifiable
     `RoundArtifact` records), with `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` and
     `pokie certification build`/`pokie certification verify`.
+22. **[Provably Fair](provably-fair.md)** — a commit-reveal proof for a single round drawn from an Outcome
+    Library Bundle: `FairnessCommitment` (pinning `serverSeedHash` before selection),
+    `FairnessRoundProof` (the revealed round, deterministically drawn via an HMAC-SHA256 byte stream), and
+    `FairnessRoundProofValidator`/`Verifier` for independently checking one, with `pokie fairness verify`.
 
 ## Core concepts at a glance
 
@@ -136,6 +140,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Importing a `WeightedOutcomeLibrary` back from a Stake Engine export directory | `pokie stakeengine import <stakeDir>`, `StakeEngineImporter` |
 | Streaming, canonical on-disk persistence for a `WeightedOutcomeLibrary` (no full-library-in-memory load) | `pokie outcomelibrary build <config.json>`, `OutcomeLibraryBundleWriter`/`OutcomeLibraryBundleReader` |
 | Deterministic evidence package (metrics, diagnostics, sampled rounds) on top of an Outcome Library Bundle | `pokie certification build <bundleDir> <config.json>`, `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` |
+| Commit-reveal Provably Fair proof for a single round, independently verifiable against a live Outcome Library Bundle | `pokie fairness verify <proof.json> --source <bundleDir>`, `computeFairnessCommitment`, `FairnessRoundProofBuilder`/`Validator`/`Verifier` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.
