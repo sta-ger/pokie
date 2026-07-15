@@ -1,10 +1,10 @@
 import crypto from "crypto";
 import {buildPreGeneratedRoundResult} from "../../pregenerated/buildPreGeneratedRoundResult.js";
 import {deriveDeterministicSeed} from "../../pregenerated/internal/deriveDeterministicSeed.js";
+import type {PreGeneratedOutcomeSelection} from "../../pregenerated/PreGeneratedOutcomeSelection.js";
+import type {PreGeneratedOutcomeSourcing} from "../../pregenerated/PreGeneratedOutcomeSourcing.js";
 import type {PreGeneratedRoundTransaction} from "../../pregenerated/PreGeneratedRoundTransaction.js";
 import {SeededWeightedOutcomeRandomSource} from "../../pregenerated/SeededWeightedOutcomeRandomSource.js";
-import {WeightedOutcomeSelector} from "../../pregenerated/WeightedOutcomeSelector.js";
-import type {WeightedOutcomeLibrary} from "../../weightedoutcome/WeightedOutcomeLibrary.js";
 import {InMemoryIdempotencyRepository} from "../idempotency/InMemoryIdempotencyRepository.js";
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
 import type {TransactionalWalletPort} from "../wallet/TransactionalWalletPort.js";
@@ -16,14 +16,16 @@ import type {PreGeneratedSessionState} from "./PreGeneratedSessionState.js";
 import type {PreGeneratedSpinCommandHandling} from "./PreGeneratedSpinCommandHandling.js";
 import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResult.js";
 
-// Orchestrates a single pre-generated round end-to-end: replay an idempotent retry, load the session's
-// (tiny — see PreGeneratedSessionState) persisted state, deterministically select the next round's
-// outcome from a fixed WeightedOutcomeLibrary (never running a game's own calculation path), settle the
-// wallet from that outcome's already-known stake/totalWin, and persist the new state together with the
-// idempotency result as one committed outcome. Mirrors SpinCommandHandler's own orchestration shape
+// Orchestrates a single pre-generated round end-to-end: deterministically draw the next round's outcome from a
+// configured PreGeneratedOutcomeSourcing (never running a game's own calculation path), replay an idempotent
+// retry, settle the wallet from that outcome's already-known stake/totalWin, and persist the new state together
+// with the idempotency result as one committed outcome. Mirrors SpinCommandHandler's own orchestration shape
 // (idempotency replay, per-session serialization, wallet settlement, best-effort compensation,
-// optimistic-locking conflict detection) applied to a fixed, pre-enumerated library instead of a live
-// GameSessionHandling.
+// optimistic-locking conflict detection) applied to a pre-enumerated outcome source instead of a live
+// GameSessionHandling. The outcome source is deliberately abstract (see PreGeneratedOutcomeSourcing) — an
+// already-built WeightedOutcomeLibrary in memory (InMemoryPreGeneratedOutcomeSource) or a canonical outcome-
+// library bundle read directly off disk (OutcomeLibraryBundleOutcomeSource), one index read per draw, never a
+// full library materialized — this handler never knows or cares which.
 //
 // Every command for a given sessionId is serialized through a per-session queue (see enqueue()), same
 // mechanism and same rationale as SpinCommandHandler: it's what makes a concurrently repeated requestId
@@ -52,11 +54,15 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // itself never stores anything about *which* outcome a past round drew, only how many rounds have been
 // played, since the outcome is always exactly reproducible from (seed, round) against the same library.
 //
-// Library identity check: before doing anything else, a loaded session's own `libraryId`/`libraryHash`
-// (stamped at creation) is compared against this handler's configured library. A mismatch — a session
-// created against a different library, or a same-id library since regenerated with different content —
-// returns a "conflict" result immediately, before any wallet transaction, rather than silently drawing
-// a round from content the session was never meant to be played against.
+// Library identity check: a loaded session's own `libraryId`/`libraryHash` (stamped at creation) is compared
+// against the *exact* identity the outcome source reports it just drew from — not a separately-fetched,
+// potentially stale or newer snapshot. The draw always happens first (deterministic, no wallet/session side
+// effects yet), immediately followed by this comparison, before the idempotency cache is ever consulted and
+// before any wallet transaction — so a bundle-backed source rebuilt in between two calls can never have its
+// identity check and its selection straddle two different versions: whichever version the very next draw
+// actually came from is exactly what gets compared. A mismatch — a session created against a different
+// library/bundle content, or the same libraryId since regenerated with different weights — returns a
+// "conflict" result immediately, with nothing left to compensate.
 //
 // Optimistic locking: when sessionRepository additionally implements VersionedPreGeneratedSessionRepository
 // (see isVersionedPreGeneratedSessionRepository.ts — InMemoryPreGeneratedSessionRepository does), the
@@ -74,23 +80,19 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // was before this attempt — see SpinCommandHandler's class doc comment for the same process-crash and
 // compensation-failure caveats, which apply here identically.
 export class PreGeneratedSpinCommandHandler<T extends string | number = string> implements PreGeneratedSpinCommandHandling<T> {
-    private readonly library: WeightedOutcomeLibrary<T>;
-    private readonly libraryHash: string;
+    private readonly outcomeSource: PreGeneratedOutcomeSourcing<T>;
     private readonly wallet: TransactionalWalletPort;
     private readonly sessionRepository: PreGeneratedSessionRepository;
     private readonly idempotencyRepository: IdempotencyRepository<PreGeneratedSpinCommandResult<T>>;
-    private readonly selector = new WeightedOutcomeSelector();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
     constructor(
-        library: WeightedOutcomeLibrary<T>,
-        libraryHash: string,
+        outcomeSource: PreGeneratedOutcomeSourcing<T>,
         wallet: TransactionalWalletPort,
         sessionRepository: PreGeneratedSessionRepository = new InMemoryPreGeneratedSessionRepository(),
         idempotencyRepository: IdempotencyRepository<PreGeneratedSpinCommandResult<T>> = new InMemoryIdempotencyRepository(),
     ) {
-        this.library = library;
-        this.libraryHash = libraryHash;
+        this.outcomeSource = outcomeSource;
         this.wallet = wallet;
         this.sessionRepository = sessionRepository;
         this.idempotencyRepository = idempotencyRepository;
@@ -121,20 +123,25 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
             return {status: "not-found", sessionId};
         }
 
-        // Checked before anything else — including before consulting the idempotency cache below:
-        // a cached result was necessarily computed against whatever library was configured *at the
-        // time*, which a stale cache entry has no way to reverify on its own. Nothing has been applied
-        // yet at this point either (no wallet transaction, no selection), so there's nothing to
-        // compensate — unlike the storage-level version conflict below, which can only be discovered
-        // after settlement has already run.
-        if (state.libraryId !== this.library.libraryId || state.libraryHash !== this.libraryHash) {
+        // The draw always happens first — deterministic, no wallet/session side effects — so the identity
+        // check right below always compares against the *exact* version this same draw came from, never a
+        // separately, independently re-fetched one. Checked before consulting the idempotency cache: a cached
+        // result was necessarily computed against whatever the source reported at the time, which a stale
+        // cache entry has no way to reverify on its own. Nothing has been applied yet at this point (no wallet
+        // transaction), so there's nothing to compensate — unlike the storage-level version conflict below,
+        // which can only be discovered after settlement has already run.
+        const round = state.roundsPlayed + 1;
+        const randomSource = new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(state.seed, round));
+        const selection = await this.outcomeSource.drawOutcome(randomSource);
+
+        if (selection.libraryId !== state.libraryId || selection.libraryHash !== state.libraryHash) {
             return {
                 status: "conflict",
                 sessionId,
                 reason:
-                    `Session "${sessionId}" was created against a different library than this handler is configured ` +
-                    `with (libraryId "${state.libraryId}"/hash "${state.libraryHash}" vs configured libraryId ` +
-                    `"${this.library.libraryId}"/hash "${this.libraryHash}").`,
+                    `Session "${sessionId}" was created against a different library than this handler's outcome ` +
+                    `source currently reports (libraryId "${state.libraryId}"/hash "${state.libraryHash}" vs ` +
+                    `current libraryId "${selection.libraryId}"/hash "${selection.libraryHash}").`,
             };
         }
 
@@ -145,7 +152,7 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
             }
         }
 
-        return this.selectAndSettle(sessionId, state, version, requestId);
+        return this.settle(sessionId, state, version, requestId, round, selection);
     }
 
     // Reads both the state and, when sessionRepository supports it, the version it was read at — a
@@ -159,17 +166,17 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
         return {state: await this.sessionRepository.load(sessionId), version: undefined};
     }
 
-    private async selectAndSettle(
+    private async settle(
         sessionId: string,
         state: PreGeneratedSessionState,
         expectedVersion: number | undefined,
         requestId: string | undefined,
+        round: number,
+        selection: PreGeneratedOutcomeSelection<T>,
     ): Promise<PreGeneratedSpinCommandResult<T>> {
-        const round = state.roundsPlayed + 1;
         const roundId = requestId ?? crypto.randomUUID();
         const attemptId = crypto.randomUUID();
-        const randomSource = new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(state.seed, round));
-        const outcome = this.selector.select(this.library, randomSource);
+        const outcome = selection.outcome;
 
         const debitTransactionId = `${roundId}:${attemptId}:debit`;
         const creditTransactionId = `${roundId}:${attemptId}:credit`;
@@ -191,9 +198,9 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
             }
 
             const result = buildPreGeneratedRoundResult({
-                library: this.library,
-                libraryHash: this.libraryHash,
-                outcome,
+                expectedLibraryId: state.libraryId,
+                expectedLibraryHash: state.libraryHash,
+                selection,
                 runtime: {
                     roundId,
                     sessionId,
@@ -205,8 +212,8 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
             });
 
             const newState: PreGeneratedSessionState = {
-                libraryId: this.library.libraryId,
-                libraryHash: this.libraryHash,
+                libraryId: state.libraryId,
+                libraryHash: state.libraryHash,
                 seed: state.seed,
                 roundsPlayed: round,
             };

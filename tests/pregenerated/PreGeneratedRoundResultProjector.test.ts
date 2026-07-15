@@ -14,9 +14,9 @@ describe("PreGeneratedRoundResultProjector", () => {
     const libraryHash = computeWeightedOutcomeLibraryHash(library);
     const outcome = library.outcomes[0];
     const result = buildPreGeneratedRoundResult({
-        library,
-        libraryHash,
-        outcome,
+        expectedLibraryId: library.libraryId,
+        expectedLibraryHash: libraryHash,
+        selection: {libraryId: library.libraryId, libraryHash, totalWeight: 1, outcome},
         runtime: {
             roundId: "round-1",
             sessionId: "session-1",
@@ -50,9 +50,9 @@ describe("PreGeneratedRoundResultProjector", () => {
 
     it("omits requestId from the public view when the round had none", () => {
         const noRequestIdResult = buildPreGeneratedRoundResult({
-            library,
-            libraryHash,
-            outcome,
+            expectedLibraryId: library.libraryId,
+            expectedLibraryHash: libraryHash,
+            selection: {libraryId: library.libraryId, libraryHash, totalWeight: 1, outcome},
             runtime: {roundId: "round-2", sessionId: "session-1", balanceBefore: 100, balanceAfter: 149, transactions: []},
         });
 

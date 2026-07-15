@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    InMemoryPreGeneratedOutcomeSource,
     InMemoryPreGeneratedSessionRepository,
     InMemoryWallet,
     OutcomeLibraryBundleWriter,
@@ -42,7 +43,7 @@ describe("loadWeightedOutcomeLibraryFromBundle", () => {
         const wallet = new InMemoryWallet(1000);
         const sessionRepository = new InMemoryPreGeneratedSessionRepository();
         await sessionRepository.save("session-1", {libraryId: loaded.libraryId, libraryHash: loadedHash, seed: "seed-1", roundsPlayed: 0});
-        const handler = new PreGeneratedSpinCommandHandler(loaded, loadedHash, wallet, sessionRepository);
+        const handler = new PreGeneratedSpinCommandHandler(new InMemoryPreGeneratedOutcomeSource(loaded, loadedHash), wallet, sessionRepository);
 
         const result = await handler.handle("session-1");
 

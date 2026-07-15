@@ -12,10 +12,11 @@ function buildValidResult(): PreGeneratedRoundResult<string> {
         libraryId: "validator-test",
         outcomes: [{id: "only", weight: 1, artifact: artifactWith({roundId: "only", totalWin: 3})}],
     });
+    const libraryHash = computeWeightedOutcomeLibraryHash(library);
     return buildPreGeneratedRoundResult({
-        library,
-        libraryHash: computeWeightedOutcomeLibraryHash(library),
-        outcome: library.outcomes[0],
+        expectedLibraryId: library.libraryId,
+        expectedLibraryHash: libraryHash,
+        selection: {libraryId: library.libraryId, libraryHash, totalWeight: 1, outcome: library.outcomes[0]},
         runtime: {
             roundId: "round-1",
             sessionId: "session-1",
@@ -41,10 +42,11 @@ function buildValidResultWithQuarterProbability(): PreGeneratedRoundResult<strin
             {id: "b", weight: 75, artifact: artifactWith({roundId: "b", totalWin: 0, stake: 1})},
         ],
     });
+    const libraryHash = computeWeightedOutcomeLibraryHash(library);
     return buildPreGeneratedRoundResult({
-        library,
-        libraryHash: computeWeightedOutcomeLibraryHash(library),
-        outcome: library.outcomes[0],
+        expectedLibraryId: library.libraryId,
+        expectedLibraryHash: libraryHash,
+        selection: {libraryId: library.libraryId, libraryHash, totalWeight: 100, outcome: library.outcomes[0]},
         runtime: {
             roundId: "round-1",
             sessionId: "session-1",

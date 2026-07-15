@@ -64,6 +64,38 @@ than silently producing a wrong or biased result. There is deliberately no fallb
 exact integer arithmetic, every draw is provably within range, so anything that would have needed a fallback is a
 real bug surfaced as an error instead.
 
+## PreGeneratedOutcomeSourcing — decoupling the runtime from a full library
+
+```ts
+type PreGeneratedOutcomeSelection<T = string> = {
+    libraryId: string;
+    libraryHash: string;
+    totalWeight: number;
+    outcome: WeightedOutcome<T>;
+};
+
+interface PreGeneratedOutcomeSourcing<T = string> {
+    drawOutcome(randomSource: WeightedOutcomeRandomSource): Promise<PreGeneratedOutcomeSelection<T>>;
+}
+```
+
+`PreGeneratedSpinCommandHandler` is wired to a `PreGeneratedOutcomeSourcing`, not to a `WeightedOutcomeLibrary`
+directly — it never knows or cares whether a draw came from memory or from disk. Every draw is atomic: it returns
+the outcome *together with* the exact `libraryId`/`libraryHash`/`totalWeight` it was drawn against, all read from
+the same underlying snapshot. Two implementations ship out of the box:
+
+- **`InMemoryPreGeneratedOutcomeSource`** — wraps an already-built `WeightedOutcomeLibrary` and a caller-claimed
+  `libraryHash`, verified against `computeWeightedOutcomeLibraryHash(library)` once, at construction (fails fast
+  with `InMemoryPreGeneratedOutcomeSourceError` on a mismatch — the library never changes for this adapter's
+  whole lifetime, so there's nothing to gain from re-verifying on every draw). Internally reuses
+  `WeightedOutcomeSelector`, so its own draws are byte-for-byte the same as before this abstraction existed.
+- **`OutcomeLibraryBundleOutcomeSource`** (see [Outcome Library Bundle](outcome-library-bundle.md)) — reads a
+  canonical outcome-library bundle directly off disk: one small `index_<modeName>.json` read per draw (never the
+  full outcomes file, never `readLibrary()`), a weighted pick by exact integer cumulative weight over that
+  index's own entries, then a single byte-range read for exactly the winning outcome. The whole `{libraryId,
+  libraryHash, totalWeight, outcome}` result comes from that *one* index read, never a separately-fetched hash —
+  see "Library identity" below for why that matters.
+
 ## The runtime result
 
 ```ts
@@ -93,18 +125,20 @@ type PreGeneratedRoundResult<T = string> = {
 };
 ```
 
-`buildPreGeneratedRoundResult({library, libraryHash, outcome, runtime})` is the one place a `PreGeneratedRoundResult`
-is assembled. It fails fast with **`PreGeneratedRoundBuildError`** on: an `outcome` that isn't the library's own
-object for that id (strict reference identity on the *whole* outcome, not just its artifact — a forged weight
-riding along a genuine artifact reference is rejected, not just a wholesale swap), a `libraryHash` that doesn't
-match the library's actual, freshly recomputed hash (`computeWeightedOutcomeLibraryHash(library)` — catches a
-stale hash left over from a library that was since regenerated with different weights under the same
-`libraryId`), a non-positive-safe-integer `outcome.weight` or library total weight (the same integer requirement
-`WeightedOutcomeSelector` itself needs, enforced again here since a result can be built from a caller-supplied
-outcome that never actually went through the selector), an invalid `runtime.roundId`/`sessionId`, a non-finite
-balance, a malformed transaction entry, or content that isn't JSON-safe. `artifact` is always the exact object
-reference the library already holds — canonical library content is never copied, re-derived, or re-run through a
-second calculation path, and the library itself is never mutated.
+`buildPreGeneratedRoundResult({expectedLibraryId, expectedLibraryHash, selection, runtime})` is the one place a
+`PreGeneratedRoundResult` is assembled — from a `PreGeneratedOutcomeSelection` already produced by a
+`PreGeneratedOutcomeSourcing` implementation, never a full `WeightedOutcomeLibrary`. It fails fast with
+**`PreGeneratedRoundBuildError`** on: a `selection` whose own `libraryId`/`libraryHash` doesn't match the caller's
+`expectedLibraryId`/`expectedLibraryHash` (a defensive backstop mirroring the identity check
+`PreGeneratedSpinCommandHandler` itself already performs before ever reaching this point), a non-positive-safe-
+integer `selection.outcome.weight`/`selection.totalWeight` (the same integer requirement `WeightedOutcomeSelector`
+itself needs), an invalid `runtime.roundId`/`sessionId`, a non-finite balance, a malformed transaction entry, or
+content that isn't JSON-safe. `artifact` is always the exact object reference the selection's own outcome
+already holds — canonical library content is never copied, re-derived, or re-run through a second calculation
+path. There is no longer a "the outcome must be the library's own array element" reference-identity check —
+without a full library there's no array to check against — but that guarantee now comes structurally from
+`PreGeneratedOutcomeSourcing` itself: the only way to obtain a `PreGeneratedOutcomeSelection` at all is a real
+source's own `drawOutcome()`, which always produces a genuine, already-verified outcome.
 
 `PreGeneratedRoundResultValidator` checks the same invariants defensively, over an already-built (or
 untrusted/round-tripped) result, delegating `artifact`'s own validity to a real `RoundArtifactValidator` — never
@@ -157,21 +191,30 @@ configuration mistake caught at startup, never something a caller discovers mid-
   persisted state (`{libraryId, libraryHash, seed, roundsPlayed}`; see `PreGeneratedSessionState`) and, when given,
   seeds the wallet balance (there's no live session to default it from, unlike the `/sessions` path).
 - `POST /pregenerated-sessions/:id/spin` — body `{requestId?: string}` — draws the session's next round
-  deterministically (`WeightedOutcomeSelector`, seeded from the session's own `seed` and round index), settles
-  the wallet (debit `artifact.stake`, credit `artifact.totalWin` when positive), and returns the public projection
-  by default, or the full internal view under `?debug=1` (same convention as the live spin path).
+  deterministically (its configured `PreGeneratedOutcomeSourcing`, seeded from the session's own `seed` and round
+  index), settles the wallet (debit `artifact.stake`, credit `artifact.totalWin` when positive), and returns the
+  public projection by default, or the full internal view under `?debug=1` (same convention as the live spin
+  path). `PokieDevServerOptions.preGeneratedOutcomeLibrary` is wrapped in an `InMemoryPreGeneratedOutcomeSource`
+  internally; nothing about that option itself changed.
 
 `PreGeneratedSpinCommandHandler` orchestrates this: idempotency replay (same `IdempotencyRepository` contract as
 `SpinCommandHandler`, keyed by `(sessionId, requestId)`), per-session command serialization, and best-effort
 wallet/session-state compensation on failure — the same shape as `SpinCommandHandler`'s own orchestration, applied
-to a fixed, pre-enumerated library instead of a live `GameSessionHandling`. No live session object is ever created
-for this path.
+to a configured `PreGeneratedOutcomeSourcing` instead of a live `GameSessionHandling`. No live session object is
+ever created for this path.
 
-The session's own `libraryId`/`libraryHash` is checked **before** the idempotency cache is ever consulted, not
-after: a cached result was necessarily computed against whatever library was configured *at the time*, and a stale
-cache entry has no way to reverify that on its own — a session migrated to a different library (or regenerated
-under the same `libraryId`) since a result was cached must never let that cached result stand in for a fresh
-conflict check.
+### Library identity — always checked against the exact version a draw came from
+
+The session's own `libraryId`/`libraryHash` is compared against the *exact* identity the outcome source reports it
+just drew from — never a separately-fetched, potentially stale or newer snapshot. The draw always happens first
+(deterministic, no wallet/session side effects), immediately followed by this comparison, before the idempotency
+cache is ever consulted and before any wallet transaction. This matters for the in-memory adapter too (a stale
+cached result must never stand in for a fresh conflict check when a session was migrated to a different library),
+but it's essential for a bundle-backed source: `OutcomeLibraryBundleOutcomeSource` reads its mode's index fresh on
+every `drawOutcome()` call, so if the bundle is rebuilt in place between two spins (e.g. a redeploy regenerating
+the same `libraryId`/mode with different weights), the very next draw's own atomic result already reflects that —
+there is no separate, independently-refreshed "current identity" call that could observe a different version than
+the draw itself did.
 
 Every wallet transaction for an attempt gets its own id, `{roundId}:{attemptId}:debit`/`:credit` — `roundId` is the
 requestId (or a fresh id when none was given), stable across every retry of that same logical request, exactly
@@ -190,10 +233,10 @@ so a losing attempt's compensation can only ever touch its own.
 A spin can come back `409` for two distinct reasons, both surfaced as a `"conflict"` `PreGeneratedSpinCommandResult`:
 
 - **Library mismatch**: the loaded session's own `libraryId`/`libraryHash` (stamped at creation) doesn't match the
-  library this handler is currently configured with — e.g. a session from before a redeploy that swapped the
-  library, or a same-id library regenerated with different weights. Caught immediately after load — before the
-  idempotency cache is consulted and before any wallet transaction — so there's nothing to compensate, and a stale
-  cached result can never bypass it.
+  identity the handler's outcome source reports for the round it just atomically drew — e.g. a session from
+  before a redeploy that swapped the library/bundle, or a same-id library/bundle regenerated with different
+  weights. Caught immediately after that draw — before the idempotency cache is consulted and before any wallet
+  transaction — so there's nothing to compensate, and a stale cached result can never bypass it.
 - **Optimistic-locking version conflict**: when the configured `PreGeneratedSessionRepository` additionally
   implements `VersionedPreGeneratedSessionRepository` (`InMemoryPreGeneratedSessionRepository` does out of the
   box — the same additive pattern as `VersionedSessionRepository`/`isVersionedSessionRepository` for the live spin

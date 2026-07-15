@@ -1,7 +1,9 @@
 import {
     IdempotencyRepository,
+    InMemoryPreGeneratedOutcomeSource,
     InMemoryPreGeneratedSessionRepository,
     InMemoryWallet,
+    PreGeneratedOutcomeSourcing,
     PreGeneratedRoundReplayer,
     PreGeneratedSessionRepository,
     PreGeneratedSpinCommandHandler,
@@ -50,6 +52,7 @@ function buildLibrary(): WeightedOutcomeLibrary<string> {
 describe("PreGeneratedSpinCommandHandler", () => {
     let library: WeightedOutcomeLibrary<string>;
     let libraryHash: string;
+    let outcomeSource: PreGeneratedOutcomeSourcing<string>;
     let wallet: InMemoryWallet;
     let sessionRepository: PreGeneratedSessionRepository;
     let handler: PreGeneratedSpinCommandHandler<string>;
@@ -61,9 +64,10 @@ describe("PreGeneratedSpinCommandHandler", () => {
     beforeEach(() => {
         library = buildLibrary();
         libraryHash = computeWeightedOutcomeLibraryHash(library);
+        outcomeSource = new InMemoryPreGeneratedOutcomeSource(library, libraryHash);
         wallet = new InMemoryWallet(1000);
         sessionRepository = new InMemoryPreGeneratedSessionRepository();
-        handler = new PreGeneratedSpinCommandHandler(library, libraryHash, wallet, sessionRepository);
+        handler = new PreGeneratedSpinCommandHandler(outcomeSource, wallet, sessionRepository);
     });
 
     it("returns not-found for an unknown sessionId", async () => {
@@ -172,7 +176,7 @@ describe("PreGeneratedSpinCommandHandler", () => {
                 await sessionRepository.save(sessionId, state);
             },
         };
-        const failingHandler = new PreGeneratedSpinCommandHandler(library, libraryHash, wallet, failingRepository);
+        const failingHandler = new PreGeneratedSpinCommandHandler(outcomeSource, wallet, failingRepository);
 
         await expect(failingHandler.handle("s1")).rejects.toThrow("simulated persistence failure");
 
@@ -189,7 +193,7 @@ describe("PreGeneratedSpinCommandHandler", () => {
             load: () => Promise.resolve(undefined),
             save: () => Promise.reject(new Error("simulated idempotency-store outage")),
         };
-        const failingHandler = new PreGeneratedSpinCommandHandler(library, libraryHash, wallet, sessionRepository, failingIdempotencyRepository);
+        const failingHandler = new PreGeneratedSpinCommandHandler(outcomeSource, wallet, sessionRepository, failingIdempotencyRepository);
 
         await expect(failingHandler.handle("s1", "req-1")).rejects.toThrow("simulated idempotency-store outage");
 
@@ -200,7 +204,7 @@ describe("PreGeneratedSpinCommandHandler", () => {
     it("uses a TransactionalWalletPort directly without requiring the InMemoryWallet class specifically", async () => {
         const plainTransactionalWallet: TransactionalWalletPort = wallet;
         await sessionRepository.save("s2", initialState("seed-2"));
-        const otherHandler = new PreGeneratedSpinCommandHandler(library, libraryHash, plainTransactionalWallet, sessionRepository);
+        const otherHandler = new PreGeneratedSpinCommandHandler(outcomeSource, plainTransactionalWallet, sessionRepository);
 
         const result = await otherHandler.handle("s2");
         expect(result.status).toBe("played");
@@ -255,7 +259,7 @@ describe("PreGeneratedSpinCommandHandler", () => {
         const realRepository = new InMemoryPreGeneratedSessionRepository();
         await realRepository.save("s1", initialState("seed-1"));
         const racingRepository = createRacingSessionRepository(realRepository);
-        const racingHandler = new PreGeneratedSpinCommandHandler(library, libraryHash, wallet, racingRepository);
+        const racingHandler = new PreGeneratedSpinCommandHandler(outcomeSource, wallet, racingRepository);
         const balanceBefore = await wallet.getBalance("s1");
 
         const result = await racingHandler.handle("s1");
@@ -313,7 +317,7 @@ describe("PreGeneratedSpinCommandHandler", () => {
         const realRepository = new InMemoryPreGeneratedSessionRepository();
         await realRepository.save("s1", initialState("seed-1"));
 
-        const handlerA = new PreGeneratedSpinCommandHandler(library, libraryHash, wallet, realRepository);
+        const handlerA = new PreGeneratedSpinCommandHandler(outcomeSource, wallet, realRepository);
 
         // handlerB's own repository lets handlerA's attempt for the exact same (sessionId, requestId)
         // run to completion and commit first, before handlerB proceeds with the (now stale) version it
@@ -334,7 +338,7 @@ describe("PreGeneratedSpinCommandHandler", () => {
             },
             saveVersioned: (sessionId, state, expectedVersion) => realRepository.saveVersioned(sessionId, state, expectedVersion),
         };
-        const handlerB = new PreGeneratedSpinCommandHandler(library, libraryHash, wallet, racingRepositoryForB);
+        const handlerB = new PreGeneratedSpinCommandHandler(outcomeSource, wallet, racingRepositoryForB);
 
         const loserResult = await handlerB.handle("s1", "req-shared");
         const winnerResult = await winnerPromise;

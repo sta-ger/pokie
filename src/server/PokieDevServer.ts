@@ -3,6 +3,7 @@ import http, {IncomingMessage, ServerResponse} from "http";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieGameContext} from "../gamepackage/PokieGameContext.js";
 import type {GameSessionSerializing} from "../net/GameSessionSerializing.js";
+import {InMemoryPreGeneratedOutcomeSource} from "../pregenerated/InMemoryPreGeneratedOutcomeSource.js";
 import {PreGeneratedRoundResultProjector} from "../pregenerated/PreGeneratedRoundResultProjector.js";
 import {computeWeightedOutcomeLibraryHash} from "../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
 import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
@@ -139,8 +140,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             this.preGeneratedLibraryHash = computeWeightedOutcomeLibraryHash(options.preGeneratedOutcomeLibrary);
             this.preGeneratedSessionRepository = options.preGeneratedSessionRepository ?? new InMemoryPreGeneratedSessionRepository();
             this.preGeneratedSpinCommandHandler = new PreGeneratedSpinCommandHandler(
-                options.preGeneratedOutcomeLibrary,
-                this.preGeneratedLibraryHash,
+                new InMemoryPreGeneratedOutcomeSource(options.preGeneratedOutcomeLibrary, this.preGeneratedLibraryHash),
                 transactionalWallet,
                 this.preGeneratedSessionRepository,
                 options.preGeneratedIdempotencyRepository ?? new InMemoryIdempotencyRepository(),

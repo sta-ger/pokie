@@ -119,6 +119,23 @@ describe("OutcomeLibraryBundleValidator", () => {
             );
         });
 
+        it("reports outcome-library-bundle-mode-index-library-schema-version-unsupported for an unsupported librarySchemaVersion", async () => {
+            const index = readIndex(outDir, "base");
+            writeIndex(outDir, "base", {...index, librarySchemaVersion: 999});
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-mode-index-library-schema-version-unsupported"}),
+            );
+        });
+
+        it("reports outcome-library-bundle-mode-index-malformed for a missing/invalid librarySchemaVersion", async () => {
+            const index = readIndex(outDir, "base");
+            const {librarySchemaVersion: _librarySchemaVersion, ...withoutLibrarySchemaVersion} = index;
+            writeIndex(outDir, "base", withoutLibrarySchemaVersion);
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir)).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-mode-index-malformed"}),
+            );
+        });
+
         it("reports outcome-library-bundle-mode-index-library-id-mismatch / -hash-mismatch-with-manifest", async () => {
             const index = readIndex(outDir, "base");
             writeIndex(outDir, "base", {...index, libraryId: "someone-elses-lib"});
@@ -370,6 +387,39 @@ describe("OutcomeLibraryBundleValidator", () => {
             const issues = await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true});
             expect(issues).toContainEqual(expect.objectContaining({code: "outcome-library-bundle-analysis-mismatch"}));
             expect(issues.some((issue) => issue.code === "outcome-library-bundle-hash-mismatch")).toBe(false);
+        });
+
+        it("reports outcome-library-bundle-outcomes-manifest-provenance-mismatch when manifest.json's own game id/version doesn't match what the outcomes were actually built from", async () => {
+            const manifest = readManifest(outDir);
+            writeManifest(outDir, {...manifest, game: {...manifest.game, id: "a-completely-different-game"}});
+
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-outcomes-manifest-provenance-mismatch"}),
+            );
+        });
+
+        it("reports outcome-library-bundle-outcomes-manifest-provenance-mismatch when manifest.json's own configHash doesn't match the outcomes", async () => {
+            const manifest = readManifest(outDir);
+            writeManifest(outDir, {...manifest, configHash: "sha256:tampered-config-hash"});
+
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-outcomes-manifest-provenance-mismatch"}),
+            );
+        });
+
+        it("reports outcome-library-bundle-outcomes-manifest-mode-mismatch when manifest.json's own betMode/stake for this mode doesn't match the outcomes", async () => {
+            const manifest = readManifest(outDir);
+            writeManifest(outDir, {...manifest, modes: [{...manifest.modes[0], betMode: "a-different-bet-mode"}]});
+
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-outcomes-manifest-mode-mismatch"}),
+            );
+
+            writeManifest(outDir, {...manifest, modes: [{...manifest.modes[0], stake: manifest.modes[0].stake + 1}]});
+
+            expect(await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true})).toContainEqual(
+                expect.objectContaining({code: "outcome-library-bundle-outcomes-manifest-mode-mismatch"}),
+            );
         });
     });
 });

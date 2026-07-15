@@ -1,57 +1,53 @@
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
-import {computeWeightedOutcomeLibraryHash} from "../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
-import type {WeightedOutcome} from "../weightedoutcome/WeightedOutcome.js";
-import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
 import {isPositiveSafeInteger} from "./internal/isPositiveSafeInteger.js";
+import type {PreGeneratedOutcomeSelection} from "./PreGeneratedOutcomeSelection.js";
 import {PreGeneratedRoundBuildError} from "./PreGeneratedRoundBuildError.js";
 import {PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION, type PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
 import type {PreGeneratedRoundRuntimeContext} from "./PreGeneratedRoundRuntimeContext.js";
 
 export type PreGeneratedRoundBuildOptions<T extends string | number = string> = {
-    library: WeightedOutcomeLibrary<T>;
-    // The caller's claimed hash for `library` — verified against computeWeightedOutcomeLibraryHash(library)
-    // below rather than trusted as-is, so a stale or forged libraryHash (e.g. left over from a library that
-    // was since regenerated with different weights under the same libraryId) is rejected rather than
-    // silently stamped onto this result's provenance.
-    libraryHash: string;
-    outcome: WeightedOutcome<T>;
+    // The identity the caller expects this selection to have come from — typically a session's own stamped
+    // libraryId/libraryHash. Checked against `selection`'s own reported identity below rather than trusted
+    // implicitly: a defensive backstop for any caller of this function, mirroring the identity check
+    // PreGeneratedSpinCommandHandler itself already performs before ever reaching this point.
+    expectedLibraryId: string;
+    expectedLibraryHash: string;
+    // Already drawn, atomically, from a PreGeneratedOutcomeSourcing implementation — carries its own
+    // libraryId/libraryHash/totalWeight alongside the outcome itself, so this function never needs a full
+    // WeightedOutcomeLibrary to build a result from it.
+    selection: PreGeneratedOutcomeSelection<T>;
     runtime: PreGeneratedRoundRuntimeContext;
 };
 
-// The one place a PreGeneratedRoundResult is assembled — always from an outcome already selected by
-// WeightedOutcomeSelector (or reproduced by PreGeneratedRoundReplayer) against an already-built
-// WeightedOutcomeLibrary, never a second calculation path. `outcome.artifact` is referenced directly
-// (already deeply frozen/immutable by buildRoundArtifact/buildWeightedOutcomeLibrary), never copied or
-// mutated — the canonical library content this result was drawn from stays exactly as it was.
+// The one place a PreGeneratedRoundResult is assembled — always from a PreGeneratedOutcomeSelection already
+// produced by a PreGeneratedOutcomeSourcing implementation (InMemoryPreGeneratedOutcomeSource,
+// OutcomeLibraryBundleOutcomeSource, or reproduced by PreGeneratedRoundReplayer), never a second calculation
+// path. `selection.outcome.artifact` is referenced directly (already deeply frozen/immutable by
+// buildRoundArtifact/buildWeightedOutcomeLibrary), never copied or mutated.
 //
-// Fails fast with PreGeneratedRoundBuildError — before any result is ever returned — on: an `outcome`
-// that isn't the library's own object for that id (strict reference identity on the *whole* outcome,
-// not just its artifact — catches a forged weight riding along a genuine artifact reference, not only a
-// wholesale swap), a `libraryHash` that doesn't match the library's actual, freshly recomputed hash, an
-// invalid runtime.roundId/sessionId, a non-finite runtime.balanceBefore/balanceAfter, a malformed
-// runtime.transactions entry, a non-positive-safe-integer outcome.weight/library total weight (stricter
-// than WeightedOutcomeLibrary itself requires — see WeightedOutcomeSelector's own doc comment for why a
-// library meant to be *drawn from* needs integer weights), or content that isn't JSON-safe.
+// Fails fast with PreGeneratedRoundBuildError — before any result is ever returned — on: a `selection` whose
+// own libraryId/libraryHash doesn't match the caller's expected identity, an invalid runtime.roundId/sessionId,
+// a non-finite runtime.balanceBefore/balanceAfter, a malformed runtime.transactions entry, a non-positive-safe-
+// integer selection.outcome.weight/selection.totalWeight (stricter than WeightedOutcomeLibrary itself requires
+// — see WeightedOutcomeSelector's own doc comment for why a library meant to be *drawn from* needs integer
+// weights), or content that isn't JSON-safe. There is no longer a "the outcome must be the library's own array
+// element" reference-identity check — without a full library there's no array to check against — but that
+// guarantee now comes structurally from PreGeneratedOutcomeSourcing itself: the only way to obtain a
+// PreGeneratedOutcomeSelection at all is a real source's own drawOutcome(), which always produces a genuine,
+// already-verified outcome (WeightedOutcomeSelector.select for the in-memory adapter,
+// readAndVerifyOutcomeAtByteRange for the bundle adapter).
 export function buildPreGeneratedRoundResult<T extends string | number = string>(
     options: PreGeneratedRoundBuildOptions<T>,
 ): PreGeneratedRoundResult<T> {
-    const {library, libraryHash, outcome, runtime} = options;
+    const {expectedLibraryId, expectedLibraryHash, selection, runtime} = options;
 
-    const matched = library.outcomes.find((candidate) => candidate.id === outcome.id);
-    if (matched === undefined || matched !== outcome) {
+    if (selection.libraryId !== expectedLibraryId || selection.libraryHash !== expectedLibraryHash) {
         throw new PreGeneratedRoundBuildError(
-            "pre-generated-round-outcome-not-in-library",
-            `Outcome "${outcome.id}" is not present in library "${library.libraryId}".`,
-        );
-    }
-
-    const actualLibraryHash = computeWeightedOutcomeLibraryHash(library);
-    if (libraryHash !== actualLibraryHash) {
-        throw new PreGeneratedRoundBuildError(
-            "pre-generated-round-library-hash-mismatch",
-            `libraryHash "${libraryHash}" does not match library "${library.libraryId}"'s actual hash "${actualLibraryHash}".`,
+            "pre-generated-round-source-identity-mismatch",
+            `selection was drawn against libraryId "${selection.libraryId}"/hash "${selection.libraryHash}", but ` +
+                `expected libraryId "${expectedLibraryId}"/hash "${expectedLibraryHash}".`,
         );
     }
 
@@ -106,30 +102,29 @@ export function buildPreGeneratedRoundResult<T extends string | number = string>
         }
     });
 
-    if (!isPositiveSafeInteger(outcome.weight)) {
+    if (!isPositiveSafeInteger(selection.outcome.weight)) {
         throw new PreGeneratedRoundBuildError(
             "pre-generated-round-selection-weight-invalid",
-            `outcome.weight must be a positive safe integer, got ${outcome.weight}.`,
+            `selection.outcome.weight must be a positive safe integer, got ${selection.outcome.weight}.`,
         );
     }
 
-    const totalWeight = library.outcomes.reduce((sum, candidate) => sum + candidate.weight, 0);
-    if (!isPositiveSafeInteger(totalWeight)) {
+    if (!isPositiveSafeInteger(selection.totalWeight)) {
         throw new PreGeneratedRoundBuildError(
             "pre-generated-round-selection-total-weight-invalid",
-            `library "${library.libraryId}"'s total weight must be a positive safe integer, got ${totalWeight}.`,
+            `selection.totalWeight must be a positive safe integer, got ${selection.totalWeight}.`,
         );
     }
 
     const candidate: PreGeneratedRoundResult<T> = {
         schemaVersion: PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION,
         selection: {
-            libraryId: library.libraryId,
-            libraryHash,
-            outcomeId: outcome.id,
-            weight: outcome.weight,
-            totalWeight,
-            probability: outcome.weight / totalWeight,
+            libraryId: selection.libraryId,
+            libraryHash: selection.libraryHash,
+            outcomeId: selection.outcome.id,
+            weight: selection.outcome.weight,
+            totalWeight: selection.totalWeight,
+            probability: selection.outcome.weight / selection.totalWeight,
         },
         runtime: {
             roundId: runtime.roundId,
@@ -139,7 +134,7 @@ export function buildPreGeneratedRoundResult<T extends string | number = string>
             balanceAfter: runtime.balanceAfter,
             transactions: runtime.transactions.map((transaction) => ({...transaction})),
         },
-        artifact: outcome.artifact,
+        artifact: selection.outcome.artifact,
     };
 
     try {

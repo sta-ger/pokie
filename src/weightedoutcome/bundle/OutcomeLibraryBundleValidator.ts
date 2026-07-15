@@ -7,6 +7,7 @@ import {isPositiveSafeInteger} from "../../pregenerated/internal/isPositiveSafeI
 import {resolveSafeStakeEngineFilePath} from "../../stakeengine/internal/resolveSafeStakeEngineFilePath.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {compareIds} from "../internal/compareIds.js";
+import {WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION} from "../WeightedOutcomeLibrary.js";
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "./internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
 import {iterateOutcomesJsonl} from "./internal/iterateOutcomesJsonl.js";
 import {readAndVerifyOutcomeAtByteRange} from "./internal/readOutcomeAtByteRange.js";
@@ -73,7 +74,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         }
 
         for (const modeEntry of manifest.modes) {
-            await this.validateMode(bundleDir, modeEntry, deep, issues);
+            await this.validateMode(bundleDir, manifest, modeEntry, deep, issues);
         }
 
         return issues;
@@ -363,7 +364,13 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         return ok;
     }
 
-    private async validateMode(bundleDir: string, modeEntry: OutcomeLibraryBundleManifestModeEntry, deep: boolean, issues: ValidationIssue[]): Promise<void> {
+    private async validateMode(
+        bundleDir: string,
+        manifest: OutcomeLibraryBundleManifest,
+        modeEntry: OutcomeLibraryBundleManifestModeEntry,
+        deep: boolean,
+        issues: ValidationIssue[],
+    ): Promise<void> {
         const modeName = modeEntry.modeName;
 
         const indexPath = isNonEmptyString(modeEntry.indexFile) ? resolveSafeStakeEngineFilePath(bundleDir, modeEntry.indexFile) : undefined;
@@ -388,6 +395,15 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                 code: "outcome-library-bundle-mode-index-schema-version-unsupported",
                 severity: "error",
                 message: `mode "${modeName}": index schemaVersion (${index.schemaVersion}) is not supported (expected ${OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION}).`,
+                details: {modeName},
+            });
+            return;
+        }
+        if (index.librarySchemaVersion !== WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION) {
+            issues.push({
+                code: "outcome-library-bundle-mode-index-library-schema-version-unsupported",
+                severity: "error",
+                message: `mode "${modeName}": index librarySchemaVersion (${index.librarySchemaVersion}) is not supported (expected ${WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION}).`,
                 details: {modeName},
             });
             return;
@@ -474,7 +490,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             if (layoutOk) {
                 this.validateRandomAccessConsistency(modeName, outcomesPath, index.entries, issues);
             }
-            await this.validateModeDeep(outcomesPath, modeEntry, index, issues);
+            await this.validateModeDeep(outcomesPath, manifest, modeEntry, index, issues);
         }
     }
 
@@ -618,6 +634,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             !Array.isArray((parsed as {entries?: unknown}).entries) ||
             !isNonEmptyString((parsed as {modeName?: unknown}).modeName) ||
             !isNonEmptyString((parsed as {libraryId?: unknown}).libraryId) ||
+            !isPositiveSafeInteger((parsed as {librarySchemaVersion?: unknown}).librarySchemaVersion) ||
             !isValidLibraryHash((parsed as {libraryHash?: unknown}).libraryHash) ||
             !isPositiveSafeInteger((parsed as {outcomeCount?: unknown}).outcomeCount) ||
             !isPositiveSafeInteger((parsed as {totalWeight?: unknown}).totalWeight) ||
@@ -698,9 +715,17 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
     // cross-outcome homogeneity (game/config/pokieVersion/betMode/stake consistency) the same way
     // buildWeightedOutcomeLibrary itself would — and recomputes the mode's own hash incrementally, in this same
     // pass (see streamModeOutcomesToTempFile's own doc comment for why a hash never needs a second pass, unlike
-    // the exact analyzer statistics, which do — see computeOnlineWeightedOutcomeLibraryAnalysis).
+    // the exact analyzer statistics, which do — see computeOnlineWeightedOutcomeLibraryAnalysis). Also cross-
+    // checks the outcomes' own common provenance/betMode/stake against manifest.json's own claimed game/
+    // configHash (top-level) and betMode/stake (per mode entry) — a check the cross-*outcome* consistency check
+    // above can never catch on its own, since it only ever compares outcomes against each other, never against
+    // the manifest itself. Deliberately does not compare against manifest.pokieVersion: that field records which
+    // pokie *tool* version built this bundle file, a different, unrelated quantity from an artifact's own
+    // provenance.pokieVersion (which pokie version *computed* that artifact) — the two are never required to
+    // match, so it would be wrong to treat a difference there as corruption.
     private async validateModeDeep(
         outcomesPath: string,
+        manifest: OutcomeLibraryBundleManifest,
         modeEntry: OutcomeLibraryBundleManifestModeEntry,
         index: OutcomeLibraryBundleModeIndex,
         issues: ValidationIssue[],
@@ -804,6 +829,38 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             };
             if (reference === undefined) {
                 reference = current;
+
+                // Cross-checked once, against the first outcome only: every later outcome is already required
+                // (see the "inconsistent-provenance"/"inconsistent-bet-mode"/"inconsistent-stake" checks below)
+                // to agree with this same reference, so checking the reference itself against manifest.json's
+                // own claims is enough to catch a manifest whose game/version/configHash/betMode/stake doesn't
+                // actually match what this mode's outcomes were built from — a gap the existing cross-*outcome*
+                // consistency check alone can't catch, since it never reads manifest.json at all.
+                if (current.gameId !== manifest.game.id || current.gameVersion !== manifest.game.version || current.configHash !== manifest.configHash) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-manifest-provenance-mismatch",
+                        severity: "error",
+                        message:
+                            `mode "${modeName}": this mode's outcomes have provenance (game id "${String(current.gameId)}", version ` +
+                            `"${String(current.gameVersion)}", configHash "${String(current.configHash)}") that does not match manifest.json's own ` +
+                            `game (id "${manifest.game.id}", version "${manifest.game.version}") / configHash ("${String(manifest.configHash)}").`,
+                        details: {modeName},
+                    });
+                    sawError = true;
+                    continue;
+                }
+                if (current.betMode !== modeEntry.betMode || current.stake !== modeEntry.stake) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-manifest-mode-mismatch",
+                        severity: "error",
+                        message:
+                            `mode "${modeName}": this mode's outcomes have betMode ${JSON.stringify(current.betMode)}/stake ${String(current.stake)}, ` +
+                            `which does not match manifest.json's own betMode ${JSON.stringify(modeEntry.betMode)}/stake ${String(modeEntry.stake)} for this mode.`,
+                        details: {modeName},
+                    });
+                    sawError = true;
+                    continue;
+                }
             } else if (
                 current.gameId !== reference.gameId ||
                 current.gameVersion !== reference.gameVersion ||

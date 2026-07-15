@@ -135,18 +135,32 @@ than returning diagnostics — the same "assume already validated, fail fast on 
 
 ### Bundle-native OutcomeSource (pre-generated runtime)
 
+`OutcomeLibraryBundleOutcomeSource` binds one `(bundleDir, modeName)` pair to the general
+[`PreGeneratedOutcomeSourcing`](pregenerated-runtime.md#pregeneratedoutcomesourcing--decoupling-the-runtime-from-a-full-library)
+interface `PreGeneratedSpinCommandHandler` consumes:
+
 ```ts
-interface OutcomeLibraryBundleOutcomeSourcing<T extends string | number = string> {
-    drawOutcome(randomSource: WeightedOutcomeRandomSource): Promise<WeightedOutcome<T>>;
-    getLibraryHash(): Promise<string>;
+type PreGeneratedOutcomeSelection<T extends string | number = string> = {
+    libraryId: string;
+    libraryHash: string;
+    totalWeight: number;
+    outcome: WeightedOutcome<T>;
+};
+
+interface PreGeneratedOutcomeSourcing<T extends string | number = string> {
+    drawOutcome(randomSource: WeightedOutcomeRandomSource): Promise<PreGeneratedOutcomeSelection<T>>;
 }
 ```
 
-`OutcomeLibraryBundleOutcomeSource` binds one `(bundleDir, modeName)` pair to `drawOutcome`/`readModeIndex` —
-every call reads only that mode's own small index, plus, for `drawOutcome`, exactly the one winning outcome's
-own byte range. It never calls `readLibrary()`, so a caller (the pre-generated runtime, or any other code that
-just needs to draw outcomes and know a mode's `libraryHash`) can serve draws directly off a bundle on disk
-without ever materializing a `WeightedOutcomeLibrary`.
+Every `drawOutcome()` call reads this mode's own small index_<modeName>.json exactly **once** — never a separate
+read for identity and another for selection — picks a winning entry by exact integer cumulative weight, reads
+exactly that one outcome's own byte range, and returns `libraryId`/`libraryHash`/`totalWeight` from that same
+single index read alongside the outcome. It never calls `readLibrary()`, so a caller (the pre-generated runtime,
+or any other code that just needs to draw outcomes) can serve draws directly off a bundle on disk without ever
+materializing a `WeightedOutcomeLibrary`. Reading the index exactly once per draw is what lets
+`PreGeneratedSpinCommandHandler`'s own session-identity check relate to the *exact* bundle version a draw was
+made against — if the bundle is rebuilt between two calls, the very next draw's own atomic result reflects that
+immediately, rather than a separately-fetched, possibly stale identity.
 
 ## Streaming writer
 
@@ -200,6 +214,7 @@ opens an outcomes file's content, only an exact byte-layout check against the in
 | `outcome-library-bundle-manifest-files-invalid` / `-duplicate` / `-entry-unsafe` / `-missing-entry` / `-unexpected-entry` | `manifest.json`'s `files` isn't a non-empty array of unique, safe filenames that exactly match `"manifest.json"` plus every current mode's own `indexFile`/`outcomesFile` — nothing missing, nothing extra |
 | `outcome-library-bundle-path-unsafe` | a mode's `indexFile`/`outcomesFile` is absolute, contains `..`, contains a path separator, or otherwise resolves outside `bundleDir` |
 | `outcome-library-bundle-mode-index-missing` / `-unreadable` / `-invalid-json` / `-malformed` / `-schema-version-unsupported` | the same five outcomes, for a mode's own index file |
+| `outcome-library-bundle-mode-index-library-schema-version-unsupported` | the index's `librarySchemaVersion` isn't the currently-supported `WeightedOutcomeLibrary` schema version |
 | `outcome-library-bundle-mode-index-mode-name-mismatch` / `-library-id-mismatch` / `-hash-mismatch-with-manifest` / `-outcomes-file-mismatch` | the index and the manifest disagree on a mode's `modeName`/`libraryId`/`libraryHash`/`outcomesFile` |
 | `outcome-library-bundle-mode-index-entry-invalid` | an index entry isn't `{id: non-empty string, weight: positive safe integer, byteOffset/byteLength: non-negative safe integers}` |
 | `outcome-library-bundle-mode-index-duplicate-id` / `-entries-not-sorted` | the index's own entries have a duplicate id, or aren't canonically sorted by id |
@@ -225,6 +240,8 @@ present in the file but absent from the index, or vice versa):
 | `outcome-library-bundle-outcomes-weight-mismatch` | the same id's weight disagrees between the outcomes file and the index |
 | `outcome-library-bundle-outcomes-artifact-invalid` | an outcome's artifact fails `RoundArtifactValidator` — never a second definition of "valid" |
 | `outcome-library-bundle-outcomes-inconsistent-provenance` / `-inconsistent-bet-mode` / `-inconsistent-stake` | an outcome's game/config/pokieVersion, `betMode`, or `stake` disagrees with this mode's other outcomes |
+| `outcome-library-bundle-outcomes-manifest-provenance-mismatch` | this mode's outcomes' own (mutually-consistent) game id/version/configHash doesn't match `manifest.json`'s own top-level `game`/`configHash` — a gap the cross-*outcome* check above can't catch on its own, since it never reads the manifest. Deliberately does not compare `manifest.pokieVersion` (which pokie *tool* version built this bundle file) against `artifact.provenance.pokieVersion` (which pokie version *computed* that artifact) — the two measure different things and are never required to match |
+| `outcome-library-bundle-outcomes-manifest-mode-mismatch` | this mode's outcomes' own betMode/stake doesn't match `manifest.json`'s own per-mode `betMode`/`stake` entry |
 | `outcome-library-bundle-outcomes-not-json-safe` | an outcome can't be re-canonicalized via `toCanonicalJson` (used to recompute the hash) |
 | `outcome-library-bundle-outcomes-count-mismatch` | the outcomes file's own valid-record count disagrees with the index's entry count |
 | `outcome-library-bundle-hash-mismatch` | the recomputed `libraryHash` doesn't match the manifest's recorded one |
@@ -236,13 +253,14 @@ mode reports everything it finds rather than stopping at the first kind of corru
 
 ## Integration
 
-- **Pre-generated runtime** — no changes to `WeightedOutcomeSelector`, `PreGeneratedSpinCommandHandler`, or
-  `PokieDevServerOptions` (all stabilized, unchanged contracts — see [Pre-Generated
-  Runtime](pregenerated-runtime.md)). A caller that still wants a full in-memory `WeightedOutcomeLibrary` calls
-  `loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName)` (which just calls `reader.readLibrary`) then
-  `computeWeightedOutcomeLibraryHash` to build the `(library, hash)` pair those constructors accept; a caller
-  that wants to avoid materializing a library entirely uses `OutcomeLibraryBundleOutcomeSource` instead (see
-  above).
+- **Pre-generated runtime** — `PreGeneratedSpinCommandHandler` is wired to a
+  [`PreGeneratedOutcomeSourcing`](pregenerated-runtime.md#pregeneratedoutcomesourcing--decoupling-the-runtime-from-a-full-library),
+  not a raw `WeightedOutcomeLibrary` (`WeightedOutcomeSelector`/`PokieDevServerOptions` themselves are unchanged
+  — see [Pre-Generated Runtime](pregenerated-runtime.md)). A caller that still wants a full in-memory
+  `WeightedOutcomeLibrary` calls `loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName)` (which just calls
+  `reader.readLibrary`) then `computeWeightedOutcomeLibraryHash` to build an `InMemoryPreGeneratedOutcomeSource`;
+  a caller that wants to avoid materializing a library entirely uses `OutcomeLibraryBundleOutcomeSource` directly
+  (see above) — either one plugs straight into `PreGeneratedSpinCommandHandler`'s constructor.
 - **Stake Engine exporter** — `pokie stakeengine export`'s `config.json` mode entries gain an alternative to
   `libraryPath`:
   ```json
@@ -298,8 +316,9 @@ for await (const outcome of reader.iterateModeOutcomes("./bundle", "base")) {
 const oneOutcome = await reader.drawOutcome("./bundle", "base", randomSource);
 const wholeLibrary = await loadWeightedOutcomeLibraryFromBundle("./bundle", "base");
 
-// The pre-generated runtime's own bundle-native path — never calls readLibrary().
+// The pre-generated runtime's own bundle-native path — never calls readLibrary(). One index read returns the
+// outcome together with the exact libraryId/libraryHash/totalWeight it was drawn against.
 const source = new OutcomeLibraryBundleOutcomeSource("./bundle", "base");
-const drawnOutcome = await source.drawOutcome(randomSource);
-const libraryHash = await source.getLibraryHash();
+const selection = await source.drawOutcome(randomSource);
+console.log(selection.libraryId, selection.libraryHash, selection.totalWeight, selection.outcome.id);
 ```
