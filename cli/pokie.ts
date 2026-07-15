@@ -10,6 +10,7 @@ import {DevCommand} from "./commands/DevCommand.js";
 import {DiffCommand} from "./commands/DiffCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
+import {OutcomeLibraryCommand} from "./commands/OutcomeLibraryCommand.js";
 import {ParCommand} from "./commands/ParCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
@@ -59,6 +60,7 @@ async function run(): Promise<number> {
         new DiffCommand(),
         new InitCommand(readOwnVersion()),
         new InspectCommand(),
+        new OutcomeLibraryCommand(readOwnVersion()),
         new ParCommand(readOwnVersion()),
         new ReplayCommand(),
         new ReportCommand(),

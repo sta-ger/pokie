@@ -214,7 +214,47 @@ describe("StakeEngineCommand", () => {
             const loadJson = createStubJsonStore({[CONFIG_PATH]: {modes: [{modeName: "base"}]}});
             const command = new StakeEngineCommand("1.3.0", createStubExporter(successResult), undefined, loadJson);
 
-            await expect(command.run(["export", CONFIG_PATH])).rejects.toThrow(/modes\[0\] must be/);
+            await expect(command.run(["export", CONFIG_PATH])).rejects.toThrow(/must have a string "modeName" and a number "cost"/);
+        });
+
+        it("throws a descriptive error when a mode entry has neither libraryPath nor bundleDir, or both", async () => {
+            const neither = createStubJsonStore({[CONFIG_PATH]: {modes: [{modeName: "base", cost: 1}]}});
+            const both = createStubJsonStore({
+                [CONFIG_PATH]: {modes: [{modeName: "base", cost: 1, libraryPath: "./libraries/base.json", bundleDir: "./bundle"}]},
+            });
+
+            await expect(new StakeEngineCommand("1.3.0", createStubExporter(successResult), undefined, neither).run(["export", CONFIG_PATH])).rejects.toThrow(
+                /must specify exactly one of "libraryPath" or "bundleDir"/,
+            );
+            await expect(new StakeEngineCommand("1.3.0", createStubExporter(successResult), undefined, both).run(["export", CONFIG_PATH])).rejects.toThrow(
+                /must specify exactly one of "libraryPath" or "bundleDir"/,
+            );
+        });
+
+        it("loads a mode's library from a canonical outcome-library bundle when bundleDir is given, resolved relative to the config file, defaulting bundleModeName to modeName", async () => {
+            const exporter = createStubExporter(successResult);
+            const loadJson = createStubJsonStore({
+                [CONFIG_PATH]: {
+                    modes: [
+                        {modeName: "base", cost: 1, bundleDir: "./bundle", bundleModeName: "canonicalBase"},
+                        {modeName: "bonus", cost: 100, bundleDir: "./bundle"},
+                    ],
+                },
+            });
+            const loadLibraryFromBundle = jest.fn((bundleDir: string, modeName: string) =>
+                Promise.resolve(modeName === "canonicalBase" ? BASE_LIBRARY : BONUS_LIBRARY),
+            );
+            const command = new StakeEngineCommand("1.3.0", exporter, undefined, loadJson, undefined, loadLibraryFromBundle);
+
+            const exitCode = await command.run(["export", CONFIG_PATH]);
+
+            expect(exitCode).toBe(0);
+            expect(loadLibraryFromBundle).toHaveBeenCalledWith("/project/bundle", "canonicalBase");
+            expect(loadLibraryFromBundle).toHaveBeenCalledWith("/project/bundle", "bonus");
+            expect(exporter.calledWith?.modes).toEqual([
+                {modeName: "base", cost: 1, library: BASE_LIBRARY},
+                {modeName: "bonus", cost: 100, library: BONUS_LIBRARY},
+            ]);
         });
     });
 

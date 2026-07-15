@@ -210,6 +210,17 @@ pokie stakeengine export <config.json> [--out <dir>]
 `libraryPath` entries resolve relative to `<config.json>`'s own directory. Default `--out` is `<config.json>`'s
 directory plus `/stakeengine`.
 
+A mode entry can load its library from a canonical [Outcome Library Bundle](outcome-library-bundle.md) instead
+of a plain JSON file — replace `libraryPath` with `bundleDir` (and optionally `bundleModeName`, which defaults
+to `modeName`):
+
+```json
+{"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
+```
+
+Exactly one of `libraryPath`/`bundleDir` is required per mode; both loading paths converge on the same
+`StakeEngineExportModeInput[]`, so the rest of the export behaves identically either way.
+
 ## Programmatic usage
 
 ```ts

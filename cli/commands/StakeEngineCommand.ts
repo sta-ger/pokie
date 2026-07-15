@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {
+    loadWeightedOutcomeLibraryFromBundle,
     StakeEngineExporter,
     StakeEngineExporting,
     StakeEngineExportModeInput,
@@ -17,9 +18,11 @@ const USAGE = "Usage: pokie stakeengine export <config.json> [--out <dir>]\n   o
 const EXPORT_USAGE = "Usage: pokie stakeengine export <config.json> [--out <dir>]";
 const IMPORT_USAGE = "Usage: pokie stakeengine import <stakeDir> [--out <dir>]";
 const CONFIG_HINT =
-    '<config.json> lists one WeightedOutcomeLibrary JSON file per Stake mode: ' +
-    '{"modes": [{"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — ' +
-    "see docs/stake-engine-export.md for the format.";
+    '<config.json> lists one WeightedOutcomeLibrary source per Stake mode, either a plain JSON file — ' +
+    '{"modes": [{"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a canonical ' +
+    'outcome-library bundle (see docs/outcome-library-bundle.md) — {"modeName": "base", "cost": 1, "bundleDir": ' +
+    '"./bundle", "bundleModeName": "base"} ("bundleModeName" defaults to "modeName" when omitted); exactly one ' +
+    "of \"libraryPath\"/\"bundleDir\" is required per mode — see docs/stake-engine-export.md for the format.";
 const STAKE_DIR_HINT =
     '<stakeDir> is a directory previously produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
     "CSV/books, and its own pokie-manifest.json) — see docs/stake-engine-import.md for details.";
@@ -27,7 +30,13 @@ const STAKE_DIR_HINT =
 type ExportOptions = {configPath: string; outDir: string};
 type ImportOptions = {stakeDir: string; outDir: string};
 
-type ExportDescriptorModeEntry = {modeName: string; cost: number; libraryPath: string};
+type ExportDescriptorModeEntry = {
+    modeName: string;
+    cost: number;
+    libraryPath?: string;
+    bundleDir?: string;
+    bundleModeName?: string;
+};
 type ExportDescriptor = {modes: ExportDescriptorModeEntry[]};
 
 // Two CLI verbs ("pokie stakeengine export"/"pokie stakeengine import") sharing one command, the same way
@@ -38,6 +47,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly importer: StakeEngineImporting;
     private readonly loadJson: (filePath: string) => unknown;
     private readonly importWriter: StakeEngineImportWriting;
+    private readonly loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary>;
 
     constructor(
         pokieVersion: string,
@@ -45,11 +55,14 @@ export class StakeEngineCommand implements CliCommandHandling {
         importer: StakeEngineImporting = new StakeEngineImporter(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
         importWriter: StakeEngineImportWriting = new StakeEngineImportWriter(),
+        loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary> = (bundleDir, modeName) =>
+            loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName),
     ) {
         this.exporter = exporter;
         this.importer = importer;
         this.loadJson = loadJson;
         this.importWriter = importWriter;
+        this.loadLibraryFromBundle = loadLibraryFromBundle;
     }
 
     public getName(): string {
@@ -80,11 +93,16 @@ export class StakeEngineCommand implements CliCommandHandling {
         const descriptor = this.loadDescriptor(options.configPath);
         const configDir = path.dirname(options.configPath);
 
-        const modes: StakeEngineExportModeInput[] = descriptor.modes.map((entry) => ({
-            modeName: entry.modeName,
-            cost: entry.cost,
-            library: this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary,
-        }));
+        const modes: StakeEngineExportModeInput[] = await Promise.all(
+            descriptor.modes.map(async (entry) => ({
+                modeName: entry.modeName,
+                cost: entry.cost,
+                library:
+                    entry.libraryPath !== undefined
+                        ? (this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary)
+                        : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+            })),
+        );
 
         const result = await this.exporter.exportToDirectory(modes, options.outDir);
         const errors = result.issues.filter((issue) => issue.severity === "error");
@@ -156,16 +174,30 @@ export class StakeEngineCommand implements CliCommandHandling {
         }
 
         const modes = (parsed as {modes: unknown[]}).modes.map((entry, position) => {
-            if (
-                typeof entry !== "object" ||
-                entry === null ||
-                typeof (entry as {modeName?: unknown}).modeName !== "string" ||
-                typeof (entry as {cost?: unknown}).cost !== "number" ||
-                typeof (entry as {libraryPath?: unknown}).libraryPath !== "string"
-            ) {
-                throw new Error(`"${configPath}": modes[${position}] must be {"modeName": string, "cost": number, "libraryPath": string}. ${CONFIG_HINT}`);
+            if (typeof entry !== "object" || entry === null) {
+                throw new Error(`"${configPath}": modes[${position}] must be an object. ${CONFIG_HINT}`);
             }
-            return entry as ExportDescriptorModeEntry;
+            const e = entry as {modeName?: unknown; cost?: unknown; libraryPath?: unknown; bundleDir?: unknown; bundleModeName?: unknown};
+            if (typeof e.modeName !== "string" || typeof e.cost !== "number") {
+                throw new Error(`"${configPath}": modes[${position}] must have a string "modeName" and a number "cost". ${CONFIG_HINT}`);
+            }
+
+            const hasLibraryPath = typeof e.libraryPath === "string";
+            const hasBundleDir = typeof e.bundleDir === "string";
+            if (hasLibraryPath === hasBundleDir) {
+                throw new Error(`"${configPath}": modes[${position}] must specify exactly one of "libraryPath" or "bundleDir". ${CONFIG_HINT}`);
+            }
+            if (hasBundleDir && e.bundleModeName !== undefined && typeof e.bundleModeName !== "string") {
+                throw new Error(`"${configPath}": modes[${position}]'s "bundleModeName" must be a string when present. ${CONFIG_HINT}`);
+            }
+
+            return {
+                modeName: e.modeName,
+                cost: e.cost,
+                ...(hasLibraryPath
+                    ? {libraryPath: e.libraryPath as string}
+                    : {bundleDir: e.bundleDir as string, bundleModeName: e.bundleModeName as string | undefined}),
+            };
         });
 
         return {modes};

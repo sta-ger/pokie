@@ -693,6 +693,57 @@ byte-identical `index.json`/CSVs/books (see
 reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the original pre-export library (see
 [Lossy vs. lossless](stake-engine-import.md#lossy-vs-lossless--read-this-before-anything-else)).
 
+## `pokie outcomelibrary build <config.json>`
+
+Builds a canonical [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
+small per-mode index, and one streaming JSONL outcomes file per mode — from one or more plain
+`WeightedOutcomeLibrary` JSON files. This is the one canonical bundle format both the pre-generated runtime and
+`pokie stakeengine export` (via a mode's `bundleDir`/`bundleModeName`) load from.
+
+```
+pokie outcomelibrary build outcomelibrary-config.json --out bundle
+```
+
+`<config.json>`:
+
+```json
+{
+    "modes": [
+        {"modeName": "base", "libraryPath": "./libraries/base.json"},
+        {"modeName": "bonus", "libraryPath": "./libraries/bonus.json"}
+    ]
+}
+```
+
+Options:
+
+- `--out <dir>` — where to write the bundle (default: `<config.json>`'s directory plus `/outcomelibrary`).
+
+Published atomically as a whole directory (temp-dir-then-swap, same discipline as `stakeengine export`): a write
+failure never leaves partial files behind and never alters an existing `--out` in place, and a mode dropped from
+the source no longer leaves a stale `index_<name>.json`/`outcomes_<name>.jsonl` behind. On any error-level
+`ValidationIssue` (a malformed library, a duplicate/case-colliding mode name), nothing is written and the exit
+code is non-zero.
+
+## `pokie outcomelibrary validate <bundleDir>`
+
+Validates a bundle directory — see [Outcome Library Bundle](outcome-library-bundle.md#validation) for the full
+validation-code table.
+
+```
+pokie outcomelibrary validate bundle
+pokie outcomelibrary validate bundle --deep
+```
+
+Options:
+
+- `--deep` — additionally streams every outcome and fully rebuilds each mode's library, to catch corruption a
+  cheap structural check alone can't (a truncated/tampered record, a hash that no longer matches). Off by
+  default: only the manifest and each mode's own small index are checked, since the whole point of the bundle
+  format is to avoid loading everything.
+
+Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
+
 ## `pokie init`
 
 Turns an existing npm project into a minimal POKIE-compatible game package.

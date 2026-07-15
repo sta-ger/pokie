@@ -67,7 +67,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     paylines, available bets) into a `GameBlueprint` JSON file; `pokie par export <config.json>`, which
     exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie stakeengine export <config.json>`,
     which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine math-sdk static file format;
-    and `pokie stakeengine import <stakeDir>`, which imports one back.
+    `pokie stakeengine import <stakeDir>`, which imports one back; `pokie outcomelibrary build <config.json>`,
+    which builds a canonical Outcome Library Bundle from one or more `WeightedOutcomeLibrary` JSON files; and
+    `pokie outcomelibrary validate <bundleDir>`, which validates one.
 16. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
@@ -89,6 +91,12 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     lossy-vs-lossless boundary (`roundId`/win breakdown/`provenance.pokieVersion` are substituted, everything
     else round-trips exactly), and the real round-trip property: import then re-export reproduces byte-identical
     Stake output.
+20. **[Outcome Library Bundle](outcome-library-bundle.md)** — the canonical, streaming-friendly on-disk
+    persistence format for a `WeightedOutcomeLibrary` (a small manifest, a small per-mode index, one streaming
+    JSONL outcomes file per mode), with a writer that never buffers a whole mode's outcomes as one string, a
+    reader with full-streaming/single-outcome-random-access/weighted-draw/whole-library modes, and the one
+    shared `loadWeightedOutcomeLibraryFromBundle` loader both the pre-generated runtime and the Stake Engine
+    exporter use.
 
 ## Core concepts at a glance
 
@@ -119,6 +127,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Exact (no Monte Carlo) RTP/volatility/payout-distribution over every possible outcome | `WeightedOutcomeLibrary`, `buildWeightedOutcomeLibrary`, `WeightedOutcomeLibraryAnalyzer` |
 | Exporting a `WeightedOutcomeLibrary` to the Stake Engine math-sdk static file format | `pokie stakeengine export <config.json>`, `StakeEngineExporter` |
 | Importing a `WeightedOutcomeLibrary` back from a Stake Engine export directory | `pokie stakeengine import <stakeDir>`, `StakeEngineImporter` |
+| Streaming, canonical on-disk persistence for a `WeightedOutcomeLibrary` (no full-library-in-memory load) | `pokie outcomelibrary build <config.json>`, `OutcomeLibraryBundleWriter`/`OutcomeLibraryBundleReader` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.
