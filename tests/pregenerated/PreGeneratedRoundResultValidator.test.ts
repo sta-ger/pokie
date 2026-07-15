@@ -155,4 +155,32 @@ describe("PreGeneratedRoundResultValidator", () => {
         const issues = validator.validate(result);
         expect(issues.some((issue) => issue.code === "pre-generated-round-transaction-ids-not-unique")).toBe(true);
     });
+
+    it("flags a fractional selection.weight", () => {
+        const base = buildValidResult();
+        const result = {...base, selection: {...base.selection, weight: 0.5}};
+        const issues = validator.validate(result);
+        expect(issues.some((issue) => issue.code === "pre-generated-round-selection-weight-invalid")).toBe(true);
+    });
+
+    it("flags a selection.weight that exceeds Number.MAX_SAFE_INTEGER", () => {
+        const base = buildValidResult();
+        const result = {...base, selection: {...base.selection, weight: 2 ** 60}};
+        const issues = validator.validate(result);
+        expect(issues.some((issue) => issue.code === "pre-generated-round-selection-weight-invalid")).toBe(true);
+    });
+
+    it("flags a fractional selection.totalWeight", () => {
+        const base = buildValidResultWithQuarterProbability();
+        const result = {...base, selection: {...base.selection, totalWeight: 100.5}};
+        const issues = validator.validate(result);
+        expect(issues.some((issue) => issue.code === "pre-generated-round-selection-total-weight-invalid")).toBe(true);
+    });
+
+    it("flags a selection.totalWeight that exceeds Number.MAX_SAFE_INTEGER", () => {
+        const base = buildValidResultWithQuarterProbability();
+        const result = {...base, selection: {...base.selection, totalWeight: 2 ** 60}};
+        const issues = validator.validate(result);
+        expect(issues.some((issue) => issue.code === "pre-generated-round-selection-total-weight-invalid")).toBe(true);
+    });
 });

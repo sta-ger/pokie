@@ -4,6 +4,7 @@ import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {computeWeightedOutcomeLibraryHash} from "../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
 import type {WeightedOutcome} from "../weightedoutcome/WeightedOutcome.js";
 import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
+import {isPositiveSafeInteger} from "./internal/isPositiveSafeInteger.js";
 import {PreGeneratedRoundBuildError} from "./PreGeneratedRoundBuildError.js";
 import {PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION, type PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
 import type {PreGeneratedRoundRuntimeContext} from "./PreGeneratedRoundRuntimeContext.js";
@@ -30,7 +31,9 @@ export type PreGeneratedRoundBuildOptions<T extends string | number = string> = 
 // not just its artifact — catches a forged weight riding along a genuine artifact reference, not only a
 // wholesale swap), a `libraryHash` that doesn't match the library's actual, freshly recomputed hash, an
 // invalid runtime.roundId/sessionId, a non-finite runtime.balanceBefore/balanceAfter, a malformed
-// runtime.transactions entry, or content that isn't JSON-safe.
+// runtime.transactions entry, a non-positive-safe-integer outcome.weight/library total weight (stricter
+// than WeightedOutcomeLibrary itself requires — see WeightedOutcomeSelector's own doc comment for why a
+// library meant to be *drawn from* needs integer weights), or content that isn't JSON-safe.
 export function buildPreGeneratedRoundResult<T extends string | number = string>(
     options: PreGeneratedRoundBuildOptions<T>,
 ): PreGeneratedRoundResult<T> {
@@ -103,7 +106,20 @@ export function buildPreGeneratedRoundResult<T extends string | number = string>
         }
     });
 
+    if (!isPositiveSafeInteger(outcome.weight)) {
+        throw new PreGeneratedRoundBuildError(
+            "pre-generated-round-selection-weight-invalid",
+            `outcome.weight must be a positive safe integer, got ${outcome.weight}.`,
+        );
+    }
+
     const totalWeight = library.outcomes.reduce((sum, candidate) => sum + candidate.weight, 0);
+    if (!isPositiveSafeInteger(totalWeight)) {
+        throw new PreGeneratedRoundBuildError(
+            "pre-generated-round-selection-total-weight-invalid",
+            `library "${library.libraryId}"'s total weight must be a positive safe integer, got ${totalWeight}.`,
+        );
+    }
 
     const candidate: PreGeneratedRoundResult<T> = {
         schemaVersion: PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION,

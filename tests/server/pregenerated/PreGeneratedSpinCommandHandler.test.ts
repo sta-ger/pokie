@@ -108,6 +108,25 @@ describe("PreGeneratedSpinCommandHandler", () => {
         expect(replayed.totalWin).toBe(result.result.artifact.totalWin);
     });
 
+    it("keeps replay determinism across many sequential rounds under the current (full-string) seed representation", async () => {
+        // A regression guard for the move away from a 32-bit numeric seed fold-down: every one of a
+        // long run of rounds must still be exactly reproducible via PreGeneratedRoundReplayer, not just
+        // round 1 (where a shallow/collision-prone derivation would be least likely to show a problem).
+        await sessionRepository.save("s1", initialState("long-run-seed"));
+        const replayer = new PreGeneratedRoundReplayer();
+
+        for (let round = 1; round <= 25; round++) {
+            const result = await handler.handle("s1");
+            if (result.status !== "played") {
+                throw new Error(`expected round ${round} to be played`);
+            }
+
+            const replayed = replayer.replay({library, libraryHash, seed: "long-run-seed", round});
+            expect(replayed.outcomeId).toBe(result.result.selection.outcomeId);
+            expect(replayed.totalWin).toBe(result.result.artifact.totalWin);
+        }
+    });
+
     it("replays an idempotent retry without re-debiting the wallet or advancing the round again", async () => {
         await sessionRepository.save("s1", initialState("seed-1"));
 
@@ -260,5 +279,81 @@ describe("PreGeneratedSpinCommandHandler", () => {
         if (result.status === "played") {
             expect(result.version).toBe(2);
         }
+    });
+
+    it("returns conflict for a cached idempotency result once the session's library no longer matches", async () => {
+        await sessionRepository.save("s1", initialState("seed-1"));
+
+        // A result actually played (and cached) while the session still matched this handler's
+        // library — then the session gets migrated to a different library (e.g. a redeploy that swaps
+        // preGeneratedOutcomeLibrary) without its idempotency cache being cleared.
+        const staleCachedResult = await handler.handle("s1", "req-1");
+        expect(staleCachedResult.status).toBe("played");
+
+        const otherLibrary = buildWeightedOutcomeLibrary({
+            libraryId: "a-different-library-post-migration",
+            outcomes: [{id: "only", weight: 1, artifact: artifactWith({roundId: "only", totalWin: 0, stake: 1})}],
+        });
+        await sessionRepository.save("s1", {
+            libraryId: otherLibrary.libraryId,
+            libraryHash: computeWeightedOutcomeLibraryHash(otherLibrary),
+            seed: "seed-1",
+            roundsPlayed: 1,
+        });
+
+        // Same (sessionId, requestId) as the cached result above — must not be returned as-is now that
+        // the session's own library no longer matches what this handler is configured with.
+        const result = await handler.handle("s1", "req-1");
+
+        expect(result.status).toBe("conflict");
+        expect(result).not.toEqual(staleCachedResult);
+    });
+
+    it("does not let a losing concurrent attempt's compensation reverse the winning attempt's wallet transactions (same requestId, two handler instances)", async () => {
+        const realRepository = new InMemoryPreGeneratedSessionRepository();
+        await realRepository.save("s1", initialState("seed-1"));
+
+        const handlerA = new PreGeneratedSpinCommandHandler(library, libraryHash, wallet, realRepository);
+
+        // handlerB's own repository lets handlerA's attempt for the exact same (sessionId, requestId)
+        // run to completion and commit first, before handlerB proceeds with the (now stale) version it
+        // already read — simulating a client's retried request landing on a second server instance
+        // while the first instance's attempt for that same requestId is still in flight, both against
+        // the same underlying session and wallet.
+        let winnerPromise: Promise<PreGeneratedSpinCommandResult<string>> | undefined;
+        const racingRepositoryForB: VersionedPreGeneratedSessionRepository = {
+            load: (sessionId) => realRepository.load(sessionId),
+            save: (sessionId, state) => realRepository.save(sessionId, state),
+            loadVersioned: async (sessionId) => {
+                const versioned = await realRepository.loadVersioned(sessionId);
+                if (winnerPromise === undefined) {
+                    winnerPromise = handlerA.handle("s1", "req-shared");
+                }
+                await winnerPromise;
+                return versioned;
+            },
+            saveVersioned: (sessionId, state, expectedVersion) => realRepository.saveVersioned(sessionId, state, expectedVersion),
+        };
+        const handlerB = new PreGeneratedSpinCommandHandler(library, libraryHash, wallet, racingRepositoryForB);
+
+        const loserResult = await handlerB.handle("s1", "req-shared");
+        const winnerResult = await winnerPromise;
+
+        expect(winnerResult?.status).toBe("played");
+        expect(loserResult.status).toBe("conflict");
+        if (winnerResult?.status !== "played") {
+            throw new Error("expected handlerA to have won");
+        }
+
+        // The decisive check: with a fresh attemptId per attempt, handlerB's own debit/credit
+        // transaction ids never collide with handlerA's, so handlerB's compensation (reversing only
+        // its own transactions) leaves handlerA's committed settlement completely intact.
+        expect(await wallet.getBalance("s1")).toBe(winnerResult.result.runtime.balanceAfter);
+
+        // Replaying handlerA's own requestId against handlerA again must still return the exact same,
+        // untouched result — proving handlerA's own idempotency record/wallet transactions were never
+        // reversed by handlerB's compensation.
+        const replay = await handlerA.handle("s1", "req-shared");
+        expect(replay).toEqual(winnerResult);
     });
 });

@@ -33,6 +33,20 @@ import type {PreGeneratedSpinCommandResult} from "./PreGeneratedSpinCommandResul
 // outcome's own artifact.stake/artifact.totalWin are already exact, canonical numbers, so this simply
 // debits the stake and (when totalWin > 0) credits the win, in that order.
 //
+// Every wallet transaction for an attempt gets its own id, `{roundId}:{attemptId}:debit`/`:credit` —
+// `roundId` is the requestId (or a fresh id when none was given), stable across every retry of that
+// same logical request; `attemptId` is freshly minted every time this method actually runs, exactly
+// mirroring SpinCommandHandler's own convention (see its class doc comment for the full rationale).
+// This matters even more here than it might first appear: two separate PreGeneratedSpinCommandHandler
+// instances (e.g. two server processes) can both be asked to settle the *same* (sessionId, requestId)
+// — say, a client retry that landed on a different instance while the first instance's attempt is
+// still in flight. Without a fresh attemptId, both attempts would derive the exact same transaction
+// ids for the same requestId; if the second (losing) attempt's own optimistic-locking save then
+// conflicts and its compensation reverses "its" transactions, it would actually be reversing the
+// *first* (winning) attempt's already-committed, identically-id'd transactions — corrupting a round
+// that had already legitimately settled. A fresh attemptId per attempt keeps every attempt's own
+// transactions uniquely identified, so a losing attempt's compensation can only ever touch its own.
+//
 // Round-to-round determinism: round index `state.roundsPlayed + 1` combined with the session's own
 // seed (see deriveDeterministicSeed) is what PreGeneratedRoundReplayer reproduces later — the session
 // itself never stores anything about *which* outcome a past round drew, only how many rounds have been
@@ -102,21 +116,17 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
     }
 
     private async handleSerialized(sessionId: string, requestId: string | undefined): Promise<PreGeneratedSpinCommandResult<T>> {
-        if (requestId !== undefined) {
-            const cached = await this.idempotencyRepository.load(sessionId, requestId);
-            if (cached !== undefined) {
-                return cached;
-            }
-        }
-
         const {state, version} = await this.loadState(sessionId);
         if (!state) {
             return {status: "not-found", sessionId};
         }
 
-        // Checked before anything else mutates: nothing has been applied yet (no wallet transaction, no
-        // selection), so there's nothing to compensate — unlike the storage-level version conflict below,
-        // which can only be discovered after settlement has already run.
+        // Checked before anything else — including before consulting the idempotency cache below:
+        // a cached result was necessarily computed against whatever library was configured *at the
+        // time*, which a stale cache entry has no way to reverify on its own. Nothing has been applied
+        // yet at this point either (no wallet transaction, no selection), so there's nothing to
+        // compensate — unlike the storage-level version conflict below, which can only be discovered
+        // after settlement has already run.
         if (state.libraryId !== this.library.libraryId || state.libraryHash !== this.libraryHash) {
             return {
                 status: "conflict",
@@ -126,6 +136,13 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
                     `with (libraryId "${state.libraryId}"/hash "${state.libraryHash}" vs configured libraryId ` +
                     `"${this.library.libraryId}"/hash "${this.libraryHash}").`,
             };
+        }
+
+        if (requestId !== undefined) {
+            const cached = await this.idempotencyRepository.load(sessionId, requestId);
+            if (cached !== undefined) {
+                return cached;
+            }
         }
 
         return this.selectAndSettle(sessionId, state, version, requestId);
@@ -150,11 +167,12 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
     ): Promise<PreGeneratedSpinCommandResult<T>> {
         const round = state.roundsPlayed + 1;
         const roundId = requestId ?? crypto.randomUUID();
+        const attemptId = crypto.randomUUID();
         const randomSource = new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(state.seed, round));
         const outcome = this.selector.select(this.library, randomSource);
 
-        const debitTransactionId = `${roundId}:debit`;
-        const creditTransactionId = `${roundId}:credit`;
+        const debitTransactionId = `${roundId}:${attemptId}:debit`;
+        const creditTransactionId = `${roundId}:${attemptId}:credit`;
         const appliedTransactionIds: string[] = [];
         let sessionStateSaved = false;
 

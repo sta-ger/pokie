@@ -3,6 +3,7 @@ import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {ValidationRule} from "../validation/ValidationRule.js";
+import {isPositiveSafeInteger} from "./internal/isPositiveSafeInteger.js";
 import {PRE_GENERATED_ROUND_RESULT_SCHEMA_VERSION, type PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
 
 // A PreGeneratedRoundResult's own static type guarantees nothing about a value that actually arrives at
@@ -117,20 +118,20 @@ implements ValidationRule<PreGeneratedRoundResult<T>> {
                 message: "selection.outcomeId must be a non-empty string.",
             });
         }
-        const weightValid = isFiniteNumber(selection.weight) && selection.weight > 0;
+        const weightValid = isPositiveSafeInteger(selection.weight);
         if (!weightValid) {
             issues.push({
                 code: "pre-generated-round-selection-weight-invalid",
                 severity: "error",
-                message: `selection.weight must be a finite number > 0, got ${String(selection.weight)}.`,
+                message: `selection.weight must be a positive safe integer, got ${String(selection.weight)}.`,
             });
         }
-        const totalWeightValid = isFiniteNumber(selection.totalWeight) && selection.totalWeight > 0;
+        const totalWeightValid = isPositiveSafeInteger(selection.totalWeight);
         if (!totalWeightValid) {
             issues.push({
                 code: "pre-generated-round-selection-total-weight-invalid",
                 severity: "error",
-                message: `selection.totalWeight must be a finite number > 0, got ${String(selection.totalWeight)}.`,
+                message: `selection.totalWeight must be a positive safe integer, got ${String(selection.totalWeight)}.`,
             });
         }
         if (weightValid && totalWeightValid && (selection.weight as number) > (selection.totalWeight as number)) {

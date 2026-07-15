@@ -1,5 +1,6 @@
 import type {WeightedOutcome} from "../weightedoutcome/WeightedOutcome.js";
 import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
+import {isPositiveSafeInteger} from "./internal/isPositiveSafeInteger.js";
 import type {WeightedOutcomeRandomSource} from "./WeightedOutcomeRandomSource.js";
 import {WeightedOutcomeSelectionError} from "./WeightedOutcomeSelectionError.js";
 import type {WeightedOutcomeSelecting} from "./WeightedOutcomeSelecting.js";
@@ -42,7 +43,7 @@ export class WeightedOutcomeSelector implements WeightedOutcomeSelecting {
 
         let totalWeight = 0;
         for (const outcome of outcomes) {
-            if (!Number.isSafeInteger(outcome.weight) || outcome.weight <= 0) {
+            if (!isPositiveSafeInteger(outcome.weight)) {
                 throw new WeightedOutcomeSelectionError(
                     "weighted-outcome-selection-weight-invalid",
                     `Cannot select from library "${library.libraryId}": outcome "${outcome.id}" has weight ${outcome.weight}, but selection requires a positive safe integer.`,

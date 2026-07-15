@@ -71,6 +71,22 @@ describe("WeightedOutcomeSelector", () => {
         expect(selector.select(library, fixedIntSource(999999)).id).toBe("ultra-rare");
     });
 
+    it("selects correctly from a library whose total weight exceeds 2^32", () => {
+        const aboveThirtyTwoBits = 2 ** 32 + 500;
+        const library = libraryOf([
+            {id: "a", weight: aboveThirtyTwoBits, totalWin: 0},
+            {id: "b", weight: 250, totalWin: 10},
+        ]);
+        const selector = new WeightedOutcomeSelector();
+
+        // totalWeight = 2^32 + 750; "a" occupies [0, 2^32+500), "b" occupies [2^32+500, 2^32+750) — a
+        // point drawn well above 2^32 must still land in the right outcome, proving the walk isn't
+        // silently truncated to 32 bits anywhere.
+        expect(selector.select(library, fixedIntSource(aboveThirtyTwoBits - 1)).id).toBe("a");
+        expect(selector.select(library, fixedIntSource(aboveThirtyTwoBits)).id).toBe("b");
+        expect(selector.select(library, fixedIntSource(aboveThirtyTwoBits + 249)).id).toBe("b");
+    });
+
     it("is deterministic given the same seeded random source sequence", () => {
         const library = libraryOf([
             {id: "a", weight: 1, totalWin: 0},
@@ -79,12 +95,12 @@ describe("WeightedOutcomeSelector", () => {
         ]);
         const selector = new WeightedOutcomeSelector();
 
-        const drawWith = (seed: number): string[] => {
+        const drawWith = (seed: string): string[] => {
             const source = new SeededWeightedOutcomeRandomSource(seed);
             return Array.from({length: 10}, () => selector.select(library, source).id);
         };
 
-        expect(drawWith(42)).toEqual(drawWith(42));
+        expect(drawWith("seed-42")).toEqual(drawWith("seed-42"));
     });
 
     it("draws proportionally to weight over many samples", () => {
@@ -93,7 +109,7 @@ describe("WeightedOutcomeSelector", () => {
             {id: "rare", weight: 10, totalWin: 50},
         ]);
         const selector = new WeightedOutcomeSelector();
-        const source = new SeededWeightedOutcomeRandomSource(1234);
+        const source = new SeededWeightedOutcomeRandomSource("seed-1234");
 
         const counts = {common: 0, rare: 0};
         const samples = 20000;

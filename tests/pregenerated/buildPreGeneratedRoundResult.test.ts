@@ -203,4 +203,58 @@ describe("buildPreGeneratedRoundResult", () => {
             }),
         ).toThrow(PreGeneratedRoundBuildError);
     });
+
+    it("rejects a fractional outcome.weight, even though buildWeightedOutcomeLibrary itself allows one", () => {
+        // buildWeightedOutcomeLibrary only requires a finite weight > 0 (exact statistical analysis
+        // works over ratios) — buildPreGeneratedRoundResult is stricter, since a draw needs an integer
+        // weight to be exactly unbiased (see WeightedOutcomeSelector's own doc comment).
+        const library = buildWeightedOutcomeLibrary({
+            libraryId: "fractional-weight",
+            outcomes: [{id: "only", weight: 0.5, artifact: artifactWith({roundId: "only", totalWin: 0})}],
+        });
+
+        expect(() =>
+            buildPreGeneratedRoundResult({
+                library,
+                libraryHash: computeWeightedOutcomeLibraryHash(library),
+                outcome: library.outcomes[0],
+                runtime: {roundId: "r", sessionId: "s", balanceBefore: 1, balanceAfter: 1, transactions: []},
+            }),
+        ).toThrow(PreGeneratedRoundBuildError);
+    });
+
+    it("rejects an outcome.weight that exceeds Number.MAX_SAFE_INTEGER", () => {
+        const library = buildWeightedOutcomeLibrary({
+            libraryId: "unsafe-weight",
+            outcomes: [{id: "only", weight: 2 ** 60, artifact: artifactWith({roundId: "only", totalWin: 0})}],
+        });
+
+        expect(() =>
+            buildPreGeneratedRoundResult({
+                library,
+                libraryHash: computeWeightedOutcomeLibraryHash(library),
+                outcome: library.outcomes[0],
+                runtime: {roundId: "r", sessionId: "s", balanceBefore: 1, balanceAfter: 1, transactions: []},
+            }),
+        ).toThrow(PreGeneratedRoundBuildError);
+    });
+
+    it("rejects a library whose total weight is fractional even though every individual weight looks fine", () => {
+        const library = buildWeightedOutcomeLibrary({
+            libraryId: "fractional-total-weight",
+            outcomes: [
+                {id: "a", weight: 0.3, artifact: artifactWith({roundId: "a", totalWin: 0})},
+                {id: "b", weight: 0.4, artifact: artifactWith({roundId: "b", totalWin: 1})},
+            ],
+        });
+
+        expect(() =>
+            buildPreGeneratedRoundResult({
+                library,
+                libraryHash: computeWeightedOutcomeLibraryHash(library),
+                outcome: library.outcomes[0],
+                runtime: {roundId: "r", sessionId: "s", balanceBefore: 1, balanceAfter: 1, transactions: []},
+            }),
+        ).toThrow(PreGeneratedRoundBuildError);
+    });
 });
