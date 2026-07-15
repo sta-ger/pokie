@@ -135,11 +135,16 @@ accordingly.
    check — never trusted blindly: `OutcomeLibraryBundleReader.readModeIndex` itself does no runtime shape
    checking at all (a raw `JSON.parse` + type-cast), so a malformed or hand-tampered `index_<modeName>.json`
    would otherwise be trusted as-is. This check mirrors the relevant parts of
-   [`OutcomeLibraryBundleValidator`](outcome-library-bundle.md)'s own per-mode checks — closed shape, current
-   schema/library-schema versions, `index.modeName` matching the mode actually requested, `index.outcomesFile`
-   matching `outcomes_<modeName>.jsonl` **exactly** (not just "a safe-looking string"), positive safe
-   `outcomeCount`/`totalWeight`/entry weights, and canonically sorted, unique, well-shaped entries — then the
-   validated index is held in memory;
+   [`OutcomeLibraryBundleValidator`](outcome-library-bundle.md)'s own per-mode checks — closed shape at both the
+   index and the per-entry level (every entry must be *exactly* `{id, weight, byteOffset, byteLength,
+   recordHash}`, no more, no fewer), current schema/library-schema versions, `index.modeName` matching the mode
+   actually requested, `index.outcomesFile` matching `outcomes_<modeName>.jsonl` **exactly** (not just "a
+   safe-looking string"), positive safe `outcomeCount`/`totalWeight`/entry weights, canonically sorted and unique
+   entry ids, and a canonical byte layout across all entries — the first entry's `byteOffset` is exactly `0`, and
+   every later entry's `byteOffset` is exactly the previous entry's own `byteOffset + byteLength + 1` (the `+1`
+   accounts for the trailing `"\n"` every record is written with — see `streamModeOutcomesToTempFile`'s own
+   `offset += lineBuffer.byteLength + 1`), so ranges can never overlap or leave a gap, and `byteOffset +
+   byteLength` is checked to never overflow a safe integer either — then the validated index is held in memory;
 2. a winning entry is selected against that captured index via `selectIndexEntryByCumulativeWeight` (the exact
    cumulative-weight walk `OutcomeLibraryBundleReader.drawOutcome` uses internally);
 3. that exact entry's own byte range is read and verified via `readAndVerifyOutcomeAtByteRange`, against a path

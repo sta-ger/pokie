@@ -7,6 +7,7 @@ import {FairnessModeIndexInvalidError} from "./FairnessModeIndexInvalidError.js"
 const SHA256_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
 const MODE_INDEX_KEYS = new Set(["schemaVersion", "modeName", "libraryId", "librarySchemaVersion", "libraryHash", "outcomeCount", "totalWeight", "outcomesFile", "entries"]);
+const ENTRY_KEYS = new Set(["id", "weight", "byteOffset", "byteLength", "recordHash"]);
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;
@@ -41,10 +42,20 @@ function isValidSha256Hash(value: unknown): value is string {
 //   — never just "a safe-looking string": this is what makes drawPinnedFairnessOutcome's own later path
 //   resolution (resolveSafeStakeEngineFilePath, never a plain path.join of an attacker-influenced field) provably
 //   safe, since the one value it ever resolves is this exact, self-constructed filename;
-// - every entry's own canonical shape (id/weight/byteOffset/byteLength/recordHash), uniqueness, and canonical
+// - every entry's own closed shape ({id, weight, byteOffset, byteLength, recordHash} exactly — an unknown,
+//   smuggled-in field on one entry is exactly as invalid as a missing one), uniqueness, and canonical
 //   (sorted-by-id) order, and that outcomeCount/totalWeight actually match the entries themselves — the same
 //   invariants OutcomeLibraryBundleValidator.validateEntries enforces for a standalone bundle audit, reapplied
-//   here since a live draw can never assume an index it just read is trustworthy without checking.
+//   here since a live draw can never assume an index it just read is trustworthy without checking;
+// - a canonical byte layout across all entries — the first entry's byteOffset is exactly 0, and every later
+//   entry's byteOffset is exactly the previous entry's own byteOffset + byteLength + 1 (the "+1" accounts for
+//   the trailing "\n" every record is written with — see streamModeOutcomesToTempFile's own "offset +=
+//   lineBuffer.byteLength + 1"), so ranges can never overlap or leave a gap; byteOffset + byteLength is also
+//   checked to never overflow a safe integer. Mirrors (a cheaper, no-file-I/O subset of)
+//   OutcomeLibraryBundleValidator.validateByteLayout's own contiguity check — this one only ever checks the
+//   index's own internal arithmetic, never the outcomes file's actual on-disk size, since the one entry a live
+//   draw actually reads is independently byte-verified anyway (readAndVerifyOutcomeAtByteRange, called right
+//   after this function returns).
 export function validatePinnedFairnessModeIndex(index: unknown, expectedModeName: string): OutcomeLibraryBundleModeIndex {
     if (typeof index !== "object" || index === null || Object.keys(index).some((key) => !MODE_INDEX_KEYS.has(key))) {
         throw new FairnessModeIndexInvalidError(`mode "${expectedModeName}"'s own index does not match the expected OutcomeLibraryBundleModeIndex shape.`);
@@ -91,11 +102,15 @@ export function validatePinnedFairnessModeIndex(index: unknown, expectedModeName
     const seenIds = new Set<string>();
     let previousId: string | undefined;
     let totalWeight = 0;
+    let expectedByteOffset = 0;
     candidate.entries.forEach((rawEntry: unknown, position: number) => {
-        const entry = rawEntry as Partial<OutcomeLibraryBundleIndexEntry> | null;
+        if (typeof rawEntry !== "object" || rawEntry === null || Object.keys(rawEntry).some((key) => !ENTRY_KEYS.has(key))) {
+            throw new FairnessModeIndexInvalidError(
+                `mode "${expectedModeName}"'s own index entry at position ${position} does not match the expected closed shape {id, weight, byteOffset, byteLength, recordHash}.`,
+            );
+        }
+        const entry = rawEntry as Partial<OutcomeLibraryBundleIndexEntry>;
         if (
-            typeof entry !== "object" ||
-            entry === null ||
             !isNonEmptyString(entry.id) ||
             !isPositiveSafeInteger(entry.weight) ||
             !isSafeNonNegativeInteger(entry.byteOffset) ||
@@ -113,6 +128,22 @@ export function validatePinnedFairnessModeIndex(index: unknown, expectedModeName
             throw new FairnessModeIndexInvalidError(`mode "${expectedModeName}"'s own index entries are not canonically sorted by id.`);
         }
         previousId = entry.id;
+
+        // Canonical byte layout: the first entry starts at 0, and every later entry starts exactly where the
+        // previous one's own range — plus its trailing "\n" — ends, so ranges can never overlap or leave a gap
+        // (see this function's own doc comment for why "+1", not just "+0").
+        if (entry.byteOffset !== expectedByteOffset) {
+            throw new FairnessModeIndexInvalidError(
+                `mode "${expectedModeName}"'s own index entry at position ${position} (id "${entry.id}") has byteOffset ${entry.byteOffset}, but the previous entry's own range (plus its trailing newline) ends at ${expectedByteOffset} — ranges must be contiguous, in canonical id order, with no gap or overlap.`,
+            );
+        }
+        const rangeEnd = entry.byteOffset + entry.byteLength;
+        if (!Number.isSafeInteger(rangeEnd)) {
+            throw new FairnessModeIndexInvalidError(
+                `mode "${expectedModeName}"'s own index entry at position ${position} (id "${entry.id}") has byteOffset + byteLength that overflows a safe integer.`,
+            );
+        }
+        expectedByteOffset = rangeEnd + 1;
 
         totalWeight += entry.weight;
         if (!Number.isSafeInteger(totalWeight)) {

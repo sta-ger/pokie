@@ -273,18 +273,35 @@ describe("FairnessRoundProofVerifier", () => {
 
     it("detects an outcome id no longer present in the live bundle's mode index", async () => {
         const indexPath = path.join(bundleDir, "index_base.json");
+        const originalIndex = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        // The entry with the largest byteOffset (last on disk): removing only this one leaves every remaining
+        // entry's own byteOffset untouched and still genuinely contiguous — and still matching the real,
+        // unmodified outcomes file — so validatePinnedFairnessModeIndex's own byte-layout check still passes,
+        // and the redraw below still reads real, correct bytes for whichever remaining entry it selects.
+        const lastEntry = [...originalIndex.entries].sort((a: {byteOffset: number}, b: {byteOffset: number}) => b.byteOffset - a.byteOffset)[0];
+
+        // Build a fresh proof/commitment whose own draw happens to land on exactly that entry, so removing it
+        // is what makes THIS proof's own outcomeId go missing.
+        let targetProof: FairnessRoundProof | undefined;
+        let targetCommitment: FairnessCommitment | undefined;
+        for (let candidateNonce = 0; candidateNonce < 50; candidateNonce++) {
+            const candidateCommitment = await issueFairnessCommitmentFor(bundleDir, "base", {serverSeed, clientSeed: "outcome-missing-seed", nonce: candidateNonce});
+            const candidateProof = await new FairnessRoundProofBuilder().build(candidateCommitment, serverSeed, bundleDir);
+            if (candidateProof.outcomeId === lastEntry.id) {
+                targetProof = candidateProof;
+                targetCommitment = candidateCommitment;
+                break;
+            }
+        }
+        expect(targetProof).toBeDefined();
+
         const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
-        const removedEntry = index.entries.find((entry: {id: string}) => entry.id === proof.outcomeId);
-        // Keeps the index itself structurally valid (outcomeCount/totalWeight still match the remaining
-        // entries) — otherwise validatePinnedFairnessModeIndex's own count/weight cross-check would report
-        // "fairness-verify-mode-index-invalid" first, before ever reaching the outcome-missing check this test
-        // means to exercise (a bundle legitimately rebuilt without one outcome looks exactly like this).
-        index.entries = index.entries.filter((entry: {id: string}) => entry.id !== proof.outcomeId);
+        index.entries = index.entries.filter((entry: {id: string}) => entry.id !== lastEntry.id);
         index.outcomeCount -= 1;
-        index.totalWeight -= removedEntry.weight;
+        index.totalWeight -= lastEntry.weight;
         fs.writeFileSync(indexPath, JSON.stringify(index));
 
-        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+        const issues = await verifier.verify(targetProof, {commitment: targetCommitment, sourceBundleDir: bundleDir});
 
         expect(issues.map((issue) => issue.code)).toContain("fairness-verify-outcome-missing");
     });
@@ -405,5 +422,71 @@ describe("FairnessRoundProofVerifier", () => {
         const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
 
         expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("rejects a mode index entry carrying an extra, unexpected field (closed shape)", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        index.entries[0] = {...index.entries[0], extra: "field"};
+        fs.writeFileSync(indexPath, JSON.stringify(index));
+
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("rejects a mode index whose first entry doesn't start at byteOffset 0", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        index.entries[0] = {...index.entries[0], byteOffset: 1};
+        fs.writeFileSync(indexPath, JSON.stringify(index));
+
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("rejects a mode index with a gap between two entries' own byte ranges", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        index.entries[1] = {...index.entries[1], byteOffset: index.entries[1].byteOffset + 10};
+        fs.writeFileSync(indexPath, JSON.stringify(index));
+
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("rejects a mode index with overlapping entry byte ranges", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        index.entries[1] = {...index.entries[1], byteOffset: index.entries[0].byteOffset};
+        fs.writeFileSync(indexPath, JSON.stringify(index));
+
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("rejects a mode index entry whose byteOffset + byteLength overflows a safe integer", async () => {
+        const indexPath = path.join(bundleDir, "index_base.json");
+        const index = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
+        // entries[1]'s own byteOffset is left exactly as-is (still the correct, contiguous value) — only its
+        // byteLength is pushed to Number.MAX_SAFE_INTEGER, itself a valid safe integer on its own, so this
+        // isolates the byteOffset + byteLength overflow check from the contiguity check above it.
+        index.entries[1] = {...index.entries[1], byteLength: Number.MAX_SAFE_INTEGER};
+        fs.writeFileSync(indexPath, JSON.stringify(index));
+
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+
+        expect(issues.map((issue) => issue.code)).toContain("fairness-verify-mode-index-invalid");
+    });
+
+    it("still verifies cleanly against a genuinely correct, untampered canonical index", async () => {
+        // Sanity check for every mode-index-tampering test above: the exact same live bundle, unmodified,
+        // continues to verify with no issues at all — the byte-layout/closed-shape/sort-order checks reject only
+        // genuinely malformed indexes, never a real one produced by OutcomeLibraryBundleWriter.
+        const issues = await verifier.verify(proof, {commitment, sourceBundleDir: bundleDir});
+        expect(issues).toEqual([]);
     });
 });
