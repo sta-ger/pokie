@@ -1,8 +1,14 @@
+import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
+import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
+import {computeWeightedOutcomeLibraryHash} from "../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
+import type {ExternalArtifactGenerationResult} from "./ExternalArtifactGenerationResult.js";
 import type {ExternalArtifactValidator} from "./ExternalArtifactValidator.js";
 import {ExternalDeploymentCompatibilityValidator} from "./ExternalDeploymentCompatibilityValidator.js";
 import type {ExternalDeploymentCompatibilityValidating} from "./ExternalDeploymentCompatibilityValidating.js";
 import type {ExternalDeploymentModeInput} from "./ExternalDeploymentModeInput.js";
+import type {ExternalDeploymentProjectedModeInput} from "./ExternalDeploymentProjectedModeInput.js";
+import type {ExternalDeploymentProjectedOutcome} from "./ExternalDeploymentProjectedOutcome.js";
 import type {ExternalDeploymentResult} from "./ExternalDeploymentResult.js";
 import type {ExternalDeploymentServicing} from "./ExternalDeploymentServicing.js";
 import type {ExternalDeploymentTarget} from "./ExternalDeploymentTarget.js";
@@ -14,66 +20,214 @@ function hasError(issues: readonly ValidationIssue[]): boolean {
     return issues.some((issue) => issue.severity === "error");
 }
 
-// The SDK's own single-call orchestrator: descriptor validation -> compatibility validation -> generation ->
-// artifact validation -> optional diagnostic -> optional delivery, in that fixed order, with every stage past
-// the first one that reports an error-severity issue simply never run (see ExternalDeploymentResult's own doc
-// comment on why each stage's field is `undefined` rather than an empty placeholder in that case). This is the
-// one place in the SDK that's allowed to assume "compatibility already passed" before calling a generator, or
-// "artifacts already validated" before calling a runtime adapter — calling those collaborators directly, in a
-// different order or skipping a stage, is exactly the class of mistake this orchestrator exists to make
-// impossible for a normal caller to make by accident.
+// The SDK's own single-call orchestrator: descriptor validation -> compatibility validation -> projection ->
+// generation -> artifact validation -> optional diagnostic -> optional delivery, in that fixed order, with
+// every stage past the first one that reports an error-severity issue simply never run (see
+// ExternalDeploymentResult's own doc comment on why each stage's field is `undefined` rather than an empty
+// placeholder in that case). This is the one place in the SDK that's allowed to assume "compatibility already
+// passed" before projecting, or "artifacts already validated" before calling a runtime adapter — calling those
+// collaborators directly, in a different order or skipping a stage, is exactly the class of mistake this
+// orchestrator exists to make impossible for a normal caller to make by accident.
 //
-// Two invariants this class exists specifically to enforce, not just document:
-//   - generation always receives `{roundProjector: target.roundProjector}` as its context — the target's own
-//     declared projector, never a second one a generator might otherwise reach for on its own (see
-//     ExternalArtifactGenerator's own doc comment).
-//   - artifact validation always runs StandardExternalArtifactValidator, whether or not the target supplies its
-//     own `artifactValidator` — a target's own validator can only ever add further issues on top (the same
-//     "additive, never replacing" convention WeightedOutcomeLibraryValidator's own extraArtifactValidator uses),
-//     so a permissive custom validator (one that always returns no issues) can never let an unsafe/duplicate/
-//     malformed artifact set through.
+// Four invariants this class exists specifically to enforce, not just document:
+//   - **The three mandatory built-in validators (descriptor/compatibility/artifact) always run, in full, no
+//     matter what.** They are not constructor parameters and cannot be swapped out or disabled — the
+//     constructor only accepts an *extra* validator per stage, whose own issues are always concatenated onto
+//     (never substituted for) the built-in ones. A permissive extra validator — one that always returns no
+//     issues — can therefore never make a genuinely broken target/deployment/artifact set look clean to a
+//     caller who only inspects the final `ExternalDeploymentResult`.
+//   - **Projection happens exactly once, here, and nowhere else.** `deploy()` itself calls
+//     `target.roundProjector.project(...)` for every outcome in every mode — never the generator (see
+//     ExternalArtifactGenerator's own doc comment) — and hands the generator only the resulting
+//     ExternalDeploymentProjectedModeInput[]. A generator has no RoundArtifact, no ExternalRoundProjector
+//     reference, and nothing generic-over-T to project through, so it has no way to select, ignore, or diverge
+//     from the target's own declared projector.
+//   - **A thrown exception from descriptor validation, compatibility validation, projection, generation, or
+//     artifact validation is always caught and turned into a single error-severity ValidationIssue** — on the
+//     relevant stage's own issues, exactly as if that collaborator had reported the problem the normal way —
+//     rather than being allowed to propagate out of `deploy()` itself. Every stage after the one that threw is
+//     still simply never run, the same as for a normally-reported error.
+//   - **`target.diagnostic`/`target.runtimeAdapter` are never called once an earlier stage has failed.**
 export class ExternalDeploymentService<T extends string | number = string> implements ExternalDeploymentServicing<T> {
-    private readonly descriptorValidator: ExternalDeploymentTargetDescriptorValidating<T>;
-    private readonly compatibilityValidator: ExternalDeploymentCompatibilityValidating<T>;
-    private readonly standardArtifactValidator: ExternalArtifactValidator;
+    private readonly descriptorValidator: ExternalDeploymentTargetDescriptorValidating<T> = new ExternalDeploymentTargetDescriptorValidator<T>();
+    private readonly compatibilityValidator: ExternalDeploymentCompatibilityValidating<T> = new ExternalDeploymentCompatibilityValidator<T>();
+    private readonly standardArtifactValidator: ExternalArtifactValidator = new StandardExternalArtifactValidator();
+    private readonly extraDescriptorValidator: ExternalDeploymentTargetDescriptorValidating<T> | undefined;
+    private readonly extraCompatibilityValidator: ExternalDeploymentCompatibilityValidating<T> | undefined;
+    private readonly extraArtifactValidator: ExternalArtifactValidator | undefined;
 
+    // Every parameter here is *additive only* — see the class's own doc comment. There is deliberately no way
+    // to pass a replacement for the built-in descriptor/compatibility/artifact validators; only a further check
+    // layered on top of them.
     constructor(
-        descriptorValidator: ExternalDeploymentTargetDescriptorValidating<T> = new ExternalDeploymentTargetDescriptorValidator<T>(),
-        compatibilityValidator: ExternalDeploymentCompatibilityValidating<T> = new ExternalDeploymentCompatibilityValidator<T>(),
-        standardArtifactValidator: ExternalArtifactValidator = new StandardExternalArtifactValidator(),
+        extraDescriptorValidator?: ExternalDeploymentTargetDescriptorValidating<T>,
+        extraCompatibilityValidator?: ExternalDeploymentCompatibilityValidating<T>,
+        extraArtifactValidator?: ExternalArtifactValidator,
     ) {
-        this.descriptorValidator = descriptorValidator;
-        this.compatibilityValidator = compatibilityValidator;
-        this.standardArtifactValidator = standardArtifactValidator;
+        this.extraDescriptorValidator = extraDescriptorValidator;
+        this.extraCompatibilityValidator = extraCompatibilityValidator;
+        this.extraArtifactValidator = extraArtifactValidator;
     }
 
     public async deploy(target: ExternalDeploymentTarget<T>, modes: readonly ExternalDeploymentModeInput<T>[]): Promise<ExternalDeploymentResult> {
-        const descriptorIssues = this.descriptorValidator.validate(target);
+        const descriptorIssues = [
+            ...this.safeIssues(() => this.descriptorValidator.validate(target), "external-deployment-descriptor-validator-threw", "Descriptor validation"),
+            ...this.safeIssues(
+                () => this.extraDescriptorValidator?.validate(target) ?? [],
+                "external-deployment-extra-descriptor-validator-threw",
+                "Extra descriptor validation",
+            ),
+        ];
         if (hasError(descriptorIssues)) {
-            return {descriptorIssues, compatibilityIssues: [], artifactIssues: []};
+            return {descriptorIssues, compatibilityIssues: [], projectionIssues: [], artifactIssues: []};
         }
 
-        const compatibilityIssues = this.compatibilityValidator.validate({target, modes});
+        const compatibilityIssues = [
+            ...this.safeIssues(
+                () => this.compatibilityValidator.validate({target, modes}),
+                "external-deployment-compatibility-validator-threw",
+                "Compatibility validation",
+            ),
+            ...this.safeIssues(
+                () => this.extraCompatibilityValidator?.validate({target, modes}) ?? [],
+                "external-deployment-extra-compatibility-validator-threw",
+                "Extra compatibility validation",
+            ),
+        ];
         if (hasError(compatibilityIssues)) {
-            return {descriptorIssues, compatibilityIssues, artifactIssues: []};
+            return {descriptorIssues, compatibilityIssues, projectionIssues: [], artifactIssues: []};
         }
 
-        const generation = target.artifactGenerator.generate(modes, {roundProjector: target.roundProjector});
+        const {projected, issues: projectionIssues} = this.projectModes(target, modes);
+        if (projected === undefined) {
+            return {descriptorIssues, compatibilityIssues, projectionIssues, artifactIssues: []};
+        }
+
+        let generation: ExternalArtifactGenerationResult;
+        try {
+            generation = target.artifactGenerator.generate(projected);
+        } catch (error) {
+            generation = {
+                artifacts: [],
+                issues: [
+                    {
+                        code: "external-deployment-generator-threw",
+                        severity: "error",
+                        message: `artifactGenerator.generate threw: ${error instanceof Error ? error.message : String(error)}`,
+                    },
+                ],
+            };
+        }
         if (hasError(generation.issues)) {
-            return {descriptorIssues, compatibilityIssues, generation, artifactIssues: []};
+            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues: []};
         }
 
-        const artifactIssues = [...this.standardArtifactValidator.validate(generation), ...(target.artifactValidator?.validate(generation) ?? [])];
+        const artifactIssues = [
+            ...this.safeIssues(
+                () => this.standardArtifactValidator.validate(generation),
+                "external-deployment-standard-artifact-validator-threw",
+                "Standard artifact validation",
+            ),
+            ...this.safeIssues(
+                () => target.artifactValidator?.validate(generation) ?? [],
+                "external-deployment-target-artifact-validator-threw",
+                "Target artifact validation",
+            ),
+            ...this.safeIssues(
+                () => this.extraArtifactValidator?.validate(generation) ?? [],
+                "external-deployment-extra-artifact-validator-threw",
+                "Extra artifact validation",
+            ),
+        ];
         if (hasError(artifactIssues)) {
-            return {descriptorIssues, compatibilityIssues, generation, artifactIssues};
+            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues};
         }
 
         const diagnostic = target.diagnostic !== undefined ? await target.diagnostic.diagnose() : undefined;
         if (diagnostic !== undefined && !diagnostic.ok) {
-            return {descriptorIssues, compatibilityIssues, generation, artifactIssues, diagnostic};
+            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues, diagnostic};
         }
 
         const delivery = target.runtimeAdapter !== undefined ? await target.runtimeAdapter.deliver(generation) : undefined;
-        return {descriptorIssues, compatibilityIssues, generation, artifactIssues, diagnostic, delivery};
+        return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues, diagnostic, delivery};
+    }
+
+    // Runs one validator call, catching any thrown exception and turning it into a single error-severity
+    // ValidationIssue instead of letting it propagate out of deploy() — the one place this "exception ->
+    // diagnostic" conversion actually happens, shared by every validator call site above (built-in and extra
+    // alike, since even a built-in is only ever *documented* to never throw, not structurally prevented from
+    // it).
+    private safeIssues(run: () => readonly ValidationIssue[], code: string, description: string): readonly ValidationIssue[] {
+        try {
+            return run();
+        } catch (error) {
+            return [{code, severity: "error", message: `${description} threw: ${error instanceof Error ? error.message : String(error)}`}];
+        }
+    }
+
+    // Runs every outcome in every mode through `target.roundProjector` — the projection stage described in the
+    // class's own doc comment. A per-outcome projector failure or non-JSON-safe projected output is reported
+    // against that specific outcome and the rest of the batch keeps going (so a caller sees every problem in one
+    // pass, not just the first) — but `projected` itself is only returned once no error-severity issue was
+    // reported, exactly like every other stage's "all-or-nothing" contract.
+    private projectModes(
+        target: ExternalDeploymentTarget<T>,
+        modes: readonly ExternalDeploymentModeInput<T>[],
+    ): {projected?: readonly ExternalDeploymentProjectedModeInput[]; issues: ValidationIssue[]} {
+        const issues: ValidationIssue[] = [];
+        const projectedModes: ExternalDeploymentProjectedModeInput[] = [];
+
+        modes.forEach((mode) => {
+            const outcomes: ExternalDeploymentProjectedOutcome[] = [];
+
+            mode.library.outcomes.forEach((outcome) => {
+                let projected;
+                try {
+                    projected = target.roundProjector.project(outcome.artifact);
+                } catch (error) {
+                    issues.push({
+                        code: "external-deployment-projection-failed",
+                        severity: "error",
+                        message: `mode "${mode.modeName}": outcome "${outcome.id}": round projector failed: ${error instanceof Error ? error.message : String(error)}`,
+                        details: {modeName: mode.modeName, outcomeId: outcome.id},
+                    });
+                    return;
+                }
+
+                try {
+                    toCanonicalJson(projected);
+                } catch (error) {
+                    issues.push({
+                        code: "external-deployment-projection-not-json-safe",
+                        severity: "error",
+                        message: `mode "${mode.modeName}": outcome "${outcome.id}": projected output is not JSON-safe: ${error instanceof InvalidJsonValueError ? error.message : String(error)}`,
+                        details: {modeName: mode.modeName, outcomeId: outcome.id},
+                    });
+                    return;
+                }
+
+                outcomes.push({id: outcome.id, weight: outcome.weight, projected});
+            });
+
+            let libraryHash: string;
+            try {
+                libraryHash = computeWeightedOutcomeLibraryHash(mode.library);
+            } catch (error) {
+                issues.push({
+                    code: "external-deployment-library-hash-failed",
+                    severity: "error",
+                    message: `mode "${mode.modeName}": failed to compute the library hash: ${error instanceof Error ? error.message : String(error)}`,
+                    details: {modeName: mode.modeName},
+                });
+                return;
+            }
+
+            projectedModes.push({modeName: mode.modeName, libraryId: mode.library.libraryId, libraryHash, outcomes});
+        });
+
+        if (hasError(issues)) {
+            return {projected: undefined, issues};
+        }
+        return {projected: projectedModes, issues};
     }
 }

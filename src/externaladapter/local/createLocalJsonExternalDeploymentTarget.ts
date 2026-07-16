@@ -40,7 +40,7 @@ export function createLocalJsonExternalDeploymentTarget<T extends string | numbe
         requirements: {requiresHomogeneousProvenance: true},
         capabilities: [ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY, ROUND_ARTIFACT_DEBUG_METADATA_CAPABILITY, MULTI_MODE_DEPLOYMENT_CAPABILITY],
         roundProjector,
-        artifactGenerator: new LocalJsonExternalArtifactGenerator<T>(),
+        artifactGenerator: new LocalJsonExternalArtifactGenerator(),
         runtimeAdapter: new LocalFileExternalDeploymentRuntimeAdapter(options.outDir),
         diagnostic: new LocalExternalDeploymentDiagnostic(options.outDir),
     };

@@ -114,13 +114,15 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `ExternalRoundProjector`, `ExternalArtifactGenerator`, `ExternalArtifactValidator`,
     `ExternalDeploymentDiagnostic`, an optional `ExternalDeploymentRuntimeAdapter` transport contract) for
     deploying a `WeightedOutcomeLibrary` to an external format/RGS-style target, orchestrated end to end by
-    `ExternalDeploymentService` (descriptor validation → compatibility validation → generation → artifact
-    validation → optional diagnostic → optional delivery, stopping at the first error), plus
-    `ExternalDeploymentTargetRegistry` (descriptor-validated, duplicate/case-collision-safe, identity-frozen
-    registration) and `ExternalDeploymentCompatibilityValidator` (checked before any file is generated) — and one
-    fully working local-filesystem example target, `createLocalJsonExternalDeploymentTarget` (atomic delivery,
-    deterministic path-safe file naming). Ships no private RGS integration; implement the contracts directly for
-    a real target.
+    `ExternalDeploymentService` (descriptor validation → compatibility validation → projection → generation →
+    artifact validation → optional diagnostic → optional delivery, stopping at the first error or caught
+    exception). The three built-in validators always run in full and can never be replaced — only an *additive*
+    extra validator per stage is accepted — and projection (`RoundArtifact` → target format) is the service's
+    own job, never the generator's, which is why `ExternalArtifactGenerator` only ever receives already-projected
+    plain JSON. Plus `ExternalDeploymentTargetRegistry` (descriptor-validated, duplicate/case-collision-safe,
+    identity-frozen registration) and one fully working local-filesystem example target,
+    `createLocalJsonExternalDeploymentTarget` (atomic delivery, deterministic path-safe file naming). Ships no
+    private RGS integration; implement the contracts directly for a real target.
 
 ## Core concepts at a glance
 

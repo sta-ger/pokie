@@ -19,18 +19,21 @@ implementing the contracts below directly.
 ## The pipeline — `ExternalDeploymentService`
 
 ```
-descriptor validation    ExternalDeploymentTargetDescriptorValidator — is this even a usable target?
+descriptor validation    ExternalDeploymentTargetDescriptorValidator (always) + extra (additive)
         │  (no error-severity issues)
         ▼
-compatibility validation ExternalDeploymentCompatibilityValidator    — before any file exists
-        │  (no error-severity issues)
+compatibility validation ExternalDeploymentCompatibilityValidator (always) + extra (additive) — before
+        │  (no error-severity issues)                                                           any file exists
         ▼
-generation                target.artifactGenerator.generate(modes,
-                           {roundProjector: target.roundProjector})  — fully in-memory
-        │  (no error-severity issues)
+projection                target.roundProjector.project(outcome.artifact) for every outcome —
+        │  (no error-severity issues)                                       run by the service itself
+        ▼
+generation                target.artifactGenerator.generate(projectedModes) — fully in-memory,
+        │  (no error-severity issues)                                        already-projected input only
         ▼
 artifact validation       StandardExternalArtifactValidator (always)
-                           + target.artifactValidator (additive)     — structural checks on the output
+                           + target.artifactValidator (additive)
+                           + extra (additive)                              — structural checks on the output
         │  (no error-severity issues)
         ▼
 diagnostic (optional)     target.diagnostic?.diagnose()
@@ -44,34 +47,35 @@ first stage that reports an error-severity issue — every stage after that is s
 returned `ExternalDeploymentResult` is `undefined`, not an empty placeholder). This is the recommended single
 entry point: calling the individual collaborators (registry, validators, generator, diagnostic, runtime adapter)
 directly is still possible for finer-grained control, but `ExternalDeploymentService` is what guarantees the
-ordering and short-circuiting below actually hold, rather than leaving it to every caller to reimplement
-correctly:
+invariants below actually hold, rather than leaving it to every caller to reimplement correctly:
 
-- **An incompatible deployment never reaches the generator.** Compatibility validation always runs first; a
-  generator implementation never has to defend against content it's fundamentally not built to handle.
-- **Invalid artifacts never reach the runtime adapter.** Artifact validation always runs before diagnostic/
-  delivery; nothing is ever written/pushed anywhere from a result that failed validation.
-- **Generation always uses the target's own declared projector, never a hidden one.** `deploy()` always calls
-  `target.artifactGenerator.generate(modes, {roundProjector: target.roundProjector})` — a generator
-  implementation has no projector of its own to fall back on (see `ExternalArtifactGenerator`'s own doc
-  comment), so a target can never declare one projector as its `roundProjector` while its generator silently
-  uses a different one.
-- **`StandardExternalArtifactValidator` always runs**, whether or not the target supplies its own
-  `artifactValidator`. A target's own validator can only ever add further issues on top — the same "additive,
-  never replacing" convention `WeightedOutcomeLibraryValidator`'s own `extraArtifactValidator` uses — so a
-  permissive custom validator (one that always returns no issues) can never let an unsafe/duplicate/malformed
-  artifact set through.
-- **A failing diagnostic blocks delivery.** If `target.diagnostic` reports `ok: false`, `runtimeAdapter.deliver()`
-  is never called.
+- **The three built-in validators (descriptor/compatibility/artifact) always run, in full, and cannot be
+  disabled or replaced.** They are not constructor parameters — the constructor only accepts an *extra*
+  validator per stage, whose own issues are always concatenated onto (never substituted for) the built-in ones.
+  A permissive extra validator (one that always returns no issues, whether by design or by accident) can
+  therefore never make a genuinely broken target/deployment/artifact set look clean.
+- **Projection happens exactly once, inside `deploy()` itself, and nowhere else.** The service calls
+  `target.roundProjector.project(...)` for every outcome in every mode — never the generator — and hands the
+  generator only the resulting, already-projected input. A generator has no `RoundArtifact`, no
+  `ExternalRoundProjector` reference, and nothing generic over the symbol-alphabet type parameter to project
+  through, so it has no way to select, ignore, or diverge from the target's own declared projector.
+- **A thrown exception from descriptor validation, compatibility validation, projection, generation, or
+  artifact validation is always caught and turned into a single error-severity `ValidationIssue`** on that
+  stage's own issues — exactly as if the collaborator had reported the problem the normal way — rather than
+  propagating out of `deploy()` and rejecting the whole call. Every stage after the one that threw is still
+  simply never run.
+- **`target.diagnostic`/`target.runtimeAdapter` are never called once an earlier stage has failed** — whether
+  that failure was a normally-reported issue or a caught exception.
 
 ```ts
 import {ExternalDeploymentService} from "pokie";
 
 const result = await new ExternalDeploymentService().deploy(target, modes);
 
-if (result.descriptorIssues.some((i) => i.severity === "error")) { /* target itself is malformed */ }
-if (result.compatibilityIssues.some((i) => i.severity === "error")) { /* target.artifactGenerator was never called */ }
-if (result.generation === undefined) { /* generation never ran */ }
+if (result.descriptorIssues.some((i) => i.severity === "error")) { /* nothing else ran at all */ }
+if (result.compatibilityIssues.some((i) => i.severity === "error")) { /* projection/generation never ran */ }
+if (result.projectionIssues.some((i) => i.severity === "error")) { /* target.artifactGenerator was never called */ }
+if (result.generation === undefined) { /* generation never ran (projection failed) */ }
 if (result.artifactIssues.some((i) => i.severity === "error")) { /* target.runtimeAdapter was never called */ }
 result.diagnostic; // ExternalDeploymentDiagnosticReport | undefined
 result.delivery;   // ExternalDeploymentDeliveryResult | undefined
@@ -83,10 +87,10 @@ result.delivery;   // ExternalDeploymentDeliveryResult | undefined
 |---|---|---|
 | `ExternalDeploymentTarget<T>` | interface | Bundles one target's identity (`id`/`version`), declared contract (`requirements`/`capabilities`), and collaborators (`roundProjector`/`artifactGenerator`, plus optional `artifactValidator`/`runtimeAdapter`/`diagnostic`). Usually built as a plain object literal from a factory function — see `createLocalJsonExternalDeploymentTarget`. |
 | `ExternalDeploymentTargetRegistry<T>` | class | A stateful catalog of targets, keyed by `id`. Runs `ExternalDeploymentTargetDescriptorValidator` and refuses a malformed target (`ExternalDeploymentInvalidTargetError`) or a duplicate/case-colliding id (`ExternalDeploymentDuplicateTargetError`). Freezes a successfully registered target (and its `capabilities`/`requirements`) so its identity can never drift after the fact. |
-| `ExternalDeploymentTargetDescriptorValidator<T>` | class | Checks a target's own descriptor is well-formed — independent of any content — non-empty `id`/`version`, well-shaped `requirements`, a unique `capabilities` list, and every required/optional collaborator implementing its own contract's method. Run by both the registry and `ExternalDeploymentService`. |
-| `ExternalDeploymentCompatibilityValidator<T>` | class | Checks one target's `requirements`/`capabilities` against a specific deployment's content, before generation. |
-| `ExternalRoundProjector<T>` | interface | One target's own `RoundArtifact<T>` → `JsonObject` projection. Every generator must go through the projector it's handed via `ExternalArtifactGenerationContext`, never recompute independently or hold one of its own. |
-| `ExternalArtifactGenerator<T>` | interface | One target's own content → files/payloads generation step. Fully in-memory and synchronous — no disk/network I/O. Receives `{roundProjector}` as an explicit second argument on every call. |
+| `ExternalDeploymentTargetDescriptorValidator<T>` | class | Checks a target's own descriptor is well-formed — independent of any content — non-empty `id`/`version`, well-shaped `requirements`, a unique `capabilities` list, and every required/optional collaborator implementing its own contract's method. Run by both the registry and `ExternalDeploymentService` (always, in full — see above). |
+| `ExternalDeploymentCompatibilityValidator<T>` | class | Checks one target's `requirements`/`capabilities` against a specific deployment's content, before projection/generation. Always runs via `ExternalDeploymentService`. |
+| `ExternalRoundProjector<T>` | interface | One target's own `RoundArtifact<T>` → `JsonObject` projection. Called only by `ExternalDeploymentService`, once per outcome, never by the generator. |
+| `ExternalArtifactGenerator` | interface | One target's own already-projected content → files/payloads generation step. Fully in-memory and synchronous — no disk/network I/O. Deliberately *not* generic over `T` and takes `ExternalDeploymentProjectedModeInput[]` — plain JSON, never a `RoundArtifact<T>` or a projector. |
 | `ExternalArtifactValidator` | interface | Validates an already-generated `ExternalArtifactGenerationResult`'s own structure. `StandardExternalArtifactValidator` is the SDK's generic, format-agnostic default, and always runs via `ExternalDeploymentService`. |
 | `ExternalDeploymentDiagnostic` | interface | Optional self-check of a target's own operational readiness (e.g. "is the output directory writable"), independent of any specific content. |
 | `ExternalDeploymentRuntimeAdapter` | interface | Optional transport contract: how an already-generated, already-validated result actually reaches the target (local disk, HTTP push, a queue, ...). Deliberately separate from `ExternalArtifactGenerator` so the same generator is reusable across targets that differ only in how they publish. |
@@ -138,8 +142,8 @@ SDK checks. Three well-known ids are understood by `ExternalDeploymentCompatibil
 | `MULTI_MODE_DEPLOYMENT_CAPABILITY` | more than one `ExternalDeploymentModeInput` is given in one deployment |
 
 A target that doesn't declare one of these gets an error-severity `ValidationIssue` if the deployed content
-actually uses the corresponding feature — rejected before generation, not silently dropped or left for the
-generator to choke on.
+actually uses the corresponding feature — rejected before projection/generation, not silently dropped or left
+for the generator to choke on.
 
 ## Compatibility validation issue codes
 
@@ -161,13 +165,56 @@ generator to choke on.
 prefixed onto `message` and added to `details.modeName` — the same "additive, never replacing" convention
 `StakeEngineExportValidator` uses.
 
-## Artifact validation (`StandardExternalArtifactValidator`)
+## Projection — the service's own job, never the generator's
 
-Runs against `ExternalArtifactGenerationResult.artifacts`, independent of which target produced them, and always
-runs via `ExternalDeploymentService` regardless of whether the target also declares its own `artifactValidator`:
+`ExternalDeploymentService` is the *only* thing that ever calls `target.roundProjector.project(...)` — once per
+outcome, across every mode — turning each `ExternalDeploymentModeInput<T>` (a raw `WeightedOutcomeLibrary<T>`)
+into an `ExternalDeploymentProjectedModeInput` (plain, already-projected JSON):
+
+```ts
+type ExternalDeploymentProjectedOutcome = {
+    readonly id: string;
+    readonly weight: number;
+    readonly projected: JsonObject; // target.roundProjector.project(outcome.artifact)
+};
+
+type ExternalDeploymentProjectedModeInput = {
+    readonly modeName: string;
+    readonly libraryId: string;
+    readonly libraryHash: string; // computeWeightedOutcomeLibraryHash(mode.library), computed once here
+    readonly outcomes: readonly ExternalDeploymentProjectedOutcome[];
+};
+```
+
+`target.artifactGenerator.generate(projectedModes)` receives only this — never the original library, a
+`RoundArtifact`, or the projector itself. That's not just documentation: `ExternalArtifactGenerator` isn't even
+generic over `T`, so nothing in its own type signature could reference a `RoundArtifact<T>` even if an
+implementation tried to reach for one.
 
 | Code | Meaning |
 |---|---|
+| `external-deployment-projection-failed` | `target.roundProjector.project(...)` threw for a specific outcome |
+| `external-deployment-projection-not-json-safe` | a projector's output for a specific outcome isn't canonical-JSON-safe (`NaN`/`Infinity`, a cycle, ...) |
+| `external-deployment-library-hash-failed` | computing a mode's own library hash failed |
+
+Projection issues are collected across every outcome in every mode before stopping (so one `deploy()` call
+surfaces every problem, not just the first) — but `generation` is only ever attempted once no projection issue
+is error-severity.
+
+## Artifact validation (`StandardExternalArtifactValidator`)
+
+Runs against `ExternalArtifactGenerationResult`, independent of which target produced it, and always runs via
+`ExternalDeploymentService` regardless of whether the target also declares its own `artifactValidator`. Never
+throws — even a `result` that doesn't remotely match the expected shape (not an object, `artifacts`/`issues` not
+arrays, an artifact entry that's `null` or has a non-string `relativePath`/non-string-non-`Buffer` `content`)
+comes back as a structured issue, never an exception:
+
+| Code | Meaning |
+|---|---|
+| `external-artifact-generation-result-invalid` | `result` isn't an object, or `artifacts`/`issues` isn't an array |
+| `external-artifact-shape-invalid` | an entry in `artifacts` isn't an object |
+| `external-artifact-relative-path-invalid` | an artifact's `relativePath` isn't a string |
+| `external-artifact-content-type-invalid` | an artifact's `content` is neither a `string` nor a `Buffer` |
 | `external-artifact-path-unsafe` | `relativePath` is empty, absolute, or escapes its own root via `".."` |
 | `external-artifact-duplicate-path` | two artifacts share the exact same `relativePath` |
 | `external-artifact-path-case-collision` | two `relativePath`s differ only in case |
@@ -176,7 +223,20 @@ runs via `ExternalDeploymentService` regardless of whether the target also decla
 
 A target with further format-specific invariants (e.g. "every path listed in the index file must exist in the
 artifact set") should implement its own `ExternalArtifactValidator` for those — never as a *replacement* for
-`StandardExternalArtifactValidator`, only ever alongside it.
+`StandardExternalArtifactValidator`, only ever alongside it (and `ExternalDeploymentService` enforces that:
+`StandardExternalArtifactValidator` is not a constructor parameter, so there's no way to swap it out even by
+accident).
+
+## Extra validators — additive only
+
+`ExternalDeploymentService`'s constructor accepts one *extra* validator per stage —
+`new ExternalDeploymentService(extraDescriptorValidator?, extraCompatibilityValidator?, extraArtifactValidator?)`
+— each layered strictly on top of the corresponding built-in validator, never in place of it. There is no
+constructor parameter that replaces a built-in validator; a permissive extra validator (one that always returns
+`[]`) can add nothing and take nothing away — the built-in one's own issues are always present regardless. A
+thrown exception from any validator — built-in or extra — is caught and converted into a single
+`external-deployment-{extra-,}{descriptor,compatibility,artifact}-validator-threw` error issue rather than
+propagating out of `deploy()`.
 
 ## The local example target
 
@@ -245,11 +305,11 @@ throws rather than writing outside it.
 ## Writing your own target
 
 1. Implement `ExternalRoundProjector<T>` for your format's own round shape (or reuse `PokieJsonRoundArtifactProjector`
-   directly, the way the local example does, if canonical JSON is close enough).
-2. Implement `ExternalArtifactGenerator<T>`, using `context.roundProjector` for every outcome (never a projector
-   held by the generator itself), reporting a per-outcome failure as an error-severity `ValidationIssue` and
-   returning `artifacts: []` when any occur — no partial generation. Never derive a file/path name directly from
-   caller-supplied data (a `modeName`, an outcome `id`) — encode it deterministically first, the way
+   directly, the way the local example does, if canonical JSON is close enough). This is the only piece of the
+   SDK that ever sees a `RoundArtifact<T>` — `ExternalDeploymentService` calls it for you.
+2. Implement `ExternalArtifactGenerator`, consuming `ExternalDeploymentProjectedModeInput[]` — already-projected
+   plain JSON, nothing generic over `T`. Never derive a file/path name directly from caller-supplied data (a
+   `modeName`, an outcome `id`) — encode it deterministically first, the way
    `LocalJsonExternalArtifactGenerator` does, and keep the original value recoverable as data instead.
 3. Declare `requirements`/`capabilities` honestly — only the capabilities your format actually supports, only
    the requirements your format actually needs.
@@ -261,4 +321,5 @@ throws rather than writing outside it.
    `createLocalJsonExternalDeploymentTarget`) and register it with an `ExternalDeploymentTargetRegistry`. Once
    registered, the target is frozen — its `id`, `capabilities`, and `requirements` can no longer be reassigned.
 6. Deploy through `ExternalDeploymentService` rather than calling the individual collaborators by hand, so the
-   ordering/short-circuiting guarantees above always hold.
+   ordering/short-circuiting guarantees above always hold. Pass an *extra* validator to the constructor for a
+   further, project-specific check — never to replace a built-in one, since that isn't possible.

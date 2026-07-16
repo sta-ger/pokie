@@ -19,13 +19,16 @@ import type {ExternalRoundProjector} from "./ExternalRoundProjector.js";
 // ExternalDeploymentTargetRegistry's own doc comment). "version" is this target integration's own version (its
 // format/adapter version — independent of both "id" and the deployed content's own provenance.pokieVersion),
 // surfaced for diagnostics/logging; POKIE places no constraint on its shape.
+// "artifactGenerator" is deliberately not generic over T (unlike "roundProjector") — see
+// ExternalArtifactGenerator's own doc comment: generation only ever runs after ExternalDeploymentService has
+// already projected every RoundArtifact<T> into plain JSON, so nothing generic-over-T ever reaches it.
 export interface ExternalDeploymentTarget<T extends string | number = string> {
     readonly id: string;
     readonly version: string;
     readonly requirements: ExternalDeploymentRequirements;
     readonly capabilities: readonly ExternalDeploymentCapability[];
     readonly roundProjector: ExternalRoundProjector<T>;
-    readonly artifactGenerator: ExternalArtifactGenerator<T>;
+    readonly artifactGenerator: ExternalArtifactGenerator;
     readonly artifactValidator?: ExternalArtifactValidator;
     readonly runtimeAdapter?: ExternalDeploymentRuntimeAdapter;
     readonly diagnostic?: ExternalDeploymentDiagnostic;

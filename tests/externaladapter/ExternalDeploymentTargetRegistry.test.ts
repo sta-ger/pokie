@@ -2,7 +2,7 @@ import {
     ExternalArtifactGenerationResult,
     ExternalDeploymentDuplicateTargetError,
     ExternalDeploymentInvalidTargetError,
-    ExternalDeploymentModeInput,
+    ExternalDeploymentProjectedModeInput,
     ExternalDeploymentTarget,
     ExternalDeploymentTargetRegistry,
     ExternalRoundProjector,
@@ -23,7 +23,7 @@ function stubTarget(id: string, overrides: Partial<ExternalDeploymentTarget> = {
         capabilities: [],
         roundProjector: new NoOpRoundProjector(),
         artifactGenerator: {
-            generate(_modes: readonly ExternalDeploymentModeInput[]): ExternalArtifactGenerationResult {
+            generate(_modes: readonly ExternalDeploymentProjectedModeInput[]): ExternalArtifactGenerationResult {
                 return {artifacts: [], issues: []};
             },
         },
