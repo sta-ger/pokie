@@ -109,10 +109,10 @@ describe("HomePage", () => {
 
         expect(await screen.findByText("You have unsaved changes in Design & Build. Leave and lose them?")).toBeInTheDocument();
 
-        // Cancel ("Stay") -- the *navigation* is what's guarded (not whatever incidental API call a
-        // handler made before attempting it -- see useDesignNavigationGuard's own doc comment on why the
-        // guard lives at the router level, not inside useOpenProject): we're still on Home, on the Open
-        // Project tab (never navigated to /project), and the draft is exactly where it was.
+        // Cancel ("Stay") -- useOpenProject's guardedAction defers the API call itself until confirmed
+        // (see openProjectGuard.test.tsx for a dedicated check that it never fired), so we're still on
+        // Home, on the Open Project tab (never navigated to /project), and the draft is exactly where it
+        // was.
         await user.click(screen.getByRole("button", {name: "Stay"}));
         await waitFor(() =>
             expect(screen.queryByText("You have unsaved changes in Design & Build. Leave and lose them?")).not.toBeInTheDocument(),

@@ -2,6 +2,7 @@ import {useCallback} from "react";
 import {useNavigate} from "react-router-dom";
 import {openProject} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
+import {useGuardedAction} from "../context/DesignNavigationGuardContext";
 
 // Shared by the Recent Projects list, the Open Existing Project form, and every flow's own "Open in
 // Studio" button (Create/Init/Build/Blueprint-Build) -- the one explicit Home -> Project transition, see
@@ -10,19 +11,21 @@ import {useStudioApi} from "../context/StudioApiProvider";
 // ProjectDashboardPage loads/polls its own dashboard context on mount, so this only needs to open the
 // project on the server and switch routes.
 //
-// Deliberately knows nothing about a dirty Design & Build draft -- that's guarded once, centrally, at the
-// router level (useDesignNavigationGuard's useBlocker), not here. A `navigate("/project")` call this
-// function makes is just one more history transition the blocker sees and can intercept the same way it
-// intercepts a browser Back press or a direct hash edit; duplicating that check here would risk a double
-// confirmation.
+// Routed through the one shared `guardedAction` (see useDesignNavigationGuard/DesignNavigationGuardContext)
+// instead of calling openProject/navigate directly: while a Design & Build draft is dirty, this defers
+// *both* the API call and the navigation until the user confirms -- Cancel must never have already told
+// the server to open a different project. guardedAction also suppresses the router-level blocker for the
+// one navigate() call this makes once confirmed, so there's exactly one confirmation, never two.
 export function useOpenProject(): (projectRoot: string) => Promise<void> {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
+    const guardedAction = useGuardedAction();
     return useCallback(
-        async (projectRoot: string) => {
-            await openProject(fetchImpl, projectRoot);
-            navigate("/project");
-        },
-        [fetchImpl, navigate],
+        (projectRoot: string) =>
+            guardedAction(async () => {
+                await openProject(fetchImpl, projectRoot);
+                navigate("/project");
+            }),
+        [fetchImpl, navigate, guardedAction],
     );
 }

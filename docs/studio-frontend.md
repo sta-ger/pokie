@@ -36,16 +36,27 @@ tabs never loses in-progress work):
   is required for the guided flow. A successful build's "Open in Studio" button (unchanged) is the bridge
   into the Project Dashboard. The blueprint is dirty-tracked (`BlueprintEditorPage`'s `onDirtyChange`,
   cleared on a fresh New/Load or a successful Save/Build) and guarded by one centralized mechanism,
-  `hooks/useDesignNavigationGuard.ts`, used once in `HomePage`: a `useBlocker` predicate intercepts every
-  history transition that would leave the `/home/*` subtree while dirty — browser Back/Forward, a direct
-  navigation to `/project/*`, a hash edit, or an in-app `navigate()` call (e.g. from `useOpenProject`) are
-  all just "history transitions" to a data router, so one predicate covers all of them uniformly, and
-  switching between Home's own 3 tabs is never blocked. A blocked transition shows a Mantine confirm
-  modal; confirming calls `blocker.proceed()` (resumes the exact blocked transition — never a duplicate
-  navigation), cancelling calls `blocker.reset()` (leaves the URL, draft, and focus untouched, since
-  nothing in Home ever unmounts while blocked). Reload/tab-close is guarded separately by a native
-  `beforeunload` listener, attached only while dirty. `useOpenProject` itself knows nothing about dirty
-  state — duplicating the check there would risk a double confirmation.
+  `hooks/useDesignNavigationGuard.ts`, used once in `HomePage`, which handles two distinct kinds of exit:
+  - Transitions the router already knows about *before* they commit — browser Back/Forward and any in-app
+    `navigate()` call are both just "history transitions" to a data router, blocked uniformly by a
+    `useBlocker` predicate. A blocked transition shows a Mantine confirm modal; confirming calls
+    `blocker.proceed()` (resumes the exact blocked transition — never a duplicate navigation), cancelling
+    calls `blocker.reset()` (leaves the URL, draft, and focus untouched, since nothing in Home ever
+    unmounts while blocked). A manually edited hash (typed into the address bar) is a variant of this case
+    handled by a `hashchange` fallback: such an edit creates a browser history entry with no
+    `history.state.idx` marker, which `useBlocker` can't compute a safe revert-delta for and silently lets
+    through — the fallback reverts the hash and shows the same modal.
+  - `useOpenProject`'s own side effect (call the API, then navigate to `/project`) — blocking only the
+    `navigate()` call would be too late, since the API call already ran. `useDesignNavigationGuard` also
+    returns a `GuardedAction` (threaded to `useOpenProject` via `context/DesignNavigationGuardContext.tsx`,
+    provided once by `HomePage`) that shows the same confirm modal *before* running the side effect at
+    all: Cancel never calls the API; Confirm runs the API call and lets the one `navigate()` call it makes
+    through unblocked (via a one-shot bypass flag the `useBlocker` predicate consults, reset immediately if
+    the API call fails) — so there is exactly one confirmation, never two, and a failed call leaves Home's
+    URL, draft, and the guard itself exactly as they were.
+
+  Reload/tab-close is guarded separately by a native `beforeunload` listener, attached only while dirty.
+  Switching between Home's own 3 tabs is never blocked by any of the above.
 - **Open Project** (`/home/open`) — merges what were two separate "ways to open an already-built project"
   tabs (Recent Projects, Open by path) into one.
 - **Advanced Tools** (`/home/advanced`) — everything else, unchanged functionally, only regrouped:
@@ -103,6 +114,8 @@ cli/studio-client/
                            # errorMessage.ts, formatTimestamp.ts, asStringList.ts, interpret/*.ts --
                            # all pure, framework-agnostic TypeScript, unit-tested independently of React
     context/StudioApiProvider.tsx   # supplies the FetchLike apiClient functions expect
+    context/DesignNavigationGuardContext.tsx   # threads useDesignNavigationGuard's GuardedAction to
+                                                # useOpenProject (see UX/Information architecture above)
     hooks/                # useOpenProject, useDesignNavigationGuard (centralized dirty-navigation guard,
                            # see UX/Information architecture above), useConfirm, useBlueprintEditor,
                            # useProjectContext, useSimulationPoll, useReplayPoll, useRuntimeManager,
@@ -192,9 +205,14 @@ Two Jest projects (`jest.config.mjs`):
   (configure the game model → validate → build → land in the Project Dashboard → simulate → open the
   report). `tests/cli/studio-client/src/routing.test.tsx` covers refresh/direct-link (render with a specific
   `initialEntries` path) and real browser back/forward. `tests/cli/studio-client/src/designNavigationGuard.test.tsx`
-  covers the centralized dirty-navigation guard itself: blocking Back and a direct `/project/*` navigation
-  while dirty, Cancel preserving the URL/draft, Confirm navigating exactly once, Home's own tab switches
-  never blocking, and the `beforeunload` listener being attached only while dirty. The data router builds
+  covers the router-level half of the guard: blocking Back and a direct `/project/*` navigation while
+  dirty (including the untracked-hash-edit fallback), Cancel preserving the URL/draft, Confirm navigating
+  exactly once, Home's own tab switches never blocking, and the `beforeunload` listener being attached only
+  while dirty. `tests/cli/studio-client/src/openProjectGuard.test.tsx` covers the `GuardedAction` half
+  specifically: Cancel never calls the open-project API, Confirm calls it exactly once and navigates
+  exactly once, a failed call keeps Home's URL/draft and doesn't leave the router-level bypass stuck "on"
+  for a later, unrelated navigation, and Back/Forward/direct-route/tab-switching behavior is unaffected.
+  The data router builds
   Fetch API `Request` objects internally on every navigation even with zero loaders/actions defined, which
   jsdom doesn't provide — `tests/cli/studio-client/src/jestPolyfills.ts` polyfills `Request`/`Response`/
   `Headers`/`fetch` via `undici` (a devDependency; this is what Node's own built-in `fetch` is built on).

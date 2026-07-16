@@ -3,6 +3,7 @@ import {useDocumentTitle} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
 import {BlueprintEditorPage} from "../blueprintEditor/BlueprintEditorPage";
+import {DesignNavigationGuardProvider} from "../../context/DesignNavigationGuardContext";
 import {useDesignNavigationGuard} from "../../hooks/useDesignNavigationGuard";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
@@ -66,88 +67,90 @@ export function HomePage() {
     // attach/detach the listener; only flips true/false on New/Load/Save/Build, not per keystroke, so
     // this doesn't cause excess re-renders.
     const [isDesignDirty, setIsDesignDirty] = useState(false);
-    useDesignNavigationGuard(isDesignDirty);
+    const guardedAction = useDesignNavigationGuard(isDesignDirty);
 
     return (
         <AppShellLayout
             navbar={<NavTabs items={HOME_TABS} active={activeTab} onSelect={(value) => navigate(`/home/${value}`)} />}
             breadcrumbs={[]}
         >
-            <Stack gap="lg">
-                <div ref={designRef} tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
-                    <BlueprintEditorPage guided initialPath={initialBlueprintPath} onDirtyChange={setIsDesignDirty} />
-                </div>
+            <DesignNavigationGuardProvider value={guardedAction}>
+                <Stack gap="lg">
+                    <div ref={designRef} tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
+                        <BlueprintEditorPage guided initialPath={initialBlueprintPath} onDirtyChange={setIsDesignDirty} />
+                    </div>
 
-                <div ref={openRef} tabIndex={-1} style={{display: activeTab === "open" ? undefined : "none"}}>
-                    <Stack gap="md">
-                        <Title order={2}>Open a Project</Title>
-                        <Text c="dimmed" size="sm">
-                            Open an already-built project to inspect, validate, simulate, or deploy it.
-                        </Text>
-                        <RecentProjectsPanel />
-                        <Divider label="Or open by path" labelPosition="left" />
-                        <OpenProjectForm />
-                    </Stack>
-                </div>
-
-                <div ref={advancedRef} tabIndex={-1} style={{display: activeTab === "advanced" ? undefined : "none"}}>
-                    <Stack gap="lg">
-                        <Title order={2}>Advanced Tools</Title>
-                        <Text c="dimmed" size="sm">
-                            Everything outside the guided Design &amp; Build flow: scaffolding hand-coded games, initializing an
-                            existing directory in place, building from a blueprint file directly, and the raw Blueprint Editor.
-                        </Text>
-
-                        <div>
-                            <Title order={4} mb="xs">
-                                Scaffold a hand-coded game
-                            </Title>
-                            <Text c="dimmed" size="sm" mb="sm">
-                                Generates hand-written TypeScript game logic (no blueprint/game model) -- for building game logic by
-                                hand rather than declaratively.
+                    <div ref={openRef} tabIndex={-1} style={{display: activeTab === "open" ? undefined : "none"}}>
+                        <Stack gap="md">
+                            <Title order={2}>Open a Project</Title>
+                            <Text c="dimmed" size="sm">
+                                Open an already-built project to inspect, validate, simulate, or deploy it.
                             </Text>
-                            <CreateProjectForm />
-                        </div>
+                            <RecentProjectsPanel />
+                            <Divider label="Or open by path" labelPosition="left" />
+                            <OpenProjectForm />
+                        </Stack>
+                    </div>
 
-                        <Divider />
-
-                        <div>
-                            <Title order={4} mb="xs">
-                                Initialize an existing directory
-                            </Title>
-                            <InitProjectForm />
-                        </div>
-
-                        <Divider />
-
-                        <div>
-                            <Title order={4} mb="xs">
-                                Build from an existing blueprint file
-                            </Title>
-                            <Text c="dimmed" size="sm" mb="sm">
-                                Skips the guided editor -- builds directly from a blueprint JSON file already on disk.
+                    <div ref={advancedRef} tabIndex={-1} style={{display: activeTab === "advanced" ? undefined : "none"}}>
+                        <Stack gap="lg">
+                            <Title order={2}>Advanced Tools</Title>
+                            <Text c="dimmed" size="sm">
+                                Everything outside the guided Design &amp; Build flow: scaffolding hand-coded games, initializing an
+                                existing directory in place, building from a blueprint file directly, and the raw Blueprint Editor.
                             </Text>
-                            <BuildFromBlueprintPanel />
-                        </div>
 
-                        <Divider />
+                            <div>
+                                <Title order={4} mb="xs">
+                                    Scaffold a hand-coded game
+                                </Title>
+                                <Text c="dimmed" size="sm" mb="sm">
+                                    Generates hand-written TypeScript game logic (no blueprint/game model) -- for building game logic
+                                    by hand rather than declaratively.
+                                </Text>
+                                <CreateProjectForm />
+                            </div>
 
-                        <div>
-                            <Title order={4} mb="xs">
-                                Raw Blueprint Editor
-                            </Title>
-                            <Text c="dimmed" size="sm" mb="sm">
-                                The Blueprint Editor without the guided step-by-step framing -- JSON mode and Load/Save-by-path are
-                                always visible.
-                            </Text>
-                            <BlueprintEditorPage />
-                        </div>
-                    </Stack>
-                </div>
+                            <Divider />
 
-                <Divider />
-                <DocumentationLinks />
-            </Stack>
+                            <div>
+                                <Title order={4} mb="xs">
+                                    Initialize an existing directory
+                                </Title>
+                                <InitProjectForm />
+                            </div>
+
+                            <Divider />
+
+                            <div>
+                                <Title order={4} mb="xs">
+                                    Build from an existing blueprint file
+                                </Title>
+                                <Text c="dimmed" size="sm" mb="sm">
+                                    Skips the guided editor -- builds directly from a blueprint JSON file already on disk.
+                                </Text>
+                                <BuildFromBlueprintPanel />
+                            </div>
+
+                            <Divider />
+
+                            <div>
+                                <Title order={4} mb="xs">
+                                    Raw Blueprint Editor
+                                </Title>
+                                <Text c="dimmed" size="sm" mb="sm">
+                                    The Blueprint Editor without the guided step-by-step framing -- JSON mode and Load/Save-by-path
+                                    are always visible.
+                                </Text>
+                                <BlueprintEditorPage />
+                            </div>
+                        </Stack>
+                    </div>
+
+                    <Divider />
+                    <DocumentationLinks />
+                </Stack>
+            </DesignNavigationGuardProvider>
         </AppShellLayout>
     );
 }
