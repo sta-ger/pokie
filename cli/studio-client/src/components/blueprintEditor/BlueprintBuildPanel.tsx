@@ -1,4 +1,4 @@
-import {Button, TextInput} from "@mantine/core";
+import {Button, Text, TextInput} from "@mantine/core";
 import {useRef, useState} from "react";
 import {buildBlueprint, previewBlueprintBuild} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -12,7 +12,28 @@ import {useOpenProject} from "../../hooks/useOpenProject";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 
-export function BlueprintBuildPanel({blueprint, sourcePath}: {blueprint: Record<string, unknown>; sourcePath?: string}) {
+export function BlueprintBuildPanel({
+    blueprint,
+    sourcePath,
+    revision,
+    onBuildSuccess,
+    blocked = false,
+}: {
+    blueprint: Record<string, unknown>;
+    sourcePath?: string;
+    // The editor's own revision at the moment this exact blueprint snapshot was rendered -- captured at
+    // build-request time (not response time) so a caller can tell "this specific edit was built" apart
+    // from any further edits made while the build was in flight (see onBuildSuccess below).
+    revision: number;
+    // Fired with the revision that was actually built, right alongside the existing "Open in Studio"
+    // success state -- lets BlueprintEditorPage treat a successful build as a clean/no-longer-dirty
+    // checkpoint.
+    onBuildSuccess?: (builtRevision: number) => void;
+    // Disables only "Build Package" (never the non-destructive "Build Preview") -- set when the blueprint
+    // is known-invalid, so the happy path never lets a build be attempted that the server would reject
+    // anyway. Warnings-only validation results never set this.
+    blocked?: boolean;
+}) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const confirm = useConfirm();
@@ -37,6 +58,10 @@ export function BlueprintBuildPanel({blueprint, sourcePath}: {blueprint: Record<
 
     const runBuild = (): void => {
         const resolvedOutDir = outDir.trim() || undefined;
+        // Captured now, at request-send time -- if the user keeps editing while this build is in flight,
+        // the *built* revision must still be reported as whatever was actually sent, not whatever the
+        // revision happens to be once the response arrives.
+        const builtRevision = revision;
         const doBuild = (): void => {
             if (!buildGuard.begin()) {
                 return;
@@ -48,6 +73,7 @@ export function BlueprintBuildPanel({blueprint, sourcePath}: {blueprint: Record<
                     if (view.status === "ok") {
                         setLastProjectRoot(view.projectRoot);
                         lastBuiltOutDir.current = resolvedOutDir;
+                        onBuildSuccess?.(builtRevision);
                     }
                 })
                 .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}))
@@ -69,10 +95,15 @@ export function BlueprintBuildPanel({blueprint, sourcePath}: {blueprint: Record<
                 <Button variant="default" onClick={runPreview} loading={preview.status === "loading"}>
                     Build Preview
                 </Button>
-                <Button onClick={runBuild} loading={result.status === "loading"}>
+                <Button onClick={runBuild} loading={result.status === "loading"} disabled={blocked}>
                     Build Package
                 </Button>
             </QuickActions>
+            {blocked && (
+                <Text size="sm" c="orange" mb="sm">
+                    Fix the validation errors above before building.
+                </Text>
+            )}
 
             <BuildPreviewDisplay view={preview} />
             <BuildResultDisplay

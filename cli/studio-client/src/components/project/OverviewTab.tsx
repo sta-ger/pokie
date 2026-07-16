@@ -8,6 +8,8 @@ import {QuickActions} from "../common/QuickActions";
 
 const NEXT_ACTION_TONE: Record<NextActionView["kind"], "info" | "success" | "warning"> = {
     validate: "info",
+    validating: "info",
+    "validation-failed": "warning",
     "fix-validation": "warning",
     simulate: "info",
     "simulation-running": "info",

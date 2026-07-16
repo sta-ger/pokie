@@ -68,7 +68,11 @@ function describeGuidedNextStep(status: BlueprintValidationView["status"]): Guid
 // off the in-memory blueprint and doesn't strictly need either in the guided happy path. `initialPath`
 // (set when arriving via Project Overview's "Configure Game Model" link) auto-loads that blueprint on
 // mount, reusing the exact same handleLoad a manual Load click would use.
-export function BlueprintEditorPage({guided = false, initialPath}: {guided?: boolean; initialPath?: string} = {}) {
+export function BlueprintEditorPage({
+    guided = false,
+    initialPath,
+    onDirtyChange,
+}: {guided?: boolean; initialPath?: string; onDirtyChange?: (dirty: boolean) => void} = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
@@ -83,7 +87,41 @@ export function BlueprintEditorPage({guided = false, initialPath}: {guided?: boo
     const validateGuard = useDoubleSubmitGuard();
     const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
 
+    // Dirty-tracking: `cleanRevisionRef` is the last revision known to be "safe" (freshly loaded, freshly
+    // saved, or freshly built) -- any revision past it means there are edits nothing on disk/in a package
+    // reflects yet. New/Load reset it via `nextFormGenerationIsClean` (consumed in the formGeneration
+    // effect below, since only a *post-commit* read of `editor.state.revision` is correct there -- see the
+    // stabilization-pass plan for why manual `+1` arithmetic in the click handler isn't reliable). A
+    // successful JSON-textarea apply also bumps formGeneration but is deliberately NOT treated as clean --
+    // it's still an unsaved edit, just a wholesale one.
+    const cleanRevisionRef = useRef(editor.state.revision);
+    const nextFormGenerationIsClean = useRef(false);
+    // Save/Build success mutate cleanRevisionRef from an async callback, which (being a ref) doesn't
+    // itself trigger a re-render -- this forces one so `isDirty` below gets recomputed against whatever
+    // editor.state.revision *actually* is by then (which may have moved past what was saved/built, if
+    // the user kept editing during the round-trip -- markClean must never just report "not dirty").
+    const [, forceRerenderAfterMarkClean] = useState(0);
+    const markClean = (revisionThatWasPersisted: number): void => {
+        cleanRevisionRef.current = revisionThatWasPersisted;
+        forceRerenderAfterMarkClean((n) => n + 1);
+    };
+    useEffect(() => {
+        if (nextFormGenerationIsClean.current) {
+            cleanRevisionRef.current = editor.state.revision;
+            nextFormGenerationIsClean.current = false;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor.formGeneration]);
+    // Refs must never be read during render (react-hooks/refs) -- reading cleanRevisionRef.current here,
+    // inside an effect with no dependency array, runs after every render instead, which for this
+    // component is effectively every meaningful state change anyway (a mutate/New/Load/Save/Build always
+    // re-renders); onDirtyChange is idempotent, so a few redundant calls with the same value are harmless.
+    useEffect(() => {
+        onDirtyChange?.(editor.state.revision !== cleanRevisionRef.current);
+    });
+
     const handleNew = (): void => {
+        nextFormGenerationIsClean.current = true;
         editor.newBlueprint();
         setBlueprintPath(undefined);
         overwriteConfirmedForPath.current = undefined;
@@ -101,6 +139,7 @@ export function BlueprintEditorPage({guided = false, initialPath}: {guided?: boo
             .then((result) => {
                 setLoadView(describeLoadResult(result));
                 if (result.status === "ok") {
+                    nextFormGenerationIsClean.current = true;
                     editor.loadFrom(result.blueprint);
                     setBlueprintPath(result.path);
                     overwriteConfirmedForPath.current = result.path;
@@ -123,6 +162,9 @@ export function BlueprintEditorPage({guided = false, initialPath}: {guided?: boo
         if (!saveGuard.begin()) {
             return;
         }
+        // Captured now, at request-send time -- see the same reasoning on BlueprintBuildPanel's own
+        // `builtRevision` capture for why response-time would be wrong if edits happen mid-flight.
+        const savedRevision = editor.state.revision;
         setSaveView({status: "loading"});
         saveBlueprint(fetchImpl, path, editor.state.blueprint, overwrite)
             .then((result) => {
@@ -130,6 +172,7 @@ export function BlueprintEditorPage({guided = false, initialPath}: {guided?: boo
                 if (result.status === "ok") {
                     setBlueprintPath(result.path);
                     overwriteConfirmedForPath.current = result.path;
+                    markClean(savedRevision);
                 }
             })
             .catch((error: unknown) => setSaveView({status: "error", message: errorMessage(error)}))
@@ -225,7 +268,13 @@ export function BlueprintEditorPage({guided = false, initialPath}: {guided?: boo
             )}
 
             <BlueprintValidationPanel view={validationView} onValidate={handleValidate} />
-            <BlueprintBuildPanel blueprint={blueprint} sourcePath={blueprintPath} />
+            <BlueprintBuildPanel
+                blueprint={blueprint}
+                sourcePath={blueprintPath}
+                revision={revision}
+                onBuildSuccess={markClean}
+                blocked={validationView.status === "invalid"}
+            />
         </div>
     );
 }

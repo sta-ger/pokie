@@ -188,16 +188,19 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         // 1. Land on Home's default "Design & Build" tab -- the guided open-or-create + configure entry.
         expect(screen.getByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
 
-        // 2. Configure the game model -- add a symbol.
-        await user.type(screen.getByLabelText("New symbol id"), "wild");
+        // 2. Configure the game model -- add a symbol. HomePage keeps every tab's content mounted (so
+        // switching tabs never loses a draft), so the Advanced Tools tab's own raw Blueprint Editor
+        // instance is also in the DOM here -- [0] is always the Design & Build tab's own, since it's the
+        // first of the three tab bodies in HomePage's markup.
+        await user.type(screen.getAllByLabelText("New symbol id")[0], "wild");
         await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
 
         // 3. Validate.
-        await user.click(screen.getByRole("button", {name: "Validate"}));
+        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
 
         // 4. Build.
-        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await user.click(screen.getAllByRole("button", {name: "Build Package"})[0]);
         const openInStudio = await screen.findByRole("button", {name: "Open in Studio"});
 
         // 5. Building's success action lands us in the Project Dashboard (the same "Open in Studio"

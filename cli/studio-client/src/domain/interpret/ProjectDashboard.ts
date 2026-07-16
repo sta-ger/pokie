@@ -90,7 +90,14 @@ export type ValidationSummaryView = {
     errors: ValidationIssueView[];
     warnings: ValidationIssueView[];
     suggestions: string[];
+    // "Are there any issues to *show*" -- warnings still render in ValidationTab even though they don't
+    // block anything (see `blocking` below).
     hasIssues: boolean;
+    // True only when there are errors or the report itself reports invalid -- warnings alone must never
+    // block the happy path (Simulate/Build stay reachable with warnings-only). Kept distinct from
+    // `hasIssues` specifically so callers can't accidentally conflate "has something to show" with
+    // "should stop the user from proceeding".
+    blocking: boolean;
 };
 
 export function describeValidationSummary(report: PokieGamePackageValidationReport): ValidationSummaryView {
@@ -100,22 +107,37 @@ export function describeValidationSummary(report: PokieGamePackageValidationRepo
         warnings: report.warnings.map((issue) => ({code: issue.code, message: issue.message})),
         suggestions: report.suggestions,
         hasIssues: report.errors.length > 0 || report.warnings.length > 0,
+        blocking: !report.valid || report.errors.length > 0,
     };
 }
 
-export type NextActionView =
-    | {kind: "validate"; title: string; description: string; actionLabel: string}
-    | {kind: "fix-validation"; title: string; description: string; actionLabel: string}
-    | {kind: "simulate"; title: string; description: string; actionLabel: string}
-    | {kind: "simulation-running"; title: string; description: string; actionLabel: string}
-    | {kind: "view-report"; title: string; description: string; actionLabel: string};
+// Explicit idle/loading/error/success state for the Project Dashboard's own "Validate" action (POST
+// /api/project/validate) -- replaces a bare `ValidationSummaryView | undefined` + a separate loading
+// boolean, whose combination made a failed re-validation silently leave a stale successful summary
+// displayed with no error shown anywhere (see ProjectDashboardPage's runValidate). Replacing the whole
+// state on every attempt (loading -> error, or loading -> success) is what makes a new error naturally
+// clear a stale success, and vice versa.
+export type ProjectValidationView =
+    | {status: "idle"}
+    | {status: "loading"}
+    | {status: "error"; message: string}
+    | {status: "success"; summary: ValidationSummaryView};
 
-// Pure UI-sequencing over state Project Overview already has (validation summary, current simulation
-// job) -- not game/simulation logic, just "which screen should the user go to next." Deliberately a
-// single ordered if-chain (not a lookup table) since each branch's copy depends on the *reason*, not
-// just a status enum.
-export function describeNextAction(validation: ValidationSummaryView | undefined, simulationJob: StudioSimulationJobView | undefined): NextActionView {
-    if (validation === undefined) {
+export type NextActionView = {
+    kind: "validate" | "validating" | "validation-failed" | "fix-validation" | "simulate" | "simulation-running" | "view-report";
+    title: string;
+    description: string;
+    // Absent while there's nothing useful to click yet (e.g. a validation already in flight).
+    actionLabel?: string;
+};
+
+// Pure UI-sequencing over state Project Overview already has (validation state, current simulation job)
+// -- not game/simulation logic, just "which screen should the user go to next." Deliberately a single
+// ordered if-chain (not a lookup table) since each branch's copy depends on the *reason*, not just a
+// status enum. Warnings-only validation results are deliberately NOT treated as blocking here -- only
+// `summary.blocking` (errors, or an outright invalid report) gates progress past Validate.
+export function describeNextAction(validation: ProjectValidationView, simulationJob: StudioSimulationJobView | undefined): NextActionView {
+    if (validation.status === "idle") {
         return {
             kind: "validate",
             title: "Validate your project",
@@ -123,8 +145,16 @@ export function describeNextAction(validation: ValidationSummaryView | undefined
             actionLabel: "Validate project",
         };
     }
-    if (validation.hasIssues) {
-        const issueCount = validation.errors.length + validation.warnings.length;
+    if (validation.status === "loading") {
+        return {kind: "validating", title: "Validating…", description: "Checking your project for issues."};
+    }
+    if (validation.status === "error") {
+        return {kind: "validation-failed", title: "Validation failed", description: validation.message, actionLabel: "Try again"};
+    }
+
+    const {summary} = validation;
+    if (summary.blocking) {
+        const issueCount = summary.errors.length + summary.warnings.length;
         return {
             kind: "fix-validation",
             title: "Fix validation issues",
@@ -136,7 +166,9 @@ export function describeNextAction(validation: ValidationSummaryView | undefined
         return {
             kind: "simulate",
             title: "Run a simulation",
-            description: "Your project is valid. Run a simulation to see how it performs.",
+            description: summary.hasIssues
+                ? `Your project is valid, with ${summary.warnings.length} warning(s). Run a simulation to see how it performs.`
+                : "Your project is valid. Run a simulation to see how it performs.",
             actionLabel: "Run a simulation",
         };
     }

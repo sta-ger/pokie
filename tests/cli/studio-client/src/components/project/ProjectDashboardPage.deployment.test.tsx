@@ -1,8 +1,7 @@
 import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {ProjectDashboardPage} from "../../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
-import {renderWithProviders} from "../../testUtils/renderWithProviders";
+import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
     "/api/project/context": () => ({
@@ -57,7 +56,7 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
             return Promise.reject(new Error(`no fake route for ${url} (init: ${JSON.stringify(init)})`));
         };
 
-        renderWithProviders(<ProjectDashboardPage />, {fetchImpl, initialEntries: ["/project"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Deployment"}));

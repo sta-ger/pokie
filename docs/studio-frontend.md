@@ -10,9 +10,11 @@ changed; only how the frontend is built, rendered, and organized has.
 - **React 19** + **Mantine 9** (`@mantine/core`, `@mantine/hooks`, `@mantine/form`, `@mantine/notifications`,
   `@mantine/modals`) for UI components, forms, notifications, and confirm dialogs.
 - **Vite** for the dev server and production build (replacing the old bare-`tsc` compile).
-- **`react-router-dom`**, hash routing (`createHashRouter`-equivalent via `<HashRouter>`), exactly two routes:
-  `/` (Home) and `/project` (Project Dashboard). Tab selection *within* a route is local component state, not
-  a nested route — switching Home/Project tabs never changes the URL, matching the app's original behavior.
+- **`react-router-dom`**, hash routing (`<HashRouter>`). Every section has a stable URL: `/home/:tab`
+  (Design & Build / Open Project / Advanced Tools) and `/project/:tab` (the 7 Project Dashboard tabs) —
+  `/` and `/project` redirect to their default tab. A single `:tab` param route per page is enough to make
+  refresh/back-forward/direct-link land on the right section, since react-router keeps the same
+  `HomePage`/`ProjectDashboardPage` element instance mounted across param-only changes.
 - All of the above are **devDependencies** of the `pokie` package, not runtime dependencies — the published
   npm package still ships only a static, framework-free JS/CSS bundle at `dist/cli/studio-client/`, built at
   publish time. Nothing about `npm install pokie` changes for consumers.
@@ -22,41 +24,54 @@ changed; only how the frontend is built, rendered, and organized has.
 Navigation is organized around the user's task sequence — open/create → configure the game model →
 validate → build → simulate → view a report — not around internal module names.
 
-**Home (`/`)** — 3 tabs:
+**Home (`/home/:tab`)** — 3 tabs, all permanently mounted (hidden via CSS, never unmounted, so switching
+tabs never loses in-progress work):
 
-- **Design & Build** (default tab) — the guided happy path. Renders `BlueprintEditorPage` in `guided` mode:
-  a `Stepper` (Configure → Validate → Build) and a `NextStepCallout` next-step hint, both driven by the
-  panel's own existing local validation state (no new state). JSON mode and Load/Save-by-path are tucked
+- **Design & Build** (`/home/design`, the default) — the guided happy path. Renders `BlueprintEditorPage` in
+  `guided` mode: a `Stepper` (Configure → Validate → Build) and a `NextStepCallout` next-step hint, both
+  driven by the panel's own existing local validation state. JSON mode and Load/Save-by-path are tucked
   behind a "Show advanced options" disclosure — Build works directly off the in-memory blueprint, so neither
   is required for the guided flow. A successful build's "Open in Studio" button (unchanged) is the bridge
-  into the Project Dashboard.
-- **Open Project** — merges what were two separate "ways to open an already-built project" tabs (Recent
-  Projects, Open by path) into one.
-- **Advanced Tools** — everything else, unchanged functionally, only regrouped: scaffolding a hand-coded
-  game (`pokie create` — hand-written TypeScript game logic, no blueprint/game model), initializing an
-  existing directory (`pokie init`), building from an existing blueprint file directly (skips the guided
-  editor), and the raw (non-`guided`) Blueprint Editor.
+  into the Project Dashboard. The blueprint is dirty-tracked (`BlueprintEditorPage`'s `onDirtyChange`,
+  cleared on a fresh New/Load or a successful Save/Build): leaving Home to open a project while dirty asks
+  for confirmation first (`DesignDirtyGuardContext`, consulted by `useOpenProject` — the one choke point
+  every "open a project" action already goes through).
+- **Open Project** (`/home/open`) — merges what were two separate "ways to open an already-built project"
+  tabs (Recent Projects, Open by path) into one.
+- **Advanced Tools** (`/home/advanced`) — everything else, unchanged functionally, only regrouped:
+  scaffolding a hand-coded game (`pokie create` — hand-written TypeScript game logic, no blueprint/game
+  model), initializing an existing directory (`pokie init`), building from an existing blueprint file
+  directly (skips the guided editor), and the raw (non-`guided`) Blueprint Editor.
 
-**Project Dashboard (`/project`)** — the same 7 tabs, reordered and grouped instead of flat: **Overview,
-Validate, Simulate, Reports** (the primary flow, in that order), then a visually separated **Advanced**
-group — Replay, Runtime, Deployment (`NavTabItem`'s optional `section` field drives the grouping in
-`NavTabs`). "Validation"/"Simulation" were renamed to "Validate"/"Simulate" for consistent task-verb naming.
+**Project Dashboard (`/project/:tab`)** — the same 7 tabs, reordered and grouped instead of flat:
+**Overview, Validate, Simulate, Reports** (the primary flow, in that order), then a visually separated
+**Advanced** group — Replay, Runtime, Deployment (`NavTabItem`'s optional `section` field drives the
+grouping in `NavTabs`). "Validation"/"Simulation" were renamed to "Validate"/"Simulate" for consistent
+task-verb naming.
 
+- **Validate** runs `POST /api/project/validate` through an explicit `idle|loading|error|success` state
+  (`ProjectValidationView`) rather than a bare result + a separate loading flag — a failed re-validation
+  replaces the whole state, so it can never leave a stale successful result on screen with no error shown.
 - **Overview** is the landing/state page: a `NextStepCallout` at the top summarizes the project's current
   pipeline state and recommends exactly one next action — `describeNextAction`
   (`domain/interpret/ProjectDashboard.ts`) is a pure function over state the page already fetches
-  (validation summary, current simulation job), following the same `describe*` view-model pattern as
+  (`ProjectValidationView`, current simulation job), following the same `describe*` view-model pattern as
   everything else here. It cycles Validate → fix issues → Simulate → view the report as each stage
-  completes. When the package's provenance links back to a known blueprint source path (from `pokie
-  build`'s own `build-info.json`), a "Configure Game Model" button navigates back to Home's Design & Build
-  tab with that blueprint pre-loading (`navigate("/", {state: {initialBlueprintPath}})`, read by `HomePage`
-  via `useLocation().state`) — closing the loop so the game model stays editable from an already-open
-  project too, not just at creation time.
+  completes — **warnings never block this progression**, only errors or an outright invalid report do
+  (`ValidationSummaryView.blocking`, kept distinct from `hasIssues`); `BlueprintBuildPanel`'s "Build
+  Package" mirrors this at the blueprint level, disabled only when the blueprint is known-invalid, never
+  for warnings-only. When the package's provenance links back to a known blueprint source path (from
+  `pokie build`'s own `build-info.json`), a "Configure Game Model" button navigates back to Home's Design &
+  Build tab with that blueprint pre-loading (`navigate("/home/design", {state: {initialBlueprintPath}})`,
+  read by `HomePage` via `useLocation().state`) — closing the loop so the game model stays editable from an
+  already-open project too, not just at creation time.
 
-**Breadcrumbs & page titles** — `AppShellLayout`'s optional `breadcrumbs` prop renders a Mantine
+**Breadcrumbs, page titles & focus** — `AppShellLayout`'s optional `breadcrumbs` prop renders a Mantine
 `Breadcrumbs` trail in the header (Home passes none, showing just the "POKIE Studio" home link; the Project
 Dashboard passes `[projectName, activeTabLabel]`). Every page sets `document.title` via `@mantine/hooks`'
-`useDocumentTitle`.
+`useDocumentTitle`. Both pages also move focus into the newly active section's content on every navigation
+(a `tabIndex={-1}` wrapper + a `useEffect` keyed on the URL-derived active tab), so keyboard/screen-reader
+users don't lose their place after a tab switch or a cross-page navigation.
 
 This is a first vertical slice, not a rewrite: every advanced tool from before this redesign is still fully
 reachable — none of it was removed, only re-labeled and de-emphasized relative to the primary flow.
@@ -78,6 +93,7 @@ cli/studio-client/
                            # errorMessage.ts, formatTimestamp.ts, asStringList.ts, interpret/*.ts --
                            # all pure, framework-agnostic TypeScript, unit-tested independently of React
     context/StudioApiProvider.tsx   # supplies the FetchLike apiClient functions expect
+    context/DesignDirtyGuardContext.tsx   # lets useOpenProject confirm before losing a dirty blueprint
     hooks/                # useOpenProject, useConfirm, useBlueprintEditor, useProjectContext,
                            # useSimulationPoll, useReplayPoll, useRuntimeManager, useDeploymentManager
     components/
@@ -160,6 +176,10 @@ Two Jest projects (`jest.config.mjs`):
   `routes.tsx`) so a test can exercise an actual cross-page navigation, used by
   `tests/cli/studio-client/src/integration/happyPath.test.tsx` — the full guided scenario end to end
   (configure the game model → validate → build → land in the Project Dashboard → simulate → open the report).
+  `tests/cli/studio-client/src/routing.test.tsx` covers refresh/direct-link (render with a specific
+  `initialEntries` path) and real browser back/forward (a small sibling test component driving
+  `useNavigate(-1)`/`(1)` inside the same router, rather than react-router's data-router APIs, which pull in
+  Fetch API `Request`/`Response` machinery jsdom doesn't polyfill).
 
 ```sh
 npm test                                          # both projects

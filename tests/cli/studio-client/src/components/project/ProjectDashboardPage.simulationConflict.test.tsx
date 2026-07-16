@@ -1,8 +1,7 @@
 import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {ProjectDashboardPage} from "../../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
 import {createFakeFetch} from "../../testUtils/fakeFetch";
-import {renderWithProviders} from "../../testUtils/renderWithProviders";
+import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
     "/api/project/context": () => ({
@@ -50,7 +49,7 @@ describe("ProjectDashboardPage - Simulation 409 conflict", () => {
             throw new Error(`no fake route for ${call.url}`);
         });
 
-        renderWithProviders(<ProjectDashboardPage />, {fetchImpl, initialEntries: ["/project"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Simulate"}));

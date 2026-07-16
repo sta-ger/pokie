@@ -1,7 +1,7 @@
 import {Anchor, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
-import {useCallback, useEffect, useState} from "react";
-import {useNavigate} from "react-router-dom";
+import {useCallback, useEffect, useRef, useState} from "react";
+import {useNavigate, useParams} from "react-router-dom";
 import {buildReportDownloadUrl, closeProject, getReplay, getReport, inspectProject, listReplays, listReports, validateProject} from "../../api/apiClient";
 import type {SimulationReport, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -11,7 +11,7 @@ import {
     describeNextAction,
     describeValidationSummary,
     type InspectionResultView,
-    type ValidationSummaryView,
+    type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
 import {describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
 import {describeReportsList, type ReportListView} from "../../domain/interpret/Reports";
@@ -48,6 +48,10 @@ const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "deployment", label: "Deployment", section: "Advanced"},
 ];
 
+function isProjectTab(value: string | undefined): value is ProjectTab {
+    return PROJECT_TABS.some((tab) => tab.value === value);
+}
+
 // Mirrors the old app's own showProjectDashboard: every tab's data-loading hook lives here, at the page
 // level, and stays mounted regardless of which tab is currently visible -- switching tabs only changes
 // what's rendered, never what's running. This matters because the old app kept every section in the DOM
@@ -58,7 +62,17 @@ export function ProjectDashboardPage() {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const confirm = useConfirm();
-    const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
+    const {tab} = useParams<{tab: string}>();
+    const activeTab: ProjectTab = isProjectTab(tab) ? tab : "overview";
+    // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
+    // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
+    // now implemented as a navigation instead of local state.
+    const setActiveTab = useCallback(
+        (value: ProjectTab): void => {
+            navigate(`/project/${value}`);
+        },
+        [navigate],
+    );
 
     const header = useProjectContext();
     const projectKey = header.status === "loaded" || header.status === "error" ? header.projectRoot : undefined;
@@ -77,21 +91,20 @@ export function ProjectDashboardPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchImpl]);
 
-    const [validation, setValidation] = useState<ValidationSummaryView>();
-    const [validationLoading, setValidationLoading] = useState(false);
+    // Replacing the whole state on every attempt (not just a summary + a separate loading bool) is what
+    // makes a failed re-validation correctly clear a stale successful result instead of silently leaving
+    // it displayed with no error shown -- see ProjectValidationView's own doc comment.
+    const [validation, setValidation] = useState<ProjectValidationView>({status: "idle"});
     const validateGuard = useDoubleSubmitGuard();
     const runValidate = useCallback(() => {
         if (!validateGuard.begin()) {
             return;
         }
-        setValidationLoading(true);
+        setValidation({status: "loading"});
         validateProject(fetchImpl)
-            .then((report) => setValidation(describeValidationSummary(report)))
-            .catch(() => undefined)
-            .finally(() => {
-                setValidationLoading(false);
-                validateGuard.end();
-            });
+            .then((report) => setValidation({status: "success", summary: describeValidationSummary(report)}))
+            .catch((error: unknown) => setValidation({status: "error", message: errorMessage(error)}))
+            .finally(() => validateGuard.end());
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchImpl]);
 
@@ -127,7 +140,7 @@ export function ProjectDashboardPage() {
                 })
                 .catch((error: unknown) => setReportDetail({status: "error", message: errorMessage(error)}));
         },
-        [fetchImpl],
+        [fetchImpl, setActiveTab],
     );
 
     const [replayListView, setReplayListView] = useState<ReplayListView>({status: "empty"});
@@ -166,13 +179,22 @@ export function ProjectDashboardPage() {
     const projectName = header.status === "loaded" ? header.name : "Project";
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
+    // Moves focus into the active tab's content whenever the section changes, keeping keyboard/screen-
+    // reader users oriented after a navigation -- keyed on header.status too so it also fires once more
+    // when the page finishes loading fresh from Home (the wrapper this ref points at doesn't exist yet
+    // while still "loading", so the very first activeTab-only effect run can't reach it).
+    const panelRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        panelRef.current?.focus();
+    }, [activeTab, header.status]);
+
     const nextAction = describeNextAction(validation, simulation.job);
     const onNextAction = (): void => {
-        if (nextAction.kind === "validate" || nextAction.kind === "fix-validation") {
+        if (nextAction.kind === "validate" || nextAction.kind === "validation-failed") {
             setActiveTab("validation");
-            if (nextAction.kind === "validate") {
-                runValidate();
-            }
+            runValidate();
+        } else if (nextAction.kind === "fix-validation") {
+            setActiveTab("validation");
         } else if (nextAction.kind === "simulate") {
             setActiveTab("simulation");
         } else if (nextAction.kind === "simulation-running") {
@@ -189,12 +211,12 @@ export function ProjectDashboardPage() {
         inspection.status === "loaded" && inspection.provenance.status === "generated" && inspection.provenance.source !== "(unknown)"
             ? inspection.provenance.source
             : undefined;
-    const onConfigureGameModel = blueprintSource ? () => navigate("/", {state: {initialBlueprintPath: blueprintSource}}) : undefined;
+    const onConfigureGameModel = blueprintSource ? () => navigate("/home/design", {state: {initialBlueprintPath: blueprintSource}}) : undefined;
 
     const handleClose = (): void => {
         const doClose = (): void => {
             closeProject(fetchImpl)
-                .then(() => navigate("/"))
+                .then(() => navigate("/home/design"))
                 .catch(() => undefined);
         };
         if (hasActiveOperation) {
@@ -208,7 +230,7 @@ export function ProjectDashboardPage() {
         return (
             <AppShellLayout navbar={<NavTabs items={PROJECT_TABS} active={activeTab} onSelect={setActiveTab} />}>
                 <Text>
-                    No active project. <Anchor href="#/">Go to Home</Anchor>.
+                    No active project. <Anchor href="#/home/design">Go to Home</Anchor>.
                 </Text>
             </AppShellLayout>
         );
@@ -234,7 +256,7 @@ export function ProjectDashboardPage() {
             {header.status === "error" && <Text mt="md">{header.message}</Text>}
 
             {(header.status === "loaded" || header.status === "error") && (
-                <div style={{marginTop: "1rem"}}>
+                <div ref={panelRef} tabIndex={-1} style={{marginTop: "1rem"}}>
                     {activeTab === "overview" && header.status === "loaded" && (
                         <OverviewTab
                             header={header}
@@ -245,7 +267,7 @@ export function ProjectDashboardPage() {
                             onReinspect={refreshInspect}
                         />
                     )}
-                    {activeTab === "validation" && <ValidationTab summary={validation} loading={validationLoading} onValidate={runValidate} />}
+                    {activeTab === "validation" && <ValidationTab view={validation} onValidate={runValidate} />}
                     {activeTab === "simulation" && (
                         <SimulationTab
                             progress={simulation.progress}

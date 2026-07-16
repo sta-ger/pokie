@@ -23,6 +23,11 @@ export function OpenProjectForm() {
         }
         setState({status: "loading"});
         openAndNavigate(values.projectRoot)
+            // A dirty-guard decline resolves without navigating (see useOpenProject) -- the form stays
+            // mounted in that case, so it must fall back to "idle" itself rather than being stuck showing
+            // a permanent loading spinner. A real success navigates away (unmounting this form) right
+            // around the same time, so this is a harmless no-op there.
+            .then(() => setState({status: "idle"}))
             .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}))
             .finally(() => submitGuard.end());
     };

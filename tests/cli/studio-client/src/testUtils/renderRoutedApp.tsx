@@ -7,21 +7,24 @@ import {HomePage} from "../../../../../cli/studio-client/src/components/home/Hom
 import {ProjectDashboardPage} from "../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
 
-// Mirrors routes.tsx's own route table ("/" -> HomePage, "/project" -> ProjectDashboardPage) so a real
-// navigate("/project") (e.g. from useOpenProject, or BlueprintBuildPanel's "Open in Studio") actually
-// swaps the rendered page during a test -- renderWithProviders.tsx only ever renders one page element
-// directly, which can't exercise a real cross-page happy-path scenario. Kept as a test-only file (does
-// not touch App.tsx/routes.tsx) so if routes.tsx ever gains a new route, this needs updating too.
+// Mirrors routes.tsx's own route table (/home/:tab -> HomePage, /project/:tab -> ProjectDashboardPage) so
+// a real navigate(...) (e.g. from useOpenProject, or BlueprintBuildPanel's "Open in Studio") actually
+// swaps the rendered page during a test, and useParams() resolves a real `:tab` -- renderWithProviders.tsx
+// only ever renders one page element directly with no route match, which can't exercise a real cross-page
+// happy-path scenario or URL-driven tab selection. Kept as a test-only file (does not touch App.tsx/
+// routes.tsx) so if routes.tsx ever gains a new route, this needs updating too.
 export function renderRoutedApp(options?: {fetchImpl?: FetchLike; initialEntries?: string[]}): RenderResult {
     return render(
         <MantineProvider>
-            <MemoryRouter initialEntries={options?.initialEntries ?? ["/"]}>
+            <MemoryRouter initialEntries={options?.initialEntries ?? ["/home/design"]}>
                 <StudioApiProvider fetchImpl={options?.fetchImpl}>
                     <ModalsProvider>
                         <Routes>
-                            <Route path="/" element={<HomePage />} />
-                            <Route path="/project" element={<ProjectDashboardPage />} />
-                            <Route path="*" element={<Navigate to="/" replace />} />
+                            <Route path="/" element={<Navigate to="/home/design" replace />} />
+                            <Route path="/home/:tab" element={<HomePage />} />
+                            <Route path="/project" element={<Navigate to="/project/overview" replace />} />
+                            <Route path="/project/:tab" element={<ProjectDashboardPage />} />
+                            <Route path="*" element={<Navigate to="/home/design" replace />} />
                         </Routes>
                     </ModalsProvider>
                 </StudioApiProvider>
