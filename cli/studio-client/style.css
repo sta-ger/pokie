@@ -168,3 +168,37 @@ td:first-child {
     align-items: center;
     margin-bottom: 1rem;
 }
+
+.deployment-mode-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: flex-end;
+    margin-bottom: 0.5rem;
+}
+
+.deployment-mode-row label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.85rem;
+    gap: 0.25rem;
+}
+
+.deployment-run-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+#deployment-targets-list li.selected,
+#deployment-artifacts-list li.selected {
+    font-weight: bold;
+}
+
+.deployment-stage-error {
+    font-weight: bold;
+}
+
+.deployment-stage-skipped {
+    opacity: 0.6;
+}

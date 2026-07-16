@@ -415,6 +415,7 @@
                 <button id="tab-reports" type="button" class="tab">Reports</button>
                 <button id="tab-replay" type="button" class="tab">Replay</button>
                 <button id="tab-runtime" type="button" class="tab">Runtime</button>
+                <button id="tab-deployment" type="button" class="tab">Deployment</button>
             </nav>
 
             <section id="project-overview">
@@ -812,6 +813,59 @@
                     <p id="runtime-history-empty" hidden>No requests yet this session.</p>
                     <ul id="runtime-history-list"></ul>
                 </section>
+            </section>
+
+            <section id="project-deployment" hidden>
+                <p class="notice">
+                    Deploys a canonical outcome library to a registered external deployment target via the
+                    pokie package's own External Adapter SDK. "Check &amp; Preview" runs the full pipeline
+                    (compatibility check, projection, generation, artifact validation, diagnostic) without
+                    writing anything; "Deploy" additionally publishes the generated artifacts to the target.
+                </p>
+
+                <section id="deployment-targets-section">
+                    <div class="quick-actions">
+                        <h3>Registered Targets</h3>
+                        <button id="deployment-targets-refresh-button" type="button">Refresh</button>
+                    </div>
+                    <p id="deployment-targets-empty" hidden>No deployment targets registered.</p>
+                    <p id="deployment-targets-error" hidden></p>
+                    <ul id="deployment-targets-list"></ul>
+                </section>
+
+                <form id="deployment-run-form">
+                    <h3>Deploy</h3>
+                    <p id="deployment-no-target-selected">Select a target above first.</p>
+                    <p id="deployment-selected-target" hidden>
+                        Target: <strong id="deployment-selected-target-id"></strong>
+                    </p>
+
+                    <div id="deployment-modes-list"></div>
+                    <button id="deployment-add-mode-button" type="button">Add mode</button>
+
+                    <div class="deployment-run-actions">
+                        <button id="deployment-preview-button" type="submit">Check &amp; Preview</button>
+                        <button id="deployment-deploy-button" type="button" disabled>Deploy</button>
+                    </div>
+                </form>
+
+                <p id="deployment-run-idle" hidden>No deployment has been run yet.</p>
+                <p id="deployment-run-error" hidden></p>
+
+                <div id="deployment-run-result" hidden>
+                    <h3>Pipeline stages</h3>
+                    <ul id="deployment-stages-list"></ul>
+
+                    <h3>Generated artifacts</h3>
+                    <p id="deployment-artifacts-empty" hidden>No artifacts were generated.</p>
+                    <ul id="deployment-artifacts-list"></ul>
+                    <div id="deployment-artifact-content-section" hidden>
+                        <h4 id="deployment-artifact-content-path"></h4>
+                        <pre id="deployment-artifact-content"></pre>
+                    </div>
+
+                    <p id="deployment-delivery-summary" hidden></p>
+                </div>
             </section>
         </section>
     </main>

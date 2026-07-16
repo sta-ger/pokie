@@ -194,7 +194,8 @@ npx pokie
 
 **POKIE Studio** (experimental) is a local web app covering Home (create/init/build/open a project, plus a visual
 Blueprint Editor) and, once a project is open, a Project Dashboard (inspect/validate/simulate/replay/download
-reports, and a `pokie serve`-equivalent Runtime tab with session tools) — see the
+reports, a `pokie serve`-equivalent Runtime tab with session tools, and a Deployment tab over the
+[External Adapter SDK](docs/external-adapter-sdk.md)) — see the
 [Studio docs](docs/cli.md#pokie--pokie-studio-experimental) for the full tour. Like `pokie serve`/`pokie dev`,
 it's a local/dev tool, not a casino backend or RGS.
 

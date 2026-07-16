@@ -1,5 +1,6 @@
 import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
+import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
@@ -49,5 +50,10 @@ export type StudioServerOptions = {
     // "defaults around this same `loadGame`" reasoning as simulationService/replayService above; no
     // `pokieVersion` needed, unlike homeService/blueprintService.
     runtimeManager?: StudioRuntimeManager;
+    // Drives the Project Dashboard's Deployment tab (GET /api/project/deployment/targets, POST
+    // /api/project/deployment/runs) — built directly on top of the pokie package's own External
+    // Adapter SDK (ExternalDeploymentService); no `loadGame`/`pokieVersion` needed, unlike
+    // simulationService/replayService/homeService, since it never touches a game package itself.
+    deploymentService?: StudioDeploymentService;
     toolHandlers?: StudioToolHandling[];
 };

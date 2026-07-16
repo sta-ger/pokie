@@ -7,6 +7,8 @@ import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./bluep
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
 import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
 import {validateSaveBlueprintRequest, SaveBlueprintRequestInput} from "./blueprint/validateSaveBlueprintRequest.js";
+import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
+import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import type {StudioDiagnosticsView} from "./StudioDiagnosticsView.js";
 import {validateBuildRequest, BuildRequestInput} from "./home/validateBuildRequest.js";
@@ -72,6 +74,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly simulationService: StudioSimulationService;
     private readonly replayService: StudioReplayExecutionService;
     private readonly runtimeManager: StudioRuntimeManager;
+    private readonly deploymentService: StudioDeploymentService;
     private readonly toolHandlers: StudioToolHandling[];
     private currentContext: StudioContext;
     // undefined exactly when currentContext.mode === "home" — kept as a separate field (rather than
@@ -94,6 +97,7 @@ export class StudioServer implements StudioServerHandling {
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
         this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame);
         this.runtimeManager = options.runtimeManager ?? new StudioRuntimeManager(this.loadGame);
+        this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -395,6 +399,16 @@ export class StudioServer implements StudioServerHandling {
         const runtimeSessionId = this.matchRuntimeSessionRoute(url.pathname);
         if (runtimeSessionId !== undefined && method === "GET") {
             await this.handleRuntimeGetSession(res, runtimeSessionId);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/deployment/targets") {
+            this.handleListDeploymentTargets(res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/deployment/runs") {
+            await this.handleRunDeployment(req, res);
             return;
         }
 
@@ -726,6 +740,45 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, await this.gamePackageValidator.validate(this.currentContext.projectRoot));
+    }
+
+    private handleListDeploymentTargets(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, this.deploymentService.listTargets(this.currentContext.projectRoot));
+    }
+
+    // A well-formed request that fails at the domain level (unknown targetId, an unreadable/malformed
+    // library file) still gets its own precise status (404 / 400) here, same as everywhere else in this
+    // class — only the pipeline's own findings (incompatible content, a failed projector, ...) are
+    // ever carried in the 200 response's own DTO, via StudioDeploymentService.run()'s "ok" branch.
+    private async handleRunDeployment(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateDeploymentRunRequest((body ?? {}) as DeploymentRunRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.deploymentService.run(this.currentContext.projectRoot, validated);
+        if (result.status === "target-not-found") {
+            this.sendJson(res, 404, {error: `Unknown deployment target "${validated.targetId}".`});
+            return;
+        }
+        if (result.status === "load-error") {
+            this.sendJson(res, 400, {error: result.error});
+            return;
+        }
+        this.sendJson(res, 200, result.view);
     }
 
     private async handleStartSimulation(req: IncomingMessage, res: ServerResponse): Promise<void> {

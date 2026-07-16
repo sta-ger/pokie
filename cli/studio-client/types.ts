@@ -358,3 +358,44 @@ export type StudioRuntimeSessionView = {
         requestId?: string;
     };
 } & Record<string, unknown>;
+
+// GET /api/project/deployment/targets' own DTO — see
+// cli/studio/deployment/StudioDeploymentTargetSummary.ts's own doc comment.
+export type StudioDeploymentTargetSummary = {
+    id: string;
+    version: string;
+    requirements: {minPokieVersion?: string; symbolAlphabet?: "numeric" | "any"; requiresHomogeneousProvenance?: boolean};
+    capabilities: string[];
+};
+
+// One mode row of a POST /api/project/deployment/runs request body.
+export type StudioDeploymentModeInput = {
+    modeName: string;
+    libraryPath: string;
+};
+
+// One generated artifact as sent back from POST /api/project/deployment/runs — see
+// cli/studio/deployment/StudioDeploymentArtifactView.ts's own doc comment: `content` is always a
+// plain string, decoded server-side.
+export type StudioDeploymentArtifactView = {
+    relativePath: string;
+    content: string;
+};
+
+// POST /api/project/deployment/runs' own DTO — see cli/studio/deployment/StudioDeploymentRunView.ts's
+// own doc comment. Every stage field is present only when ExternalDeploymentService actually ran that
+// stage — used directly to drive the Deployment tab's stage-by-stage diagnostics display.
+export type StudioDeploymentRunView = {
+    targetId: string;
+    publish: boolean;
+    descriptorIssues: ValidationIssue[];
+    compatibilityIssues: ValidationIssue[];
+    projectionIssues: ValidationIssue[];
+    generation?: {
+        artifacts: StudioDeploymentArtifactView[];
+        issues: ValidationIssue[];
+    };
+    artifactIssues: ValidationIssue[];
+    diagnostic?: {ok: boolean; checks: {name: string; ok: boolean; message?: string}[]};
+    delivery?: {delivered: boolean; details?: Record<string, unknown>; issues?: ValidationIssue[]};
+};

@@ -17,6 +17,7 @@ import {
     getSimulation,
     initProject,
     inspectProject,
+    listDeploymentTargets,
     listRecentProjects,
     listReplays,
     listReports,
@@ -26,6 +27,7 @@ import {
     previewBuild,
     previewReelStripGeneration,
     restartRuntime,
+    runDeployment,
     runReplay,
     saveBlueprint,
     spinRuntimeSession,
@@ -54,6 +56,7 @@ import {
 import {
     BlueprintMode,
     BlueprintMutate,
+    clearMessage,
     Elements,
     errorMessage,
     formatTimestamp,
@@ -70,6 +73,12 @@ import {
     renderBuildPreview,
     renderBuildResult,
     renderCreateResult,
+    renderDeploymentModes,
+    renderDeploymentRunError,
+    renderDeploymentRunResult,
+    renderDeploymentSelectedTarget,
+    renderDeploymentTargetsList,
+    renderDeploymentTargetsListError,
     renderHomeRecentProjects,
     renderHomeRecentProjectsError,
     renderInitResult,
@@ -105,6 +114,7 @@ import {
     describeValidation,
     isStaleReelStripGenerationRequest,
 } from "./interpretBlueprintEditor.js";
+import {describeDeploymentRunResult, describeDeploymentTargetsList} from "./interpretDeployment.js";
 import {describeBuildPreview, describeBuildResult, describeRecentProjectsList, describeScaffoldResult} from "./interpretHome.js";
 import {describeInspection, describeProjectHeader, describeValidationSummary} from "./interpretProjectDashboard.js";
 import {describeReplayList, describeReplayProgress, describeReplayResult, isReplayActive, isReplayTerminal} from "./interpretReplay.js";
@@ -125,6 +135,9 @@ import type {
     ProjectDashboardContext,
     SimulationReport,
     StudioContext,
+    StudioDeploymentArtifactView,
+    StudioDeploymentModeInput,
+    StudioDeploymentTargetSummary,
     StudioHomeRecentProjectView,
     StudioReplayJobView,
     StudioSimulationJobView,
@@ -307,6 +320,92 @@ async function main(): Promise<void> {
     let lastSpinExpectedVersion: number | undefined;
     let runtimeHistory: RuntimeHistoryEntry[] = [];
     const RUNTIME_HISTORY_LIMIT = 20;
+
+    // The Deployment tab's own state — reset whenever a (new) project becomes active (see
+    // showProjectDashboard below), same reasoning as Simulation/Replay/Runtime's own per-project
+    // state. `deploymentModes` always keeps at least one row so the form always has something to fill
+    // in; a fresh row is `{modeName: "", libraryPath: ""}`.
+    let deploymentTargets: StudioDeploymentTargetSummary[] = [];
+    let selectedDeploymentTarget: StudioDeploymentTargetSummary | undefined;
+    let deploymentModes: StudioDeploymentModeInput[] = [{modeName: "", libraryPath: ""}];
+    let selectedDeploymentArtifactPath: string | undefined;
+
+    const renderDeploymentModesList = (): void => {
+        renderDeploymentModes(
+            elements,
+            deploymentModes,
+            (index, value) => {
+                deploymentModes = deploymentModes.map((mode, i) => (i === index ? {...mode, modeName: value} : mode));
+            },
+            (index, value) => {
+                deploymentModes = deploymentModes.map((mode, i) => (i === index ? {...mode, libraryPath: value} : mode));
+            },
+            (index) => {
+                deploymentModes = deploymentModes.length > 1 ? deploymentModes.filter((_mode, i) => i !== index) : [{modeName: "", libraryPath: ""}];
+                renderDeploymentModesList();
+            },
+        );
+    };
+
+    // Re-renders the targets list against whatever `deploymentTargets`/`selectedDeploymentTarget`
+    // currently hold — always wired to the same `selectDeploymentTarget` handler below, so clicking a
+    // different target after one is already selected keeps working (never a stale/no-op callback from
+    // an earlier render).
+    const renderDeploymentTargetsListNow = (): void => {
+        renderDeploymentTargetsList(elements, describeDeploymentTargetsList(deploymentTargets), selectedDeploymentTarget?.id, selectDeploymentTarget);
+    };
+
+    function selectDeploymentTarget(target: StudioDeploymentTargetSummary): void {
+        selectedDeploymentTarget = target;
+        renderDeploymentTargetsListNow();
+        renderDeploymentSelectedTarget(elements, target);
+    }
+
+    const refreshDeploymentTargets = (): void => {
+        listDeploymentTargets(fetchImpl)
+            .then((targets) => {
+                deploymentTargets = targets;
+                if (selectedDeploymentTarget !== undefined && !targets.some((target) => target.id === selectedDeploymentTarget?.id)) {
+                    selectedDeploymentTarget = undefined;
+                    renderDeploymentSelectedTarget(elements, undefined);
+                }
+                renderDeploymentTargetsListNow();
+            })
+            .catch((error: unknown) => {
+                renderDeploymentTargetsListError(elements, errorMessage(error));
+            });
+    };
+
+    // Re-renders the last run's own result against whatever `selectedDeploymentArtifactPath` currently
+    // holds — same "always the same handler, never a stale no-op" reasoning as
+    // renderDeploymentTargetsListNow above.
+    let lastDeploymentRunView: ReturnType<typeof describeDeploymentRunResult> | undefined;
+    const renderDeploymentRunResultNow = (): void => {
+        if (lastDeploymentRunView === undefined) {
+            return;
+        }
+        renderDeploymentRunResult(elements, lastDeploymentRunView, selectedDeploymentArtifactPath, selectDeploymentArtifact);
+    };
+
+    function selectDeploymentArtifact(artifact: StudioDeploymentArtifactView): void {
+        selectedDeploymentArtifactPath = artifact.relativePath;
+        renderDeploymentRunResultNow();
+    }
+
+    const runDeploymentAndRender = (publish: boolean): void => {
+        if (selectedDeploymentTarget === undefined) {
+            return;
+        }
+        selectedDeploymentArtifactPath = undefined;
+        runDeployment(fetchImpl, selectedDeploymentTarget.id, deploymentModes, publish)
+            .then((view) => {
+                lastDeploymentRunView = describeDeploymentRunResult(view);
+                renderDeploymentRunResultNow();
+            })
+            .catch((error: unknown) => {
+                renderDeploymentRunError(elements, errorMessage(error));
+            });
+    };
 
     const pushRuntimeHistory = (action: string, summary: string): void => {
         runtimeHistory = [{timestamp: formatTimestamp(Date.now()), action, summary}, ...runtimeHistory].slice(0, RUNTIME_HISTORY_LIMIT);
@@ -546,6 +645,16 @@ async function main(): Promise<void> {
             runtimeHistory = [];
             renderRuntimeHistory(elements, runtimeHistory);
             refreshRuntimeState();
+            selectedDeploymentTarget = undefined;
+            deploymentModes = [{modeName: "", libraryPath: ""}];
+            selectedDeploymentArtifactPath = undefined;
+            lastDeploymentRunView = undefined;
+            renderDeploymentSelectedTarget(elements, undefined);
+            renderDeploymentModesList();
+            elements.deploymentRunResult.hidden = true;
+            elements.deploymentRunIdle.hidden = false;
+            clearMessage(elements.deploymentRunError);
+            refreshDeploymentTargets();
         }
     };
 
@@ -1067,6 +1176,36 @@ async function main(): Promise<void> {
         activeProjectTab = "runtime";
         showProjectTab(elements, "runtime");
         refreshRuntimeState();
+    });
+
+    elements.tabDeploymentButton.addEventListener("click", () => {
+        activeProjectTab = "deployment";
+        showProjectTab(elements, "deployment");
+        refreshDeploymentTargets();
+    });
+
+    elements.deploymentTargetsRefreshButton.addEventListener("click", () => {
+        refreshDeploymentTargets();
+    });
+
+    elements.deploymentAddModeButton.addEventListener("click", () => {
+        deploymentModes = [...deploymentModes, {modeName: "", libraryPath: ""}];
+        renderDeploymentModesList();
+    });
+
+    elements.deploymentRunForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        runDeploymentAndRender(false);
+    });
+
+    elements.deploymentDeployButton.addEventListener("click", () => {
+        if (selectedDeploymentTarget === undefined) {
+            return;
+        }
+        if (!confirmDangerousAction(`Deploy to "${selectedDeploymentTarget.id}"? This writes the generated artifacts to the target's own output location.`)) {
+            return;
+        }
+        runDeploymentAndRender(true);
     });
 
     elements.runtimeStartForm.addEventListener("submit", (event) => {

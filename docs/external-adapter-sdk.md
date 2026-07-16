@@ -16,6 +16,12 @@ SDK end to end. It does **not** ship — and will not accept — a concrete inte
 RGS/aggregator; wiring a real target's own wire format/transport is left to whoever owns that integration, by
 implementing the contracts below directly.
 
+**Studio UI:** [`pokie studio`](cli.md#deployment)'s Project Dashboard has a Deployment tab built directly on top
+of this SDK — list registered targets, pick modes/libraries, preview (compatibility check + generation +
+validation, no writes) or deploy, and inspect every stage's own diagnostics and a generated artifact's raw
+content before publishing. It calls `ExternalDeploymentService.deploy()` exactly as described below; it never
+projects, generates, or validates anything itself.
+
 ## The pipeline — `ExternalDeploymentService`
 
 ```

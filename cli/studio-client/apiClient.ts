@@ -10,6 +10,9 @@ import type {
     StudioBuildPreviewView,
     StudioBuildResult,
     StudioContext,
+    StudioDeploymentModeInput,
+    StudioDeploymentRunView,
+    StudioDeploymentTargetSummary,
     StudioHomeRecentProjectView,
     StudioReelStripGenerationView,
     StudioReplayJobView,
@@ -535,4 +538,37 @@ export async function spinRuntimeSession(
         body: JSON.stringify(body),
     });
     return readRuntimeSpinResult(response);
+}
+
+export async function listDeploymentTargets(fetchImpl: FetchLike): Promise<StudioDeploymentTargetSummary[]> {
+    const response = await fetchImpl("/api/project/deployment/targets");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to fetch deployment targets"));
+    }
+    return (await response.json()) as StudioDeploymentTargetSummary[];
+}
+
+// "publish: false" (the default) runs compatibility-check + preview only — see
+// StudioDeploymentService.run()'s own doc comment for why this is the exact same call as a real
+// deploy, just against a target with its own runtimeAdapter stripped, never a second/different
+// pipeline. Never throws for a domain-level pipeline failure (incompatible content, a failed
+// projector, an unreachable output directory, ...) — that's carried in the returned DTO's own
+// stage-by-stage issue arrays, same "only a malformed request throws" convention every other
+// apiClient function here follows; only a structurally malformed request (400) or an unknown
+// targetId (404) throws.
+export async function runDeployment(
+    fetchImpl: FetchLike,
+    targetId: string,
+    modes: StudioDeploymentModeInput[],
+    publish: boolean,
+): Promise<StudioDeploymentRunView> {
+    const response = await fetchImpl("/api/project/deployment/runs", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({targetId, modes, publish}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to run deployment"));
+    }
+    return (await response.json()) as StudioDeploymentRunView;
 }

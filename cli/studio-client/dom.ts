@@ -47,6 +47,7 @@ import {
     type ReelStripGenerationDrafts,
 } from "./blueprintFormOps.js";
 import type {BlueprintLoadView, BlueprintSaveView, BlueprintValidationView, ReelStripGenerationPreviewView} from "./interpretBlueprintEditor.js";
+import type {DeploymentRunResultView, DeploymentStageStatus, DeploymentTargetsListView} from "./interpretDeployment.js";
 import type {BuildPreviewView, BuildProjectView, HomeRecentProjectsListView, ScaffoldActionView} from "./interpretHome.js";
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
 import type {ReplayListView, ReplayProgressView, ReplayResultView} from "./interpretReplay.js";
@@ -55,6 +56,9 @@ import {isRuntimeRunning, describeRuntimeScreen, RuntimeSessionResultView, Runti
 import type {SimulationProgressView, SimulationReportView} from "./interpretSimulation.js";
 import type {
     ReelStripGenerationDiagnostic,
+    StudioDeploymentArtifactView,
+    StudioDeploymentModeInput,
+    StudioDeploymentTargetSummary,
     StudioHomeRecentProjectView,
     StudioReplayListEntry,
     StudioRuntimeSessionView,
@@ -68,7 +72,7 @@ import type {
 // the only callback the Blueprint Editor's render functions need.
 export type BlueprintMutate = (mutate: (blueprint: Record<string, unknown>) => void) => void;
 
-export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay" | "runtime";
+export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay" | "runtime" | "deployment";
 export type HomeTab = "recent" | "create" | "init" | "build" | "open" | "blueprint-editor";
 
 // One report's worth of display fields — factored out so the exact same renderSimulationReport()
@@ -318,6 +322,30 @@ export type Elements = {
     runtimeDebugJson: HTMLElement;
     runtimeHistoryEmpty: HTMLElement;
     runtimeHistoryList: HTMLElement;
+    tabDeploymentButton: HTMLButtonElement;
+    projectDeploymentSection: HTMLElement;
+    deploymentTargetsRefreshButton: HTMLButtonElement;
+    deploymentTargetsEmpty: HTMLElement;
+    deploymentTargetsError: HTMLElement;
+    deploymentTargetsList: HTMLElement;
+    deploymentRunForm: HTMLFormElement;
+    deploymentNoTargetSelected: HTMLElement;
+    deploymentSelectedTarget: HTMLElement;
+    deploymentSelectedTargetId: HTMLElement;
+    deploymentModesList: HTMLElement;
+    deploymentAddModeButton: HTMLButtonElement;
+    deploymentPreviewButton: HTMLButtonElement;
+    deploymentDeployButton: HTMLButtonElement;
+    deploymentRunIdle: HTMLElement;
+    deploymentRunError: HTMLElement;
+    deploymentRunResult: HTMLElement;
+    deploymentStagesList: HTMLElement;
+    deploymentArtifactsEmpty: HTMLElement;
+    deploymentArtifactsList: HTMLElement;
+    deploymentArtifactContentSection: HTMLElement;
+    deploymentArtifactContentPath: HTMLElement;
+    deploymentArtifactContent: HTMLElement;
+    deploymentDeliverySummary: HTMLElement;
     homeTabBlueprintEditorButton: HTMLButtonElement;
     homeBlueprintEditorSection: HTMLElement;
     blueprintNewButton: HTMLButtonElement;
@@ -665,6 +693,30 @@ export function queryElements(): Elements {
         runtimeDebugJson: requireElement("runtime-debug-json"),
         runtimeHistoryEmpty: requireElement("runtime-history-empty"),
         runtimeHistoryList: requireElement("runtime-history-list"),
+        tabDeploymentButton: requireElement("tab-deployment"),
+        projectDeploymentSection: requireElement("project-deployment"),
+        deploymentTargetsRefreshButton: requireElement("deployment-targets-refresh-button"),
+        deploymentTargetsEmpty: requireElement("deployment-targets-empty"),
+        deploymentTargetsError: requireElement("deployment-targets-error"),
+        deploymentTargetsList: requireElement("deployment-targets-list"),
+        deploymentRunForm: requireElement("deployment-run-form"),
+        deploymentNoTargetSelected: requireElement("deployment-no-target-selected"),
+        deploymentSelectedTarget: requireElement("deployment-selected-target"),
+        deploymentSelectedTargetId: requireElement("deployment-selected-target-id"),
+        deploymentModesList: requireElement("deployment-modes-list"),
+        deploymentAddModeButton: requireElement("deployment-add-mode-button"),
+        deploymentPreviewButton: requireElement("deployment-preview-button"),
+        deploymentDeployButton: requireElement("deployment-deploy-button"),
+        deploymentRunIdle: requireElement("deployment-run-idle"),
+        deploymentRunError: requireElement("deployment-run-error"),
+        deploymentRunResult: requireElement("deployment-run-result"),
+        deploymentStagesList: requireElement("deployment-stages-list"),
+        deploymentArtifactsEmpty: requireElement("deployment-artifacts-empty"),
+        deploymentArtifactsList: requireElement("deployment-artifacts-list"),
+        deploymentArtifactContentSection: requireElement("deployment-artifact-content-section"),
+        deploymentArtifactContentPath: requireElement("deployment-artifact-content-path"),
+        deploymentArtifactContent: requireElement("deployment-artifact-content"),
+        deploymentDeliverySummary: requireElement("deployment-delivery-summary"),
         homeTabBlueprintEditorButton: requireElement("home-tab-blueprint-editor"),
         homeBlueprintEditorSection: requireElement("home-blueprint-editor"),
         blueprintNewButton: requireElement("blueprint-new-button"),
@@ -1012,6 +1064,7 @@ export function renderProjectHeader(elements: Elements, header: ProjectHeaderVie
         elements.projectReportsSection.hidden = true;
         elements.projectReplaySection.hidden = true;
         elements.projectRuntimeSection.hidden = true;
+        elements.projectDeploymentSection.hidden = true;
     }
 
     if (header.status === "empty") {
@@ -1048,12 +1101,14 @@ export function showProjectTab(elements: Elements, tab: ProjectTab): void {
     elements.projectReportsSection.hidden = tab !== "reports";
     elements.projectReplaySection.hidden = tab !== "replay";
     elements.projectRuntimeSection.hidden = tab !== "runtime";
+    elements.projectDeploymentSection.hidden = tab !== "deployment";
     elements.tabOverviewButton.setAttribute("aria-current", tab === "overview" ? "page" : "false");
     elements.tabValidationButton.setAttribute("aria-current", tab === "validation" ? "page" : "false");
     elements.tabSimulationButton.setAttribute("aria-current", tab === "simulation" ? "page" : "false");
     elements.tabReportsButton.setAttribute("aria-current", tab === "reports" ? "page" : "false");
     elements.tabReplayButton.setAttribute("aria-current", tab === "replay" ? "page" : "false");
     elements.tabRuntimeButton.setAttribute("aria-current", tab === "runtime" ? "page" : "false");
+    elements.tabDeploymentButton.setAttribute("aria-current", tab === "deployment" ? "page" : "false");
 }
 
 // Renders the full Inspect result block for every InspectionResultView state (loading/error/loaded
@@ -2493,5 +2548,182 @@ export function renderRuntimeHistory(elements: Elements, entries: RuntimeHistory
         const item = document.createElement("li");
         item.textContent = `[${entry.timestamp}] ${entry.action} — ${entry.summary}`;
         elements.runtimeHistoryList.appendChild(item);
+    }
+}
+
+// --- Deployment tab -------------------------------------------------------------------------------
+
+export function renderDeploymentTargetsList(
+    elements: Elements,
+    view: DeploymentTargetsListView,
+    selectedTargetId: string | undefined,
+    onSelect: (target: StudioDeploymentTargetSummary) => void,
+): void {
+    elements.deploymentTargetsError.hidden = true;
+    elements.deploymentTargetsEmpty.hidden = view.status !== "empty";
+    elements.deploymentTargetsList.textContent = "";
+    if (view.status === "empty") {
+        return;
+    }
+
+    for (const target of view.targets) {
+        const item = document.createElement("li");
+        if (target.id === selectedTargetId) {
+            item.className = "selected";
+        }
+
+        const summary = document.createElement("p");
+        summary.textContent = `${target.id} — v${target.version}`;
+        item.appendChild(summary);
+
+        const details = document.createElement("p");
+        const requirementParts: string[] = [];
+        if (target.requirements.minPokieVersion !== undefined) {
+            requirementParts.push(`minPokieVersion ${target.requirements.minPokieVersion}`);
+        }
+        if (target.requirements.symbolAlphabet !== undefined) {
+            requirementParts.push(`symbolAlphabet ${target.requirements.symbolAlphabet}`);
+        }
+        if (target.requirements.requiresHomogeneousProvenance !== undefined) {
+            requirementParts.push(`requiresHomogeneousProvenance ${String(target.requirements.requiresHomogeneousProvenance)}`);
+        }
+        details.textContent = `Requirements: ${requirementParts.length > 0 ? requirementParts.join(", ") : "(none)"} — Capabilities: ${
+            target.capabilities.length > 0 ? target.capabilities.join(", ") : "(none)"
+        }`;
+        item.appendChild(details);
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = target.id === selectedTargetId ? "Selected" : "Select";
+        button.addEventListener("click", () => onSelect(target));
+        item.appendChild(button);
+
+        elements.deploymentTargetsList.appendChild(item);
+    }
+}
+
+export function renderDeploymentTargetsListError(elements: Elements, message: string): void {
+    showMessage(elements.deploymentTargetsError, message);
+}
+
+export function renderDeploymentSelectedTarget(elements: Elements, target: StudioDeploymentTargetSummary | undefined): void {
+    elements.deploymentNoTargetSelected.hidden = target !== undefined;
+    elements.deploymentSelectedTarget.hidden = target === undefined;
+    elements.deploymentSelectedTargetId.textContent = target?.id ?? "";
+    elements.deploymentPreviewButton.disabled = target === undefined;
+    elements.deploymentDeployButton.disabled = target === undefined;
+}
+
+// Rebuilds the mode-row list from scratch on every change — same "re-render the whole list from
+// current array state" convention the Blueprint Editor's own bets/paylines/symbols rows use (see
+// renderBlueprintPaylines) — rather than patching individual rows in place.
+export function renderDeploymentModes(
+    elements: Elements,
+    modes: readonly StudioDeploymentModeInput[],
+    onChangeModeName: (index: number, value: string) => void,
+    onChangeLibraryPath: (index: number, value: string) => void,
+    onRemove: (index: number) => void,
+): void {
+    elements.deploymentModesList.textContent = "";
+    modes.forEach((mode, index) => {
+        const row = document.createElement("div");
+        row.className = "deployment-mode-row";
+
+        const modeNameLabel = document.createElement("label");
+        modeNameLabel.textContent = "Mode name";
+        const modeNameInput = document.createElement("input");
+        modeNameInput.type = "text";
+        modeNameInput.value = mode.modeName;
+        modeNameInput.placeholder = "base";
+        modeNameInput.addEventListener("change", () => onChangeModeName(index, modeNameInput.value));
+        modeNameLabel.appendChild(modeNameInput);
+        row.appendChild(modeNameLabel);
+
+        const libraryPathLabel = document.createElement("label");
+        libraryPathLabel.textContent = "Library JSON path (relative to project root)";
+        const libraryPathInput = document.createElement("input");
+        libraryPathInput.type = "text";
+        libraryPathInput.value = mode.libraryPath;
+        libraryPathInput.placeholder = "libraries/base.json";
+        libraryPathInput.addEventListener("change", () => onChangeLibraryPath(index, libraryPathInput.value));
+        libraryPathLabel.appendChild(libraryPathInput);
+        row.appendChild(libraryPathLabel);
+
+        appendRowActions(row, [{label: "Remove", ariaLabel: `Remove mode ${index + 1}`, onClick: () => onRemove(index)}]);
+
+        elements.deploymentModesList.appendChild(row);
+    });
+}
+
+export function renderDeploymentRunError(elements: Elements, message: string): void {
+    elements.deploymentRunResult.hidden = true;
+    showMessage(elements.deploymentRunError, message);
+}
+
+function deploymentStageStatusLabel(status: DeploymentStageStatus): string {
+    if (status === "ok") {
+        return "OK";
+    }
+    return status === "error" ? "ERROR" : "SKIPPED";
+}
+
+export function renderDeploymentRunResult(
+    elements: Elements,
+    view: DeploymentRunResultView,
+    selectedArtifactPath: string | undefined,
+    onSelectArtifact: (artifact: StudioDeploymentArtifactView) => void,
+): void {
+    clearMessage(elements.deploymentRunError);
+    elements.deploymentRunIdle.hidden = true;
+    elements.deploymentRunResult.hidden = false;
+
+    elements.deploymentStagesList.textContent = "";
+    for (const stage of view.stages) {
+        const item = document.createElement("li");
+        item.className = `deployment-stage-${stage.status}`;
+
+        const heading = document.createElement("p");
+        heading.textContent = `${stage.label}: ${deploymentStageStatusLabel(stage.status)}`;
+        item.appendChild(heading);
+
+        if (stage.issues.length > 0) {
+            const issuesList = document.createElement("ul");
+            for (const issue of stage.issues) {
+                const issueItem = document.createElement("li");
+                issueItem.textContent = `[${issue.severity}] ${issue.message}`;
+                issuesList.appendChild(issueItem);
+            }
+            item.appendChild(issuesList);
+        }
+
+        elements.deploymentStagesList.appendChild(item);
+    }
+
+    elements.deploymentArtifactsEmpty.hidden = view.artifacts.length !== 0;
+    elements.deploymentArtifactsList.textContent = "";
+    for (const artifact of view.artifacts) {
+        const item = document.createElement("li");
+        if (artifact.relativePath === selectedArtifactPath) {
+            item.className = "selected";
+        }
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = artifact.relativePath;
+        button.addEventListener("click", () => onSelectArtifact(artifact));
+        item.appendChild(button);
+        elements.deploymentArtifactsList.appendChild(item);
+    }
+
+    const selectedArtifact = view.artifacts.find((artifact) => artifact.relativePath === selectedArtifactPath);
+    elements.deploymentArtifactContentSection.hidden = selectedArtifact === undefined;
+    elements.deploymentArtifactContentPath.textContent = selectedArtifact?.relativePath ?? "";
+    elements.deploymentArtifactContent.textContent = selectedArtifact?.content ?? "";
+
+    if (!view.publish) {
+        elements.deploymentDeliverySummary.hidden = true;
+    } else {
+        elements.deploymentDeliverySummary.hidden = false;
+        elements.deploymentDeliverySummary.textContent =
+            view.delivered === true ? "Delivered successfully." : "Delivery did not complete — see the Delivery stage above.";
     }
 }

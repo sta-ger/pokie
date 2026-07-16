@@ -86,6 +86,23 @@ describe("createLocalJsonExternalDeploymentTarget (end-to-end SDK pipeline via E
         expect(() => registry.register(createLocalJsonExternalDeploymentTarget({id: "Acme-Target", outDir}))).toThrow();
     });
 
+    it("diagnoses a writable outDir as ok even when several directory levels are missing", async () => {
+        const parent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-externaladapter-nested-outdir-"));
+        try {
+            // Nothing below `parent` exists yet — the diagnostic must walk up past both missing levels
+            // to find `parent` itself (the nearest existing, writable ancestor) rather than only ever
+            // checking the immediate parent, which would report a false "not writable" here.
+            const nestedOutDir = path.join(parent, "deployment", "local-json-example");
+            const target = createLocalJsonExternalDeploymentTarget({outDir: nestedOutDir});
+
+            const report = await target.diagnostic?.diagnose();
+
+            expect(report?.ok).toBe(true);
+        } finally {
+            fs.rmSync(parent, {recursive: true, force: true});
+        }
+    });
+
     it("diagnoses a non-writable output directory as failing and skips delivery entirely", async () => {
         const unwritableParent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-externaladapter-unwritable-"));
         const nestedOutDir = path.join(unwritableParent, "does-not-exist-yet");

@@ -1,4 +1,6 @@
 import {
+    buildRoundArtifact,
+    buildWeightedOutcomeLibrary,
     GameBuildInfo,
     GamePackageInspector,
     GamePackageInspectionReport,
@@ -6,8 +8,11 @@ import {
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
+    RoundArtifactProvenance,
     SimulationReport,
     SimulationReportBuilding,
+    WeightedOutcomeLibrary,
+    WinEvaluationResult,
 } from "pokie";
 import fs from "fs";
 import http from "http";
@@ -2707,6 +2712,217 @@ describe("StudioServer", () => {
                     resolve();
                 });
             });
+        });
+    });
+
+    describe("Project Dashboard: Deployment (GET /api/project/deployment/targets, POST /api/project/deployment/runs)", () => {
+        let deploymentStudioRoot: string;
+        let deploymentProjectRoot: string;
+        let deploymentServer: StudioServer | undefined;
+
+        function buildDeploymentTestLibrary(libraryId: string): WeightedOutcomeLibrary<string> {
+            const provenance: RoundArtifactProvenance = {game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}, pokieVersion: "1.0.0"};
+            const artifact = buildRoundArtifact({
+                roundId: `${libraryId}-0`,
+                provenance,
+                betMode: "base",
+                stake: 1,
+                steps: [{screen: [["A"]], winEvaluationResult: new WinEvaluationResult()}],
+            });
+            return buildWeightedOutcomeLibrary({libraryId, outcomes: [{id: "0", weight: 1, artifact}]});
+        }
+
+        function writeLibraryFile(fileName: string, library: WeightedOutcomeLibrary<string>): void {
+            fs.writeFileSync(path.join(deploymentProjectRoot, fileName), JSON.stringify(library));
+        }
+
+        beforeEach(() => {
+            deploymentStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-deployment-studio-test-"));
+            writeStudioAssets(deploymentStudioRoot);
+            deploymentProjectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-deployment-project-test-"));
+        });
+
+        afterEach(async () => {
+            await deploymentServer?.stop();
+            fs.rmSync(deploymentStudioRoot, {recursive: true, force: true});
+            fs.rmSync(deploymentProjectRoot, {recursive: true, force: true});
+        });
+
+        async function startServerForProject(projectRoot: string | undefined): Promise<string> {
+            const homeService = new StudioHomeService("1.0.0");
+            deploymentServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: deploymentStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", deploymentStudioRoot, homeService),
+                initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
+            });
+            const address = await deploymentServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("returns 409 for GET targets and POST runs when there is no active project", async () => {
+            const homeBaseUrl = await startServerForProject(undefined);
+
+            const targetsResponse = await get(`${homeBaseUrl}/api/project/deployment/targets`);
+            expect(targetsResponse.status).toBe(409);
+            expect(targetsResponse.body).toEqual({error: "No active project."});
+
+            const runResponse = await post(`${homeBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", libraryPath: "base.json"}],
+            });
+            expect(runResponse.status).toBe(409);
+            expect(runResponse.body).toEqual({error: "No active project."});
+        });
+
+        it("lists exactly the local example target with its requirements/capabilities", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/deployment/targets`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual([
+                {
+                    id: "local-json-example",
+                    version: "1.0.0",
+                    requirements: {requiresHomogeneousProvenance: true},
+                    capabilities: expect.arrayContaining(["roundArtifact.featureEvents", "roundArtifact.debugMetadata", "multiMode"]),
+                },
+            ]);
+        });
+
+        it("rejects a malformed run request body with 400 and never touches the SDK", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+
+            const emptyTargetId = await post(`${projectBaseUrl}/api/project/deployment/runs`, {targetId: "", modes: [{modeName: "base", libraryPath: "base.json"}]});
+            expect(emptyTargetId.status).toBe(400);
+            expect((emptyTargetId.body as {error: string}).error).toMatch(/targetId/);
+
+            const emptyModes = await post(`${projectBaseUrl}/api/project/deployment/runs`, {targetId: "local-json-example", modes: []});
+            expect(emptyModes.status).toBe(400);
+            expect((emptyModes.body as {error: string}).error).toMatch(/modes/);
+        });
+
+        it("returns 404 for an unknown targetId, without ever reading a library file", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "does-not-exist",
+                modes: [{modeName: "base", libraryPath: "does-not-exist-either.json"}],
+            });
+
+            expect(status).toBe(404);
+            expect(body).toEqual({error: 'Unknown deployment target "does-not-exist".'});
+        });
+
+        it("returns 400 when a mode's library file doesn't exist", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", libraryPath: "missing.json"}],
+            });
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toContain('mode "base"');
+        });
+
+        it("returns 400 when a mode's library path escapes the project root", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", libraryPath: "../outside.json"}],
+            });
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toContain("resolves outside the project root");
+        });
+
+        it("returns 400 when a mode's library file is not valid JSON", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            fs.writeFileSync(path.join(deploymentProjectRoot, "base.json"), "{ not json");
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", libraryPath: "base.json"}],
+            });
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toContain("is not valid JSON");
+        });
+
+        it("previews a valid deployment (publish: false) without writing any files, and shows generated artifact content", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", libraryPath: "base.json"}],
+                publish: false,
+            });
+
+            expect(status).toBe(200);
+            const view = body as {
+                publish: boolean;
+                descriptorIssues: unknown[];
+                compatibilityIssues: unknown[];
+                artifactIssues: unknown[];
+                generation?: {artifacts: {relativePath: string; content: string}[]};
+                delivery?: unknown;
+                diagnostic?: {ok: boolean};
+            };
+            expect(view.publish).toBe(false);
+            expect(view.descriptorIssues).toEqual([]);
+            expect(view.compatibilityIssues).toEqual([]);
+            expect(view.artifactIssues).toEqual([]);
+            expect(view.generation?.artifacts.length).toBeGreaterThan(0);
+            expect(view.generation?.artifacts.some((artifact) => artifact.content.includes(`"lib-0"`))).toBe(true);
+            expect(view.diagnostic?.ok).toBe(true);
+            expect(view.delivery).toBeUndefined();
+            expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);
+        });
+
+        it("deploys a valid deployment (publish: true), delivers it, and writes the generated files to disk", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", libraryPath: "base.json"}],
+                publish: true,
+            });
+
+            expect(status).toBe(200);
+            const view = body as {publish: boolean; delivery?: {delivered: boolean}};
+            expect(view.publish).toBe(true);
+            expect(view.delivery?.delivered).toBe(true);
+
+            const outDir = path.join(deploymentProjectRoot, "deployment", "local-json-example");
+            expect(fs.existsSync(path.join(outDir, "index.json"))).toBe(true);
+            const index = JSON.parse(fs.readFileSync(path.join(outDir, "index.json"), "utf-8")) as {modes: {modeName: string}[]};
+            expect(index.modes).toEqual([expect.objectContaining({modeName: "base"})]);
+        });
+
+        it("reports a genuinely incompatible library via compatibilityIssues (200, structured), without generating or writing anything", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            fs.writeFileSync(path.join(deploymentProjectRoot, "base.json"), JSON.stringify({schemaVersion: 1, libraryId: "", outcomes: []}));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", libraryPath: "base.json"}],
+                publish: true,
+            });
+
+            expect(status).toBe(200);
+            const view = body as {compatibilityIssues: {code: string}[]; generation?: unknown; delivery?: unknown};
+            expect(view.compatibilityIssues.length).toBeGreaterThan(0);
+            expect(view.generation).toBeUndefined();
+            expect(view.delivery).toBeUndefined();
+            expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);
         });
     });
 });
