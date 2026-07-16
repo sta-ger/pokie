@@ -2041,6 +2041,10 @@ Like `pokie serve`/`pokie dev`, this is a **local/dev tool, not a casino backend
 no authentication, and no operator/integration logic of any kind; its Runtime tab is the same local/dev reference
 server `pokie serve` is (see its own section above for what that does and doesn't provide).
 
+The frontend itself is a React + Mantine single-page app built with Vite (`cli/studio-client/`); its API/
+behavior is exactly what's documented below, unchanged from the sections that follow. See
+[`studio-frontend.md`](studio-frontend.md) for the frontend's own stack, layout, dev workflow, and test setup.
+
 Several invocations all launch it, resolved by `resolveCliInvocation` (`cli/resolveCliInvocation.ts`):
 
 - `pokie` (no arguments at all) — Studio in **Home** mode.

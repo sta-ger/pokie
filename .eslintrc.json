@@ -4,7 +4,18 @@
         "browser": true,
         "es2021": true
     },
-    "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended", "plugin:eslint-comments/recommended"],
+    "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/recommended",
+        "plugin:eslint-comments/recommended",
+        "plugin:react/recommended",
+        "plugin:react-hooks/recommended"
+    ],
+    "settings": {
+        "react": {
+            "version": "19.2"
+        }
+    },
     "overrides": [
         {
             "files": ["*.ts", "*.tsx"],
@@ -12,10 +23,21 @@
             "parserOptions": {
                 "project": "./tsconfig.eslint.json",
                 "ecmaVersion": 2020,
-                "sourceType": "module"
+                "sourceType": "module",
+                "ecmaFeatures": {
+                    "jsx": true
+                }
             },
-            "plugins": ["@typescript-eslint"],
+            "plugins": ["@typescript-eslint", "react", "react-hooks"],
             "rules": {
+                "react/react-in-jsx-scope": "off",
+                "react/prop-types": "off",
+                // This app's data-fetching hooks intentionally call setState(loading) synchronously at
+                // the top of a mount effect before an async apiClient call resolves (fetch-on-mount is
+                // the correct pattern here, not derived-state-from-props the rule is meant to catch) --
+                // see the plan's decision to keep custom polling/loading state instead of a data-fetching
+                // library, which would trigger this same shape throughout the app.
+                "react-hooks/set-state-in-effect": "off",
                 "@typescript-eslint/no-non-null-assertion": "off",
                 "@typescript-eslint/no-explicit-any": "error",
                 "@typescript-eslint/no-unused-vars": "warn",

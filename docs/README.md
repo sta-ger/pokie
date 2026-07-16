@@ -70,8 +70,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie stakeengine import <stakeDir>`, which imports one back; `pokie outcomelibrary build <config.json>`,
     which builds a canonical Outcome Library Bundle from one or more `WeightedOutcomeLibrary` JSON files;
     `pokie outcomelibrary validate <bundleDir>`, which validates one; `pokie certification build <bundleDir>
-    <config.json>`, which builds a certification/evidence bundle on top of an Outcome Library Bundle; and
-    `pokie certification verify <certDir>`, which verifies one against its live source bundle.
+    <config.json>`, which builds a certification/evidence bundle on top of an Outcome Library Bundle;
+    `pokie certification verify <certDir>`, which verifies one against its live source bundle; and `pokie`/
+    `pokie studio` (experimental), a local GUI covering the commands above — see
+    [`studio-frontend.md`](studio-frontend.md) for its own React + Mantine frontend stack and dev workflow.
 16. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
@@ -148,6 +150,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Local/dev JSON HTTP server over a package (experimental) | `pokie serve <packageRoot>` |
 | Browser preview UI for a running `pokie serve` (experimental) | `pokie client <packageRoot>` |
 | `pokie serve` + `pokie client` together, with a browser auto-opened (experimental) | `pokie dev <packageRoot>` |
+| Local GUI (React + Mantine) covering create/build/validate/sim/replay/serve/deploy (experimental) | `pokie` / `pokie studio [path]`, see [`studio-frontend.md`](studio-frontend.md) |
 | Generating a reel strip's symbol sequence under constraints (design-time, not runtime spin) | `ReelStripGenerator`, `ReelStripAnalyzer` |
 | Canonical, hashable, storage/audit-grade record of a completed round | `RoundArtifact`, `buildRoundArtifactFromSession`, `PokieJsonRoundArtifactProjector` |
 | Exact (no Monte Carlo) RTP/volatility/payout-distribution over every possible outcome | `WeightedOutcomeLibrary`, `buildWeightedOutcomeLibrary`, `WeightedOutcomeLibraryAnalyzer` |
