@@ -28,41 +28,43 @@ export function SymbolWeightsEditor({blueprint, mutate}: {blueprint: Record<stri
 
     return (
         <PageSection legend="Symbol weights">
-            <Table>
-                <Table.Thead>
-                    <Table.Tr>
-                        <Table.Th>Symbol</Table.Th>
-                        <Table.Th>Weight</Table.Th>
-                        <Table.Th />
-                    </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                    {Object.entries(weights).map(([symbolId, weight]) => (
-                        <Table.Tr key={symbolId}>
-                            <Table.Td>{symbolId}</Table.Td>
-                            <Table.Td>
-                                <NumberInput
-                                    aria-label={`${symbolId} weight`}
-                                    min={1}
-                                    step={1}
-                                    defaultValue={weight}
-                                    onBlur={(event) => {
-                                        const value = Number(event.currentTarget.value);
-                                        if (Number.isFinite(value)) {
-                                            mutate((b) => setSymbolWeight(b, symbolId, value));
-                                        }
-                                    }}
-                                />
-                            </Table.Td>
-                            <Table.Td>
-                                <ActionIcon variant="subtle" color="red" aria-label={`Remove ${symbolId} weight`} onClick={() => mutate((b) => removeSymbolWeight(b, symbolId))}>
-                                    <IconTrash size={16} />
-                                </ActionIcon>
-                            </Table.Td>
+            <Table.ScrollContainer minWidth={320}>
+                <Table>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Symbol</Table.Th>
+                            <Table.Th>Weight</Table.Th>
+                            <Table.Th />
                         </Table.Tr>
-                    ))}
-                </Table.Tbody>
-            </Table>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {Object.entries(weights).map(([symbolId, weight]) => (
+                            <Table.Tr key={symbolId}>
+                                <Table.Td>{symbolId}</Table.Td>
+                                <Table.Td>
+                                    <NumberInput
+                                        aria-label={`${symbolId} weight`}
+                                        min={1}
+                                        step={1}
+                                        defaultValue={weight}
+                                        onBlur={(event) => {
+                                            const value = Number(event.currentTarget.value);
+                                            if (Number.isFinite(value)) {
+                                                mutate((b) => setSymbolWeight(b, symbolId, value));
+                                            }
+                                        }}
+                                    />
+                                </Table.Td>
+                                <Table.Td>
+                                    <ActionIcon variant="subtle" color="red" aria-label={`Remove ${symbolId} weight`} onClick={() => mutate((b) => removeSymbolWeight(b, symbolId))}>
+                                        <IconTrash size={16} />
+                                    </ActionIcon>
+                                </Table.Td>
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
             <QuickActions>
                 <Select aria-label="Symbol" placeholder="Symbol" data={symbols} value={newSymbol} onChange={setNewSymbol} />
                 <NumberInput aria-label="Weight" placeholder="Weight" min={1} step={1} value={newWeight} onChange={setNewWeight} />

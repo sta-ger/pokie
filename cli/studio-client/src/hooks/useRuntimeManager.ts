@@ -22,6 +22,7 @@ import {
     type RuntimeSpinResultView,
     type RuntimeStateView,
 } from "../domain/interpret/Runtime";
+import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
 
 export type RuntimeHistoryEntry = {timestamp: string; action: string; summary: string};
 
@@ -30,6 +31,9 @@ const HISTORY_LIMIT = 20;
 // Owns the Runtime tab's state -- no polling loop (state only changes on explicit action responses, or
 // a manual refresh), but must survive tab switches like every other tab's state (see
 // ProjectDashboardPage's own doc comment), so it's a page-level hook, not local to the tab component.
+// Every mutating action (start/stop/restart/create-load session/spin) is double-submit-guarded, on top
+// of whatever `state.status`/`session.status === "loading"` already surfaces in the UI as a disabled/
+// loading button -- see useDoubleSubmitGuard's own doc comment for why both layers matter.
 export function useRuntimeManager() {
     const fetchImpl = useStudioApi();
     const [state, setState] = useState<RuntimeStateView>({status: "idle"});
@@ -37,6 +41,13 @@ export function useRuntimeManager() {
     const [sessionId, setSessionId] = useState<string>();
     const [history, setHistory] = useState<RuntimeHistoryEntry[]>([]);
     const [lastSpin, setLastSpin] = useState<{requestId?: string; expectedVersion?: number}>({});
+
+    const startGuard = useDoubleSubmitGuard();
+    const stopGuard = useDoubleSubmitGuard();
+    const restartGuard = useDoubleSubmitGuard();
+    const createSessionGuard = useDoubleSubmitGuard();
+    const loadSessionGuard = useDoubleSubmitGuard();
+    const spinGuard = useDoubleSubmitGuard();
 
     const pushHistory = useCallback((action: string, summary: string) => {
         setHistory((prev) => [{timestamp: formatTimestamp(Date.now()), action, summary}, ...prev].slice(0, HISTORY_LIMIT));
@@ -56,6 +67,9 @@ export function useRuntimeManager() {
 
     const start = useCallback(
         (options: StartRuntimeOptions) => {
+            if (!startGuard.begin()) {
+                return;
+            }
             setState({status: "loading"});
             startRuntime(fetchImpl, options)
                 .then((result) => {
@@ -63,12 +77,17 @@ export function useRuntimeManager() {
                     setState(view);
                     pushHistory("Start", view.status === "running" ? `running at ${view.baseUrl}` : view.status);
                 })
-                .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
+                .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}))
+                .finally(() => startGuard.end());
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [fetchImpl, pushHistory],
     );
 
     const stop = useCallback(() => {
+        if (!stopGuard.begin()) {
+            return;
+        }
         stopRuntime(fetchImpl)
             .then((result) => {
                 const view = describeRuntimeState(result);
@@ -76,11 +95,16 @@ export function useRuntimeManager() {
                 pushHistory("Stop", view.status);
                 resetSession();
             })
-            .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
+            .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}))
+            .finally(() => stopGuard.end());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchImpl, pushHistory, resetSession]);
 
     const restart = useCallback(
         (options?: StartRuntimeOptions) => {
+            if (!restartGuard.begin()) {
+                return;
+            }
             setState({status: "loading"});
             restartRuntime(fetchImpl, options)
                 .then((result) => {
@@ -89,13 +113,18 @@ export function useRuntimeManager() {
                     pushHistory("Restart", view.status === "running" ? `running at ${view.baseUrl}` : view.status);
                     resetSession();
                 })
-                .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
+                .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}))
+                .finally(() => restartGuard.end());
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [fetchImpl, pushHistory, resetSession],
     );
 
     const createSession = useCallback(
         (seed?: string) => {
+            if (!createSessionGuard.begin()) {
+                return;
+            }
             setSession({status: "loading"});
             createRuntimeSession(fetchImpl, seed)
                 .then((result) => {
@@ -104,13 +133,18 @@ export function useRuntimeManager() {
                     setSessionId(result.status === "ok" ? result.session.sessionId : undefined);
                     pushHistory("Create Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
                 })
-                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}));
+                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}))
+                .finally(() => createSessionGuard.end());
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [fetchImpl, pushHistory],
     );
 
     const loadSession = useCallback(
         (id: string) => {
+            if (!loadSessionGuard.begin()) {
+                return;
+            }
             setSession({status: "loading"});
             getRuntimeSession(fetchImpl, id)
                 .then((result) => {
@@ -119,14 +153,16 @@ export function useRuntimeManager() {
                     setSessionId(result.status === "ok" ? result.session.sessionId : undefined);
                     pushHistory("Load Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
                 })
-                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}));
+                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}))
+                .finally(() => loadSessionGuard.end());
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [fetchImpl, pushHistory],
     );
 
     const spin = useCallback(
         (requestId?: string, expectedVersion?: number) => {
-            if (sessionId === undefined) {
+            if (sessionId === undefined || !spinGuard.begin()) {
                 return;
             }
             setLastSpin({requestId, expectedVersion});
@@ -137,8 +173,10 @@ export function useRuntimeManager() {
                     setSession(view);
                     pushHistory("Spin", result.status === "ok" ? `credits ${result.session.credits}, win ${result.session.win ?? 0}` : result.status);
                 })
-                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}));
+                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}))
+                .finally(() => spinGuard.end());
         },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         [fetchImpl, pushHistory, sessionId],
     );
 

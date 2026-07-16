@@ -34,8 +34,12 @@ export function BuildPreviewDisplay({view}: {view: BuildPreviewView}) {
                         Reels x rows: {view.reels} x {view.rows}
                     </Text>
                     <Text size="sm">Symbols: {view.symbolsCount}</Text>
-                    <Text size="sm">Blueprint hash: {view.blueprintHash}</Text>
-                    <Text size="sm">Would generate: {view.expectedFiles.join(", ")}</Text>
+                    <Text size="sm" style={{overflowWrap: "anywhere"}}>
+                        Blueprint hash: {view.blueprintHash}
+                    </Text>
+                    <Text size="sm" style={{overflowWrap: "anywhere"}}>
+                        Would generate: {view.expectedFiles.join(", ")}
+                    </Text>
                 </Stack>
             )}
         </Stack>

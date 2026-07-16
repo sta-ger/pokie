@@ -5,6 +5,7 @@ import {createProject} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeScaffoldResult, type ScaffoldActionView} from "../../domain/interpret/Home";
+import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {ScaffoldResultDisplay} from "./ScaffoldResultDisplay";
 
@@ -21,6 +22,7 @@ export function CreateProjectForm() {
     const openAndNavigate = useOpenProject();
     const [view, setView] = useState<ScaffoldActionView>({status: "idle"});
     const [lastProjectRoot, setLastProjectRoot] = useState<string>();
+    const submitGuard = useDoubleSubmitGuard();
 
     const form = useForm<CreateProjectFormValues>({
         mode: "uncontrolled",
@@ -28,6 +30,9 @@ export function CreateProjectForm() {
     });
 
     const handleSubmit = (values: CreateProjectFormValues): void => {
+        if (!submitGuard.begin()) {
+            return;
+        }
         setView({status: "loading"});
         createProject(fetchImpl, {
             destinationDir: values.destinationDir,
@@ -42,7 +47,8 @@ export function CreateProjectForm() {
                     setLastProjectRoot(result.projectRoot);
                 }
             })
-            .catch((error: unknown) => setView({status: "error", message: errorMessage(error)}));
+            .catch((error: unknown) => setView({status: "error", message: errorMessage(error)}))
+            .finally(() => submitGuard.end());
     };
 
     return (
@@ -54,7 +60,7 @@ export function CreateProjectForm() {
                     <TextInput label="Game id (optional)" {...form.getInputProps("gameId")} key={form.key("gameId")} />
                     <TextInput label="Game name (optional)" {...form.getInputProps("gameName")} key={form.key("gameName")} />
                     <TextInput label="Version (optional)" {...form.getInputProps("version")} key={form.key("version")} />
-                    <Button type="submit" style={{alignSelf: "flex-start"}}>
+                    <Button type="submit" loading={view.status === "loading"} style={{alignSelf: "flex-start"}}>
                         Create
                     </Button>
                 </Stack>

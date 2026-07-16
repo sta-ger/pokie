@@ -2,6 +2,7 @@ import {Anchor, Button, List, Text, TextInput} from "@mantine/core";
 import type {StudioDeploymentModeInput, StudioDeploymentTargetSummary} from "../../api/types";
 import type {DeploymentRunResultView, DeploymentTargetsListView} from "../../domain/interpret/Deployment";
 import {useConfirm} from "../../hooks/useConfirm";
+import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
@@ -179,7 +180,12 @@ export function DeploymentTab({
                             <List listStyleType="none" spacing={4}>
                                 {runResult.artifacts.map((artifact) => (
                                     <List.Item key={artifact.relativePath}>
-                                        <Anchor component="button" type="button" onClick={() => onSelectArtifact(artifact.relativePath)}>
+                                        <Anchor
+                                            component="button"
+                                            type="button"
+                                            onClick={() => onSelectArtifact(artifact.relativePath)}
+                                            style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                        >
                                             {artifact.relativePath}
                                         </Anchor>
                                     </List.Item>
@@ -188,12 +194,10 @@ export function DeploymentTab({
                         )}
                         {selectedArtifact && (
                             <div>
-                                <Text fw={600} size="sm" mt="sm">
+                                <Text fw={600} size="sm" mt="sm" style={{overflowWrap: "anywhere"}}>
                                     {selectedArtifact.relativePath}
                                 </Text>
-                                <Text component="pre" size="xs">
-                                    {selectedArtifact.content}
-                                </Text>
+                                <CodeBlock>{selectedArtifact.content}</CodeBlock>
                             </div>
                         )}
                     </PageSection>

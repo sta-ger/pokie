@@ -62,7 +62,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler stale-response guard", () => 
         // the *second*, load-bearing layer: isStaleReelStripGenerationRequest itself, which is what
         // must reject this specific response even though the component never unmounted.
         await new Promise((resolveTimeout) => {
-            setTimeout(resolveTimeout, 20);
+            setTimeout(resolveTimeout, 100);
         });
         expect(screen.queryByText(/Sequence:/)).not.toBeInTheDocument();
         expect(screen.queryByText("Working…")).not.toBeInTheDocument();

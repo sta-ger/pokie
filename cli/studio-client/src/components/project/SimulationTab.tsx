@@ -41,7 +41,9 @@ export function SimulationTab({
                     <NumberInput label="Rounds" min={1} step={1} required {...form.getInputProps("rounds")} key={form.key("rounds")} />
                     <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
                     <NumberInput label="Workers" min={1} step={1} required {...form.getInputProps("workers")} key={form.key("workers")} />
-                    <Button type="submit">Run Simulation</Button>
+                    <Button type="submit" loading={progress?.status === "queued"} disabled={active}>
+                        Run Simulation
+                    </Button>
                 </QuickActions>
             </form>
 

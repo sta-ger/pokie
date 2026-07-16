@@ -16,7 +16,7 @@ export function ValidationTab({
     return (
         <div>
             <QuickActions>
-                <Button variant="default" onClick={onValidate}>
+                <Button variant="default" onClick={onValidate} loading={loading}>
                     Run Validate
                 </Button>
             </QuickActions>

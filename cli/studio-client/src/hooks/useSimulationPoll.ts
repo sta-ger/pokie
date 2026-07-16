@@ -3,31 +3,51 @@ import {cancelSimulation, getSimulation, startSimulation} from "../api/apiClient
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
 import {describeSimulationProgress, isSimulationActive, type SimulationProgressView} from "../domain/interpret/Simulation";
+import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
 import type {StudioSimulationJobView} from "../api/types";
 
 const POLL_INTERVAL_MS = 500;
 
 // Ports pollSimulation (500ms, uncapped -- a legitimate simulation is allowed to run as long as it
-// actually takes) -- stops once the job is terminal, or once the Simulation tab's owning page unmounts
-// (`cancelledRef`), same "unmount replaces the route-check" reasoning as useProjectContext. `poll` is a
-// hoisted function declaration (not useCallback) specifically so it can call itself recursively via
-// setTimeout without a forward-reference -- these handlers are plain functions, not memoized, since
-// nothing here depends on their identity staying stable across renders.
+// actually takes) -- stops once the job is terminal, or once the Simulation tab's owning page unmounts.
+// `poll` is a hoisted function declaration (not useCallback) specifically so it can call itself
+// recursively via setTimeout without a forward-reference -- these handlers are plain functions, not
+// memoized, since nothing here depends on their identity staying stable across renders.
+//
+// StrictMode note: React's dev-only mount -> cleanup -> mount cycle means the setup effect below must
+// reset `cancelledRef` back to false on every run, not just flip it to true in cleanup -- otherwise the
+// *second* (real) mount inherits `cancelled = true` from the first (throwaway) mount's cleanup and the
+// hook silently never polls again. `timeoutRef` holds the one pending recursive-poll handle so cleanup
+// can cancel it outright (not just let a stale response get ignored) -- without this, an already-
+// in-flight `setTimeout` still fires `poll()` again after unmount, issuing a real, unnecessary HTTP
+// request; `poll()` itself also re-checks `cancelledRef` before ever calling `getSimulation`, covering
+// the case where cleanup runs after the timeout already fired but before its callback's own fetch call.
 export function useSimulationPoll() {
     const fetchImpl = useStudioApi();
     const [progress, setProgress] = useState<SimulationProgressView | undefined>(undefined);
     const [job, setJob] = useState<StudioSimulationJobView>();
     const [error, setError] = useState<string>();
-    const currentJobId = useRef<string>();
+    const currentJobId = useRef<string | undefined>(undefined);
     const cancelledRef = useRef(false);
-    useEffect(
-        () => () => {
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const runGuard = useDoubleSubmitGuard();
+    const cancelGuard = useDoubleSubmitGuard();
+
+    useEffect(() => {
+        cancelledRef.current = false;
+        return () => {
             cancelledRef.current = true;
-        },
-        [],
-    );
+            if (timeoutRef.current !== undefined) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = undefined;
+            }
+        };
+    }, []);
 
     function poll(id: string): void {
+        if (cancelledRef.current) {
+            return;
+        }
         getSimulation(fetchImpl, id)
             .then((polledJob) => {
                 if (cancelledRef.current || currentJobId.current !== id) {
@@ -36,7 +56,7 @@ export function useSimulationPoll() {
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
                 if (isSimulationActive(polledJob)) {
-                    setTimeout(() => poll(id), POLL_INTERVAL_MS);
+                    timeoutRef.current = setTimeout(() => poll(id), POLL_INTERVAL_MS);
                 }
             })
             .catch((err: unknown) => {
@@ -47,10 +67,16 @@ export function useSimulationPoll() {
     }
 
     function run(rounds: number, seed: string | undefined, workers: number): void {
+        if (!runGuard.begin()) {
+            return;
+        }
         setError(undefined);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
         startSimulation(fetchImpl, rounds, seed, workers)
             .then((result) => {
+                if (cancelledRef.current) {
+                    return;
+                }
                 const id = result.status === "conflict" ? result.activeJobId : result.job.id;
                 currentJobId.current = id;
                 if (result.status === "created") {
@@ -59,20 +85,33 @@ export function useSimulationPoll() {
                 }
                 poll(id);
             })
-            .catch((err: unknown) => setError(errorMessage(err)));
+            .catch((err: unknown) => {
+                if (!cancelledRef.current) {
+                    setError(errorMessage(err));
+                }
+            })
+            .finally(() => runGuard.end());
     }
 
     function cancel(): void {
         const id = currentJobId.current;
-        if (id === undefined) {
+        if (id === undefined || !cancelGuard.begin()) {
             return;
         }
         cancelSimulation(fetchImpl, id)
             .then((polledJob) => {
+                if (cancelledRef.current) {
+                    return;
+                }
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
             })
-            .catch((err: unknown) => setError(errorMessage(err)));
+            .catch((err: unknown) => {
+                if (!cancelledRef.current) {
+                    setError(errorMessage(err));
+                }
+            })
+            .finally(() => cancelGuard.end());
     }
 
     return {progress, job, error, run, cancel, currentJobId: currentJobId.current};

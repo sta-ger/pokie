@@ -13,7 +13,7 @@ export function IssueList({title, issues}: {title: string; issues: IssueListEntr
             <Text fw={600} size="sm" mb={4}>
                 {title}
             </Text>
-            <List size="sm" spacing={4}>
+            <List size="sm" spacing={4} style={{overflowWrap: "anywhere"}}>
                 {issues.map((issue, index) => (
                     <List.Item key={`${issue.code ?? "issue"}-${index}`}>
                         {issue.code ? `${issue.code}: ${issue.message}` : issue.message}

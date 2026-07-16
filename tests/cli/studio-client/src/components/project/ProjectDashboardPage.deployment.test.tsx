@@ -78,11 +78,10 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
 
         // The now-stale response arrives -- isCurrent(token) must reject it, so nothing renders.
         runRequests[0].resolve(stageResult("first"));
-        await new Promise((resolveTimeout) => {
-            setTimeout(resolveTimeout, 50);
+        await waitFor(() => {
+            expect(screen.queryByText("first.json")).not.toBeInTheDocument();
+            expect(screen.getByText("No deployment has been run yet.")).toBeInTheDocument();
         });
-        expect(screen.queryByText("first.json")).not.toBeInTheDocument();
-        expect(screen.getByText("No deployment has been run yet.")).toBeInTheDocument();
 
         // A fresh run started *after* the stale one resolved works normally.
         await user.click(screen.getByRole("button", {name: "Check & Preview"}));

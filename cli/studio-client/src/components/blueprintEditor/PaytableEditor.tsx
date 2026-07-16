@@ -38,48 +38,49 @@ export function PaytableEditor({blueprint, mutate}: {blueprint: Record<string, u
 
     return (
         <PageSection legend="Paytable">
-            <Table>
-                <Table.Thead>
-                    <Table.Tr>
-                        <Table.Th>Symbol</Table.Th>
-                        <Table.Th>Match count</Table.Th>
-                        <Table.Th>Payout (x bet)</Table.Th>
-                        <Table.Th />
-                    </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                    {rows.map((row) => (
-                        <Table.Tr key={`${row.symbolId}-${row.matchCount}`}>
-                            <Table.Td>{row.symbolId}</Table.Td>
-                            <Table.Td>{row.matchCount}</Table.Td>
-                            <Table.Td>
-                                <NumberInput
-                                    aria-label={`${row.symbolId} x${row.matchCount} payout`}
-                                    step="any"
-                                    defaultValue={row.payout}
-                                    onBlur={(event) => {
-                                        const value = Number(event.currentTarget.value);
-                                        if (Number.isFinite(value)) {
-                                            mutate((b) => setPaytablePayout(b, row.symbolId, row.matchCount, value));
-                                        }
-                                    }}
-                                />
-                            </Table.Td>
-                            <Table.Td>
-                                <RowActions
-                                    itemLabel={`${row.symbolId} x${row.matchCount} payout`}
-                                    onDuplicate={() => mutate((b) => duplicatePaytablePayout(b, row.symbolId, row.matchCount, maxMatchCount))}
-                                    onRemove={() => mutate((b) => removePaytablePayout(b, row.symbolId, row.matchCount))}
-                                />
-                            </Table.Td>
+            <Table.ScrollContainer minWidth={480}>
+                <Table>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Symbol</Table.Th>
+                            <Table.Th>Match count</Table.Th>
+                            <Table.Th>Payout (x bet)</Table.Th>
+                            <Table.Th />
                         </Table.Tr>
-                    ))}
-                </Table.Tbody>
-            </Table>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {rows.map((row) => (
+                            <Table.Tr key={`${row.symbolId}-${row.matchCount}`}>
+                                <Table.Td>{row.symbolId}</Table.Td>
+                                <Table.Td>{row.matchCount}</Table.Td>
+                                <Table.Td>
+                                    <NumberInput
+                                        aria-label={`${row.symbolId} x${row.matchCount} payout`}
+                                        defaultValue={row.payout}
+                                        onBlur={(event) => {
+                                            const value = Number(event.currentTarget.value);
+                                            if (Number.isFinite(value)) {
+                                                mutate((b) => setPaytablePayout(b, row.symbolId, row.matchCount, value));
+                                            }
+                                        }}
+                                    />
+                                </Table.Td>
+                                <Table.Td>
+                                    <RowActions
+                                        itemLabel={`${row.symbolId} x${row.matchCount} payout`}
+                                        onDuplicate={() => mutate((b) => duplicatePaytablePayout(b, row.symbolId, row.matchCount, maxMatchCount))}
+                                        onRemove={() => mutate((b) => removePaytablePayout(b, row.symbolId, row.matchCount))}
+                                    />
+                                </Table.Td>
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
             <QuickActions>
                 <Select aria-label="Symbol" placeholder="Symbol" data={symbols} value={newSymbol} onChange={setNewSymbol} />
                 <NumberInput aria-label="Match count" placeholder="Match count" min={2} step={1} value={newMatchCount} onChange={setNewMatchCount} />
-                <NumberInput aria-label="Payout" placeholder="Payout" step="any" value={newPayout} onChange={setNewPayout} />
+                <NumberInput aria-label="Payout" placeholder="Payout" value={newPayout} onChange={setNewPayout} />
                 <Group>
                     <Button
                         variant="default"

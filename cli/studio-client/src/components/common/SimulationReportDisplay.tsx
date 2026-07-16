@@ -19,7 +19,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                 <Table.Tbody>
                     <Table.Tr>
                         <Table.Th>Game</Table.Th>
-                        <Table.Td>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>
                             {view.game.name} (id: &quot;{view.game.id}&quot;, v{view.game.version})
                         </Table.Td>
                     </Table.Tr>
@@ -110,7 +110,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
             )}
 
             {view.reproducibilityCommand !== undefined && (
-                <Text size="sm" c="dimmed" mt="sm">
+                <Text size="sm" c="dimmed" mt="sm" style={{overflowWrap: "anywhere"}}>
                     {view.reproducibilityCommand}
                 </Text>
             )}

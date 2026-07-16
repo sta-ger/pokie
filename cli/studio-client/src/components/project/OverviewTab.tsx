@@ -21,7 +21,7 @@ function ProvenancePanel({provenance}: {provenance: ProvenanceView}) {
                 <Table.Tbody>
                     <Table.Tr>
                         <Table.Th>Blueprint hash</Table.Th>
-                        <Table.Td>{provenance.blueprintHash}</Table.Td>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>{provenance.blueprintHash}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Source</Table.Th>
@@ -37,7 +37,7 @@ function ProvenancePanel({provenance}: {provenance: ProvenanceView}) {
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Generated files</Table.Th>
-                        <Table.Td>{provenance.files.join(", ")}</Table.Td>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>{provenance.files.join(", ")}</Table.Td>
                     </Table.Tr>
                 </Table.Tbody>
             </Table>
@@ -70,7 +70,7 @@ export function OverviewTab({
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Package root</Table.Th>
-                        <Table.Td>{header.projectRoot}</Table.Td>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>{header.projectRoot}</Table.Td>
                     </Table.Tr>
                 </Table.Tbody>
             </Table>
@@ -92,7 +92,7 @@ export function OverviewTab({
                                 </Table.Tr>
                                 <Table.Tr>
                                     <Table.Th>Package root</Table.Th>
-                                    <Table.Td>{inspection.packageRoot}</Table.Td>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>{inspection.packageRoot}</Table.Td>
                                 </Table.Tr>
                             </Table.Tbody>
                         </Table>
@@ -100,7 +100,7 @@ export function OverviewTab({
                     </div>
                 )}
                 <QuickActions>
-                    <Button variant="default" onClick={onReinspect}>
+                    <Button variant="default" onClick={onReinspect} loading={inspection.status === "loading"}>
                         Re-run Inspect
                     </Button>
                 </QuickActions>

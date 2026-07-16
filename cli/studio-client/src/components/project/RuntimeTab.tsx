@@ -5,6 +5,7 @@ import type {StartRuntimeOptions} from "../../api/apiClient";
 import type {RuntimeHistoryEntry} from "../../hooks/useRuntimeManager";
 import {useConfirm} from "../../hooks/useConfirm";
 import {describeRuntimeScreen, type RuntimeSessionResultView, type RuntimeSpinResultView, type RuntimeStateView} from "../../domain/interpret/Runtime";
+import {CodeBlock} from "../common/CodeBlock";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
@@ -53,7 +54,7 @@ function SessionPanel({session}: {session: RuntimeSessionResultView | RuntimeSpi
                 <Table.Tbody>
                     <Table.Tr>
                         <Table.Th>Session id</Table.Th>
-                        <Table.Td>{view.sessionId}</Table.Td>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>{view.sessionId}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Session version</Table.Th>
@@ -81,9 +82,7 @@ function SessionPanel({session}: {session: RuntimeSessionResultView | RuntimeSpi
             )}
 
             <PageSection legend="Public response">
-                <Text component="pre" size="xs">
-                    {JSON.stringify(publicFields, null, 2)}
-                </Text>
+                <CodeBlock>{JSON.stringify(publicFields, null, 2)}</CodeBlock>
             </PageSection>
 
             <PageSection legend="Debug response">
@@ -92,9 +91,7 @@ function SessionPanel({session}: {session: RuntimeSessionResultView | RuntimeSpi
                         Debug mode is disabled for this runtime — restart it with debug mode on to see internal/debug data.
                     </Text>
                 ) : (
-                    <Text component="pre" size="xs">
-                        {JSON.stringify(debug, null, 2)}
-                    </Text>
+                    <CodeBlock>{JSON.stringify(debug, null, 2)}</CodeBlock>
                 )}
             </PageSection>
         </div>
@@ -168,7 +165,7 @@ export function RuntimeTab({
                         <TextInput label="Default seed (optional)" {...startForm.getInputProps("seed")} key={startForm.key("seed")} />
                     </QuickActions>
                     <QuickActions>
-                        <Button type="submit" disabled={running || state.status === "loading"}>
+                        <Button type="submit" disabled={running} loading={state.status === "loading"}>
                             Start
                         </Button>
                         <Button
@@ -179,7 +176,7 @@ export function RuntimeTab({
                         >
                             Stop
                         </Button>
-                        <Button variant="default" onClick={() => onRestart()}>
+                        <Button variant="default" onClick={() => onRestart()} loading={state.status === "loading"}>
                             Restart
                         </Button>
                         <Button variant="subtle" onClick={onRefresh}>
@@ -206,7 +203,7 @@ export function RuntimeTab({
                                 </Table.Tr>
                                 <Table.Tr>
                                     <Table.Th>Base URL</Table.Th>
-                                    <Table.Td>{state.baseUrl}</Table.Td>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>{state.baseUrl}</Table.Td>
                                 </Table.Tr>
                                 <Table.Tr>
                                     <Table.Th>Session storage</Table.Th>
@@ -228,13 +225,23 @@ export function RuntimeTab({
                         value={createSeed}
                         onChange={(event) => setCreateSeed(event.currentTarget.value)}
                     />
-                    <Button variant="default" disabled={!running} onClick={() => onCreateSession(createSeed.trim() || undefined)}>
+                    <Button
+                        variant="default"
+                        disabled={!running}
+                        loading={session.status === "loading"}
+                        onClick={() => onCreateSession(createSeed.trim() || undefined)}
+                    >
                         Create Session
                     </Button>
                 </QuickActions>
                 <QuickActions>
                     <TextInput label="Existing session id" value={loadSessionId} onChange={(event) => setLoadSessionId(event.currentTarget.value)} />
-                    <Button variant="default" disabled={!running} onClick={() => loadSessionId.trim() && onLoadSession(loadSessionId.trim())}>
+                    <Button
+                        variant="default"
+                        disabled={!running}
+                        loading={session.status === "loading"}
+                        onClick={() => loadSessionId.trim() && onLoadSession(loadSessionId.trim())}
+                    >
                         Load Session
                     </Button>
                 </QuickActions>
@@ -252,13 +259,14 @@ export function RuntimeTab({
                     />
                     <Button
                         disabled={!running}
+                        loading={session.status === "loading"}
                         onClick={() =>
                             onSpin(spinRequestId.trim() || undefined, spinExpectedVersion === "" ? undefined : Number(spinExpectedVersion))
                         }
                     >
                         Spin
                     </Button>
-                    <Button variant="default" disabled={!running} onClick={onRepeatSpin}>
+                    <Button variant="default" disabled={!running} loading={session.status === "loading"} onClick={onRepeatSpin}>
                         Repeat Same Request
                     </Button>
                 </QuickActions>

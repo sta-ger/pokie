@@ -52,7 +52,9 @@ export function ReplayTab({
                 <QuickActions>
                     <NumberInput label="Round" min={1} step={1} required {...form.getInputProps("round")} key={form.key("round")} />
                     <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
-                    <Button type="submit">Run Replay</Button>
+                    <Button type="submit" loading={progress?.status === "queued"} disabled={active}>
+                        Run Replay
+                    </Button>
                 </QuickActions>
             </form>
 
@@ -90,7 +92,7 @@ export function ReplayTab({
                         <Table.Tbody>
                             <Table.Tr>
                                 <Table.Th>Game</Table.Th>
-                                <Table.Td>
+                                <Table.Td style={{overflowWrap: "anywhere"}}>
                                     {result.game.name} (id: &quot;{result.game.id}&quot;, v{result.game.version})
                                 </Table.Td>
                             </Table.Tr>
@@ -147,7 +149,12 @@ export function ReplayTab({
                     <List listStyleType="none" spacing={4}>
                         {listView.entries.map((entry) => (
                             <List.Item key={entry.id}>
-                                <Anchor component="button" type="button" onClick={() => onSelect(entry.id)}>
+                                <Anchor
+                                    component="button"
+                                    type="button"
+                                    onClick={() => onSelect(entry.id)}
+                                    style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                >
                                     {entry.game?.id ?? "?"} round {entry.round} — {entry.status}
                                 </Anchor>
                             </List.Item>

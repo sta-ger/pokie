@@ -9,7 +9,7 @@ export function FileList({title, files}: {title: string; files: string[]}) {
             <Text fw={600} size="sm" mb={4}>
                 {title}
             </Text>
-            <List size="sm" spacing={4}>
+            <List size="sm" spacing={4} style={{overflowWrap: "anywhere"}}>
                 {files.map((file) => (
                     <List.Item key={file}>{file}</List.Item>
                 ))}

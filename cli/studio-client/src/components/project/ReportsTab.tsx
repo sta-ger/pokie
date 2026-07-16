@@ -41,7 +41,12 @@ export function ReportsTab({
                 <List listStyleType="none" spacing={4} mb="md">
                     {listView.entries.map((entry) => (
                         <List.Item key={entry.id}>
-                            <Anchor component="button" type="button" onClick={() => onSelect(entry)}>
+                            <Anchor
+                                component="button"
+                                type="button"
+                                onClick={() => onSelect(entry)}
+                                style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                            >
                                 {entry.game.id} v{entry.game.version} — {entry.actualRounds}/{entry.requestedRounds} rounds, RTP {(entry.rtp * 100).toFixed(2)}%,{" "}
                                 {new Date(entry.startedAt).toLocaleString()}
                                 {entry.hasWarnings ? " (has warnings)" : ""}

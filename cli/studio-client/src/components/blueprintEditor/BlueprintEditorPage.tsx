@@ -13,6 +13,7 @@ import {
 } from "../../domain/interpret/BlueprintEditor";
 import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
+import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {BetsList} from "./BetsList";
 import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
@@ -32,10 +33,13 @@ export function BlueprintEditorPage() {
     const editor = useBlueprintEditor();
     const [mode, setMode] = useState<BlueprintMode>("form");
     const [blueprintPath, setBlueprintPath] = useState<string>();
-    const overwriteConfirmedForPath = useRef<string>();
+    const overwriteConfirmedForPath = useRef<string | undefined>(undefined);
     const [loadView, setLoadView] = useState<BlueprintLoadView>({status: "idle"});
     const [saveView, setSaveView] = useState<BlueprintSaveView>({status: "idle"});
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
+    const loadGuard = useDoubleSubmitGuard();
+    const saveGuard = useDoubleSubmitGuard();
+    const validateGuard = useDoubleSubmitGuard();
 
     const handleNew = (): void => {
         editor.newBlueprint();
@@ -47,6 +51,10 @@ export function BlueprintEditorPage() {
     };
 
     const handleLoad = (path: string): void => {
+        if (!loadGuard.begin()) {
+            return;
+        }
+        setLoadView({status: "loading"});
         loadBlueprint(fetchImpl, path)
             .then((result) => {
                 setLoadView(describeLoadResult(result));
@@ -56,10 +64,15 @@ export function BlueprintEditorPage() {
                     overwriteConfirmedForPath.current = result.path;
                 }
             })
-            .catch((error: unknown) => setLoadView({status: "error", message: errorMessage(error)}));
+            .catch((error: unknown) => setLoadView({status: "error", message: errorMessage(error)}))
+            .finally(() => loadGuard.end());
     };
 
     const runSave = (path: string, overwrite: boolean): void => {
+        if (!saveGuard.begin()) {
+            return;
+        }
+        setSaveView({status: "loading"});
         saveBlueprint(fetchImpl, path, editor.state.blueprint, overwrite)
             .then((result) => {
                 setSaveView(describeSaveResult(result));
@@ -68,7 +81,8 @@ export function BlueprintEditorPage() {
                     overwriteConfirmedForPath.current = result.path;
                 }
             })
-            .catch((error: unknown) => setSaveView({status: "error", message: errorMessage(error)}));
+            .catch((error: unknown) => setSaveView({status: "error", message: errorMessage(error)}))
+            .finally(() => saveGuard.end());
     };
 
     const handleSave = (path: string): void => {
@@ -80,10 +94,14 @@ export function BlueprintEditorPage() {
     };
 
     const handleValidate = (): void => {
+        if (!validateGuard.begin()) {
+            return;
+        }
         setValidationView({status: "loading"});
         validateBlueprint(fetchImpl, editor.state.blueprint)
             .then((result) => setValidationView(describeValidation(result)))
-            .catch((error: unknown) => setValidationView({status: "error", message: errorMessage(error)}));
+            .catch((error: unknown) => setValidationView({status: "error", message: errorMessage(error)}))
+            .finally(() => validateGuard.end());
     };
 
     const {blueprint, revision} = editor.state;

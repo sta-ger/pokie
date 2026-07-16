@@ -7,6 +7,7 @@ import {BuildResultDisplay} from "../common/BuildResultDisplay";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeBuildPreview, describeBuildResult, type BuildPreviewView, type BuildProjectView} from "../../domain/interpret/Home";
 import {useConfirm} from "../../hooks/useConfirm";
+import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
@@ -20,17 +21,26 @@ export function BlueprintBuildPanel({blueprint, sourcePath}: {blueprint: Record<
     const [result, setResult] = useState<BuildProjectView>({status: "idle"});
     const [lastProjectRoot, setLastProjectRoot] = useState<string>();
     const lastBuiltOutDir = useRef<string | undefined>(undefined);
+    const previewGuard = useDoubleSubmitGuard();
+    const buildGuard = useDoubleSubmitGuard();
 
     const runPreview = (): void => {
+        if (!previewGuard.begin()) {
+            return;
+        }
         setPreview({status: "loading"});
         previewBlueprintBuild(fetchImpl, blueprint, outDir.trim() || undefined, sourcePath)
             .then((view) => setPreview(describeBuildPreview(view)))
-            .catch((error: unknown) => setPreview({status: "error", message: errorMessage(error)}));
+            .catch((error: unknown) => setPreview({status: "error", message: errorMessage(error)}))
+            .finally(() => previewGuard.end());
     };
 
     const runBuild = (): void => {
         const resolvedOutDir = outDir.trim() || undefined;
         const doBuild = (): void => {
+            if (!buildGuard.begin()) {
+                return;
+            }
             setResult({status: "loading"});
             buildBlueprint(fetchImpl, blueprint, resolvedOutDir, sourcePath)
                 .then((view) => {
@@ -40,7 +50,8 @@ export function BlueprintBuildPanel({blueprint, sourcePath}: {blueprint: Record<
                         lastBuiltOutDir.current = resolvedOutDir;
                     }
                 })
-                .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}));
+                .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}))
+                .finally(() => buildGuard.end());
         };
 
         if (lastBuiltOutDir.current !== undefined && lastBuiltOutDir.current === resolvedOutDir) {
@@ -55,10 +66,12 @@ export function BlueprintBuildPanel({blueprint, sourcePath}: {blueprint: Record<
         <PageSection legend="Build">
             <QuickActions>
                 <TextInput label="Output directory (optional)" value={outDir} onChange={(event) => setOutDir(event.currentTarget.value)} />
-                <Button variant="default" onClick={runPreview}>
+                <Button variant="default" onClick={runPreview} loading={preview.status === "loading"}>
                     Build Preview
                 </Button>
-                <Button onClick={runBuild}>Build Package</Button>
+                <Button onClick={runBuild} loading={result.status === "loading"}>
+                    Build Package
+                </Button>
             </QuickActions>
 
             <BuildPreviewDisplay view={preview} />

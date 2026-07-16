@@ -28,6 +28,7 @@ import {errorMessage} from "../../domain/errorMessage";
 import {isStaleReelStripGenerationRequest, type ReelStripGenerationPreviewView} from "../../domain/interpret/BlueprintEditor";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
+import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {BufferedTextInput} from "../common/BufferedTextInput";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
@@ -125,43 +126,45 @@ function SourceTable({
 
     return (
         <div>
-            <Table>
-                <Table.Thead>
-                    <Table.Tr>
-                        <Table.Th>Symbol</Table.Th>
-                        <Table.Th>{label}</Table.Th>
-                        <Table.Th />
-                    </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                    {Object.entries(values).map(([symbolId, value]) =>
-                        typeof value === "number" ? (
-                            <Table.Tr key={symbolId}>
-                                <Table.Td>{symbolId}</Table.Td>
-                                <Table.Td>
-                                    <NumberInput
-                                        aria-label={`${symbolId} ${label.toLowerCase()}`}
-                                        step={mode === "symbolCounts" ? 1 : "any"}
-                                        defaultValue={value}
-                                        onBlur={(event) => {
-                                            const parsed = Number(event.currentTarget.value);
-                                            if (Number.isFinite(parsed)) {
-                                                setValue(symbolId, parsed);
-                                            }
-                                        }}
-                                    />
-                                </Table.Td>
-                                <Table.Td>
-                                    <RowActions itemLabel={`${symbolId} ${label.toLowerCase()}`} onRemove={() => removeValue(symbolId)} />
-                                </Table.Td>
-                            </Table.Tr>
-                        ) : null,
-                    )}
-                </Table.Tbody>
-            </Table>
+            <Table.ScrollContainer minWidth={320}>
+                <Table>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Symbol</Table.Th>
+                            <Table.Th>{label}</Table.Th>
+                            <Table.Th />
+                        </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {Object.entries(values).map(([symbolId, value]) =>
+                            typeof value === "number" ? (
+                                <Table.Tr key={symbolId}>
+                                    <Table.Td>{symbolId}</Table.Td>
+                                    <Table.Td>
+                                        <NumberInput
+                                            aria-label={`${symbolId} ${label.toLowerCase()}`}
+                                            step={mode === "symbolCounts" ? 1 : undefined}
+                                            defaultValue={value}
+                                            onBlur={(event) => {
+                                                const parsed = Number(event.currentTarget.value);
+                                                if (Number.isFinite(parsed)) {
+                                                    setValue(symbolId, parsed);
+                                                }
+                                            }}
+                                        />
+                                    </Table.Td>
+                                    <Table.Td>
+                                        <RowActions itemLabel={`${symbolId} ${label.toLowerCase()}`} onRemove={() => removeValue(symbolId)} />
+                                    </Table.Td>
+                                </Table.Tr>
+                            ) : null,
+                        )}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
             <QuickActions>
                 <Select aria-label="Symbol" data={symbols} value={newSymbol} onChange={setNewSymbol} />
-                <NumberInput aria-label={label} placeholder={label} step={mode === "symbolCounts" ? 1 : "any"} value={newValue} onChange={setNewValue} />
+                <NumberInput aria-label={label} placeholder={label} step={mode === "symbolCounts" ? 1 : undefined} value={newValue} onChange={setNewValue} />
                 <Button
                     variant="default"
                     onClick={() => {
@@ -196,31 +199,33 @@ function LockedPositions({
 
     return (
         <PageSection legend="Locked positions">
-            <Table>
-                <Table.Thead>
-                    <Table.Tr>
-                        <Table.Th>Position</Table.Th>
-                        <Table.Th>Symbol</Table.Th>
-                        <Table.Th />
-                    </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                    {Object.entries(locked).map(([pos, symbolId]) =>
-                        typeof symbolId === "string" ? (
-                            <Table.Tr key={pos}>
-                                <Table.Td>{pos}</Table.Td>
-                                <Table.Td>{symbolId}</Table.Td>
-                                <Table.Td>
-                                    <RowActions
-                                        itemLabel={`locked position ${pos} for reel ${reelIndex + 1}`}
-                                        onRemove={() => mutate((b) => removeReelStripGenerationLockedPosition(b, reelIndex, Number(pos)))}
-                                    />
-                                </Table.Td>
-                            </Table.Tr>
-                        ) : null,
-                    )}
-                </Table.Tbody>
-            </Table>
+            <Table.ScrollContainer minWidth={320}>
+                <Table>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Position</Table.Th>
+                            <Table.Th>Symbol</Table.Th>
+                            <Table.Th />
+                        </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {Object.entries(locked).map(([pos, symbolId]) =>
+                            typeof symbolId === "string" ? (
+                                <Table.Tr key={pos}>
+                                    <Table.Td>{pos}</Table.Td>
+                                    <Table.Td>{symbolId}</Table.Td>
+                                    <Table.Td>
+                                        <RowActions
+                                            itemLabel={`locked position ${pos} for reel ${reelIndex + 1}`}
+                                            onRemove={() => mutate((b) => removeReelStripGenerationLockedPosition(b, reelIndex, Number(pos)))}
+                                        />
+                                    </Table.Td>
+                                </Table.Tr>
+                            ) : null,
+                        )}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
             <QuickActions>
                 <NumberInput
                     placeholder="Position"
@@ -423,6 +428,7 @@ export function ReelStripGenerationEditor({
     const entries = asReelStripGenerationEntries(blueprint.reelStripGeneration);
     const symbols = asStringList(blueprint.symbols);
     const [preview, setPreview] = useState<ReelStripGenerationPreviewView>({status: "idle"});
+    const resolveGuard = useDoubleSubmitGuard();
 
     // Kept in sync with the latest `revision` on every render so the async resolve handler below can
     // read the *current* value at response time, not the one captured in its own closure at click time
@@ -439,6 +445,9 @@ export function ReelStripGenerationEditor({
     }, [revision]);
 
     const resolveReels = (): void => {
+        if (!resolveGuard.begin()) {
+            return;
+        }
         const requestedRevision = revision;
         setPreview({status: "loading"});
         previewReelStripGeneration(fetchImpl, blueprint)
@@ -453,7 +462,8 @@ export function ReelStripGenerationEditor({
                     return;
                 }
                 setPreview({status: "error", message: errorMessage(error)});
-            });
+            })
+            .finally(() => resolveGuard.end());
     };
 
     return (
@@ -469,7 +479,9 @@ export function ReelStripGenerationEditor({
             ))}
 
             <QuickActions>
-                <Button onClick={resolveReels}>Resolve reels</Button>
+                <Button onClick={resolveReels} loading={preview.status === "loading"}>
+                    Resolve reels
+                </Button>
             </QuickActions>
 
             {preview.status === "loading" && <LoadingState label="Working…" />}
@@ -481,8 +493,10 @@ export function ReelStripGenerationEditor({
                         <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1} (${reel.type})`}>
                             {reel.type === "literal" || reel.success ? (
                                 <>
-                                    <Text size="sm">Sequence: {reel.strip.join(", ")}</Text>
-                                    <Text size="sm">
+                                    <Text size="sm" style={{overflowWrap: "anywhere"}}>
+                                        Sequence: {reel.strip.join(", ")}
+                                    </Text>
+                                    <Text size="sm" style={{overflowWrap: "anywhere"}}>
                                         Symbol counts:{" "}
                                         {Object.entries(reel.analysis.symbolCounts)
                                             .map(([symbolId, count]) => `${symbolId}=${count}`)

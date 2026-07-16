@@ -16,52 +16,54 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
 
     return (
         <PageSection legend="Symbols">
-            <Table>
-                <Table.Thead>
-                    <Table.Tr>
-                        <Table.Th>Symbol id</Table.Th>
-                        <Table.Th>Wild</Table.Th>
-                        <Table.Th>Scatter</Table.Th>
-                        <Table.Th />
-                    </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                    {symbols.map((symbolId, index) => (
-                        <Table.Tr key={index}>
-                            <Table.Td>
-                                <BufferedTextInput
-                                    aria-label={`Symbol ${index + 1} id`}
-                                    value={symbolId}
-                                    onCommit={(value) => mutate((b) => setSymbolAt(b, index, value))}
-                                />
-                            </Table.Td>
-                            <Table.Td>
-                                <Checkbox
-                                    aria-label={`Symbol ${index + 1} is wild`}
-                                    checked={wilds.includes(symbolId)}
-                                    onChange={() => mutate((b) => toggleWildSymbol(b, symbolId))}
-                                />
-                            </Table.Td>
-                            <Table.Td>
-                                <Checkbox
-                                    aria-label={`Symbol ${index + 1} is scatter`}
-                                    checked={scatters.includes(symbolId)}
-                                    onChange={() => mutate((b) => toggleScatterSymbol(b, symbolId))}
-                                />
-                            </Table.Td>
-                            <Table.Td>
-                                <RowActions
-                                    itemLabel={`symbol ${index + 1}`}
-                                    onDuplicate={() => mutate((b) => duplicateSymbolAt(b, index))}
-                                    onRemove={() => mutate((b) => removeSymbolAt(b, index))}
-                                    onMoveUp={index > 0 ? () => mutate((b) => moveSymbolAt(b, index, index - 1)) : undefined}
-                                    onMoveDown={index < symbols.length - 1 ? () => mutate((b) => moveSymbolAt(b, index, index + 1)) : undefined}
-                                />
-                            </Table.Td>
+            <Table.ScrollContainer minWidth={480}>
+                <Table>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Symbol id</Table.Th>
+                            <Table.Th>Wild</Table.Th>
+                            <Table.Th>Scatter</Table.Th>
+                            <Table.Th />
                         </Table.Tr>
-                    ))}
-                </Table.Tbody>
-            </Table>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {symbols.map((symbolId, index) => (
+                            <Table.Tr key={index}>
+                                <Table.Td>
+                                    <BufferedTextInput
+                                        aria-label={`Symbol ${index + 1} id`}
+                                        value={symbolId}
+                                        onCommit={(value) => mutate((b) => setSymbolAt(b, index, value))}
+                                    />
+                                </Table.Td>
+                                <Table.Td>
+                                    <Checkbox
+                                        aria-label={`Symbol ${index + 1} is wild`}
+                                        checked={wilds.includes(symbolId)}
+                                        onChange={() => mutate((b) => toggleWildSymbol(b, symbolId))}
+                                    />
+                                </Table.Td>
+                                <Table.Td>
+                                    <Checkbox
+                                        aria-label={`Symbol ${index + 1} is scatter`}
+                                        checked={scatters.includes(symbolId)}
+                                        onChange={() => mutate((b) => toggleScatterSymbol(b, symbolId))}
+                                    />
+                                </Table.Td>
+                                <Table.Td>
+                                    <RowActions
+                                        itemLabel={`symbol ${index + 1}`}
+                                        onDuplicate={() => mutate((b) => duplicateSymbolAt(b, index))}
+                                        onRemove={() => mutate((b) => removeSymbolAt(b, index))}
+                                        onMoveUp={index > 0 ? () => mutate((b) => moveSymbolAt(b, index, index - 1)) : undefined}
+                                        onMoveDown={index < symbols.length - 1 ? () => mutate((b) => moveSymbolAt(b, index, index + 1)) : undefined}
+                                    />
+                                </Table.Td>
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
             <QuickActions>
                 <Group gap="xs">
                     <TextInput

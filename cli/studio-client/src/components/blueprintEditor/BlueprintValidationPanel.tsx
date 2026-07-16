@@ -22,7 +22,7 @@ export function BlueprintValidationPanel({view, onValidate}: {view: BlueprintVal
     return (
         <PageSection legend="Validation">
             <QuickActions>
-                <Button variant="default" onClick={onValidate}>
+                <Button variant="default" onClick={onValidate} loading={view.status === "loading"}>
                     Validate
                 </Button>
             </QuickActions>

@@ -30,7 +30,7 @@ export function ScaffoldResultDisplay({
 
     return (
         <Stack gap="sm">
-            <Text>
+            <Text style={{overflowWrap: "anywhere"}}>
                 &quot;{view.manifest.name}&quot; (id: &quot;{view.manifest.id}&quot;, v{view.manifest.version}) at &quot;{view.projectRoot}
                 &quot;.
             </Text>
@@ -42,7 +42,7 @@ export function ScaffoldResultDisplay({
                 </>
             )}
             {nextStepsHint && (
-                <Text size="sm" c="dimmed">
+                <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
                     {nextStepsHint}
                 </Text>
             )}

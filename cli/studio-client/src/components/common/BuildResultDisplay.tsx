@@ -23,7 +23,7 @@ export function BuildResultDisplay({view, onOpen}: {view: BuildProjectView; onOp
 
     return (
         <Stack gap="sm">
-            <Text>
+            <Text style={{overflowWrap: "anywhere"}}>
                 &quot;{view.manifest.name}&quot; (id: &quot;{view.manifest.id}&quot;, v{view.manifest.version}) built in &quot;
                 {view.projectRoot}&quot;
                 {view.unchanged ? " (unchanged — deterministic rebuild)." : "."}

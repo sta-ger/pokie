@@ -3,7 +3,7 @@ import {IconAlertCircle} from "@tabler/icons-react";
 
 export function ErrorState({message}: {message: string}) {
     return (
-        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} role="alert" aria-live="polite">
+        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />} role="alert" aria-live="polite" style={{overflowWrap: "anywhere"}}>
             {message}
         </Alert>
     );

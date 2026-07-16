@@ -11,6 +11,7 @@ import {describeReportsList, type ReportListView} from "../../domain/interpret/R
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDeploymentManager} from "../../hooks/useDeploymentManager";
+import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useRuntimeManager} from "../../hooks/useRuntimeManager";
@@ -53,21 +54,35 @@ export function ProjectDashboardPage() {
     const projectKey = header.status === "loaded" || header.status === "error" ? header.projectRoot : undefined;
 
     const [inspection, setInspection] = useState<InspectionResultView>({status: "loading"});
+    const inspectGuard = useDoubleSubmitGuard();
     const refreshInspect = useCallback(() => {
+        if (!inspectGuard.begin()) {
+            return;
+        }
         setInspection({status: "loading"});
         inspectProject(fetchImpl)
             .then((report) => setInspection(describeInspection(report)))
-            .catch((error: unknown) => setInspection({status: "error", message: errorMessage(error)}));
+            .catch((error: unknown) => setInspection({status: "error", message: errorMessage(error)}))
+            .finally(() => inspectGuard.end());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchImpl]);
 
     const [validation, setValidation] = useState<ValidationSummaryView>();
     const [validationLoading, setValidationLoading] = useState(false);
+    const validateGuard = useDoubleSubmitGuard();
     const runValidate = useCallback(() => {
+        if (!validateGuard.begin()) {
+            return;
+        }
         setValidationLoading(true);
         validateProject(fetchImpl)
             .then((report) => setValidation(describeValidationSummary(report)))
             .catch(() => undefined)
-            .finally(() => setValidationLoading(false));
+            .finally(() => {
+                setValidationLoading(false);
+                validateGuard.end();
+            });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchImpl]);
 
     const simulation = useSimulationPoll();

@@ -24,7 +24,6 @@ export function BetsList({blueprint, mutate}: {blueprint: Record<string, unknown
                             <BufferedNumberInput
                                 aria-label={`Bet ${index + 1}`}
                                 value={bet}
-                                step="any"
                                 onCommit={(value) => mutate((b) => setBetAt(b, index, value))}
                             />
                             <RowActions
@@ -42,7 +41,6 @@ export function BetsList({blueprint, mutate}: {blueprint: Record<string, unknown
                 <NumberInput
                     placeholder="New bet amount"
                     aria-label="New bet amount"
-                    step="any"
                     value={newBet}
                     onChange={setNewBet}
                 />

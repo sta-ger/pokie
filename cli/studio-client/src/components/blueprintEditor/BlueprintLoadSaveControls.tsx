@@ -35,11 +35,11 @@ export function BlueprintLoadSaveControls({
                     New Blueprint
                 </Button>
                 <TextInput label="Load from path" value={loadPath} onChange={(event) => setLoadPath(event.currentTarget.value)} />
-                <Button variant="default" onClick={() => onLoad(loadPath)}>
+                <Button variant="default" onClick={() => onLoad(loadPath)} loading={loadView.status === "loading"}>
                     Load
                 </Button>
                 <TextInput label="Save to path" value={savePath} onChange={(event) => setSavePath(event.currentTarget.value)} />
-                <Button variant="default" onClick={() => onSave(savePath)}>
+                <Button variant="default" onClick={() => onSave(savePath)} loading={saveView.status === "loading"}>
                     Save
                 </Button>
             </QuickActions>
@@ -47,7 +47,7 @@ export function BlueprintLoadSaveControls({
             {loadView.status === "error" || loadView.status === "load-error" ? <ErrorState message={loadView.message} /> : null}
 
             {saveView.status === "conflict" && (
-                <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title={saveView.message}>
+                <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title={saveView.message} style={{overflowWrap: "anywhere"}}>
                     <Button color="red" onClick={() => onOverwrite(saveView.path)}>
                         Overwrite
                     </Button>

@@ -37,7 +37,7 @@ export function RecentProjectsPanel() {
     return (
         <div>
             <QuickActions>
-                <Button variant="default" onClick={refresh}>
+                <Button variant="default" onClick={refresh} loading={view.status === "loading"}>
                     Refresh
                 </Button>
             </QuickActions>
@@ -46,36 +46,38 @@ export function RecentProjectsPanel() {
             {view.status === "error" && <ErrorState message={view.message} />}
             {view.status === "empty" && <EmptyState message="No recent projects yet." />}
             {view.status === "loaded" && (
-                <Table>
-                    <Table.Thead>
-                        <Table.Tr>
-                            <Table.Th>Name</Table.Th>
-                            <Table.Th>Path</Table.Th>
-                            <Table.Th>Opened</Table.Th>
-                        </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                        {view.entries.map((entry) => (
-                            <Table.Tr key={entry.projectRoot}>
-                                <Table.Td>
-                                    {entry.missing ? (
-                                        <Text c="dimmed">{entry.name} (missing)</Text>
-                                    ) : (
-                                        <Anchor component="button" type="button" onClick={() => handleOpen(entry)}>
-                                            {entry.name}
-                                        </Anchor>
-                                    )}
-                                </Table.Td>
-                                <Table.Td>
-                                    <Text size="sm" c="dimmed">
-                                        {entry.projectRoot}
-                                    </Text>
-                                </Table.Td>
-                                <Table.Td>{formatTimestamp(entry.openedAt)}</Table.Td>
+                <Table.ScrollContainer minWidth={480}>
+                    <Table>
+                        <Table.Thead>
+                            <Table.Tr>
+                                <Table.Th>Name</Table.Th>
+                                <Table.Th>Path</Table.Th>
+                                <Table.Th>Opened</Table.Th>
                             </Table.Tr>
-                        ))}
-                    </Table.Tbody>
-                </Table>
+                        </Table.Thead>
+                        <Table.Tbody>
+                            {view.entries.map((entry) => (
+                                <Table.Tr key={entry.projectRoot}>
+                                    <Table.Td>
+                                        {entry.missing ? (
+                                            <Text c="dimmed">{entry.name} (missing)</Text>
+                                        ) : (
+                                            <Anchor component="button" type="button" onClick={() => handleOpen(entry)}>
+                                                {entry.name}
+                                            </Anchor>
+                                        )}
+                                    </Table.Td>
+                                    <Table.Td>
+                                        <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                                            {entry.projectRoot}
+                                        </Text>
+                                    </Table.Td>
+                                    <Table.Td>{formatTimestamp(entry.openedAt)}</Table.Td>
+                                </Table.Tr>
+                            ))}
+                        </Table.Tbody>
+                    </Table>
+                </Table.ScrollContainer>
             )}
         </div>
     );

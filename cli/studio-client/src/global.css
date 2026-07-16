@@ -1,0 +1,9 @@
+/* Defense-in-depth: no single wide element should ever be able to force the whole page to scroll
+   horizontally -- individual wide tables/code blocks scroll within their own container instead (see
+   Table.ScrollContainer/CodeBlock usages), this is just the backstop. */
+html,
+body,
+#root {
+    max-width: 100%;
+    overflow-x: hidden;
+}
