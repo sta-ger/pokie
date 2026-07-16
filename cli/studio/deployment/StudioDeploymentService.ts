@@ -38,15 +38,18 @@ export class StudioDeploymentService {
     private readonly externalDeploymentService: ExternalDeploymentServicing;
     private readonly createLocalTarget: (outDir: string) => ExternalDeploymentTarget;
     private readonly readFile: (resolvedPath: string) => string;
+    private readonly realpath: (resolvedPath: string) => string;
 
     constructor(
         externalDeploymentService: ExternalDeploymentServicing = new ExternalDeploymentService(),
         createLocalTarget: (outDir: string) => ExternalDeploymentTarget = (outDir) => createLocalJsonExternalDeploymentTarget({outDir}),
         readFile: (resolvedPath: string) => string = (resolvedPath) => fs.readFileSync(resolvedPath, "utf-8"),
+        realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
     ) {
         this.externalDeploymentService = externalDeploymentService;
         this.createLocalTarget = createLocalTarget;
         this.readFile = readFile;
+        this.realpath = realpath;
     }
 
     public listTargets(projectRoot: string): StudioDeploymentTargetSummary[] {
@@ -69,7 +72,7 @@ export class StudioDeploymentService {
 
         const modes: ExternalDeploymentModeInput[] = [];
         for (const mode of request.modes) {
-            const loaded = loadWeightedOutcomeLibraryFromProjectFile(projectRoot, mode.libraryPath, this.readFile);
+            const loaded = loadWeightedOutcomeLibraryFromProjectFile(projectRoot, mode.libraryPath, this.readFile, this.realpath);
             if (loaded.status === "error") {
                 return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.message}`};
             }

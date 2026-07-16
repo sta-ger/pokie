@@ -14,6 +14,16 @@ export type LoadWeightedOutcomeLibraryResult =
 // same isPathWithin guard StudioBlueprintService's own load()/save() use, applied here to keep a
 // deployment request from reading arbitrary files off the host filesystem.
 //
+// That lexical check alone only rules out a ".."-style escape in the path text itself — it says
+// nothing about a symlink physically placed inside the project that points somewhere else entirely
+// (e.g. "projectRoot/link.json -> /etc/passwd"), which fs.readFileSync would happily follow without
+// ever touching a path outside the project literally. So containment is re-checked a second time
+// against realpath(2) — where the path (and every symlink along the way) actually resolves on disk —
+// once it's known to exist; a target that doesn't exist (or a broken symlink) has nothing to check and
+// falls through to the ordinary read attempt below, which reports that the same familiar way it always
+// has. realpath is resolved on both sides (the project root too) so a symlinked *root* itself (common
+// for OS temp directories) can never produce a false escape report.
+//
 // Only ever parses JSON — never validates the result's own shape as a genuine WeightedOutcomeLibrary.
 // That's deliberately left to ExternalDeploymentService's own pipeline (via
 // WeightedOutcomeLibraryValidator, run as part of compatibility validation) once this function's
@@ -22,11 +32,32 @@ export function loadWeightedOutcomeLibraryFromProjectFile(
     projectRoot: string,
     libraryPath: string,
     readFile: (resolvedPath: string) => string = (resolvedPath) => fs.readFileSync(resolvedPath, "utf-8"),
+    // Separately injectable from `readFile` (defaults to the real fs.realpathSync) so a test double for
+    // one doesn't have to fake the other — most tests only care about content, not symlink containment,
+    // and shouldn't need a real project root on disk just to satisfy this check.
+    realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
 ): LoadWeightedOutcomeLibraryResult {
     const resolvedRoot = path.resolve(projectRoot);
     const resolvedPath = path.resolve(resolvedRoot, libraryPath);
     if (!isPathWithin(resolvedRoot, resolvedPath)) {
         return {status: "error", message: `"${libraryPath}" resolves outside the project root.`};
+    }
+
+    let realRoot: string;
+    try {
+        realRoot = realpath(resolvedRoot);
+    } catch (error) {
+        return {status: "error", message: `Could not resolve the project root "${resolvedRoot}": ${error instanceof Error ? error.message : String(error)}`};
+    }
+
+    let realPath: string | undefined;
+    try {
+        realPath = realpath(resolvedPath);
+    } catch {
+        realPath = undefined; // doesn't exist (or a broken symlink) — the read attempt below reports this
+    }
+    if (realPath !== undefined && !isPathWithin(realRoot, realPath)) {
+        return {status: "error", message: `"${libraryPath}" resolves, through a symlink, outside the project root.`};
     }
 
     let raw: string;

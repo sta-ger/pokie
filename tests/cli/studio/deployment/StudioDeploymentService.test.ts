@@ -56,6 +56,12 @@ function runRequest(overrides: Partial<ValidatedDeploymentRunRequest> = {}): Val
     return {targetId: "local-json-example", modes: [{modeName: "base", libraryPath: "base.json"}], publish: false, ...overrides};
 }
 
+// These tests use a fake, never-created-on-disk "/project" as the project root, paired with an
+// injected `readFile` — this stands in for the real fs.realpathSync too (which would otherwise reject
+// "/project" outright as a nonexistent path), so containment checking never needs a real project
+// directory just to exercise unrelated behavior.
+const identityRealpath = (resolvedPath: string): string => resolvedPath;
+
 describe("StudioDeploymentService", () => {
     it("lists the injected target's own id/version/requirements/capabilities", () => {
         const target = stubTarget({requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]});
@@ -78,7 +84,7 @@ describe("StudioDeploymentService", () => {
         const readFile = () => {
             throw new Error("simulated read failure");
         };
-        const service = new StudioDeploymentService(undefined, () => stubTarget(), readFile);
+        const service = new StudioDeploymentService(undefined, () => stubTarget(), readFile, identityRealpath);
 
         const result = await service.run("/project", runRequest());
 
@@ -92,7 +98,7 @@ describe("StudioDeploymentService", () => {
         const readFile = () => {
             throw new Error("simulated read failure");
         };
-        const service = new StudioDeploymentService(undefined, () => stubTarget({artifactGenerator: {generate}}), readFile);
+        const service = new StudioDeploymentService(undefined, () => stubTarget({artifactGenerator: {generate}}), readFile, identityRealpath);
 
         await service.run("/project", runRequest({modes: [{modeName: "base", libraryPath: "base.json"}]}));
 
@@ -102,7 +108,7 @@ describe("StudioDeploymentService", () => {
     it("previews (publish: false) without ever calling the target's own runtimeAdapter", async () => {
         const deliver = jest.fn(() => Promise.resolve({delivered: true}));
         const library = testLibrary();
-        const service = new StudioDeploymentService(undefined, () => stubTarget({runtimeAdapter: {deliver}}), () => JSON.stringify(library));
+        const service = new StudioDeploymentService(undefined, () => stubTarget({runtimeAdapter: {deliver}}), () => JSON.stringify(library), identityRealpath);
 
         const result = await service.run("/project", runRequest({publish: false}));
 
@@ -115,7 +121,7 @@ describe("StudioDeploymentService", () => {
     it("deploys (publish: true) and calls the target's own runtimeAdapter", async () => {
         const deliver = jest.fn(() => Promise.resolve({delivered: true, details: {published: true}}));
         const library = testLibrary();
-        const service = new StudioDeploymentService(undefined, () => stubTarget({runtimeAdapter: {deliver}}), () => JSON.stringify(library));
+        const service = new StudioDeploymentService(undefined, () => stubTarget({runtimeAdapter: {deliver}}), () => JSON.stringify(library), identityRealpath);
 
         const result = await service.run("/project", runRequest({publish: true}));
 
@@ -128,7 +134,12 @@ describe("StudioDeploymentService", () => {
     it("surfaces compatibility issues without ever reaching the generator, for a genuinely incompatible library", async () => {
         const generate = jest.fn(stubGenerator().generate);
         const malformedLibrary = {schemaVersion: 1, libraryId: "", outcomes: []};
-        const service = new StudioDeploymentService(undefined, () => stubTarget({artifactGenerator: {generate}}), () => JSON.stringify(malformedLibrary));
+        const service = new StudioDeploymentService(
+            undefined,
+            () => stubTarget({artifactGenerator: {generate}}),
+            () => JSON.stringify(malformedLibrary),
+            identityRealpath,
+        );
 
         const result = await service.run("/project", runRequest());
 
@@ -146,7 +157,7 @@ describe("StudioDeploymentService", () => {
             }),
         };
         const library = testLibrary();
-        const service = new StudioDeploymentService(undefined, () => stubTarget({artifactGenerator: bufferGenerator}), () => JSON.stringify(library));
+        const service = new StudioDeploymentService(undefined, () => stubTarget({artifactGenerator: bufferGenerator}), () => JSON.stringify(library), identityRealpath);
 
         const result = await service.run("/project", runRequest());
 

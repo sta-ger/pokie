@@ -382,12 +382,23 @@ export type StudioDeploymentArtifactView = {
     content: string;
 };
 
+// One row of StudioDeploymentRunView.stages — see cli/studio/deployment/StudioDeploymentStageSummary.ts's
+// own doc comment. Computed server-side (see computeDeploymentStages) — never re-derived here from
+// which of the other StudioDeploymentRunView fields happen to be present.
+export type StudioDeploymentStageSummary = {
+    key: "descriptor" | "compatibility" | "projection" | "generation" | "artifactValidation" | "diagnostic" | "delivery";
+    label: string;
+    status: "ok" | "error" | "skipped";
+    issues: ValidationIssue[];
+};
+
 // POST /api/project/deployment/runs' own DTO — see cli/studio/deployment/StudioDeploymentRunView.ts's
-// own doc comment. Every stage field is present only when ExternalDeploymentService actually ran that
-// stage — used directly to drive the Deployment tab's stage-by-stage diagnostics display.
+// own doc comment. `stages` is the authoritative per-stage status; the fields below it are the raw
+// ExternalDeploymentResult mirror `stages` was itself computed from.
 export type StudioDeploymentRunView = {
     targetId: string;
     publish: boolean;
+    stages: StudioDeploymentStageSummary[];
     descriptorIssues: ValidationIssue[];
     compatibilityIssues: ValidationIssue[];
     projectionIssues: ValidationIssue[];

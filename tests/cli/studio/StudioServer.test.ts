@@ -1,6 +1,10 @@
 import {
     buildRoundArtifact,
     buildWeightedOutcomeLibrary,
+    ExternalArtifactGenerationResult,
+    ExternalDeploymentProjectedModeInput,
+    ExternalDeploymentTarget,
+    ExternalRoundProjector,
     GameBuildInfo,
     GamePackageInspector,
     GamePackageInspectionReport,
@@ -8,6 +12,7 @@ import {
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
+    RoundArtifact,
     RoundArtifactProvenance,
     SimulationReport,
     SimulationReportBuilding,
@@ -21,6 +26,7 @@ import path from "path";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
@@ -2748,7 +2754,7 @@ describe("StudioServer", () => {
             fs.rmSync(deploymentProjectRoot, {recursive: true, force: true});
         });
 
-        async function startServerForProject(projectRoot: string | undefined): Promise<string> {
+        async function startServerForProject(projectRoot: string | undefined, deploymentService?: StudioDeploymentService): Promise<string> {
             const homeService = new StudioHomeService("1.0.0");
             deploymentServer = new StudioServer({
                 pokieVersion: "1.0.0",
@@ -2758,9 +2764,36 @@ describe("StudioServer", () => {
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", deploymentStudioRoot, homeService),
                 initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
+                deploymentService,
             });
             const address = await deploymentServer.start();
             return `http://${address.host}:${address.port}`;
+        }
+
+        class NoOpRoundProjector implements ExternalRoundProjector {
+            public project(_artifact: RoundArtifact): Record<string, never> {
+                return {};
+            }
+        }
+
+        // A target whose generator returns a structurally malformed result (content of the wrong
+        // type) — exercises the exact scenario this stabilization pass fixed: the real diagnostics
+        // must surface as an "artifactValidation" ERROR, never hidden behind a "generation"/"skipped"
+        // misattribution. See computeDeploymentStages.test.ts for the same scenario at the unit level.
+        function malformedGeneratorDeploymentService(): StudioDeploymentService {
+            const malformedTarget: ExternalDeploymentTarget = {
+                id: "local-json-example",
+                version: "1.0.0",
+                requirements: {},
+                capabilities: [],
+                roundProjector: new NoOpRoundProjector(),
+                artifactGenerator: {
+                    generate: (_modes: readonly ExternalDeploymentProjectedModeInput[]): ExternalArtifactGenerationResult =>
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        ({artifacts: [{relativePath: "index.json", content: 12345 as any}], issues: []}) as ExternalArtifactGenerationResult,
+                },
+            };
+            return new StudioDeploymentService(undefined, () => malformedTarget);
         }
 
         it("returns 409 for GET targets and POST runs when there is no active project", async () => {
@@ -2920,6 +2953,38 @@ describe("StudioServer", () => {
             expect(status).toBe(200);
             const view = body as {compatibilityIssues: {code: string}[]; generation?: unknown; delivery?: unknown};
             expect(view.compatibilityIssues.length).toBeGreaterThan(0);
+            expect(view.generation).toBeUndefined();
+            expect(view.delivery).toBeUndefined();
+            expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);
+        });
+
+        it("surfaces a structurally malformed generation result as an artifactValidation ERROR stage with full diagnostics, never hidden as skipped", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, malformedGeneratorDeploymentService());
+            writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", libraryPath: "base.json"}],
+                publish: true,
+            });
+
+            expect(status).toBe(200);
+            const view = body as {
+                generation?: unknown;
+                delivery?: unknown;
+                stages: {key: string; status: string; issues: {code: string}[]}[];
+            };
+
+            const generationStage = view.stages.find((stage) => stage.key === "generation");
+            expect(generationStage?.status).toBe("ok"); // the generator itself ran fine — see the fix's own reasoning
+
+            const artifactValidationStage = view.stages.find((stage) => stage.key === "artifactValidation");
+            expect(artifactValidationStage?.status).toBe("error");
+            expect(artifactValidationStage?.issues.length).toBeGreaterThan(0);
+            expect(artifactValidationStage?.issues.map((issue) => issue.code)).toContain("external-artifact-content-type-invalid");
+
+            expect(view.stages.find((stage) => stage.key === "diagnostic")?.status).toBe("skipped");
+            expect(view.stages.find((stage) => stage.key === "delivery")?.status).toBe("skipped");
             expect(view.generation).toBeUndefined();
             expect(view.delivery).toBeUndefined();
             expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);

@@ -39,6 +39,7 @@ import {
     validateProject,
 } from "./apiClient.js";
 import {applyJsonText, BlueprintEditorState, createEmptyBlueprintEditorState, loadBlueprintEditorState, withFieldUpdate} from "./blueprintEditorState.js";
+import {DeploymentRunTracker} from "./deploymentRunTracker.js";
 import {confirmDangerousAction} from "./confirmDangerousAction.js";
 import {
     addBet,
@@ -56,7 +57,6 @@ import {
 import {
     BlueprintMode,
     BlueprintMutate,
-    clearMessage,
     Elements,
     errorMessage,
     formatTimestamp,
@@ -76,9 +76,11 @@ import {
     renderDeploymentModes,
     renderDeploymentRunError,
     renderDeploymentRunResult,
+    renderDeploymentRunState,
     renderDeploymentSelectedTarget,
     renderDeploymentTargetsList,
     renderDeploymentTargetsListError,
+    resetDeploymentRunView,
     renderHomeRecentProjects,
     renderHomeRecentProjectsError,
     renderInitResult,
@@ -324,11 +326,37 @@ async function main(): Promise<void> {
     // The Deployment tab's own state — reset whenever a (new) project becomes active (see
     // showProjectDashboard below), same reasoning as Simulation/Replay/Runtime's own per-project
     // state. `deploymentModes` always keeps at least one row so the form always has something to fill
-    // in; a fresh row is `{modeName: "", libraryPath: ""}`.
+    // in; a fresh row is `{modeName: "", libraryPath: ""}`. `deploymentRunTracker` is what makes a
+    // target change/mode edit/new run invalidate whatever was previously shown or in flight — see
+    // deploymentRunTracker.ts's own doc comment; every place below that mutates
+    // target/modes/project must call invalidateDeploymentRun(), and every place that starts a new
+    // request must go through beginRun()/isCurrent() exactly like runDeploymentAndRender does.
     let deploymentTargets: StudioDeploymentTargetSummary[] = [];
     let selectedDeploymentTarget: StudioDeploymentTargetSummary | undefined;
     let deploymentModes: StudioDeploymentModeInput[] = [{modeName: "", libraryPath: ""}];
     let selectedDeploymentArtifactPath: string | undefined;
+    let lastDeploymentRunView: ReturnType<typeof describeDeploymentRunResult> | undefined;
+    const deploymentRunTracker = new DeploymentRunTracker();
+
+    // The one place Preview/Deploy's enabled state and the loading indicator are (re-)decided — must
+    // be called after *any* change to either `selectedDeploymentTarget` or the tracker's own in-flight
+    // state, never just one without the other.
+    const updateDeploymentRunState = (): void => {
+        renderDeploymentRunState(elements, {loading: deploymentRunTracker.isRunInFlight(), hasTarget: selectedDeploymentTarget !== undefined});
+    };
+
+    // Called by every input that would invalidate an in-flight or already-rendered run: target
+    // selection, a mode added/removed/edited, or a project switch. Clears the last result/selected
+    // artifact and reverts the result panel to "idle" — then re-asserts the loading indicator on top of
+    // that if a request happens to still genuinely be in flight (see updateDeploymentRunState), so
+    // editing an input *while* a request is pending never hides the fact that it's still running.
+    const invalidateDeploymentRun = (): void => {
+        deploymentRunTracker.invalidate();
+        lastDeploymentRunView = undefined;
+        selectedDeploymentArtifactPath = undefined;
+        resetDeploymentRunView(elements);
+        updateDeploymentRunState();
+    };
 
     const renderDeploymentModesList = (): void => {
         renderDeploymentModes(
@@ -336,13 +364,16 @@ async function main(): Promise<void> {
             deploymentModes,
             (index, value) => {
                 deploymentModes = deploymentModes.map((mode, i) => (i === index ? {...mode, modeName: value} : mode));
+                invalidateDeploymentRun();
             },
             (index, value) => {
                 deploymentModes = deploymentModes.map((mode, i) => (i === index ? {...mode, libraryPath: value} : mode));
+                invalidateDeploymentRun();
             },
             (index) => {
                 deploymentModes = deploymentModes.length > 1 ? deploymentModes.filter((_mode, i) => i !== index) : [{modeName: "", libraryPath: ""}];
                 renderDeploymentModesList();
+                invalidateDeploymentRun();
             },
         );
     };
@@ -359,6 +390,7 @@ async function main(): Promise<void> {
         selectedDeploymentTarget = target;
         renderDeploymentTargetsListNow();
         renderDeploymentSelectedTarget(elements, target);
+        invalidateDeploymentRun();
     }
 
     const refreshDeploymentTargets = (): void => {
@@ -368,6 +400,7 @@ async function main(): Promise<void> {
                 if (selectedDeploymentTarget !== undefined && !targets.some((target) => target.id === selectedDeploymentTarget?.id)) {
                     selectedDeploymentTarget = undefined;
                     renderDeploymentSelectedTarget(elements, undefined);
+                    invalidateDeploymentRun();
                 }
                 renderDeploymentTargetsListNow();
             })
@@ -379,7 +412,6 @@ async function main(): Promise<void> {
     // Re-renders the last run's own result against whatever `selectedDeploymentArtifactPath` currently
     // holds — same "always the same handler, never a stale no-op" reasoning as
     // renderDeploymentTargetsListNow above.
-    let lastDeploymentRunView: ReturnType<typeof describeDeploymentRunResult> | undefined;
     const renderDeploymentRunResultNow = (): void => {
         if (lastDeploymentRunView === undefined) {
             return;
@@ -392,17 +424,45 @@ async function main(): Promise<void> {
         renderDeploymentRunResultNow();
     }
 
+    // Preview and Deploy both funnel through here — the only difference is the `publish` flag sent to
+    // the server (see StudioDeploymentService.run()'s own doc comment for why that's the *entire*
+    // difference between the two, all the way down to the SDK). beginRun() refuses (returns
+    // `undefined`) when a run is already in flight, so a double submit (a second click before the
+    // first request has resolved) is a silent no-op rather than a competing request — the buttons are
+    // also disabled while loading (see updateDeploymentRunState), so this mainly guards against a
+    // submit that raced the disable itself. Every response — success, failure, or stale — always calls
+    // endRun() exactly once, so the "in flight"/button-disabled state can never get stuck; only a
+    // response whose own token is still current (isCurrent) is ever actually rendered.
     const runDeploymentAndRender = (publish: boolean): void => {
         if (selectedDeploymentTarget === undefined) {
             return;
         }
+        const token = deploymentRunTracker.beginRun();
+        if (token === undefined) {
+            return; // a run is already in progress — ignore the double submit
+        }
         selectedDeploymentArtifactPath = undefined;
+        updateDeploymentRunState();
+
         runDeployment(fetchImpl, selectedDeploymentTarget.id, deploymentModes, publish)
             .then((view) => {
+                deploymentRunTracker.endRun();
+                updateDeploymentRunState();
+                if (!deploymentRunTracker.isCurrent(token)) {
+                    return; // stale — a newer run or an input change happened while this was in flight
+                }
                 lastDeploymentRunView = describeDeploymentRunResult(view);
+                // After a successful run that produced artifacts, the first one is shown immediately
+                // rather than leaving the tab empty until the user thinks to click one.
+                selectedDeploymentArtifactPath = lastDeploymentRunView.artifacts[0]?.relativePath;
                 renderDeploymentRunResultNow();
             })
             .catch((error: unknown) => {
+                deploymentRunTracker.endRun();
+                updateDeploymentRunState();
+                if (!deploymentRunTracker.isCurrent(token)) {
+                    return; // stale error — ignore, same reasoning as the success path above
+                }
                 renderDeploymentRunError(elements, errorMessage(error));
             });
     };
@@ -647,13 +707,9 @@ async function main(): Promise<void> {
             refreshRuntimeState();
             selectedDeploymentTarget = undefined;
             deploymentModes = [{modeName: "", libraryPath: ""}];
-            selectedDeploymentArtifactPath = undefined;
-            lastDeploymentRunView = undefined;
             renderDeploymentSelectedTarget(elements, undefined);
             renderDeploymentModesList();
-            elements.deploymentRunResult.hidden = true;
-            elements.deploymentRunIdle.hidden = false;
-            clearMessage(elements.deploymentRunError);
+            invalidateDeploymentRun();
             refreshDeploymentTargets();
         }
     };
@@ -1191,6 +1247,7 @@ async function main(): Promise<void> {
     elements.deploymentAddModeButton.addEventListener("click", () => {
         deploymentModes = [...deploymentModes, {modeName: "", libraryPath: ""}];
         renderDeploymentModesList();
+        invalidateDeploymentRun();
     });
 
     elements.deploymentRunForm.addEventListener("submit", (event) => {

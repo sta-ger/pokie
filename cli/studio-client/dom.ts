@@ -47,7 +47,7 @@ import {
     type ReelStripGenerationDrafts,
 } from "./blueprintFormOps.js";
 import type {BlueprintLoadView, BlueprintSaveView, BlueprintValidationView, ReelStripGenerationPreviewView} from "./interpretBlueprintEditor.js";
-import type {DeploymentRunResultView, DeploymentStageStatus, DeploymentTargetsListView} from "./interpretDeployment.js";
+import type {DeploymentRunResultView, DeploymentTargetsListView} from "./interpretDeployment.js";
 import type {BuildPreviewView, BuildProjectView, HomeRecentProjectsListView, ScaffoldActionView} from "./interpretHome.js";
 import type {InspectionResultView, ProjectHeaderView, ValidationSummaryView} from "./interpretProjectDashboard.js";
 import type {ReplayListView, ReplayProgressView, ReplayResultView} from "./interpretReplay.js";
@@ -58,6 +58,7 @@ import type {
     ReelStripGenerationDiagnostic,
     StudioDeploymentArtifactView,
     StudioDeploymentModeInput,
+    StudioDeploymentStageSummary,
     StudioDeploymentTargetSummary,
     StudioHomeRecentProjectView,
     StudioReplayListEntry,
@@ -337,6 +338,7 @@ export type Elements = {
     deploymentPreviewButton: HTMLButtonElement;
     deploymentDeployButton: HTMLButtonElement;
     deploymentRunIdle: HTMLElement;
+    deploymentRunLoading: HTMLElement;
     deploymentRunError: HTMLElement;
     deploymentRunResult: HTMLElement;
     deploymentStagesList: HTMLElement;
@@ -708,6 +710,7 @@ export function queryElements(): Elements {
         deploymentPreviewButton: requireElement("deployment-preview-button"),
         deploymentDeployButton: requireElement("deployment-deploy-button"),
         deploymentRunIdle: requireElement("deployment-run-idle"),
+        deploymentRunLoading: requireElement("deployment-run-loading"),
         deploymentRunError: requireElement("deployment-run-error"),
         deploymentRunResult: requireElement("deployment-run-result"),
         deploymentStagesList: requireElement("deployment-stages-list"),
@@ -2610,8 +2613,30 @@ export function renderDeploymentSelectedTarget(elements: Elements, target: Studi
     elements.deploymentNoTargetSelected.hidden = target !== undefined;
     elements.deploymentSelectedTarget.hidden = target === undefined;
     elements.deploymentSelectedTargetId.textContent = target?.id ?? "";
-    elements.deploymentPreviewButton.disabled = target === undefined;
-    elements.deploymentDeployButton.disabled = target === undefined;
+}
+
+// The one place Preview/Deploy's own enabled state and the loading indicator are decided — always
+// called with *both* current flags together (never just one in isolation), so neither can leave the
+// buttons in a stale enabled/disabled state relative to the other. Buttons are disabled whenever
+// there's no target selected yet, *or* a run is currently in flight (see DeploymentRunTracker) — the
+// latter is what actually prevents a double submit/parallel run at the UI level, on top of
+// DeploymentRunTracker.beginRun() itself refusing a second concurrent run regardless.
+export function renderDeploymentRunState(elements: Elements, options: {readonly loading: boolean; readonly hasTarget: boolean}): void {
+    elements.deploymentRunLoading.hidden = !options.loading;
+    const disabled = options.loading || !options.hasTarget;
+    elements.deploymentPreviewButton.disabled = disabled;
+    elements.deploymentDeployButton.disabled = disabled;
+}
+
+// Clears whatever the last run showed — called whenever an input that would invalidate it changes
+// (target selection, a mode added/removed/edited) or the active project switches, so a stale
+// stages/artifacts list is never left on screen alongside inputs it no longer describes. Reverts to the
+// same "idle" placeholder shown before any run has ever happened.
+export function resetDeploymentRunView(elements: Elements): void {
+    elements.deploymentRunResult.hidden = true;
+    elements.deploymentRunIdle.hidden = false;
+    elements.deploymentRunLoading.hidden = true;
+    clearMessage(elements.deploymentRunError);
 }
 
 // Rebuilds the mode-row list from scratch on every change — same "re-render the whole list from
@@ -2657,10 +2682,11 @@ export function renderDeploymentModes(
 
 export function renderDeploymentRunError(elements: Elements, message: string): void {
     elements.deploymentRunResult.hidden = true;
+    elements.deploymentRunLoading.hidden = true;
     showMessage(elements.deploymentRunError, message);
 }
 
-function deploymentStageStatusLabel(status: DeploymentStageStatus): string {
+function deploymentStageStatusLabel(status: StudioDeploymentStageSummary["status"]): string {
     if (status === "ok") {
         return "OK";
     }
@@ -2675,6 +2701,7 @@ export function renderDeploymentRunResult(
 ): void {
     clearMessage(elements.deploymentRunError);
     elements.deploymentRunIdle.hidden = true;
+    elements.deploymentRunLoading.hidden = true;
     elements.deploymentRunResult.hidden = false;
 
     elements.deploymentStagesList.textContent = "";
