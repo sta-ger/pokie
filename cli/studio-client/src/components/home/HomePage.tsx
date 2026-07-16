@@ -1,10 +1,9 @@
 import {Divider, Stack, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
-import {modals} from "@mantine/modals";
-import {useCallback, useEffect, useRef} from "react";
+import {useEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
 import {BlueprintEditorPage} from "../blueprintEditor/BlueprintEditorPage";
-import {DesignDirtyGuardProvider, type DesignDirtyGuard} from "../../context/DesignDirtyGuardContext";
+import {useDesignNavigationGuard} from "../../hooks/useDesignNavigationGuard";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {BuildFromBlueprintPanel} from "./BuildFromBlueprintPanel";
@@ -62,112 +61,93 @@ export function HomePage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
 
-    // Fed by the guided BlueprintEditorPage instance's own onDirtyChange -- a ref (not state) since it
-    // only ever needs a synchronous read at the moment a navigation is attempted, not to trigger a
-    // re-render of Home itself on every keystroke.
-    const isDesignDirtyRef = useRef(false);
-    const guardNavigation: DesignDirtyGuard = useCallback((proceed, cancel) => {
-        if (!isDesignDirtyRef.current) {
-            proceed();
-            return;
-        }
-        modals.openConfirmModal({
-            title: "Unsaved changes",
-            children: "You have unsaved changes in Design & Build. Leave and lose them?",
-            labels: {confirm: "Leave", cancel: "Stay"},
-            onConfirm: proceed,
-            onCancel: cancel,
-        });
-    }, []);
+    // Fed by the guided BlueprintEditorPage instance's own onDirtyChange -- reactive state (not a ref)
+    // since useDesignNavigationGuard's beforeunload effect needs to actually see it change to
+    // attach/detach the listener; only flips true/false on New/Load/Save/Build, not per keystroke, so
+    // this doesn't cause excess re-renders.
+    const [isDesignDirty, setIsDesignDirty] = useState(false);
+    useDesignNavigationGuard(isDesignDirty);
 
     return (
         <AppShellLayout
             navbar={<NavTabs items={HOME_TABS} active={activeTab} onSelect={(value) => navigate(`/home/${value}`)} />}
             breadcrumbs={[]}
         >
-            <DesignDirtyGuardProvider value={guardNavigation}>
-                <Stack gap="lg">
-                    <div ref={designRef} tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
-                        <BlueprintEditorPage
-                            guided
-                            initialPath={initialBlueprintPath}
-                            onDirtyChange={(dirty) => {
-                                isDesignDirtyRef.current = dirty;
-                            }}
-                        />
-                    </div>
+            <Stack gap="lg">
+                <div ref={designRef} tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
+                    <BlueprintEditorPage guided initialPath={initialBlueprintPath} onDirtyChange={setIsDesignDirty} />
+                </div>
 
-                    <div ref={openRef} tabIndex={-1} style={{display: activeTab === "open" ? undefined : "none"}}>
-                        <Stack gap="md">
-                            <Title order={2}>Open a Project</Title>
-                            <Text c="dimmed" size="sm">
-                                Open an already-built project to inspect, validate, simulate, or deploy it.
+                <div ref={openRef} tabIndex={-1} style={{display: activeTab === "open" ? undefined : "none"}}>
+                    <Stack gap="md">
+                        <Title order={2}>Open a Project</Title>
+                        <Text c="dimmed" size="sm">
+                            Open an already-built project to inspect, validate, simulate, or deploy it.
+                        </Text>
+                        <RecentProjectsPanel />
+                        <Divider label="Or open by path" labelPosition="left" />
+                        <OpenProjectForm />
+                    </Stack>
+                </div>
+
+                <div ref={advancedRef} tabIndex={-1} style={{display: activeTab === "advanced" ? undefined : "none"}}>
+                    <Stack gap="lg">
+                        <Title order={2}>Advanced Tools</Title>
+                        <Text c="dimmed" size="sm">
+                            Everything outside the guided Design &amp; Build flow: scaffolding hand-coded games, initializing an
+                            existing directory in place, building from a blueprint file directly, and the raw Blueprint Editor.
+                        </Text>
+
+                        <div>
+                            <Title order={4} mb="xs">
+                                Scaffold a hand-coded game
+                            </Title>
+                            <Text c="dimmed" size="sm" mb="sm">
+                                Generates hand-written TypeScript game logic (no blueprint/game model) -- for building game logic by
+                                hand rather than declaratively.
                             </Text>
-                            <RecentProjectsPanel />
-                            <Divider label="Or open by path" labelPosition="left" />
-                            <OpenProjectForm />
-                        </Stack>
-                    </div>
+                            <CreateProjectForm />
+                        </div>
 
-                    <div ref={advancedRef} tabIndex={-1} style={{display: activeTab === "advanced" ? undefined : "none"}}>
-                        <Stack gap="lg">
-                            <Title order={2}>Advanced Tools</Title>
-                            <Text c="dimmed" size="sm">
-                                Everything outside the guided Design &amp; Build flow: scaffolding hand-coded games, initializing an
-                                existing directory in place, building from a blueprint file directly, and the raw Blueprint Editor.
+                        <Divider />
+
+                        <div>
+                            <Title order={4} mb="xs">
+                                Initialize an existing directory
+                            </Title>
+                            <InitProjectForm />
+                        </div>
+
+                        <Divider />
+
+                        <div>
+                            <Title order={4} mb="xs">
+                                Build from an existing blueprint file
+                            </Title>
+                            <Text c="dimmed" size="sm" mb="sm">
+                                Skips the guided editor -- builds directly from a blueprint JSON file already on disk.
                             </Text>
+                            <BuildFromBlueprintPanel />
+                        </div>
 
-                            <div>
-                                <Title order={4} mb="xs">
-                                    Scaffold a hand-coded game
-                                </Title>
-                                <Text c="dimmed" size="sm" mb="sm">
-                                    Generates hand-written TypeScript game logic (no blueprint/game model) -- for building game logic
-                                    by hand rather than declaratively.
-                                </Text>
-                                <CreateProjectForm />
-                            </div>
+                        <Divider />
 
-                            <Divider />
+                        <div>
+                            <Title order={4} mb="xs">
+                                Raw Blueprint Editor
+                            </Title>
+                            <Text c="dimmed" size="sm" mb="sm">
+                                The Blueprint Editor without the guided step-by-step framing -- JSON mode and Load/Save-by-path are
+                                always visible.
+                            </Text>
+                            <BlueprintEditorPage />
+                        </div>
+                    </Stack>
+                </div>
 
-                            <div>
-                                <Title order={4} mb="xs">
-                                    Initialize an existing directory
-                                </Title>
-                                <InitProjectForm />
-                            </div>
-
-                            <Divider />
-
-                            <div>
-                                <Title order={4} mb="xs">
-                                    Build from an existing blueprint file
-                                </Title>
-                                <Text c="dimmed" size="sm" mb="sm">
-                                    Skips the guided editor -- builds directly from a blueprint JSON file already on disk.
-                                </Text>
-                                <BuildFromBlueprintPanel />
-                            </div>
-
-                            <Divider />
-
-                            <div>
-                                <Title order={4} mb="xs">
-                                    Raw Blueprint Editor
-                                </Title>
-                                <Text c="dimmed" size="sm" mb="sm">
-                                    The Blueprint Editor without the guided step-by-step framing -- JSON mode and Load/Save-by-path
-                                    are always visible.
-                                </Text>
-                                <BlueprintEditorPage />
-                            </div>
-                        </Stack>
-                    </div>
-
-                    <Divider />
-                    <DocumentationLinks />
-                </Stack>
-            </DesignDirtyGuardProvider>
+                <Divider />
+                <DocumentationLinks />
+            </Stack>
         </AppShellLayout>
     );
 }

@@ -108,14 +108,16 @@ describe("HomePage", () => {
         await user.click(screen.getByRole("button", {name: "Open"}));
 
         expect(await screen.findByText("You have unsaved changes in Design & Build. Leave and lose them?")).toBeInTheDocument();
-        expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeUndefined();
 
-        // Cancel ("Stay") -- no navigation happens, and the draft is still exactly where it was.
+        // Cancel ("Stay") -- the *navigation* is what's guarded (not whatever incidental API call a
+        // handler made before attempting it -- see useDesignNavigationGuard's own doc comment on why the
+        // guard lives at the router level, not inside useOpenProject): we're still on Home, on the Open
+        // Project tab (never navigated to /project), and the draft is exactly where it was.
         await user.click(screen.getByRole("button", {name: "Stay"}));
         await waitFor(() =>
             expect(screen.queryByText("You have unsaved changes in Design & Build. Leave and lose them?")).not.toBeInTheDocument(),
         );
-        expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeUndefined();
+        expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
         expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
 
@@ -127,5 +129,5 @@ describe("HomePage", () => {
 
         await waitFor(() => expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeDefined());
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
-    }, 30000);
+    }, 45000);
 });

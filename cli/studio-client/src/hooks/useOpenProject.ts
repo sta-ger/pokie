@@ -2,7 +2,6 @@ import {useCallback} from "react";
 import {useNavigate} from "react-router-dom";
 import {openProject} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
-import {useDesignDirtyGuard} from "../context/DesignDirtyGuardContext";
 
 // Shared by the Recent Projects list, the Open Existing Project form, and every flow's own "Open in
 // Studio" button (Create/Init/Build/Blueprint-Build) -- the one explicit Home -> Project transition, see
@@ -11,31 +10,19 @@ import {useDesignDirtyGuard} from "../context/DesignDirtyGuardContext";
 // ProjectDashboardPage loads/polls its own dashboard context on mount, so this only needs to open the
 // project on the server and switch routes.
 //
-// Consults DesignDirtyGuardContext (present only inside HomePage, absent everywhere else) before
-// navigating -- if Design & Build has unsaved edits, the user is asked to confirm losing them first. A
-// decline resolves (doesn't reject) without navigating, so a caller's own loading state still clears
-// normally instead of hanging.
+// Deliberately knows nothing about a dirty Design & Build draft -- that's guarded once, centrally, at the
+// router level (useDesignNavigationGuard's useBlocker), not here. A `navigate("/project")` call this
+// function makes is just one more history transition the blocker sees and can intercept the same way it
+// intercepts a browser Back press or a direct hash edit; duplicating that check here would risk a double
+// confirmation.
 export function useOpenProject(): (projectRoot: string) => Promise<void> {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
-    const guardNavigation = useDesignDirtyGuard();
     return useCallback(
-        (projectRoot: string) =>
-            new Promise<void>((resolve, reject) => {
-                const proceed = (): void => {
-                    openProject(fetchImpl, projectRoot)
-                        .then(() => {
-                            navigate("/project");
-                            resolve();
-                        })
-                        .catch(reject);
-                };
-                if (guardNavigation) {
-                    guardNavigation(proceed, resolve);
-                } else {
-                    proceed();
-                }
-            }),
-        [fetchImpl, navigate, guardNavigation],
+        async (projectRoot: string) => {
+            await openProject(fetchImpl, projectRoot);
+            navigate("/project");
+        },
+        [fetchImpl, navigate],
     );
 }

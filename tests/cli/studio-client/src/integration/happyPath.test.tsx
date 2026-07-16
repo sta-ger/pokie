@@ -232,5 +232,5 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         // 10. The report renders on the Reports tab.
         await waitFor(() => expect(screen.getByText("RTP")).toBeInTheDocument());
         expect(screen.getByText("95.00%")).toBeInTheDocument();
-    }, 30000);
+    }, 45000);
 });

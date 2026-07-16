@@ -10,9 +10,11 @@ changed; only how the frontend is built, rendered, and organized has.
 - **React 19** + **Mantine 9** (`@mantine/core`, `@mantine/hooks`, `@mantine/form`, `@mantine/notifications`,
   `@mantine/modals`) for UI components, forms, notifications, and confirm dialogs.
 - **Vite** for the dev server and production build (replacing the old bare-`tsc` compile).
-- **`react-router-dom`**, hash routing (`<HashRouter>`). Every section has a stable URL: `/home/:tab`
-  (Design & Build / Open Project / Advanced Tools) and `/project/:tab` (the 7 Project Dashboard tabs) —
-  `/` and `/project` redirect to their default tab. A single `:tab` param route per page is enough to make
+- **`react-router-dom`**, hash routing via the **data router** API (`createHashRouter` + `RouterProvider`,
+  not the declarative `<HashRouter><Routes>`) — required for `useBlocker` (see the dirty-navigation guard
+  below), which only works under a data router. Every section has a stable URL: `/home/:tab` (Design &
+  Build / Open Project / Advanced Tools) and `/project/:tab` (the 7 Project Dashboard tabs) — `/` and
+  `/project` redirect to their default tab. A single `:tab` param route per page is enough to make
   refresh/back-forward/direct-link land on the right section, since react-router keeps the same
   `HomePage`/`ProjectDashboardPage` element instance mounted across param-only changes.
 - All of the above are **devDependencies** of the `pokie` package, not runtime dependencies — the published
@@ -33,9 +35,17 @@ tabs never loses in-progress work):
   behind a "Show advanced options" disclosure — Build works directly off the in-memory blueprint, so neither
   is required for the guided flow. A successful build's "Open in Studio" button (unchanged) is the bridge
   into the Project Dashboard. The blueprint is dirty-tracked (`BlueprintEditorPage`'s `onDirtyChange`,
-  cleared on a fresh New/Load or a successful Save/Build): leaving Home to open a project while dirty asks
-  for confirmation first (`DesignDirtyGuardContext`, consulted by `useOpenProject` — the one choke point
-  every "open a project" action already goes through).
+  cleared on a fresh New/Load or a successful Save/Build) and guarded by one centralized mechanism,
+  `hooks/useDesignNavigationGuard.ts`, used once in `HomePage`: a `useBlocker` predicate intercepts every
+  history transition that would leave the `/home/*` subtree while dirty — browser Back/Forward, a direct
+  navigation to `/project/*`, a hash edit, or an in-app `navigate()` call (e.g. from `useOpenProject`) are
+  all just "history transitions" to a data router, so one predicate covers all of them uniformly, and
+  switching between Home's own 3 tabs is never blocked. A blocked transition shows a Mantine confirm
+  modal; confirming calls `blocker.proceed()` (resumes the exact blocked transition — never a duplicate
+  navigation), cancelling calls `blocker.reset()` (leaves the URL, draft, and focus untouched, since
+  nothing in Home ever unmounts while blocked). Reload/tab-close is guarded separately by a native
+  `beforeunload` listener, attached only while dirty. `useOpenProject` itself knows nothing about dirty
+  state — duplicating the check there would risk a double confirmation.
 - **Open Project** (`/home/open`) — merges what were two separate "ways to open an already-built project"
   tabs (Recent Projects, Open by path) into one.
 - **Advanced Tools** (`/home/advanced`) — everything else, unchanged functionally, only regrouped:
@@ -93,9 +103,10 @@ cli/studio-client/
                            # errorMessage.ts, formatTimestamp.ts, asStringList.ts, interpret/*.ts --
                            # all pure, framework-agnostic TypeScript, unit-tested independently of React
     context/StudioApiProvider.tsx   # supplies the FetchLike apiClient functions expect
-    context/DesignDirtyGuardContext.tsx   # lets useOpenProject confirm before losing a dirty blueprint
-    hooks/                # useOpenProject, useConfirm, useBlueprintEditor, useProjectContext,
-                           # useSimulationPoll, useReplayPoll, useRuntimeManager, useDeploymentManager
+    hooks/                # useOpenProject, useDesignNavigationGuard (centralized dirty-navigation guard,
+                           # see UX/Information architecture above), useConfirm, useBlueprintEditor,
+                           # useProjectContext, useSimulationPoll, useReplayPoll, useRuntimeManager,
+                           # useDeploymentManager
     components/
       layout/             # AppShellLayout (shell + optional breadcrumbs), NavTabs (supports an optional
                            # `section` grouping label per item)
@@ -172,14 +183,21 @@ Two Jest projects (`jest.config.mjs`):
 - **`studio-client-components`** (`testEnvironment: "jsdom"`) — `tests/cli/studio-client/src/**/*.test.tsx`,
   using React Testing Library. Components are tested through `StudioApiProvider`'s `fetchImpl` injection point
   (the same fake-fetch seam `apiClient.test.ts` already used, not a new mocking layer — see
-  `tests/cli/studio-client/src/testUtils/`). `testUtils/renderRoutedApp.tsx` mounts both real routes (mirrors
-  `routes.tsx`) so a test can exercise an actual cross-page navigation, used by
+  `tests/cli/studio-client/src/testUtils/`). `testUtils/renderRoutedApp.tsx` mounts a real **data router**
+  (`createMemoryRouter` + `RouterProvider`, mirroring production `routes.tsx` exactly, `useBlocker` included)
+  and returns the created `router` instance alongside the render result, so a test can drive real
+  navigation directly (`router.navigate(-1)`/`(1)` for back/forward, or a path string for a direct/in-app
+  navigation) as well as exercise an actual cross-page navigation through the UI, used by
   `tests/cli/studio-client/src/integration/happyPath.test.tsx` — the full guided scenario end to end
-  (configure the game model → validate → build → land in the Project Dashboard → simulate → open the report).
-  `tests/cli/studio-client/src/routing.test.tsx` covers refresh/direct-link (render with a specific
-  `initialEntries` path) and real browser back/forward (a small sibling test component driving
-  `useNavigate(-1)`/`(1)` inside the same router, rather than react-router's data-router APIs, which pull in
-  Fetch API `Request`/`Response` machinery jsdom doesn't polyfill).
+  (configure the game model → validate → build → land in the Project Dashboard → simulate → open the
+  report). `tests/cli/studio-client/src/routing.test.tsx` covers refresh/direct-link (render with a specific
+  `initialEntries` path) and real browser back/forward. `tests/cli/studio-client/src/designNavigationGuard.test.tsx`
+  covers the centralized dirty-navigation guard itself: blocking Back and a direct `/project/*` navigation
+  while dirty, Cancel preserving the URL/draft, Confirm navigating exactly once, Home's own tab switches
+  never blocking, and the `beforeunload` listener being attached only while dirty. The data router builds
+  Fetch API `Request` objects internally on every navigation even with zero loaders/actions defined, which
+  jsdom doesn't provide — `tests/cli/studio-client/src/jestPolyfills.ts` polyfills `Request`/`Response`/
+  `Headers`/`fetch` via `undici` (a devDependency; this is what Node's own built-in `fetch` is built on).
 
 ```sh
 npm test                                          # both projects
