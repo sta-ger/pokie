@@ -1,6 +1,8 @@
-import {AppShell, Burger, Group, Title} from "@mantine/core";
+import {Anchor, AppShell, Breadcrumbs, Burger, Group, Text, Title} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {createContext, useContext, useEffect, useRef, type ReactNode} from "react";
+
+export type StudioBreadcrumb = {label: string; onClick?: () => void};
 
 // Lets NavTabs (rendered as the `navbar` prop, already-constructed JSX from whichever page owns it)
 // close the mobile navbar drawer after a selection, without AppShellLayout needing to know anything
@@ -23,10 +25,12 @@ export function useCloseNavbar(): () => void {
 export function AppShellLayout({
     navbar,
     headerRight,
+    breadcrumbs = [],
     children,
 }: {
     navbar: ReactNode;
     headerRight?: ReactNode;
+    breadcrumbs?: StudioBreadcrumb[];
     children: ReactNode;
 }) {
     const [opened, {toggle, close}] = useDisclosure();
@@ -54,10 +58,31 @@ export function AppShellLayout({
     return (
         <AppShell header={{height: 60}} navbar={{width: 260, breakpoint: "sm", collapsed: {mobile: !opened}}} padding="md">
             <AppShell.Header>
-                <Group h="100%" px="md" justify="space-between">
-                    <Group>
+                <Group h="100%" px="md" justify="space-between" wrap="nowrap">
+                    <Group wrap="nowrap">
                         <Burger ref={burgerRef} opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
-                        <Title order={3}>POKIE Studio</Title>
+                        {breadcrumbs.length === 0 ? (
+                            <Anchor href="#/" underline="never" c="inherit">
+                                <Title order={3}>POKIE Studio</Title>
+                            </Anchor>
+                        ) : (
+                            <Breadcrumbs>
+                                <Anchor href="#/" underline="hover" size="sm" fw={700}>
+                                    POKIE Studio
+                                </Anchor>
+                                {breadcrumbs.map((crumb, index) =>
+                                    crumb.onClick ? (
+                                        <Anchor key={index} component="button" type="button" onClick={crumb.onClick} underline="hover" size="sm">
+                                            {crumb.label}
+                                        </Anchor>
+                                    ) : (
+                                        <Text key={index} size="sm" c="dimmed">
+                                            {crumb.label}
+                                        </Text>
+                                    ),
+                                )}
+                            </Breadcrumbs>
+                        )}
                     </Group>
                     {headerRight}
                 </Group>

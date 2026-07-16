@@ -1,5 +1,6 @@
-import {SegmentedControl} from "@mantine/core";
-import {useRef, useState} from "react";
+import {Anchor, Collapse, SegmentedControl, Stepper, Text, Title} from "@mantine/core";
+import {useDisclosure} from "@mantine/hooks";
+import {useEffect, useRef, useState} from "react";
 import {loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
@@ -14,6 +15,7 @@ import {
 import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {NextStepCallout} from "../common/NextStepCallout";
 import {BetsList} from "./BetsList";
 import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
@@ -27,7 +29,46 @@ import {SymbolsTable} from "./SymbolsTable";
 
 type BlueprintMode = "form" | "json";
 
-export function BlueprintEditorPage() {
+function guidedStepIndex(status: BlueprintValidationView["status"]): number {
+    if (status === "idle") {
+        return 0;
+    }
+    if (status === "ok") {
+        return 2;
+    }
+    return 1;
+}
+
+type GuidedNextStep = {tone: "info" | "success" | "warning"; title: string; description: string};
+
+function describeGuidedNextStep(status: BlueprintValidationView["status"]): GuidedNextStep {
+    if (status === "ok") {
+        return {
+            tone: "success",
+            title: "Ready to build",
+            description: "Your blueprint is valid — build your package below to open it in the Project Dashboard.",
+        };
+    }
+    if (status === "invalid") {
+        return {tone: "warning", title: "Fix validation issues", description: "Resolve the errors below before building your package."};
+    }
+    if (status === "error") {
+        return {tone: "warning", title: "Validation failed", description: "Something went wrong while validating — try again."};
+    }
+    return {
+        tone: "info",
+        title: "Configure your game model",
+        description: "Add symbols, bets, paylines and a paytable below, then validate your configuration.",
+    };
+}
+
+// `guided`/`initialPath` are purely additive -- omitted (the "Advanced Tools" raw editor's usage),
+// this component renders exactly as it always has. `guided` adds a step indicator + next-step hint and
+// tucks JSON mode/Load-by-path/Save behind an "advanced options" disclosure, since Build works directly
+// off the in-memory blueprint and doesn't strictly need either in the guided happy path. `initialPath`
+// (set when arriving via Project Overview's "Configure Game Model" link) auto-loads that blueprint on
+// mount, reusing the exact same handleLoad a manual Load click would use.
+export function BlueprintEditorPage({guided = false, initialPath}: {guided?: boolean; initialPath?: string} = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
@@ -40,6 +81,7 @@ export function BlueprintEditorPage() {
     const loadGuard = useDoubleSubmitGuard();
     const saveGuard = useDoubleSubmitGuard();
     const validateGuard = useDoubleSubmitGuard();
+    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
 
     const handleNew = (): void => {
         editor.newBlueprint();
@@ -67,6 +109,15 @@ export function BlueprintEditorPage() {
             .catch((error: unknown) => setLoadView({status: "error", message: errorMessage(error)}))
             .finally(() => loadGuard.end());
     };
+
+    useEffect(() => {
+        if (initialPath) {
+            handleLoad(initialPath);
+        }
+        // Only ever auto-loads the path this page mounted with -- a later prop change (there isn't one
+        // in practice, since it only comes from a one-time navigation state) must not re-trigger a load.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const runSave = (path: string, overwrite: boolean): void => {
         if (!saveGuard.begin()) {
@@ -106,8 +157,35 @@ export function BlueprintEditorPage() {
 
     const {blueprint, revision} = editor.state;
 
+    const stepIndex = guidedStepIndex(validationView.status);
+    const nextStep = describeGuidedNextStep(validationView.status);
+
     return (
         <div>
+            {guided && (
+                <div>
+                    <Title order={2}>Design & Build Your Game</Title>
+                    <Text c="dimmed" size="sm" mb="md">
+                        Start from a blank blueprint or load an existing one, configure your game model, validate it, then build your
+                        game package.
+                    </Text>
+                    <Stepper active={stepIndex} mb="md" size="sm" allowNextStepsSelect={false}>
+                        <Stepper.Step label="Configure" description="Game model" />
+                        <Stepper.Step label="Validate" description="Check for issues" />
+                        <Stepper.Step label="Build" description="Create your package" />
+                    </Stepper>
+                    <NextStepCallout {...nextStep} />
+                </div>
+            )}
+
+            {guided && (
+                <Text size="sm" mb="sm">
+                    <Anchor component="button" type="button" onClick={toggleAdvanced}>
+                        {advancedOpened ? "Hide" : "Show"} advanced options (JSON mode, load/save by path)
+                    </Anchor>
+                </Text>
+            )}
+
             <BlueprintLoadSaveControls
                 onNew={handleNew}
                 onLoad={handleLoad}
@@ -117,18 +195,21 @@ export function BlueprintEditorPage() {
                 saveView={saveView}
                 initialLoadPath=""
                 initialSavePath=""
+                advancedOptionsOpened={guided ? advancedOpened : undefined}
             />
 
-            <SegmentedControl
-                value={mode}
-                onChange={(value) => setMode(value as BlueprintMode)}
-                data={[
-                    {label: "Form", value: "form"},
-                    {label: "JSON", value: "json"},
-                ]}
-                mb="md"
-                aria-label="Blueprint editor mode"
-            />
+            <Collapse expanded={!guided || advancedOpened}>
+                <SegmentedControl
+                    value={mode}
+                    onChange={(value) => setMode(value as BlueprintMode)}
+                    data={[
+                        {label: "Form", value: "form"},
+                        {label: "JSON", value: "json"},
+                    ]}
+                    mb="md"
+                    aria-label="Blueprint editor mode"
+                />
+            </Collapse>
 
             {mode === "form" ? (
                 <div key={editor.formGeneration}>

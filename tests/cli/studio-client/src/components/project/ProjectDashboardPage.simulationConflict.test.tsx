@@ -53,7 +53,7 @@ describe("ProjectDashboardPage - Simulation 409 conflict", () => {
         renderWithProviders(<ProjectDashboardPage />, {fetchImpl, initialEntries: ["/project"]});
         await screen.findByRole("heading", {name: "A"});
 
-        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        await user.click(screen.getByRole("button", {name: "Simulate"}));
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
 
         // No error surfaces -- the 409 with activeJobId is a typed conflict, not a failure -- and

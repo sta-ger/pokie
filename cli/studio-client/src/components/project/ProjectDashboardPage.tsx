@@ -1,11 +1,18 @@
 import {Anchor, Button, Text, Title} from "@mantine/core";
+import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useState} from "react";
 import {useNavigate} from "react-router-dom";
 import {buildReportDownloadUrl, closeProject, getReplay, getReport, inspectProject, listReplays, listReports, validateProject} from "../../api/apiClient";
 import type {SimulationReport, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
-import {describeInspection, describeValidationSummary, type InspectionResultView, type ValidationSummaryView} from "../../domain/interpret/ProjectDashboard";
+import {
+    describeInspection,
+    describeNextAction,
+    describeValidationSummary,
+    type InspectionResultView,
+    type ValidationSummaryView,
+} from "../../domain/interpret/ProjectDashboard";
 import {describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
 import {describeReportsList, type ReportListView} from "../../domain/interpret/Reports";
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
@@ -28,14 +35,17 @@ import {ValidationTab} from "./ValidationTab";
 
 export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay" | "runtime" | "deployment";
 
+// Primary happy-path tabs (Overview -> Validate -> Simulate -> Reports) come first, unlabeled/implicit;
+// Replay/Runtime/Deployment are tagged `section: "Advanced"` so NavTabs visually separates them --
+// everything's still one click away, just no longer presented as equal-weight to the main flow.
 const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "overview", label: "Overview"},
-    {value: "validation", label: "Validation"},
-    {value: "simulation", label: "Simulation"},
+    {value: "validation", label: "Validate"},
+    {value: "simulation", label: "Simulate"},
     {value: "reports", label: "Reports"},
-    {value: "replay", label: "Replay"},
-    {value: "runtime", label: "Runtime"},
-    {value: "deployment", label: "Deployment"},
+    {value: "replay", label: "Replay", section: "Advanced"},
+    {value: "runtime", label: "Runtime", section: "Advanced"},
+    {value: "deployment", label: "Deployment", section: "Advanced"},
 ];
 
 // Mirrors the old app's own showProjectDashboard: every tab's data-loading hook lives here, at the page
@@ -152,6 +162,35 @@ export function ProjectDashboardPage() {
         (replay.job !== undefined && isReplayActive(replay.job)) ||
         runtime.running;
 
+    const activeTabLabel = PROJECT_TABS.find((tab) => tab.value === activeTab)?.label ?? "Overview";
+    const projectName = header.status === "loaded" ? header.name : "Project";
+    useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
+
+    const nextAction = describeNextAction(validation, simulation.job);
+    const onNextAction = (): void => {
+        if (nextAction.kind === "validate" || nextAction.kind === "fix-validation") {
+            setActiveTab("validation");
+            if (nextAction.kind === "validate") {
+                runValidate();
+            }
+        } else if (nextAction.kind === "simulate") {
+            setActiveTab("simulation");
+        } else if (nextAction.kind === "simulation-running") {
+            setActiveTab("simulation");
+        } else if (simulation.currentJobId) {
+            selectReport(simulation.currentJobId);
+        }
+    };
+
+    // Only offered once the package is known to have come from a blueprint this Studio can reopen (a
+    // `pokie build` provenance with a real source path -- describeProvenance's own "(unknown)" sentinel
+    // means the path is genuinely not known, e.g. an older build-info without it).
+    const blueprintSource =
+        inspection.status === "loaded" && inspection.provenance.status === "generated" && inspection.provenance.source !== "(unknown)"
+            ? inspection.provenance.source
+            : undefined;
+    const onConfigureGameModel = blueprintSource ? () => navigate("/", {state: {initialBlueprintPath: blueprintSource}}) : undefined;
+
     const handleClose = (): void => {
         const doClose = (): void => {
             closeProject(fetchImpl)
@@ -176,7 +215,13 @@ export function ProjectDashboardPage() {
     }
 
     return (
-        <AppShellLayout navbar={<NavTabs items={PROJECT_TABS} active={activeTab} onSelect={setActiveTab} />}>
+        <AppShellLayout
+            navbar={<NavTabs items={PROJECT_TABS} active={activeTab} onSelect={setActiveTab} />}
+            breadcrumbs={[
+                {label: projectName, onClick: () => setActiveTab("overview")},
+                {label: activeTabLabel},
+            ]}
+        >
             <div>
                 <Title order={2}>{header.status === "loaded" ? header.name : "Project"}</Title>
                 <Text c="dimmed">{header.projectRoot}</Text>
@@ -194,11 +239,10 @@ export function ProjectDashboardPage() {
                         <OverviewTab
                             header={header}
                             inspection={inspection}
+                            nextAction={nextAction}
+                            onNextAction={onNextAction}
+                            onConfigureGameModel={onConfigureGameModel}
                             onReinspect={refreshInspect}
-                            onValidate={() => {
-                                setActiveTab("validation");
-                                runValidate();
-                            }}
                         />
                     )}
                     {activeTab === "validation" && <ValidationTab summary={validation} loading={validationLoading} onValidate={runValidate} />}

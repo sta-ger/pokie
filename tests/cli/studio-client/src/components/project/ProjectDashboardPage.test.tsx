@@ -38,7 +38,7 @@ describe("ProjectDashboardPage", () => {
         expect(await screen.findByRole("heading", {name: "Crazy Fruits"})).toBeInTheDocument();
         await waitFor(() => expect(screen.getAllByText("/games/crazy-fruits").length).toBeGreaterThan(0));
 
-        await user.click(screen.getByRole("button", {name: "Validation"}));
+        await user.click(screen.getByRole("button", {name: "Validate"}));
         await user.click(screen.getByRole("button", {name: "Run Validate"}));
 
         await waitFor(() => {
@@ -102,7 +102,7 @@ describe("ProjectDashboardPage", () => {
         renderWithProviders(<ProjectDashboardPage />, {fetchImpl, initialEntries: ["/project"]});
         await screen.findByRole("heading", {name: "Crazy Fruits"});
 
-        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        await user.click(screen.getByRole("button", {name: "Simulate"}));
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
 
         // Switch away from the Simulation tab while the job is still "running" -- the poll must keep
@@ -112,7 +112,7 @@ describe("ProjectDashboardPage", () => {
 
         await waitFor(() => expect(simulationPollCount).toBeGreaterThanOrEqual(2), {timeout: 3000});
 
-        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        await user.click(screen.getByRole("button", {name: "Simulate"}));
         await waitFor(() => {
             expect(screen.getByText(/completed/)).toBeInTheDocument();
         });

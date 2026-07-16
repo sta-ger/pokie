@@ -1,10 +1,9 @@
 # POKIE Studio frontend
 
 This documents the **implementation** of POKIE Studio's frontend (`cli/studio-client/`) — the stack, layout,
-dev workflow, build, and tests. For what Studio actually *does* (Home screens, the Blueprint Editor and its
-Reel Strip Modeler, the Project Dashboard's seven tabs, and the full `/api/...` reference it talks to), see
-[`cli.md`](cli.md#pokie--pokie-studio-experimental) — this migration to React + Mantine changed none of that
-behavior or API surface, only how the frontend is built and rendered.
+UX/navigation, dev workflow, build, and tests. For the full `/api/...` reference and what each screen talks to
+server-side, see [`cli.md`](cli.md#pokie--pokie-studio-experimental) — none of that behavior or API surface has
+changed; only how the frontend is built, rendered, and organized has.
 
 ## Stack
 
@@ -17,6 +16,50 @@ behavior or API surface, only how the frontend is built and rendered.
 - All of the above are **devDependencies** of the `pokie` package, not runtime dependencies — the published
   npm package still ships only a static, framework-free JS/CSS bundle at `dist/cli/studio-client/`, built at
   publish time. Nothing about `npm install pokie` changes for consumers.
+
+## UX / Information architecture
+
+Navigation is organized around the user's task sequence — open/create → configure the game model →
+validate → build → simulate → view a report — not around internal module names.
+
+**Home (`/`)** — 3 tabs:
+
+- **Design & Build** (default tab) — the guided happy path. Renders `BlueprintEditorPage` in `guided` mode:
+  a `Stepper` (Configure → Validate → Build) and a `NextStepCallout` next-step hint, both driven by the
+  panel's own existing local validation state (no new state). JSON mode and Load/Save-by-path are tucked
+  behind a "Show advanced options" disclosure — Build works directly off the in-memory blueprint, so neither
+  is required for the guided flow. A successful build's "Open in Studio" button (unchanged) is the bridge
+  into the Project Dashboard.
+- **Open Project** — merges what were two separate "ways to open an already-built project" tabs (Recent
+  Projects, Open by path) into one.
+- **Advanced Tools** — everything else, unchanged functionally, only regrouped: scaffolding a hand-coded
+  game (`pokie create` — hand-written TypeScript game logic, no blueprint/game model), initializing an
+  existing directory (`pokie init`), building from an existing blueprint file directly (skips the guided
+  editor), and the raw (non-`guided`) Blueprint Editor.
+
+**Project Dashboard (`/project`)** — the same 7 tabs, reordered and grouped instead of flat: **Overview,
+Validate, Simulate, Reports** (the primary flow, in that order), then a visually separated **Advanced**
+group — Replay, Runtime, Deployment (`NavTabItem`'s optional `section` field drives the grouping in
+`NavTabs`). "Validation"/"Simulation" were renamed to "Validate"/"Simulate" for consistent task-verb naming.
+
+- **Overview** is the landing/state page: a `NextStepCallout` at the top summarizes the project's current
+  pipeline state and recommends exactly one next action — `describeNextAction`
+  (`domain/interpret/ProjectDashboard.ts`) is a pure function over state the page already fetches
+  (validation summary, current simulation job), following the same `describe*` view-model pattern as
+  everything else here. It cycles Validate → fix issues → Simulate → view the report as each stage
+  completes. When the package's provenance links back to a known blueprint source path (from `pokie
+  build`'s own `build-info.json`), a "Configure Game Model" button navigates back to Home's Design & Build
+  tab with that blueprint pre-loading (`navigate("/", {state: {initialBlueprintPath}})`, read by `HomePage`
+  via `useLocation().state`) — closing the loop so the game model stays editable from an already-open
+  project too, not just at creation time.
+
+**Breadcrumbs & page titles** — `AppShellLayout`'s optional `breadcrumbs` prop renders a Mantine
+`Breadcrumbs` trail in the header (Home passes none, showing just the "POKIE Studio" home link; the Project
+Dashboard passes `[projectName, activeTabLabel]`). Every page sets `document.title` via `@mantine/hooks`'
+`useDocumentTitle`.
+
+This is a first vertical slice, not a rewrite: every advanced tool from before this redesign is still fully
+reachable — none of it was removed, only re-labeled and de-emphasized relative to the primary flow.
 
 ## Directory layout
 
@@ -38,14 +81,19 @@ cli/studio-client/
     hooks/                # useOpenProject, useConfirm, useBlueprintEditor, useProjectContext,
                            # useSimulationPoll, useReplayPoll, useRuntimeManager, useDeploymentManager
     components/
-      layout/             # AppShellLayout, NavTabs (the shared foundation)
-      common/             # LoadingState/EmptyState/ErrorState/SuccessResult, IssueList/FileList,
+      layout/             # AppShellLayout (shell + optional breadcrumbs), NavTabs (supports an optional
+                           # `section` grouping label per item)
+      common/             # LoadingState/EmptyState/ErrorState/SuccessResult, NextStepCallout (the shared
+                           # "here's what to do next" affordance), IssueList/FileList,
                            # RowActions/QuickActions/PageSection, BufferedTextInput/BufferedNumberInput,
                            # SimulationReportDisplay, ScreenTable, BuildPreviewDisplay/BuildResultDisplay
-      home/               # Recent/Create/Init/Build/Open panels
-      blueprintEditor/    # Metadata/Symbols/Bets/Paylines/Paytable editors, the Reel Strip Modeler
+      home/               # HomePage (Design & Build / Open Project / Advanced Tools),
+                           # Recent/Create/Init/Build/Open panels (composed into the tabs above)
+      blueprintEditor/    # BlueprintEditorPage (plain, or `guided` for Home's Design & Build tab),
+                           # Metadata/Symbols/Bets/Paylines/Paytable editors, the Reel Strip Modeler
                            # (ReelStripGenerationEditor.tsx), Load/Save/Validate/Build panels
-      project/            # ProjectDashboardPage + the 7 tab components
+      project/            # ProjectDashboardPage (Overview/Validate/Simulate/Reports primary,
+                           # Replay/Runtime/Deployment grouped as "Advanced") + the 7 tab components
 ```
 
 `tests/cli/studio-client/src/` mirrors this tree 1:1 (repo convention — `tests/` always mirrors `src`/`cli`
@@ -108,7 +156,10 @@ Two Jest projects (`jest.config.mjs`):
 - **`studio-client-components`** (`testEnvironment: "jsdom"`) — `tests/cli/studio-client/src/**/*.test.tsx`,
   using React Testing Library. Components are tested through `StudioApiProvider`'s `fetchImpl` injection point
   (the same fake-fetch seam `apiClient.test.ts` already used, not a new mocking layer — see
-  `tests/cli/studio-client/src/testUtils/`).
+  `tests/cli/studio-client/src/testUtils/`). `testUtils/renderRoutedApp.tsx` mounts both real routes (mirrors
+  `routes.tsx`) so a test can exercise an actual cross-page navigation, used by
+  `tests/cli/studio-client/src/integration/happyPath.test.tsx` — the full guided scenario end to end
+  (configure the game model → validate → build → land in the Project Dashboard → simulate → open the report).
 
 ```sh
 npm test                                          # both projects

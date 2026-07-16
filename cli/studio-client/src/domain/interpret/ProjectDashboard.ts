@@ -1,4 +1,5 @@
-import type {GamePackageInspectionReport, PokieGamePackageValidationReport, ProjectDashboardContext} from "../../api/types";
+import type {GamePackageInspectionReport, PokieGamePackageValidationReport, ProjectDashboardContext, StudioSimulationJobView} from "../../api/types";
+import {isSimulationActive} from "./Simulation";
 
 // Pure view-model transforms for the Project Dashboard — mirrors cli/client/interpretResponse.ts's
 // role: main.ts/dom.ts consume these instead of branching on the raw discriminated-union DTOs
@@ -99,5 +100,66 @@ export function describeValidationSummary(report: PokieGamePackageValidationRepo
         warnings: report.warnings.map((issue) => ({code: issue.code, message: issue.message})),
         suggestions: report.suggestions,
         hasIssues: report.errors.length > 0 || report.warnings.length > 0,
+    };
+}
+
+export type NextActionView =
+    | {kind: "validate"; title: string; description: string; actionLabel: string}
+    | {kind: "fix-validation"; title: string; description: string; actionLabel: string}
+    | {kind: "simulate"; title: string; description: string; actionLabel: string}
+    | {kind: "simulation-running"; title: string; description: string; actionLabel: string}
+    | {kind: "view-report"; title: string; description: string; actionLabel: string};
+
+// Pure UI-sequencing over state Project Overview already has (validation summary, current simulation
+// job) -- not game/simulation logic, just "which screen should the user go to next." Deliberately a
+// single ordered if-chain (not a lookup table) since each branch's copy depends on the *reason*, not
+// just a status enum.
+export function describeNextAction(validation: ValidationSummaryView | undefined, simulationJob: StudioSimulationJobView | undefined): NextActionView {
+    if (validation === undefined) {
+        return {
+            kind: "validate",
+            title: "Validate your project",
+            description: "Run a validation check to confirm your game package is ready to simulate.",
+            actionLabel: "Validate project",
+        };
+    }
+    if (validation.hasIssues) {
+        const issueCount = validation.errors.length + validation.warnings.length;
+        return {
+            kind: "fix-validation",
+            title: "Fix validation issues",
+            description: `${issueCount} issue${issueCount === 1 ? "" : "s"} found — review and resolve them before building or simulating.`,
+            actionLabel: "Review validation",
+        };
+    }
+    if (simulationJob === undefined) {
+        return {
+            kind: "simulate",
+            title: "Run a simulation",
+            description: "Your project is valid. Run a simulation to see how it performs.",
+            actionLabel: "Run a simulation",
+        };
+    }
+    if (isSimulationActive(simulationJob)) {
+        return {
+            kind: "simulation-running",
+            title: "Simulation in progress",
+            description: "Your simulation is still running.",
+            actionLabel: "View progress",
+        };
+    }
+    if (simulationJob.status === "completed") {
+        return {
+            kind: "view-report",
+            title: "View your report",
+            description: "Your simulation finished — open the report to see the results.",
+            actionLabel: "View report",
+        };
+    }
+    return {
+        kind: "simulate",
+        title: "Run a new simulation",
+        description: "The last simulation didn't complete. Run a new one when you're ready.",
+        actionLabel: "Run a simulation",
     };
 }

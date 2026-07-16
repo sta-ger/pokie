@@ -1,9 +1,18 @@
 import {Button, Table, Text} from "@mantine/core";
-import type {InspectionResultView, ProvenanceView} from "../../domain/interpret/ProjectDashboard";
+import type {InspectionResultView, NextActionView, ProvenanceView} from "../../domain/interpret/ProjectDashboard";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
+import {NextStepCallout} from "../common/NextStepCallout";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+
+const NEXT_ACTION_TONE: Record<NextActionView["kind"], "info" | "success" | "warning"> = {
+    validate: "info",
+    "fix-validation": "warning",
+    simulate: "info",
+    "simulation-running": "info",
+    "view-report": "success",
+};
 
 function ProvenancePanel({provenance}: {provenance: ProvenanceView}) {
     if (provenance.status === "not-generated") {
@@ -48,17 +57,36 @@ function ProvenancePanel({provenance}: {provenance: ProvenanceView}) {
 export function OverviewTab({
     header,
     inspection,
+    nextAction,
+    onNextAction,
+    onConfigureGameModel,
     onReinspect,
-    onValidate,
 }: {
     header: {id: string; version: string; projectRoot: string};
     inspection: InspectionResultView;
+    nextAction: NextActionView;
+    onNextAction: () => void;
+    onConfigureGameModel?: () => void;
     onReinspect: () => void;
-    onValidate: () => void;
 }) {
     return (
         <div>
-            <Table withRowBorders={false} mb="md">
+            <NextStepCallout
+                title={nextAction.title}
+                description={nextAction.description}
+                actionLabel={nextAction.actionLabel}
+                onAction={onNextAction}
+                tone={NEXT_ACTION_TONE[nextAction.kind]}
+            />
+            {onConfigureGameModel && (
+                <QuickActions>
+                    <Button variant="default" onClick={onConfigureGameModel}>
+                        Configure Game Model
+                    </Button>
+                </QuickActions>
+            )}
+
+            <Table withRowBorders={false} mb="md" mt="md">
                 <Table.Tbody>
                     <Table.Tr>
                         <Table.Th>ID</Table.Th>
@@ -105,12 +133,6 @@ export function OverviewTab({
                     </Button>
                 </QuickActions>
             </PageSection>
-
-            <QuickActions>
-                <Button variant="default" onClick={onValidate}>
-                    Validate
-                </Button>
-            </QuickActions>
         </div>
     );
 }

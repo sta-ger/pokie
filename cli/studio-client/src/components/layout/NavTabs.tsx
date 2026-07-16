@@ -1,7 +1,9 @@
-import {NavLink} from "@mantine/core";
+import {NavLink, Text} from "@mantine/core";
 import {useCloseNavbar} from "./AppShellLayout";
 
-export type NavTabItem<T extends string> = {value: T; label: string};
+// `section` is purely a visual grouping label (e.g. "Advanced") -- omitting it (every call site did,
+// before the Project Dashboard's task-oriented nav redesign) renders exactly as before, a flat list.
+export type NavTabItem<T extends string> = {value: T; label: string; section?: string};
 
 // Vertical tab list rendered into AppShellLayout's navbar slot -- preserves aria-current="page" on the
 // active item, same affordance the old .tab[aria-current="page"] convention provided. Rendered as real
@@ -16,19 +18,25 @@ export function NavTabs<T extends string>({items, active, onSelect}: {items: Nav
 
     return (
         <nav aria-label="Sections">
-            {items.map((item) => (
-                <NavLink
-                    key={item.value}
-                    component="button"
-                    type="button"
-                    label={item.label}
-                    active={item.value === active}
-                    aria-current={item.value === active ? "page" : undefined}
-                    onClick={() => {
-                        onSelect(item.value);
-                        closeNavbar();
-                    }}
-                />
+            {items.map((item, index) => (
+                <div key={item.value}>
+                    {item.section !== undefined && item.section !== items[index - 1]?.section && (
+                        <Text size="xs" tt="uppercase" c="dimmed" fw={700} mt="sm" mb={4} px="xs">
+                            {item.section}
+                        </Text>
+                    )}
+                    <NavLink
+                        component="button"
+                        type="button"
+                        label={item.label}
+                        active={item.value === active}
+                        aria-current={item.value === active ? "page" : undefined}
+                        onClick={() => {
+                            onSelect(item.value);
+                            closeNavbar();
+                        }}
+                    />
+                </div>
             ))}
         </nav>
     );
