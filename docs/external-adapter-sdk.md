@@ -29,11 +29,13 @@ projection                target.roundProjector.project(outcome.artifact) for ev
         │  (no error-severity issues)                                       run by the service itself
         ▼
 generation                target.artifactGenerator.generate(projectedModes) — fully in-memory,
-        │  (no error-severity issues)                                        already-projected input only
+        │  (return value treated as `unknown`)                              already-projected input only
         ▼
-artifact validation       StandardExternalArtifactValidator (always)
-                           + target.artifactValidator (additive)
-                           + extra (additive)                              — structural checks on the output
+shape validation          StandardExternalArtifactValidator, against the         — is this even a well-formed
+        │  (no error-severity issues)                        still-untrusted raw   ExternalArtifactGenerationResult?
+        ▼                                                     generator return value
+artifact validation       target.artifactValidator (additive)
+                           + extra (additive)                              — only once shape validation passed
         │  (no error-severity issues)
         ▼
 diagnostic (optional)     target.diagnostic?.diagnose()
@@ -64,6 +66,13 @@ invariants below actually hold, rather than leaving it to every caller to reimpl
   stage's own issues — exactly as if the collaborator had reported the problem the normal way — rather than
   propagating out of `deploy()` and rejecting the whole call. Every stage after the one that threw is still
   simply never run.
+- **A generator's return value is treated as an untrusted `unknown` value, never the `ExternalArtifactGenerationResult`
+  its own TypeScript type declares.** `StandardExternalArtifactValidator` always runs against it first — before
+  anything reads `.issues`/`.artifacts` off it. If that fails (the value isn't even an object, `artifacts`/
+  `issues` aren't arrays, an artifact's own `relativePath`/`content` is the wrong type, ...), it's never exposed
+  as `result.generation` — that field simply stays `undefined`, the same as if generation had never been
+  attempted — and neither `target.artifactValidator`, the extra artifact validator, `target.diagnostic`, nor
+  `target.runtimeAdapter` is ever called.
 - **`target.diagnostic`/`target.runtimeAdapter` are never called once an earlier stage has failed** — whether
   that failure was a normally-reported issue or a caught exception.
 
@@ -75,7 +84,7 @@ const result = await new ExternalDeploymentService().deploy(target, modes);
 if (result.descriptorIssues.some((i) => i.severity === "error")) { /* nothing else ran at all */ }
 if (result.compatibilityIssues.some((i) => i.severity === "error")) { /* projection/generation never ran */ }
 if (result.projectionIssues.some((i) => i.severity === "error")) { /* target.artifactGenerator was never called */ }
-if (result.generation === undefined) { /* generation never ran (projection failed) */ }
+if (result.generation === undefined) { /* projection failed, or the generator's return value failed shape validation */ }
 if (result.artifactIssues.some((i) => i.severity === "error")) { /* target.runtimeAdapter was never called */ }
 result.diagnostic; // ExternalDeploymentDiagnosticReport | undefined
 result.delivery;   // ExternalDeploymentDeliveryResult | undefined
@@ -203,11 +212,16 @@ is error-severity.
 
 ## Artifact validation (`StandardExternalArtifactValidator`)
 
-Runs against `ExternalArtifactGenerationResult`, independent of which target produced it, and always runs via
-`ExternalDeploymentService` regardless of whether the target also declares its own `artifactValidator`. Never
-throws — even a `result` that doesn't remotely match the expected shape (not an object, `artifacts`/`issues` not
-arrays, an artifact entry that's `null` or has a non-string `relativePath`/non-string-non-`Buffer` `content`)
-comes back as a structured issue, never an exception:
+Runs first, immediately after `generate()` returns — against the generator's raw, still-`unknown` return value,
+before `ExternalDeploymentService` trusts it as an `ExternalArtifactGenerationResult` at all. Never throws — even
+a value that doesn't remotely match the expected shape (`undefined`, `null`, a bare string, not an object,
+`artifacts`/`issues` not arrays, an artifact entry that's `null` or has a non-string `relativePath`/non-string-
+non-`Buffer` `content`) comes back as a structured issue, never an exception. If it reports any error-severity
+issue, `deploy()` stops right there: `result.generation` stays `undefined` (the malformed value is never exposed
+as a typed "generation"), `result.artifactIssues` is exactly `StandardExternalArtifactValidator`'s own issues,
+and neither `target.artifactValidator`, the extra artifact validator, `target.diagnostic`, nor
+`target.runtimeAdapter` is ever called. Only once it passes cleanly does `target.artifactValidator`/the extra
+artifact validator run at all, against the now-trusted `generation`:
 
 | Code | Meaning |
 |---|---|
@@ -237,6 +251,11 @@ constructor parameter that replaces a built-in validator; a permissive extra val
 thrown exception from any validator — built-in or extra — is caught and converted into a single
 `external-deployment-{extra-,}{descriptor,compatibility,artifact}-validator-threw` error issue rather than
 propagating out of `deploy()`.
+
+The extra descriptor/compatibility validators always run alongside their built-in, whether or not the built-in
+itself found a problem — both contribute to the same combined issue list. The extra *artifact* validator is
+different: like `target.artifactValidator`, it only ever runs once `StandardExternalArtifactValidator` has
+already passed cleanly (see above) — there's nothing well-formed to hand it before that.
 
 ## The local example target
 

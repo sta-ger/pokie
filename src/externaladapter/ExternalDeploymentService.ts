@@ -48,6 +48,13 @@ function hasError(issues: readonly ValidationIssue[]): boolean {
 //     rather than being allowed to propagate out of `deploy()` itself. Every stage after the one that threw is
 //     still simply never run, the same as for a normally-reported error.
 //   - **`target.diagnostic`/`target.runtimeAdapter` are never called once an earlier stage has failed.**
+//   - **A generator's return value is treated as an untrusted `unknown` runtime value, not the
+//     ExternalArtifactGenerationResult its own TypeScript type declares.** StandardExternalArtifactValidator
+//     always runs against it first, before anything here ever reads `.issues`/`.artifacts` off it. If that
+//     structural check fails, the malformed value is never exposed as `generation` on the returned
+//     ExternalDeploymentResult (which stays `undefined`, the same as if generation had never been attempted),
+//     and target.artifactValidator/the extra artifact validator/target.diagnostic/target.runtimeAdapter are all
+//     skipped, exactly like any other stage failure.
 export class ExternalDeploymentService<T extends string | number = string> implements ExternalDeploymentServicing<T> {
     private readonly descriptorValidator: ExternalDeploymentTargetDescriptorValidating<T> = new ExternalDeploymentTargetDescriptorValidator<T>();
     private readonly compatibilityValidator: ExternalDeploymentCompatibilityValidating<T> = new ExternalDeploymentCompatibilityValidator<T>();
@@ -103,11 +110,16 @@ export class ExternalDeploymentService<T extends string | number = string> imple
             return {descriptorIssues, compatibilityIssues, projectionIssues, artifactIssues: []};
         }
 
-        let generation: ExternalArtifactGenerationResult;
+        // "rawGeneration" is deliberately typed `unknown`, never ExternalArtifactGenerationResult — a
+        // caller-supplied ExternalArtifactGenerator is a runtime value POKIE has no way to actually enforce the
+        // shape of, whatever its own TypeScript type declares. It stays unknown until
+        // StandardExternalArtifactValidator has confirmed it below; nothing here reads `.issues`/`.artifacts`
+        // off it before that.
+        let rawGeneration: unknown;
         try {
-            generation = target.artifactGenerator.generate(projected);
+            rawGeneration = target.artifactGenerator.generate(projected);
         } catch (error) {
-            generation = {
+            rawGeneration = {
                 artifacts: [],
                 issues: [
                     {
@@ -118,16 +130,32 @@ export class ExternalDeploymentService<T extends string | number = string> imple
                 ],
             };
         }
+
+        // Structural validation always runs first, against the still-untrusted raw value — see
+        // StandardExternalArtifactValidator's own doc comment for what "structural" covers (an object at all,
+        // "artifacts"/"issues" as arrays, every artifact's own relativePath/content well-typed, ...). A
+        // malformed result is reported here and *never* exposed as "generation" on the returned
+        // ExternalDeploymentResult — not even as a partially-trusted value — and neither target.artifactValidator,
+        // the extra artifact validator, target.diagnostic, nor target.runtimeAdapter is ever called against it.
+        const shapeIssues = this.safeIssues(
+            () => this.standardArtifactValidator.validate(rawGeneration as ExternalArtifactGenerationResult),
+            "external-deployment-standard-artifact-validator-threw",
+            "Standard artifact validation",
+        );
+        if (hasError(shapeIssues)) {
+            return {descriptorIssues, compatibilityIssues, projectionIssues, artifactIssues: shapeIssues};
+        }
+
+        // Safe from here on: StandardExternalArtifactValidator has already confirmed "artifacts"/"issues" are
+        // arrays and every artifact's own relativePath/content are well-typed, so this cast reflects a
+        // structural guarantee that's actually been checked, not merely assumed.
+        const generation = rawGeneration as ExternalArtifactGenerationResult;
         if (hasError(generation.issues)) {
-            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues: []};
+            return {descriptorIssues, compatibilityIssues, projectionIssues, generation, artifactIssues: shapeIssues};
         }
 
         const artifactIssues = [
-            ...this.safeIssues(
-                () => this.standardArtifactValidator.validate(generation),
-                "external-deployment-standard-artifact-validator-threw",
-                "Standard artifact validation",
-            ),
+            ...shapeIssues,
             ...this.safeIssues(
                 () => target.artifactValidator?.validate(generation) ?? [],
                 "external-deployment-target-artifact-validator-threw",

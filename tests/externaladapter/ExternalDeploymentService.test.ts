@@ -178,39 +178,76 @@ describe("ExternalDeploymentService", () => {
         expect(deliver).not.toHaveBeenCalled();
     });
 
-    describe("generation result shape hardening", () => {
-        it("reports a structural error and never delivers when the generator returns a malformed result", async () => {
-            const deliver = jest.fn(() => Promise.resolve({delivered: true}));
+    describe("generation result shape hardening — the generator's return value is treated as unknown", () => {
+        function malformedGenerationTarget(rawResult: unknown): {target: ExternalDeploymentTarget; spies: ReturnType<typeof malformedGenerationSpies>} {
+            const spies = malformedGenerationSpies();
             const target = baseTarget({
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                artifactGenerator: {generate: (() => ({artifacts: "not-an-array", issues: []})) as any},
-                runtimeAdapter: {deliver},
+                artifactGenerator: {generate: (() => rawResult) as any},
+                artifactValidator: {validate: spies.targetValidate},
+                diagnostic: {diagnose: spies.diagnose},
+                runtimeAdapter: {deliver: spies.deliver},
             });
+            return {target, spies};
+        }
 
-            const result = await new ExternalDeploymentService().deploy(target, compatibleModes());
+        function malformedGenerationSpies() {
+            return {
+                targetValidate: jest.fn(() => []),
+                diagnose: jest.fn(() => Promise.resolve({ok: true, checks: []})),
+                deliver: jest.fn(() => Promise.resolve({delivered: true})),
+            };
+        }
 
-            expect(result.artifactIssues.map((issue) => issue.code)).toContain("external-artifact-generation-result-invalid");
-            expect(deliver).not.toHaveBeenCalled();
+        async function expectStructuredRejectionFor(rawResult: unknown, expectedCode: string): Promise<void> {
+            const {target, spies} = malformedGenerationTarget(rawResult);
+            const extraArtifactValidate = jest.fn(() => []);
+            const service = new ExternalDeploymentService(undefined, undefined, {validate: extraArtifactValidate});
+
+            // deploy() never rejects, however malformed the generator's return value is — it always resolves to
+            // a structured ExternalDeploymentResult instead.
+            const resultPromise = service.deploy(target, compatibleModes());
+            await expect(resultPromise).resolves.toBeDefined();
+            const result = await resultPromise;
+
+            expect(result.artifactIssues.map((issue) => issue.code)).toContain(expectedCode);
+            expect(result.generation).toBeUndefined(); // never exposed as a typed "valid" generation
+            expect(spies.targetValidate).not.toHaveBeenCalled();
+            expect(extraArtifactValidate).not.toHaveBeenCalled();
+            expect(spies.diagnose).not.toHaveBeenCalled();
+            expect(spies.deliver).not.toHaveBeenCalled();
+        }
+
+        it("handles a generator that returns undefined", async () => {
+            await expectStructuredRejectionFor(undefined, "external-artifact-generation-result-invalid");
         });
 
-        it("reports a structural error and never delivers when an artifact's content is neither a string nor a Buffer", async () => {
-            const deliver = jest.fn(() => Promise.resolve({delivered: true}));
-            const target = baseTarget({
-                artifactGenerator: {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    generate: (() => ({artifacts: [{relativePath: "a.json", content: 12345}], issues: []})) as any,
-                },
-                runtimeAdapter: {deliver},
-            });
+        it("handles a generator that returns null", async () => {
+            await expectStructuredRejectionFor(null, "external-artifact-generation-result-invalid");
+        });
 
-            const result = await new ExternalDeploymentService().deploy(target, compatibleModes());
+        it("handles a generator result with issues missing entirely", async () => {
+            await expectStructuredRejectionFor({artifacts: []}, "external-artifact-generation-result-invalid");
+        });
 
-            expect(result.artifactIssues.map((issue) => issue.code)).toContain("external-artifact-content-type-invalid");
-            expect(deliver).not.toHaveBeenCalled();
+        it("handles a generator result whose issues is not an array", async () => {
+            await expectStructuredRejectionFor({artifacts: [], issues: "nope"}, "external-artifact-generation-result-invalid");
+        });
+
+        it("handles a generator result whose artifacts is not an array", async () => {
+            await expectStructuredRejectionFor({artifacts: "not-an-array", issues: []}, "external-artifact-generation-result-invalid");
+        });
+
+        it("handles a generator result with a non-string/non-Buffer artifact content", async () => {
+            await expectStructuredRejectionFor({artifacts: [{relativePath: "a.json", content: 12345}], issues: []}, "external-artifact-content-type-invalid");
+        });
+
+        it("handles a generator that returns a bare string instead of an object", async () => {
+            await expectStructuredRejectionFor("oops", "external-artifact-generation-result-invalid");
         });
     });
 
-    it("always runs StandardExternalArtifactValidator even when the target's own validator is permissive", async () => {
+    it("StandardExternalArtifactValidator's own findings are never hidden by a permissive target validator — which is never even called once Standard fails", async () => {
         const permissive = jest.fn(() => []); // always reports nothing, however bad the artifacts are
         const deliver = jest.fn(() => Promise.resolve({delivered: true}));
         const target = baseTarget({
@@ -229,30 +266,26 @@ describe("ExternalDeploymentService", () => {
 
         const result = await new ExternalDeploymentService().deploy(target, compatibleModes());
 
-        expect(permissive).toHaveBeenCalled();
         expect(result.artifactIssues.map((issue) => issue.code)).toContain("external-artifact-duplicate-path");
+        // target.artifactValidator only ever runs on artifacts Standard has already confirmed well-formed —
+        // Standard's own duplicate-path finding here means it's never reached, permissive or not.
+        expect(permissive).not.toHaveBeenCalled();
         expect(deliver).not.toHaveBeenCalled();
     });
 
-    it("combines StandardExternalArtifactValidator issues with the target's own additive issues, never one replacing the other", async () => {
+    it("combines the target's own additive issues with the extra artifact validator's, on top of a clean Standard pass, never one replacing the other", async () => {
         const target = baseTarget({
-            artifactGenerator: {
-                generate: () => ({
-                    artifacts: [
-                        {relativePath: "same.json", content: "{}"},
-                        {relativePath: "same.json", content: "{}"},
-                    ],
-                    issues: [],
-                }),
-            },
             artifactValidator: {validate: () => [{code: "vendor-specific-check-failed", severity: "error", message: "vendor rule violated"}]},
         });
+        const service = new ExternalDeploymentService(undefined, undefined, {
+            validate: () => [{code: "extra-vendor-check-failed", severity: "error", message: "extra vendor rule violated"}],
+        });
 
-        const result = await new ExternalDeploymentService().deploy(target, compatibleModes());
+        const result = await service.deploy(target, compatibleModes());
         const codes = result.artifactIssues.map((issue) => issue.code);
 
-        expect(codes).toContain("external-artifact-duplicate-path");
         expect(codes).toContain("vendor-specific-check-failed");
+        expect(codes).toContain("extra-vendor-check-failed");
     });
 
     it("converts a throwing target.artifactValidator into an error diagnostic and never delivers", async () => {
@@ -299,7 +332,7 @@ describe("ExternalDeploymentService", () => {
             expect(deliver).not.toHaveBeenCalled();
         });
 
-        it("still reports malformed artifacts even when the extra artifact validator is permissive", async () => {
+        it("still reports a Standard-level artifact problem even with a permissive extra validator configured — which is never reached at all", async () => {
             const permissiveExtra = {validate: jest.fn(() => [])};
             const deliver = jest.fn(() => Promise.resolve({delivered: true}));
             const target = baseTarget({
@@ -318,8 +351,10 @@ describe("ExternalDeploymentService", () => {
 
             const result = await service.deploy(target, compatibleModes());
 
-            expect(permissiveExtra.validate).toHaveBeenCalled();
             expect(result.artifactIssues.map((issue) => issue.code)).toContain("external-artifact-duplicate-path");
+            // The extra validator has no way to hide this — it isn't even called, since it only ever runs on
+            // artifacts Standard has already confirmed well-formed.
+            expect(permissiveExtra.validate).not.toHaveBeenCalled();
             expect(deliver).not.toHaveBeenCalled();
         });
 
