@@ -27,11 +27,13 @@ function createProjectFetch() {
 }
 
 async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-    // Typing alone doesn't dirty the blueprint (the field is just local uncommitted input state until
-    // "Add symbol" actually mutates the blueprint) -- same setup HomePage.test.tsx's own dirty-confirm
-    // test uses. [0] is always the guided Design & Build tab's own instance -- Advanced Tools' raw
-    // Blueprint Editor is permanently mounted too (tabs are hidden via CSS, never unmounted) and comes
-    // second in the DOM.
+    // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first. Typing
+    // alone doesn't dirty the blueprint (the field is just local uncommitted input state until "Add
+    // symbol" actually mutates the blueprint) -- same setup HomePage.test.tsx's own dirty-confirm test
+    // uses. [0] is always the guided Design & Build tab's own instance -- Advanced Tools' raw Blueprint
+    // Editor is permanently mounted too (tabs are hidden via CSS, never unmounted) and comes second in
+    // the DOM.
+    await user.click(screen.getByRole("tab", {name: "Symbols"}));
     await user.type(screen.getAllByLabelText("New symbol id")[0], "wild-draft");
     await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
 }

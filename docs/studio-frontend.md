@@ -34,7 +34,26 @@ tabs never loses in-progress work):
   driven by the panel's own existing local validation state. JSON mode and Load/Save-by-path are tucked
   behind a "Show advanced options" disclosure — Build works directly off the in-memory blueprint, so neither
   is required for the guided flow. A successful build's "Open in Studio" button (unchanged) is the bridge
-  into the Project Dashboard. The blueprint is dirty-tracked (`BlueprintEditorPage`'s `onDirtyChange`,
+  into the Project Dashboard.
+
+  The "Configure" step's own fields are grouped into 6 named sections — Game basics, Layout, Symbols,
+  Reels, Paytable, Bets — via `components/blueprintEditor/SectionedFormEditor.tsx`, a Mantine `Tabs`
+  (`keepMounted keepMountedMode="display-none"`, so switching sections never loses an in-progress edit,
+  and gives arrow-key navigation between sections for free) wrapping the *same* field components the
+  editor always used (`MetadataFieldset`, `SymbolsTable`, `PaytableEditor`, ...) — this only reorganizes
+  existing UI, it doesn't touch `GameBlueprint`, the validate/build API calls, or the server-side
+  `GameBlueprintValidator`. `domain/interpret/BlueprintSections.ts` classifies the single flat
+  `ValidationIssue[]` the existing `/api/home/blueprints/validate` call already returns by `code` prefix
+  (a *display* categorization over an already-computed result, not a new validation layer — issue codes
+  carry no structured field/path, so this is section-granularity, not per-field) into a per-section
+  `StatusBadge` (error count / warning count / a green check once validated clean) shown on each tab, plus
+  a filtered `IssueList` inline in that section's own panel. `BlueprintValidationPanel` at the bottom is
+  unchanged and still the one full, unfiltered summary. Reels/rows moved out of `MetadataFieldset` into a
+  new `LayoutFieldset` (Game basics keeps only the manifest fields) — the raw/non-guided editor (Advanced
+  Tools' own instance) renders both flat, unchanged, with `LayoutFieldset` simply added alongside
+  `MetadataFieldset` in its existing field sequence so it doesn't lose reels/rows editing.
+
+  The blueprint is dirty-tracked (`BlueprintEditorPage`'s `onDirtyChange`,
   cleared on a fresh New/Load or a successful Save/Build) and guarded by one centralized mechanism,
   `hooks/useDesignNavigationGuard.ts`, used once in `HomePage`, which handles two distinct kinds of exit:
   - Transitions the router already knows about *before* they commit — browser Back/Forward and any in-app
@@ -118,7 +137,8 @@ cli/studio-client/
     routes.tsx
     api/                 # apiClient.ts, types.ts -- ported ~verbatim from the pre-React app
     domain/               # blueprintEditorState.ts, blueprintFormOps.ts, deploymentRunTracker.ts,
-                           # errorMessage.ts, formatTimestamp.ts, asStringList.ts, interpret/*.ts --
+                           # errorMessage.ts, formatTimestamp.ts, asStringList.ts, interpret/*.ts
+                           # (including BlueprintSections.ts, the Design & Build section classifier) --
                            # all pure, framework-agnostic TypeScript, unit-tested independently of React
     context/StudioApiProvider.tsx   # supplies the FetchLike apiClient functions expect
     context/DesignNavigationGuardContext.tsx   # threads useDesignNavigationGuard's GuardedAction to
@@ -131,14 +151,17 @@ cli/studio-client/
       layout/             # AppShellLayout (shell + optional breadcrumbs), NavTabs (supports an optional
                            # `section` grouping label per item)
       common/             # LoadingState/EmptyState/ErrorState/SuccessResult, NextStepCallout (the shared
-                           # "here's what to do next" affordance), IssueList/FileList,
+                           # "here's what to do next" affordance), IssueList/FileList, StatusBadge (the
+                           # per-section error/warning/success indicator on Design & Build's tabs),
                            # RowActions/QuickActions/PageSection, BufferedTextInput/BufferedNumberInput,
                            # SimulationReportDisplay, ScreenTable, BuildPreviewDisplay/BuildResultDisplay
       home/               # HomePage (Design & Build / Open Project / Advanced Tools),
                            # Recent/Create/Init/Build/Open panels (composed into the tabs above)
       blueprintEditor/    # BlueprintEditorPage (plain, or `guided` for Home's Design & Build tab),
-                           # Metadata/Symbols/Bets/Paylines/Paytable editors, the Reel Strip Modeler
-                           # (ReelStripGenerationEditor.tsx), Load/Save/Validate/Build panels
+                           # SectionedFormEditor (guided mode's 6-section layout, see UX/Information
+                           # architecture above), Metadata/Layout/Symbols/Bets/Paylines/Paytable editors,
+                           # the Reel Strip Modeler (ReelStripGenerationEditor.tsx), Load/Save/Validate/
+                           # Build panels
       project/            # ProjectDashboardPage (Overview/Validate/Simulate/Reports primary,
                            # Replay/Runtime/Deployment grouped as "Advanced") + the 7 tab components
 ```
@@ -222,7 +245,14 @@ Two Jest projects (`jest.config.mjs`):
   `tests/cli/studio-client/src/navigationGuardModal.test.tsx` covers the confirm modal's own dismissal
   behavior, shared by all three call sites: Escape and clicking outside don't close it, there's no close
   button (exactly the Leave/Stay pair), Stay releases a `guardedAction` caller's loading state and
-  double-submit guard, and a subsequent attempt after Stay completes normally. The data router builds
+  double-submit guard, and a subsequent attempt after Stay completes normally.
+  `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx` covers
+  Design & Build's sectioned layout: editing across sections (Game basics/Symbols/Bets) through to a
+  successful Validate → Build → Project Dashboard, an in-progress edit in one section surviving a switch
+  to another and back, a validation error surfacing as both a section's own badge/inline `IssueList` and
+  in the unchanged bottom summary, and arrow-key navigation between section tabs. The domain-level section
+  classifier itself is unit-tested independently in
+  `tests/cli/studio-client/src/domain/interpret/BlueprintSections.test.ts`. The data router builds
   Fetch API `Request` objects internally on every navigation even with zero loaders/actions defined, which
   jsdom doesn't provide — `tests/cli/studio-client/src/jestPolyfills.ts` polyfills `Request`/`Response`/
   `Headers`/`fetch` via `undici` (a devDependency; this is what Node's own built-in `fetch` is built on).

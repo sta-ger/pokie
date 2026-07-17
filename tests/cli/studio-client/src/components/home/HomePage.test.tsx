@@ -62,12 +62,19 @@ describe("HomePage", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        // Advanced Tools' raw Blueprint Editor is also permanently mounted, so [0] is Design & Build's.
+        // The guided editor's own fields are grouped into sections (SectionedFormEditor) -- Symbols is
+        // one of them. Advanced Tools' raw Blueprint Editor has no such tabs, so "Symbols" as a
+        // role="tab" unambiguously means the guided one; [0] on the label query below is still needed
+        // since the raw editor's own "New symbol id" field (untabbed) is also permanently mounted.
+        await user.click(screen.getByRole("tab", {name: "Symbols"}));
         await user.type(screen.getAllByLabelText("New symbol id")[0], "wild-draft");
 
         await user.click(screen.getByRole("button", {name: "Open Project"}));
         expect(await screen.findByText("No recent projects yet.")).toBeInTheDocument();
 
+        // SectionedFormEditor's own activeSection state isn't reset by this outer tab switch (it never
+        // unmounts, only its display toggles, same as every other Home tab body) -- Symbols is still the
+        // active section here, no need to click it again.
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
         expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft");
     });
@@ -99,7 +106,9 @@ describe("HomePage", () => {
 
         // Typing alone doesn't dirty the blueprint (the "New symbol id" field is just local uncommitted
         // input state until "Add symbol" actually mutates the blueprint) -- click it too so the editor is
-        // genuinely dirty.
+        // genuinely dirty. Symbols is one of SectionedFormEditor's own sections, so it needs its own tab
+        // click first.
+        await user.click(screen.getByRole("tab", {name: "Symbols"}));
         await user.type(screen.getAllByLabelText("New symbol id")[0], "wild-draft");
         await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
 

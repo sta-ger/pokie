@@ -21,10 +21,12 @@ import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
 import {BlueprintLoadSaveControls} from "./BlueprintLoadSaveControls";
 import {BlueprintValidationPanel} from "./BlueprintValidationPanel";
+import {LayoutFieldset} from "./LayoutFieldset";
 import {MetadataFieldset} from "./MetadataFieldset";
 import {PaylinesEditor} from "./PaylinesEditor";
 import {PaytableEditor} from "./PaytableEditor";
 import {ReelGenerationModeSelector} from "./ReelGenerationModeSelector";
+import {SectionedFormEditor} from "./SectionedFormEditor";
 import {SymbolsTable} from "./SymbolsTable";
 
 type BlueprintMode = "form" | "json";
@@ -203,6 +205,27 @@ export function BlueprintEditorPage({
     const stepIndex = guidedStepIndex(validationView.status);
     const nextStep = describeGuidedNextStep(validationView.status);
 
+    const formModeContent = guided ? (
+        <SectionedFormEditor
+            key={editor.formGeneration}
+            blueprint={blueprint}
+            mutate={editor.mutate}
+            drafts={editor.drafts}
+            revision={revision}
+            validationView={validationView}
+        />
+    ) : (
+        <div key={editor.formGeneration}>
+            <MetadataFieldset blueprint={blueprint} mutate={editor.mutate} />
+            <LayoutFieldset blueprint={blueprint} mutate={editor.mutate} />
+            <SymbolsTable blueprint={blueprint} mutate={editor.mutate} />
+            <BetsList blueprint={blueprint} mutate={editor.mutate} />
+            <PaylinesEditor blueprint={blueprint} mutate={editor.mutate} />
+            <PaytableEditor blueprint={blueprint} mutate={editor.mutate} />
+            <ReelGenerationModeSelector blueprint={blueprint} mutate={editor.mutate} drafts={editor.drafts} revision={revision} />
+        </div>
+    );
+
     return (
         <div>
             {guided && (
@@ -255,14 +278,7 @@ export function BlueprintEditorPage({
             </Collapse>
 
             {mode === "form" ? (
-                <div key={editor.formGeneration}>
-                    <MetadataFieldset blueprint={blueprint} mutate={editor.mutate} />
-                    <SymbolsTable blueprint={blueprint} mutate={editor.mutate} />
-                    <BetsList blueprint={blueprint} mutate={editor.mutate} />
-                    <PaylinesEditor blueprint={blueprint} mutate={editor.mutate} />
-                    <PaytableEditor blueprint={blueprint} mutate={editor.mutate} />
-                    <ReelGenerationModeSelector blueprint={blueprint} mutate={editor.mutate} drafts={editor.drafts} revision={revision} />
-                </div>
+                formModeContent
             ) : (
                 <BlueprintJsonPanel jsonText={editor.state.jsonText} jsonError={editor.state.jsonError} onApply={editor.applyJson} />
             )}

@@ -12,7 +12,9 @@ import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 const CONFIRM_TEXT = "You have unsaved changes in Design & Build. Leave and lose them?";
 
 async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-    // Typing alone doesn't dirty the blueprint -- "Add symbol" actually mutates it.
+    // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first. Typing
+    // alone doesn't dirty the blueprint -- "Add symbol" actually mutates it.
+    await user.click(screen.getByRole("tab", {name: "Symbols"}));
     await user.type(screen.getAllByLabelText("New symbol id")[0], "wild-draft");
     await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
 }

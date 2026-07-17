@@ -1,6 +1,5 @@
-import {NumberInput, SimpleGrid, TextInput} from "@mantine/core";
+import {SimpleGrid, TextInput} from "@mantine/core";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
-import {resizePaylinesToReelCount, resizeReelStripGenerationToReelCount, resizeReelStripsToReelCount} from "../../domain/blueprintFormOps";
 import {PageSection} from "../common/PageSection";
 
 function toRecordCopy(value: unknown): Record<string, unknown> {
@@ -9,7 +8,18 @@ function toRecordCopy(value: unknown): Record<string, unknown> {
 
 type ManifestField = "id" | "name" | "version" | "description" | "author";
 
-export function MetadataFieldset({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
+// `legend` defaults to "Metadata" (the raw/non-guided editor's own, unchanged label) -- the guided
+// Design & Build editor's "Game basics" section overrides it, so this component's own default behavior
+// stays exactly what it was before reels/rows moved out to LayoutFieldset.
+export function MetadataFieldset({
+    blueprint,
+    mutate,
+    legend = "Metadata",
+}: {
+    blueprint: Record<string, unknown>;
+    mutate: BlueprintMutate;
+    legend?: string;
+}) {
     const manifest = toRecordCopy(blueprint.manifest);
     const readManifest = (field: ManifestField): string => (typeof manifest[field] === "string" ? (manifest[field] as string) : "");
 
@@ -25,11 +35,8 @@ export function MetadataFieldset({blueprint, mutate}: {blueprint: Record<string,
         });
     };
 
-    const reels = typeof blueprint.reels === "number" ? blueprint.reels : undefined;
-    const rows = typeof blueprint.rows === "number" ? blueprint.rows : undefined;
-
     return (
-        <PageSection legend="Metadata">
+        <PageSection legend={legend}>
             <SimpleGrid cols={{base: 1, sm: 2}} spacing="sm">
                 <TextInput label="Game id" defaultValue={readManifest("id")} onBlur={(event) => setManifestField("id", event.currentTarget.value)} />
                 <TextInput label="Game name" defaultValue={readManifest("name")} onBlur={(event) => setManifestField("name", event.currentTarget.value)} />
@@ -43,39 +50,6 @@ export function MetadataFieldset({blueprint, mutate}: {blueprint: Record<string,
                     label="Author (optional)"
                     defaultValue={readManifest("author")}
                     onBlur={(event) => setManifestField("author", event.currentTarget.value)}
-                />
-                <NumberInput
-                    label="Reels"
-                    min={1}
-                    step={1}
-                    defaultValue={reels}
-                    onBlur={(event) => {
-                        const value = Number(event.currentTarget.value);
-                        if (!Number.isFinite(value)) {
-                            return;
-                        }
-                        mutate((b) => {
-                            b.reels = value;
-                            resizePaylinesToReelCount(b);
-                            resizeReelStripsToReelCount(b);
-                            resizeReelStripGenerationToReelCount(b);
-                        });
-                    }}
-                />
-                <NumberInput
-                    label="Rows"
-                    min={1}
-                    step={1}
-                    defaultValue={rows}
-                    onBlur={(event) => {
-                        const value = Number(event.currentTarget.value);
-                        if (!Number.isFinite(value)) {
-                            return;
-                        }
-                        mutate((b) => {
-                            b.rows = value;
-                        });
-                    }}
                 />
             </SimpleGrid>
         </PageSection>

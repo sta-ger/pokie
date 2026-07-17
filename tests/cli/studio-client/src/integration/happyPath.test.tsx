@@ -191,7 +191,11 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         // 2. Configure the game model -- add a symbol. HomePage keeps every tab's content mounted (so
         // switching tabs never loses a draft), so the Advanced Tools tab's own raw Blueprint Editor
         // instance is also in the DOM here -- [0] is always the Design & Build tab's own, since it's the
-        // first of the three tab bodies in HomePage's markup.
+        // first of the three tab bodies in HomePage's markup. The guided editor's own fields are further
+        // split into named sections (SectionedFormEditor) -- Symbols is one of them, so it needs its own
+        // tab click first; the raw Advanced Tools editor has no such tabs, so "Symbols" as a role="tab"
+        // unambiguously means the guided one.
+        await user.click(screen.getByRole("tab", {name: "Symbols"}));
         await user.type(screen.getAllByLabelText("New symbol id")[0], "wild");
         await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
 
