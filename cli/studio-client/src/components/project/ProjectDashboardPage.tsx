@@ -468,6 +468,7 @@ export function ProjectDashboardPage() {
         refreshRecentSpins();
         runtime.resetForProjectSwitch();
         runtime.refresh();
+        deployment.resetForProjectSwitch();
         deployment.refreshTargets();
         // Deliberately keyed only on projectKey -- these refreshers should run once per newly-loaded
         // project, not every time one of their own (stable, useCallback-memoized) references changes.
@@ -663,6 +664,12 @@ export function ProjectDashboardPage() {
                     )}
                     {activeTab === "deployment" && (
                         <DeploymentTab
+                            // Forces a full remount on a genuine project switch -- same reasoning as
+                            // RuntimeTab's own key above: DeploymentTab owns local stepper state
+                            // (activeStep/pendingAdvanceStepRef) that deployment.resetForProjectSwitch()
+                            // itself can't reach (it only resets the page-level hook's own state), and
+                            // ProjectDashboardPage deliberately never remounts itself on a project switch.
+                            key={projectKey ?? "no-project"}
                             targetsView={deployment.targetsView}
                             targetsError={deployment.targetsError}
                             onRefreshTargets={deployment.refreshTargets}

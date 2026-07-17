@@ -45,6 +45,21 @@ export function useDeploymentManager() {
         setRunLoading(trackerRef.current.isRunInFlight());
     }, []);
 
+    // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
+    // never show a trace of the previous one's target selection, modes, or run result, same reasoning as
+    // useRuntimeManager's own resetForProjectSwitch(). Reuses invalidate() for the tracker-revision-bump/
+    // run-result-clearing part (a run still in flight from before the switch becomes stale and is safely
+    // ignored once it resolves, exactly like any other invalidation -- there is nothing to cancel over
+    // plain fetch), and additionally clears the target/modes/targets-list state invalidate() alone never
+    // touches, since those are select-target/configure inputs, not run outputs.
+    const resetForProjectSwitch = useCallback(() => {
+        invalidate();
+        setSelectedTarget(undefined);
+        setModes([{modeName: "", libraryPath: ""}]);
+        setTargetsView({status: "empty"});
+        setTargetsError(undefined);
+    }, [invalidate]);
+
     const selectTarget = useCallback(
         (target: StudioDeploymentTargetSummary) => {
             setSelectedTarget(target);
@@ -125,5 +140,6 @@ export function useDeploymentManager() {
         removeMode,
         run,
         selectArtifact: setSelectedArtifactPath,
+        resetForProjectSwitch,
     };
 }

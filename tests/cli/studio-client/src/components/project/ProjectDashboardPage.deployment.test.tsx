@@ -60,13 +60,15 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Deployment"}));
+        // Selecting a target auto-advances the stepper straight to Configure.
         await user.click(await screen.findByRole("button", {name: "Select"}));
+        await screen.findByRole("button", {name: "Check compatibility & preview"});
 
-        await user.click(screen.getByRole("button", {name: "Check & Preview"}));
+        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         // A second click while the first request is still in flight must be a silent no-op (the
         // DeploymentRunTracker refuses a concurrent beginRun() while inFlight is true), not a second
         // competing request.
-        await user.click(screen.getByRole("button", {name: "Check & Preview"}));
+        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         expect(runRequests).toHaveLength(1);
 
         // Editing a mode while the run is still in flight invalidates its token (bumping the tracker's
@@ -75,17 +77,21 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         await user.type(screen.getByLabelText("Mode name"), "base");
         expect(runRequests).toHaveLength(1);
 
-        // The now-stale response arrives -- isCurrent(token) must reject it, so nothing renders.
+        // The now-stale response arrives -- isCurrent(token) must reject it, so nothing renders, and the
+        // stepper never advances away from Configure (the pending advance-to-Check-compatibility step is
+        // only consumed by a genuinely new, non-stale runResult -- see DeploymentTab's own doc comment).
         runRequests[0].resolve(stageResult("first"));
         await waitFor(() => {
             expect(screen.queryByText("first.json")).not.toBeInTheDocument();
-            expect(screen.getByText("No deployment has been run yet.")).toBeInTheDocument();
         });
+        expect(screen.getByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
 
-        // A fresh run started *after* the stale one resolved works normally.
-        await user.click(screen.getByRole("button", {name: "Check & Preview"}));
+        // A fresh run started *after* the stale one resolved works normally, auto-advancing to
+        // Check-compatibility once it lands.
+        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         await waitFor(() => expect(runRequests).toHaveLength(2));
         runRequests[1].resolve(stageResult("second"));
+        await user.click(await screen.findByRole("button", {name: "Continue to preview artifacts"}));
         await waitFor(() => expect(screen.getAllByText("second.json").length).toBeGreaterThan(0));
     });
 });
