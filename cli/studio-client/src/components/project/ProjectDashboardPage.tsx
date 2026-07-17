@@ -633,10 +633,19 @@ export function ProjectDashboardPage() {
                     )}
                     {activeTab === "runtime" && (
                         <RuntimeTab
+                            // Forces a full remount on a genuine project switch -- RuntimeTab stays
+                            // mounted across ProjectDashboardPage's own project-switch effect otherwise
+                            // (the page is deliberately designed not to remount itself, see its own doc
+                            // comment), which would leave activeStep/pendingAdvanceStepRef/manual spin
+                            // overrides from the previous project's session dangling. A key change is
+                            // React's own "reset every bit of local state" primitive -- simpler and more
+                            // complete than enumerating each piece of local state by hand.
+                            key={projectKey ?? "no-project"}
                             state={runtime.state}
                             running={runtime.running}
                             session={runtime.session}
                             sessionId={runtime.sessionId}
+                            lastSpin={runtime.lastSpin}
                             onRefresh={runtime.refresh}
                             onStart={runtime.start}
                             onStop={runtime.stop}

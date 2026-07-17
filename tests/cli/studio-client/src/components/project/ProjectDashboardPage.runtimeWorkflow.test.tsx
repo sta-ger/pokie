@@ -345,23 +345,158 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         expect(screen.getByText("stopped")).toBeInTheDocument();
     }, 45000);
 
-    it("navigates to Replay & Debug with Session Spin preselected, showing the round there", async () => {
+    it("navigates to Replay & Debug and auto-selects the exact round among several recent spins, landing straight on Inspect", async () => {
         const user = userEvent.setup();
+        let capturedRequestId: string | undefined;
+        // Several *other* recent spins already on record -- two for a different session, one for this
+        // same session but a different (older, decoy) requestId -- the handoff must pick out exactly the
+        // one just played, never any of these.
+        const decoys: StudioRuntimeSessionView[] = [
+            sessionFor({sessionId: "sess-other", credits: 50, win: 999, debug: {stateAfter: {}, requestId: "decoy-request-other-1"}}),
+            sessionFor({sessionId: "sess-other", credits: 40, win: 888, debug: {stateAfter: {}, requestId: "decoy-request-other-2"}}),
+            sessionFor({sessionId: "sess-1", credits: 700, win: 777, debug: {stateAfter: {}, requestId: "decoy-request-sess-1-older"}}),
+        ];
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
             "/api/project/runtime/spins": () => ({
                 ok: true,
                 status: 200,
-                body: [sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: "req-abc"}})],
+                body:
+                    capturedRequestId === undefined
+                        ? decoys
+                        : [sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: capturedRequestId}}), ...decoys],
             }),
             "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
             "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
-            "/api/project/runtime/sessions/sess-1/spins": () => ({
+            "/api/project/runtime/sessions/sess-1/spins": (call: FakeCall) => {
+                const body = JSON.parse(call.init?.body ?? "{}") as {requestId?: string};
+                capturedRequestId = body.requestId;
+                return {ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        // Fix 2: round history refreshes automatically after the spin, with no manual Refresh -- confirm
+        // the page's own recentSpins already carries this exact round (not just that the spin itself
+        // resolved) before relying on it for the handoff below.
+        await user.click(screen.getByRole("button", {name: stepperStep("Continue session", "Keep playing")}));
+        await waitFor(() => expect(screen.getByText(new RegExp(capturedRequestId as string))).toBeInTheDocument());
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
+        await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
+
+        // Auto-selected straight to the Inspect step's own detail table -- no Find-step radio in the
+        // DOM at all, since there was nothing left to pick manually.
+        expect(await screen.findByText("sess-1")).toBeInTheDocument();
+        expect(screen.getByText(capturedRequestId as string)).toBeInTheDocument();
+        expect(screen.queryByRole("radio", {name: "Session Spin"})).not.toBeInTheDocument();
+    }, 45000);
+
+    it("shows round history in Continue session without a manual Refresh click", async () => {
+        const user = userEvent.setup();
+        let capturedRequestId: string | undefined;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})},
+                body: capturedRequestId === undefined ? [] : [sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: capturedRequestId}})],
             }),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": (call: FakeCall) => {
+                const body = JSON.parse(call.init?.body ?? "{}") as {requestId?: string};
+                capturedRequestId = body.requestId;
+                return {ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        // Navigate straight to "Continue session" -- never touching its own "Refresh" button -- and the
+        // just-played round must already be there (Fix 2: the spin's own settle effect refreshes this
+        // list automatically).
+        await user.click(screen.getByRole("button", {name: stepperStep("Continue session", "Keep playing")}));
+        await waitFor(() => expect(screen.queryByText("No rounds played yet this session.")).not.toBeInTheDocument());
+        expect(screen.getByText(/credits 1005\.00, win 15\.00/)).toBeInTheDocument();
+    }, 45000);
+
+    it("Stop clears round history so old spins are no longer shown", async () => {
+        const user = userEvent.setup();
+        let stopped = false;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({
+                ok: true,
+                status: 200,
+                body: stopped ? [] : [sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: "req-before-stop"}})],
+            }),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/stop": () => {
+                stopped = true;
+                return {ok: true, status: 200, body: {status: "stopped"}};
+            },
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        // Confirm the old round is on record (via the "Restore existing" recent-sessions list, since the
+        // Stepper itself resets to step 0 once the session is torn down by Stop) before stopping.
+        await user.click(screen.getByRole("button", {name: stepperStep("Create or restore session", "Start playing")}));
+        await user.click(screen.getByRole("radio", {name: "Restore existing"}));
+        expect(await screen.findByText("sess-1")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Stop"}));
+        await user.click(await screen.findByRole("button", {name: "Confirm"}));
+        await waitFor(() => expect(screen.getByText("stopped")).toBeInTheDocument());
+
+        // Start it back up (step 0 only shows the session picker while `running`) and land back on
+        // "Restore existing" -- the old sess-1 entry must be gone now that the frontend's cached round
+        // history caught up to the server's own teardown, instead of still listing a session from the
+        // runtime instance that no longer exists.
+        await startRuntime(user);
+        await user.click(screen.getByRole("radio", {name: "Restore existing"}));
+        await waitFor(() => expect(screen.queryByText("sess-1")).not.toBeInTheDocument());
+        expect(screen.getByText("No recent sessions yet in this Studio session.")).toBeInTheDocument();
+    }, 45000);
+
+    it("switching sessions clears the last spin so Retry/Debug can't resend a stale requestId", async () => {
+        const user = userEvent.setup();
+        let createCallCount = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => {
+                createCallCount += 1;
+                return {ok: true, status: 201, body: {status: "ok", session: sessionFor({sessionId: createCallCount === 1 ? "sess-1" : "sess-2"})}};
+            },
+            "/api/project/runtime/sessions/sess-1/spins": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -373,10 +508,61 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
 
         await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
-        await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
+        expect(screen.getByRole("button", {name: "Retry last request (same request id)"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Debug this round in Replay & Debug"})).toBeEnabled();
 
-        await screen.findByRole("radio", {name: "Session Spin"});
-        expect(screen.getByRole("radio", {name: "Session Spin"})).toBeChecked();
-        expect(await screen.findByText(/session sess-1/)).toBeInTheDocument();
+        // Switch to a brand new session (sess-2) -- Fix 3's requirement: the previous session's lastSpin
+        // must never carry over and become retriable/debuggable against this new session.
+        await user.click(screen.getByRole("button", {name: stepperStep("Create or restore session", "Start playing")}));
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await screen.findByRole("button", {name: "Spin"});
+        expect(screen.getByText(/Session sess-2/)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
+        expect(screen.getByRole("button", {name: "Retry last request (same request id)"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Debug this round in Replay & Debug"})).toBeDisabled();
+    }, 45000);
+
+    it("switching projects clears the last spin so Retry/Debug can't resend a stale requestId from the old project", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl: fetchImplA} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}}),
+        });
+
+        const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        first.unmount();
+
+        const {fetchImpl: fetchImplB} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/b", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+        });
+        renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "B"});
+        await user.click(screen.getByRole("button", {name: "Runtime"}));
+        await screen.findByRole("button", {name: "Start"});
+
+        // A brand new project's Runtime tab (a full remount, see ProjectDashboardPage's key={projectKey})
+        // must show no trace of the previous project's session -- Retry/Debug are disabled since there is
+        // neither a reachable session nor a lastSpin carried over.
+        await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
+        expect(screen.getByRole("button", {name: "Retry last request (same request id)"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Debug this round in Replay & Debug"})).toBeDisabled();
+        expect(screen.queryByText(/Session sess-1/)).not.toBeInTheDocument();
     }, 45000);
 });

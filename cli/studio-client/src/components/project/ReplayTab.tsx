@@ -98,11 +98,15 @@ export function ReplayTab({
     const confirm = useConfirm();
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
     // The landing side of the Runtime tab's "Debug this round in Replay & Debug" link
-    // (`navigate("/project/replay", {state: {findMethod: "spin"}})`) -- read once, at mount (this
-    // component remounts fresh on every tab switch, same as every other tab -- see
+    // (`navigate("/project/replay", {state: {findMethod: "spin", sessionId, requestId}})`) -- read once,
+    // at mount (this component remounts fresh on every tab switch, same as every other tab -- see
     // ProjectDashboardPage's own doc comment), so it only ever affects the landing right after that
-    // navigation, never a later in-page interaction.
-    const initialFindMethod = (useLocation().state as {findMethod?: FindMethod} | null)?.findMethod ?? "seedRound";
+    // navigation, never a later in-page interaction. `sessionId`/`requestId` (when both present) identify
+    // one *specific* round among possibly several recent spins -- see the auto-select effect below,
+    // which is what actually picks it out of `recentSpins` once that list is available.
+    const locationState = useLocation().state as {findMethod?: FindMethod; sessionId?: string; requestId?: string} | null;
+    const initialFindMethod = locationState?.findMethod ?? "seedRound";
+    const autoSelectSpin = locationState?.sessionId !== undefined && locationState?.requestId !== undefined ? {sessionId: locationState.sessionId, requestId: locationState.requestId} : undefined;
 
     const [activeStep, setActiveStep] = useState(0);
     const [findMethod, setFindMethod] = useState<FindMethod>(initialFindMethod);
@@ -129,6 +133,27 @@ export function ReplayTab({
         }
         prevStatusRef.current = status;
     }, [progress?.status]);
+
+    // The Runtime tab's "Debug this round" handoff names one exact (sessionId, requestId) pair --
+    // matched against the *same* requestId every entry's own `debug.requestId` already carries (only
+    // present when the runtime was started with debug mode on, same as everywhere else this field is
+    // read). Re-checked on every `recentSpins` change rather than only once, so landing here just before
+    // the page's own refresh (triggered by the spin that produced this round) lands is still recovered
+    // once that refresh's data arrives -- and it stops checking for good once a match is found, so it
+    // never overrides a selection the user made by hand afterward.
+    useEffect(() => {
+        if (!autoSelectSpin || selectedSpin !== undefined || recentSpins.status !== "loaded") {
+            return;
+        }
+        const match = recentSpins.entries.find(
+            (entry) => entry.sessionId === autoSelectSpin.sessionId && entry.debug?.requestId === autoSelectSpin.requestId,
+        );
+        if (match) {
+            setSelectedSpin(match);
+            setActiveStep(3);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recentSpins]);
 
     function goToLoad(round: number, seed: string | undefined): void {
         setPending({round, seed});

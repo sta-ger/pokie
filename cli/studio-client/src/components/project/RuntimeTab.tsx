@@ -6,7 +6,7 @@ import {useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
 import type {StartRuntimeOptions} from "../../api/apiClient";
 import type {StudioRuntimeSessionView} from "../../api/types";
-import type {RuntimeHistoryEntry} from "../../hooks/useRuntimeManager";
+import type {RuntimeHistoryEntry, RuntimeLastSpin} from "../../hooks/useRuntimeManager";
 import {useConfirm} from "../../hooks/useConfirm";
 import {
     describeRuntimeScreen,
@@ -195,6 +195,7 @@ export function RuntimeTab({
     running,
     session,
     sessionId,
+    lastSpin,
     onRefresh,
     onStart,
     onStop,
@@ -212,6 +213,7 @@ export function RuntimeTab({
     running: boolean;
     session: Session;
     sessionId: string | undefined;
+    lastSpin: RuntimeLastSpin;
     onRefresh: () => void;
     onStart: (options: StartRuntimeOptions) => void;
     onStop: () => void;
@@ -244,7 +246,11 @@ export function RuntimeTab({
     // just kicked off a request, consumed once that request actually settles. Keeps the auto-advance
     // correct regardless of which of the three actions triggered it, and regardless of stale responses
     // (a discarded stale response never touches `session`, so this effect only ever fires for the most
-    // recent request -- see useRuntimeManager's own sessionRequestIdRef).
+    // recent request -- see useRuntimeManager's own sessionRequestIdRef). A settled *spin* (target step
+    // 2, the only step handleSpin/handleAdvancedSpin ever target) additionally refreshes round history
+    // automatically -- "Continue session"'s own list, and Replay & Debug's "Session Spin" list, both
+    // read the same GET /api/project/runtime/spins data, so a just-played round shows up in either
+    // without the user having to remember to click Refresh.
     const pendingAdvanceStepRef = useRef<number | undefined>(undefined);
     const prevSessionStatusRef = useRef<string | undefined>(undefined);
     useEffect(() => {
@@ -252,11 +258,67 @@ export function RuntimeTab({
         const wasLoading = prevSessionStatusRef.current === "loading";
         const nowSettled = status !== "loading" && status !== "idle";
         if (wasLoading && nowSettled && pendingAdvanceStepRef.current !== undefined) {
+            if (pendingAdvanceStepRef.current === 2 && status === "ok") {
+                onRefreshRecentSpins();
+            }
             setActiveStep(pendingAdvanceStepRef.current);
             pendingAdvanceStepRef.current = undefined;
         }
         prevSessionStatusRef.current = status;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session.status]);
+
+    // A session change -- a genuinely different session loaded, a fresh one created, or the runtime
+    // stopped/restarted (sessionId reset to undefined either way, see useRuntimeManager's own
+    // resetSession()) -- must never leave a manual spin override typed for the *previous* session lying
+    // around to silently apply to the next one. When the session is gone entirely, the Stepper itself no
+    // longer makes sense to leave parked on Play/Inspect/Continue (all of which already gate on
+    // sessionReachable and degrade to an EmptyState, but jumping back to step 0 -- and clearing whatever
+    // advance was still pending for the runtime instance that just went away -- is the honest reflection
+    // of "there's nothing to continue anymore").
+    const prevSessionIdRef = useRef<string | undefined>(sessionId);
+    useEffect(() => {
+        if (prevSessionIdRef.current === sessionId) {
+            return;
+        }
+        prevSessionIdRef.current = sessionId;
+        setManualRequestId("");
+        setManualExpectedVersion("");
+        if (sessionId === undefined) {
+            setActiveStep(0);
+            pendingAdvanceStepRef.current = undefined;
+        }
+    }, [sessionId]);
+
+    // Stop/Restart never observably passes `state.status` through "loading" for stop() specifically
+    // (see useRuntimeManager.stop()'s own implementation), so this can't reuse the session-settle
+    // pattern above -- instead handleStop()/handleRestart() below arm this ref right when the user
+    // triggers either action, and this effect fires the refresh once `state.status` next settles,
+    // regardless of what intermediate values it passed through. The server's own recentSpins ring
+    // buffer is already cleared on every teardown path (see StudioRuntimeManager.stopServerIfAny()); this
+    // is what makes the *frontend's* cached copy catch up to that, instead of continuing to show a
+    // previous runtime instance's rounds as if they still applied.
+    const pendingRuntimeSpinsRefreshRef = useRef(false);
+    useEffect(() => {
+        const settled = state.status === "stopped" || state.status === "running" || state.status === "failed" || state.status === "error";
+        if (pendingRuntimeSpinsRefreshRef.current && settled) {
+            pendingRuntimeSpinsRefreshRef.current = false;
+            onRefreshRecentSpins();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [state.status]);
+
+    function handleStop(): void {
+        confirm("Stop the running runtime server?", () => {
+            pendingRuntimeSpinsRefreshRef.current = true;
+            onStop();
+        });
+    }
+
+    function handleRestart(): void {
+        pendingRuntimeSpinsRefreshRef.current = true;
+        onRestart();
+    }
 
     function handleCreateSession(): void {
         pendingAdvanceStepRef.current = 1;
@@ -324,15 +386,10 @@ export function RuntimeTab({
                         <Button type="submit" disabled={running} loading={state.status === "loading"}>
                             Start
                         </Button>
-                        <Button
-                            color="red"
-                            variant="light"
-                            disabled={!running}
-                            onClick={() => confirm("Stop the running runtime server?", onStop)}
-                        >
+                        <Button color="red" variant="light" disabled={!running} onClick={handleStop}>
                             Stop
                         </Button>
-                        <Button variant="default" onClick={() => onRestart()} loading={state.status === "loading"}>
+                        <Button variant="default" onClick={handleRestart} loading={state.status === "loading"}>
                             Restart
                         </Button>
                         <Button variant="subtle" onClick={onRefresh}>
@@ -563,10 +620,16 @@ export function RuntimeTab({
             {activeStep === 4 && (
                 <div>
                     <QuickActions>
-                        <Button variant="default" disabled={!sessionReachable} onClick={onRepeatSpin}>
+                        <Button variant="default" disabled={!sessionReachable || lastSpin.requestId === undefined} onClick={onRepeatSpin}>
                             Retry last request (same request id)
                         </Button>
-                        <Button variant="default" onClick={() => navigate("/project/replay", {state: {findMethod: "spin"}})}>
+                        <Button
+                            variant="default"
+                            disabled={!sessionReachable || lastSpin.requestId === undefined}
+                            onClick={() =>
+                                navigate("/project/replay", {state: {findMethod: "spin", sessionId, requestId: lastSpin.requestId}})
+                            }
+                        >
                             Debug this round in Replay &amp; Debug
                         </Button>
                     </QuickActions>

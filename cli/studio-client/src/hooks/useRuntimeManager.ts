@@ -25,6 +25,7 @@ import {
 import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
 
 export type RuntimeHistoryEntry = {timestamp: string; action: string; summary: string};
+export type RuntimeLastSpin = {requestId?: string; expectedVersion?: number};
 
 const HISTORY_LIMIT = 20;
 
@@ -40,7 +41,7 @@ export function useRuntimeManager() {
     const [session, setSession] = useState<RuntimeSessionResultView | RuntimeSpinResultView>({status: "idle"});
     const [sessionId, setSessionId] = useState<string>();
     const [history, setHistory] = useState<RuntimeHistoryEntry[]>([]);
-    const [lastSpin, setLastSpin] = useState<{requestId?: string; expectedVersion?: number}>({});
+    const [lastSpin, setLastSpin] = useState<RuntimeLastSpin>({});
 
     // Monotonic request id guarding createSession/loadSession/spin against a stale response landing
     // after a newer one -- same requestId/isStale() pattern ProjectDashboardPage.tsx already uses for
@@ -69,9 +70,19 @@ export function useRuntimeManager() {
             .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
     }, [fetchImpl]);
 
+    // Called from stop()/restart() -- the runtime instance itself just changed (a new/no server), so any
+    // createSession/loadSession/spin call still in flight from *before* this ran is now against a
+    // session that no longer means anything. Bumping the request id here (not just in
+    // resetForProjectSwitch()) is what stops that stale response from landing afterward and silently
+    // repopulating sessionId/session with a session tied to the runtime instance that was just torn
+    // down -- a real gap the previous pass left unclosed. lastSpin is cleared for the same reason
+    // requestId/expectedVersion no longer refer to anything retriable once the session is gone (see
+    // repeatSpin's own doc comment).
     const resetSession = useCallback(() => {
+        sessionRequestIdRef.current++;
         setSessionId(undefined);
         setSession({status: "idle"});
+        setLastSpin({});
     }, []);
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
@@ -86,6 +97,7 @@ export function useRuntimeManager() {
         setSessionId(undefined);
         setSession({status: "idle"});
         setHistory([]);
+        setLastSpin({});
     }, []);
 
     const start = useCallback(
@@ -158,6 +170,11 @@ export function useRuntimeManager() {
                     const view = describeSessionResult(result);
                     setSession(view);
                     setSessionId(result.status === "ok" ? result.session.sessionId : undefined);
+                    // A freshly created session has no "last spin" of its own yet -- carrying over
+                    // whatever a *previous* session's last requestId/expectedVersion was would let
+                    // Retry silently resend it against this new session (see repeatSpin's own doc
+                    // comment for why that must never happen).
+                    setLastSpin({});
                     pushHistory("Create Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
                 })
                 .catch((error: unknown) => {
@@ -186,6 +203,10 @@ export function useRuntimeManager() {
                     const view = describeSessionResult(result);
                     setSession(view);
                     setSessionId(result.status === "ok" ? result.session.sessionId : undefined);
+                    // Same reasoning as createSession() above -- restoring a session (even the same id
+                    // again) starts this UI's own "last spin" tracking over, never carrying a previous
+                    // session's requestId/expectedVersion into it.
+                    setLastSpin({});
                     pushHistory("Load Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
                 })
                 .catch((error: unknown) => {
@@ -236,6 +257,7 @@ export function useRuntimeManager() {
         session,
         sessionId,
         history,
+        lastSpin,
         running: isRuntimeRunning(state),
         refresh,
         start,
