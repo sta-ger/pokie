@@ -1,4 +1,12 @@
-import {GamePackageInspecting, GamePackageInspector, loadPokieGame, PokieDevServerAddress, PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
+import {
+    GamePackageInspecting,
+    GamePackageInspector,
+    loadPokieGame,
+    PokieDevServerAddress,
+    PokieGamePackageValidating,
+    PokieGamePackageValidator,
+    RoundArtifactValidator,
+} from "pokie";
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
@@ -96,7 +104,7 @@ export class StudioServer implements StudioServerHandling {
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
-        this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame);
+        this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion);
         this.runtimeManager = options.runtimeManager ?? new StudioRuntimeManager(this.loadGame);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.toolHandlers = options.toolHandlers ?? [];
@@ -352,6 +360,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/project/replays/inspect-artifact") {
+            await this.handleInspectReplayArtifact(req, res);
+            return;
+        }
+
         const replayRoute = this.matchReplayRoute(url.pathname);
         if (replayRoute !== undefined && method === "GET") {
             if (replayRoute.download) {
@@ -368,6 +381,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/project/runtime") {
             this.handleGetRuntime(res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/runtime/spins") {
+            this.handleListRecentSpins(res);
             return;
         }
 
@@ -913,6 +931,43 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 202, result.job);
     }
 
+    // Validates a user-pasted ReplayDescriptor-shaped JSON (Replay & Debug's "Replay Artifact" find
+    // method) before the client attempts an actual reproduction via the existing POST
+    // /api/project/replays -- reuses validateReplayRequest as-is for the outer round/seed (the same
+    // check a real replay start already applies, so the two can never silently disagree on what counts
+    // as valid) and RoundArtifactValidator as-is for the optional nested `.artifact`, rather than any
+    // new validation logic. The nested artifact's own issues are reported as non-fatal
+    // `artifactWarnings` (not a 400) since round/seed alone are already enough to attempt a
+    // reproduction -- a slightly malformed artifact *detail* shouldn't block that.
+    private async handleInspectReplayArtifact(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        if (typeof body !== "object" || body === null) {
+            this.sendJson(res, 400, {error: "Request body must be a JSON object."});
+            return;
+        }
+
+        const record = body as Record<string, unknown>;
+        let validated;
+        try {
+            validated = validateReplayRequest({round: record.round, seed: record.seed} as ReplayRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const artifactWarnings =
+            record.artifact !== undefined
+                ? new RoundArtifactValidator().validate(record.artifact as unknown as Parameters<RoundArtifactValidator["validate"]>[0]).map((issue) => issue.message)
+                : [];
+
+        this.sendJson(res, 200, {round: validated.round, seed: validated.seed, artifactWarnings});
+    }
+
     private handleListReplays(res: ServerResponse): void {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -990,6 +1045,18 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, this.runtimeManager.getState());
+    }
+
+    // Replay & Debug's "Session Spin" find method -- an empty list (never started the runtime, or
+    // started without debug mode, or the runtime was since stopped/restarted/the project switched) is
+    // still a valid 200, same as StudioSimulationService.listReports()/StudioReplayExecutionService.
+    // listJobs() returning [] rather than erroring for "nothing yet".
+    private handleListRecentSpins(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, this.runtimeManager.listRecentSpins());
     }
 
     private async handleRuntimeStart(req: IncomingMessage, res: ServerResponse): Promise<void> {

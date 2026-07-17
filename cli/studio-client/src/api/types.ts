@@ -286,6 +286,65 @@ export type StudioSimulationReportListEntry = {
     hasWarnings: boolean;
 };
 
+// The server's copies of this whole RoundArtifact family live in "pokie" itself (src/artifact/*.ts) —
+// kept as their own client-side copies here, same convention as every other type in this file. Deeply
+// readonly to match the server's own guarantee (a RoundArtifact is deep-frozen at build time).
+export type RoundArtifactProvenance = {
+    readonly game: {id: string; name: string; version: string};
+    readonly pokieVersion: string;
+    readonly configHash?: string;
+};
+
+export type RoundArtifactMultiplierBreakdown = {
+    readonly source: string;
+    readonly positions: readonly (readonly number[])[];
+    readonly values: readonly number[];
+    readonly combinedMultiplier: number;
+};
+
+export type RoundArtifactWin = {
+    readonly type: string;
+    readonly id: string;
+    readonly symbolId: string | number;
+    readonly winAmount: number;
+    readonly winningPositions: readonly (readonly number[])[];
+    readonly multiplierBreakdown: readonly RoundArtifactMultiplierBreakdown[];
+    readonly metadata: Record<string, unknown>;
+};
+
+export type RoundArtifactFeatureEvent = {
+    readonly type: string;
+    readonly data?: Record<string, unknown>;
+};
+
+export type RoundStepArtifact = {
+    readonly index: number;
+    readonly screen: readonly (readonly (string | number)[])[];
+    readonly totalWin: number;
+    readonly wins: readonly RoundArtifactWin[];
+    readonly featureEvents?: readonly RoundArtifactFeatureEvent[];
+    readonly debug?: Record<string, unknown>;
+};
+
+export type RoundArtifact = {
+    readonly schemaVersion: number;
+    readonly roundId: string;
+    readonly provenance: RoundArtifactProvenance;
+    readonly betMode: string;
+    readonly stake: number;
+    readonly totalWin: number;
+    readonly payoutMultiplier: number;
+    readonly screen: readonly (readonly (string | number)[])[];
+    readonly steps: readonly RoundStepArtifact[];
+    readonly wins: readonly RoundArtifactWin[];
+    readonly featureEvents?: readonly RoundArtifactFeatureEvent[];
+    readonly debug?: Record<string, unknown>;
+};
+
+// PokieJsonRoundArtifactProjector's own output shape -- a RoundArtifact stamped with its own content
+// hash, what a completed replay's descriptor.artifact and a pasted "Replay Artifact" JSON both are.
+export type RoundArtifactJson = RoundArtifact & {readonly hash: string};
+
 // The server's copy of this same type lives in "pokie" itself (src/replay/ReplayDescriptor.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type ReplayDescriptor = {
@@ -297,6 +356,10 @@ export type ReplayDescriptor = {
     screen: unknown[][] | null;
     timestamp: number;
     durationMs: number;
+    // Only present for a replay run by Studio's own StudioReplayExecutionService against a video-slot
+    // game -- absent for anything predating this field or for a non-video-slot session (see
+    // StudioReplayExecutionService.buildArtifact()'s own doc comment).
+    artifact?: RoundArtifactJson;
 };
 
 export type StudioReplayStatus = "queued" | "running" | "completed" | "failed" | "cancelled";

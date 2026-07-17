@@ -2334,6 +2334,89 @@ describe("StudioServer", () => {
         });
     });
 
+    describe("Project Dashboard: POST /api/project/replays/inspect-artifact", () => {
+        const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+        async function openCrazyFruits(game: PokieGame): Promise<void> {
+            loadGame.mockResolvedValue(game);
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./crazy-fruits"});
+        }
+
+        const validProvenance: RoundArtifactProvenance = {game: manifest, pokieVersion: "1.0.0"};
+        const validArtifact: RoundArtifact = {
+            schemaVersion: 1,
+            roundId: "replay:demo:5",
+            provenance: validProvenance,
+            betMode: "base",
+            stake: 1,
+            totalWin: 0,
+            payoutMultiplier: 0,
+            screen: [["a"]],
+            steps: [{index: 0, screen: [["a"]], totalWin: 0, wins: []}],
+            wins: [],
+        };
+
+        it("returns 409 when there is no active project", async () => {
+            const {status, body} = await post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 5, seed: "demo"});
+
+            expect(status).toBe(409);
+            expect(body).toEqual({error: "No active project."});
+        });
+
+        it("validates the outer round/seed and returns no warnings for a well-formed nested artifact", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays/inspect-artifact`, {
+                round: 5,
+                seed: "demo",
+                artifact: validArtifact,
+            });
+
+            expect(status).toBe(200);
+            expect(body).toEqual({round: 5, seed: "demo", artifactWarnings: []});
+        });
+
+        it("accepts a body without a seed or a nested artifact", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 3});
+
+            expect(status).toBe(200);
+            expect(body).toEqual({round: 3, artifactWarnings: []});
+        });
+
+        it("rejects an invalid outer round with 400 (the malformed-artifact case for round/seed)", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 0, artifact: validArtifact});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: '"round" must be a positive integer.'});
+        });
+
+        it("rejects a request body that isn't a JSON object", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays/inspect-artifact`, "not-an-object");
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: "Request body must be a JSON object."});
+        });
+
+        it("returns 200 with non-empty artifactWarnings for a structurally invalid nested artifact (malformed artifact, non-fatal)", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+
+            const malformed = {...validArtifact, steps: "not-an-array"};
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 5, seed: "demo", artifact: malformed});
+
+            expect(status).toBe(200);
+            const parsed = body as {round: number; seed?: string; artifactWarnings: string[]};
+            expect(parsed.round).toBe(5);
+            expect(parsed.artifactWarnings.length).toBeGreaterThan(0);
+        });
+    });
+
     describe("Project Dashboard: Replay cancellation (controlled chunk pacing)", () => {
         let projectStudioRoot: string;
         let projectServer: StudioServer | undefined;
@@ -2679,6 +2762,41 @@ describe("StudioServer", () => {
             const notRunning = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {});
             expect(notRunning.status).toBe(409);
             expect((notRunning.body as {reason: string}).reason).toBe("not-running");
+        });
+
+        it("returns 409 'No active project' for GET /api/project/runtime/spins in Home mode", async () => {
+            runtimeServer = createRuntimeServer({mode: "home"});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            expect((await get(`${baseUrl}/api/project/runtime/spins`)).status).toBe(409);
+        });
+
+        it("lists recent spins most-recent-first, starting empty, and clears on project switch", async () => {
+            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            await post(`${baseUrl}/api/project/runtime/start`, {port: 0, debug: true});
+
+            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
+
+            const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-1"});
+            await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-2"});
+
+            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
+            expect(status).toBe(200);
+            const entries = body as Array<{sessionId: string; debug?: {requestId?: string}}>;
+            expect(entries).toHaveLength(2);
+            expect(entries[0].debug?.requestId).toBe("req-2");
+            expect(entries[1].debug?.requestId).toBe("req-1");
+
+            await post(`${baseUrl}/api/projects/close`);
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: fixtureRoot});
+
+            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
         });
 
         it("omits the debug bundle (but still reports sessionVersion) when the runtime was started without debug mode", async () => {

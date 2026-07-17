@@ -52,6 +52,8 @@ export type StudioRuntimeSpinResult =
 // instance, a WalletPort, or a raw session object — it only ever has the same plain JSON any client of
 // the real server would get back.
 export class StudioRuntimeManager {
+    private static readonly MAX_RECENT_SPINS = 20;
+
     private readonly loadGame: typeof loadPokieGame;
     private readonly createServer: (game: PokieGame, options: PokieDevServerOptions) => PokieDevServerHandling;
 
@@ -62,6 +64,13 @@ export class StudioRuntimeManager {
     private defaultSeed: string | number | undefined;
     private lastOptions: ValidatedStartRuntimeRequest | undefined;
     private fileSessionDirectory: string | undefined;
+    // Most-recent-first, bounded -- the game server itself keeps no round history at all (each spin
+    // overwrites the previous session state), so this is the only place "find a past spin by request id"
+    // can look. Studio's own bookkeeping only, same pattern StudioSimulationService/
+    // StudioReplayExecutionService already use for their own in-memory job repositories -- never touches
+    // core session/game logic. Cleared on every teardown path (see stopServerIfAny()) so a spin from a
+    // previous project (or a previous runtime start) never leaks into a later one.
+    private recentSpins: StudioRuntimeSessionView[] = [];
 
     constructor(
         loadGame: typeof loadPokieGame = loadPokieGame,
@@ -148,7 +157,26 @@ export class StudioRuntimeManager {
         if (this.state.status !== "running" || !this.sessionClient) {
             return {status: "not-running"};
         }
-        return this.translateSpinResult(await this.sessionClient.spin(sessionId, requestId, expectedVersion));
+        const result = this.translateSpinResult(await this.sessionClient.spin(sessionId, requestId, expectedVersion));
+        if (result.status === "ok") {
+            this.recordRecentSpin(result.session);
+        }
+        return result;
+    }
+
+    // Read-only snapshot, most-recent-first -- the Replay & Debug tab's "Session Spin" find method lists
+    // and looks up by requestId against this directly (a spin without debug mode on has no requestId at
+    // all, per StudioRuntimeSessionView's own doc comment, so it simply can't be found that way -- same
+    // as it not showing state before/after either).
+    public listRecentSpins(): StudioRuntimeSessionView[] {
+        return [...this.recentSpins];
+    }
+
+    private recordRecentSpin(session: StudioRuntimeSessionView): void {
+        this.recentSpins.unshift(session);
+        if (this.recentSpins.length > StudioRuntimeManager.MAX_RECENT_SPINS) {
+            this.recentSpins.length = StudioRuntimeManager.MAX_RECENT_SPINS;
+        }
     }
 
     private async startInternal(projectRoot: string, options: ValidatedStartRuntimeRequest): Promise<StudioRuntimeStartResult> {
@@ -207,6 +235,11 @@ export class StudioRuntimeManager {
         this.server = undefined;
         this.sessionClient = undefined;
         this.state = {status: "stopped"};
+        // Every teardown path (manual Stop, Restart, project switch, Studio shutdown) already funnels
+        // through here -- a stopped server's past spins are neither reachable nor meaningful to keep
+        // around (in-memory sessions are gone; even file-mode sessions have no server serving them), so
+        // this is the one place recentSpins needs clearing, not a separate per-caller responsibility.
+        this.recentSpins = [];
     }
 
     private async resetProjectScopedState(): Promise<void> {

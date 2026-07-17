@@ -376,6 +376,26 @@ export function buildReplayDownloadUrl(id: string): string {
     return `/api/project/replays/${encodeURIComponent(id)}/download`;
 }
 
+export type InspectReplayArtifactResult = {round: number; seed?: string; artifactWarnings: string[]};
+
+// Validates a pasted "Replay Artifact" JSON before attempting an actual reproduction (the Find/Load
+// steps of the Replay & Debug workflow) — reuses the exact same round/seed validation the real
+// POST /api/project/replays already applies (see StudioServer.handleInspectReplayArtifact), so this
+// can never accept something the actual replay start would then reject. Throws (the "invalid artifact"
+// state) for a malformed round/seed; a structurally invalid nested `artifact` is reported back as
+// non-fatal `artifactWarnings` instead, since round/seed alone are enough to attempt the reproduction.
+export async function inspectReplayArtifact(fetchImpl: FetchLike, descriptor: unknown): Promise<InspectReplayArtifactResult> {
+    const response = await fetchImpl("/api/project/replays/inspect-artifact", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(descriptor),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to inspect replay artifact"));
+    }
+    return (await response.json()) as InspectReplayArtifactResult;
+}
+
 async function extractErrorMessage(
     response: {status: number; json(): Promise<unknown>},
     fallback: string,
@@ -394,6 +414,18 @@ export async function getRuntimeState(fetchImpl: FetchLike): Promise<StudioRunti
         throw new Error(await extractErrorMessage(response, "Failed to fetch runtime status"));
     }
     return (await response.json()) as StudioRuntimeStateView;
+}
+
+// Replay & Debug's "Session Spin" find method — Studio's own bounded (last 20) in-memory record of
+// recent spins (see StudioRuntimeManager.listRecentSpins()), most-recent-first. Always a 200 with
+// possibly an empty array (nothing spun yet, debug mode was off, or the runtime was since
+// stopped/restarted/the project switched) — never an error for "nothing to show".
+export async function listRecentSpins(fetchImpl: FetchLike): Promise<StudioRuntimeSessionView[]> {
+    const response = await fetchImpl("/api/project/runtime/spins");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to list recent spins"));
+    }
+    return (await response.json()) as StudioRuntimeSessionView[];
 }
 
 export type StartRuntimeOptions = {

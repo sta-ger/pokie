@@ -799,7 +799,12 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         const game = await loadPokieGame(fixtureRoot);
         const directDescriptor = new ReplayRecorder().record({game, round: 37, seed: "compare-me"});
 
-        expect(job.descriptor).toEqual({...directDescriptor, timestamp: job.descriptor?.timestamp, durationMs: job.descriptor?.durationMs});
+        // ReplayRecorder (the CLI's own `pokie replay`) never builds an `artifact` -- only Studio's own
+        // execution path does (see StudioReplayExecutionService.buildArtifact()) -- so that one field is
+        // compared separately below rather than expected to match directDescriptor exactly.
+        const {artifact, ...descriptorWithoutArtifact} = job.descriptor ?? {};
+        expect(descriptorWithoutArtifact).toEqual({...directDescriptor, timestamp: job.descriptor?.timestamp, durationMs: job.descriptor?.durationMs});
+        expect(artifact?.screen).toEqual(job.descriptor?.screen);
     });
 
     it("returns a clear error for an invalid packageRoot", async () => {

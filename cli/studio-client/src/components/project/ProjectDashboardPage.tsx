@@ -2,8 +2,19 @@ import {Anchor, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
-import {buildReportDownloadUrl, closeProject, getReplay, getReport, inspectProject, listReplays, listReports, validateProject} from "../../api/apiClient";
-import type {StudioSimulationReportListEntry} from "../../api/types";
+import {
+    buildReportDownloadUrl,
+    closeProject,
+    getReplay,
+    getReport,
+    inspectProject,
+    inspectReplayArtifact,
+    listRecentSpins,
+    listReplays,
+    listReports,
+    validateProject,
+} from "../../api/apiClient";
+import type {RoundArtifactJson, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
@@ -13,7 +24,7 @@ import {
     type InspectionResultView,
     type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
-import {describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
+import {describeReplayComparison, describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
 import {describeReportsList, type ReportListView} from "../../domain/interpret/Reports";
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
 import {useConfirm} from "../../hooks/useConfirm";
@@ -27,7 +38,7 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DeploymentTab} from "./DeploymentTab";
 import {OverviewTab} from "./OverviewTab";
-import {ReplayTab} from "./ReplayTab";
+import {ReplayTab, type ExpectedReplayState, type RecentSpinsListView} from "./ReplayTab";
 import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 import {ValidationTab} from "./ValidationTab";
@@ -273,7 +284,130 @@ export function ProjectDashboardPage() {
             .catch((error: unknown) => setReplayListError(errorMessage(error)));
     }, [fetchImpl]);
     const replay = useReplayPoll(refreshReplayList);
-    const [lastReplayParams, setLastReplayParams] = useState<{round: number; seed?: string}>();
+
+    // The "expected" artifact for the Inspect step's match/mismatch banner (requirement 4) -- populated
+    // either by fetching a previously-stored replay's own descriptor.artifact (onCompareStored) or by
+    // parsing+validating a pasted ReplayDescriptor JSON client-side (onLoadExpectedFromPaste). A stale
+    // fetch discarded via expectedReplayRequestIdRef, same convention as reportRequestIdRef above.
+    const [expectedReplay, setExpectedReplay] = useState<ExpectedReplayState>({status: "empty"});
+    const expectedReplayRequestIdRef = useRef(0);
+
+    const clearExpectedReplay = useCallback(() => {
+        expectedReplayRequestIdRef.current++;
+        setExpectedReplay({status: "empty"});
+    }, []);
+
+    const onCompareStored = useCallback(
+        (id: string) => {
+            const requestId = ++expectedReplayRequestIdRef.current;
+            setExpectedReplay({status: "loading"});
+            getReplay(fetchImpl, id)
+                .then((job) => {
+                    if (requestId !== expectedReplayRequestIdRef.current) {
+                        return;
+                    }
+                    if (!job.descriptor) {
+                        setExpectedReplay({status: "error", message: "That replay has no stored result to compare against."});
+                        return;
+                    }
+                    setExpectedReplay({
+                        status: "loaded",
+                        round: job.descriptor.round,
+                        seed: job.descriptor.seed ?? undefined,
+                        artifact: job.descriptor.artifact,
+                        artifactWarnings: [],
+                    });
+                })
+                .catch((error: unknown) => {
+                    if (requestId === expectedReplayRequestIdRef.current) {
+                        setExpectedReplay({status: "error", message: errorMessage(error)});
+                    }
+                });
+        },
+        [fetchImpl],
+    );
+
+    const onLoadExpectedFromPaste = useCallback(
+        (raw: string) => {
+            const requestId = ++expectedReplayRequestIdRef.current;
+            let parsed: unknown;
+            try {
+                parsed = JSON.parse(raw);
+            } catch {
+                setExpectedReplay({status: "error", message: "That's not valid JSON."});
+                return;
+            }
+            setExpectedReplay({status: "loading"});
+            inspectReplayArtifact(fetchImpl, parsed)
+                .then((response) => {
+                    if (requestId !== expectedReplayRequestIdRef.current) {
+                        return;
+                    }
+                    const artifact =
+                        typeof parsed === "object" && parsed !== null && "artifact" in parsed
+                            ? (parsed as {artifact?: RoundArtifactJson}).artifact
+                            : undefined;
+                    setExpectedReplay({status: "loaded", round: response.round, seed: response.seed, artifact, artifactWarnings: response.artifactWarnings});
+                })
+                .catch((error: unknown) => {
+                    if (requestId === expectedReplayRequestIdRef.current) {
+                        setExpectedReplay({status: "error", message: errorMessage(error)});
+                    }
+                });
+        },
+        [fetchImpl],
+    );
+
+    // Runs a replay, clearing any in-progress "expected artifact" comparison unless the caller is the
+    // one continuing that exact comparison (the artifact Load step's own "Continue to Reproduce") --
+    // otherwise a stale `expectedReplay` from an earlier artifact-compare attempt would produce a bogus
+    // match/mismatch banner on a later, unrelated Seed & Round / Recent Simulation reproduction.
+    const runReplay = useCallback(
+        (round: number, seed: string | undefined, keepExpected = false) => {
+            if (!keepExpected) {
+                clearExpectedReplay();
+            }
+            replay.run(round, seed);
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [replay.run, clearExpectedReplay],
+    );
+
+    const onInspectStored = useCallback(
+        (id: string) => {
+            clearExpectedReplay();
+            getReplay(fetchImpl, id)
+                .then((job) => replay.selectExisting(job))
+                .catch(() => undefined);
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [fetchImpl, clearExpectedReplay, replay.selectExisting],
+    );
+
+    const replayComparison =
+        expectedReplay.status === "loaded" && expectedReplay.artifact && replay.job?.status === "completed" && replay.job.descriptor?.artifact
+            ? describeReplayComparison(expectedReplay.artifact, replay.job.descriptor.artifact)
+            : undefined;
+
+    const [recentSpinsView, setRecentSpinsView] = useState<RecentSpinsListView>({status: "empty"});
+    const [recentSpinsError, setRecentSpinsError] = useState<string>();
+    const recentSpinsRequestIdRef = useRef(0);
+    const refreshRecentSpins = useCallback(() => {
+        const requestId = ++recentSpinsRequestIdRef.current;
+        listRecentSpins(fetchImpl)
+            .then((entries) => {
+                if (requestId !== recentSpinsRequestIdRef.current) {
+                    return;
+                }
+                setRecentSpinsError(undefined);
+                setRecentSpinsView(entries.length === 0 ? {status: "empty"} : {status: "loaded", entries});
+            })
+            .catch((error: unknown) => {
+                if (requestId === recentSpinsRequestIdRef.current) {
+                    setRecentSpinsError(errorMessage(error));
+                }
+            });
+    }, [fetchImpl]);
 
     const runtime = useRuntimeManager();
     const deployment = useDeploymentManager();
@@ -295,9 +429,15 @@ export function ProjectDashboardPage() {
         setReportsView({status: "empty"});
         setReportsError(undefined);
         setRunAgainNotice(undefined);
+        expectedReplayRequestIdRef.current++;
+        setExpectedReplay({status: "empty"});
+        recentSpinsRequestIdRef.current++;
+        setRecentSpinsView({status: "empty"});
+        setRecentSpinsError(undefined);
         refreshInspect();
         refreshReports();
         refreshReplayList();
+        refreshRecentSpins();
         runtime.refresh();
         deployment.refreshTargets();
         // Deliberately keyed only on projectKey -- these refreshers should run once per newly-loaded
@@ -443,21 +583,24 @@ export function ProjectDashboardPage() {
                             progress={replay.progress}
                             result={replay.job?.status === "completed" ? describeReplayResult(replay.job) : undefined}
                             error={replay.error}
-                            onRun={(round, seed) => {
-                                setLastReplayParams({round, seed});
-                                replay.run(round, seed);
-                            }}
+                            onRun={runReplay}
                             onCancel={replay.cancel}
-                            onRerun={() => lastReplayParams && replay.run(lastReplayParams.round, lastReplayParams.seed)}
+                            onRetry={() => replay.job && runReplay(replay.job.round, replay.job.seed, expectedReplay.status === "loaded")}
                             listView={replayListView}
                             listError={replayListError}
                             onRefreshList={refreshReplayList}
-                            onSelect={(id) => {
-                                getReplay(fetchImpl, id).then((job) => {
-                                    setLastReplayParams({round: job.round, seed: job.seed});
-                                    replay.selectExisting(job);
-                                });
-                            }}
+                            onInspectStored={onInspectStored}
+                            onCompareStored={onCompareStored}
+                            expected={expectedReplay}
+                            onLoadExpectedFromPaste={onLoadExpectedFromPaste}
+                            onClearExpected={clearExpectedReplay}
+                            comparison={replayComparison}
+                            recentSpins={recentSpinsView}
+                            recentSpinsError={recentSpinsError}
+                            onRefreshRecentSpins={refreshRecentSpins}
+                            recentRuns={reportsView}
+                            recentRunsError={reportsError}
+                            onRefreshRecentRuns={refreshReports}
                         />
                     )}
                     {activeTab === "runtime" && (

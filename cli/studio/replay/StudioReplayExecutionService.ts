@@ -1,4 +1,12 @@
-import {captureScreen, loadPokieGame, PokieGame, ReplayDescriptor} from "pokie";
+import {
+    buildRoundArtifactFromSession,
+    captureScreen,
+    loadPokieGame,
+    PokieGame,
+    PokieJsonRoundArtifactProjector,
+    ReplayDescriptor,
+    VideoSlotSessionHandling,
+} from "pokie";
 import crypto from "crypto";
 import {InMemoryStudioReplayRepository} from "./InMemoryStudioReplayRepository.js";
 import type {StudioReplayJobRecord} from "./StudioReplayJobRecord.js";
@@ -37,6 +45,7 @@ export class StudioReplayExecutionService {
     private readonly now: () => number;
     private readonly yieldToEventLoop: () => Promise<void>;
     private readonly createId: () => string;
+    private readonly pokieVersion: string;
 
     constructor(
         repository: StudioReplayRepository = new InMemoryStudioReplayRepository(),
@@ -48,6 +57,7 @@ export class StudioReplayExecutionService {
                 setImmediate(resolve);
             }),
         createId: () => string = () => crypto.randomUUID(),
+        pokieVersion = "unknown",
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -55,6 +65,7 @@ export class StudioReplayExecutionService {
         this.now = now;
         this.yieldToEventLoop = yieldToEventLoop;
         this.createId = createId;
+        this.pokieVersion = pokieVersion;
     }
 
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
@@ -253,11 +264,38 @@ export class StudioReplayExecutionService {
             screen: captureScreen(session),
             timestamp: record.startedAt,
             durationMs: record.durationMs,
+            artifact: this.buildArtifact(session, manifest, record),
         };
 
         record.status = "completed";
         record.descriptor = descriptor;
         this.markTerminal(record);
+    }
+
+    // Feature-detected exactly like captureScreen() above: only a video-slot session (getSymbolsCombination
+    // + getWinEvaluationResult) has anything buildRoundArtifactFromSession can read, so any other game
+    // simply gets no artifact (undefined), same "no screen to capture" fallback captureScreen already
+    // uses. `roundId` is deterministic (seed+round, not a random id) so two replays of the exact same
+    // seed+round produce the exact same artifact hash when the outcome genuinely reproduces — that
+    // determinism is what makes the Studio UI's match/mismatch comparison meaningful.
+    private buildArtifact(
+        session: ReturnType<PokieGame["createSession"]>,
+        manifest: ReturnType<PokieGame["getManifest"]>,
+        record: StudioReplayJobRecord,
+    ): ReplayDescriptor["artifact"] {
+        if (!this.hasVideoSlotShape(session)) {
+            return undefined;
+        }
+        const artifact = buildRoundArtifactFromSession(session, {
+            roundId: `replay:${record.seed ?? "no-seed"}:${record.round}`,
+            provenance: {game: manifest, pokieVersion: this.pokieVersion},
+        });
+        return new PokieJsonRoundArtifactProjector().project(artifact);
+    }
+
+    private hasVideoSlotShape(session: unknown): session is VideoSlotSessionHandling {
+        const candidate = session as {getSymbolsCombination?: unknown; getWinEvaluationResult?: unknown};
+        return typeof candidate.getSymbolsCombination === "function" && typeof candidate.getWinEvaluationResult === "function";
     }
 
     private fail(record: StudioReplayJobRecord, error: unknown): void {
