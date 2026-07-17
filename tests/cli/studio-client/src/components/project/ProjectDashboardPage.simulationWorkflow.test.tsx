@@ -859,4 +859,182 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(within(comparePanel).getByRole("button", {name: /other-game v2\.0\.0/})).toBeInTheDocument();
         expect(within(comparePanel).queryByRole("button", {name: /^a v1\.0\.0/})).not.toBeInTheDocument();
     }, 45000);
+
+    it("clears a stale Recent Runs error once a refresh succeeds", async () => {
+        const user = userEvent.setup();
+        let reportsCallCount = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => {
+                reportsCallCount += 1;
+                if (reportsCallCount === 1) {
+                    return {ok: false, status: 500, body: {error: "Something went wrong listing reports."}};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+
+        expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+        const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
+        await user.click(within(recentRunsSection).getByRole("button", {name: "Refresh"}));
+
+        await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+        expect(reportsCallCount).toBe(2);
+    }, 45000);
+
+    it("clears the blocked Run again notice once the active simulation completes on its own", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const otherEntry: StudioSimulationReportListEntry = {
+            id: "other-entry",
+            status: "completed",
+            game: {id: "a", version: "1.0.0"},
+            requestedRounds: 5000,
+            actualRounds: 5000,
+            seed: "other-seed",
+            workers: 1,
+            rtp: 0.5,
+            hitFrequency: 0.3,
+            maxWin: 50,
+            startedAt: "2026-10-01T00:00:00.000Z",
+            completedAt: "2026-10-01T00:00:05.000Z",
+            durationMs: 500,
+            hasWarnings: false,
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: [otherEntry]}),
+            "/api/project/reports/active-job": () => ({ok: true, status: 200, body: reportDetailFor()}),
+            "/api/project/simulations": () => ({ok: true, status: 200, body: jobFor("active-job", {status: "queued", roundsCompleted: 0})}),
+            "/api/project/simulations/active-job": () => {
+                pollCount += 1;
+                if (pollCount < 3) {
+                    return {ok: true, status: 200, body: jobFor("active-job", {status: "running", roundsCompleted: pollCount * 100})};
+                }
+                return {ok: true, status: 200, body: jobFor("active-job", {status: "completed", report: reportFor()})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+
+        const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
+        await waitFor(() => expect(within(recentRunsSection).getByRole("button", {name: "Run again"})).toBeInTheDocument());
+        await user.click(within(recentRunsSection).getByRole("button", {name: "Run again"}));
+        expect(await screen.findByText(/already running/)).toBeInTheDocument();
+
+        // Let active-job finish naturally (no Cancel click) -- the notice must not outlive it.
+        await waitFor(() => expect(screen.queryByText(/already running/)).not.toBeInTheDocument(), {timeout: 15000});
+    }, 45000);
+
+    it("clears the blocked Run again notice immediately when Cancel is clicked", async () => {
+        const user = userEvent.setup();
+        const otherEntry: StudioSimulationReportListEntry = {
+            id: "other-entry-2",
+            status: "completed",
+            game: {id: "a", version: "1.0.0"},
+            requestedRounds: 5000,
+            actualRounds: 5000,
+            seed: "other-seed",
+            workers: 1,
+            rtp: 0.5,
+            hitFrequency: 0.3,
+            maxWin: 50,
+            startedAt: "2026-10-02T00:00:00.000Z",
+            completedAt: "2026-10-02T00:00:05.000Z",
+            durationMs: 500,
+            hasWarnings: false,
+        };
+        let cancelCalled = false;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: [otherEntry]}),
+            "/api/project/simulations": () => ({ok: true, status: 200, body: jobFor("active-job-2", {status: "queued", roundsCompleted: 0})}),
+            "/api/project/simulations/active-job-2": (call: FakeCall) => {
+                if (call.init?.method === "DELETE") {
+                    cancelCalled = true;
+                    return {ok: true, status: 200, body: jobFor("active-job-2", {status: "cancelled", roundsCompleted: 200})};
+                }
+                return {ok: true, status: 200, body: jobFor("active-job-2", {status: cancelCalled ? "cancelled" : "running", roundsCompleted: 200})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+
+        const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
+        await waitFor(() => expect(within(recentRunsSection).getByRole("button", {name: "Run again"})).toBeInTheDocument());
+        await user.click(within(recentRunsSection).getByRole("button", {name: "Run again"}));
+        expect(await screen.findByText(/already running/)).toBeInTheDocument();
+
+        await waitFor(() => expect(screen.getByRole("button", {name: "Cancel"})).toBeInTheDocument(), {timeout: 15000});
+        await user.click(screen.getByRole("button", {name: "Cancel"}));
+        await user.click(await screen.findByRole("button", {name: "Confirm"}));
+
+        await waitFor(() => expect(screen.queryByText(/already running/)).not.toBeInTheDocument());
+    }, 45000);
+
+    it("keeps the blocked Run again notice cleared after starting a new run via Retry", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const otherEntry: StudioSimulationReportListEntry = {
+            id: "other-entry-3",
+            status: "completed",
+            game: {id: "a", version: "1.0.0"},
+            requestedRounds: 5000,
+            actualRounds: 5000,
+            seed: "other-seed",
+            workers: 1,
+            rtp: 0.5,
+            hitFrequency: 0.3,
+            maxWin: 50,
+            startedAt: "2026-10-03T00:00:00.000Z",
+            completedAt: "2026-10-03T00:00:05.000Z",
+            durationMs: 500,
+            hasWarnings: false,
+        };
+        const runCalls: unknown[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: [otherEntry]}),
+            "/api/project/simulations": (call: FakeCall) => {
+                runCalls.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 200, body: jobFor("active-job-3", {status: "queued", roundsCompleted: 0})};
+            },
+            "/api/project/simulations/active-job-3": () => {
+                pollCount += 1;
+                if (pollCount < 3) {
+                    return {ok: true, status: 200, body: jobFor("active-job-3", {status: "running", roundsCompleted: pollCount * 100})};
+                }
+                return {ok: true, status: 200, body: jobFor("active-job-3", {status: "failed", error: "boom"})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+
+        const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
+        await waitFor(() => expect(within(recentRunsSection).getByRole("button", {name: "Run again"})).toBeInTheDocument());
+        await user.click(within(recentRunsSection).getByRole("button", {name: "Run again"}));
+        expect(await screen.findByText(/already running/)).toBeInTheDocument();
+
+        // The job fails on its own -- the notice already auto-clears (previous test) before Retry is
+        // even clickable.
+        await waitFor(() => expect(screen.queryByText(/already running/)).not.toBeInTheDocument(), {timeout: 15000});
+        expect(runCalls).toHaveLength(1);
+
+        await user.click(screen.getByRole("button", {name: "Repeat simulation"}));
+        await waitFor(() => expect(runCalls).toHaveLength(2));
+        expect(screen.queryByText(/already running/)).not.toBeInTheDocument();
+    }, 45000);
 });

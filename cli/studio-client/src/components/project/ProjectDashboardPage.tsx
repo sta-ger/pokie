@@ -130,6 +130,10 @@ export function ProjectDashboardPage() {
         listReports(fetchImpl)
             .then((entries) => {
                 if (requestId === recentRunsRequestIdRef.current) {
+                    // A successful refresh always clears whatever error a previous attempt left behind --
+                    // otherwise a stale "failed to list reports" banner would keep showing next to a list
+                    // that just loaded fine.
+                    setReportsError(undefined);
                     setReportsView(describeReportsList(entries));
                 }
             })
@@ -188,7 +192,10 @@ export function ProjectDashboardPage() {
     // Every path that starts a new run (Configure submit, Retry, a Recent Runs "Run again") funnels
     // through here so a previous run's report/compare state never lingers stale while the new one is
     // in flight -- also bumps the report/compare request ids so a fetch already in flight *before* this
-    // run started can never land afterward and repopulate what was just cleared.
+    // run started can never land afterward and repopulate what was just cleared. Also clears
+    // runAgainNotice unconditionally -- whatever blocked the *previous* attempt no longer applies once a
+    // run has actually started, regardless of which of the three entry points (Configure, Retry, Run
+    // again) got it going.
     const startRun = useCallback(
         (rounds: number, seed: string | undefined, workers: number) => {
             reportRequestIdRef.current++;
@@ -196,11 +203,26 @@ export function ProjectDashboardPage() {
             setReportDetail({status: "empty"});
             setSelectedReportId(undefined);
             setCompareDetail({status: "empty"});
+            setRunAgainNotice(undefined);
             simulation.run(rounds, seed, workers);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [simulation.run],
     );
+
+    // Also clears once the *previous* blocking simulation reaches a terminal state on its own (completes,
+    // fails, or is cancelled) even if the user never clicks "Run again" again -- the notice was only ever
+    // about "you can't do this *right now*", so it shouldn't outlive the condition that caused it.
+    const prevSimulationStatusRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        const status = simulation.job?.status;
+        const wasActive = prevSimulationStatusRef.current === "queued" || prevSimulationStatusRef.current === "running";
+        const nowTerminal = status === "completed" || status === "failed" || status === "cancelled";
+        if (wasActive && nowTerminal) {
+            setRunAgainNotice(undefined);
+        }
+        prevSimulationStatusRef.current = status;
+    }, [simulation.job?.status]);
 
     const onCompare = useCallback(
         (entry: StudioSimulationReportListEntry) => {
@@ -237,7 +259,7 @@ export function ProjectDashboardPage() {
                 setRunAgainNotice("A simulation is already running for this project. Cancel it from the Run step before starting a different configuration.");
                 return;
             }
-            setRunAgainNotice(undefined);
+            // No explicit clear here -- startRun() itself always clears runAgainNotice.
             startRun(entry.requestedRounds, entry.seed, entry.workers);
         },
         [simulation.job, startRun],
@@ -386,7 +408,13 @@ export function ProjectDashboardPage() {
                             progress={simulation.progress}
                             error={simulation.error}
                             onRun={startRun}
-                            onCancel={simulation.cancel}
+                            onCancel={() => {
+                                // Clears eagerly (not just via the terminal-state effect) so the notice
+                                // doesn't linger for the ~poll-interval it takes the job to actually
+                                // reflect "cancelled".
+                                setRunAgainNotice(undefined);
+                                simulation.cancel();
+                            }}
                             onRetry={() => simulation.job && startRun(simulation.job.rounds, simulation.job.seed, simulation.job.workers)}
                             recentRuns={reportsView}
                             recentRunsError={reportsError}
