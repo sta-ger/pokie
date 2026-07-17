@@ -42,6 +42,9 @@ function TargetsList({
     selectedTargetId: string | undefined;
     onSelect: (target: StudioDeploymentTargetSummary) => void;
 }) {
+    if (view.status === "loading") {
+        return <LoadingState label="Loading deployment targets…" />;
+    }
     if (view.status === "empty") {
         return <EmptyState message="No deployment targets registered." />;
     }

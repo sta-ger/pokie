@@ -13,10 +13,38 @@ import type {
 // (see computeDeploymentStages) — this only repackages `view.stages` alongside the handful of other
 // fields dom.ts's render function needs.
 
-export type DeploymentTargetsListView = {status: "empty"} | {status: "loaded"; targets: StudioDeploymentTargetSummary[]};
+// Same role as Runtime.ts's own RecentSpinsListView — "loading" (set directly by useDeploymentManager's
+// refreshTargets(), never constructed here) is what lets the Select-target step tell "the fetch hasn't
+// resolved yet" apart from "it resolved and there's genuinely nothing registered", so it never flashes a
+// false "No deployment targets registered." before the first request has actually completed.
+export type DeploymentTargetsListView = {status: "loading"} | {status: "empty"} | {status: "loaded"; targets: StudioDeploymentTargetSummary[]};
 
 export function describeDeploymentTargetsList(targets: StudioDeploymentTargetSummary[]): DeploymentTargetsListView {
     return targets.length === 0 ? {status: "empty"} : {status: "loaded", targets};
+}
+
+// Whether a freshly re-fetched target descriptor is meaningfully different from the one a Refresh's
+// caller previously had selected — every field StudioDeploymentTargetSummary actually carries besides
+// `id` (which is how `fresh` was looked up in the first place, so it's already known to match).
+// Capabilities are compared as a set (sorted) since a reordered-but-otherwise-identical list declares
+// the exact same contract, not a changed one. Used by useDeploymentManager's refreshTargets() to decide
+// whether a previously run preview/deploy result — computed against the *old* descriptor — must be
+// invalidated: a changed minPokieVersion/symbolAlphabet/requiresHomogeneousProvenance/capability set
+// means that result no longer reflects what this target actually requires or supports.
+export function hasTargetDescriptorChanged(previous: StudioDeploymentTargetSummary, fresh: StudioDeploymentTargetSummary): boolean {
+    if (previous.version !== fresh.version) {
+        return true;
+    }
+    const previousCapabilities = [...previous.capabilities].sort();
+    const freshCapabilities = [...fresh.capabilities].sort();
+    if (previousCapabilities.length !== freshCapabilities.length || previousCapabilities.some((capability, index) => capability !== freshCapabilities[index])) {
+        return true;
+    }
+    return (
+        previous.requirements.minPokieVersion !== fresh.requirements.minPokieVersion ||
+        previous.requirements.symbolAlphabet !== fresh.requirements.symbolAlphabet ||
+        previous.requirements.requiresHomogeneousProvenance !== fresh.requirements.requiresHomogeneousProvenance
+    );
 }
 
 // Plain-language descriptions for the Select-target step -- capability ids are an intentionally open
