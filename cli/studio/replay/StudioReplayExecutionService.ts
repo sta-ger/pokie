@@ -1,10 +1,16 @@
 import {
     buildRoundArtifactFromSession,
+    captureInitialPokieSessionState,
+    captureRoundPokieSessionState,
     captureScreen,
+    GameSessionHandling,
     loadPokieGame,
     PokieGame,
+    PokieGameContext,
     PokieJsonRoundArtifactProjector,
+    PokieSessionState,
     ReplayDescriptor,
+    resolveGameSessionSerializer,
     VideoSlotSessionHandling,
 } from "pokie";
 import crypto from "crypto";
@@ -213,9 +219,10 @@ export class StudioReplayExecutionService {
         const manifest = game.getManifest();
         record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
 
-        let session;
+        const context: PokieGameContext | undefined = record.seed === undefined ? undefined : {seed: record.seed};
+        let session: GameSessionHandling;
         try {
-            session = game.createSession(record.seed === undefined ? undefined : {seed: record.seed});
+            session = game.createSession(context);
             // A replay reconstructs a specific round, not risk of ruin — same reasoning as
             // ReplayRecorder itself: a bankroll large enough that reaching `round` is never cut short
             // by running out of credits mid-replay.
@@ -225,9 +232,19 @@ export class StudioReplayExecutionService {
             return;
         }
 
+        const serializer = resolveGameSessionSerializer(game);
+        // Best-effort: a throwing custom game/serializer must never fail the whole replay over a state
+        // snapshot — see captureStateSafely()'s own doc comment. Captured once, right after the session
+        // exists and before any round is played, so it's both this replay's "state before round 1" and
+        // the previousState every later captureRoundPokieSessionState call carries initialPayload/
+        // initialDebugPayload forward from (see that function's own doc comment for why).
+        const initialState = this.captureStateSafely(() => captureInitialPokieSessionState(context, session, serializer));
+
         let totalBet = 0;
         let totalWin = 0;
         let roundsRemaining = record.round;
+        let stateBeforeFinal: PokieSessionState | undefined;
+        let stateAfterFinal: PokieSessionState | undefined;
 
         try {
             while (roundsRemaining > 0) {
@@ -238,9 +255,22 @@ export class StudioReplayExecutionService {
 
                 const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
                 for (let played = 0; played < chunkRounds; played++) {
+                    // True exactly once across the whole replay, on the very last play() call overall,
+                    // regardless of chunking -- snapshotting every round would be wasted work for a
+                    // `round` that can be up to 100000 (see validateReplayRequest), when only the target
+                    // round's own before/after state is ever shown.
+                    const isFinalPlay = roundsRemaining - played === 1;
+                    if (isFinalPlay) {
+                        stateBeforeFinal = this.captureBoundaryState(record.round === 1, context, session, initialState, serializer);
+                    }
+
                     totalBet += session.getBet();
                     session.play();
                     totalWin += session.getWinAmount();
+
+                    if (isFinalPlay) {
+                        stateAfterFinal = this.captureBoundaryState(false, context, session, initialState, serializer);
+                    }
                 }
 
                 record.completedRounds += chunkRounds;
@@ -264,12 +294,69 @@ export class StudioReplayExecutionService {
             screen: captureScreen(session),
             timestamp: record.startedAt,
             durationMs: record.durationMs,
-            artifact: this.buildArtifact(session, manifest, record),
+            artifact: this.buildArtifact(session, manifest, record, this.mergeDebugPayloads(stateAfterFinal)),
+            ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
+            ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
         };
 
         record.status = "completed";
         record.descriptor = descriptor;
         this.markTerminal(record);
+    }
+
+    // "useInitialStateDirectly" covers round 1's own "before" snapshot: at that point no play() has
+    // happened yet, so the state before round 1 *is* the initial state -- calling
+    // captureRoundPokieSessionState on a session that hasn't played anything would ask a serializer for
+    // round data about a round that doesn't exist yet. Every other call (round >1's "before", and every
+    // "after") reads the session's current live state via captureRoundPokieSessionState. Returns
+    // undefined whenever `initialState` itself is undefined (the one capture failure this replay
+    // tolerates) so "before"/"after" are always both-present or both-absent, never inconsistent.
+    private captureBoundaryState(
+        useInitialStateDirectly: boolean,
+        context: PokieGameContext | undefined,
+        session: GameSessionHandling,
+        initialState: PokieSessionState | undefined,
+        serializer: ReturnType<typeof resolveGameSessionSerializer>,
+    ): PokieSessionState | undefined {
+        if (useInitialStateDirectly) {
+            return initialState;
+        }
+        if (initialState === undefined) {
+            return undefined;
+        }
+        return this.captureStateSafely(() => captureRoundPokieSessionState(context, session, initialState, serializer));
+    }
+
+    // Requirement: a game/session type that doesn't support state serialization (or whose serializer
+    // throws) must never fail the replay itself -- the caller sees `undefined` and renders an explicit
+    // "state snapshot unavailable", not a crash and not a false deterministic mismatch.
+    private captureStateSafely(capture: () => PokieSessionState): PokieSessionState | undefined {
+        try {
+            return capture();
+        } catch {
+            return undefined;
+        }
+    }
+
+    // The public/internal split PokieDevServer's own internal session response already applies (see its
+    // buildInternalSessionData) -- initialDebugPayload/roundDebugPayload never belong in the "state"
+    // section shown alongside the round; they're merged into the artifact's own `debug` bag instead (see
+    // mergeDebugPayloads below).
+    private toPublicSessionState(state: PokieSessionState): Record<string, unknown> {
+        const {initialDebugPayload: _initialDebugPayload, roundDebugPayload: _roundDebugPayload, ...publicState} = state;
+        return publicState;
+    }
+
+    // Same merge PokieDevServer's own private mergeSerializedDebugPayloads() performs (that method isn't
+    // exported, so this is a local mirror, not a second calculation path -- both are a two-key spread
+    // over the exact same PokieSessionState fields). `stateAfterFinal` already carries
+    // initialDebugPayload forward from the session-creation capture (see captureRoundPokieSessionState's
+    // own doc comment), so this alone is the round's complete debug bag.
+    private mergeDebugPayloads(state: PokieSessionState | undefined): Record<string, unknown> | undefined {
+        if (state === undefined || (state.initialDebugPayload === undefined && state.roundDebugPayload === undefined)) {
+            return undefined;
+        }
+        return {...state.initialDebugPayload, ...state.roundDebugPayload};
     }
 
     // Feature-detected exactly like captureScreen() above: only a video-slot session (getSymbolsCombination
@@ -282,6 +369,7 @@ export class StudioReplayExecutionService {
         session: ReturnType<PokieGame["createSession"]>,
         manifest: ReturnType<PokieGame["getManifest"]>,
         record: StudioReplayJobRecord,
+        debug: Record<string, unknown> | undefined,
     ): ReplayDescriptor["artifact"] {
         if (!this.hasVideoSlotShape(session)) {
             return undefined;
@@ -289,6 +377,7 @@ export class StudioReplayExecutionService {
         const artifact = buildRoundArtifactFromSession(session, {
             roundId: `replay:${record.seed ?? "no-seed"}:${record.round}`,
             provenance: {game: manifest, pokieVersion: this.pokieVersion},
+            ...(debug !== undefined ? {debug} : {}),
         });
         return new PokieJsonRoundArtifactProjector().project(artifact);
     }

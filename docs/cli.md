@@ -2524,12 +2524,17 @@ client, even for a load/validation failure.
 - `GET /api/project/replays/:id` — that job's current state: `{id, status, round, seed?, startedAt,
   completedRounds, durationMs, game?, descriptor?, error?}` — `status` is
   `"queued"`/`"running"`/`"completed"`/`"failed"`/`"cancelled"`; `game` (id/name/version) is known as soon as the
-  package has loaded, before the round-playing loop even starts; `descriptor` (a full `ReplayDescriptor`, same
-  shape as [`pokie replay`](#pokie-replay-packageroot)'s own JSON, including `screen: null` for a session without
-  `getSymbolsCombination()`) is only present once `status` is `"completed"`; `error` (a safe message, never a stack
-  trace) only once `status` is `"failed"`. `404 {"error": "..."}` for an unknown id **or** one that belongs to a
-  different project (deliberately indistinguishable from "unknown", same reasoning as Reports' detail endpoint
-  above); `409 {"error": "No active project."}` in Home mode.
+  package has loaded, before the round-playing loop even starts; `descriptor` (a `ReplayDescriptor`, same base
+  shape as [`pokie replay`](#pokie-replay-packageroot)'s own JSON — including `screen: null` for a session without
+  `getSymbolsCombination()` — but with three fields Studio's own execution path additionally populates that
+  `pokie replay` never does: an optional `artifact` (the full `RoundArtifactJson` for the target round, only for a
+  video-slot session — `getSymbolsCombination()` + `getWinEvaluationResult()`), and optional `stateBefore`/
+  `stateAfter` (serialized session state immediately before/after the target round's `play()`, via the same
+  session-serialization mechanism `pokie serve`'s own internal/debug response uses — absent when the game/session
+  doesn't support it or capture failed, never a replay failure by itself)) is only present once `status` is
+  `"completed"`; `error` (a safe message, never a stack trace) only once `status` is `"failed"`. `404 {"error":
+  "..."}` for an unknown id **or** one that belongs to a different project (deliberately indistinguishable from
+  "unknown", same reasoning as Reports' detail endpoint above); `409 {"error": "No active project."}` in Home mode.
 - `DELETE /api/project/replays/:id` — requests cancellation of a queued/running replay (returns its current view —
   the record only actually flips to `"cancelled"` once the chunk loop notices, on the next `GET`/poll); idempotent
   on an already-terminal job (just returns it unchanged, not an error). `404 {"error": "..."}` for an unknown id or

@@ -2141,6 +2141,22 @@ describe("StudioServer", () => {
             expect(body.completedRounds).toBe(5);
         });
 
+        it("delivers stateBefore/stateAfter through the HTTP job response end to end", async () => {
+            await openCrazyFruits(createSeedAwareFakeGame(manifest));
+
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 5, seed: "demo"});
+            const createdBody = created.body as {id: string};
+
+            const {status, body} = await pollUntilTerminal(`${baseUrl}/api/project/replays/${createdBody.id}`);
+
+            expect(status).toBe(200);
+            const descriptor = body.descriptor as {stateBefore?: Record<string, unknown>; stateAfter?: Record<string, unknown>};
+            expect(descriptor.stateBefore).toBeDefined();
+            expect(descriptor.stateAfter).toBeDefined();
+            expect(descriptor.stateBefore).not.toHaveProperty("initialDebugPayload");
+            expect(descriptor.stateAfter).not.toHaveProperty("roundDebugPayload");
+        });
+
         it("produces the exact same descriptor for the same seed/round (reproducibility)", async () => {
             await openCrazyFruits(createSeedAwareFakeGame(manifest));
 

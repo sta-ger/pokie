@@ -360,6 +360,12 @@ export type ReplayDescriptor = {
     // game -- absent for anything predating this field or for a non-video-slot session (see
     // StudioReplayExecutionService.buildArtifact()'s own doc comment).
     artifact?: RoundArtifactJson;
+    // Serialized session state immediately before / after the target round's play() -- public fields
+    // only (no RNG/debug data, which lives in artifact.debug instead). Absent when the game/session
+    // doesn't support state serialization or capture failed -- never a replay failure by itself (see
+    // StudioReplayExecutionService.captureBoundaryState()'s own doc comment).
+    stateBefore?: Record<string, unknown>;
+    stateAfter?: Record<string, unknown>;
 };
 
 export type StudioReplayStatus = "queued" | "running" | "completed" | "failed" | "cancelled";

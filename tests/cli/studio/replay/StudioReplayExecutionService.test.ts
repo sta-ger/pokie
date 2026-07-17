@@ -1,4 +1,4 @@
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameManifest, ReplayRecorder} from "pokie";
+import {GameSessionHandling, GameSessionSerializing, loadPokieGame, PokieGame, PokieGameManifest, ReplayRecorder, WinEvaluationResult} from "pokie";
 import path from "path";
 import {InMemoryStudioReplayRepository} from "../../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../../cli/studio/replay/StudioReplayExecutionService.js";
@@ -116,6 +116,93 @@ function createFakeGameWithoutScreen(manifest: PokieGameManifest): PokieGame {
                 getWinAmount: () => winAmount,
             };
         },
+    };
+}
+
+// Video-slot-shaped (getSymbolsCombination + getWinEvaluationResult, so an artifact gets built) AND
+// implements the optional getSessionSerializer() with both public (getInitialData/getRoundData) and
+// debug-only (getInitialDebugData/getRoundDebugData) hooks -- the one fake in this file exercising the
+// full state-capture + debug-merge path end to end, independent of the real fixture packages (which
+// either have no serializer at all, or a serializer without the optional debug hooks -- see the
+// "playable-game-with-serializer" fixture used in the integration describe block below).
+function createSerializerWithDebugFakeGame(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => {
+            let credits = 1000;
+            let bet = 1;
+            let round = 0;
+            let winAmount = 0;
+            let screen: unknown[][] = [["-"]];
+            const session: GameSessionHandling & {getSymbolsCombination(): {toMatrix(): unknown[][]}; getWinEvaluationResult(): WinEvaluationResult} = {
+                getCreditsAmount: () => credits,
+                setCreditsAmount: (value: number) => {
+                    credits = value;
+                },
+                getBet: () => bet,
+                setBet: (value: number) => {
+                    bet = value;
+                },
+                getAvailableBets: () => [1],
+                canPlayNextGame: () => true,
+                play: () => {
+                    round++;
+                    winAmount = round % 5 === 0 ? bet * 10 : 0;
+                    screen = [[`sym-round-${round}`]];
+                    credits = credits - bet + winAmount;
+                },
+                getWinAmount: () => winAmount,
+                getSymbolsCombination: () => ({toMatrix: () => screen}),
+                getWinEvaluationResult: () => new WinEvaluationResult(),
+            };
+            return session;
+        },
+        getSessionSerializer: (): GameSessionSerializing => ({
+            getInitialData: (s) => ({availableBets: s.getAvailableBets(), credits: s.getCreditsAmount(), bet: s.getBet(), paytable: "fake-paytable"}),
+            getRoundData: (s) => ({credits: s.getCreditsAmount(), bet: s.getBet(), lastBet: s.getBet()}),
+            getInitialDebugData: () => ({rngEngine: "fake-fnv1a"}),
+            getRoundDebugData: (s) => ({reelStops: [1, 2, 3], round: s.getWinAmount()}),
+        }),
+    };
+}
+
+// A perfectly ordinary, playable session (the main play loop never calls anything that throws) paired
+// with a serializer whose getInitialData()/getRoundData() always throw -- those two methods are only
+// ever invoked by state capture (captureInitialPokieSessionState/captureRoundPokieSessionState), never
+// by the play loop itself, so this isolates "state capture fails" from "the replay itself fails".
+// Proves a badly-behaved custom game/serializer can never fail the replay (requirement: "не падай,
+// покажи unavailable").
+function createStateCaptureThrowingFakeGame(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => {
+            let credits = 1000;
+            const bet = 1;
+            let winAmount = 0;
+            return {
+                getCreditsAmount: () => credits,
+                setCreditsAmount: (value: number) => {
+                    credits = value;
+                },
+                getBet: () => bet,
+                setBet: () => undefined,
+                getAvailableBets: () => [1],
+                canPlayNextGame: () => true,
+                play: () => {
+                    winAmount = 0;
+                    credits -= bet;
+                },
+                getWinAmount: () => winAmount,
+            };
+        },
+        getSessionSerializer: (): GameSessionSerializing => ({
+            getInitialData: () => {
+                throw new Error("this serializer never supports state capture");
+            },
+            getRoundData: () => {
+                throw new Error("this serializer never supports state capture");
+            },
+        }),
     };
 }
 
@@ -294,6 +381,89 @@ describe("StudioReplayExecutionService", () => {
         const job = await waitForTerminal(service, "/a", result.job.id);
 
         expect(job.descriptor?.screen).toBeNull();
+    });
+
+    describe("stateBefore/stateAfter capture and debug/RNG-trace wiring", () => {
+        it("captures a base stateBefore/stateAfter (no serializer) with no debug data on the artifact", async () => {
+            const service = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createSeedAwareFakeGame(manifest)),
+            );
+
+            const result = service.start("/a", {round: 5, seed: "demo"});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            const job = await waitForTerminal(service, "/a", result.job.id);
+
+            expect(job.descriptor?.stateBefore).toMatchObject({bet: 1, win: 0});
+            expect(job.descriptor?.stateAfter).toMatchObject({bet: 1});
+            // No getSessionSerializer() at all -- there's nowhere for debug data to come from, so the
+            // artifact's own debug bag stays undefined (never a crash, never a fabricated value).
+            expect(job.descriptor?.artifact?.debug).toBeUndefined();
+        });
+
+        it("captures stateBefore as the pre-play initial snapshot when round is 1", async () => {
+            const service = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createSeedAwareFakeGame(manifest)),
+            );
+
+            const result = service.start("/a", {round: 1, seed: "demo"});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            const job = await waitForTerminal(service, "/a", result.job.id);
+
+            // Round 1's "before" is the state right after session creation -- no round has been played
+            // yet, so win is still 0 even though the round that's about to run (and did run, for
+            // stateAfter) produces a win.
+            expect(job.descriptor?.stateBefore).toMatchObject({win: 0});
+            expect(job.descriptor?.stateAfter?.win).toBe(job.descriptor?.totalWin);
+        });
+
+        it("captures stateBefore/stateAfter and merges debug data into the artifact for a serializer with debug hooks", async () => {
+            const service = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createSerializerWithDebugFakeGame(manifest)),
+            );
+
+            const result = service.start("/a", {round: 3});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            const job = await waitForTerminal(service, "/a", result.job.id);
+
+            expect(job.descriptor?.stateBefore).toMatchObject({initialPayload: {paytable: "fake-paytable"}});
+            expect(job.descriptor?.stateAfter).toMatchObject({
+                initialPayload: {paytable: "fake-paytable"},
+                roundPayload: {lastBet: 1},
+            });
+            // The internal/debug-only payloads must never leak into the public state section.
+            expect(job.descriptor?.stateBefore).not.toHaveProperty("initialDebugPayload");
+            expect(job.descriptor?.stateAfter).not.toHaveProperty("initialDebugPayload");
+            expect(job.descriptor?.stateAfter).not.toHaveProperty("roundDebugPayload");
+            // ...but the same data is exactly what ends up merged into the artifact's own debug bag.
+            expect(job.descriptor?.artifact?.debug).toEqual({rngEngine: "fake-fnv1a", reelStops: [1, 2, 3], round: expect.any(Number)});
+        });
+
+        it("tolerates a serializer whose getInitialData/getRoundData always throw -- no crash, stateBefore/stateAfter simply absent", async () => {
+            const service = new StudioReplayExecutionService(
+                new InMemoryStudioReplayRepository(),
+                () => Promise.resolve(createStateCaptureThrowingFakeGame(manifest)),
+            );
+
+            const result = service.start("/a", {round: 5});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            const job = await waitForTerminal(service, "/a", result.job.id);
+
+            expect(job.status).toBe("completed");
+            expect(job.completedRounds).toBe(5);
+            expect(job.descriptor?.stateBefore).toBeUndefined();
+            expect(job.descriptor?.stateAfter).toBeUndefined();
+        });
     });
 
     it("fails the job with a safe error message (no stack trace) when loading the game throws", async () => {
@@ -799,12 +969,36 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         const game = await loadPokieGame(fixtureRoot);
         const directDescriptor = new ReplayRecorder().record({game, round: 37, seed: "compare-me"});
 
-        // ReplayRecorder (the CLI's own `pokie replay`) never builds an `artifact` -- only Studio's own
-        // execution path does (see StudioReplayExecutionService.buildArtifact()) -- so that one field is
+        // ReplayRecorder (the CLI's own `pokie replay`) never builds an `artifact` or captures
+        // stateBefore/stateAfter -- only Studio's own execution path does (see
+        // StudioReplayExecutionService.buildArtifact()/captureBoundaryState()) -- so those fields are
         // compared separately below rather than expected to match directDescriptor exactly.
-        const {artifact, ...descriptorWithoutArtifact} = job.descriptor ?? {};
-        expect(descriptorWithoutArtifact).toEqual({...directDescriptor, timestamp: job.descriptor?.timestamp, durationMs: job.descriptor?.durationMs});
+        const {artifact, stateBefore, stateAfter, ...descriptorWithoutExtras} = job.descriptor ?? {};
+        expect(descriptorWithoutExtras).toEqual({...directDescriptor, timestamp: job.descriptor?.timestamp, durationMs: job.descriptor?.durationMs});
         expect(artifact?.screen).toEqual(job.descriptor?.screen);
+        expect(stateAfter?.screen).toEqual(job.descriptor?.screen);
+        expect(stateBefore).toBeDefined();
+        expect(stateAfter).toBeDefined();
+    });
+
+    it("captures initialPayload/roundPayload from a real VideoSlotSessionSerializer end to end (playable-game-with-serializer fixture)", async () => {
+        const serializerFixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game-with-serializer");
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), loadPokieGame);
+
+        const result = service.start(serializerFixtureRoot, {round: 4, seed: "demo"});
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, serializerFixtureRoot, result.job.id);
+
+        expect(job.status).toBe("completed");
+        expect(job.descriptor?.stateBefore).toHaveProperty("initialPayload");
+        expect(job.descriptor?.stateAfter).toHaveProperty("initialPayload");
+        expect(job.descriptor?.stateAfter).toHaveProperty("roundPayload");
+        // This fixture's VideoSlotSessionSerializer doesn't implement the optional debug hooks, so
+        // there's nothing for the artifact's debug bag to carry -- confirms the debug wiring is purely
+        // feature-detected, never fabricated when the hook is absent.
+        expect(job.descriptor?.artifact?.debug).toBeUndefined();
     });
 
     it("returns a clear error for an invalid packageRoot", async () => {

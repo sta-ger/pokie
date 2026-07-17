@@ -21,7 +21,15 @@ export type ExpectedReplayState =
     | {status: "empty"}
     | {status: "loading"}
     | {status: "error"; message: string}
-    | {status: "loaded"; round: number; seed?: string; artifact?: RoundArtifactJson; artifactWarnings: string[]};
+    | {
+          status: "loaded";
+          round: number;
+          seed?: string;
+          artifact?: RoundArtifactJson;
+          artifactWarnings: string[];
+          stateBefore?: unknown;
+          stateAfter?: unknown;
+      };
 
 export type RecentSpinsListView = {status: "empty"} | {status: "loaded"; entries: StudioRuntimeSessionView[]};
 
@@ -505,7 +513,14 @@ export function ReplayTab({
                         </div>
                     )}
 
-                    {findMethod !== "spin" && result?.artifact && <RoundArtifactInspector artifact={result.artifact} comparison={comparison} />}
+                    {findMethod !== "spin" && result?.artifact && (
+                        <RoundArtifactInspector
+                            artifact={result.artifact}
+                            comparison={comparison}
+                            stateBefore={result.stateBefore}
+                            stateAfter={result.stateAfter}
+                        />
+                    )}
 
                     {findMethod !== "spin" && result && !result.artifact && (
                         <div>

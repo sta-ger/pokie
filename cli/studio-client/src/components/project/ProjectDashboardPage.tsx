@@ -316,6 +316,8 @@ export function ProjectDashboardPage() {
                         seed: job.descriptor.seed ?? undefined,
                         artifact: job.descriptor.artifact,
                         artifactWarnings: [],
+                        stateBefore: job.descriptor.stateBefore,
+                        stateAfter: job.descriptor.stateAfter,
                     });
                 })
                 .catch((error: unknown) => {
@@ -343,11 +345,19 @@ export function ProjectDashboardPage() {
                     if (requestId !== expectedReplayRequestIdRef.current) {
                         return;
                     }
-                    const artifact =
-                        typeof parsed === "object" && parsed !== null && "artifact" in parsed
-                            ? (parsed as {artifact?: RoundArtifactJson}).artifact
+                    const parsedDescriptor =
+                        typeof parsed === "object" && parsed !== null
+                            ? (parsed as {artifact?: RoundArtifactJson; stateBefore?: unknown; stateAfter?: unknown})
                             : undefined;
-                    setExpectedReplay({status: "loaded", round: response.round, seed: response.seed, artifact, artifactWarnings: response.artifactWarnings});
+                    setExpectedReplay({
+                        status: "loaded",
+                        round: response.round,
+                        seed: response.seed,
+                        artifact: parsedDescriptor?.artifact,
+                        artifactWarnings: response.artifactWarnings,
+                        stateBefore: parsedDescriptor?.stateBefore,
+                        stateAfter: parsedDescriptor?.stateAfter,
+                    });
                 })
                 .catch((error: unknown) => {
                     if (requestId === expectedReplayRequestIdRef.current) {
@@ -384,9 +394,25 @@ export function ProjectDashboardPage() {
         [fetchImpl, clearExpectedReplay, replay.selectExisting],
     );
 
+    // Computed whenever the user has actually requested a comparison (expectedReplay left "empty") and
+    // the reproduction has completed -- always via describeReplayComparison, which safely resolves to
+    // its own "unavailable" status (with diagnostics) rather than the page silently omitting the banner
+    // when the expected artifact turns out malformed (requirement 1).
     const replayComparison =
-        expectedReplay.status === "loaded" && expectedReplay.artifact && replay.job?.status === "completed" && replay.job.descriptor?.artifact
-            ? describeReplayComparison(expectedReplay.artifact, replay.job.descriptor.artifact)
+        expectedReplay.status === "loaded" && replay.job?.status === "completed"
+            ? describeReplayComparison(
+                {
+                    artifact: expectedReplay.artifact,
+                    artifactWarnings: expectedReplay.artifactWarnings,
+                    stateBefore: expectedReplay.stateBefore,
+                    stateAfter: expectedReplay.stateAfter,
+                },
+                {
+                    artifact: replay.job.descriptor?.artifact,
+                    stateBefore: replay.job.descriptor?.stateBefore,
+                    stateAfter: replay.job.descriptor?.stateAfter,
+                },
+            )
             : undefined;
 
     const [recentSpinsView, setRecentSpinsView] = useState<RecentSpinsListView>({status: "empty"});

@@ -1,11 +1,13 @@
 import {
+    describeReplayComparison,
     describeReplayList,
     describeReplayProgress,
     describeReplayResult,
     isReplayActive,
     isReplayTerminal,
+    type ComparableReplayResult,
 } from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
-import type {ReplayDescriptor, StudioReplayJobView, StudioReplayListEntry} from "../../../../../../cli/studio-client/src/api/types";
+import type {ReplayDescriptor, RoundArtifactJson, StudioReplayJobView, StudioReplayListEntry} from "../../../../../../cli/studio-client/src/api/types";
 
 function createDescriptor(overrides: Partial<ReplayDescriptor> = {}): ReplayDescriptor {
     return {
@@ -35,6 +37,34 @@ function createJob(overrides: Partial<StudioReplayJobView> = {}): StudioReplayJo
         durationMs: 0,
         ...overrides,
     };
+}
+
+function createArtifact(overrides: Partial<RoundArtifactJson> = {}): RoundArtifactJson {
+    return {
+        schemaVersion: 1,
+        roundId: "replay:demo:5",
+        provenance: {game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}, pokieVersion: "1.0.0"},
+        betMode: "base",
+        stake: 1,
+        totalWin: 5,
+        payoutMultiplier: 5,
+        screen: [["cherry", "lemon"]],
+        steps: [
+            {
+                index: 0,
+                screen: [["cherry", "lemon"]],
+                totalWin: 5,
+                wins: [{type: "line", id: "w1", symbolId: "cherry", winAmount: 5, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {}}],
+            },
+        ],
+        wins: [{type: "line", id: "w1", symbolId: "cherry", winAmount: 5, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {}}],
+        hash: "sha256:fixed-for-tests",
+        ...overrides,
+    };
+}
+
+function createComparable(overrides: Partial<ComparableReplayResult> = {}): ComparableReplayResult {
+    return {artifact: createArtifact(), ...overrides};
 }
 
 function createListEntry(overrides: Partial<StudioReplayListEntry> = {}): StudioReplayListEntry {
@@ -147,6 +177,206 @@ describe("describeReplayResult", () => {
         const job = createJob({status: "completed", descriptor: createDescriptor({seed: null})});
 
         expect(describeReplayResult(job)?.seed).toBeNull();
+    });
+
+    it("passes stateBefore/stateAfter through when present", () => {
+        const job = createJob({
+            status: "completed",
+            descriptor: createDescriptor({stateBefore: {bet: 1, win: 0}, stateAfter: {bet: 1, win: 5}}),
+        });
+
+        expect(describeReplayResult(job)?.stateBefore).toEqual({bet: 1, win: 0});
+        expect(describeReplayResult(job)?.stateAfter).toEqual({bet: 1, win: 5});
+    });
+
+    it("leaves stateBefore/stateAfter undefined when the descriptor doesn't have them", () => {
+        const job = createJob({status: "completed", descriptor: createDescriptor()});
+
+        expect(describeReplayResult(job)?.stateBefore).toBeUndefined();
+        expect(describeReplayResult(job)?.stateAfter).toBeUndefined();
+    });
+});
+
+describe("describeReplayComparison", () => {
+    it("reports a full match when every dimension is identical", () => {
+        const artifact = createArtifact({debug: {reelStops: [1, 2, 3]}});
+        const expected = createComparable({artifact, stateBefore: {win: 0}, stateAfter: {win: 5}});
+        const reproduced = createComparable({artifact, stateBefore: {win: 0}, stateAfter: {win: 5}});
+
+        const result = describeReplayComparison(expected, reproduced);
+
+        expect(result.status).toBe("match");
+        for (const dimension of Object.values(result.dimensions)) {
+            expect(dimension.status).toBe("match");
+        }
+    });
+
+    it("flags exactly the screen dimension as a mismatch when only the screen differs", () => {
+        const expected = createComparable();
+        const reproduced = createComparable({artifact: createArtifact({screen: [["lemon", "lemon"]]})});
+
+        const result = describeReplayComparison(expected, reproduced);
+
+        expect(result.status).toBe("mismatch");
+        expect(result.dimensions.screen.status).toBe("mismatch");
+        expect(result.dimensions.wins.status).toBe("match");
+        expect(result.dimensions.totalPayout.status).toBe("match");
+        expect(result.dimensions.steps.status).toBe("match");
+    });
+
+    it("flags exactly the wins dimension when the wins array differs (not just its length)", () => {
+        const expected = createComparable();
+        const differentWin = {type: "line", id: "w1", symbolId: "lemon", winAmount: 5, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {}};
+        const reproduced = createComparable({artifact: createArtifact({wins: [differentWin]})});
+
+        const result = describeReplayComparison(expected, reproduced);
+
+        expect(result.status).toBe("mismatch");
+        expect(result.dimensions.wins.status).toBe("mismatch");
+        expect(result.dimensions.screen.status).toBe("match");
+    });
+
+    it("flags exactly the totalPayout dimension when totalWin differs, with the specific values in the detail", () => {
+        const expected = createComparable();
+        const reproduced = createComparable({artifact: createArtifact({totalWin: 9})});
+
+        const result = describeReplayComparison(expected, reproduced);
+
+        expect(result.status).toBe("mismatch");
+        expect(result.dimensions.totalPayout).toEqual({status: "mismatch", detail: "Total payout differs (expected 5, got 9)."});
+    });
+
+    it("flags exactly the steps dimension when an intermediate step differs but round-level wins/screen still coincide", () => {
+        const expected = createComparable({
+            artifact: createArtifact({
+                steps: [
+                    {index: 0, screen: [["cherry", "lemon"]], totalWin: 0, wins: []},
+                    {
+                        index: 1,
+                        screen: [["cherry", "lemon"]],
+                        totalWin: 5,
+                        wins: [{type: "line", id: "w1", symbolId: "cherry", winAmount: 5, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {}}],
+                    },
+                ],
+            }),
+        });
+        const reproduced = createComparable({
+            artifact: createArtifact({
+                steps: [
+                    {
+                        index: 0,
+                        screen: [["cherry", "lemon"]],
+                        totalWin: 5,
+                        wins: [{type: "line", id: "w1", symbolId: "cherry", winAmount: 5, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {}}],
+                    },
+                ],
+            }),
+        });
+
+        const result = describeReplayComparison(expected, reproduced);
+
+        expect(result.status).toBe("mismatch");
+        expect(result.dimensions.steps.status).toBe("mismatch");
+        expect(result.dimensions.screen.status).toBe("match");
+        expect(result.dimensions.wins.status).toBe("match");
+    });
+
+    it("flags exactly the featureEvents dimension when they differ, treating absence on both sides as an empty match", () => {
+        const expected = createComparable();
+        const reproduced = createComparable({artifact: createArtifact({featureEvents: [{type: "freeGamesTriggered"}]})});
+
+        expect(describeReplayComparison(expected, expected).dimensions.featureEvents.status).toBe("match");
+        expect(describeReplayComparison(expected, reproduced).dimensions.featureEvents.status).toBe("mismatch");
+    });
+
+    it("reports unavailable with the exact expected wording and every dimension unavailable when the expected artifact is malformed", () => {
+        const expected = createComparable({artifactWarnings: ['"steps" must be an array.']});
+        const reproduced = createComparable();
+
+        const result = describeReplayComparison(expected, reproduced);
+
+        expect(result.status).toBe("unavailable");
+        expect(result.unavailableReason).toBe(
+            'Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable: "steps" must be an array.',
+        );
+        for (const dimension of Object.values(result.dimensions)) {
+            expect(dimension.status).toBe("unavailable");
+        }
+    });
+
+    it("reports unavailable when the expected or reproduced side simply has no artifact at all", () => {
+        expect(describeReplayComparison({artifact: undefined}, createComparable()).status).toBe("unavailable");
+        expect(describeReplayComparison(createComparable(), {artifact: undefined}).status).toBe("unavailable");
+    });
+
+    it("never crashes on a missing/malformed field even without artifactWarnings set (defense in depth)", () => {
+        const malformedExpected = {artifact: {...createArtifact(), wins: undefined} as unknown as RoundArtifactJson};
+
+        expect(() => describeReplayComparison(malformedExpected, createComparable())).not.toThrow();
+        const result = describeReplayComparison(malformedExpected, createComparable());
+        expect(result.dimensions.wins.status).toBe("unavailable");
+        expect(result.dimensions.screen.status).toBe("match");
+    });
+
+    describe("state and RNG/reel-stop dimensions", () => {
+        it("matches when state/debug are present and identical on both sides", () => {
+            const withDebug = createArtifact({debug: {reelStops: [1, 2, 3]}});
+            const expected = createComparable({artifact: withDebug, stateBefore: {win: 0}, stateAfter: {win: 5}});
+            const reproduced = createComparable({artifact: withDebug, stateBefore: {win: 0}, stateAfter: {win: 5}});
+
+            const result = describeReplayComparison(expected, reproduced);
+
+            expect(result.dimensions.state.status).toBe("match");
+            expect(result.dimensions.rngReelStops.status).toBe("match");
+            expect(result.status).toBe("match");
+        });
+
+        it("mismatches when state/debug are present on both sides but differ", () => {
+            const expected = createComparable({
+                artifact: createArtifact({debug: {reelStops: [1, 2, 3]}}),
+                stateBefore: {win: 0},
+                stateAfter: {win: 5},
+            });
+            const reproduced = createComparable({
+                artifact: createArtifact({debug: {reelStops: [4, 5, 6]}}),
+                stateBefore: {win: 0},
+                stateAfter: {win: 9},
+            });
+
+            const result = describeReplayComparison(expected, reproduced);
+
+            expect(result.dimensions.state.status).toBe("mismatch");
+            expect(result.dimensions.rngReelStops.status).toBe("mismatch");
+            expect(result.status).toBe("mismatch");
+        });
+
+        it("reports partial (not mismatch) when state/debug are missing on one side, with the other core dimensions still matching", () => {
+            const expected = createComparable({stateBefore: {win: 0}, stateAfter: {win: 5}}); // no debug
+            const reproduced = createComparable(); // no state, no debug either
+
+            const result = describeReplayComparison(expected, reproduced);
+
+            expect(result.status).toBe("partial");
+            expect(result.dimensions.state.status).toBe("unavailable");
+            expect(result.dimensions.rngReelStops.status).toBe("unavailable");
+            expect(result.dimensions.screen.status).toBe("match");
+            expect(result.dimensions.wins.status).toBe("match");
+            expect(result.dimensions.totalPayout.status).toBe("match");
+            expect(result.dimensions.steps.status).toBe("match");
+            expect(result.dimensions.featureEvents.status).toBe("match");
+        });
+
+        it("never treats missing optional data as a mismatch, only as unavailable", () => {
+            const expected = createComparable();
+            const reproduced = createComparable();
+
+            const result = describeReplayComparison(expected, reproduced);
+
+            expect(result.dimensions.state.status).toBe("unavailable");
+            expect(result.dimensions.rngReelStops.status).toBe("unavailable");
+            expect(result.status).toBe("partial");
+            expect(result.status).not.toBe("mismatch");
+        });
     });
 });
 

@@ -1,12 +1,39 @@
 import {Alert, Anchor, Badge, Button, Group, List, Table, Text} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
-import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
-import {useState} from "react";
-import type {ReplayComparisonView, RoundArtifactDisplayView} from "../../domain/interpret/Replay";
+import {IconAlertTriangle, IconCircleCheck, IconInfoCircle} from "@tabler/icons-react";
+import {useState, type ReactNode} from "react";
+import type {ComparisonDimensionResult, ReplayComparisonDimensions, ReplayComparisonView, RoundArtifactDisplayView} from "../../domain/interpret/Replay";
 import {CodeBlock} from "./CodeBlock";
 import {PageSection} from "./PageSection";
 import {QuickActions} from "./QuickActions";
 import {ScreenTable} from "./ScreenTable";
+
+const DIMENSION_LABELS: Record<keyof ReplayComparisonDimensions, string> = {
+    screen: "Visible screen",
+    wins: "Wins",
+    totalPayout: "Total payout",
+    steps: "Round steps",
+    featureEvents: "Feature events",
+    state: "State transition",
+    rngReelStops: "RNG / reel stops",
+};
+
+const COMPARISON_BANNER: Record<ReplayComparisonView["status"], {color: string; icon: ReactNode; title: string}> = {
+    match: {color: "green", icon: <IconCircleCheck size={16} />, title: "Matches the expected result"},
+    mismatch: {color: "red", icon: <IconAlertTriangle size={16} />, title: "Differs from the expected result"},
+    partial: {color: "yellow", icon: <IconAlertTriangle size={16} />, title: "Partially compared against the expected result"},
+    unavailable: {color: "blue", icon: <IconInfoCircle size={16} />, title: "Comparison unavailable"},
+};
+
+function describeDimensionResult(dimension: ComparisonDimensionResult): string {
+    if (dimension.status === "match") {
+        return "match";
+    }
+    if (dimension.status === "mismatch") {
+        return dimension.detail;
+    }
+    return `unavailable — ${dimension.reason}`;
+}
 
 // The Inspect step's core view: provenance, screen, a step navigator (each step shows its own wins and
 // feature events inline as you page through it -- satisfies "navigate between steps and related
@@ -35,18 +62,23 @@ export function RoundArtifactInspector({
         <div>
             {comparison && (
                 <Alert
-                    color={comparison.matches ? "green" : "red"}
+                    color={COMPARISON_BANNER[comparison.status].color}
                     variant="light"
-                    icon={comparison.matches ? <IconCircleCheck size={16} /> : <IconAlertTriangle size={16} />}
-                    title={comparison.matches ? "Matches the expected result" : "Differs from the expected result"}
+                    icon={COMPARISON_BANNER[comparison.status].icon}
+                    title={COMPARISON_BANNER[comparison.status].title}
                     mb="md"
                 >
-                    {comparison.matches ? (
-                        <Text size="sm">The reproduced round is byte-for-hash-identical to what was expected.</Text>
+                    {comparison.status === "unavailable" ? (
+                        <Text size="sm">{comparison.unavailableReason}</Text>
                     ) : (
-                        <List size="sm">
-                            {comparison.differences.map((difference, index) => (
-                                <List.Item key={index}>{difference}</List.Item>
+                        <List size="sm" spacing={2}>
+                            {(Object.keys(comparison.dimensions) as (keyof ReplayComparisonDimensions)[]).map((key) => (
+                                <List.Item key={key}>
+                                    <Text span fw={600}>
+                                        {DIMENSION_LABELS[key]}:
+                                    </Text>{" "}
+                                    {describeDimensionResult(comparison.dimensions[key])}
+                                </List.Item>
                             ))}
                         </List>
                     )}
@@ -158,26 +190,29 @@ export function RoundArtifactInspector({
                 )}
             </PageSection>
 
-            {(stateBefore !== undefined || stateAfter !== undefined) && (
-                <PageSection legend="State before / after">
-                    {stateBefore !== undefined && (
-                        <div>
-                            <Text size="sm" fw={600} mb={4}>
-                                Before
-                            </Text>
-                            <CodeBlock>{JSON.stringify(stateBefore, null, 2)}</CodeBlock>
-                        </div>
-                    )}
-                    {stateAfter !== undefined && (
-                        <div>
-                            <Text size="sm" fw={600} mt="sm" mb={4}>
-                                After
-                            </Text>
-                            <CodeBlock>{JSON.stringify(stateAfter, null, 2)}</CodeBlock>
-                        </div>
-                    )}
-                </PageSection>
-            )}
+            <PageSection legend="State before / after">
+                {stateBefore === undefined && stateAfter === undefined && (
+                    <Text size="sm" c="dimmed">
+                        State snapshot unavailable for this game/session type.
+                    </Text>
+                )}
+                {stateBefore !== undefined && (
+                    <div>
+                        <Text size="sm" fw={600} mb={4}>
+                            Before
+                        </Text>
+                        <CodeBlock>{JSON.stringify(stateBefore, null, 2)}</CodeBlock>
+                    </div>
+                )}
+                {stateAfter !== undefined && (
+                    <div>
+                        <Text size="sm" fw={600} mt="sm" mb={4}>
+                            After
+                        </Text>
+                        <CodeBlock>{JSON.stringify(stateAfter, null, 2)}</CodeBlock>
+                    </div>
+                )}
+            </PageSection>
 
             <Text size="sm" mt="sm">
                 <Anchor component="button" type="button" onClick={toggleAdvanced}>

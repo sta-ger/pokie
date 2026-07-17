@@ -74,6 +74,13 @@ export type ReplayResultView = {
     // — the rich per-step/wins/feature-events/provenance record the Inspect step's
     // RoundArtifactInspector renders. Absent for anything else, same "no screen available" fallback.
     artifact?: RoundArtifactDisplayView;
+    // Serialized session state immediately before/after the target round's play() — opaque, rendered
+    // as-is by RoundArtifactInspector (never parsed/reconstructed on the frontend). Absent whenever the
+    // game/session doesn't support state serialization or capture failed server-side (see
+    // ReplayDescriptor's own doc comment) — the Inspector shows an explicit "unavailable" message for
+    // that case rather than silently omitting the section.
+    stateBefore?: unknown;
+    stateAfter?: unknown;
 };
 
 // Only meaningful for a completed job (job.descriptor is defined) — callers only call this once
@@ -95,6 +102,8 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         timestamp: descriptor.timestamp,
         durationMs: descriptor.durationMs,
         artifact: descriptor.artifact ? describeRoundArtifact(descriptor.artifact) : undefined,
+        stateBefore: descriptor.stateBefore,
+        stateAfter: descriptor.stateAfter,
     };
 }
 
@@ -111,37 +120,175 @@ function formatScreenCell(cell: unknown): string {
     return JSON.stringify(cell);
 }
 
-// Requirement 4 of the Replay & Debug slice: an explicit match/mismatch verdict between a known-good
-// "expected" artifact (a pasted/selected Replay Artifact, or a previous Recent Replays entry) and a
-// freshly reproduced one for the same seed/round. The artifact's own content hash (computed
-// server-side by PokieJsonRoundArtifactProjector, from a deterministic roundId — see
-// StudioReplayExecutionService.buildArtifact()) is the actual source of truth for "matches"; the
-// per-field differences below are presentation only, a plain comparison of two already-computed JSON
-// values (never a recomputation of game logic), just to explain *what* differs on a mismatch.
-export type ReplayComparisonView = {matches: boolean; differences: string[]};
+// Requirement 4 of the Replay & Debug stabilization pass: a capability-aware verdict between a
+// known-good "expected" artifact (a pasted/selected Replay Artifact, or a previous Recent Replays entry)
+// and a freshly reproduced one for the same seed/round. Every dimension is compared independently and
+// defensively — a missing/malformed field on either side makes *that dimension* "unavailable", never a
+// thrown exception and never silently folded into either a match or a mismatch (see
+// describeReplayComparison's own doc comment for why the artifact's content hash is no longer used as a
+// blanket match shortcut).
+export type ComparisonDimensionResult =
+    | {status: "match"}
+    | {status: "mismatch"; detail: string}
+    | {status: "unavailable"; reason: string};
 
-export function describeReplayComparison(expected: RoundArtifactJson, reproduced: RoundArtifactJson): ReplayComparisonView {
-    if (expected.hash === reproduced.hash) {
-        return {matches: true, differences: []};
+export type ReplayComparisonDimensions = {
+    screen: ComparisonDimensionResult;
+    wins: ComparisonDimensionResult;
+    totalPayout: ComparisonDimensionResult;
+    steps: ComparisonDimensionResult;
+    featureEvents: ComparisonDimensionResult;
+    state: ComparisonDimensionResult;
+    rngReelStops: ComparisonDimensionResult;
+};
+
+export type ReplayComparisonView = {
+    // "unavailable": the expected side itself is too malformed/absent to compare on any dimension at
+    // all — see the two early-return checks in describeReplayComparison below.
+    // "match": every dimension that could be compared matched.
+    // "partial": every *available* dimension matched, but at least one (typically state/rngReelStops,
+    // which are only ever captured best-effort) was unavailable on one side and so was skipped — never
+    // conflated with a real game-result mismatch.
+    // "mismatch": at least one available dimension didn't match.
+    status: "match" | "mismatch" | "partial" | "unavailable";
+    unavailableReason?: string;
+    dimensions: ReplayComparisonDimensions;
+};
+
+// What describeReplayComparison needs from each side — a slice of ReplayDescriptor (or the pasted
+// artifact's own inspection result), not the full StudioReplayJobView/ExpectedReplayState shapes those
+// actually live in at the call site (ProjectDashboardPage.tsx), keeping this module decoupled from that
+// tab's own view-model types.
+export type ComparableReplayResult = {
+    artifact?: RoundArtifactJson;
+    // Non-empty when the server's RoundArtifactValidator flagged the "expected" side's nested artifact
+    // as structurally malformed (see StudioServer.handleInspectReplayArtifact) — round/seed alone can
+    // still be valid enough to attempt a replay even when this is non-empty (the two-tier split
+    // requirement 1 asks for), but the artifact itself is never trustworthy enough to compare against.
+    artifactWarnings?: string[];
+    stateBefore?: unknown;
+    stateAfter?: unknown;
+};
+
+export function describeReplayComparison(expected: ComparableReplayResult, reproduced: ComparableReplayResult): ReplayComparisonView {
+    if (expected.artifactWarnings && expected.artifactWarnings.length > 0) {
+        const unavailableReason = `Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable: ${expected.artifactWarnings.join(" ")}`;
+        return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason)};
+    }
+    if (expected.artifact === undefined || reproduced.artifact === undefined) {
+        const unavailableReason = "No round artifact is available on one or both sides to compare.";
+        return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason)};
     }
 
-    const differences: string[] = [];
-    if (!screensEqual(expected.screen, reproduced.screen)) {
-        differences.push("Screen differs.");
+    const expectedArtifact = expected.artifact;
+    const reproducedArtifact = reproduced.artifact;
+
+    const dimensions: ReplayComparisonDimensions = {
+        screen: compareDimension(expectedArtifact.screen, reproducedArtifact.screen, Array.isArray, (a, b) =>
+            screensEqual(a, b) ? undefined : "Screen differs.",
+        ),
+        wins: compareDimension(expectedArtifact.wins, reproducedArtifact.wins, Array.isArray, (a, b) =>
+            deepEqualJson(a, b) ? undefined : `Wins differ (expected ${a.length}, got ${b.length}).`,
+        ),
+        totalPayout: compareDimension(expectedArtifact.totalWin, reproducedArtifact.totalWin, isFiniteNumber, (a, b) =>
+            a === b ? undefined : `Total payout differs (expected ${a}, got ${b}).`,
+        ),
+        steps: compareDimension(expectedArtifact.steps, reproducedArtifact.steps, Array.isArray, (a, b) =>
+            deepEqualJson(a, b) ? undefined : "Round steps differ.",
+        ),
+        featureEvents: compareDimension(expectedArtifact.featureEvents ?? [], reproducedArtifact.featureEvents ?? [], Array.isArray, (a, b) =>
+            deepEqualJson(a, b) ? undefined : "Feature events differ.",
+        ),
+        state: compareStatePair(expected.stateBefore, expected.stateAfter, reproduced.stateBefore, reproduced.stateAfter),
+        rngReelStops: compareDimension(expectedArtifact.debug, reproducedArtifact.debug, isDebugObject, (a, b) =>
+            deepEqualJson(a, b) ? undefined : "RNG/reel-stop debug data differs.",
+        ),
+    };
+
+    const values = Object.values(dimensions);
+    const hasMismatch = values.some((dimension) => dimension.status === "mismatch");
+    const hasUnavailable = values.some((dimension) => dimension.status === "unavailable");
+    let status: ReplayComparisonView["status"] = "match";
+    if (hasMismatch) {
+        status = "mismatch";
+    } else if (hasUnavailable) {
+        status = "partial";
     }
-    if (expected.totalWin !== reproduced.totalWin) {
-        differences.push(`Total win differs (expected ${expected.totalWin}, got ${reproduced.totalWin}).`);
+    return {status, dimensions};
+}
+
+function unavailableDimensions(reason: string): ReplayComparisonDimensions {
+    const unavailable: ComparisonDimensionResult = {status: "unavailable", reason};
+    return {
+        screen: unavailable,
+        wins: unavailable,
+        totalPayout: unavailable,
+        steps: unavailable,
+        featureEvents: unavailable,
+        state: unavailable,
+        rngReelStops: unavailable,
+    };
+}
+
+// Every dimension check goes through here so "unavailable" is always the outcome of an absent/wrong-
+// shaped value, never a thrown exception — `isValid` is a real runtime guard (Array.isArray,
+// isFiniteNumber, isDebugObject below), not just the compiler agreeing with an already-typed field, since
+// the "expected" side in particular can originate from a pasted, hand-edited JSON blob.
+function compareDimension<Value>(
+    expectedValue: Value | undefined,
+    reproducedValue: Value | undefined,
+    isValid: (value: unknown) => value is Value,
+    describeDifference: (expectedValue: Value, reproducedValue: Value) => string | undefined,
+): ComparisonDimensionResult {
+    if (!isValid(expectedValue) || !isValid(reproducedValue)) {
+        return {status: "unavailable", reason: "Not present (or not in the expected shape) on one or both sides."};
     }
-    if (expected.payoutMultiplier !== reproduced.payoutMultiplier) {
-        differences.push(`Payout multiplier differs (expected ${expected.payoutMultiplier}, got ${reproduced.payoutMultiplier}).`);
+    const detail = describeDifference(expectedValue, reproducedValue);
+    return detail === undefined ? {status: "match"} : {status: "mismatch", detail};
+}
+
+// "state transition" per requirement 4: only ever comparable when *both* the before and after snapshots
+// are present on *both* sides — a partial pair (e.g. only "after" captured) is unavailable rather than
+// compared against a mismatched pairing.
+function compareStatePair(expectedBefore: unknown, expectedAfter: unknown, reproducedBefore: unknown, reproducedAfter: unknown): ComparisonDimensionResult {
+    if (expectedBefore === undefined || expectedAfter === undefined || reproducedBefore === undefined || reproducedAfter === undefined) {
+        return {status: "unavailable", reason: "A state snapshot is missing on one or both sides."};
     }
-    if (expected.wins.length !== reproduced.wins.length) {
-        differences.push(`Win count differs (expected ${expected.wins.length}, got ${reproduced.wins.length}).`);
+    const matches = deepEqualJson(expectedBefore, reproducedBefore) && deepEqualJson(expectedAfter, reproducedAfter);
+    return matches ? {status: "match"} : {status: "mismatch", detail: "Session state before/after differs."};
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value);
+}
+
+function isDebugObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// A defensive structural equality check over already-computed JSON-safe data (screen/wins/steps/
+// feature-events/debug/state) — never a second game-calculation path, purely a presentation-layer diff
+// of values the backend already produced. Mirrors RoundArtifactValidator's own private deepEqual (not
+// exported from "pokie"), including the same depth cap standing in for cycle detection.
+function deepEqualJson(a: unknown, b: unknown, depth = 0): boolean {
+    if (depth > 100) {
+        return false;
     }
-    if (differences.length === 0) {
-        differences.push("Content differs in a field not covered by this summary — see Advanced details for the full JSON.");
+    if (Object.is(a, b)) {
+        return true;
     }
-    return {matches: false, differences};
+    if (Array.isArray(a) || Array.isArray(b)) {
+        return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((value, index) => deepEqualJson(value, b[index], depth + 1));
+    }
+    if (typeof a === "object" && a !== null && typeof b === "object" && b !== null) {
+        const aKeys = Object.keys(a as Record<string, unknown>);
+        const bKeys = Object.keys(b as Record<string, unknown>);
+        return (
+            aKeys.length === bKeys.length &&
+            aKeys.every((key) => deepEqualJson((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key], depth + 1))
+        );
+    }
+    return false;
 }
 
 function screensEqual(a: readonly (readonly (string | number)[])[], b: readonly (readonly (string | number)[])[]): boolean {

@@ -106,6 +106,18 @@ function stepperStep(label: string, description: string): RegExp {
     return new RegExp(`${label}.*${description}`);
 }
 
+// Each comparison-dimension row (RoundArtifactInspector's own <List.Item>) renders its label and its
+// match/mismatch/unavailable status as *separate* text nodes (a <Text span> plus a trailing string) --
+// getByText's node-matching heuristic won't span both, so this reads the <li>'s own full textContent
+// instead of trying to match it with a single getByText query.
+function dimensionRow(label: string): HTMLElement {
+    const item = screen.getAllByRole("listitem").find((element) => element.textContent?.startsWith(label));
+    if (!item) {
+        throw new Error(`No comparison dimension row found for label "${label}".`);
+    }
+    return item;
+}
+
 describe("ProjectDashboardPage - Replay & Debug workflow", () => {
     it("runs a Seed & Round replay, inspects the full artifact with step navigation, and exports it", async () => {
         const user = userEvent.setup();
@@ -160,10 +172,126 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-1/download");
     }, 45000);
 
-    it("shows a match banner when the reproduced artifact's hash equals the pasted expected artifact's hash", async () => {
+    it("shows state before/after in the Inspector when the backend captured them", async () => {
         const user = userEvent.setup();
         let pollCount = 0;
-        const pastedDescriptor = descriptorFor({}, "shared-hash");
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    return {ok: true, status: 200, body: jobFor("job-state", {status: "queued", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-state": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-state", {status: "running", completedRounds: 0})};
+                }
+                return {
+                    ok: true,
+                    status: 200,
+                    body: jobFor("job-state", {
+                        status: "completed",
+                        descriptor: descriptorFor({stateBefore: {bet: 1, win: 0}, stateAfter: {bet: 1, win: 5}}),
+                    }),
+                };
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Find"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+
+        await waitFor(() => expect(screen.getByText("Before")).toBeInTheDocument(), {timeout: 15000});
+        expect(screen.getByText("After")).toBeInTheDocument();
+        expect(screen.getByText(/"win": 0/)).toBeInTheDocument();
+        expect(screen.getByText(/"win": 5/)).toBeInTheDocument();
+        expect(screen.queryByText("State snapshot unavailable for this game/session type.")).not.toBeInTheDocument();
+    }, 45000);
+
+    it("shows an explicit 'state snapshot unavailable' message (not a silently missing section) when the backend never captured state", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    return {ok: true, status: 200, body: jobFor("job-no-state", {status: "queued", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-no-state": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-no-state", {status: "running", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: jobFor("job-no-state", {status: "completed", descriptor: descriptorFor()})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Find"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+
+        await waitFor(() => expect(screen.getByText("State snapshot unavailable for this game/session type.")).toBeInTheDocument(), {timeout: 15000});
+        expect(screen.queryByText("Before")).not.toBeInTheDocument();
+        expect(screen.queryByText("After")).not.toBeInTheDocument();
+    }, 45000);
+
+    it("shows RNG/reel-stop debug data only after opening Advanced details, and renders cleanly when it's absent", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const debugArtifact = artifactFor({debug: {reelStops: [3, 7, 12], rngEngine: "fake"}});
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    return {ok: true, status: 200, body: jobFor("job-debug", {status: "queued", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-debug": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-debug", {status: "running", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: jobFor("job-debug", {status: "completed", descriptor: descriptorFor({artifact: debugArtifact})})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Find"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+
+        await waitFor(() => expect(screen.getByText(/Show advanced details/)).toBeInTheDocument(), {timeout: 15000});
+        // Not visible before opening Advanced details -- it's technical/internal, same treatment as the
+        // rest of the raw JSON.
+        expect(screen.queryByText(/reelStops/)).not.toBeInTheDocument();
+
+        await user.click(screen.getByText(/Show advanced details/));
+        expect(screen.getByText(/may include RNG\/reel-stop data/)).toBeInTheDocument();
+        // Appears twice: once in its own "Debug data" block, once more inside the full artifact JSON dump
+        // right below it -- both under Advanced details, never in the main round view.
+        expect(screen.getAllByText(/"reelStops"/).length).toBeGreaterThan(0);
+    }, 45000);
+
+    it("shows a full match banner when every comparable dimension (including state/debug) is identical", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const matchingArtifact = artifactFor({debug: {reelStops: [1, 2, 3]}}, "shared-hash");
+        const matchingDescriptor = () =>
+            descriptorFor({artifact: matchingArtifact, stateBefore: {win: 0}, stateAfter: {win: 5}}, "shared-hash");
+        const pastedDescriptor = matchingDescriptor();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
@@ -178,7 +306,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
                 if (pollCount < 2) {
                     return {ok: true, status: 200, body: jobFor("job-match", {status: "running", completedRounds: 0})};
                 }
-                return {ok: true, status: 200, body: jobFor("job-match", {status: "completed", descriptor: descriptorFor({}, "shared-hash")})};
+                return {ok: true, status: 200, body: jobFor("job-match", {status: "completed", descriptor: matchingDescriptor()})};
             },
         });
 
@@ -193,9 +321,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
 
         await waitFor(() => expect(screen.getByText("Matches the expected result")).toBeInTheDocument(), {timeout: 15000});
+        expect(screen.getByText(/RNG \/ reel stops:/)).toBeInTheDocument();
     }, 45000);
 
-    it("shows a mismatch banner with a field-level explanation when the hashes differ", async () => {
+    it("shows a mismatch banner naming the specific dimension when totalPayout differs", async () => {
         const user = userEvent.setup();
         let pollCount = 0;
         const pastedDescriptor = descriptorFor({artifact: artifactFor({totalWin: 5}, "expected-hash")});
@@ -232,7 +361,51 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
 
         await waitFor(() => expect(screen.getByText("Differs from the expected result")).toBeInTheDocument(), {timeout: 15000});
-        expect(screen.getByText(/Total win differs \(expected 5, got 9\)\./)).toBeInTheDocument();
+        expect(screen.getByText(/Total payout differs \(expected 5, got 9\)\./)).toBeInTheDocument();
+        // Dimensions that genuinely coincide (screen/wins) must still say "match", not be swept into the
+        // mismatch verdict just because some other dimension differed.
+        expect(dimensionRow("Visible screen:").textContent).toMatch(/match/);
+    }, 45000);
+
+    it("reports a partial comparison (not a mismatch) when state/debug are simply absent from both sides", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        // Neither side carries stateBefore/stateAfter/debug -- an older-style descriptor, or a game
+        // without session serialization -- so state/rngReelStops must show "unavailable", and that alone
+        // must never demote the verdict to "mismatch".
+        const pastedDescriptor = descriptorFor({}, "shared-hash-2");
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    return {ok: true, status: 200, body: jobFor("job-partial", {status: "queued", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-partial": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-partial", {status: "running", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: jobFor("job-partial", {status: "completed", descriptor: descriptorFor({}, "shared-hash-2")})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        fireEvent.change(textarea, {target: {value: JSON.stringify(pastedDescriptor)}});
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+
+        await waitFor(() => expect(screen.getByText("Partially compared against the expected result")).toBeInTheDocument(), {timeout: 15000});
+        expect(dimensionRow("State transition:").textContent).toMatch(/unavailable/);
+        expect(dimensionRow("RNG / reel stops:").textContent).toMatch(/unavailable/);
+        expect(dimensionRow("Visible screen:").textContent).toMatch(/match/);
     }, 45000);
 
     it("blocks continuing past Load for a pasted artifact with an invalid outer round/seed", async () => {
@@ -275,6 +448,57 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await waitFor(() => expect(screen.getByText('"steps" must be an array.')).toBeInTheDocument());
         expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeInTheDocument();
+    }, 45000);
+
+    it("completes a malformed-expected-artifact replay with no crash: comparison is unavailable with diagnostics, Inspect/Export still work", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays/inspect-artifact": () => ({
+                ok: true,
+                status: 200,
+                body: {round: 1, seed: "demo-seed", artifactWarnings: ['"screen" does not match the last step\'s screen.', '"wins" must be an array.']},
+            }),
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    return {ok: true, status: 200, body: jobFor("job-malformed", {status: "queued", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-malformed": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-malformed", {status: "running", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: jobFor("job-malformed", {status: "completed", descriptor: descriptorFor()})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        // wins is not an array (missing/malformed comparison-relevant field) -- but round/seed alone are
+        // still enough for the backend to accept this for replay (requirement 1's two-tier split).
+        fireEvent.change(textarea, {target: {value: JSON.stringify({round: 1, seed: "demo-seed", artifact: {...artifactFor(), wins: "not-an-array"}})}});
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+
+        // No crash: the Inspect step renders fully, with an "unavailable" comparison banner carrying the
+        // exact wording plus the original validation diagnostics (never hidden, never silently repaired).
+        await waitFor(() => expect(screen.getByText("Comparison unavailable")).toBeInTheDocument(), {timeout: 15000});
+        expect(
+            screen.getByText(
+                /Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable:.*"screen" does not match.*"wins" must be an array\./,
+            ),
+        ).toBeInTheDocument();
+
+        // Inspect still shows the reproduced round's own content (screen table etc.) and Export still works.
+        await user.click(screen.getByRole("button", {name: /Export.*Download/}));
+        expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-malformed/download");
     }, 45000);
 
     it("rejects text that isn't valid JSON without ever calling the server", async () => {
