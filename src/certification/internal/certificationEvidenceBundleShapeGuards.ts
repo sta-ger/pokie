@@ -118,10 +118,14 @@ function isWeightedOutcomeLibraryAnalysisShape(value: unknown): boolean {
     );
 }
 
-const VALIDATION_ISSUE_KEYS = new Set(["code", "severity", "message", "details", "suggestion"]);
+const VALIDATION_ISSUE_KEYS = new Set(["code", "severity", "message", "details", "suggestion", "path"]);
 
 // "details" is deliberately exempt from the closed-shape rule above — it's the one genuinely free-form bag in
 // this whole schema, shaped differently by every issue code in this codebase (see ValidationIssue.details).
+// "path" (added alongside "details"/"suggestion" as an optional field) stays a plain non-empty string like
+// every other scalar field here, and — unlike "details" — is fully covered by this file's own hash-relevance
+// guarantee: since it's part of the closed key set, computeCertificationEvidenceContentHash's structural
+// canonicalization (toCanonicalJson) already picks it up automatically.
 function isValidationIssueShape(value: unknown): value is ValidationIssue {
     if (typeof value !== "object" || value === null || !hasOnlyAllowedKeys(value, VALIDATION_ISSUE_KEYS)) {
         return false;
@@ -133,7 +137,8 @@ function isValidationIssueShape(value: unknown): value is ValidationIssue {
         VALID_SEVERITIES.has(issue.severity) &&
         isNonEmptyString(issue.message) &&
         (issue.details === undefined || (typeof issue.details === "object" && issue.details !== null)) &&
-        (issue.suggestion === undefined || typeof issue.suggestion === "string")
+        (issue.suggestion === undefined || typeof issue.suggestion === "string") &&
+        (issue.path === undefined || isNonEmptyString(issue.path))
     );
 }
 

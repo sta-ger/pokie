@@ -5,7 +5,7 @@ import {
     describeSectionStatus,
     describeSectionStatusText,
     fieldErrorMessage,
-    isFieldLevelIssue,
+    fieldWarningMessage,
 } from "../../../../../../cli/studio-client/src/domain/interpret/BlueprintSections";
 
 function issue(code: string, severity: ValidationIssue["severity"] = "error", path: string | undefined = undefined): ValidationIssue {
@@ -100,22 +100,23 @@ describe("describeSectionStatus", () => {
     });
 });
 
-describe("isFieldLevelIssue / crossFieldOnly", () => {
-    it("treats a known field path as field-level", () => {
-        expect(isFieldLevelIssue(issue("blueprint-manifest-invalid-id", "error", "manifest.id"))).toBe(true);
-        expect(isFieldLevelIssue(issue("blueprint-reels-invalid", "error", "reels"))).toBe(true);
-        expect(isFieldLevelIssue(issue("blueprint-rows-invalid", "error", "rows"))).toBe(true);
-    });
-
-    it("treats a missing path, or a path with no dedicated field, as cross-field", () => {
-        expect(isFieldLevelIssue(issue("blueprint-paytable-empty"))).toBe(false);
-        expect(isFieldLevelIssue(issue("blueprint-symbols-duplicate", "error", "symbols[0]"))).toBe(false);
-    });
-
-    it("crossFieldOnly filters out field-level issues, keeping cross-field ones", () => {
+describe("crossFieldOnly", () => {
+    it("filters out a field-level issue that would be shown inline, keeping cross-field ones", () => {
         const fieldLevel = issue("blueprint-manifest-invalid-id", "error", "manifest.id");
         const crossField = issue("blueprint-paytable-empty");
         expect(crossFieldOnly([fieldLevel, crossField])).toEqual([crossField]);
+    });
+
+    it("does not treat a missing path, or a path with no dedicated field, as field-level", () => {
+        const noPath = issue("blueprint-paytable-empty");
+        const unknownPath = issue("blueprint-symbols-duplicate", "error", "symbols[0]");
+        expect(crossFieldOnly([noPath, unknownPath])).toEqual([noPath, unknownPath]);
+    });
+
+    it("keeps a second issue at the same field-level path instead of dropping it -- only the first is ever shown inline", () => {
+        const first = issue("blueprint-reels-invalid", "error", "reels");
+        const second = issue("blueprint-reels-invalid-again", "error", "reels");
+        expect(crossFieldOnly([first, second])).toEqual([second]);
     });
 });
 
@@ -130,11 +131,35 @@ describe("fieldErrorMessage", () => {
         expect(fieldErrorMessage([], "manifest.id")).toBeUndefined();
     });
 
-    it("prefers an error-severity match over a warning at the same path", () => {
-        const issues = [
-            issue("blueprint-reels-suspicious", "warning", "reels"),
-            issue("blueprint-reels-invalid", "error", "reels"),
-        ];
+    it("matches an error even when a warning also exists at the same path", () => {
+        const issues = [issue("blueprint-reels-suspicious", "warning", "reels"), issue("blueprint-reels-invalid", "error", "reels")];
+        expect(fieldErrorMessage(issues, "reels")).toBe("blueprint-reels-invalid message");
+    });
+
+    it("never falls back to a warning's message -- a warning-only path is undefined, not the warning's text", () => {
+        const issues = [issue("blueprint-reels-suspicious", "warning", "reels")];
+        expect(fieldErrorMessage(issues, "reels")).toBeUndefined();
+    });
+});
+
+describe("fieldWarningMessage", () => {
+    it("returns the message for a warning-severity issue matching the exact path", () => {
+        const issues = [issue("blueprint-reels-suspicious", "warning", "reels")];
+        expect(fieldWarningMessage(issues, "reels")).toBe("blueprint-reels-suspicious message");
+    });
+
+    it("returns undefined when only an error exists at the path -- never falls back to the error's message", () => {
+        const issues = [issue("blueprint-reels-invalid", "error", "reels")];
+        expect(fieldWarningMessage(issues, "reels")).toBeUndefined();
+    });
+
+    it("returns undefined when nothing matches the path", () => {
+        expect(fieldWarningMessage([], "reels")).toBeUndefined();
+    });
+
+    it("matches independently of an error also being present at the same path -- both can be shown together", () => {
+        const issues = [issue("blueprint-reels-suspicious", "warning", "reels"), issue("blueprint-reels-invalid", "error", "reels")];
+        expect(fieldWarningMessage(issues, "reels")).toBe("blueprint-reels-suspicious message");
         expect(fieldErrorMessage(issues, "reels")).toBe("blueprint-reels-invalid message");
     });
 });

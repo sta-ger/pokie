@@ -263,4 +263,71 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         // appended text yet) -- confirmed by every pre-validate tab query elsewhere in this suite
         // (e.g. BlueprintEditorPage.sections.test.tsx's own keyboard-navigation test).
     }, 45000);
+
+    it("a field-level warning shows as a separate note and never marks the field invalid", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/home/blueprints/validate" && init?.method === "POST") {
+                return respond({
+                    status: "ok",
+                    warnings: [
+                        {
+                            code: "blueprint-reels-suspicious",
+                            severity: "warning",
+                            message: '"reels" is unusually large.',
+                            path: "reels",
+                        },
+                    ],
+                });
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await user.click(screen.getByRole("tab", {name: /Layout/}));
+        const reelsField = screen.getAllByLabelText("Reels")[0];
+        // Mantine only sets aria-invalid when an `error` prop is actually passed -- a warning must never
+        // reach that prop (see fieldErrorMessage/fieldWarningMessage's own doc comments), so the attribute
+        // is either absent entirely or explicitly "false", never "true".
+        expect(reelsField).not.toHaveAttribute("aria-invalid", "true");
+        expect(screen.getByText('"reels" is unusually large.')).toBeInTheDocument();
+        // Warnings-only still means "ok" -- Build stays enabled (see the dedicated
+        // "a warnings-only validation still allows Build" test for the general case; this just confirms
+        // a *field-level* warning specifically doesn't accidentally regress that).
+        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).not.toBeDisabled();
+    }, 45000);
+
+    it("neither warning is lost from the UI when two share the same field-level path", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/home/blueprints/validate" && init?.method === "POST") {
+                return respond({
+                    status: "ok",
+                    warnings: [
+                        {code: "blueprint-reels-suspicious", severity: "warning", message: "First reels warning.", path: "reels"},
+                        {code: "blueprint-reels-suspicious-2", severity: "warning", message: "Second reels warning.", path: "reels"},
+                    ],
+                });
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await user.click(screen.getByRole("tab", {name: /Layout/}));
+        // Only the first is ever shown inline (fieldWarningMessage picks the first match) -- the second
+        // has nowhere inline to go, so it must stay visible in Layout's own cross-field summary list
+        // instead of silently vanishing (the crossFieldOnly fix this pass makes). The second also shows
+        // up a second time in BlueprintValidationPanel's own unfiltered "Warnings" list (outside the
+        // sectioned editor entirely) -- getAllByText tolerates that instead of asserting exclusivity.
+        expect(screen.getByText("First reels warning.")).toBeInTheDocument();
+        expect(screen.getAllByText(/Second reels warning\./).length).toBeGreaterThan(0);
+    }, 45000);
 });

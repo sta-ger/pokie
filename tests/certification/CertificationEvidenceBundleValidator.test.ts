@@ -199,6 +199,45 @@ describe("CertificationEvidenceBundleValidator", () => {
         expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-content-hash-mismatch");
     });
 
+    it("accepts a deepValidation.issues entry carrying `path`, with evidenceContentHash recomputed to match", async () => {
+        const manifest = readManifest(certDir);
+        const draft = {
+            ...manifest,
+            deepValidation: {
+                ...manifest.deepValidation,
+                issues: [{code: "blueprint-reels-invalid", severity: "error" as const, message: "reels must be positive", path: "reels"}],
+            },
+        };
+        writeManifest(certDir, {...draft, evidenceContentHash: computeCertificationEvidenceContentHash(draft)});
+
+        const issues = await validator.validate(certDir);
+        expect(issues).toEqual([]);
+    });
+
+    it("detects a path-only tamper (evidenceContentHash left stale) via the unified evidenceContentHash check", async () => {
+        const manifest = readManifest(certDir);
+        const withPath = {
+            ...manifest,
+            deepValidation: {
+                ...manifest.deepValidation,
+                issues: [{code: "blueprint-reels-invalid", severity: "error" as const, message: "reels must be positive", path: "reels"}],
+            },
+        };
+        writeManifest(certDir, {...withPath, evidenceContentHash: computeCertificationEvidenceContentHash(withPath)});
+
+        // Change only `path` -- everything else, including evidenceContentHash, stays exactly as the
+        // still-valid write above left it. `path` must be load-bearing for the hash, not an inert extra
+        // field, so this alone must be enough to trip the content-hash check.
+        const retampered = readManifest(certDir);
+        writeManifest(certDir, {
+            ...retampered,
+            deepValidation: {...retampered.deepValidation, issues: [{...retampered.deepValidation.issues[0], path: "rows"}]},
+        });
+
+        const issues = await validator.validate(certDir);
+        expect(issues.map((issue) => issue.code)).toContain("certification-evidence-bundle-content-hash-mismatch");
+    });
+
     it("reports no content-hash-mismatch for a freshly built, untouched bundle", async () => {
         const issues = await validator.validate(certDir);
         expect(issues.map((issue) => issue.code)).not.toContain("certification-evidence-bundle-content-hash-mismatch");

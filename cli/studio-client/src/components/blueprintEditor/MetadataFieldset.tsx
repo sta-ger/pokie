@@ -1,7 +1,8 @@
 import {SimpleGrid, TextInput} from "@mantine/core";
 import type {ValidationIssue} from "../../api/types";
-import {fieldErrorMessage} from "../../domain/interpret/BlueprintSections";
+import {fieldErrorMessage, fieldWarningMessage} from "../../domain/interpret/BlueprintSections";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
+import {FieldWarningText} from "../common/FieldWarningText";
 import {PageSection} from "../common/PageSection";
 
 function toRecordCopy(value: unknown): Record<string, unknown> {
@@ -43,24 +44,33 @@ export function MetadataFieldset({
     return (
         <PageSection legend={legend}>
             <SimpleGrid cols={{base: 1, sm: 2}} spacing="sm">
-                <TextInput
-                    label="Game id"
-                    defaultValue={readManifest("id")}
-                    onBlur={(event) => setManifestField("id", event.currentTarget.value)}
-                    error={fieldErrorMessage(issues, "manifest.id")}
-                />
-                <TextInput
-                    label="Game name"
-                    defaultValue={readManifest("name")}
-                    onBlur={(event) => setManifestField("name", event.currentTarget.value)}
-                    error={fieldErrorMessage(issues, "manifest.name")}
-                />
-                <TextInput
-                    label="Version"
-                    defaultValue={readManifest("version")}
-                    onBlur={(event) => setManifestField("version", event.currentTarget.value)}
-                    error={fieldErrorMessage(issues, "manifest.version")}
-                />
+                <div>
+                    <TextInput
+                        label="Game id"
+                        defaultValue={readManifest("id")}
+                        onBlur={(event) => setManifestField("id", event.currentTarget.value)}
+                        error={fieldErrorMessage(issues, "manifest.id")}
+                    />
+                    <FieldWarningText message={fieldWarningMessage(issues, "manifest.id")} />
+                </div>
+                <div>
+                    <TextInput
+                        label="Game name"
+                        defaultValue={readManifest("name")}
+                        onBlur={(event) => setManifestField("name", event.currentTarget.value)}
+                        error={fieldErrorMessage(issues, "manifest.name")}
+                    />
+                    <FieldWarningText message={fieldWarningMessage(issues, "manifest.name")} />
+                </div>
+                <div>
+                    <TextInput
+                        label="Version"
+                        defaultValue={readManifest("version")}
+                        onBlur={(event) => setManifestField("version", event.currentTarget.value)}
+                        error={fieldErrorMessage(issues, "manifest.version")}
+                    />
+                    <FieldWarningText message={fieldWarningMessage(issues, "manifest.version")} />
+                </div>
                 <TextInput
                     label="Description (optional)"
                     defaultValue={readManifest("description")}

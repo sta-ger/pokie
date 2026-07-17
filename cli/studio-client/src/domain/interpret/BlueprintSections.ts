@@ -86,28 +86,47 @@ export function describeSectionStatus(sectionId: BlueprintSectionId, view: Bluep
 }
 
 // Paths the guided editor already renders a dedicated Mantine input for (see MetadataFieldset.tsx/
-// LayoutFieldset.tsx) -- an issue whose `path` is one of these shows as that input's own `error` instead
+// LayoutFieldset.tsx) -- an issue whose `path` is one of these shows inline next to that input instead
 // of generically in its section's issue list. Every other issue (no path, or a path with no dedicated
 // input -- most of Symbols/Reels/Paytable/Bets today) stays cross-field/section-level, unchanged.
 const FIELD_LEVEL_PATHS = new Set(["manifest.id", "manifest.name", "manifest.version", "reels", "rows"]);
 
-export function isFieldLevelIssue(issue: ValidationIssue): boolean {
-    return issue.path !== undefined && FIELD_LEVEL_PATHS.has(issue.path);
-}
-
 // A section's own generic issue list should show only what isn't already surfaced next to a specific
 // field -- avoids the same issue appearing twice in the same panel (once inline on the input, once
-// generically below it).
+// generically below it). Only the *first* issue at each field-level path is ever actually rendered
+// inline (fieldErrorMessage/fieldWarningMessage below both pick the first match for their own severity)
+// -- a second issue sharing that path has nowhere inline to go, so it must stay in the summary instead of
+// silently vanishing. Correct as long as `issues` is already split by severity before this is called
+// (SectionedFormEditor.tsx always calls this once on an errors-only array and once on a warnings-only
+// array, never a mixed one) -- within either call, "first issue at this path" and "first issue of this
+// severity at this path" are the same thing.
 export function crossFieldOnly(issues: ValidationIssue[]): ValidationIssue[] {
-    return issues.filter((issue) => !isFieldLevelIssue(issue));
+    const shownInline = new Set<ValidationIssue>();
+    const seenPaths = new Set<string>();
+    for (const issue of issues) {
+        if (issue.path !== undefined && FIELD_LEVEL_PATHS.has(issue.path) && !seenPaths.has(issue.path)) {
+            seenPaths.add(issue.path);
+            shownInline.add(issue);
+        }
+    }
+    return issues.filter((issue) => !shownInline.has(issue));
 }
 
-// The single message to show as a Mantine input's own `error` prop for one exact field path -- an error
-// takes priority over a warning at the same path (Mantine inputs have no separate "warning" visual
-// state), and `undefined` (no `error` prop at all) when nothing applies.
+// The message to show as a Mantine input's own `error` prop for one exact field path -- errors only.
+// Mantine's `error` prop also sets `aria-invalid`, which must never fire for a mere warning (a warning is
+// never a reason to mark a field invalid -- see BlueprintBuildPanel's own "warnings-only never blocks"
+// contract). `undefined` (no `error` prop at all) when no error applies, even if a warning does --
+// fieldWarningMessage below is the separate channel for that.
 export function fieldErrorMessage(issues: ValidationIssue[], path: string): string | undefined {
-    const matches = issues.filter((issue) => issue.path === path);
-    return (matches.find((issue) => issue.severity === "error") ?? matches[0])?.message;
+    return issues.find((issue) => issue.path === path && issue.severity === "error")?.message;
+}
+
+// The message to show as a field's own separate warning note (FieldWarningText, never Mantine's `error`
+// prop) for one exact field path -- warnings only, independent of whether an error is *also* present at
+// the same path (both can render together; see fieldErrorMessage's own doc comment for why they're kept
+// apart).
+export function fieldWarningMessage(issues: ValidationIssue[], path: string): string | undefined {
+    return issues.find((issue) => issue.path === path && issue.severity === "warning")?.message;
 }
 
 // The section-status text exposed to assistive tech alongside StatusBadge's own decorative,
