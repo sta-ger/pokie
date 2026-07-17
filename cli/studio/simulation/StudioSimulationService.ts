@@ -277,6 +277,7 @@ export class StudioSimulationService {
             returnStandardDeviation: result.statistics.returnStandardDeviation,
             averagePayoutConfidenceInterval95: result.statistics.averagePayoutConfidenceInterval95,
             rtpConfidenceInterval95: result.statistics.rtpConfidenceInterval95,
+            payoutHistogram: result.statistics.payoutHistogram,
         };
         this.markTerminal(record);
     }

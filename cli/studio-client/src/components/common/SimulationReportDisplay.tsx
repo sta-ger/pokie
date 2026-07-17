@@ -1,4 +1,5 @@
-import {List, Table, Text} from "@mantine/core";
+import {Anchor, Collapse, List, Table, Text} from "@mantine/core";
+import {useDisclosure} from "@mantine/hooks";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 import {PageSection} from "./PageSection";
 
@@ -13,6 +14,8 @@ function formatConfidenceInterval(interval: {low: number; high: number} | undefi
 // view -- one formatting implementation, not duplicated, same reasoning as the old dom.ts's
 // renderSimulationReport (which both call sites shared via SimulationReportElements/prefix).
 export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
+    const [histogramOpened, {toggle: toggleHistogram}] = useDisclosure(false);
+
     return (
         <div>
             <Table withRowBorders={false}>
@@ -52,10 +55,6 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                         <Table.Td>{view.volatility === undefined ? "—" : view.volatility.toFixed(2)}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th>RTP 95% confidence interval</Table.Th>
-                        <Table.Td>{formatConfidenceInterval(view.rtpConfidenceInterval95)}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
                         <Table.Th>Max win</Table.Th>
                         <Table.Td>{view.maxWin.toFixed(2)}</Table.Td>
                     </Table.Tr>
@@ -67,6 +66,28 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                     </Table.Tr>
                 </Table.Tbody>
             </Table>
+
+            <PageSection legend="Convergence">
+                <Table withRowBorders={false}>
+                    <Table.Tbody>
+                        <Table.Tr>
+                            <Table.Th>RTP 95% confidence interval</Table.Th>
+                            <Table.Td>{formatConfidenceInterval(view.rtpConfidenceInterval95)}</Table.Td>
+                        </Table.Tr>
+                        <Table.Tr>
+                            <Table.Th>Average payout 95% confidence interval</Table.Th>
+                            <Table.Td>{formatConfidenceInterval(view.averagePayoutConfidenceInterval95)}</Table.Td>
+                        </Table.Tr>
+                    </Table.Tbody>
+                </Table>
+                {view.recommendations.length > 0 && (
+                    <List size="sm" mt="sm">
+                        {view.recommendations.map((recommendation, index) => (
+                            <List.Item key={index}>{recommendation}</List.Item>
+                        ))}
+                    </List>
+                )}
+            </PageSection>
 
             {view.breakdown && view.breakdown.length > 0 && (
                 <PageSection legend="Breakdown">
@@ -107,6 +128,38 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                         ))}
                     </List>
                 </PageSection>
+            )}
+
+            {view.payoutHistogram && Object.keys(view.payoutHistogram).length > 0 && (
+                <div>
+                    <Text size="sm" mt="sm">
+                        <Anchor component="button" type="button" onClick={toggleHistogram}>
+                            {histogramOpened ? "Hide" : "Show"} advanced settings (payout histogram)
+                        </Anchor>
+                    </Text>
+                    <Collapse expanded={histogramOpened}>
+                        <PageSection legend="Payout histogram">
+                            <Table.ScrollContainer minWidth={300}>
+                                <Table>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>Payout bucket</Table.Th>
+                                            <Table.Th>Rounds</Table.Th>
+                                        </Table.Tr>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {Object.entries(view.payoutHistogram).map(([bucket, count]) => (
+                                            <Table.Tr key={bucket}>
+                                                <Table.Td>{bucket}</Table.Td>
+                                                <Table.Td>{count}</Table.Td>
+                                            </Table.Tr>
+                                        ))}
+                                    </Table.Tbody>
+                                </Table>
+                            </Table.ScrollContainer>
+                        </PageSection>
+                    </Collapse>
+                </div>
             )}
 
             {view.reproducibilityCommand !== undefined && (

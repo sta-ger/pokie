@@ -3,7 +3,7 @@ import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {buildReportDownloadUrl, closeProject, getReplay, getReport, inspectProject, listReplays, listReports, validateProject} from "../../api/apiClient";
-import type {SimulationReport, StudioSimulationReportListEntry} from "../../api/types";
+import type {StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
@@ -28,21 +28,20 @@ import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DeploymentTab} from "./DeploymentTab";
 import {OverviewTab} from "./OverviewTab";
 import {ReplayTab} from "./ReplayTab";
-import {ReportsTab, type ReportDetailState} from "./ReportsTab";
 import {RuntimeTab} from "./RuntimeTab";
-import {SimulationTab} from "./SimulationTab";
+import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 import {ValidationTab} from "./ValidationTab";
 
-export type ProjectTab = "overview" | "validation" | "simulation" | "reports" | "replay" | "runtime" | "deployment";
+export type ProjectTab = "overview" | "validation" | "simulation" | "replay" | "runtime" | "deployment";
 
-// Primary happy-path tabs (Overview -> Validate -> Simulate -> Reports) come first, unlabeled/implicit;
-// Replay/Runtime/Deployment are tagged `section: "Advanced"` so NavTabs visually separates them --
-// everything's still one click away, just no longer presented as equal-weight to the main flow.
+// Primary happy-path tabs (Overview -> Validate -> Simulate, which now also owns Reports) come first,
+// unlabeled/implicit; Replay/Runtime/Deployment are tagged `section: "Advanced"` so NavTabs visually
+// separates them -- everything's still one click away, just no longer presented as equal-weight to the
+// main flow.
 const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "overview", label: "Overview"},
     {value: "validation", label: "Validate"},
-    {value: "simulation", label: "Simulate"},
-    {value: "reports", label: "Reports"},
+    {value: "simulation", label: "Simulation & Reports"},
     {value: "replay", label: "Replay", section: "Advanced"},
     {value: "runtime", label: "Runtime", section: "Advanced"},
     {value: "deployment", label: "Deployment", section: "Advanced"},
@@ -109,13 +108,6 @@ export function ProjectDashboardPage() {
     }, [fetchImpl]);
 
     const simulation = useSimulationPoll();
-    const [simulationReport, setSimulationReport] = useState<ReturnType<typeof describeSimulationReport>>();
-    useEffect(() => {
-        if (simulation.job?.status === "completed" && simulation.job.report) {
-            setSimulationReport(describeSimulationReport(simulation.job.report, simulation.job.statistics));
-        }
-    }, [simulation.job]);
-    const [lastSimulationParams, setLastSimulationParams] = useState<{rounds: number; seed?: string; workers: number}>();
 
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});
     const [reportsError, setReportsError] = useState<string>();
@@ -125,22 +117,75 @@ export function ProjectDashboardPage() {
             .catch((error: unknown) => setReportsError(errorMessage(error)));
     }, [fetchImpl]);
     const [reportDetail, setReportDetail] = useState<ReportDetailState>({status: "empty"});
-    const [reportDetailRaw, setReportDetailRaw] = useState<SimulationReport>();
     const [selectedReportId, setSelectedReportId] = useState<string>();
 
+    // Used both to auto-open the just-completed live job's report (see the effect below) and to open a
+    // historic entry straight from the Recent Runs list -- either way this is "the report Review should
+    // show", by id, fetched fresh from the server rather than reused from in-memory job state (matches
+    // the pre-merge ReportsTab's own behavior).
     const selectReport = useCallback(
         (id: string) => {
-            setActiveTab("reports");
+            setActiveTab("simulation");
             setSelectedReportId(id);
             setReportDetail({status: "loading"});
             getReport(fetchImpl, id)
-                .then((report) => {
-                    setReportDetailRaw(report);
-                    setReportDetail({status: "loaded", report: describeSimulationReport(report)});
-                })
+                .then((report) => setReportDetail({status: "loaded", report: describeSimulationReport(report)}))
                 .catch((error: unknown) => setReportDetail({status: "error", message: errorMessage(error)}));
         },
         [fetchImpl, setActiveTab],
+    );
+
+    // Auto-opens the report the instant a *live* job this session started completes -- requirement 5's
+    // "auto-open summary" -- and refreshes the Recent Runs list so the just-finished run shows up there
+    // too without the user having to remember to click Refresh. Guarded by job id (not just status) so
+    // this fires exactly once per completed job, not on every poll tick while status stays "completed".
+    const autoOpenedJobIdRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (simulation.job?.status === "completed" && simulation.job.id !== autoOpenedJobIdRef.current) {
+            autoOpenedJobIdRef.current = simulation.job.id;
+            selectReport(simulation.job.id);
+            refreshReports();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [simulation.job, selectReport]);
+
+    const [compareDetail, setCompareDetail] = useState<ReportDetailState>({status: "empty"});
+
+    // Every path that starts a new run (Configure submit, Retry, a Recent Runs "Run again") funnels
+    // through here so a previous run's report/compare state never lingers stale while the new one is
+    // in flight.
+    const startRun = useCallback(
+        (rounds: number, seed: string | undefined, workers: number) => {
+            setReportDetail({status: "empty"});
+            setSelectedReportId(undefined);
+            setCompareDetail({status: "empty"});
+            simulation.run(rounds, seed, workers);
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [simulation.run],
+    );
+
+    const onCompare = useCallback(
+        (entry: StudioSimulationReportListEntry) => {
+            setCompareDetail({status: "loading"});
+            getReport(fetchImpl, entry.id)
+                .then((report) => setCompareDetail({status: "loaded", report: describeSimulationReport(report)}))
+                .catch((error: unknown) => setCompareDetail({status: "error", message: errorMessage(error)}));
+        },
+        [fetchImpl],
+    );
+    const onClearCompare = useCallback(() => setCompareDetail({status: "empty"}), []);
+
+    const onRunAgain = useCallback(
+        (entry: StudioSimulationReportListEntry) => {
+            const doRun = (): void => startRun(entry.requestedRounds, entry.seed, entry.workers);
+            if (simulation.job !== undefined && isSimulationActive(simulation.job)) {
+                confirm("A simulation is already running. Start a new one with this configuration instead?", doRun);
+            } else {
+                doRun();
+            }
+        },
+        [simulation.job, startRun, confirm],
     );
 
     const [replayListView, setReplayListView] = useState<ReplayListView>({status: "empty"});
@@ -271,31 +316,19 @@ export function ProjectDashboardPage() {
                     {activeTab === "simulation" && (
                         <SimulationTab
                             progress={simulation.progress}
-                            report={simulationReport}
                             error={simulation.error}
-                            onRun={(rounds, seed, workers) => {
-                                setLastSimulationParams({rounds, seed, workers});
-                                simulation.run(rounds, seed, workers);
-                            }}
+                            onRun={startRun}
                             onCancel={simulation.cancel}
-                            onRerun={() =>
-                                lastSimulationParams && simulation.run(lastSimulationParams.rounds, lastSimulationParams.seed, lastSimulationParams.workers)
-                            }
-                            onViewInReports={() => {
-                                if (simulation.currentJobId) {
-                                    selectReport(simulation.currentJobId);
-                                    refreshReports();
-                                }
-                            }}
-                        />
-                    )}
-                    {activeTab === "reports" && (
-                        <ReportsTab
-                            listView={reportsView}
-                            listError={reportsError}
-                            onRefresh={refreshReports}
-                            onSelect={(entry: StudioSimulationReportListEntry) => selectReport(entry.id)}
-                            detail={reportDetail}
+                            onRetry={() => simulation.job && startRun(simulation.job.rounds, simulation.job.seed, simulation.job.workers)}
+                            recentRuns={reportsView}
+                            recentRunsError={reportsError}
+                            onRefreshRecentRuns={refreshReports}
+                            reviewedDetail={reportDetail}
+                            onOpenHistoric={(entry: StudioSimulationReportListEntry) => selectReport(entry.id)}
+                            onRunAgain={onRunAgain}
+                            compareDetail={compareDetail}
+                            onCompare={onCompare}
+                            onClearCompare={onClearCompare}
                             downloadUrls={
                                 selectedReportId
                                     ? {
@@ -305,16 +338,6 @@ export function ProjectDashboardPage() {
                                     }
                                     : undefined
                             }
-                            onBackToSimulation={() => {
-                                if (reportDetailRaw) {
-                                    setLastSimulationParams({
-                                        rounds: reportDetailRaw.requestedRounds,
-                                        seed: reportDetailRaw.seed ?? undefined,
-                                        workers: reportDetailRaw.workers ?? 1,
-                                    });
-                                }
-                                setActiveTab("simulation");
-                            }}
                         />
                     )}
                     {activeTab === "replay" && (

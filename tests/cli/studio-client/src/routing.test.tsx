@@ -33,7 +33,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
 
         await screen.findByRole("heading", {name: "A"});
-        expect(screen.getByRole("button", {name: "Simulate"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: /Simulation & Reports/})).toHaveAttribute("aria-current", "page");
         expect(screen.getByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
     });
 

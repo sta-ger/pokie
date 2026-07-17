@@ -239,6 +239,7 @@ export type StudioSimulationStatisticsView = {
     returnStandardDeviation: number;
     averagePayoutConfidenceInterval95: {low: number; high: number};
     rtpConfidenceInterval95: {low: number; high: number};
+    payoutHistogram?: Record<string, number>;
 };
 
 export type StudioSimulationStatus = "queued" | "running" | "completed" | "failed" | "cancelled";

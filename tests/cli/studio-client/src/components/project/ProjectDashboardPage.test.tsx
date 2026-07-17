@@ -90,6 +90,26 @@ describe("ProjectDashboardPage", () => {
                     },
                 };
             }
+            if (path === "/api/project/reports/sim-1") {
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"},
+                        requestedRounds: 100,
+                        rounds: 100,
+                        seed: null,
+                        totalBet: 100,
+                        totalWin: 90,
+                        rtp: 0.9,
+                        hitFrequency: 0.3,
+                        maxWin: 50,
+                        durationMs: 10,
+                        spinsPerSecond: 10,
+                        warnings: [],
+                    },
+                };
+            }
             const routes = baseFetchRoutes();
             const route = routes[path as keyof typeof routes];
             if (route) {
@@ -101,7 +121,7 @@ describe("ProjectDashboardPage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "Crazy Fruits"});
 
-        await user.click(screen.getByRole("button", {name: "Simulate"}));
+        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
 
         // Switch away from the Simulation tab while the job is still "running" -- the poll must keep
@@ -111,11 +131,16 @@ describe("ProjectDashboardPage", () => {
 
         await waitFor(() => expect(simulationPollCount).toBeGreaterThanOrEqual(2), {timeout: 3000});
 
-        await user.click(screen.getByRole("button", {name: "Simulate"}));
-        await waitFor(() => {
-            expect(screen.getByText(/completed/)).toBeInTheDocument();
-        });
-    });
+        // The completed job auto-opened its report (in the background, while Overview was showing) --
+        // switching back lands straight on the Review step's own summary, not the Configure step.
+        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+        await waitFor(
+            () => {
+                expect(screen.getAllByText("90.00%").length).toBeGreaterThan(0);
+            },
+            {timeout: 15000},
+        );
+    }, 20000);
 
     it("does not block the happy path on warnings-only validation -- Overview still recommends simulating", async () => {
         const user = userEvent.setup();
@@ -148,7 +173,7 @@ describe("ProjectDashboardPage", () => {
 
         // The Simulate tab itself stays fully usable -- warnings never gate the actual action, only the
         // Overview recommendation's copy.
-        await user.click(screen.getByRole("button", {name: "Simulate"}));
+        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
         expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled();
 
         await user.click(screen.getByRole("button", {name: "Validate"}));

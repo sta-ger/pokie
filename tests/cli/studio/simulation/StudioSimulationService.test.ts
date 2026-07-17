@@ -135,6 +135,8 @@ describe("StudioSimulationService", () => {
         expect(job.statistics).toBeDefined();
         expect(typeof job.statistics?.volatility).toBe("number");
         expect(typeof job.statistics?.rtpConfidenceInterval95.low).toBe("number");
+        expect(job.statistics?.payoutHistogram).toBeDefined();
+        expect(Object.keys(job.statistics?.payoutHistogram ?? {}).length).toBeGreaterThan(0);
     });
 
     it("has no breakdown when the session doesn't implement StakeAmountDetermining/getSimulationCategory", async () => {

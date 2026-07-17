@@ -12,6 +12,9 @@ export type StudioSimulationStatisticsView = {
     returnStandardDeviation: number;
     averagePayoutConfidenceInterval95: {low: number; high: number};
     rtpConfidenceInterval95: {low: number; high: number};
+    // Bucket -> round count, straight from SimulationAccumulator.getStatistics() -- optional only so
+    // every existing caller/test that builds this view without it (predating this field) stays valid.
+    payoutHistogram?: Record<string, number>;
 };
 
 // The typed, plain-data DTO every /api/project/simulations* endpoint returns — never a stack trace,

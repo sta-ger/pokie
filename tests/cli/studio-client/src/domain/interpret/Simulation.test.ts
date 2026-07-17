@@ -126,10 +126,33 @@ describe("describeSimulationReport", () => {
             durationMs: 500,
             spinsPerSecond: 2000,
             warnings: [],
+            recommendations: [],
         });
         expect(view.breakdown).toBeUndefined();
         expect(view.volatility).toBeUndefined();
+        expect(view.payoutHistogram).toBeUndefined();
         expect(view.reproducibilityCommand).toBeUndefined();
+    });
+
+    it("carries through recommendations when present", () => {
+        const report = createReport({recommendations: ["Increase --rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates."]});
+
+        const view = describeSimulationReport(report);
+
+        expect(view.recommendations).toEqual(["Increase --rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates."]);
+    });
+
+    it("carries through the payout histogram from statistics when given", () => {
+        const view = describeSimulationReport(createReport(), {
+            volatility: 12.5,
+            payoutStandardDeviation: 12.5,
+            returnStandardDeviation: 0.5,
+            averagePayoutConfidenceInterval95: {low: 0.9, high: 1.1},
+            rtpConfidenceInterval95: {low: 0.93, high: 0.97},
+            payoutHistogram: {"0": 750, "1-5": 200, "5+": 50},
+        });
+
+        expect(view.payoutHistogram).toEqual({"0": 750, "1-5": 200, "5+": 50});
     });
 
     it("carries through warnings and the reproducibility command when present", () => {

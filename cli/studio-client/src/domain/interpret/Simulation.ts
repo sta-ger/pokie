@@ -69,6 +69,8 @@ export type SimulationReportView = {
     averagePayoutConfidenceInterval95?: {low: number; high: number};
     breakdown?: BreakdownRowView[];
     warnings: string[];
+    recommendations: string[];
+    payoutHistogram?: Record<string, number>;
     reproducibilityCommand?: string;
 };
 
@@ -99,6 +101,8 @@ export function describeSimulationReport(
         averagePayoutConfidenceInterval95: statistics?.averagePayoutConfidenceInterval95,
         breakdown: describeBreakdown(report),
         warnings: report.warnings ?? [],
+        recommendations: report.recommendations ?? [],
+        payoutHistogram: statistics?.payoutHistogram,
         reproducibilityCommand: report.reproducibility?.command,
     };
 }
