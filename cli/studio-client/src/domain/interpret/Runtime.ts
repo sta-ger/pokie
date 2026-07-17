@@ -90,8 +90,11 @@ function formatScreenCell(cell: unknown): string {
 // this session" and the Replay & Debug tab's "Session Spin" find method, since both read the exact same
 // GET /api/project/runtime/spins data (StudioRuntimeManager.listRecentSpins()) — moved here (out of
 // ReplayTab.tsx, which only ever needed it because it was the first consumer) now that a second tab
-// needs the same type.
-export type RecentSpinsListView = {status: "empty"} | {status: "loaded"; entries: StudioRuntimeSessionView[]};
+// needs the same type. "loading" (set directly by ProjectDashboardPage's refreshRecentSpins(), not
+// constructed here) is what lets a consumer -- notably the Runtime tab's "Debug this round" handoff --
+// tell "the fetch hasn't resolved yet" apart from "it resolved and there's genuinely nothing", which
+// matters for not flashing a false "not found" while the list is still in flight.
+export type RecentSpinsListView = {status: "loading"} | {status: "empty"} | {status: "loaded"; entries: StudioRuntimeSessionView[]};
 
 export function describeRecentSpinsList(entries: StudioRuntimeSessionView[]): RecentSpinsListView {
     return entries.length === 0 ? {status: "empty"} : {status: "loaded", entries};

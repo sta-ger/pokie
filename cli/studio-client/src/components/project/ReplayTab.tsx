@@ -142,14 +142,20 @@ export function ReplayTab({
     // this round) lands is still recovered once that refresh's data arrives -- and it stops checking for
     // good once a match is found, so it never overrides a selection the user made by hand afterward.
     //
-    // recentSpins is bounded (StudioRuntimeManager.MAX_RECENT_SPINS) -- a burst of later spins can push
-    // the exact round this handoff named out of the list before it's ever loaded here. `spinNotFound`
-    // tracks that outcome (set whenever a settled snapshot doesn't contain a match) so the Find step can
-    // show an honest "no longer available" message instead of silently sitting on an empty/generic picker
-    // forever with no explanation.
+    // recentSpins can genuinely not contain the exact round this handoff named -- e.g. it's bounded
+    // (StudioRuntimeManager.MAX_RECENT_SPINS) and a burst of later spins pushed it out. `spinNotFound`
+    // tracks that outcome so the Find step can show an honest "no longer available" message instead of
+    // silently sitting on an empty/generic picker forever with no explanation -- but only once a fetch has
+    // actually *settled* into a real answer. While the list is still loading, or the fetch itself failed,
+    // there's no answer yet either way, so this must stay false: a "not found" verdict is only warranted
+    // after a successfully loaded list has been checked and genuinely doesn't contain the target.
     const [spinNotFound, setSpinNotFound] = useState(false);
     useEffect(() => {
         if (!autoSelectSpin || selectedSpin !== undefined) {
+            return;
+        }
+        if (recentSpins.status === "loading" || recentSpinsError !== undefined) {
+            setSpinNotFound(false);
             return;
         }
         if (recentSpins.status !== "loaded") {
@@ -167,7 +173,7 @@ export function ReplayTab({
             setSpinNotFound(true);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [recentSpins]);
+    }, [recentSpins, recentSpinsError]);
 
     function goToLoad(round: number, seed: string | undefined): void {
         setPending({round, seed});
@@ -280,9 +286,8 @@ export function ReplayTab({
                             {spinNotFound && autoSelectSpin && selectedSpin === undefined && (
                                 <Alert color="orange" variant="light" title="Round no longer available" mb="sm">
                                     The exact round handed off here (session {autoSelectSpin.sessionId}, request{" "}
-                                    {autoSelectSpin.requestId}) isn&apos;t in the recent spin history anymore — that list is
-                                    bounded and newer spins have pushed it out. Pick a spin below instead, if it&apos;s still
-                                    listed.
+                                    {autoSelectSpin.requestId}) isn&apos;t available in the recent spin history anymore. Pick
+                                    a spin below instead, if it&apos;s still listed.
                                 </Alert>
                             )}
                             <QuickActions>
@@ -290,6 +295,7 @@ export function ReplayTab({
                                     Refresh
                                 </Button>
                             </QuickActions>
+                            {recentSpins.status === "loading" && recentSpinsError === undefined && <LoadingState label="Loading recent spins…" />}
                             {recentSpinsError && <ErrorState message={recentSpinsError} />}
                             {recentSpins.status === "empty" && (
                                 <EmptyState message="No spins recorded yet in this Studio session — start the runtime and spin a session first." />

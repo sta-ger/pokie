@@ -416,11 +416,12 @@ export function ProjectDashboardPage() {
             )
             : undefined;
 
-    const [recentSpinsView, setRecentSpinsView] = useState<RecentSpinsListView>({status: "empty"});
+    const [recentSpinsView, setRecentSpinsView] = useState<RecentSpinsListView>({status: "loading"});
     const [recentSpinsError, setRecentSpinsError] = useState<string>();
     const recentSpinsRequestIdRef = useRef(0);
     const refreshRecentSpins = useCallback(() => {
         const requestId = ++recentSpinsRequestIdRef.current;
+        setRecentSpinsView({status: "loading"});
         listRecentSpins(fetchImpl)
             .then((entries) => {
                 if (requestId !== recentSpinsRequestIdRef.current) {

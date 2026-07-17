@@ -668,11 +668,121 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
 
         expect(await screen.findByText("Round no longer available")).toBeInTheDocument();
-        expect(screen.getByText(/isn't in the recent spin history anymore/)).toBeInTheDocument();
+        expect(screen.getByText(/isn't available in the recent spin history anymore/)).toBeInTheDocument();
         // Never silently degrades to just showing the Find step with no explanation -- the picker is still
         // there (with whatever unrelated rounds are actually available), but the explicit fallback message
         // makes clear why nothing was auto-selected.
         expect(screen.getByRole("radio", {name: "Session Spin"})).toBeInTheDocument();
         expect(screen.getByText(/session sess-other/)).toBeInTheDocument();
+    }, 45000);
+
+    it("shows a normal loading state, never the fallback, while the recent-spin lookup is still in flight", async () => {
+        const user = userEvent.setup();
+        let spinsCallCount = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/runtime") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "stopped"})});
+            }
+            if (path === "/api/project/runtime/spins") {
+                spinsCallCount += 1;
+                if (spinsCallCount === 1) {
+                    // The initial mount fetch resolves immediately with nothing on record yet.
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+                }
+                // The refresh triggered by the spin itself never settles within this test -- simulates
+                // still being in flight by the moment the user navigates to Replay & Debug.
+                return new Promise(() => {
+                    // Deliberately never resolves -- see the comment above this branch.
+                });
+            }
+            if (path === "/api/project/runtime/start") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(RUNNING_STATE)});
+            }
+            if (path === "/api/project/runtime/sessions") {
+                return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor()})});
+            }
+            if (path === "/api/project/runtime/sessions/sess-1/spins") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}),
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route) {
+                const {ok, status, body} = route({url, init});
+                return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+            }
+            return Promise.reject(new Error(`no fake route for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
+        await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
+
+        expect(await screen.findByText("Loading recent spins…")).toBeInTheDocument();
+        expect(screen.queryByText("Round no longer available")).not.toBeInTheDocument();
+    }, 45000);
+
+    it("shows only the fetch error, never the fallback, when refreshing recent spins fails", async () => {
+        const user = userEvent.setup();
+        let spinsCallCount = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/runtime") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "stopped"})});
+            }
+            if (path === "/api/project/runtime/spins") {
+                spinsCallCount += 1;
+                if (spinsCallCount === 1) {
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+                }
+                // The refresh triggered by the spin itself fails outright (network error) -- must surface
+                // as the plain fetch error, never as a claim that the round was looked up and not found.
+                return Promise.reject(new Error("network down"));
+            }
+            if (path === "/api/project/runtime/start") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(RUNNING_STATE)});
+            }
+            if (path === "/api/project/runtime/sessions") {
+                return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor()})});
+            }
+            if (path === "/api/project/runtime/sessions/sess-1/spins") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}),
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route) {
+                const {ok, status, body} = route({url, init});
+                return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+            }
+            return Promise.reject(new Error(`no fake route for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
+        await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
+
+        expect(await screen.findByText("network down")).toBeInTheDocument();
+        expect(screen.queryByText("Round no longer available")).not.toBeInTheDocument();
+        expect(screen.queryByText("Loading recent spins…")).not.toBeInTheDocument();
     }, 45000);
 });
