@@ -145,7 +145,10 @@ describe("Guided Design & Build: sectioned layout", () => {
         // Exactly one section tab shows an error badge, and it's "Game basics".
         const tablist = screen.getByRole("tablist");
         expect(within(tablist).getAllByText("1")).toHaveLength(1);
-        expect(within(screen.getByRole("tab", {name: "Game basics"})).getByText("1")).toBeInTheDocument();
+        // Exact-name match no longer works here: StatusBadge now also exposes the error count as real,
+        // accessible text (see StatusBadge.tsx), so "Game basics"'s own accessible name grows to "Game
+        // basics, 1 error" -- {name: /Game basics/} matches regardless.
+        expect(within(screen.getByRole("tab", {name: /Game basics/})).getByText("1")).toBeInTheDocument();
 
         // "Game basics" is the default active section, so its own inline issue list is already visible
         // without switching tabs -- *and* the full, unfiltered summary at the bottom shows the same

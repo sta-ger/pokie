@@ -1,7 +1,13 @@
 import {ScrollArea, Tabs} from "@mantine/core";
-import {useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import type {ValidationIssue} from "../../api/types";
-import {BLUEPRINT_SECTIONS, classifyIssuesBySection, describeSectionStatus, type BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
+import {
+    BLUEPRINT_SECTIONS,
+    classifyIssuesBySection,
+    crossFieldOnly,
+    describeSectionStatus,
+    type BlueprintSectionId,
+} from "../../domain/interpret/BlueprintSections";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {IssueList} from "../common/IssueList";
@@ -27,7 +33,9 @@ import {SymbolsTable} from "./SymbolsTable";
 // which is the correct, standard behavior for a roving-tabindex tablist; forcing focus into the panel
 // on every change (as a naive copy of HomePage's pattern once did here) fights that and breaks
 // multi-hop arrow-key navigation between tabs (confirmed: it moves focus to the panel after the first
-// arrow press, so a second arrow press no longer lands on any tab at all).
+// arrow press, so a second arrow press no longer lands on any tab at all). The one exception is the
+// auto-jump-to-first-error effect below, which focuses a *tab button* (not a panel) exactly once per new
+// invalid result -- that's the standard ARIA tabs target and doesn't interfere with roving-tabindex.
 export function SectionedFormEditor({
     blueprint,
     mutate,
@@ -42,6 +50,39 @@ export function SectionedFormEditor({
     validationView: BlueprintValidationView;
 }) {
     const [activeSection, setActiveSection] = useState<BlueprintSectionId>("basics");
+
+    const basicsTabRef = useRef<HTMLButtonElement>(null);
+    const layoutTabRef = useRef<HTMLButtonElement>(null);
+    const symbolsTabRef = useRef<HTMLButtonElement>(null);
+    const reelsTabRef = useRef<HTMLButtonElement>(null);
+    const paytableTabRef = useRef<HTMLButtonElement>(null);
+    const betsTabRef = useRef<HTMLButtonElement>(null);
+    const tabRefs: Record<BlueprintSectionId, typeof basicsTabRef> = {
+        basics: basicsTabRef,
+        layout: layoutTabRef,
+        symbols: symbolsTabRef,
+        reels: reelsTabRef,
+        paytable: paytableTabRef,
+        bets: betsTabRef,
+    };
+
+    // Fires exactly once per *new* invalid result (keyed on validationView's own identity -- a fresh
+    // object every time setValidationView runs, including a re-validate that's still invalid), never on
+    // a later manual tab switch. Jumps to and focuses the first section (in BLUEPRINT_SECTIONS order)
+    // that actually has an error -- if every error is cross-field/unclassified (no section has one),
+    // there's nothing meaningful to jump to, so this is a no-op.
+    useEffect(() => {
+        if (validationView.status !== "invalid") {
+            return;
+        }
+        const firstErrorSection = BLUEPRINT_SECTIONS.find((section) => describeSectionStatus(section.id, validationView).tone === "error");
+        if (!firstErrorSection) {
+            return;
+        }
+        setActiveSection(firstErrorSection.id);
+        tabRefs[firstErrorSection.id].current?.focus();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [validationView]);
 
     const errors: ValidationIssue[] = validationView.status === "invalid" ? validationView.errors : [];
     const warnings: ValidationIssue[] =
@@ -64,6 +105,7 @@ export function SectionedFormEditor({
                             <Tabs.Tab
                                 key={section.id}
                                 value={section.id}
+                                ref={tabRefs[section.id]}
                                 rightSection={<StatusBadge status={describeSectionStatus(section.id, validationView)} />}
                             >
                                 {section.label}
@@ -73,39 +115,48 @@ export function SectionedFormEditor({
                 </ScrollArea>
 
                 <Tabs.Panel value="basics">
-                    <IssueList title="Errors" issues={classifiedErrors.bySection.basics} />
-                    <IssueList title="Warnings" issues={classifiedWarnings.bySection.basics} />
-                    <MetadataFieldset blueprint={blueprint} mutate={mutate} legend="Game basics" />
+                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.basics)} />
+                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.basics)} />
+                    <MetadataFieldset
+                        blueprint={blueprint}
+                        mutate={mutate}
+                        legend="Game basics"
+                        issues={[...classifiedErrors.bySection.basics, ...classifiedWarnings.bySection.basics]}
+                    />
                 </Tabs.Panel>
 
                 <Tabs.Panel value="layout">
-                    <IssueList title="Errors" issues={classifiedErrors.bySection.layout} />
-                    <IssueList title="Warnings" issues={classifiedWarnings.bySection.layout} />
-                    <LayoutFieldset blueprint={blueprint} mutate={mutate} />
+                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.layout)} />
+                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.layout)} />
+                    <LayoutFieldset
+                        blueprint={blueprint}
+                        mutate={mutate}
+                        issues={[...classifiedErrors.bySection.layout, ...classifiedWarnings.bySection.layout]}
+                    />
                     <PaylinesEditor blueprint={blueprint} mutate={mutate} />
                 </Tabs.Panel>
 
                 <Tabs.Panel value="symbols">
-                    <IssueList title="Errors" issues={classifiedErrors.bySection.symbols} />
-                    <IssueList title="Warnings" issues={classifiedWarnings.bySection.symbols} />
+                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.symbols)} />
+                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.symbols)} />
                     <SymbolsTable blueprint={blueprint} mutate={mutate} />
                 </Tabs.Panel>
 
                 <Tabs.Panel value="reels">
-                    <IssueList title="Errors" issues={classifiedErrors.bySection.reels} />
-                    <IssueList title="Warnings" issues={classifiedWarnings.bySection.reels} />
+                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.reels)} />
+                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.reels)} />
                     <ReelGenerationModeSelector blueprint={blueprint} mutate={mutate} drafts={drafts} revision={revision} />
                 </Tabs.Panel>
 
                 <Tabs.Panel value="paytable">
-                    <IssueList title="Errors" issues={classifiedErrors.bySection.paytable} />
-                    <IssueList title="Warnings" issues={classifiedWarnings.bySection.paytable} />
+                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.paytable)} />
+                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.paytable)} />
                     <PaytableEditor blueprint={blueprint} mutate={mutate} />
                 </Tabs.Panel>
 
                 <Tabs.Panel value="bets">
-                    <IssueList title="Errors" issues={classifiedErrors.bySection.bets} />
-                    <IssueList title="Warnings" issues={classifiedWarnings.bySection.bets} />
+                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.bets)} />
+                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.bets)} />
                     <BetsList blueprint={blueprint} mutate={mutate} />
                 </Tabs.Panel>
             </Tabs>

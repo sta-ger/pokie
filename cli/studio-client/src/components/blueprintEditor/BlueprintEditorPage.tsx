@@ -122,6 +122,31 @@ export function BlueprintEditorPage({
         onDirtyChange?.(editor.state.revision !== cleanRevisionRef.current);
     });
 
+    // A form edit, New, Load, and a successful JSON Apply all bump `revision` (see
+    // blueprintEditorState.ts's own doc comment) -- resetting validationView to idle on every bump, in
+    // one place, uniformly makes *any* of those stale a previous validation result: section statuses
+    // (describeSectionStatus already returns "neutral" for "idle"), the Stepper/NextStepCallout ("Ready
+    // to build" only shows for "ok"), and guided Build-gating (below, keyed off "ok") all revert for
+    // free, with no separate reset needed at each call site. `handleNew` no longer sets this explicitly.
+    useEffect(() => {
+        setValidationView({status: "idle"});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor.state.revision]);
+
+    // Kept in sync with the latest revision on every render so handleValidate's async resolve handler
+    // can read the *current* value at response time, not the one closed over at request-send time --
+    // same pattern ReelStripGenerationEditor.tsx's own "Resolve reels" preview already uses for its own
+    // staleness guard.
+    const revisionRef = useRef(editor.state.revision);
+    useEffect(() => {
+        revisionRef.current = editor.state.revision;
+    }, [editor.state.revision]);
+    // A second, independent staleness signal alongside revision: incremented once per validate request
+    // that actually starts, so a request whose *response* arrives after a *newer* validate request began
+    // is recognized as stale even in the (currently impossible, since validateGuard already serializes
+    // validate calls) case that guarantee ever changes.
+    const validateRequestIdRef = useRef(0);
+
     const handleNew = (): void => {
         nextFormGenerationIsClean.current = true;
         editor.newBlueprint();
@@ -129,7 +154,6 @@ export function BlueprintEditorPage({
         overwriteConfirmedForPath.current = undefined;
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
-        setValidationView({status: "idle"});
     };
 
     const handleLoad = (path: string): void => {
@@ -193,10 +217,27 @@ export function BlueprintEditorPage({
         if (!validateGuard.begin()) {
             return;
         }
+        // Captured now, at request-send time -- compared against the *current* refs at response time, so
+        // a response for a blueprint that's since changed (an edit, New, Load, JSON Apply -- anything
+        // that bumped revision) or been superseded by a newer validate request is discarded rather than
+        // clobbering whatever the current, already-reset-to-idle state should be.
+        const requestedRevision = editor.state.revision;
+        const requestId = ++validateRequestIdRef.current;
+        const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== revisionRef.current;
         setValidationView({status: "loading"});
         validateBlueprint(fetchImpl, editor.state.blueprint)
-            .then((result) => setValidationView(describeValidation(result)))
-            .catch((error: unknown) => setValidationView({status: "error", message: errorMessage(error)}))
+            .then((result) => {
+                if (isStale()) {
+                    return;
+                }
+                setValidationView(describeValidation(result));
+            })
+            .catch((error: unknown) => {
+                if (isStale()) {
+                    return;
+                }
+                setValidationView({status: "error", message: errorMessage(error)});
+            })
             .finally(() => validateGuard.end());
     };
 
@@ -204,6 +245,15 @@ export function BlueprintEditorPage({
 
     const stepIndex = guidedStepIndex(validationView.status);
     const nextStep = describeGuidedNextStep(validationView.status);
+
+    // Guided flow requires an actual successful validation *of the current revision* before allowing a
+    // build -- not just "not known-invalid" (the raw editor's own, looser rule below, unchanged). Since
+    // validationView is reset to "idle" on every revision bump (see the effect above), "ok" here can
+    // only ever mean "the current revision validated cleanly" -- warnings don't prevent it, matching
+    // BlueprintBuildPanel's own existing "warnings-only never blocks" contract.
+    const guidedBuildBlocked = validationView.status !== "ok";
+    const guidedBuildBlockedMessage =
+        validationView.status === "invalid" ? "Fix the validation errors above before building." : "Validate your configuration successfully before building.";
 
     const formModeContent = guided ? (
         <SectionedFormEditor
@@ -289,7 +339,8 @@ export function BlueprintEditorPage({
                 sourcePath={blueprintPath}
                 revision={revision}
                 onBuildSuccess={markClean}
-                blocked={validationView.status === "invalid"}
+                blocked={guided ? guidedBuildBlocked : validationView.status === "invalid"}
+                blockedMessage={guided ? guidedBuildBlockedMessage : undefined}
             />
         </div>
     );

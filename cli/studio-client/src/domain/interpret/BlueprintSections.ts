@@ -84,3 +84,47 @@ export function describeSectionStatus(sectionId: BlueprintSectionId, view: Bluep
     }
     return {tone: "success", errorCount: 0, warningCount: 0};
 }
+
+// Paths the guided editor already renders a dedicated Mantine input for (see MetadataFieldset.tsx/
+// LayoutFieldset.tsx) -- an issue whose `path` is one of these shows as that input's own `error` instead
+// of generically in its section's issue list. Every other issue (no path, or a path with no dedicated
+// input -- most of Symbols/Reels/Paytable/Bets today) stays cross-field/section-level, unchanged.
+const FIELD_LEVEL_PATHS = new Set(["manifest.id", "manifest.name", "manifest.version", "reels", "rows"]);
+
+export function isFieldLevelIssue(issue: ValidationIssue): boolean {
+    return issue.path !== undefined && FIELD_LEVEL_PATHS.has(issue.path);
+}
+
+// A section's own generic issue list should show only what isn't already surfaced next to a specific
+// field -- avoids the same issue appearing twice in the same panel (once inline on the input, once
+// generically below it).
+export function crossFieldOnly(issues: ValidationIssue[]): ValidationIssue[] {
+    return issues.filter((issue) => !isFieldLevelIssue(issue));
+}
+
+// The single message to show as a Mantine input's own `error` prop for one exact field path -- an error
+// takes priority over a warning at the same path (Mantine inputs have no separate "warning" visual
+// state), and `undefined` (no `error` prop at all) when nothing applies.
+export function fieldErrorMessage(issues: ValidationIssue[], path: string): string | undefined {
+    const matches = issues.filter((issue) => issue.path === path);
+    return (matches.find((issue) => issue.severity === "error") ?? matches[0])?.message;
+}
+
+// The section-status text exposed to assistive tech alongside StatusBadge's own decorative,
+// `aria-hidden` icon/count -- see StatusBadge.tsx for why both need to exist.
+export function describeSectionStatusText(status: SectionStatus): string {
+    if (status.tone === "neutral") {
+        return "";
+    }
+    if (status.tone === "success") {
+        return "valid";
+    }
+    const parts: string[] = [];
+    if (status.errorCount > 0) {
+        parts.push(`${status.errorCount} error${status.errorCount === 1 ? "" : "s"}`);
+    }
+    if (status.warningCount > 0) {
+        parts.push(`${status.warningCount} warning${status.warningCount === 1 ? "" : "s"}`);
+    }
+    return parts.join(", ");
+}

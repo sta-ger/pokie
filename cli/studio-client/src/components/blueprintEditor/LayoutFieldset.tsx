@@ -1,13 +1,24 @@
 import {NumberInput, SimpleGrid} from "@mantine/core";
-import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
+import type {ValidationIssue} from "../../api/types";
 import {resizePaylinesToReelCount, resizeReelStripGenerationToReelCount, resizeReelStripsToReelCount} from "../../domain/blueprintFormOps";
+import {fieldErrorMessage} from "../../domain/interpret/BlueprintSections";
+import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
 
 // Reels/rows -- split out of MetadataFieldset so the guided Design & Build editor can put "how many
 // reels/rows" in its own Layout section alongside PaylinesEditor, rather than next to the manifest
 // fields. A reel-count change also resizes paylines/reel strips/reel strip generation to match, exactly
-// as it did when this lived in MetadataFieldset.
-export function LayoutFieldset({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
+// as it did when this lived in MetadataFieldset. `issues` defaults to `[]` -- the raw editor never passes
+// any, so it never shows field-level errors, unchanged.
+export function LayoutFieldset({
+    blueprint,
+    mutate,
+    issues = [],
+}: {
+    blueprint: Record<string, unknown>;
+    mutate: BlueprintMutate;
+    issues?: ValidationIssue[];
+}) {
     const reels = typeof blueprint.reels === "number" ? blueprint.reels : undefined;
     const rows = typeof blueprint.rows === "number" ? blueprint.rows : undefined;
 
@@ -31,6 +42,7 @@ export function LayoutFieldset({blueprint, mutate}: {blueprint: Record<string, u
                             resizeReelStripGenerationToReelCount(b);
                         });
                     }}
+                    error={fieldErrorMessage(issues, "reels")}
                 />
                 <NumberInput
                     label="Rows"
@@ -46,6 +58,7 @@ export function LayoutFieldset({blueprint, mutate}: {blueprint: Record<string, u
                             b.rows = value;
                         });
                     }}
+                    error={fieldErrorMessage(issues, "rows")}
                 />
             </SimpleGrid>
         </PageSection>

@@ -53,6 +53,10 @@ export type ValidationIssue = {
     message: string;
     details?: Record<string, unknown>;
     suggestion?: string;
+    // Optional dotted/bracketed field path (e.g. "manifest.id", "reels") this issue is about, when the
+    // server-side check targets exactly one field -- absent for cross-field/structural checks. See
+    // domain/interpret/BlueprintSections.ts's own use of this for field-level Mantine input errors.
+    path?: string;
 };
 
 export type PokieGamePackageValidationReport = {

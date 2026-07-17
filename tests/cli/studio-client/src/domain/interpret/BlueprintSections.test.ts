@@ -1,8 +1,15 @@
 import type {ValidationIssue} from "../../../../../../cli/studio-client/src/api/types";
-import {classifyIssuesBySection, describeSectionStatus} from "../../../../../../cli/studio-client/src/domain/interpret/BlueprintSections";
+import {
+    classifyIssuesBySection,
+    crossFieldOnly,
+    describeSectionStatus,
+    describeSectionStatusText,
+    fieldErrorMessage,
+    isFieldLevelIssue,
+} from "../../../../../../cli/studio-client/src/domain/interpret/BlueprintSections";
 
-function issue(code: string, severity: ValidationIssue["severity"] = "error"): ValidationIssue {
-    return {code, severity, message: `${code} message`};
+function issue(code: string, severity: ValidationIssue["severity"] = "error", path: string | undefined = undefined): ValidationIssue {
+    return {code, severity, message: `${code} message`, ...(path !== undefined ? {path} : {})};
 }
 
 describe("classifyIssuesBySection", () => {
@@ -90,5 +97,65 @@ describe("describeSectionStatus", () => {
         const view = {status: "ok" as const, warnings: [issue("blueprint-rows-suspicious", "warning")]};
         expect(describeSectionStatus("bets", view)).toEqual({tone: "success", errorCount: 0, warningCount: 0});
         expect(describeSectionStatus("layout", view)).toEqual({tone: "warning", errorCount: 0, warningCount: 1});
+    });
+});
+
+describe("isFieldLevelIssue / crossFieldOnly", () => {
+    it("treats a known field path as field-level", () => {
+        expect(isFieldLevelIssue(issue("blueprint-manifest-invalid-id", "error", "manifest.id"))).toBe(true);
+        expect(isFieldLevelIssue(issue("blueprint-reels-invalid", "error", "reels"))).toBe(true);
+        expect(isFieldLevelIssue(issue("blueprint-rows-invalid", "error", "rows"))).toBe(true);
+    });
+
+    it("treats a missing path, or a path with no dedicated field, as cross-field", () => {
+        expect(isFieldLevelIssue(issue("blueprint-paytable-empty"))).toBe(false);
+        expect(isFieldLevelIssue(issue("blueprint-symbols-duplicate", "error", "symbols[0]"))).toBe(false);
+    });
+
+    it("crossFieldOnly filters out field-level issues, keeping cross-field ones", () => {
+        const fieldLevel = issue("blueprint-manifest-invalid-id", "error", "manifest.id");
+        const crossField = issue("blueprint-paytable-empty");
+        expect(crossFieldOnly([fieldLevel, crossField])).toEqual([crossField]);
+    });
+});
+
+describe("fieldErrorMessage", () => {
+    it("returns the message for an issue matching the exact path", () => {
+        const issues = [issue("blueprint-manifest-invalid-id", "error", "manifest.id")];
+        expect(fieldErrorMessage(issues, "manifest.id")).toBe("blueprint-manifest-invalid-id message");
+    });
+
+    it("returns undefined when no issue matches the path", () => {
+        expect(fieldErrorMessage([issue("blueprint-reels-invalid", "error", "reels")], "rows")).toBeUndefined();
+        expect(fieldErrorMessage([], "manifest.id")).toBeUndefined();
+    });
+
+    it("prefers an error-severity match over a warning at the same path", () => {
+        const issues = [
+            issue("blueprint-reels-suspicious", "warning", "reels"),
+            issue("blueprint-reels-invalid", "error", "reels"),
+        ];
+        expect(fieldErrorMessage(issues, "reels")).toBe("blueprint-reels-invalid message");
+    });
+});
+
+describe("describeSectionStatusText", () => {
+    it("is empty for neutral status", () => {
+        expect(describeSectionStatusText({tone: "neutral", errorCount: 0, warningCount: 0})).toBe("");
+    });
+
+    it("is 'valid' for success status", () => {
+        expect(describeSectionStatusText({tone: "success", errorCount: 0, warningCount: 0})).toBe("valid");
+    });
+
+    it("pluralizes error/warning counts correctly", () => {
+        expect(describeSectionStatusText({tone: "error", errorCount: 1, warningCount: 0})).toBe("1 error");
+        expect(describeSectionStatusText({tone: "error", errorCount: 2, warningCount: 0})).toBe("2 errors");
+        expect(describeSectionStatusText({tone: "warning", errorCount: 0, warningCount: 1})).toBe("1 warning");
+        expect(describeSectionStatusText({tone: "warning", errorCount: 0, warningCount: 2})).toBe("2 warnings");
+    });
+
+    it("combines both counts when a section has errors and warnings together", () => {
+        expect(describeSectionStatusText({tone: "error", errorCount: 2, warningCount: 1})).toBe("2 errors, 1 warning");
     });
 });

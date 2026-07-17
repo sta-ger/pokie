@@ -18,6 +18,7 @@ export function BlueprintBuildPanel({
     revision,
     onBuildSuccess,
     blocked = false,
+    blockedMessage = "Fix the validation errors above before building.",
 }: {
     blueprint: Record<string, unknown>;
     sourcePath?: string;
@@ -33,6 +34,11 @@ export function BlueprintBuildPanel({
     // is known-invalid, so the happy path never lets a build be attempted that the server would reject
     // anyway. Warnings-only validation results never set this.
     blocked?: boolean;
+    // Shown under the buttons whenever `blocked` is true. Defaults to the "known-invalid" wording, which
+    // is exactly what raw/non-guided callers mean by `blocked`; the guided editor overrides this since it
+    // also blocks on "not yet successfully validated" (idle/loading/error), where that default text would
+    // be misleading -- there's no validation error to "fix" yet.
+    blockedMessage?: string;
 }) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
@@ -101,7 +107,7 @@ export function BlueprintBuildPanel({
             </QuickActions>
             {blocked && (
                 <Text size="sm" c="orange" mb="sm">
-                    Fix the validation errors above before building.
+                    {blockedMessage}
                 </Text>
             )}
 

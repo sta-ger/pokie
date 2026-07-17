@@ -42,24 +42,26 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const reels = b.reels;
         const reelsValid = typeof reels === "number" && Number.isInteger(reels) && reels >= 1;
         if (!reelsValid) {
-            issues.push({code: "blueprint-reels-invalid", severity: "error", message: '"reels" must be a positive integer.'});
+            issues.push({code: "blueprint-reels-invalid", severity: "error", message: '"reels" must be a positive integer.', path: "reels"});
         } else if ((reels as number) > SUSPICIOUS_REELS_OR_ROWS_THRESHOLD) {
             issues.push({
                 code: "blueprint-reels-suspicious",
                 severity: "warning",
                 message: `"reels" is ${reels}, which is unusually large for a line-pay video slot (most use 3-7 reels) — double-check this is intentional.`,
+                path: "reels",
             });
         }
 
         const rows = b.rows;
         const rowsValid = typeof rows === "number" && Number.isInteger(rows) && rows >= 1;
         if (!rowsValid) {
-            issues.push({code: "blueprint-rows-invalid", severity: "error", message: '"rows" must be a positive integer.'});
+            issues.push({code: "blueprint-rows-invalid", severity: "error", message: '"rows" must be a positive integer.', path: "rows"});
         } else if ((rows as number) > SUSPICIOUS_REELS_OR_ROWS_THRESHOLD) {
             issues.push({
                 code: "blueprint-rows-suspicious",
                 severity: "warning",
                 message: `"rows" is ${rows}, which is unusually large for a line-pay video slot (most use 3-7 rows) — double-check this is intentional.`,
+                path: "rows",
             });
         }
 
@@ -162,6 +164,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     code: `blueprint-manifest-invalid-${field}`,
                     severity: "error",
                     message: `"manifest.${field}" must be a non-empty string.`,
+                    path: `manifest.${field}`,
                 });
             }
         }
