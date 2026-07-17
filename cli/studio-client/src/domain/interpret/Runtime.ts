@@ -84,3 +84,34 @@ function formatScreenCell(cell: unknown): string {
     }
     return JSON.stringify(cell);
 }
+
+// Same role as interpretReplay.ts's own ReplayListView — distinguishes "no spins recorded yet this
+// runtime instance" from "here's the list". Shared by both the Runtime tab's own "round history for
+// this session" and the Replay & Debug tab's "Session Spin" find method, since both read the exact same
+// GET /api/project/runtime/spins data (StudioRuntimeManager.listRecentSpins()) — moved here (out of
+// ReplayTab.tsx, which only ever needed it because it was the first consumer) now that a second tab
+// needs the same type.
+export type RecentSpinsListView = {status: "empty"} | {status: "loaded"; entries: StudioRuntimeSessionView[]};
+
+export function describeRecentSpinsList(entries: StudioRuntimeSessionView[]): RecentSpinsListView {
+    return entries.length === 0 ? {status: "empty"} : {status: "loaded", entries};
+}
+
+// The known, structural fields of a StudioRuntimeSessionView — everything else is whatever extra public
+// data a game's own serializer chose to return (see GameSessionSerializing.getInitialData()/
+// getRoundData()), e.g. remaining free spins, reel data, paytable. This is the entire "feature progress"
+// story: never a new calculation, just the same public/internal split by field name
+// StudioRuntimeManager.buildSessionView() and the Runtime tab's own SessionPanel already apply, pulled
+// out as its own pure, testable function so the Inspect-round view can show it as a plain-language
+// "Additional round data" table instead of a raw JSON dump.
+const KNOWN_SESSION_VIEW_FIELDS = new Set(["sessionId", "game", "credits", "bet", "win", "screen", "sessionVersion", "debug"]);
+
+export function extractAdditionalRoundFields(session: StudioRuntimeSessionView): Record<string, unknown> {
+    const extra: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(session)) {
+        if (!KNOWN_SESSION_VIEW_FIELDS.has(key)) {
+            extra[key] = value;
+        }
+    }
+    return extra;
+}

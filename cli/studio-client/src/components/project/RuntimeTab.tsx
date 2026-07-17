@@ -1,11 +1,23 @@
-import {Anchor, Button, Checkbox, List, NumberInput, Select, Table, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Button, Checkbox, Collapse, List, NumberInput, Select, SegmentedControl, Stepper, Table, Text, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
-import {useState} from "react";
+import {useDisclosure} from "@mantine/hooks";
+import {IconCircleCheck} from "@tabler/icons-react";
+import {useEffect, useRef, useState} from "react";
+import {useNavigate} from "react-router-dom";
 import type {StartRuntimeOptions} from "../../api/apiClient";
+import type {StudioRuntimeSessionView} from "../../api/types";
 import type {RuntimeHistoryEntry} from "../../hooks/useRuntimeManager";
 import {useConfirm} from "../../hooks/useConfirm";
-import {describeRuntimeScreen, type RuntimeSessionResultView, type RuntimeSpinResultView, type RuntimeStateView} from "../../domain/interpret/Runtime";
+import {
+    describeRuntimeScreen,
+    extractAdditionalRoundFields,
+    type RecentSpinsListView,
+    type RuntimeSessionResultView,
+    type RuntimeSpinResultView,
+    type RuntimeStateView,
+} from "../../domain/interpret/Runtime";
 import {CodeBlock} from "../common/CodeBlock";
+import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
@@ -13,6 +25,8 @@ import {QuickActions} from "../common/QuickActions";
 import {ScreenTable} from "../common/ScreenTable";
 
 type StartFormValues = {host: string; port: string; debug: boolean; repositoryMode: "memory" | "file"; seed: string};
+type RestoreMethod = "new" | "restore";
+type Session = RuntimeSessionResultView | RuntimeSpinResultView;
 
 function readOptions(values: StartFormValues): StartRuntimeOptions {
     return {
@@ -31,77 +45,156 @@ function runtimeStateLabel(state: RuntimeStateView): string {
     return state.status;
 }
 
-function SessionPanel({session}: {session: RuntimeSessionResultView | RuntimeSpinResultView}) {
-    if (session.status === "idle" || session.status === "loading") {
-        return null;
+function formatFieldValue(value: unknown): string {
+    if (typeof value === "string") {
+        return value;
     }
+    if (typeof value === "number" || typeof value === "boolean") {
+        return String(value);
+    }
+    if (value === null || value === undefined) {
+        return "—";
+    }
+    return JSON.stringify(value);
+}
+
+// The Inspect-round step's core view for a settled "ok" session -- a readable balance/bet/win/screen
+// breakdown plus whatever extra public fields the game's own serializer returned (see
+// extractAdditionalRoundFields's own doc comment for why that's the entire "feature progress" story),
+// with the raw public/internal JSON tucked behind Advanced details, same convention as
+// RoundArtifactInspector in the Replay & Debug tab.
+function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
+    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
+    const {debug, ...publicFields} = session;
+    const additional = extractAdditionalRoundFields(session);
+    const hasAdditional = Object.keys(additional).length > 0;
+
+    return (
+        <div>
+            {session.win !== undefined && session.win > 0 ? (
+                <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title="Round complete" mb="md">
+                    You won {session.win.toFixed(2)}.
+                </Alert>
+            ) : (
+                <Text size="sm" c="dimmed" mb="md">
+                    Round complete — no win this round.
+                </Text>
+            )}
+
+            <Table withRowBorders={false} mb="sm">
+                <Table.Tbody>
+                    <Table.Tr>
+                        <Table.Th>Session id</Table.Th>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>{session.sessionId}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Credits</Table.Th>
+                        <Table.Td>{session.credits.toFixed(2)}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Bet</Table.Th>
+                        <Table.Td>{session.bet !== undefined ? session.bet.toFixed(2) : "—"}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Win</Table.Th>
+                        <Table.Td>{session.win !== undefined ? session.win.toFixed(2) : "—"}</Table.Td>
+                    </Table.Tr>
+                </Table.Tbody>
+            </Table>
+
+            {session.screen && <ScreenTable screen={describeRuntimeScreen(session.screen) ?? []} />}
+
+            {hasAdditional && (
+                <PageSection legend="Additional round data">
+                    <Table withRowBorders={false}>
+                        <Table.Tbody>
+                            {Object.entries(additional).map(([key, value]) => (
+                                <Table.Tr key={key}>
+                                    <Table.Th>{key}</Table.Th>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>{formatFieldValue(value)}</Table.Td>
+                                </Table.Tr>
+                            ))}
+                        </Table.Tbody>
+                    </Table>
+                </PageSection>
+            )}
+
+            <Text size="sm" mt="sm">
+                <Anchor component="button" type="button" onClick={toggleAdvanced}>
+                    {advancedOpened ? "Hide" : "Show"} advanced details (raw JSON, debug data)
+                </Anchor>
+            </Text>
+            {advancedOpened && (
+                <PageSection legend="Advanced details">
+                    <Text size="sm" fw={600} mb={4}>
+                        Public response
+                    </Text>
+                    <CodeBlock>{JSON.stringify(publicFields, null, 2)}</CodeBlock>
+                    <Text size="sm" fw={600} mt="sm" mb={4}>
+                        Debug response
+                    </Text>
+                    {debug === undefined ? (
+                        <Text size="sm" c="dimmed">
+                            Debug mode is disabled for this runtime — restart it with debug mode on to see internal/debug data.
+                        </Text>
+                    ) : (
+                        <CodeBlock>{JSON.stringify(debug, null, 2)}</CodeBlock>
+                    )}
+                </PageSection>
+            )}
+        </div>
+    );
+}
+
+// Every non-"ok" settled outcome the Inspect-round step can show, in plain language -- distinct from a
+// generic ErrorState so "insufficient funds"/"stale version" read as what they are, not a bare server
+// message. `onCreateNew`/`onReloadSession` give each state its own obvious next action.
+function RoundOutcome({session, onCreateNew, onReloadSession}: {session: Session; onCreateNew: () => void; onReloadSession: () => void}) {
     if (session.status === "not-found") {
         return <ErrorState message="Unknown session id." />;
     }
     if (session.status === "not-running") {
         return <ErrorState message="Runtime is not running — start it first." />;
     }
-    if (session.status === "error" || session.status === "blocked" || session.status === "conflict") {
+    if (session.status === "error") {
         return <ErrorState message={session.message} />;
     }
-
-    const {session: view} = session;
-    const {debug, ...publicFields} = view;
-
-    return (
-        <div>
-            <Table withRowBorders={false} mb="sm">
-                <Table.Tbody>
-                    <Table.Tr>
-                        <Table.Th>Session id</Table.Th>
-                        <Table.Td style={{overflowWrap: "anywhere"}}>{view.sessionId}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Session version</Table.Th>
-                        <Table.Td>{view.sessionVersion ?? "(not versioned)"}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Credits</Table.Th>
-                        <Table.Td>{view.credits.toFixed(2)}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Bet</Table.Th>
-                        <Table.Td>{view.bet !== undefined ? view.bet.toFixed(2) : "—"}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Win</Table.Th>
-                        <Table.Td>{view.win !== undefined ? view.win.toFixed(2) : "—"}</Table.Td>
-                    </Table.Tr>
-                </Table.Tbody>
-            </Table>
-
-            {view.screen && (
-                <PageSection legend="Screen">
-                    <ScreenTable screen={describeRuntimeScreen(view.screen) ?? []} />
-                </PageSection>
-            )}
-
-            <PageSection legend="Public response">
-                <CodeBlock>{JSON.stringify(publicFields, null, 2)}</CodeBlock>
-            </PageSection>
-
-            <PageSection legend="Debug response">
-                {debug === undefined ? (
-                    <Text size="sm" c="dimmed">
-                        Debug mode is disabled for this runtime — restart it with debug mode on to see internal/debug data.
-                    </Text>
-                ) : (
-                    <CodeBlock>{JSON.stringify(debug, null, 2)}</CodeBlock>
-                )}
-            </PageSection>
-        </div>
-    );
+    if (session.status === "blocked") {
+        return (
+            <div>
+                <Alert color="orange" variant="light" title="Can't play this round" mb="sm">
+                    {session.message}
+                </Alert>
+                <QuickActions>
+                    <Button variant="default" onClick={onCreateNew}>
+                        Create a new session
+                    </Button>
+                </QuickActions>
+            </div>
+        );
+    }
+    if (session.status === "conflict") {
+        return (
+            <div>
+                <Alert color="orange" variant="light" title="Session changed elsewhere" mb="sm">
+                    {session.message}
+                </Alert>
+                <QuickActions>
+                    <Button variant="default" onClick={onReloadSession}>
+                        Reload session
+                    </Button>
+                </QuickActions>
+            </div>
+        );
+    }
+    return null;
 }
 
 export function RuntimeTab({
     state,
     running,
     session,
+    sessionId,
     onRefresh,
     onStart,
     onStop,
@@ -111,10 +204,14 @@ export function RuntimeTab({
     onSpin,
     onRepeatSpin,
     history,
+    recentSpins,
+    recentSpinsError,
+    onRefreshRecentSpins,
 }: {
     state: RuntimeStateView;
     running: boolean;
-    session: RuntimeSessionResultView | RuntimeSpinResultView;
+    session: Session;
+    sessionId: string | undefined;
     onRefresh: () => void;
     onStart: (options: StartRuntimeOptions) => void;
     onStop: () => void;
@@ -124,16 +221,75 @@ export function RuntimeTab({
     onSpin: (requestId?: string, expectedVersion?: number) => void;
     onRepeatSpin: () => void;
     history: RuntimeHistoryEntry[];
+    recentSpins: RecentSpinsListView;
+    recentSpinsError: string | undefined;
+    onRefreshRecentSpins: () => void;
 }) {
     const confirm = useConfirm();
+    const navigate = useNavigate();
     const startForm = useForm<StartFormValues>({
         mode: "uncontrolled",
         initialValues: {host: "", port: "", debug: false, repositoryMode: "memory", seed: ""},
     });
+
+    const [activeStep, setActiveStep] = useState(0);
+    const [restoreMethod, setRestoreMethod] = useState<RestoreMethod>("new");
     const [createSeed, setCreateSeed] = useState("");
-    const [loadSessionId, setLoadSessionId] = useState("");
-    const [spinRequestId, setSpinRequestId] = useState("");
-    const [spinExpectedVersion, setSpinExpectedVersion] = useState<number | string>("");
+    const [restoreSessionId, setRestoreSessionId] = useState("");
+    const [advancedSpinOpened, {toggle: toggleAdvancedSpin}] = useDisclosure(false);
+    const [manualRequestId, setManualRequestId] = useState("");
+    const [manualExpectedVersion, setManualExpectedVersion] = useState<number | string>("");
+
+    // Which step a settled session response should land on -- set by whichever action (create/load/spin)
+    // just kicked off a request, consumed once that request actually settles. Keeps the auto-advance
+    // correct regardless of which of the three actions triggered it, and regardless of stale responses
+    // (a discarded stale response never touches `session`, so this effect only ever fires for the most
+    // recent request -- see useRuntimeManager's own sessionRequestIdRef).
+    const pendingAdvanceStepRef = useRef<number | undefined>(undefined);
+    const prevSessionStatusRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        const status = session.status;
+        const wasLoading = prevSessionStatusRef.current === "loading";
+        const nowSettled = status !== "loading" && status !== "idle";
+        if (wasLoading && nowSettled && pendingAdvanceStepRef.current !== undefined) {
+            setActiveStep(pendingAdvanceStepRef.current);
+            pendingAdvanceStepRef.current = undefined;
+        }
+        prevSessionStatusRef.current = status;
+    }, [session.status]);
+
+    function handleCreateSession(): void {
+        pendingAdvanceStepRef.current = 1;
+        onCreateSession(createSeed.trim() || undefined);
+    }
+
+    function handleLoadSession(id: string): void {
+        pendingAdvanceStepRef.current = 1;
+        onLoadSession(id);
+    }
+
+    // The "requestId/idempotency UX without technical noise" requirement: every ordinary spin is
+    // automatically idempotency-protected (a fresh requestId, so a network-level retry can never double-
+    // spin) and optimistic-locking-protected (the session's own last-known sessionVersion, so a spin
+    // against state that changed elsewhere surfaces as a clear "conflict" instead of silently overwriting
+    // it) -- entirely silent by default. "Advanced spin options" below is the escape hatch for a user who
+    // wants to override either by hand (e.g. to deliberately provoke/demonstrate a conflict).
+    function handleSpin(): void {
+        pendingAdvanceStepRef.current = 2;
+        const expectedVersion = session.status === "ok" ? session.session.sessionVersion : undefined;
+        onSpin(crypto.randomUUID(), expectedVersion);
+    }
+
+    function handleAdvancedSpin(): void {
+        pendingAdvanceStepRef.current = 2;
+        onSpin(manualRequestId.trim() || undefined, manualExpectedVersion === "" ? undefined : Number(manualExpectedVersion));
+    }
+
+    const recentSessionIds = recentSpins.status === "loaded" ? Array.from(new Set(recentSpins.entries.map((entry) => entry.sessionId))) : [];
+    const sessionRounds = recentSpins.status === "loaded" ? recentSpins.entries.filter((entry) => entry.sessionId === sessionId) : [];
+
+    const sessionReachable = sessionId !== undefined;
+    const inspectReachable = session.status !== "idle" && session.status !== "loading";
 
     return (
         <div>
@@ -218,75 +374,217 @@ export function RuntimeTab({
                 )}
             </PageSection>
 
-            <PageSection legend="Session Tools">
-                <QuickActions>
-                    <TextInput
-                        label="Seed (optional, overrides the server's default)"
-                        value={createSeed}
-                        onChange={(event) => setCreateSeed(event.currentTarget.value)}
-                    />
-                    <Button
-                        variant="default"
-                        disabled={!running}
-                        loading={session.status === "loading"}
-                        onClick={() => onCreateSession(createSeed.trim() || undefined)}
-                    >
-                        Create Session
-                    </Button>
-                </QuickActions>
-                <QuickActions>
-                    <TextInput label="Existing session id" value={loadSessionId} onChange={(event) => setLoadSessionId(event.currentTarget.value)} />
-                    <Button
-                        variant="default"
-                        disabled={!running}
-                        loading={session.status === "loading"}
-                        onClick={() => loadSessionId.trim() && onLoadSession(loadSessionId.trim())}
-                    >
-                        Load Session
-                    </Button>
-                </QuickActions>
+            <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
+                <Stepper.Step label="Create or restore session" description="Start playing" />
+                <Stepper.Step label="Play" description="Spin" disabled={!sessionReachable} />
+                <Stepper.Step label="Inspect round" description="See the result" disabled={!inspectReachable} />
+                <Stepper.Step label="Continue session" description="Keep playing" disabled={!sessionReachable} />
+                <Stepper.Step label="Debug" description="Advanced" />
+            </Stepper>
 
-                <SessionPanel session={session} />
+            {activeStep === 0 && (
+                <div>
+                    {!running && <EmptyState message="Start the runtime server above first." />}
+                    {running && (
+                        <div>
+                            <SegmentedControl
+                                value={restoreMethod}
+                                onChange={(value) => setRestoreMethod(value as RestoreMethod)}
+                                data={[
+                                    {label: "New session", value: "new"},
+                                    {label: "Restore existing", value: "restore"},
+                                ]}
+                                mb="md"
+                                aria-label="Create or restore method"
+                            />
 
-                <QuickActions>
-                    <TextInput label="Request id (optional)" value={spinRequestId} onChange={(event) => setSpinRequestId(event.currentTarget.value)} />
-                    <NumberInput
-                        label="Expected session version (optional)"
-                        min={1}
-                        step={1}
-                        value={spinExpectedVersion}
-                        onChange={setSpinExpectedVersion}
-                    />
-                    <Button
-                        disabled={!running}
-                        loading={session.status === "loading"}
-                        onClick={() =>
-                            onSpin(spinRequestId.trim() || undefined, spinExpectedVersion === "" ? undefined : Number(spinExpectedVersion))
-                        }
-                    >
-                        Spin
-                    </Button>
-                    <Button variant="default" disabled={!running} loading={session.status === "loading"} onClick={onRepeatSpin}>
-                        Repeat Same Request
-                    </Button>
-                </QuickActions>
-            </PageSection>
+                            {restoreMethod === "new" && (
+                                <QuickActions>
+                                    <TextInput
+                                        label="Seed (optional, overrides the server's default)"
+                                        value={createSeed}
+                                        onChange={(event) => setCreateSeed(event.currentTarget.value)}
+                                    />
+                                    <Button loading={session.status === "loading"} onClick={handleCreateSession}>
+                                        Create Session
+                                    </Button>
+                                </QuickActions>
+                            )}
 
-            <PageSection legend="Request/Response History">
-                {history.length === 0 ? (
-                    <Text size="sm" c="dimmed">
-                        No requests yet this session.
-                    </Text>
-                ) : (
-                    <List size="sm" spacing={2}>
-                        {history.map((entry, index) => (
-                            <List.Item key={index}>
-                                {entry.timestamp} — {entry.action}: {entry.summary}
-                            </List.Item>
-                        ))}
-                    </List>
-                )}
-            </PageSection>
+                            {restoreMethod === "restore" && (
+                                <div>
+                                    <QuickActions>
+                                        <TextInput
+                                            label="Session id"
+                                            value={restoreSessionId}
+                                            onChange={(event) => setRestoreSessionId(event.currentTarget.value)}
+                                        />
+                                        <Button
+                                            loading={session.status === "loading"}
+                                            onClick={() => restoreSessionId.trim() && handleLoadSession(restoreSessionId.trim())}
+                                        >
+                                            Load Session
+                                        </Button>
+                                    </QuickActions>
+
+                                    <Text size="sm" fw={600} mt="md" mb={4}>
+                                        Or pick a recent session
+                                    </Text>
+                                    <QuickActions>
+                                        <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
+                                            Refresh
+                                        </Button>
+                                    </QuickActions>
+                                    {recentSpinsError && <ErrorState message={recentSpinsError} />}
+                                    {recentSessionIds.length === 0 ? (
+                                        <EmptyState message="No recent sessions yet in this Studio session." />
+                                    ) : (
+                                        <List listStyleType="none" spacing={4}>
+                                            {recentSessionIds.map((id) => (
+                                                <List.Item key={id}>
+                                                    <Anchor
+                                                        component="button"
+                                                        type="button"
+                                                        onClick={() => handleLoadSession(id)}
+                                                        style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                                    >
+                                                        {id}
+                                                    </Anchor>
+                                                </List.Item>
+                                            ))}
+                                        </List>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeStep === 1 && (
+                <div>
+                    {!sessionReachable && <EmptyState message="Create or restore a session first." />}
+                    {sessionReachable && (
+                        <div>
+                            <Text size="sm" c="dimmed" mb="sm">
+                                Session {sessionId}
+                                {session.status === "ok" ? ` — credits ${session.session.credits.toFixed(2)}` : ""}
+                            </Text>
+                            <QuickActions>
+                                <Button onClick={handleSpin} loading={session.status === "loading"}>
+                                    Spin
+                                </Button>
+                            </QuickActions>
+                            {session.status === "loading" && <LoadingState label="Spinning…" />}
+
+                            <Text size="sm" mt="sm">
+                                <Anchor component="button" type="button" onClick={toggleAdvancedSpin}>
+                                    {advancedSpinOpened ? "Hide" : "Show"} advanced spin options (request id, expected version)
+                                </Anchor>
+                            </Text>
+                            <Collapse expanded={advancedSpinOpened}>
+                                <QuickActions>
+                                    <TextInput
+                                        label="Request id override (optional)"
+                                        value={manualRequestId}
+                                        onChange={(event) => setManualRequestId(event.currentTarget.value)}
+                                    />
+                                    <NumberInput
+                                        label="Expected session version override (optional)"
+                                        min={1}
+                                        step={1}
+                                        value={manualExpectedVersion}
+                                        onChange={setManualExpectedVersion}
+                                    />
+                                    <Button variant="default" loading={session.status === "loading"} onClick={handleAdvancedSpin}>
+                                        Spin with overrides
+                                    </Button>
+                                </QuickActions>
+                            </Collapse>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeStep === 2 && (
+                <div>
+                    {session.status === "idle" && <EmptyState message="Spin a round to see its result here." />}
+                    {session.status === "loading" && <LoadingState />}
+                    {session.status === "ok" && <RoundSummary session={session.session} />}
+                    {session.status !== "idle" && session.status !== "loading" && session.status !== "ok" && (
+                        <RoundOutcome
+                            session={session}
+                            onCreateNew={() => {
+                                setActiveStep(0);
+                                setRestoreMethod("new");
+                            }}
+                            onReloadSession={() => sessionId && handleLoadSession(sessionId)}
+                        />
+                    )}
+                </div>
+            )}
+
+            {activeStep === 3 && (
+                <div>
+                    {!sessionReachable && <EmptyState message="Create or restore a session first." />}
+                    {sessionReachable && (
+                        <div>
+                            <QuickActions>
+                                <Button onClick={() => setActiveStep(1)}>Spin again</Button>
+                                <Button variant="default" onClick={() => setActiveStep(0)}>
+                                    Switch session
+                                </Button>
+                            </QuickActions>
+                            <PageSection legend="Round history for this session">
+                                <QuickActions>
+                                    <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
+                                        Refresh
+                                    </Button>
+                                </QuickActions>
+                                {recentSpinsError && <ErrorState message={recentSpinsError} />}
+                                {sessionRounds.length === 0 ? (
+                                    <EmptyState message="No rounds played yet this session." />
+                                ) : (
+                                    <List size="sm" spacing={2}>
+                                        {sessionRounds.map((entry, index) => (
+                                            <List.Item key={index}>
+                                                credits {entry.credits.toFixed(2)}, win {(entry.win ?? 0).toFixed(2)}
+                                                {entry.debug?.requestId ? `, request ${entry.debug.requestId}` : ""}
+                                            </List.Item>
+                                        ))}
+                                    </List>
+                                )}
+                            </PageSection>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeStep === 4 && (
+                <div>
+                    <QuickActions>
+                        <Button variant="default" disabled={!sessionReachable} onClick={onRepeatSpin}>
+                            Retry last request (same request id)
+                        </Button>
+                        <Button variant="default" onClick={() => navigate("/project/replay", {state: {findMethod: "spin"}})}>
+                            Debug this round in Replay &amp; Debug
+                        </Button>
+                    </QuickActions>
+                    <PageSection legend="Request/Response History">
+                        {history.length === 0 ? (
+                            <EmptyState message="No requests yet this session." />
+                        ) : (
+                            <List size="sm" spacing={2}>
+                                {history.map((entry, index) => (
+                                    <List.Item key={index}>
+                                        {entry.timestamp} — {entry.action}: {entry.summary}
+                                    </List.Item>
+                                ))}
+                            </List>
+                        )}
+                    </PageSection>
+                </div>
+            )}
         </div>
     );
 }

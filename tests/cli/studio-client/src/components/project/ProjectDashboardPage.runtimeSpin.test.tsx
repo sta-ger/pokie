@@ -51,7 +51,9 @@ describe("ProjectDashboardPage - Runtime spin 409 reason disambiguation", () => 
         await waitFor(() => expect(screen.getAllByText(/running at/).length).toBeGreaterThan(0));
 
         await user.click(screen.getByRole("button", {name: "Create Session"}));
-        await screen.findByText("s1");
+        // Auto-advances to the Play step once the session is created -- "Spin" only becomes reachable
+        // there, so waiting for its own confirmation line doubles as waiting for that navigation.
+        await screen.findByText(/Session s1/);
 
         await user.click(screen.getByRole("button", {name: "Spin"}));
 

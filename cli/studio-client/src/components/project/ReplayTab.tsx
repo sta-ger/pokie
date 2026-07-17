@@ -2,11 +2,12 @@ import {Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedCont
 import {useForm} from "@mantine/form";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
+import {useLocation} from "react-router-dom";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import type {ReplayComparisonView, ReplayListView, ReplayProgressView, ReplayResultView} from "../../domain/interpret/Replay";
 import type {ReportListView} from "../../domain/interpret/Reports";
-import {describeRuntimeScreen} from "../../domain/interpret/Runtime";
+import {describeRuntimeScreen, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {useConfirm} from "../../hooks/useConfirm";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
@@ -30,8 +31,6 @@ export type ExpectedReplayState =
           stateBefore?: unknown;
           stateAfter?: unknown;
       };
-
-export type RecentSpinsListView = {status: "empty"} | {status: "loaded"; entries: StudioRuntimeSessionView[]};
 
 type FindMethod = "seedRound" | "artifact" | "spin" | "simulation";
 type FindFormValues = {round: number; seed: string};
@@ -98,9 +97,15 @@ export function ReplayTab({
 }) {
     const confirm = useConfirm();
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
+    // The landing side of the Runtime tab's "Debug this round in Replay & Debug" link
+    // (`navigate("/project/replay", {state: {findMethod: "spin"}})`) -- read once, at mount (this
+    // component remounts fresh on every tab switch, same as every other tab -- see
+    // ProjectDashboardPage's own doc comment), so it only ever affects the landing right after that
+    // navigation, never a later in-page interaction.
+    const initialFindMethod = (useLocation().state as {findMethod?: FindMethod} | null)?.findMethod ?? "seedRound";
 
     const [activeStep, setActiveStep] = useState(0);
-    const [findMethod, setFindMethod] = useState<FindMethod>("seedRound");
+    const [findMethod, setFindMethod] = useState<FindMethod>(initialFindMethod);
     const [pending, setPending] = useState<{round: number; seed?: string}>();
     const [artifactText, setArtifactText] = useState("");
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();

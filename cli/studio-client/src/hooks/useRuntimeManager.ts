@@ -1,4 +1,4 @@
-import {useCallback, useState} from "react";
+import {useCallback, useRef, useState} from "react";
 import {
     createRuntimeSession,
     getRuntimeSession,
@@ -42,6 +42,15 @@ export function useRuntimeManager() {
     const [history, setHistory] = useState<RuntimeHistoryEntry[]>([]);
     const [lastSpin, setLastSpin] = useState<{requestId?: string; expectedVersion?: number}>({});
 
+    // Monotonic request id guarding createSession/loadSession/spin against a stale response landing
+    // after a newer one -- same requestId/isStale() pattern ProjectDashboardPage.tsx already uses for
+    // report/replay/compare fetches. Unlike those, this hook owns its own session-related state
+    // directly (not split between a page-level requestId ref and page-level state), so the ref lives
+    // here instead. Bumped by each of the three actions' own new call (so switching from Session A to
+    // Session B only ever lands B's result) and by resetForProjectSwitch() (so a fetch in flight before
+    // a project switch can never repopulate what that reset just cleared).
+    const sessionRequestIdRef = useRef(0);
+
     const startGuard = useDoubleSubmitGuard();
     const stopGuard = useDoubleSubmitGuard();
     const restartGuard = useDoubleSubmitGuard();
@@ -63,6 +72,20 @@ export function useRuntimeManager() {
     const resetSession = useCallback(() => {
         setSessionId(undefined);
         setSession({status: "idle"});
+    }, []);
+
+    // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
+    // never show a trace of the previous one's session, same reasoning as every other tab's own
+    // project-switch reset. Bumps the request id first (so anything still in flight from before the
+    // switch can never land afterward and repopulate what's being cleared here), then clears every
+    // piece of session-scoped state, including the request/response history (a runtime-instance-wide
+    // log that's meaningless across a project switch, unlike Stop/Restart's own resetSession() above,
+    // which deliberately leaves history alone since that's still the same project/runtime instance).
+    const resetForProjectSwitch = useCallback(() => {
+        sessionRequestIdRef.current++;
+        setSessionId(undefined);
+        setSession({status: "idle"});
+        setHistory([]);
     }, []);
 
     const start = useCallback(
@@ -125,15 +148,23 @@ export function useRuntimeManager() {
             if (!createSessionGuard.begin()) {
                 return;
             }
+            const requestId = ++sessionRequestIdRef.current;
             setSession({status: "loading"});
             createRuntimeSession(fetchImpl, seed)
                 .then((result) => {
+                    if (requestId !== sessionRequestIdRef.current) {
+                        return;
+                    }
                     const view = describeSessionResult(result);
                     setSession(view);
                     setSessionId(result.status === "ok" ? result.session.sessionId : undefined);
                     pushHistory("Create Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
                 })
-                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}))
+                .catch((error: unknown) => {
+                    if (requestId === sessionRequestIdRef.current) {
+                        setSession({status: "error", message: errorMessage(error)});
+                    }
+                })
                 .finally(() => createSessionGuard.end());
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,15 +176,23 @@ export function useRuntimeManager() {
             if (!loadSessionGuard.begin()) {
                 return;
             }
+            const requestId = ++sessionRequestIdRef.current;
             setSession({status: "loading"});
             getRuntimeSession(fetchImpl, id)
                 .then((result) => {
+                    if (requestId !== sessionRequestIdRef.current) {
+                        return;
+                    }
                     const view = describeSessionResult(result);
                     setSession(view);
                     setSessionId(result.status === "ok" ? result.session.sessionId : undefined);
                     pushHistory("Load Session", result.status === "ok" ? `session ${result.session.sessionId}` : result.status);
                 })
-                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}))
+                .catch((error: unknown) => {
+                    if (requestId === sessionRequestIdRef.current) {
+                        setSession({status: "error", message: errorMessage(error)});
+                    }
+                })
                 .finally(() => loadSessionGuard.end());
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -165,15 +204,23 @@ export function useRuntimeManager() {
             if (sessionId === undefined || !spinGuard.begin()) {
                 return;
             }
+            const staleGuardRequestId = ++sessionRequestIdRef.current;
             setLastSpin({requestId, expectedVersion});
             setSession({status: "loading"});
             spinRuntimeSession(fetchImpl, sessionId, requestId, expectedVersion)
                 .then((result) => {
+                    if (staleGuardRequestId !== sessionRequestIdRef.current) {
+                        return;
+                    }
                     const view = describeSpinResult(result);
                     setSession(view);
                     pushHistory("Spin", result.status === "ok" ? `credits ${result.session.credits}, win ${result.session.win ?? 0}` : result.status);
                 })
-                .catch((error: unknown) => setSession({status: "error", message: errorMessage(error)}))
+                .catch((error: unknown) => {
+                    if (staleGuardRequestId === sessionRequestIdRef.current) {
+                        setSession({status: "error", message: errorMessage(error)});
+                    }
+                })
                 .finally(() => spinGuard.end());
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,5 +245,6 @@ export function useRuntimeManager() {
         loadSession,
         spin,
         repeatSpin,
+        resetForProjectSwitch,
     };
 }

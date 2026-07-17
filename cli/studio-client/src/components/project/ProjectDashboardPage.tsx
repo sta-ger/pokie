@@ -26,6 +26,7 @@ import {
 } from "../../domain/interpret/ProjectDashboard";
 import {describeReplayComparison, describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
 import {describeReportsList, type ReportListView} from "../../domain/interpret/Reports";
+import {describeRecentSpinsList, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDeploymentManager} from "../../hooks/useDeploymentManager";
@@ -38,7 +39,7 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DeploymentTab} from "./DeploymentTab";
 import {OverviewTab} from "./OverviewTab";
-import {ReplayTab, type ExpectedReplayState, type RecentSpinsListView} from "./ReplayTab";
+import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
 import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 import {ValidationTab} from "./ValidationTab";
@@ -426,7 +427,7 @@ export function ProjectDashboardPage() {
                     return;
                 }
                 setRecentSpinsError(undefined);
-                setRecentSpinsView(entries.length === 0 ? {status: "empty"} : {status: "loaded", entries});
+                setRecentSpinsView(describeRecentSpinsList(entries));
             })
             .catch((error: unknown) => {
                 if (requestId === recentSpinsRequestIdRef.current) {
@@ -464,6 +465,7 @@ export function ProjectDashboardPage() {
         refreshReports();
         refreshReplayList();
         refreshRecentSpins();
+        runtime.resetForProjectSwitch();
         runtime.refresh();
         deployment.refreshTargets();
         // Deliberately keyed only on projectKey -- these refreshers should run once per newly-loaded
@@ -634,6 +636,7 @@ export function ProjectDashboardPage() {
                             state={runtime.state}
                             running={runtime.running}
                             session={runtime.session}
+                            sessionId={runtime.sessionId}
                             onRefresh={runtime.refresh}
                             onStart={runtime.start}
                             onStop={runtime.stop}
@@ -643,6 +646,9 @@ export function ProjectDashboardPage() {
                             onSpin={runtime.spin}
                             onRepeatSpin={runtime.repeatSpin}
                             history={runtime.history}
+                            recentSpins={recentSpinsView}
+                            recentSpinsError={recentSpinsError}
+                            onRefreshRecentSpins={refreshRecentSpins}
                         />
                     )}
                     {activeTab === "deployment" && (

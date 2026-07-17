@@ -1,6 +1,16 @@
+import {randomUUID} from "node:crypto";
 import {ReadableStream} from "node:stream/web";
 import {TextDecoder, TextEncoder} from "node:util";
 import {MessageChannel, MessagePort} from "node:worker_threads";
+
+// jsdom's Crypto implementation doesn't provide randomUUID() (only getRandomValues()) in the
+// jest-environment-jsdom version this project pins -- the Runtime tab calls crypto.randomUUID() to
+// generate a silent per-spin idempotency key. Node's own crypto.randomUUID() is a real, spec-compliant
+// UUID v4 generator, not a mock, same "structurally compatible" reasoning as the TextEncoder/TextDecoder
+// polyfills below.
+if (typeof globalThis.crypto?.randomUUID !== "function") {
+    globalThis.crypto.randomUUID = randomUUID as typeof globalThis.crypto.randomUUID;
+}
 
 // jest-environment-jsdom doesn't provide TextEncoder/TextDecoder globals, but react-router needs them
 // at import time. Node's implementations are structurally compatible for our purposes (string<->bytes).
