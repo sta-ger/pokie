@@ -377,6 +377,55 @@ describe("describeReplayComparison", () => {
             expect(result.status).toBe("partial");
             expect(result.status).not.toBe("mismatch");
         });
+
+        it("ignores an arbitrary unstable debug field (e.g. a timestamp/engine name) that differs between sides -- rngReelStops still matches on the explicit reelStops data", () => {
+            const expected = createComparable({
+                artifact: createArtifact({debug: {reelStops: [1, 2, 3], capturedAt: "2026-01-01T00:00:00.000Z", rngEngine: "engine-a"}}),
+                stateBefore: {win: 0},
+                stateAfter: {win: 5},
+            });
+            const reproduced = createComparable({
+                artifact: createArtifact({debug: {reelStops: [1, 2, 3], capturedAt: "2026-06-01T12:34:56.000Z", rngEngine: "engine-b"}}),
+                stateBefore: {win: 0},
+                stateAfter: {win: 5},
+            });
+
+            const result = describeReplayComparison(expected, reproduced);
+
+            expect(result.dimensions.rngReelStops).toEqual({status: "match"});
+            expect(result.status).toBe("match");
+        });
+
+        it("marks rngReelStops unavailable (not mismatch) when debug exists on both sides but neither has an explicit reelStops field", () => {
+            const expected = createComparable({artifact: createArtifact({debug: {rngEngine: "engine-a", trace: [1, 2, 3]}})});
+            const reproduced = createComparable({artifact: createArtifact({debug: {rngEngine: "engine-b", trace: [9, 8, 7]}})});
+
+            const result = describeReplayComparison(expected, reproduced);
+
+            expect(result.dimensions.rngReelStops.status).toBe("unavailable");
+            expect(result.status).not.toBe("mismatch");
+        });
+
+        it("marks rngReelStops unavailable when reelStops is present on only one side, without affecting the other dimensions", () => {
+            const expected = createComparable({artifact: createArtifact({debug: {reelStops: [1, 2, 3]}})});
+            const reproduced = createComparable({artifact: createArtifact()}); // no debug at all
+
+            const result = describeReplayComparison(expected, reproduced);
+
+            expect(result.dimensions.rngReelStops.status).toBe("unavailable");
+            expect(result.dimensions.screen.status).toBe("match");
+            expect(result.status).toBe("partial");
+        });
+
+        it("still reports a genuine mismatch when only the explicit reelStops data itself differs", () => {
+            const expected = createComparable({artifact: createArtifact({debug: {reelStops: [1, 2, 3], rngEngine: "same-engine"}})});
+            const reproduced = createComparable({artifact: createArtifact({debug: {reelStops: [4, 5, 6], rngEngine: "same-engine"}})});
+
+            const result = describeReplayComparison(expected, reproduced);
+
+            expect(result.dimensions.rngReelStops).toEqual({status: "mismatch", detail: "RNG/reel-stop data differs."});
+            expect(result.status).toBe("mismatch");
+        });
     });
 });
 

@@ -191,26 +191,12 @@ export function RoundArtifactInspector({
             </PageSection>
 
             <PageSection legend="State before / after">
-                {stateBefore === undefined && stateAfter === undefined && (
+                {stateBefore === undefined && stateAfter === undefined ? (
                     <Text size="sm" c="dimmed">
                         State snapshot unavailable for this game/session type.
                     </Text>
-                )}
-                {stateBefore !== undefined && (
-                    <div>
-                        <Text size="sm" fw={600} mb={4}>
-                            Before
-                        </Text>
-                        <CodeBlock>{JSON.stringify(stateBefore, null, 2)}</CodeBlock>
-                    </div>
-                )}
-                {stateAfter !== undefined && (
-                    <div>
-                        <Text size="sm" fw={600} mt="sm" mb={4}>
-                            After
-                        </Text>
-                        <CodeBlock>{JSON.stringify(stateAfter, null, 2)}</CodeBlock>
-                    </div>
+                ) : (
+                    <Text size="sm">Snapshot captured for this round — see Advanced details for the full before/after state.</Text>
                 )}
             </PageSection>
 
@@ -221,9 +207,29 @@ export function RoundArtifactInspector({
             </Text>
             {advancedOpened && (
                 <PageSection legend="Advanced details">
+                    {(stateBefore !== undefined || stateAfter !== undefined) && (
+                        <div>
+                            {stateBefore !== undefined && (
+                                <div>
+                                    <Text size="sm" fw={600} mb={4}>
+                                        State before
+                                    </Text>
+                                    <CodeBlock>{JSON.stringify(stateBefore, null, 2)}</CodeBlock>
+                                </div>
+                            )}
+                            {stateAfter !== undefined && (
+                                <div>
+                                    <Text size="sm" fw={600} mt="sm" mb={4}>
+                                        State after
+                                    </Text>
+                                    <CodeBlock>{JSON.stringify(stateAfter, null, 2)}</CodeBlock>
+                                </div>
+                            )}
+                        </div>
+                    )}
                     {artifact.debug && (
                         <div>
-                            <Group gap="xs" mb={4}>
+                            <Group gap="xs" mb={4} mt={stateBefore !== undefined || stateAfter !== undefined ? "sm" : undefined}>
                                 <Text size="sm" fw={600}>
                                     Debug data
                                 </Text>

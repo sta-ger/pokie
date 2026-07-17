@@ -206,11 +206,20 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Find"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
 
-        await waitFor(() => expect(screen.getByText("Before")).toBeInTheDocument(), {timeout: 15000});
-        expect(screen.getByText("After")).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByText(/Snapshot captured for this round/)).toBeInTheDocument(), {timeout: 15000});
+        expect(screen.queryByText("State snapshot unavailable for this game/session type.")).not.toBeInTheDocument();
+        // The raw JSON stays hidden until Advanced details is opened -- only the plain-language status
+        // is visible in the main Inspector view.
+        expect(screen.queryByText(/"win": 0/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/"win": 5/)).not.toBeInTheDocument();
+        expect(screen.queryByText("State before")).not.toBeInTheDocument();
+        expect(screen.queryByText("State after")).not.toBeInTheDocument();
+
+        await user.click(screen.getByText(/Show advanced details/));
+        expect(screen.getByText("State before")).toBeInTheDocument();
+        expect(screen.getByText("State after")).toBeInTheDocument();
         expect(screen.getByText(/"win": 0/)).toBeInTheDocument();
         expect(screen.getByText(/"win": 5/)).toBeInTheDocument();
-        expect(screen.queryByText("State snapshot unavailable for this game/session type.")).not.toBeInTheDocument();
     }, 45000);
 
     it("shows an explicit 'state snapshot unavailable' message (not a silently missing section) when the backend never captured state", async () => {

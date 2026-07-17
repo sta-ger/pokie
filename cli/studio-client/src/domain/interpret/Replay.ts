@@ -200,9 +200,7 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
             deepEqualJson(a, b) ? undefined : "Feature events differ.",
         ),
         state: compareStatePair(expected.stateBefore, expected.stateAfter, reproduced.stateBefore, reproduced.stateAfter),
-        rngReelStops: compareDimension(expectedArtifact.debug, reproducedArtifact.debug, isDebugObject, (a, b) =>
-            deepEqualJson(a, b) ? undefined : "RNG/reel-stop debug data differs.",
-        ),
+        rngReelStops: compareRngReelStopsDimension(expectedArtifact.debug, reproducedArtifact.debug),
     };
 
     const values = Object.values(dimensions);
@@ -258,12 +256,36 @@ function compareStatePair(expectedBefore: unknown, expectedAfter: unknown, repro
     return matches ? {status: "match"} : {status: "mismatch", detail: "Session state before/after differs."};
 }
 
-function isFiniteNumber(value: unknown): value is number {
-    return typeof value === "number" && Number.isFinite(value);
+// "RNG / reel stops" is deliberately narrower than the whole `debug` bag: that bag is free-form,
+// per-game content (evaluator traces, RNG call counters, timestamps, ...) that can legitimately differ
+// between two genuinely-matching runs without the game result itself being wrong — diffing all of it
+// would produce false mismatches. Only an explicitly-named "reelStops" field within `debug` is treated
+// as the deterministic subset worth comparing; `debug` as a whole is still shown in full under Advanced
+// details for inspection regardless of what this dimension reports.
+function compareRngReelStopsDimension(
+    expectedDebug: Record<string, unknown> | undefined,
+    reproducedDebug: Record<string, unknown> | undefined,
+): ComparisonDimensionResult {
+    const expectedReelStops = extractDeterministicReelStops(expectedDebug);
+    const reproducedReelStops = extractDeterministicReelStops(reproducedDebug);
+    if (expectedReelStops === undefined || reproducedReelStops === undefined) {
+        return {
+            status: "unavailable",
+            reason: 'No explicit deterministic RNG/reel-stop data (a "reelStops" field) is present in the debug data on one or both sides.',
+        };
+    }
+    return deepEqualJson(expectedReelStops, reproducedReelStops) ? {status: "match"} : {status: "mismatch", detail: "RNG/reel-stop data differs."};
 }
 
-function isDebugObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+function extractDeterministicReelStops(debug: Record<string, unknown> | undefined): unknown {
+    if (debug === undefined || debug === null || typeof debug !== "object") {
+        return undefined;
+    }
+    return debug.reelStops;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value);
 }
 
 // A defensive structural equality check over already-computed JSON-safe data (screen/wins/steps/
