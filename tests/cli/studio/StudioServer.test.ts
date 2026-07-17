@@ -1818,14 +1818,26 @@ describe("StudioServer", () => {
             expect(body).toEqual([]);
         });
 
-        it("returns the full SimulationReport for a completed job", async () => {
+        it("returns the full SimulationReport (plus statistics) for a completed job", async () => {
             await openCrazyFruits(createPlayableFakeGame(manifest));
             const id = await runToCompletion(30, "demo");
 
             const {status, body} = await get(`${baseUrl}/api/project/reports/${id}`);
 
             expect(status).toBe(200);
-            expect(body).toMatchObject({game: manifest, rounds: 30, requestedRounds: 30, seed: "demo"});
+            const detail = body as {report: {game: unknown; rounds: number; requestedRounds: number; seed: string}; statistics?: {volatility: number}};
+            expect(detail.report).toMatchObject({game: manifest, rounds: 30, requestedRounds: 30, seed: "demo"});
+            expect(typeof detail.statistics?.volatility).toBe("number");
+        });
+
+        it("returns identical statistics whether the report is fetched right after completion or later, as if historical", async () => {
+            await openCrazyFruits(createPlayableFakeGame(manifest));
+            const id = await runToCompletion(30, "demo");
+
+            const first = await get(`${baseUrl}/api/project/reports/${id}`);
+            const second = await get(`${baseUrl}/api/project/reports/${id}`);
+
+            expect(first.body).toEqual(second.body);
         });
 
         it("returns 404 for an unknown report id", async () => {
@@ -2016,7 +2028,8 @@ describe("StudioServer", () => {
 
             const detail = await get(`${projectBaseUrl}/api/project/reports/${id}`);
             expect(detail.status).toBe(200);
-            expect(detail.body).toEqual(minimalReport);
+            expect((detail.body as {report: unknown}).report).toEqual(minimalReport);
+            expect((detail.body as {statistics?: {volatility: number}}).statistics).toBeDefined();
 
             for (const format of ["json", "markdown", "html"]) {
                 const response = await fetch(`${projectBaseUrl}/api/project/reports/${id}/download?format=${format}`);

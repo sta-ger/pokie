@@ -28,6 +28,7 @@ import {validateRuntimeSpinRequest, RuntimeSpinRequestInput} from "./runtime/val
 import {validateStartRuntimeRequest, StartRuntimeRequestInput, ValidatedStartRuntimeRequest} from "./runtime/validateStartRuntimeRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
+import type {StudioSimulationReportDetail} from "./simulation/StudioSimulationJobView.js";
 import type {StudioSimulationStatus} from "./simulation/StudioSimulationStatus.js";
 import {validateSimulationRequest, SimulationRequestInput} from "./simulation/validateSimulationRequest.js";
 import type {StudioContext} from "./StudioContext.js";
@@ -847,7 +848,8 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: this.describeReportNotReady(id, result.jobStatus)});
             return;
         }
-        this.sendJson(res, 200, result.report);
+        const detail: StudioSimulationReportDetail = {report: result.report, statistics: result.statistics};
+        this.sendJson(res, 200, detail);
     }
 
     private handleDownloadReport(res: ServerResponse, id: string, url: URL): void {

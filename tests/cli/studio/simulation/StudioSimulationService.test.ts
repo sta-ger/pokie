@@ -506,7 +506,26 @@ describe("StudioSimulationService", () => {
             }
             const job = await waitForTerminal(service, result.job.id);
 
-            expect(service.getReport("/a", result.job.id)).toEqual({status: "ok", report: job.report});
+            expect(service.getReport("/a", result.job.id)).toEqual({status: "ok", report: job.report, statistics: job.statistics});
+        });
+
+        it("includes the same statistics (volatility, confidence intervals) the job's own poll response carried", async () => {
+            const service = new StudioSimulationService(
+                new InMemoryStudioSimulationRepository(),
+                () => Promise.resolve(createFakeGame(manifest)),
+            );
+            const result = service.start("/a", {rounds: 10});
+            if (result.status !== "created") {
+                throw new Error("expected job to be created");
+            }
+            await waitForTerminal(service, result.job.id);
+
+            const detail = service.getReport("/a", result.job.id);
+            if (detail.status !== "ok") {
+                throw new Error("expected report to be ok");
+            }
+            expect(typeof detail.statistics?.volatility).toBe("number");
+            expect(typeof detail.statistics?.rtpConfidenceInterval95.low).toBe("number");
         });
 
         it("returns not-found for an unknown id", () => {

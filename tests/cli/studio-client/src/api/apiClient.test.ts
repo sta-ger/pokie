@@ -702,7 +702,7 @@ describe("studio-client apiClient", () => {
     });
 
     describe("getReport", () => {
-        it("GETs /api/project/reports/:id and returns the SimulationReport", async () => {
+        it("GETs /api/project/reports/:id and returns the StudioSimulationReportDetail envelope (report + statistics)", async () => {
             const report = {
                 game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
                 requestedRounds: 1000,
@@ -716,12 +716,19 @@ describe("studio-client apiClient", () => {
                 durationMs: 500,
                 spinsPerSecond: 2000,
             };
-            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: report}));
+            const statistics = {
+                volatility: 12.5,
+                payoutStandardDeviation: 12.5,
+                returnStandardDeviation: 0.5,
+                averagePayoutConfidenceInterval95: {low: 0.9, high: 1.1},
+                rtpConfidenceInterval95: {low: 0.94, high: 0.98},
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {report, statistics}}));
 
             const result = await getReport(fetchImpl, "job-1");
 
             expect(calls).toEqual([{url: "/api/project/reports/job-1", init: undefined}]);
-            expect(result).toEqual(report);
+            expect(result).toEqual({report, statistics});
         });
 
         it("encodes the id in the URL", async () => {

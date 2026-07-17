@@ -10,7 +10,7 @@ import {
 import crypto from "crypto";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
-import type {StudioSimulationJobView} from "./StudioSimulationJobView.js";
+import type {StudioSimulationJobView, StudioSimulationStatisticsView} from "./StudioSimulationJobView.js";
 import type {StudioSimulationRepository} from "./StudioSimulationRepository.js";
 import type {StudioSimulationReportListEntry} from "./StudioSimulationReportListEntry.js";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
@@ -24,7 +24,7 @@ export type StudioSimulationStartResult =
     | {status: "conflict"; activeJobId: string};
 
 export type GetSimulationReportResult =
-    | {status: "ok"; report: SimulationReport}
+    | {status: "ok"; report: SimulationReport; statistics?: StudioSimulationStatisticsView}
     | {status: "not-found"}
     // Either not terminal yet (queued/running) or terminal without a report (failed/cancelled) —
     // `jobStatus` tells the caller which, so it can phrase a precise message either way.
@@ -198,7 +198,7 @@ export class StudioSimulationService {
         if (!record.report) {
             return {status: "not-ready", jobStatus: record.status};
         }
-        return {status: "ok", report: record.report};
+        return {status: "ok", report: record.report, statistics: record.statistics};
     }
 
     private toReportListEntry(record: StudioSimulationJobRecord): StudioSimulationReportListEntry | undefined {

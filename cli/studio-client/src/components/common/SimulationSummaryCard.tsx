@@ -1,4 +1,5 @@
-import {Table, Text} from "@mantine/core";
+import {List, Table, Text} from "@mantine/core";
+import {formatConfidenceInterval} from "./SimulationReportDisplay";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 
 // Shared by the Run step's own live elapsed-time readout and this card's "Duration" row -- one
@@ -45,34 +46,59 @@ export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
     }
 
     const {report} = outcome;
+    const mainRecommendation = report.recommendations[0];
     return (
-        <Table withRowBorders={false}>
-            <Table.Tbody>
-                <Table.Tr>
-                    <Table.Th>RTP</Table.Th>
-                    <Table.Td>{(report.rtp * 100).toFixed(2)}%</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                    <Table.Th>Hit frequency</Table.Th>
-                    <Table.Td>{(report.hitFrequency * 100).toFixed(2)}%</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                    <Table.Th>Volatility</Table.Th>
-                    <Table.Td>{report.volatility === undefined ? "—" : report.volatility.toFixed(2)}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                    <Table.Th>Max win</Table.Th>
-                    <Table.Td>{report.maxWin.toFixed(2)}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                    <Table.Th>Duration</Table.Th>
-                    <Table.Td>{formatElapsedMs(report.durationMs)}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                    <Table.Th>Warnings</Table.Th>
-                    <Table.Td>{report.warnings.length === 0 ? "None" : `${report.warnings.length} warning(s) — see full report`}</Table.Td>
-                </Table.Tr>
-            </Table.Tbody>
-        </Table>
+        <div>
+            <Table withRowBorders={false}>
+                <Table.Tbody>
+                    <Table.Tr>
+                        <Table.Th>RTP</Table.Th>
+                        <Table.Td>{(report.rtp * 100).toFixed(2)}%</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Hit frequency</Table.Th>
+                        <Table.Td>{(report.hitFrequency * 100).toFixed(2)}%</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Volatility</Table.Th>
+                        <Table.Td>{report.volatility === undefined ? "—" : report.volatility.toFixed(2)}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Max win</Table.Th>
+                        <Table.Td>{report.maxWin.toFixed(2)}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Duration</Table.Th>
+                        <Table.Td>{formatElapsedMs(report.durationMs)}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Convergence</Table.Th>
+                        <Table.Td>RTP 95% CI: {formatConfidenceInterval(report.rtpConfidenceInterval95)}</Table.Td>
+                    </Table.Tr>
+                </Table.Tbody>
+            </Table>
+
+            {report.warnings.length > 0 && (
+                <div>
+                    <Text size="sm" fw={600} mt="sm">
+                        Warnings
+                    </Text>
+                    <List size="sm">
+                        {report.warnings.map((warning, index) => (
+                            <List.Item key={index}>{warning}</List.Item>
+                        ))}
+                    </List>
+                </div>
+            )}
+
+            {mainRecommendation && (
+                <Text size="sm" mt="sm">
+                    <Text span fw={600}>
+                        Recommendation:
+                    </Text>{" "}
+                    {mainRecommendation}
+                </Text>
+            )}
+        </div>
     );
 }

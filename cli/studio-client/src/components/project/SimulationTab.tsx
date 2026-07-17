@@ -40,8 +40,10 @@ export function SimulationTab({
     recentRunsError,
     onRefreshRecentRuns,
     reviewedDetail,
+    currentReportId,
     onOpenHistoric,
     onRunAgain,
+    runAgainNotice,
     compareDetail,
     onCompare,
     onClearCompare,
@@ -56,8 +58,10 @@ export function SimulationTab({
     recentRunsError: string | undefined;
     onRefreshRecentRuns: () => void;
     reviewedDetail: ReportDetailState;
+    currentReportId: string | undefined;
     onOpenHistoric: (entry: StudioSimulationReportListEntry) => void;
     onRunAgain: (entry: StudioSimulationReportListEntry) => void;
+    runAgainNotice: string | undefined;
     compareDetail: ReportDetailState;
     onCompare: (entry: StudioSimulationReportListEntry) => void;
     onClearCompare: () => void;
@@ -112,8 +116,25 @@ export function SimulationTab({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [progress?.status]);
 
+    // Closes the full-report/compare disclosures when the *reviewed report itself* changes -- e.g.
+    // clicking "Open" on a different Recent Runs entry while already on Review, which isn't a
+    // progress-status transition so the effect above never fires for it. The comparison *data* is
+    // already cleared page-side (ProjectDashboardPage's selectReport resets compareDetail whenever a
+    // different report is opened) -- this only resets these two local UI toggles so the user doesn't
+    // land on the new report with a stale panel still expanded.
+    const prevReportIdRef = useRef(currentReportId);
+    useEffect(() => {
+        if (currentReportId !== prevReportIdRef.current) {
+            prevReportIdRef.current = currentReportId;
+            closeFullReport();
+            setCompareOpened(false);
+        }
+    }, [currentReportId, closeFullReport]);
+
     const reviewReachable = reviewedDetail.status !== "empty" || isTerminal;
     const exportReachable = downloadUrls !== undefined;
+    // A report can never be meaningfully compared against itself (requirement 7).
+    const comparableEntries = recentRuns.status === "loaded" ? recentRuns.entries.filter((entry) => entry.id !== currentReportId) : [];
 
     const outcome: SimulationOutcome | undefined = (() => {
         if (reviewedDetail.status === "loaded") {
@@ -225,10 +246,10 @@ export function SimulationTab({
 
                             {compareOpened && outcome.kind === "completed" && (
                                 <PageSection legend="Compare with another run">
-                                    {recentRuns.status === "empty" && <EmptyState message="No other completed runs yet to compare against." />}
-                                    {recentRuns.status === "loaded" && (
+                                    {comparableEntries.length === 0 && <EmptyState message="No other completed runs yet to compare against." />}
+                                    {comparableEntries.length > 0 && (
                                         <List listStyleType="none" spacing={4} mb="sm">
-                                            {recentRuns.entries.map((entry) => (
+                                            {comparableEntries.map((entry) => (
                                                 <List.Item key={entry.id}>
                                                     <Anchor
                                                         component="button"
@@ -298,6 +319,7 @@ export function SimulationTab({
                     </Button>
                 </QuickActions>
                 {recentRunsError && <ErrorState message={recentRunsError} />}
+                {runAgainNotice && <ErrorState message={runAgainNotice} />}
                 {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
                 {recentRuns.status === "loaded" && (
                     <List listStyleType="none" spacing={4}>

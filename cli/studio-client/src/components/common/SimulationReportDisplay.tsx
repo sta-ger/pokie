@@ -3,7 +3,7 @@ import {useDisclosure} from "@mantine/hooks";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 import {PageSection} from "./PageSection";
 
-function formatConfidenceInterval(interval: {low: number; high: number} | undefined): string {
+export function formatConfidenceInterval(interval: {low: number; high: number} | undefined): string {
     if (!interval) {
         return "—";
     }

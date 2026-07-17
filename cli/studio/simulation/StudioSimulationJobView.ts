@@ -33,3 +33,12 @@ export type StudioSimulationJobView = {
     statistics?: StudioSimulationStatisticsView;
     error?: string;
 };
+
+// The GET /api/project/reports/:id response envelope -- bundles the persisted SimulationReport with the
+// same StudioSimulationStatisticsView a live job's own poll response carries, so a report opened from
+// history (Recent Runs' "Open") renders identically to one just watched to completion instead of silently
+// losing volatility/confidence-interval/payout-histogram the moment it's re-fetched by id.
+export type StudioSimulationReportDetail = {
+    report: SimulationReport;
+    statistics?: StudioSimulationStatisticsView;
+};

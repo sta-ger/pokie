@@ -3,7 +3,6 @@ import type {
     PokieGameManifest,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
-    SimulationReport,
     StudioBlueprintLoadView,
     StudioBlueprintSaveView,
     StudioBlueprintValidationView,
@@ -21,6 +20,7 @@ import type {
     StudioRuntimeStateView,
     StudioScaffoldResultView,
     StudioSimulationJobView,
+    StudioSimulationReportDetail,
     StudioSimulationReportListEntry,
 } from "./types";
 
@@ -299,12 +299,12 @@ export async function listReports(fetchImpl: FetchLike): Promise<StudioSimulatio
     return (await response.json()) as StudioSimulationReportListEntry[];
 }
 
-export async function getReport(fetchImpl: FetchLike, id: string): Promise<SimulationReport> {
+export async function getReport(fetchImpl: FetchLike, id: string): Promise<StudioSimulationReportDetail> {
     const response = await fetchImpl(`/api/project/reports/${encodeURIComponent(id)}`);
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to load report"));
     }
-    return (await response.json()) as SimulationReport;
+    return (await response.json()) as StudioSimulationReportDetail;
 }
 
 export type ReportDownloadFormat = "json" | "markdown" | "html";

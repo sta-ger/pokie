@@ -242,6 +242,15 @@ export type StudioSimulationStatisticsView = {
     payoutHistogram?: Record<string, number>;
 };
 
+// The server's copy of this same type lives in "pokie" itself (cli/studio/simulation/
+// StudioSimulationJobView.ts) -- GET /api/project/reports/:id's response envelope, bundling the
+// persisted SimulationReport with the same statistics a live job's own poll response carries, so a
+// historical report renders identically to a just-completed one.
+export type StudioSimulationReportDetail = {
+    report: SimulationReport;
+    statistics?: StudioSimulationStatisticsView;
+};
+
 export type StudioSimulationStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type StudioSimulationJobView = {

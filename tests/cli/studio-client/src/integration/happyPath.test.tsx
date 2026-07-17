@@ -165,18 +165,20 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     status: 200,
                     json: () =>
                         Promise.resolve({
-                            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
-                            requestedRounds: 1000,
-                            rounds: 1000,
-                            seed: null,
-                            totalBet: 1000,
-                            totalWin: 950,
-                            rtp: 0.95,
-                            hitFrequency: 0.3,
-                            maxWin: 100,
-                            durationMs: 10,
-                            spinsPerSecond: 100,
-                            warnings: [],
+                            report: {
+                                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                                requestedRounds: 1000,
+                                rounds: 1000,
+                                seed: null,
+                                totalBet: 1000,
+                                totalWin: 950,
+                                rtp: 0.95,
+                                hitFrequency: 0.3,
+                                maxWin: 100,
+                                durationMs: 10,
+                                spinsPerSecond: 100,
+                                warnings: [],
+                            },
                         }),
                 });
             }

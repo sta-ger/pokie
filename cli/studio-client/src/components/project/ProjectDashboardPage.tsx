@@ -111,26 +111,62 @@ export function ProjectDashboardPage() {
 
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});
     const [reportsError, setReportsError] = useState<string>();
-    const refreshReports = useCallback(() => {
-        listReports(fetchImpl)
-            .then((entries) => setReportsView(describeReportsList(entries)))
-            .catch((error: unknown) => setReportsError(errorMessage(error)));
-    }, [fetchImpl]);
     const [reportDetail, setReportDetail] = useState<ReportDetailState>({status: "empty"});
     const [selectedReportId, setSelectedReportId] = useState<string>();
+    const [compareDetail, setCompareDetail] = useState<ReportDetailState>({status: "empty"});
+    const [runAgainNotice, setRunAgainNotice] = useState<string>();
+
+    // Monotonic request ids -- same requestId/isStale() pattern BlueprintEditorPage.tsx's own
+    // handleValidate already established. Each is bumped both by its own operation's *own* new call
+    // (so e.g. two "Open" clicks in a row only ever land the second) and by other events that make an
+    // in-flight fetch's result meaningless before it resolves: starting a new run (startRun) and a
+    // project switch (the projectKey effect below).
+    const reportRequestIdRef = useRef(0);
+    const compareRequestIdRef = useRef(0);
+    const recentRunsRequestIdRef = useRef(0);
+
+    const refreshReports = useCallback(() => {
+        const requestId = ++recentRunsRequestIdRef.current;
+        listReports(fetchImpl)
+            .then((entries) => {
+                if (requestId === recentRunsRequestIdRef.current) {
+                    setReportsView(describeReportsList(entries));
+                }
+            })
+            .catch((error: unknown) => {
+                if (requestId === recentRunsRequestIdRef.current) {
+                    setReportsError(errorMessage(error));
+                }
+            });
+    }, [fetchImpl]);
 
     // Used both to auto-open the just-completed live job's report (see the effect below) and to open a
     // historic entry straight from the Recent Runs list -- either way this is "the report Review should
-    // show", by id, fetched fresh from the server rather than reused from in-memory job state (matches
-    // the pre-merge ReportsTab's own behavior).
+    // show", by id, fetched fresh from the server as a StudioSimulationReportDetail (report + the same
+    // statistics a live job's own poll response carries, so a historic report renders identically to a
+    // just-completed one) rather than reused from in-memory job state. A stale response (superseded by
+    // a newer selectReport/startRun/project-switch) is discarded via reportRequestIdRef. Opening a
+    // different main report also invalidates/clears any comparison in progress -- a comparison is only
+    // ever meaningful against *this* report (requirement 7).
     const selectReport = useCallback(
         (id: string) => {
             setActiveTab("simulation");
             setSelectedReportId(id);
             setReportDetail({status: "loading"});
+            const requestId = ++reportRequestIdRef.current;
+            compareRequestIdRef.current++;
+            setCompareDetail({status: "empty"});
             getReport(fetchImpl, id)
-                .then((report) => setReportDetail({status: "loaded", report: describeSimulationReport(report)}))
-                .catch((error: unknown) => setReportDetail({status: "error", message: errorMessage(error)}));
+                .then((detail) => {
+                    if (requestId === reportRequestIdRef.current) {
+                        setReportDetail({status: "loaded", report: describeSimulationReport(detail.report, detail.statistics)});
+                    }
+                })
+                .catch((error: unknown) => {
+                    if (requestId === reportRequestIdRef.current) {
+                        setReportDetail({status: "error", message: errorMessage(error)});
+                    }
+                });
         },
         [fetchImpl, setActiveTab],
     );
@@ -149,13 +185,14 @@ export function ProjectDashboardPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [simulation.job, selectReport]);
 
-    const [compareDetail, setCompareDetail] = useState<ReportDetailState>({status: "empty"});
-
     // Every path that starts a new run (Configure submit, Retry, a Recent Runs "Run again") funnels
     // through here so a previous run's report/compare state never lingers stale while the new one is
-    // in flight.
+    // in flight -- also bumps the report/compare request ids so a fetch already in flight *before* this
+    // run started can never land afterward and repopulate what was just cleared.
     const startRun = useCallback(
         (rounds: number, seed: string | undefined, workers: number) => {
+            reportRequestIdRef.current++;
+            compareRequestIdRef.current++;
             setReportDetail({status: "empty"});
             setSelectedReportId(undefined);
             setCompareDetail({status: "empty"});
@@ -167,25 +204,43 @@ export function ProjectDashboardPage() {
 
     const onCompare = useCallback(
         (entry: StudioSimulationReportListEntry) => {
+            const requestId = ++compareRequestIdRef.current;
             setCompareDetail({status: "loading"});
             getReport(fetchImpl, entry.id)
-                .then((report) => setCompareDetail({status: "loaded", report: describeSimulationReport(report)}))
-                .catch((error: unknown) => setCompareDetail({status: "error", message: errorMessage(error)}));
+                .then((detail) => {
+                    if (requestId === compareRequestIdRef.current) {
+                        setCompareDetail({status: "loaded", report: describeSimulationReport(detail.report, detail.statistics)});
+                    }
+                })
+                .catch((error: unknown) => {
+                    if (requestId === compareRequestIdRef.current) {
+                        setCompareDetail({status: "error", message: errorMessage(error)});
+                    }
+                });
         },
         [fetchImpl],
     );
-    const onClearCompare = useCallback(() => setCompareDetail({status: "empty"}), []);
+    const onClearCompare = useCallback(() => {
+        compareRequestIdRef.current++;
+        setCompareDetail({status: "empty"});
+    }, []);
 
+    // Calling simulation.run() while a job is already active doesn't start a second one -- the backend
+    // returns a 409 conflict and useSimulationPoll just starts polling the *existing* job (see
+    // StudioSimulationService.start()'s own conflict handling) -- so going ahead here would silently
+    // reattach to the old job while claiming to run this entry's own rounds/seed/workers. Blocking with
+    // a clear message is honest about what the UI can actually do; the Run step's own Cancel button is
+    // one click away if the user wants to replace it.
     const onRunAgain = useCallback(
         (entry: StudioSimulationReportListEntry) => {
-            const doRun = (): void => startRun(entry.requestedRounds, entry.seed, entry.workers);
             if (simulation.job !== undefined && isSimulationActive(simulation.job)) {
-                confirm("A simulation is already running. Start a new one with this configuration instead?", doRun);
-            } else {
-                doRun();
+                setRunAgainNotice("A simulation is already running for this project. Cancel it from the Run step before starting a different configuration.");
+                return;
             }
+            setRunAgainNotice(undefined);
+            startRun(entry.requestedRounds, entry.seed, entry.workers);
         },
-        [simulation.job, startRun, confirm],
+        [simulation.job, startRun],
     );
 
     const [replayListView, setReplayListView] = useState<ReplayListView>({status: "empty"});
@@ -205,6 +260,19 @@ export function ProjectDashboardPage() {
         if (projectKey === undefined) {
             return;
         }
+        // A genuinely different project must never show a trace of the previous one -- bump every
+        // request id so a fetch still in flight from before the switch can't land afterward and
+        // repopulate what's being cleared here, then clear all of this project-scoped state before the
+        // fresh fetches below start.
+        reportRequestIdRef.current++;
+        compareRequestIdRef.current++;
+        recentRunsRequestIdRef.current++;
+        setReportDetail({status: "empty"});
+        setSelectedReportId(undefined);
+        setCompareDetail({status: "empty"});
+        setReportsView({status: "empty"});
+        setReportsError(undefined);
+        setRunAgainNotice(undefined);
         refreshInspect();
         refreshReports();
         refreshReplayList();
@@ -324,13 +392,15 @@ export function ProjectDashboardPage() {
                             recentRunsError={reportsError}
                             onRefreshRecentRuns={refreshReports}
                             reviewedDetail={reportDetail}
+                            currentReportId={selectedReportId}
                             onOpenHistoric={(entry: StudioSimulationReportListEntry) => selectReport(entry.id)}
                             onRunAgain={onRunAgain}
+                            runAgainNotice={runAgainNotice}
                             compareDetail={compareDetail}
                             onCompare={onCompare}
                             onClearCompare={onClearCompare}
                             downloadUrls={
-                                selectedReportId
+                                reportDetail.status === "loaded" && selectedReportId
                                     ? {
                                         json: buildReportDownloadUrl(selectedReportId, "json"),
                                         markdown: buildReportDownloadUrl(selectedReportId, "markdown"),
