@@ -21,6 +21,17 @@ export function useDeploymentManager() {
     const [targetsView, setTargetsView] = useState<DeploymentTargetsListView>({status: "loading"});
     const [targetsError, setTargetsError] = useState<string>();
     const [selectedTarget, setSelectedTarget] = useState<StudioDeploymentTargetSummary>();
+    // Mirrors `selectedTarget` synchronously, updated by every setter below in lockstep with its own
+    // setSelectedTarget() call -- unlike the `selectedTarget` state variable itself, this is never stale
+    // inside an async callback. refreshTargets()'s own `.then()` reads this instead of closing over
+    // `selectedTarget` directly: when resetForProjectSwitch() and a following refreshTargets() are called
+    // back-to-back (see ProjectDashboardPage's own projectKey effect), refreshTargets()'s closure is
+    // formed *before* React has re-rendered with resetForProjectSwitch()'s setSelectedTarget(undefined)
+    // applied, so `selectedTarget` in that closure would still read the *previous* project's target --
+    // and by the time the fetch resolves, this ref (updated synchronously the moment
+    // resetForProjectSwitch() ran, no render needed) already reflects the reset, so the response can
+    // never rebind to a same-id target from a different project.
+    const selectedTargetRef = useRef<StudioDeploymentTargetSummary | undefined>(undefined);
     const [modes, setModes] = useState<StudioDeploymentModeInput[]>([{modeName: "", libraryPath: ""}]);
     const [runResult, setRunResult] = useState<DeploymentRunResultView>();
     const [runError, setRunError] = useState<string>();
@@ -46,6 +57,9 @@ export function useDeploymentManager() {
     const refreshTargets = useCallback(() => {
         const requestId = ++targetsRequestIdRef.current;
         setTargetsView({status: "loading"});
+        // A previous Refresh's own failure must never linger once a new one starts -- same reasoning as
+        // run()'s own runError clearing below.
+        setTargetsError(undefined);
         listDeploymentTargets(fetchImpl)
             .then((targets) => {
                 if (requestId !== targetsRequestIdRef.current) {
@@ -55,19 +69,26 @@ export function useDeploymentManager() {
                 setTargetsError(undefined);
 
                 // Rebind the selection to the fresh object this response returned -- never keep showing
-                // the previous request's own reference once a newer one has landed. If the target
-                // disappeared from the registry, or its own descriptor (version/capabilities/requirements)
-                // changed underneath the current selection, any preview/deploy result already shown was
-                // computed against a descriptor that's no longer accurate and must be invalidated -- see
-                // hasTargetDescriptorChanged's own doc comment.
-                if (selectedTarget !== undefined) {
-                    const fresh = targets.find((target) => target.id === selectedTarget.id);
+                // the previous request's own reference once a newer one has landed. Reads
+                // selectedTargetRef (not the `selectedTarget` this closure would otherwise capture) so a
+                // resetForProjectSwitch() called just before this refreshTargets() -- see that function's
+                // own doc comment -- is always observed here, even though this closure was formed before
+                // React re-rendered with that reset applied. If the target disappeared from the registry,
+                // or its own descriptor (version/capabilities/requirements) changed underneath the current
+                // selection, any preview/deploy result already shown was computed against a descriptor
+                // that's no longer accurate and must be invalidated -- see hasTargetDescriptorChanged's
+                // own doc comment.
+                const current = selectedTargetRef.current;
+                if (current !== undefined) {
+                    const fresh = targets.find((target) => target.id === current.id);
                     if (fresh === undefined) {
+                        selectedTargetRef.current = undefined;
                         setSelectedTarget(undefined);
                         invalidate();
                     } else {
+                        selectedTargetRef.current = fresh;
                         setSelectedTarget(fresh);
-                        if (hasTargetDescriptorChanged(selectedTarget, fresh)) {
+                        if (hasTargetDescriptorChanged(current, fresh)) {
                             invalidate();
                         }
                     }
@@ -79,7 +100,7 @@ export function useDeploymentManager() {
                 }
                 setTargetsError(errorMessage(error));
             });
-    }, [fetchImpl, selectedTarget, invalidate]);
+    }, [fetchImpl, invalidate]);
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
     // never show a trace of the previous one's target selection, modes, or run result, same reasoning as
@@ -90,9 +111,15 @@ export function useDeploymentManager() {
     // touches, since those are select-target/configure inputs, not run outputs. Bumps
     // targetsRequestIdRef too, so a targets response still in flight from the *previous* project can
     // never land afterward and repopulate what this reset just cleared with another project's targets.
+    // Updates selectedTargetRef synchronously (not just the `selectedTarget` state, which only takes
+    // effect after React's next render) -- see refreshTargets()'s own doc comment: a caller that calls
+    // this and then immediately calls refreshTargets() (exactly what ProjectDashboardPage's own
+    // projectKey effect does) must have that refreshTargets() see the cleared selection right away, even
+    // before any re-render has happened.
     const resetForProjectSwitch = useCallback(() => {
         targetsRequestIdRef.current++;
         invalidate();
+        selectedTargetRef.current = undefined;
         setSelectedTarget(undefined);
         setModes([{modeName: "", libraryPath: ""}]);
         setTargetsView({status: "loading"});
@@ -101,6 +128,7 @@ export function useDeploymentManager() {
 
     const selectTarget = useCallback(
         (target: StudioDeploymentTargetSummary) => {
+            selectedTargetRef.current = target;
             setSelectedTarget(target);
             invalidate();
         },

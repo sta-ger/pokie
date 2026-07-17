@@ -362,3 +362,57 @@ describe("useDeploymentManager - runError clears on the next attempt/success", (
         expect(result.current.runError).toBeUndefined();
     });
 });
+
+describe("useDeploymentManager - project switch immediately followed by refresh, same target id in the new project", () => {
+    it("keeps the selection empty and never resurrects the previous project's preview/deploy result", async () => {
+        // Same id as the old project's own selected target, but a different descriptor -- a different
+        // project's registry that just happens to reuse the id.
+        const oldProjectTarget = {id: "shared-id", version: "1.0.0", requirements: {}, capabilities: []};
+        const newProjectTarget = {id: "shared-id", version: "9.9.9", requirements: {}, capabilities: ["multiMode"]};
+        let targetsResponse = [oldProjectTarget];
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(targetsResponse)});
+            }
+            if (path === "/api/project/deployment/runs") {
+                return Promise.resolve(okRunResponse());
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        // Old project: select the target and run a preview, so there is a real result that could leak.
+        act(() => {
+            result.current.refreshTargets();
+        });
+        await waitFor(() => expect(result.current.targetsView).toEqual({status: "loaded", targets: [oldProjectTarget]}));
+        act(() => {
+            result.current.selectTarget(oldProjectTarget);
+        });
+        act(() => {
+            result.current.run(false);
+        });
+        await waitFor(() => expect(result.current.runResult).toBeDefined());
+
+        targetsResponse = [newProjectTarget];
+
+        // The exact sequence ProjectDashboardPage's own projectKey effect performs: reset, then
+        // immediately (synchronously, in the same tick, before any re-render) refresh the new project's
+        // targets -- reproducing the closure-staleness window the fix addresses, since
+        // result.current.refreshTargets here is still the closure formed *before* resetForProjectSwitch's
+        // own state updates have been applied.
+        act(() => {
+            result.current.resetForProjectSwitch();
+            result.current.refreshTargets();
+        });
+
+        await waitFor(() => expect(result.current.targetsView).toEqual({status: "loaded", targets: [newProjectTarget]}));
+
+        // The coincidentally-same id in the new project must never be silently re-adopted, and the old
+        // project's preview/deploy result must not resurface.
+        expect(result.current.selectedTarget).toBeUndefined();
+        expect(result.current.runResult).toBeUndefined();
+        expect(result.current.runError).toBeUndefined();
+    });
+});
