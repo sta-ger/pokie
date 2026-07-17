@@ -2,10 +2,20 @@ import {modals} from "@mantine/modals";
 import {useCallback, useEffect, useRef} from "react";
 import {useBlocker} from "react-router-dom";
 
+// Every call site below spreads this one constant, so these apply uniformly to the router blocker's
+// modal, guardedAction's modal, and the hashchange fallback's modal alike. Escape/click-outside/the
+// close button would otherwise dismiss the modal without running either onConfirm or onCancel -- for
+// the blocker that leaves `blocker.state` stuck at "blocked" forever (no reset(), no proceed()); for
+// guardedAction that leaves its returned Promise permanently pending, which in turn leaves every caller
+// that awaits it (e.g. OpenProjectForm's loading state, its double-submit guard) stuck forever too. The
+// only way to dismiss this modal is an explicit Leave/Stay choice.
 const CONFIRM_MODAL = {
     title: "Unsaved changes",
     children: "You have unsaved changes in Design & Build. Leave and lose them?",
     labels: {confirm: "Leave", cancel: "Stay"},
+    withCloseButton: false,
+    closeOnEscape: false,
+    closeOnClickOutside: false,
 };
 
 // A caller-supplied side effect (e.g. useOpenProject's "call the API, then navigate") that must run

@@ -55,6 +55,13 @@ tabs never loses in-progress work):
     the API call fails) — so there is exactly one confirmation, never two, and a failed call leaves Home's
     URL, draft, and the guard itself exactly as they were.
 
+  All three call sites share one `CONFIRM_MODAL` settings object, which disables `withCloseButton`,
+  `closeOnEscape`, and `closeOnClickOutside` — Escape/click-outside/a close button would otherwise dismiss
+  the modal without running either `onConfirm` or `onCancel`, leaving `blocker.state` stuck "blocked"
+  forever (router case) or `guardedAction`'s Promise permanently pending (side-effect case, which in turn
+  leaves an awaiting caller like `OpenProjectForm`'s loading state and double-submit guard stuck too). The
+  only way to dismiss it is an explicit Leave/Stay choice.
+
   Reload/tab-close is guarded separately by a native `beforeunload` listener, attached only while dirty.
   Switching between Home's own 3 tabs is never blocked by any of the above.
 - **Open Project** (`/home/open`) — merges what were two separate "ways to open an already-built project"
@@ -212,7 +219,10 @@ Two Jest projects (`jest.config.mjs`):
   specifically: Cancel never calls the open-project API, Confirm calls it exactly once and navigates
   exactly once, a failed call keeps Home's URL/draft and doesn't leave the router-level bypass stuck "on"
   for a later, unrelated navigation, and Back/Forward/direct-route/tab-switching behavior is unaffected.
-  The data router builds
+  `tests/cli/studio-client/src/navigationGuardModal.test.tsx` covers the confirm modal's own dismissal
+  behavior, shared by all three call sites: Escape and clicking outside don't close it, there's no close
+  button (exactly the Leave/Stay pair), Stay releases a `guardedAction` caller's loading state and
+  double-submit guard, and a subsequent attempt after Stay completes normally. The data router builds
   Fetch API `Request` objects internally on every navigation even with zero loaders/actions defined, which
   jsdom doesn't provide — `tests/cli/studio-client/src/jestPolyfills.ts` polyfills `Request`/`Response`/
   `Headers`/`fetch` via `undici` (a devDependency; this is what Node's own built-in `fetch` is built on).
