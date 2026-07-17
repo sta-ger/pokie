@@ -104,7 +104,7 @@ export function describeRecentSpinsList(entries: StudioRuntimeSessionView[]): Re
 // StudioRuntimeManager.buildSessionView() and the Runtime tab's own SessionPanel already apply, pulled
 // out as its own pure, testable function so the Inspect-round view can show it as a plain-language
 // "Additional round data" table instead of a raw JSON dump.
-const KNOWN_SESSION_VIEW_FIELDS = new Set(["sessionId", "game", "credits", "bet", "win", "screen", "sessionVersion", "debug"]);
+const KNOWN_SESSION_VIEW_FIELDS = new Set(["sessionId", "game", "credits", "bet", "win", "screen", "sessionVersion", "studioRequestId", "debug"]);
 
 export function extractAdditionalRoundFields(session: StudioRuntimeSessionView): Record<string, unknown> {
     const extra: Record<string, unknown> = {};

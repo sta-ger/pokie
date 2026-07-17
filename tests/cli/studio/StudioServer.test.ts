@@ -2828,6 +2828,30 @@ describe("StudioServer", () => {
             expect(createdBody.session.debug).toBeUndefined();
         });
 
+        it("lists recentSpins with studioRequestId even when the runtime was started without debug mode", async () => {
+            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
+            const address = await runtimeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+            await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
+
+            const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-no-debug-1"});
+            await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-no-debug-2"});
+
+            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
+            expect(status).toBe(200);
+            const entries = body as Array<{sessionId: string; studioRequestId?: string; debug?: unknown}>;
+            expect(entries).toHaveLength(2);
+            // Studio's own bookkeeping (the client's own requestId), present regardless of debug mode --
+            // unlike debug.requestId (see the debug:true test above), which requires the debug bundle.
+            expect(entries[0].studioRequestId).toBe("req-no-debug-2");
+            expect(entries[1].studioRequestId).toBe("req-no-debug-1");
+            expect(entries[0].debug).toBeUndefined();
+            expect(entries[1].debug).toBeUndefined();
+        });
+
         it("stops an active runtime when the project is switched away and back", async () => {
             runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
             const address = await runtimeServer.start();

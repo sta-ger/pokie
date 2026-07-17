@@ -264,6 +264,47 @@ describe("StudioRuntimeManager", () => {
             }
             await debugOn.stop();
         });
+
+        it("records studioRequestId on a spin's own result and in recentSpins with debug mode off, unlike debug.requestId", async () => {
+            const manager = await startedManager({debug: false});
+            const created = await manager.createSession();
+            if (created.status !== "ok") {
+                return;
+            }
+            const sessionId = created.session.sessionId;
+
+            const spun = await manager.spin(sessionId, "request-without-debug");
+            expect(spun.status).toBe("ok");
+            if (spun.status === "ok") {
+                // Studio's own bookkeeping, present even though this runtime has debug mode off --
+                // unlike debug.requestId, which only ever exists alongside the rest of the debug bundle.
+                expect(spun.session.studioRequestId).toBe("request-without-debug");
+                expect(spun.session.debug).toBeUndefined();
+            }
+
+            const recent = manager.listRecentSpins();
+            expect(recent).toHaveLength(1);
+            expect(recent[0].studioRequestId).toBe("request-without-debug");
+            expect(recent[0].debug).toBeUndefined();
+
+            await manager.stop();
+        });
+
+        it("does not record studioRequestId when a spin was made without a requestId", async () => {
+            const manager = await startedManager({debug: false});
+            const created = await manager.createSession();
+            if (created.status !== "ok") {
+                return;
+            }
+
+            const spun = await manager.spin(created.session.sessionId);
+            expect(spun.status).toBe("ok");
+            if (spun.status === "ok") {
+                expect(spun.session.studioRequestId).toBeUndefined();
+            }
+
+            await manager.stop();
+        });
     });
 
     describe("repositoryMode: file", () => {

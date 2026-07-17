@@ -691,7 +691,15 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
     it("gates Export behind picking a live spin, then offers a client-side JSON download for it", async () => {
         const user = userEvent.setup();
-        const spin: StudioRuntimeSessionView = {sessionId: "sess-1", game: GAME, credits: 995, bet: 1, win: 5, debug: {stateAfter: {x: 1}, requestId: "req-1"}};
+        const spin: StudioRuntimeSessionView = {
+            sessionId: "sess-1",
+            game: GAME,
+            credits: 995,
+            bet: 1,
+            win: 5,
+            studioRequestId: "req-1",
+            debug: {stateAfter: {x: 1}, requestId: "req-1"},
+        };
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/runtime/spins": () => ({ok: true, status: 200, body: [spin]}),
@@ -722,6 +730,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
             bet: 1,
             win: 0,
             screen: [["cherry"]],
+            studioRequestId: "req-2",
             debug: {stateAfter: {credits: 990}, stateBefore: {credits: 991}, requestId: "req-2"},
         };
         const {fetchImpl} = createRoutedFakeFetch({
@@ -740,7 +749,12 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
         expect(screen.getByText("sess-2")).toBeInTheDocument();
-        expect(screen.getByText("Before")).toBeInTheDocument();
-        expect(screen.getByText("After")).toBeInTheDocument();
+
+        // Raw state before/after now lives under Advanced details, not shown unconditionally.
+        expect(screen.queryByText("Raw state before")).not.toBeInTheDocument();
+        expect(screen.queryByText("Raw state after")).not.toBeInTheDocument();
+        await user.click(screen.getByText(/Show advanced details/));
+        expect(screen.getByText("Raw state before")).toBeInTheDocument();
+        expect(screen.getByText("Raw state after")).toBeInTheDocument();
     }, 45000);
 });

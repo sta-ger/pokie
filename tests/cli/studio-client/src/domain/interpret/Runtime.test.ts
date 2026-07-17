@@ -131,13 +131,19 @@ describe("interpretRuntime", () => {
             expect(extractAdditionalRoundFields(rich)).toEqual({remainingFreeSpins: 3, paytable: {cherry: 5}});
         });
 
-        it("never leaks the known fields (including debug) even when present", () => {
-            const withDebug: StudioRuntimeSessionView = {...session, debug: {stateAfter: {}, requestId: "req-1"}, bonusRoundActive: true};
+        it("never leaks the known fields (including debug and studioRequestId) even when present", () => {
+            const withDebug: StudioRuntimeSessionView = {
+                ...session,
+                studioRequestId: "req-1",
+                debug: {stateAfter: {}, requestId: "req-1"},
+                bonusRoundActive: true,
+            };
 
             const extra = extractAdditionalRoundFields(withDebug);
 
             expect(extra).toEqual({bonusRoundActive: true});
             expect(extra).not.toHaveProperty("debug");
+            expect(extra).not.toHaveProperty("studioRequestId");
             expect(extra).not.toHaveProperty("sessionId");
             expect(extra).not.toHaveProperty("game");
             expect(extra).not.toHaveProperty("credits");

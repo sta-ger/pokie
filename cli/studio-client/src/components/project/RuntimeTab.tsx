@@ -65,7 +65,10 @@ function formatFieldValue(value: unknown): string {
 // RoundArtifactInspector in the Replay & Debug tab.
 function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
     const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
-    const {debug, ...publicFields} = session;
+    // studioRequestId is Studio's own bookkeeping (see StudioRuntimeSessionView's own doc comment), never
+    // part of the game's actual public response -- excluded here alongside `debug` so "Public response"
+    // stays an honest dump of what the game server itself returned.
+    const {debug, studioRequestId: _studioRequestId, ...publicFields} = session;
     const additional = extractAdditionalRoundFields(session);
     const hasAdditional = Object.keys(additional).length > 0;
 
@@ -606,7 +609,7 @@ export function RuntimeTab({
                                         {sessionRounds.map((entry, index) => (
                                             <List.Item key={index}>
                                                 credits {entry.credits.toFixed(2)}, win {(entry.win ?? 0).toFixed(2)}
-                                                {entry.debug?.requestId ? `, request ${entry.debug.requestId}` : ""}
+                                                {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
                                             </List.Item>
                                         ))}
                                     </List>

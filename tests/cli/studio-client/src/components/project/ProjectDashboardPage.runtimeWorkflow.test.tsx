@@ -352,9 +352,9 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         // same session but a different (older, decoy) requestId -- the handoff must pick out exactly the
         // one just played, never any of these.
         const decoys: StudioRuntimeSessionView[] = [
-            sessionFor({sessionId: "sess-other", credits: 50, win: 999, debug: {stateAfter: {}, requestId: "decoy-request-other-1"}}),
-            sessionFor({sessionId: "sess-other", credits: 40, win: 888, debug: {stateAfter: {}, requestId: "decoy-request-other-2"}}),
-            sessionFor({sessionId: "sess-1", credits: 700, win: 777, debug: {stateAfter: {}, requestId: "decoy-request-sess-1-older"}}),
+            sessionFor({sessionId: "sess-other", credits: 50, win: 999, studioRequestId: "decoy-request-other-1", debug: {stateAfter: {}, requestId: "decoy-request-other-1"}}),
+            sessionFor({sessionId: "sess-other", credits: 40, win: 888, studioRequestId: "decoy-request-other-2", debug: {stateAfter: {}, requestId: "decoy-request-other-2"}}),
+            sessionFor({sessionId: "sess-1", credits: 700, win: 777, studioRequestId: "decoy-request-sess-1-older", debug: {stateAfter: {}, requestId: "decoy-request-sess-1-older"}}),
         ];
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -365,7 +365,16 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
                 body:
                     capturedRequestId === undefined
                         ? decoys
-                        : [sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: capturedRequestId}}), ...decoys],
+                        : [
+                            sessionFor({
+                                credits: 1005,
+                                win: 15,
+                                sessionVersion: 2,
+                                studioRequestId: capturedRequestId,
+                                debug: {stateAfter: {}, requestId: capturedRequestId},
+                            }),
+                            ...decoys,
+                        ],
             }),
             "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
             "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
@@ -409,7 +418,18 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
             "/api/project/runtime/spins": () => ({
                 ok: true,
                 status: 200,
-                body: capturedRequestId === undefined ? [] : [sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: capturedRequestId}})],
+                body:
+                    capturedRequestId === undefined
+                        ? []
+                        : [
+                            sessionFor({
+                                credits: 1005,
+                                win: 15,
+                                sessionVersion: 2,
+                                studioRequestId: capturedRequestId,
+                                debug: {stateAfter: {}, requestId: capturedRequestId},
+                            }),
+                        ],
             }),
             "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
             "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
@@ -445,7 +465,17 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
             "/api/project/runtime/spins": () => ({
                 ok: true,
                 status: 200,
-                body: stopped ? [] : [sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: "req-before-stop"}})],
+                body: stopped
+                    ? []
+                    : [
+                        sessionFor({
+                            credits: 1005,
+                            win: 15,
+                            sessionVersion: 2,
+                            studioRequestId: "req-before-stop",
+                            debug: {stateAfter: {}, requestId: "req-before-stop"},
+                        }),
+                    ],
             }),
             "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
             "/api/project/runtime/stop": () => {
@@ -564,5 +594,85 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         expect(screen.getByRole("button", {name: "Retry last request (same request id)"})).toBeDisabled();
         expect(screen.getByRole("button", {name: "Debug this round in Replay & Debug"})).toBeDisabled();
         expect(screen.queryByText(/Session sess-1/)).not.toBeInTheDocument();
+    }, 45000);
+
+    it("Debug this round finds the exact round among several recent spins with a real debug: false contract (no debug bundle at all)", async () => {
+        const user = userEvent.setup();
+        let capturedRequestId: string | undefined;
+        // Every entry here has *no* `debug` field at all -- exactly what StudioRuntimeManager.buildSessionView()
+        // returns when the runtime was started without debug mode. The handoff/matching must work purely off
+        // studioRequestId in this case, since debug.requestId simply doesn't exist.
+        const decoys: StudioRuntimeSessionView[] = [
+            sessionFor({sessionId: "sess-other", credits: 50, win: 999, studioRequestId: "decoy-request-other-1"}),
+            sessionFor({sessionId: "sess-1", credits: 700, win: 777, studioRequestId: "decoy-request-sess-1-older"}),
+        ];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({
+                ok: true,
+                status: 200,
+                body: capturedRequestId === undefined ? decoys : [sessionFor({credits: 1005, win: 15, sessionVersion: 2, studioRequestId: capturedRequestId}), ...decoys],
+            }),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": (call: FakeCall) => {
+                const body = JSON.parse(call.init?.body ?? "{}") as {requestId?: string};
+                capturedRequestId = body.requestId;
+                return {ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
+        await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
+
+        expect(await screen.findByText("sess-1")).toBeInTheDocument();
+        expect(screen.getByText(capturedRequestId as string)).toBeInTheDocument();
+        expect(screen.queryByRole("radio", {name: "Session Spin"})).not.toBeInTheDocument();
+    }, 45000);
+
+    it("shows a clear fallback instead of a silent generic list when the exact target round has already fallen out of the bounded recent-spin history", async () => {
+        const user = userEvent.setup();
+        // recentSpins is loaded with *other* rounds, but never the one about to be played -- simulating
+        // StudioRuntimeManager's bounded ring buffer having already evicted it (a burst of newer spins from
+        // elsewhere) by the time this lookup runs.
+        const unrelatedRounds: StudioRuntimeSessionView[] = [
+            sessionFor({sessionId: "sess-other", credits: 50, win: 999, studioRequestId: "unrelated-request"}),
+        ];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: unrelatedRounds}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
+        await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
+
+        expect(await screen.findByText("Round no longer available")).toBeInTheDocument();
+        expect(screen.getByText(/isn't in the recent spin history anymore/)).toBeInTheDocument();
+        // Never silently degrades to just showing the Find step with no explanation -- the picker is still
+        // there (with whatever unrelated rounds are actually available), but the explicit fallback message
+        // makes clear why nothing was auto-selected.
+        expect(screen.getByRole("radio", {name: "Session Spin"})).toBeInTheDocument();
+        expect(screen.getByText(/session sess-other/)).toBeInTheDocument();
     }, 45000);
 });

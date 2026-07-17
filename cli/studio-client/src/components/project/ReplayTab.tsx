@@ -1,4 +1,4 @@
-import {Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Stepper, Table, Text, Textarea, TextInput} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Stepper, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
@@ -134,23 +134,37 @@ export function ReplayTab({
         prevStatusRef.current = status;
     }, [progress?.status]);
 
-    // The Runtime tab's "Debug this round" handoff names one exact (sessionId, requestId) pair --
-    // matched against the *same* requestId every entry's own `debug.requestId` already carries (only
-    // present when the runtime was started with debug mode on, same as everywhere else this field is
-    // read). Re-checked on every `recentSpins` change rather than only once, so landing here just before
-    // the page's own refresh (triggered by the spin that produced this round) lands is still recovered
-    // once that refresh's data arrives -- and it stops checking for good once a match is found, so it
-    // never overrides a selection the user made by hand afterward.
+    // The Runtime tab's "Debug this round" handoff names one exact (sessionId, requestId) pair -- matched
+    // against each entry's own `studioRequestId` (Studio's own bookkeeping, recorded regardless of debug
+    // mode -- see StudioRuntimeSessionView's own doc comment -- unlike `debug.requestId`, which only
+    // exists alongside the rest of the debug bundle). Re-checked on every `recentSpins` change rather than
+    // only once, so landing here just before the page's own refresh (triggered by the spin that produced
+    // this round) lands is still recovered once that refresh's data arrives -- and it stops checking for
+    // good once a match is found, so it never overrides a selection the user made by hand afterward.
+    //
+    // recentSpins is bounded (StudioRuntimeManager.MAX_RECENT_SPINS) -- a burst of later spins can push
+    // the exact round this handoff named out of the list before it's ever loaded here. `spinNotFound`
+    // tracks that outcome (set whenever a settled snapshot doesn't contain a match) so the Find step can
+    // show an honest "no longer available" message instead of silently sitting on an empty/generic picker
+    // forever with no explanation.
+    const [spinNotFound, setSpinNotFound] = useState(false);
     useEffect(() => {
-        if (!autoSelectSpin || selectedSpin !== undefined || recentSpins.status !== "loaded") {
+        if (!autoSelectSpin || selectedSpin !== undefined) {
+            return;
+        }
+        if (recentSpins.status !== "loaded") {
+            setSpinNotFound(true);
             return;
         }
         const match = recentSpins.entries.find(
-            (entry) => entry.sessionId === autoSelectSpin.sessionId && entry.debug?.requestId === autoSelectSpin.requestId,
+            (entry) => entry.sessionId === autoSelectSpin.sessionId && entry.studioRequestId === autoSelectSpin.requestId,
         );
         if (match) {
             setSelectedSpin(match);
             setActiveStep(3);
+            setSpinNotFound(false);
+        } else {
+            setSpinNotFound(true);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [recentSpins]);
@@ -263,6 +277,14 @@ export function ReplayTab({
 
                     {findMethod === "spin" && (
                         <div>
+                            {spinNotFound && autoSelectSpin && selectedSpin === undefined && (
+                                <Alert color="orange" variant="light" title="Round no longer available" mb="sm">
+                                    The exact round handed off here (session {autoSelectSpin.sessionId}, request{" "}
+                                    {autoSelectSpin.requestId}) isn&apos;t in the recent spin history anymore — that list is
+                                    bounded and newer spins have pushed it out. Pick a spin below instead, if it&apos;s still
+                                    listed.
+                                </Alert>
+                            )}
                             <QuickActions>
                                 <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
                                     Refresh
@@ -275,7 +297,7 @@ export function ReplayTab({
                             {recentSpins.status === "loaded" && (
                                 <List listStyleType="none" spacing={4}>
                                     {recentSpins.entries.map((entry, index) => (
-                                        <List.Item key={`${entry.sessionId}-${entry.debug?.requestId ?? "none"}-${index}`}>
+                                        <List.Item key={`${entry.sessionId}-${entry.studioRequestId ?? "none"}-${index}`}>
                                             <Anchor
                                                 component="button"
                                                 type="button"
@@ -286,7 +308,7 @@ export function ReplayTab({
                                                 style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                             >
                                                 session {entry.sessionId} — credits {entry.credits}, win {entry.win ?? 0}
-                                                {entry.debug?.requestId ? `, request ${entry.debug.requestId}` : ""}
+                                                {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
                                             </Anchor>
                                         </List.Item>
                                     ))}
@@ -464,10 +486,10 @@ export function ReplayTab({
                                         <Table.Th>Session</Table.Th>
                                         <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.sessionId}</Table.Td>
                                     </Table.Tr>
-                                    {selectedSpin.debug?.requestId && (
+                                    {selectedSpin.studioRequestId && (
                                         <Table.Tr>
                                             <Table.Th>Request id</Table.Th>
-                                            <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.debug.requestId}</Table.Td>
+                                            <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.studioRequestId}</Table.Td>
                                         </Table.Tr>
                                     )}
                                     <Table.Tr>
@@ -493,30 +515,9 @@ export function ReplayTab({
                                 </Text>
                             )}
 
-                            {(selectedSpin.debug?.stateBefore !== undefined || selectedSpin.debug?.stateAfter !== undefined) && (
-                                <PageSection legend="State before / after">
-                                    {selectedSpin.debug?.stateBefore !== undefined && (
-                                        <div>
-                                            <Text size="sm" fw={600} mb={4}>
-                                                Before
-                                            </Text>
-                                            <CodeBlock>{JSON.stringify(selectedSpin.debug.stateBefore, null, 2)}</CodeBlock>
-                                        </div>
-                                    )}
-                                    {selectedSpin.debug?.stateAfter !== undefined && (
-                                        <div>
-                                            <Text size="sm" fw={600} mt="sm" mb={4}>
-                                                After
-                                            </Text>
-                                            <CodeBlock>{JSON.stringify(selectedSpin.debug.stateAfter, null, 2)}</CodeBlock>
-                                        </div>
-                                    )}
-                                </PageSection>
-                            )}
-
                             <Text size="sm" mt="sm">
                                 <Anchor component="button" type="button" onClick={toggleSpinAdvanced}>
-                                    {spinAdvancedOpened ? "Hide" : "Show"} advanced details (raw JSON, debug data)
+                                    {spinAdvancedOpened ? "Hide" : "Show"} advanced details (raw JSON, debug data, raw state)
                                 </Anchor>
                             </Text>
                             {spinAdvancedOpened && (
@@ -532,6 +533,26 @@ export function ReplayTab({
                                                 </Badge>
                                             </Group>
                                             <CodeBlock>{JSON.stringify(selectedSpin.debug.debugData, null, 2)}</CodeBlock>
+                                        </div>
+                                    )}
+                                    {(selectedSpin.debug?.stateBefore !== undefined || selectedSpin.debug?.stateAfter !== undefined) && (
+                                        <div>
+                                            {selectedSpin.debug?.stateBefore !== undefined && (
+                                                <div>
+                                                    <Text size="sm" fw={600} mt="sm" mb={4}>
+                                                        Raw state before
+                                                    </Text>
+                                                    <CodeBlock>{JSON.stringify(selectedSpin.debug.stateBefore, null, 2)}</CodeBlock>
+                                                </div>
+                                            )}
+                                            {selectedSpin.debug?.stateAfter !== undefined && (
+                                                <div>
+                                                    <Text size="sm" fw={600} mt="sm" mb={4}>
+                                                        Raw state after
+                                                    </Text>
+                                                    <CodeBlock>{JSON.stringify(selectedSpin.debug.stateAfter, null, 2)}</CodeBlock>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     <Text size="sm" fw={600} mt="sm" mb={4}>

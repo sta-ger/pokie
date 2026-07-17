@@ -159,15 +159,21 @@ export class StudioRuntimeManager {
         }
         const result = this.translateSpinResult(await this.sessionClient.spin(sessionId, requestId, expectedVersion));
         if (result.status === "ok") {
+            // Recorded from this call's own requestId parameter, not read back out of `internal` --
+            // unlike `debug.requestId` (only ever attached when debugEnabled, see buildSessionView()),
+            // this is Studio's own bookkeeping, so it's on every recorded spin the caller actually named
+            // a requestId for, regardless of debug mode. See StudioRuntimeSessionView's own doc comment.
+            if (requestId !== undefined) {
+                result.session.studioRequestId = requestId;
+            }
             this.recordRecentSpin(result.session);
         }
         return result;
     }
 
     // Read-only snapshot, most-recent-first -- the Replay & Debug tab's "Session Spin" find method lists
-    // and looks up by requestId against this directly (a spin without debug mode on has no requestId at
-    // all, per StudioRuntimeSessionView's own doc comment, so it simply can't be found that way -- same
-    // as it not showing state before/after either).
+    // and looks up by requestId against this directly, via each entry's own `studioRequestId` (present
+    // whenever the spin was made with a requestId, regardless of debug mode).
     public listRecentSpins(): StudioRuntimeSessionView[] {
         return [...this.recentSpins];
     }

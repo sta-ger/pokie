@@ -15,6 +15,14 @@ export type StudioRuntimeSessionView = {
     win?: number;
     screen?: unknown[][];
     sessionVersion?: number;
+    // Studio's own bookkeeping, not part of the game/public wire contract at all -- the client-supplied
+    // requestId a spin was called with, recorded by StudioRuntimeManager.spin() directly from its own
+    // parameter (not read back out of `internal`), so it's present on every recorded recent spin
+    // regardless of debug mode. This is what lets "Debug this round"/the Session Spin find method locate
+    // one exact spin among several recent ones even when debug mode is off -- unlike `debug.requestId`
+    // below (the game server's own echoed value, only ever present alongside the rest of the debug
+    // bundle).
+    studioRequestId?: string;
     debug?: {
         stateAfter: unknown;
         stateBefore?: unknown;

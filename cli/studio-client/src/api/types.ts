@@ -424,8 +424,9 @@ export type StudioRuntimeStateView =
 
 // The Runtime tab's Session Tools response DTO — see cli/studio/runtime/StudioRuntimeSessionView.ts's
 // own doc comment. `sessionVersion` is present whenever the runtime's configured repository is
-// versioned, regardless of debug mode; `debug` is only present when the runtime was started with
-// debug mode on.
+// versioned, regardless of debug mode; `studioRequestId` is Studio's own bookkeeping (the client's
+// requestId for this spin), present whenever one was supplied, regardless of debug mode; `debug` is
+// only present when the runtime was started with debug mode on.
 export type StudioRuntimeSessionView = {
     sessionId: string;
     game: {id: string; name: string; version: string};
@@ -434,6 +435,7 @@ export type StudioRuntimeSessionView = {
     win?: number;
     screen?: unknown[][];
     sessionVersion?: number;
+    studioRequestId?: string;
     debug?: {
         stateAfter: unknown;
         stateBefore?: unknown;
