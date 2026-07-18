@@ -16,9 +16,9 @@ export type ReelStripGenerationDraftsRef = RefObject<ReelStripGenerationDrafts>;
 // `drafts` is the Reel Strip Modeler's own literal<->generated/counts<->weights bookkeeping (see
 // blueprintFormOps.ts's own doc comment on ReelStripGenerationDraft) -- kept in a ref, never in state,
 // since it's mutated in place by the same pure functions the old app used and must never trigger its
-// own re-render; drafts.clear() on New/Load matches the old app's exact reset points. Returned as the
-// ref itself (not its .current) -- consumers read `.current` only inside event handlers, never during
-// render.
+// own re-render; drafts.clear() on every wholesale blueprint replace (New/Load/a successful JSON apply)
+// matches the old app's exact reset points. Returned as the ref itself (not its .current) -- consumers
+// read `.current` only inside event handlers, never during render.
 //
 // `formGeneration` only increments on a *wholesale* blueprint replace (New/Load/a successful JSON
 // apply) -- deliberately NOT on every mutate(). It exists so the Form view's uncontrolled scalar inputs
@@ -57,6 +57,11 @@ export function useBlueprintEditor() {
             const next = applyJsonText(state, text);
             setState(next);
             if (next.blueprint !== state.blueprint) {
+                // A successful JSON apply is a wholesale blueprint replace exactly like New/Load -- must
+                // clear the Reel Strip Modeler's own toggle bookkeeping the same way those two do, or a
+                // reel's literal<->generated/counts<->weights memory from the *old* blueprint could
+                // resurrect via a type/source toggle against the new one (same reelIndex, unrelated data).
+                draftsRef.current.clear();
                 setFormGeneration((g) => g + 1);
             }
         },

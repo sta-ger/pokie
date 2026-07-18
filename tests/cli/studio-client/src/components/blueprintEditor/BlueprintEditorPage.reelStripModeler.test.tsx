@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
@@ -502,6 +502,129 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
         await user.click(screen.getByRole("radio", {name: "Generated"}));
 
+        expect(screen.getByLabelText("Length")).toHaveValue("1");
+        expect(screen.getByLabelText("Seed")).toHaveValue("1");
+    });
+
+    it("allows starting a brand new Check & preview immediately after an edit invalidates a pending one, without waiting for the stale request to settle", async () => {
+        const user = userEvent.setup();
+        const resolvers: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void)[] = [];
+        const fetchImpl: FetchLike = (url) => {
+            if (url === RESOLVE_REELS_URL) {
+                return new Promise((res) => {
+                    resolvers.push(res);
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await user.click(screen.getByRole("button", {name: "Check & preview"}));
+        expect(await screen.findByText("Working…")).toBeInTheDocument();
+
+        // Edit the draft -- invalidates the first (still unresolved -- there is nothing to cancel over
+        // plain fetch) request.
+        await user.type(screen.getByLabelText("New symbol id for reel 1"), "W");
+        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await waitFor(() => expect(screen.queryByText("Working…")).not.toBeInTheDocument());
+
+        // A brand new Check & preview must be allowed to start right away -- not silently swallowed by
+        // the double-submit guard still thinking the (now-stale) first request is "in flight".
+        await user.click(screen.getByRole("button", {name: "Check & preview"}));
+        expect(await screen.findByText("Working…")).toBeInTheDocument();
+        await waitFor(() => expect(resolvers).toHaveLength(2));
+
+        // Double-submit protection remains intact for this second, genuinely current request -- clicking
+        // again while it's still in flight must not fire a third one.
+        await user.click(screen.getByRole("button", {name: "Check & preview"}));
+        expect(resolvers).toHaveLength(2);
+
+        // The stale first request finally resolves -- must never apply, and must not disturb the second,
+        // still-in-flight request's own "Working…" state.
+        resolvers[0]({
+            ok: true,
+            status: 200,
+            json: () =>
+                Promise.resolve({
+                    status: "ok",
+                    errors: [],
+                    warnings: [],
+                    reels: [{reelIndex: 0, type: "literal", strip: ["STALE"], analysis: {length: 1, symbolCounts: {STALE: 1}, symbolFrequencies: {STALE: 1}, minimumCircularDistances: {}, maximumCircularDistances: {}, maximumConsecutiveOccurrences: {}}}],
+                }),
+        });
+        await new Promise((resolveTimeout) => {
+            setTimeout(resolveTimeout, 50);
+        });
+        expect(screen.getByText("Working…")).toBeInTheDocument();
+        expect(screen.queryByText("Sequence: STALE")).not.toBeInTheDocument();
+
+        // The second, actually-current request resolves normally.
+        resolvers[1]({
+            ok: true,
+            status: 200,
+            json: () =>
+                Promise.resolve({
+                    status: "ok",
+                    errors: [],
+                    warnings: [],
+                    reels: [{reelIndex: 0, type: "literal", strip: ["A", "B", "W"], analysis: LITERAL_AB_ANALYSIS}],
+                }),
+        });
+        expect(await screen.findByText("Literal strip")).toBeInTheDocument();
+        expect(screen.getByText("Sequence: A, B, W")).toBeInTheDocument();
+    });
+
+    it("clears the Reel Strip Modeler's own type-toggle bookkeeping on a wholesale JSON Apply, same as New/Load", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+
+        // Explore Generated with distinctive scalar values...
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await user.clear(screen.getByLabelText("Length"));
+        await user.type(screen.getByLabelText("Length"), "50");
+        await user.tab();
+        await user.clear(screen.getByLabelText("Seed"));
+        await user.type(screen.getByLabelText("Seed"), "777");
+        await user.tab();
+
+        // ...then toggle back to Literal -- this is what stashes the 50/777 exploration as reel 1's own
+        // "restore point" for a future Generated toggle (see
+        // setReelStripGenerationEntryType's own stash-on-leaving-generated behavior).
+        await user.click(screen.getByRole("radio", {name: "Literal"}));
+
+        // Apply a wholesale JSON blueprint replace -- a different blueprint entirely, still with its own
+        // reelStripGeneration so the Modeler stays reachable -- must clear that bookkeeping the same way
+        // New/Load already do.
+        await user.click(screen.getByRole("radio", {name: "JSON", hidden: true}));
+        const newBlueprint = {
+            manifest: {id: "json-applied", name: "JSON Applied", version: "0.1.0"},
+            reels: 2,
+            rows: 3,
+            symbols: [],
+            paytable: {},
+            availableBets: [1],
+            reelStripGeneration: [
+                {type: "literal", strip: []},
+                {type: "literal", strip: []},
+            ],
+        };
+        // Uncontrolled textarea (read via ref only when "Apply JSON" is clicked) -- set its value
+        // directly to avoid user-event's `{`/`}` special-character parsing on raw JSON text.
+        fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(newBlueprint)}});
+        await user.click(screen.getByRole("button", {name: "Apply JSON"}));
+
+        await user.click(screen.getByRole("radio", {name: "Form", hidden: true}));
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+
+        // Toggle to Generated on the *new* blueprint's own reel 1 -- must start fresh (default length
+        // 1/seed 1), never resurrect the old (now-replaced) blueprint's discarded 50/777 exploration.
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
         expect(screen.getByLabelText("Length")).toHaveValue("1");
         expect(screen.getByLabelText("Seed")).toHaveValue("1");
     });

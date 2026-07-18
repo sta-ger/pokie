@@ -528,13 +528,28 @@ export function ReelStripGenerationEditor({
     const appliedEntry = selectedReelIndex !== undefined ? entries[selectedReelIndex] : undefined;
     const isDirty = draftEntry !== undefined && appliedEntry !== undefined && hasReelStripGenerationDraftChanged(draftEntry, appliedEntry);
 
+    // Bumps requestIdRef and resets the preview to idle -- shared by every place that invalidates a
+    // previously shown/pending preview (an edit elsewhere in the form, a draft edit, a reel switch, a
+    // Discard) -- and additionally releases resolveGuard if it's currently held. A stale request's own
+    // real fetch keeps running regardless (there's nothing to cancel over plain fetch), but the user must
+    // never be stuck waiting for it to settle before a brand new Check & preview is allowed to start.
+    // Safe to call even when nothing is in flight (end() is idempotent) and safe against ever releasing a
+    // *newer* request's own hold on the guard: checkAndPreview()'s own .then()/.catch() below only calls
+    // resolveGuard.end() for a request that's still current by the time it resolves, so a request that
+    // was invalidated here (and already had the guard released for it) can never release it again later
+    // out from under whatever request currently owns it.
+    function invalidatePendingPreview(): void {
+        requestIdRef.current++;
+        setPreview({status: "idle"});
+        resolveGuard.end();
+    }
+
     // Any blueprint change invalidates a previously shown preview -- it described the blueprint as it
     // was *before* this change, same contract the old flat editor already had. Never touches the current
     // reel selection or its own draft: an edit elsewhere in the form (e.g. adding a symbol) has nothing
     // to do with in-progress work on this reel, it only means that work needs re-checking.
     useEffect(() => {
-        requestIdRef.current++;
-        setPreview({status: "idle"});
+        invalidatePendingPreview();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [revision]);
 
@@ -563,10 +578,9 @@ export function ReelStripGenerationEditor({
             if (discardedReelIndex !== undefined) {
                 drafts.current.delete(discardedReelIndex);
             }
-            requestIdRef.current++;
+            invalidatePendingPreview();
             setSelectedReelIndex(reelIndex);
             setDraftEntry(cloneRecord(entries[reelIndex]));
-            setPreview({status: "idle"});
             setStop(0);
             setRows(defaultRows);
             setDraftGeneration((generation) => generation + 1);
@@ -584,17 +598,16 @@ export function ReelStripGenerationEditor({
     // unchanged -- this just points that same call at a scratch stand-in built from the *current* draft
     // (see makeScratchBlueprint) instead of the shared blueprint, and reads the result back out.
     //
-    // Also invalidates any preview of this draft -- current, pending, or about to land -- the same way
-    // the revision-change effect above invalidates one for an edit elsewhere in the form: a preview
-    // (shown or still in flight) describes the draft as it was *before* this edit, so it's bumped stale
-    // (requestIdRef) and cleared back to idle immediately, rather than a slower in-flight response
-    // landing afterward and showing results for a draft that no longer exists.
+    // Also invalidates any preview of this draft via invalidatePendingPreview() -- current, pending, or
+    // about to land -- the same way the revision-change effect above invalidates one for an edit
+    // elsewhere in the form: a preview (shown or still in flight) describes the draft as it was *before*
+    // this edit, so it's bumped stale and cleared back to idle immediately, rather than a slower
+    // in-flight response landing afterward and showing results for a draft that no longer exists.
     const localMutate: BlueprintMutate = (fn) => {
         if (selectedReelIndex === undefined) {
             return;
         }
-        requestIdRef.current++;
-        setPreview({status: "idle"});
+        invalidatePendingPreview();
         setDraftEntry((prevEntry) => {
             if (prevEntry === undefined) {
                 return prevEntry;
@@ -605,6 +618,14 @@ export function ReelStripGenerationEditor({
         });
     };
 
+    // Double-submit protection here means one thing precisely: a *currently current* request may not be
+    // fired twice. It never means "wait for whatever fetch happens to still be running" -- once a
+    // request is invalidated (invalidatePendingPreview() already released resolveGuard for it), a brand
+    // new one must be allowed to start immediately, without waiting for the old, now-stale fetch to
+    // actually settle. That's why resolveGuard.end() below is only ever called from the non-stale branch
+    // of .then()/.catch() (the request that's still current when it resolves) rather than from a shared
+    // .finally() -- a stale request must never release the guard a second time out from under whichever
+    // newer request currently owns it.
     function checkAndPreview(): void {
         if (selectedReelIndex === undefined || draftEntry === undefined || !resolveGuard.begin()) {
             return;
@@ -622,6 +643,7 @@ export function ReelStripGenerationEditor({
                 if (isStale()) {
                     return;
                 }
+                resolveGuard.end();
                 setPreview(result);
                 setStop(0);
                 setActiveStep(2);
@@ -630,9 +652,9 @@ export function ReelStripGenerationEditor({
                 if (isStale()) {
                     return;
                 }
+                resolveGuard.end();
                 setPreview({status: "error", message: errorMessage(error)});
-            })
-            .finally(() => resolveGuard.end());
+            });
     }
 
     function applyDraft(): void {
@@ -650,9 +672,8 @@ export function ReelStripGenerationEditor({
         // edit is being thrown away, so its type/source toggle bookkeeping must go with it, or toggling
         // types again (this session or a later one) would restore the very values just discarded.
         drafts.current.delete(selectedReelIndex);
-        requestIdRef.current++;
+        invalidatePendingPreview();
         setDraftEntry(cloneRecord(appliedEntry));
-        setPreview({status: "idle"});
         setDraftGeneration((generation) => generation + 1);
     }
 
