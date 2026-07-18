@@ -1,4 +1,5 @@
 import {
+    computeWeightedOutcomeLibraryHash,
     FileSessionRepository,
     InMemorySessionRepository,
     loadPokieGame,
@@ -11,6 +12,8 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
+import {StudioOutcomeLibraryService, type ResolvedOutcomeLibrary} from "../outcomeLibrary/StudioOutcomeLibraryService.js";
 import {RuntimeHttpResult, RuntimeSessionClient} from "./RuntimeSessionClient.js";
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 import type {StudioRuntimeStateView} from "./StudioRuntimeStateView.js";
@@ -56,6 +59,7 @@ export class StudioRuntimeManager {
 
     private readonly loadGame: typeof loadPokieGame;
     private readonly createServer: (game: PokieGame, options: PokieDevServerOptions) => PokieDevServerHandling;
+    private readonly resolveOutcomeLibrary: (projectRoot: string, selector: OutcomeLibrarySelector) => Promise<ResolvedOutcomeLibrary>;
 
     private state: StudioRuntimeStateView = {status: "stopped"};
     private server: PokieDevServerHandling | undefined;
@@ -64,6 +68,12 @@ export class StudioRuntimeManager {
     private defaultSeed: string | number | undefined;
     private lastOptions: ValidatedStartRuntimeRequest | undefined;
     private fileSessionDirectory: string | undefined;
+    // Set exactly when the current server is running against a pre-generated outcome library (see
+    // startInternal()) -- createSession()/getSession()/spin() branch on this to talk to
+    // PokieDevServer's own separate `/pregenerated-sessions*` namespace instead of the live `/sessions*`
+    // one. Cleared on every teardown path alongside everything else in stopServerIfAny(), so a later
+    // start (plain or pre-generated) never inherits a stale mode from a previous one.
+    private preGeneratedLibrary: {libraryId: string; hash: string} | undefined;
     // Most-recent-first, bounded -- the game server itself keeps no round history at all (each spin
     // overwrites the previous session state), so this is the only place "find a past spin by request id"
     // can look. Studio's own bookkeeping only, same pattern StudioSimulationService/
@@ -76,9 +86,16 @@ export class StudioRuntimeManager {
         loadGame: typeof loadPokieGame = loadPokieGame,
         createServer: (game: PokieGame, options: PokieDevServerOptions) => PokieDevServerHandling = (game, options) =>
             new PokieDevServer(game, options),
+        // Defaults to a fresh StudioOutcomeLibraryService -- the exact same selector resolution
+        // (path/bundle-mode/Stake Engine export, containment, validation) the Outcome Libraries tab's
+        // own select()/compare() already use, so a pre-generated handoff can never resolve a library
+        // differently than the tab that offered it.
+        resolveOutcomeLibrary: (projectRoot: string, selector: OutcomeLibrarySelector) => Promise<ResolvedOutcomeLibrary> = (projectRoot, selector) =>
+            new StudioOutcomeLibraryService().resolveLibrary(projectRoot, selector),
     ) {
         this.loadGame = loadGame;
         this.createServer = createServer;
+        this.resolveOutcomeLibrary = resolveOutcomeLibrary;
     }
 
     public getState(): StudioRuntimeStateView {
@@ -139,16 +156,36 @@ export class StudioRuntimeManager {
         await this.resetProjectScopedState();
     }
 
-    public async createSession(seed?: string | number): Promise<StudioRuntimeSessionResult> {
+    // "initialBalance" only ever reaches the pre-generated create endpoint -- a live session's initial
+    // credits come entirely from the game's own session initialization (see createSession's own route,
+    // which never accepts a balance), and a pre-generated session's wallet otherwise starts at a literal
+    // 0 with no way to fund it afterward (see PokieDevServer's own "no session-side default credits"
+    // reasoning) -- without this, every spin against a fresh pre-generated session would fail outright.
+    public async createSession(seed?: string | number, initialBalance?: number): Promise<StudioRuntimeSessionResult> {
         if (this.state.status !== "running" || !this.sessionClient) {
             return {status: "not-running"};
         }
-        return this.translateSessionResult(await this.sessionClient.createSession(seed ?? this.defaultSeed));
+        const effectiveSeed = seed ?? this.defaultSeed;
+        if (this.preGeneratedLibrary !== undefined) {
+            // The pre-generated create endpoint only ever accepts a string seed (see
+            // RuntimeSessionClient.createPreGeneratedSession's own doc comment) -- a numeric seed is
+            // stringified rather than silently dropped.
+            const preGeneratedSeed = effectiveSeed === undefined ? undefined : String(effectiveSeed);
+            return this.translateSessionResult(await this.sessionClient.createPreGeneratedSession(preGeneratedSeed, initialBalance), true);
+        }
+        return this.translateSessionResult(await this.sessionClient.createSession(effectiveSeed));
     }
 
     public async getSession(sessionId: string): Promise<StudioRuntimeSessionResult> {
         if (this.state.status !== "running" || !this.sessionClient) {
             return {status: "not-running"};
+        }
+        if (this.preGeneratedLibrary !== undefined) {
+            // PokieDevServer's own pre-generated namespace has no GET-by-id route at all (only create +
+            // spin) -- an honest limitation of the engine's own API, not something Studio papers over by
+            // faking a lookup or misreporting it as "not found" (which would imply the session simply
+            // doesn't exist, rather than that this operation isn't supported in this mode).
+            return {status: "error", error: "Loading a session by id isn't supported while the runtime is using a pre-generated outcome library."};
         }
         return this.translateSessionResult(await this.sessionClient.getSession(sessionId));
     }
@@ -157,7 +194,12 @@ export class StudioRuntimeManager {
         if (this.state.status !== "running" || !this.sessionClient) {
             return {status: "not-running"};
         }
-        const result = this.translateSpinResult(await this.sessionClient.spin(sessionId, requestId, expectedVersion));
+        // No expectedVersion/optimistic-locking support in pre-generated mode -- PreGeneratedSpinCommandHandler.handle()
+        // has no such parameter, unlike the live spin path (see RuntimeSessionClient.spinPreGenerated's own doc comment).
+        const result =
+            this.preGeneratedLibrary !== undefined
+                ? this.translateSpinResult(await this.sessionClient.spinPreGenerated(sessionId, requestId), true)
+                : this.translateSpinResult(await this.sessionClient.spin(sessionId, requestId, expectedVersion));
         if (result.status === "ok") {
             // Recorded from this call's own requestId parameter, not read back out of `internal` --
             // unlike `debug.requestId` (only ever attached when debugEnabled, see buildSessionView()),
@@ -195,10 +237,28 @@ export class StudioRuntimeManager {
             return this.fail(error);
         }
 
+        // Resolved *before* the server is ever created -- an unresolvable/invalid selector must fail the
+        // whole start attempt (never a server silently running in plain-RNG mode when the caller asked
+        // for pre-generated), same "no well-formed input, no pipeline call" ordering
+        // StudioDeploymentService.run() already follows for its own per-mode library loads.
+        let preGeneratedOutcomeLibrary: PokieDevServerOptions["preGeneratedOutcomeLibrary"];
+        let preGeneratedLibrary: {libraryId: string; hash: string} | undefined;
+        if (options.preGeneratedLibrarySelector !== undefined) {
+            const resolved = await this.resolveOutcomeLibrary(projectRoot, options.preGeneratedLibrarySelector);
+            if (resolved.status === "load-error") {
+                return this.fail(new Error(`Could not resolve the pre-generated outcome library: ${resolved.error}`));
+            }
+            if (resolved.status === "invalid") {
+                return this.fail(new Error(`The selected pre-generated outcome library is invalid: ${resolved.errors.map((issue) => issue.message).join(" ")}`));
+            }
+            preGeneratedOutcomeLibrary = resolved.library;
+            preGeneratedLibrary = {libraryId: resolved.library.libraryId, hash: computeWeightedOutcomeLibraryHash(resolved.library)};
+        }
+
         const sessionRepository =
             options.repositoryMode === "file" ? new FileSessionRepository(this.resolveFileSessionDirectory()) : new InMemorySessionRepository();
 
-        const server = this.createServer(game, {host: options.host, port: options.port ?? 0, sessionRepository});
+        const server = this.createServer(game, {host: options.host, port: options.port ?? 0, sessionRepository, preGeneratedOutcomeLibrary});
 
         let address;
         try {
@@ -213,6 +273,7 @@ export class StudioRuntimeManager {
         this.debugEnabled = options.debug;
         this.defaultSeed = options.seed;
         this.lastOptions = options;
+        this.preGeneratedLibrary = preGeneratedLibrary;
 
         const view: StudioRuntimeStateView = {
             status: "running",
@@ -222,6 +283,7 @@ export class StudioRuntimeManager {
             debug: options.debug,
             repositoryMode: options.repositoryMode,
             startedAt: new Date().toISOString(),
+            ...(preGeneratedLibrary !== undefined ? {preGenerated: preGeneratedLibrary} : {}),
         };
         this.state = view;
         return {status: "started", view};
@@ -240,6 +302,7 @@ export class StudioRuntimeManager {
         }
         this.server = undefined;
         this.sessionClient = undefined;
+        this.preGeneratedLibrary = undefined;
         this.state = {status: "stopped"};
         // Every teardown path (manual Stop, Restart, project switch, Studio shutdown) already funnels
         // through here -- a stopped server's past spins are neither reachable nor meaningful to keep
@@ -275,9 +338,9 @@ export class StudioRuntimeManager {
         return this.fileSessionDirectory;
     }
 
-    private translateSessionResult(result: RuntimeHttpResult): StudioRuntimeSessionResult {
+    private translateSessionResult(result: RuntimeHttpResult, preGenerated = false): StudioRuntimeSessionResult {
         if (result.status === 200 || result.status === 201) {
-            return {status: "ok", session: this.buildSessionView(result.body)};
+            return {status: "ok", session: preGenerated ? this.buildPreGeneratedSessionView(result.body) : this.buildSessionView(result.body)};
         }
         if (result.status === 404) {
             return {status: "not-found"};
@@ -285,9 +348,9 @@ export class StudioRuntimeManager {
         return {status: "error", error: this.extractError(result.body)};
     }
 
-    private translateSpinResult(result: RuntimeHttpResult): StudioRuntimeSpinResult {
+    private translateSpinResult(result: RuntimeHttpResult, preGenerated = false): StudioRuntimeSpinResult {
         if (result.status === 200) {
-            return {status: "ok", session: this.buildSessionView(result.body)};
+            return {status: "ok", session: preGenerated ? this.buildPreGeneratedSessionView(result.body) : this.buildSessionView(result.body)};
         }
         if (result.status === 404) {
             return {status: "not-found"};
@@ -330,6 +393,27 @@ export class StudioRuntimeManager {
                     requestId: internalRecord.requestId as string | undefined,
                 };
             }
+        }
+
+        return view;
+    }
+
+    // The pre-generated counterpart to buildSessionView() -- PreGeneratedSessionResponse's own `internal`
+    // (PreGeneratedRoundInternalView: `{selection, runtime, artifact}`) is a genuinely different shape
+    // from the live path's (`{stateAfter, stateBefore, debugData, requestId}`), and pre-generated rounds
+    // never carry a sessionVersion over HTTP at all (PokieDevServer's own pre-generated route never
+    // includes one) -- so this never tries to force the live shape's own field names onto it. The public
+    // fields (sessionId/game/credits/bet/win/screen/...) are structurally the same either way and are
+    // spread through exactly like buildSessionView() does; the raw `internal` object (when debug mode is
+    // on) is attached as-is under `debug`, which the Runtime tab already renders as a generic JSON dump
+    // rather than reading specific field names out of it.
+    private buildPreGeneratedSessionView(body: unknown): StudioRuntimeSessionView {
+        const record = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+        const {internal, ...publicFields} = record;
+        const view = {...publicFields} as StudioRuntimeSessionView;
+
+        if (this.debugEnabled && internal !== undefined) {
+            view.debug = internal as StudioRuntimeSessionView["debug"];
         }
 
         return view;

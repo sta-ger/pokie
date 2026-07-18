@@ -903,7 +903,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        this.sendJson(res, 200, await this.outcomeLibraryService.compare(this.currentContext.projectRoot, validated.left, validated.right));
+        this.sendJson(
+            res,
+            200,
+            await this.outcomeLibraryService.compare(this.currentContext.projectRoot, validated.left, validated.right, validated.expectedLeftHash),
+        );
     }
 
     private async handleValidateOutcomeLibraryDeep(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -1263,7 +1267,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.runtimeManager.createSession(validated.seed);
+        const result = await this.runtimeManager.createSession(validated.seed, validated.initialBalance);
         if (result.status === "ok") {
             this.sendJson(res, 201, {status: "ok", session: result.session});
             return;

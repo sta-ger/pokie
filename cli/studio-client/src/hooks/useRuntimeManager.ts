@@ -156,13 +156,13 @@ export function useRuntimeManager() {
     );
 
     const createSession = useCallback(
-        (seed?: string) => {
+        (seed?: string, initialBalance?: number) => {
             if (!createSessionGuard.begin()) {
                 return;
             }
             const requestId = ++sessionRequestIdRef.current;
             setSession({status: "loading"});
-            createRuntimeSession(fetchImpl, seed)
+            createRuntimeSession(fetchImpl, seed, initialBalance)
                 .then((result) => {
                     if (requestId !== sessionRequestIdRef.current) {
                         return;

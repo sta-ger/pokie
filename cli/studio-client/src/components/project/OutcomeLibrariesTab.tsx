@@ -116,7 +116,7 @@ function SelectorFieldsInput({fields, onChange, idPrefix}: {fields: SelectorFiel
 // action, an invalidate*() helper that bumps the ref/resets state/releases its own double-submit guard
 // immediately (so a superseded request never blocks a fresh one nor applies its late response), and
 // "Continue" only ever shown after a genuinely successful step.
-export function OutcomeLibrariesTab() {
+export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector: OutcomeLibrarySelector) => void}) {
     const fetchImpl = useStudioApi();
     const [activeStep, setActiveStep] = useState(0);
 
@@ -239,7 +239,9 @@ export function OutcomeLibrariesTab() {
         }
         const requestId = ++compareRequestIdRef.current;
         setCompareView({status: "loading"});
-        compareOutcomeLibraries(fetchImpl, leftSelector, rightSelector)
+        // Ties the comparison to the exact left library the Inspect step already showed the user --
+        // see StudioOutcomeLibraryCompareView.leftSnapshotStale's own doc comment.
+        compareOutcomeLibraries(fetchImpl, leftSelector, rightSelector, selectResult?.provenance.hash)
             .then((result) => {
                 if (requestId !== compareRequestIdRef.current) {
                     return;
@@ -499,6 +501,17 @@ export function OutcomeLibrariesTab() {
                             {"status" in compareView && compareView.status === "error" && <ErrorState message={compareView.message} />}
                             {compareResult && (
                                 <div>
+                                    {compareResult.leftSnapshotStale && (
+                                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title="The left library changed since you selected it" mb="sm">
+                                            <Text size="sm" mb="sm">
+                                                Its content on disk no longer matches what Inspect showed you, so it wasn&apos;t compared against the
+                                                right library. Re-select it to refresh, then compare again.
+                                            </Text>
+                                            <Button size="xs" variant="light" onClick={runSelect}>
+                                                Re-select the left library
+                                            </Button>
+                                        </Alert>
+                                    )}
                                     {compareResult.left.status === "load-error" && <ErrorState message={compareResult.left.error} />}
                                     {compareResult.left.status === "invalid" && (
                                         <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="The loaded library is no longer valid" mb="sm">
@@ -558,15 +571,13 @@ export function OutcomeLibrariesTab() {
                             )}
                         </PageSection>
 
-                        <PageSection legend="Use in pre-generated runtime">
-                            <Text size="sm">
-                                The Studio Runtime tab doesn&apos;t yet support starting a session against a
-                                pre-generated outcome library directly. To use this library today, point your
-                                own server startup at it via <code>PokieDevServerOptions.preGeneratedOutcomeLibrary</code>{" "}
-                                (a plain in-memory library) or <code>loadWeightedOutcomeLibraryFromBundle</code>{" "}
-                                (a bundle mode) — the exact library this step loaded:
+                        <PageSection legend="Use in runtime">
+                            <Text size="sm" mb="sm">
+                                Starts (or restarts) the Runtime tab&apos;s server against this exact library as
+                                its pre-generated outcome source, then takes you there -- Create Session / Spin
+                                draw from it instead of live RNG play. No manual configuration needed.
                             </Text>
-                            <Table withRowBorders={false} mt="sm">
+                            <Table withRowBorders={false} mb="sm">
                                 <Table.Tbody>
                                     <Table.Tr>
                                         <Table.Th>Library id</Table.Th>
@@ -582,6 +593,18 @@ export function OutcomeLibrariesTab() {
                                     </Table.Tr>
                                 </Table.Tbody>
                             </Table>
+                            <QuickActions>
+                                <Button
+                                    onClick={() => {
+                                        const selector = buildSelector(fields);
+                                        if (selector !== undefined) {
+                                            onUseInRuntime(selector);
+                                        }
+                                    }}
+                                >
+                                    Use in runtime
+                                </Button>
+                            </QuickActions>
                         </PageSection>
                     </div>
                 ))}

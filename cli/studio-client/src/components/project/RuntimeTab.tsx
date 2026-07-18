@@ -221,7 +221,7 @@ export function RuntimeTab({
     onStart: (options: StartRuntimeOptions) => void;
     onStop: () => void;
     onRestart: (options?: StartRuntimeOptions) => void;
-    onCreateSession: (seed?: string) => void;
+    onCreateSession: (seed?: string, initialBalance?: number) => void;
     onLoadSession: (id: string) => void;
     onSpin: (requestId?: string, expectedVersion?: number) => void;
     onRepeatSpin: () => void;
@@ -240,6 +240,7 @@ export function RuntimeTab({
     const [activeStep, setActiveStep] = useState(0);
     const [restoreMethod, setRestoreMethod] = useState<RestoreMethod>("new");
     const [createSeed, setCreateSeed] = useState("");
+    const [createInitialBalance, setCreateInitialBalance] = useState("");
     const [restoreSessionId, setRestoreSessionId] = useState("");
     const [advancedSpinOpened, {toggle: toggleAdvancedSpin}] = useDisclosure(false);
     const [manualRequestId, setManualRequestId] = useState("");
@@ -325,7 +326,7 @@ export function RuntimeTab({
 
     function handleCreateSession(): void {
         pendingAdvanceStepRef.current = 1;
-        onCreateSession(createSeed.trim() || undefined);
+        onCreateSession(createSeed.trim() || undefined, createInitialBalance.trim() === "" ? undefined : Number(createInitialBalance));
     }
 
     function handleLoadSession(id: string): void {
@@ -407,6 +408,15 @@ export function RuntimeTab({
                 {state.status === "loading" && <LoadingState />}
                 {state.status === "running" && (
                     <div>
+                        {state.preGenerated && (
+                            <Alert color="blue" variant="light" icon={<IconCircleCheck size={16} />} title="Running against a pre-generated outcome library" mb="sm">
+                                <Text size="sm">
+                                    Create Session / Spin below draw from library &quot;{state.preGenerated.libraryId}&quot; (hash{" "}
+                                    <span style={{overflowWrap: "anywhere"}}>{state.preGenerated.hash}</span>) instead of live RNG play.
+                                    Loading a session by id isn&apos;t supported in this mode.
+                                </Text>
+                            </Alert>
+                        )}
                         <Table withRowBorders={false} mb="sm">
                             <Table.Tbody>
                                 <Table.Tr>
@@ -465,6 +475,14 @@ export function RuntimeTab({
                                         value={createSeed}
                                         onChange={(event) => setCreateSeed(event.currentTarget.value)}
                                     />
+                                    {state.status === "running" && state.preGenerated && (
+                                        <NumberInput
+                                            label="Initial balance"
+                                            description="A pre-generated session starts at 0 credits unless funded here"
+                                            value={createInitialBalance}
+                                            onChange={(value) => setCreateInitialBalance(String(value))}
+                                        />
+                                    )}
                                     <Button loading={session.status === "loading"} onClick={handleCreateSession}>
                                         Create Session
                                     </Button>

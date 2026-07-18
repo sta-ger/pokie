@@ -1,4 +1,15 @@
-import {GameSessionHandling, PokieDevServer, PokieGame, PokieGameManifest} from "pokie";
+import {
+    buildRoundArtifact,
+    buildWeightedOutcomeLibrary,
+    computeWeightedOutcomeLibraryHash,
+    GameSessionHandling,
+    PokieDevServer,
+    PokieGame,
+    PokieGameManifest,
+    WeightedOutcomeLibrary,
+    WinEvaluationResult,
+} from "pokie";
+import type {ResolvedOutcomeLibrary} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryService.js";
 import {StudioRuntimeManager} from "../../../../cli/studio/runtime/StudioRuntimeManager.js";
 import type {ValidatedStartRuntimeRequest} from "../../../../cli/studio/runtime/validateStartRuntimeRequest.js";
 
@@ -38,6 +49,32 @@ function fakeLoadGame(): () => Promise<PokieGame> {
 
 function startOptions(overrides: Partial<ValidatedStartRuntimeRequest> = {}): ValidatedStartRuntimeRequest {
     return {debug: false, repositoryMode: "memory", port: 0, ...overrides};
+}
+
+// A minimal, valid single-outcome WeightedOutcomeLibrary built for exactly the fake game's own manifest
+// (id/version) -- assertLibraryMatchesGameManifest checks this against provenance.game before a
+// pre-generated server is ever allowed to start.
+function fakeOutcomeLibrary(libraryId = "lib-handoff"): WeightedOutcomeLibrary<string> {
+    return buildWeightedOutcomeLibrary({
+        libraryId,
+        outcomes: [
+            {
+                id: "0000",
+                weight: 1,
+                artifact: buildRoundArtifact({
+                    roundId: "r0",
+                    provenance: {game: manifest, pokieVersion: "1.0.0"},
+                    betMode: "base",
+                    stake: 1,
+                    steps: [{screen: [["A"]], winEvaluationResult: new WinEvaluationResult<string>()}],
+                }),
+            },
+        ],
+    });
+}
+
+function stubResolver(result: ResolvedOutcomeLibrary): () => Promise<ResolvedOutcomeLibrary> {
+    return () => Promise.resolve(result);
 }
 
 describe("StudioRuntimeManager", () => {
@@ -372,6 +409,128 @@ describe("StudioRuntimeManager", () => {
             await expect(manager.stopForProjectSwitch()).resolves.toBeUndefined();
             await expect(manager.stopForShutdown()).resolves.toBeUndefined();
             expect(manager.getState()).toEqual({status: "stopped"});
+        });
+    });
+
+    describe("pre-generated outcome library handoff (Outcome Libraries tab's 'Use in runtime')", () => {
+        it("resolves the selector via the injected resolver and reports preGenerated on the running state", async () => {
+            const library = fakeOutcomeLibrary("lib-handoff");
+            const resolveOutcomeLibrary = jest.fn(stubResolver({status: "ok", library, source: "json"}));
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, resolveOutcomeLibrary);
+
+            const result = await manager.start(
+                "/fake/project",
+                startOptions({preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"}}),
+            );
+
+            expect(result.status).toBe("started");
+            if (result.status !== "started" || result.view.status !== "running") {
+                return;
+            }
+            expect(result.view.preGenerated).toEqual({libraryId: "lib-handoff", hash: computeWeightedOutcomeLibraryHash(library)});
+            expect(resolveOutcomeLibrary).toHaveBeenCalledWith("/fake/project", {kind: "json", path: "./libs/base.json"});
+
+            await manager.stop();
+        });
+
+        it("creates and spins a real pre-generated session through the /pregenerated-sessions namespace", async () => {
+            const library = fakeOutcomeLibrary("lib-handoff");
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, stubResolver({status: "ok", library, source: "json"}));
+            await manager.start("/fake/project", startOptions({preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"}}));
+
+            const created = await manager.createSession(undefined, 1000);
+            expect(created.status).toBe("ok");
+            if (created.status !== "ok") {
+                return;
+            }
+            expect(typeof created.session.sessionId).toBe("string");
+            expect(created.session.game).toEqual(manifest);
+            expect(created.session.credits).toBe(1000);
+
+            const spun = await manager.spin(created.session.sessionId);
+            expect(spun.status).toBe("ok");
+            if (spun.status === "ok") {
+                expect(spun.session.sessionId).toBe(created.session.sessionId);
+                // Pre-generated rounds never carry a sessionVersion over HTTP at all (see
+                // buildPreGeneratedSessionView's own doc comment) -- unlike the live path, this is
+                // never hoisted because PokieDevServer's own pre-generated route never sends one.
+                expect(spun.session.sessionVersion).toBeUndefined();
+            }
+
+            await manager.stop();
+        });
+
+        it("reports a clear, honest error for getSession in pre-generated mode -- the engine has no GET-by-id route for it", async () => {
+            const library = fakeOutcomeLibrary("lib-handoff");
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, stubResolver({status: "ok", library, source: "json"}));
+            await manager.start("/fake/project", startOptions({preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"}}));
+            const created = await manager.createSession();
+            if (created.status !== "ok") {
+                return;
+            }
+
+            const fetched = await manager.getSession(created.session.sessionId);
+
+            expect(fetched.status).toBe("error");
+            if (fetched.status === "error") {
+                expect(fetched.error).toContain("pre-generated outcome library");
+            }
+
+            await manager.stop();
+        });
+
+        it("fails the whole start cleanly when the selector resolves to a load-error, never starting a plain-RNG server instead", async () => {
+            const manager = new StudioRuntimeManager(
+                fakeLoadGame(),
+                undefined,
+                stubResolver({status: "load-error", error: '"./missing.json" resolves outside the project root.'}),
+            );
+
+            const result = await manager.start(
+                "/fake/project",
+                startOptions({preGeneratedLibrarySelector: {kind: "json", path: "./missing.json"}}),
+            );
+
+            expect(result.status).toBe("failed");
+            if (result.status === "failed") {
+                expect(result.error).toContain("resolves outside the project root");
+            }
+            expect(manager.getState().status).toBe("failed");
+        });
+
+        it("fails the whole start cleanly when the selector resolves to an invalid library", async () => {
+            const manager = new StudioRuntimeManager(
+                fakeLoadGame(),
+                undefined,
+                stubResolver({status: "invalid", errors: [{code: "weighted-outcome-library-empty", severity: "error", message: "The library has no outcomes."}], warnings: []}),
+            );
+
+            const result = await manager.start(
+                "/fake/project",
+                startOptions({preGeneratedLibrarySelector: {kind: "json", path: "./empty.json"}}),
+            );
+
+            expect(result.status).toBe("failed");
+            if (result.status === "failed") {
+                expect(result.error).toContain("The library has no outcomes.");
+            }
+        });
+
+        it("clears pre-generated mode on stop -- a later plain start/getSession works normally again", async () => {
+            const library = fakeOutcomeLibrary("lib-handoff");
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, stubResolver({status: "ok", library, source: "json"}));
+            await manager.start("/fake/project", startOptions({preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"}}));
+            await manager.stop();
+
+            const restarted = await manager.start("/fake/project", startOptions());
+
+            expect(restarted.status).toBe("started");
+            if (restarted.status === "started" && restarted.view.status === "running") {
+                expect(restarted.view.preGenerated).toBeUndefined();
+            }
+            expect(await manager.getSession("does-not-exist")).toEqual({status: "not-found"});
+
+            await manager.stop();
         });
     });
 });

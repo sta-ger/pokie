@@ -111,6 +111,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         const compareView: StudioOutcomeLibraryCompareView = {
             left: okSelectView("lib-a"),
             right: okSelectView("lib-b", ANALYSIS_B),
+            leftSnapshotStale: false,
             diff: {
                 rtp: {left: 0.95, right: 0.97, delta: 0.02, percentDelta: (0.02 / 0.95) * 100},
                 hitFrequency: {left: 0.24, right: 0.26, delta: 0.02, percentDelta: (0.02 / 0.24) * 100},
@@ -217,5 +218,81 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         expect(await screen.findByLabelText("Library JSON path")).toHaveValue("");
         expect(screen.queryByText("Loaded successfully")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Inspect"})).not.toBeInTheDocument();
+    });
+
+    it("'Use in runtime' actually starts the runtime against the selected library and navigates to the Runtime tab", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("lib-a")}),
+            "/api/project/runtime/restart": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "running",
+                    host: "127.0.0.1",
+                    port: 4321,
+                    baseUrl: "http://127.0.0.1:4321",
+                    debug: false,
+                    repositoryMode: "memory",
+                    startedAt: "2026-01-01T00:00:00.000Z",
+                    preGenerated: {libraryId: "lib-a", hash: "sha256:lib-a"},
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToOutcomeLibrariesTab(user);
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
+        await user.click(screen.getByRole("button", {name: "Load library"}));
+        await screen.findByText("Loaded successfully");
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Compare or use"}));
+
+        await user.click(screen.getByRole("button", {name: "Use in runtime"}));
+
+        // Navigated to the Runtime tab automatically -- no manual "go configure this yourself" step --
+        // and it shows the real running confirmation, not a static instruction.
+        expect(await screen.findByText("Running against a pre-generated outcome library")).toBeInTheDocument();
+        expect(screen.getByText(/library "lib-a"/)).toBeInTheDocument();
+
+        const restartCall = calls.find((call) => call.url === "/api/project/runtime/restart");
+        expect(restartCall).toBeDefined();
+        expect(JSON.parse(restartCall?.init?.body ?? "{}")).toEqual({
+            preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"},
+        });
+    });
+
+    it("shows a clear 'library changed' message instead of a diff when the left library changed on disk between Select and Compare", async () => {
+        const user = userEvent.setup();
+        // The left file's own path never changes in the UI at all -- the library it points to simply
+        // changed on disk (externally) between Select/Inspect and Compare, so /select and /compare
+        // report different content (and hashes) for the exact same selector without any client-side
+        // signal that anything happened.
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("lib-a")}),
+            "/api/project/outcome-libraries/compare": () => ({
+                ok: true,
+                status: 200,
+                body: {left: okSelectView("lib-a-changed"), right: okSelectView("lib-b", ANALYSIS_B), leftSnapshotStale: true},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToOutcomeLibrariesTab(user);
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
+        await user.click(screen.getByRole("button", {name: "Load library"}));
+        await screen.findByText("Loaded successfully");
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Compare or use"}));
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/other.json");
+        await user.click(screen.getByRole("button", {name: "Compare"}));
+
+        expect(await screen.findByText("The left library changed since you selected it")).toBeInTheDocument();
+        expect(screen.getByText(/wasn't compared against the right library/)).toBeInTheDocument();
+        // The diff table must never be shown alongside a stale-snapshot warning.
+        expect(screen.queryByText("Metric")).not.toBeInTheDocument();
     });
 });

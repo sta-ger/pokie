@@ -694,7 +694,16 @@ export function ProjectDashboardPage() {
                         // Forces a full remount on a genuine project switch -- OutcomeLibrariesTab owns all
                         // of its own state locally (no page-level hook), same reasoning as DeploymentTab's
                         // own key above.
-                        <OutcomeLibrariesTab key={projectKey ?? "no-project"} />
+                        <OutcomeLibrariesTab
+                            key={projectKey ?? "no-project"}
+                            onUseInRuntime={(selector) => {
+                                // restart() (not start()) so this always takes effect, whether the
+                                // runtime is currently stopped or already running some other
+                                // configuration -- see StudioRuntimeManager.restart()'s own doc comment.
+                                runtime.restart({preGeneratedLibrarySelector: selector});
+                                setActiveTab("runtime");
+                            }}
+                        />
                     )}
                 </div>
             )}

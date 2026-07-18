@@ -344,6 +344,56 @@ describe("StudioOutcomeLibraryService", () => {
             expect(view.right.status).toBe("invalid");
             expect(view.diff).toBeUndefined();
         });
+
+        it("returns leftSnapshotStale and omits the diff when the left library on disk no longer matches expectedLeftHash", async () => {
+            // Simulates the left library having changed on disk since an earlier Select/Inspect: the
+            // caller passes the *previously shown* hash as expectedLeftHash, but the freshly-read file
+            // content (and therefore its real hash) no longer matches it.
+            const left = testLibrary("lib-left");
+            const right = testLibrary("lib-right");
+            let call = 0;
+            const readFile = () => JSON.stringify(call++ === 0 ? left : right);
+            const service = new StudioOutcomeLibraryService(undefined, undefined, undefined, undefined, undefined, undefined, readFile, identityRealpath);
+
+            const view = await service.compare("/project", jsonSelector("left.json"), jsonSelector("right.json"), "sha256:a-stale-hash-from-before");
+
+            expect(view.left.status).toBe("ok");
+            expect(view.right.status).toBe("ok");
+            expect(view.leftSnapshotStale).toBe(true);
+            expect(view.diff).toBeUndefined();
+        });
+
+        it("compares normally when expectedLeftHash matches the freshly-resolved left library", async () => {
+            const left = testLibrary("lib-left");
+            const right = testLibrary("lib-right");
+            let call = 0;
+            const readFile = () => JSON.stringify(call++ === 0 ? left : right);
+            const service = new StudioOutcomeLibraryService(undefined, undefined, undefined, undefined, undefined, undefined, readFile, identityRealpath);
+
+            const firstSelect = await service.select("/project", jsonSelector("left.json"));
+            if (firstSelect.status !== "ok") {
+                throw new Error("expected the left library to select successfully");
+            }
+            call = 0; // select() above already consumed one readFile call -- reset so compare() reads left, then right again
+
+            const view = await service.compare("/project", jsonSelector("left.json"), jsonSelector("right.json"), firstSelect.provenance.hash);
+
+            expect(view.leftSnapshotStale).toBe(false);
+            expect(view.diff).toBeDefined();
+        });
+
+        it("does not check for staleness at all when expectedLeftHash is omitted", async () => {
+            const left = testLibrary("lib-left");
+            const right = testLibrary("lib-right");
+            let call = 0;
+            const readFile = () => JSON.stringify(call++ === 0 ? left : right);
+            const service = new StudioOutcomeLibraryService(undefined, undefined, undefined, undefined, undefined, undefined, readFile, identityRealpath);
+
+            const view = await service.compare("/project", jsonSelector("left.json"), jsonSelector("right.json"));
+
+            expect(view.leftSnapshotStale).toBe(false);
+            expect(view.diff).toBeDefined();
+        });
     });
 
     describe("validateBundleDeep", () => {

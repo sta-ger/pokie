@@ -479,6 +479,11 @@ export type StartRuntimeOptions = {
     debug?: boolean;
     seed?: string | number;
     repositoryMode?: "memory" | "file";
+    // The Outcome Libraries tab's own "Use in runtime" handoff -- the exact selector select()/compare()
+    // already accept (see OutcomeLibrarySelector). Resolving it into an actual library is the server's
+    // job (StudioOutcomeLibraryService.resolveLibrary(), via StudioRuntimeManager); this is never
+    // resolved or interpreted client-side.
+    preGeneratedLibrarySelector?: OutcomeLibrarySelector;
 };
 
 export type StartRuntimeResult = StudioRuntimeStateView | {status: "already-running"; state: StudioRuntimeStateView};
@@ -582,11 +587,21 @@ async function readRuntimeSpinResult(response: {status: number; json(): Promise<
     return {status: "error", message: body.error};
 }
 
-export async function createRuntimeSession(fetchImpl: FetchLike, seed?: string | number): Promise<RuntimeSessionResult> {
+// "initialBalance" only matters when the runtime is running against a pre-generated outcome library --
+// a plain live session ignores it entirely (its own initial credits come from the game's own session
+// initialization) -- see StudioRuntimeManager.createSession()'s own doc comment.
+export async function createRuntimeSession(fetchImpl: FetchLike, seed?: string | number, initialBalance?: number): Promise<RuntimeSessionResult> {
+    const body: Record<string, unknown> = {};
+    if (seed !== undefined) {
+        body.seed = seed;
+    }
+    if (initialBalance !== undefined) {
+        body.initialBalance = initialBalance;
+    }
     const response = await fetchImpl("/api/project/runtime/sessions", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(seed === undefined ? {} : {seed}),
+        body: JSON.stringify(body),
     });
     return readRuntimeSessionResult(response);
 }
@@ -666,15 +681,20 @@ export async function selectOutcomeLibrary(fetchImpl: FetchLike, selector: Outco
     return (await response.json()) as StudioOutcomeLibrarySelectView;
 }
 
+// "expectedLeftHash" should be the hash already shown to the user for the left library (from an earlier
+// selectOutcomeLibrary() call's own provenance.hash) -- passing it lets the server detect a library that
+// changed on disk since then and refuse to silently diff the new content against the old summary the UI
+// is still showing (see StudioOutcomeLibraryCompareView.leftSnapshotStale).
 export async function compareOutcomeLibraries(
     fetchImpl: FetchLike,
     left: OutcomeLibrarySelector,
     right: OutcomeLibrarySelector,
+    expectedLeftHash?: string,
 ): Promise<StudioOutcomeLibraryCompareView> {
     const response = await fetchImpl("/api/project/outcome-libraries/compare", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({left, right}),
+        body: JSON.stringify({left, right, expectedLeftHash}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to compare outcome libraries"));

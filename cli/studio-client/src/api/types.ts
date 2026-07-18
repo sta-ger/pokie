@@ -454,6 +454,10 @@ export type StudioRuntimeStateView =
           debug: boolean;
           repositoryMode: "memory" | "file";
           startedAt: string;
+          // Present exactly when this runtime was started against a pre-generated outcome library (the
+          // Outcome Libraries tab's own "Use in runtime" handoff) -- confirmation that the handoff
+          // actually took effect, not something the user has to configure themselves.
+          preGenerated?: {libraryId: string; hash: string};
       }
     | {status: "stopping"}
     | {status: "failed"; error: string};
@@ -610,10 +614,13 @@ export type StudioOutcomeLibrarySelectView =
 
 // POST /api/project/outcome-libraries/compare's own DTO — see
 // cli/studio/outcomeLibrary/StudioOutcomeLibraryCompareView.ts's own doc comment. `diff` is only present
-// when both sides reached "ok".
+// when both sides reached "ok" and `leftSnapshotStale` is false -- a true `leftSnapshotStale` means the
+// left library changed on disk since the caller's own earlier Select/Inspect (see the `expectedLeftHash`
+// param on compareOutcomeLibraries), and must never be silently diffed against the right side.
 export type StudioOutcomeLibraryCompareView = {
     left: StudioOutcomeLibrarySelectView;
     right: StudioOutcomeLibrarySelectView;
+    leftSnapshotStale: boolean;
     diff?: WeightedOutcomeLibraryAnalysisDiff;
 };
 

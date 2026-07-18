@@ -13,6 +13,11 @@ export type StudioRuntimeStateView =
           debug: boolean;
           repositoryMode: "memory" | "file";
           startedAt: string;
+          // Present exactly when this runtime was started with a pre-generated outcome library (see
+          // ValidatedStartRuntimeRequest.preGeneratedLibrarySelector) -- the Runtime tab's own
+          // confirmation that the Outcome Libraries handoff actually took effect, not a manual
+          // instruction the user has to act on themselves.
+          preGenerated?: {libraryId: string; hash: string};
       }
     | {status: "stopping"}
     | {status: "failed"; error: string};

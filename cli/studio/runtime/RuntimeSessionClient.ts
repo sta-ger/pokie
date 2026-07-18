@@ -55,4 +55,38 @@ export class RuntimeSessionClient {
         });
         return {status: response.status, body: await response.json()};
     }
+
+    // The pre-generated counterpart to createSession/spin -- PokieDevServer's own separate
+    // `/pregenerated-sessions`/`/pregenerated-sessions/:id/spin` namespace (see that class's own doc
+    // comment), only reachable at all when this runtime was started with a preGeneratedOutcomeLibrary.
+    // Deliberately no `expectedVersion`/optimistic-locking parameter on the spin call here:
+    // PreGeneratedSpinCommandHandler.handle() has no such parameter, unlike the live spin path.
+    public async createPreGeneratedSession(seed?: string, initialBalance?: number): Promise<RuntimeHttpResult> {
+        const body: Record<string, unknown> = {};
+        if (seed !== undefined) {
+            body.seed = seed;
+        }
+        if (initialBalance !== undefined) {
+            body.initialBalance = initialBalance;
+        }
+        const response = await this.fetchImpl(`${this.baseUrl}/pregenerated-sessions`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(body),
+        });
+        return {status: response.status, body: await response.json()};
+    }
+
+    public async spinPreGenerated(sessionId: string, requestId?: string): Promise<RuntimeHttpResult> {
+        const body: Record<string, unknown> = {};
+        if (requestId !== undefined) {
+            body.requestId = requestId;
+        }
+        const response = await this.fetchImpl(`${this.baseUrl}/pregenerated-sessions/${encodeURIComponent(sessionId)}/spin?debug=1`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(body),
+        });
+        return {status: response.status, body: await response.json()};
+    }
 }

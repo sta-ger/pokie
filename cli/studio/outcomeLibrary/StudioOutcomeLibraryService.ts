@@ -33,6 +33,14 @@ type LoadedLibrary =
       }
     | {readonly status: "load-error"; readonly error: string};
 
+// select()'s own "load + validate" half, factored out so a caller that needs the actual
+// WeightedOutcomeLibrary object (not the select view's summary/sample) -- e.g. the Runtime tab's
+// pre-generated handoff -- reuses the exact same resolution/validation path rather than a second one.
+export type ResolvedOutcomeLibrary =
+    | {readonly status: "ok"; readonly library: WeightedOutcomeLibrary<string>; readonly source: "json" | "bundle" | "stakeengine"}
+    | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]}
+    | {readonly status: "load-error"; readonly error: string};
+
 // The Project Dashboard's Outcome Libraries tab, built directly on top of pokie's own
 // WeightedOutcomeLibrary/OutcomeLibraryBundle/StakeEngine services -- this class never computes RTP, hit
 // rate, volatility, a payout distribution, or a feature/event breakdown itself; every one of those is
@@ -70,6 +78,34 @@ export class StudioOutcomeLibraryService {
         this.differ = differ;
         this.readFile = readFile;
         this.realpath = realpath;
+    }
+
+    // The "load + validate" half of select() -- resolves a selector all the way to a genuine, validated
+    // WeightedOutcomeLibrary object, or a clear invalid/load-error result. Exposed publicly (unlike the
+    // rest of this class's plumbing) so a caller that needs the actual library -- not select()'s own
+    // summary/analysis/sample view -- reuses this exact resolution path rather than a second one. This
+    // is what the Runtime tab's pre-generated handoff calls: it never re-implements path resolution,
+    // bundle/Stake Engine reading, or validation itself.
+    public async resolveLibrary(projectRoot: string, selector: OutcomeLibrarySelector): Promise<ResolvedOutcomeLibrary> {
+        const loaded = await this.loadLibrary(projectRoot, selector);
+        if (loaded.status === "load-error") {
+            return {status: "load-error", error: loaded.error};
+        }
+
+        try {
+            const libraryIssues = this.libraryValidator.validate(loaded.library);
+            const allIssues = [...loaded.importIssues, ...libraryIssues];
+            const errors = allIssues.filter((issue) => issue.severity === "error");
+            const warnings = allIssues.filter((issue) => issue.severity !== "error");
+
+            if (errors.length > 0) {
+                return {status: "invalid", errors, warnings};
+            }
+
+            return {status: "ok", library: loaded.library, source: loaded.source};
+        } catch (error) {
+            return {status: "load-error", error: `Could not validate the selected library: ${error instanceof Error ? error.message : String(error)}`};
+        }
     }
 
     // Select/import -> Validate & analyze -> Inspect distribution/features all land in one call: once a
@@ -124,12 +160,28 @@ export class StudioOutcomeLibraryService {
         }
     }
 
-    public async compare(projectRoot: string, left: OutcomeLibrarySelector, right: OutcomeLibrarySelector): Promise<StudioOutcomeLibraryCompareView> {
+    // "expectedLeftHash" is the hash the caller already showed the user for the left library (captured
+    // at Select/Inspect time, see StudioOutcomeLibrarySelectView.provenance.hash) -- both sides are
+    // always re-resolved fresh here (a comparison should reflect what's actually on disk *now*, not a
+    // cached copy), but when the freshly-resolved left library's hash no longer matches what the user
+    // was shown, this is flagged as `leftSnapshotStale` and no diff is produced: silently diffing a
+    // library that changed underneath the user against whatever they typed for "right" would compare
+    // the *new* left content against a UI that still displays the *old* left summary, without ever
+    // telling them the ground shifted. Omit `expectedLeftHash` to skip this check entirely (e.g. a
+    // caller that never showed the user a prior snapshot to begin with).
+    public async compare(
+        projectRoot: string,
+        left: OutcomeLibrarySelector,
+        right: OutcomeLibrarySelector,
+        expectedLeftHash?: string,
+    ): Promise<StudioOutcomeLibraryCompareView> {
         const [leftView, rightView] = await Promise.all([this.select(projectRoot, left), this.select(projectRoot, right)]);
-        if (leftView.status !== "ok" || rightView.status !== "ok") {
-            return {left: leftView, right: rightView};
+        const leftSnapshotStale = expectedLeftHash !== undefined && leftView.status === "ok" && leftView.provenance.hash !== expectedLeftHash;
+
+        if (leftView.status !== "ok" || rightView.status !== "ok" || leftSnapshotStale) {
+            return {left: leftView, right: rightView, leftSnapshotStale};
         }
-        return {left: leftView, right: rightView, diff: this.differ.diff(leftView.analysis, rightView.analysis)};
+        return {left: leftView, right: rightView, leftSnapshotStale: false, diff: this.differ.diff(leftView.analysis, rightView.analysis)};
     }
 
     public async validateBundleDeep(projectRoot: string, bundleDir: string, modeName: string): Promise<StudioOutcomeLibraryDeepValidateView> {
