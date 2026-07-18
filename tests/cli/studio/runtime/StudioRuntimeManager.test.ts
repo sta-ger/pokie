@@ -578,5 +578,51 @@ describe("StudioRuntimeManager", () => {
             expect(manager.getState().status).toBe("failed");
             expect(await manager.createSession()).toEqual({status: "not-running"});
         });
+
+        it("does not tear down an already-running runtime for a stale 'Use in runtime' handoff -- the old runtime, its session, and recent-spin history are all preserved", async () => {
+            // The handoff always goes through restart() (see ProjectDashboardPage's own onUseInRuntime),
+            // which must resolve/hash-check the requested library as a *preflight*, before touching
+            // whatever is currently running -- a stale library must never destroy an already-working
+            // runtime only to then fail to replace it with anything.
+            const changedLibrary = fakeOutcomeLibrary("lib-handoff-changed");
+            const staleExpectedHash = computeWeightedOutcomeLibraryHash(fakeOutcomeLibrary("lib-handoff"));
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, stubResolver({status: "ok", library: changedLibrary, source: "json"}));
+
+            const started = await manager.start("/fake/project", startOptions());
+            expect(started.status).toBe("started");
+            if (started.status !== "started" || started.view.status !== "running") {
+                return;
+            }
+            const originalView = started.view;
+
+            const created = await manager.createSession();
+            expect(created.status).toBe("ok");
+            if (created.status !== "ok") {
+                return;
+            }
+            const sessionId = created.session.sessionId;
+            await manager.spin(sessionId, "request-before-handoff");
+            expect(manager.listRecentSpins()).toHaveLength(1);
+
+            const handoffResult = await manager.restart("/fake/project", {
+                ...startOptions(),
+                preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"},
+                preGeneratedLibraryExpectedHash: staleExpectedHash,
+            });
+
+            expect(handoffResult.status).toBe("failed");
+            if (handoffResult.status === "failed") {
+                expect(handoffResult.error).toContain("changed since you selected it");
+            }
+
+            // The old runtime is still running -- the exact same view, never superseded -- and its
+            // session/recent-spin history survived completely untouched.
+            expect(manager.getState()).toEqual(originalView);
+            expect(manager.listRecentSpins()).toHaveLength(1);
+            const stillThere = await manager.getSession(sessionId);
+            expect(stillThere.status).toBe("ok");
+
+            await manager.stop();
+        });
     });
 });

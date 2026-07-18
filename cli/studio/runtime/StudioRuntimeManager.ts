@@ -7,6 +7,7 @@ import {
     PokieDevServerHandling,
     PokieDevServerOptions,
     PokieGame,
+    WeightedOutcomeLibrary,
 } from "pokie";
 import crypto from "crypto";
 import fs from "fs";
@@ -117,11 +118,24 @@ export class StudioRuntimeManager {
     // Always supersedes whatever is currently running (or not) — unlike start(), restarting while
     // already running is exactly the point, so there's no conflict case here. Omitting `options`
     // reuses the last successful start's options, so the UI's Restart button can resend nothing.
+    //
+    // A requested pre-generated library is resolved and hash-checked as a *preflight*, before anything
+    // currently running is touched — the Outcome Libraries tab's "Use in runtime" handoff always goes
+    // through here (never start()), so a stale/invalid library must never tear down an already-working
+    // runtime (its server, sessions, recent-spin history) only to then fail to replace it with anything.
+    // A failure here returns a plain result without going through fail() (which would overwrite
+    // `this.state`) — the currently running (or stopped) state is left exactly as it was.
     public async restart(projectRoot: string, options?: ValidatedStartRuntimeRequest): Promise<StudioRuntimeStartResult> {
         const effectiveOptions = options ?? this.lastOptions;
         if (effectiveOptions === undefined) {
             return {status: "failed", error: "Nothing to restart — start the runtime at least once first."};
         }
+
+        const preflight = await this.resolvePreGeneratedLibraryOrFail(projectRoot, effectiveOptions);
+        if (preflight.status === "failed") {
+            return {status: "failed", error: preflight.error};
+        }
+
         await this.stopServerIfAny();
         return this.startInternal(projectRoot, effectiveOptions);
     }
@@ -227,6 +241,45 @@ export class StudioRuntimeManager {
         }
     }
 
+    // Shared by startInternal() and restart()'s own preflight -- resolves options.preGeneratedLibrarySelector
+    // (if any) via the injected resolveOutcomeLibrary, and checks its hash against
+    // options.preGeneratedLibraryExpectedHash (the hash the Outcome Libraries tab already showed the user
+    // at Select/Inspect time -- same expectedLeftHash/leftSnapshotStale snapshot-consistency contract
+    // StudioOutcomeLibraryService.compare() uses). The library is *always* re-resolved fresh (a handoff
+    // should run what's actually on disk now, not a cached copy); a mismatch, an invalid library, or an
+    // unresolvable path all come back as "failed" with a clear, client-safe message, never a thrown
+    // exception -- this never touches `this.state` or anything else in the process, purely a query.
+    private async resolvePreGeneratedLibraryOrFail(
+        projectRoot: string,
+        options: ValidatedStartRuntimeRequest,
+    ): Promise<
+        | {status: "none"}
+        | {status: "ok"; library: WeightedOutcomeLibrary<string>; summary: {libraryId: string; hash: string}}
+        | {status: "failed"; error: string}
+    > {
+        if (options.preGeneratedLibrarySelector === undefined) {
+            return {status: "none"};
+        }
+        const resolved = await this.resolveOutcomeLibrary(projectRoot, options.preGeneratedLibrarySelector);
+        if (resolved.status === "load-error") {
+            return {status: "failed", error: `Could not resolve the pre-generated outcome library: ${resolved.error}`};
+        }
+        if (resolved.status === "invalid") {
+            return {status: "failed", error: `The selected pre-generated outcome library is invalid: ${resolved.errors.map((issue) => issue.message).join(" ")}`};
+        }
+        const hash = computeWeightedOutcomeLibraryHash(resolved.library);
+        if (options.preGeneratedLibraryExpectedHash !== undefined && hash !== options.preGeneratedLibraryExpectedHash) {
+            return {
+                status: "failed",
+                error:
+                    "The selected pre-generated outcome library changed since you selected it in Outcome Libraries " +
+                    `(expected hash ${options.preGeneratedLibraryExpectedHash}, found ${hash}). ` +
+                    "Re-select it in Outcome Libraries and try again.",
+            };
+        }
+        return {status: "ok", library: resolved.library, summary: {libraryId: resolved.library.libraryId, hash}};
+    }
+
     private async startInternal(projectRoot: string, options: ValidatedStartRuntimeRequest): Promise<StudioRuntimeStartResult> {
         this.state = {status: "starting"};
 
@@ -241,38 +294,17 @@ export class StudioRuntimeManager {
         // fail the whole start attempt (never a server silently running in plain-RNG mode, or against
         // content that moved on since the handoff was offered, when the caller asked for pre-generated),
         // same "no well-formed input, no pipeline call" ordering StudioDeploymentService.run() already
-        // follows for its own per-mode library loads.
-        //
-        // "preGeneratedLibraryExpectedHash" is the hash the Outcome Libraries tab already showed the
-        // user for this library at Select/Inspect time -- same expectedLeftHash/leftSnapshotStale
-        // snapshot-consistency contract StudioOutcomeLibraryService.compare() uses. The library is
-        // *always* re-resolved fresh here (a handoff should run what's actually on disk now, not a
-        // cached copy), but if the freshly-resolved library's hash no longer matches what the user was
-        // shown, the whole start fails with a clear message rather than silently launching a runtime
-        // against content the user never actually reviewed.
-        let preGeneratedOutcomeLibrary: PokieDevServerOptions["preGeneratedOutcomeLibrary"];
-        let preGeneratedLibrary: {libraryId: string; hash: string} | undefined;
-        if (options.preGeneratedLibrarySelector !== undefined) {
-            const resolved = await this.resolveOutcomeLibrary(projectRoot, options.preGeneratedLibrarySelector);
-            if (resolved.status === "load-error") {
-                return this.fail(new Error(`Could not resolve the pre-generated outcome library: ${resolved.error}`));
-            }
-            if (resolved.status === "invalid") {
-                return this.fail(new Error(`The selected pre-generated outcome library is invalid: ${resolved.errors.map((issue) => issue.message).join(" ")}`));
-            }
-            const hash = computeWeightedOutcomeLibraryHash(resolved.library);
-            if (options.preGeneratedLibraryExpectedHash !== undefined && hash !== options.preGeneratedLibraryExpectedHash) {
-                return this.fail(
-                    new Error(
-                        "The selected pre-generated outcome library changed since you selected it in Outcome Libraries " +
-                            `(expected hash ${options.preGeneratedLibraryExpectedHash}, found ${hash}). ` +
-                            "Re-select it in Outcome Libraries and try again.",
-                    ),
-                );
-            }
-            preGeneratedOutcomeLibrary = resolved.library;
-            preGeneratedLibrary = {libraryId: resolved.library.libraryId, hash};
+        // follows for its own per-mode library loads. restart() already ran this exact same check as its
+        // own preflight (before tearing down whatever was running) -- redoing it here is harmless (the
+        // common case just confirms the same result a moment later) and keeps this method's own
+        // contract self-contained for start()'s sake, which has nothing running yet to protect.
+        const preGeneratedResolution = await this.resolvePreGeneratedLibraryOrFail(projectRoot, options);
+        if (preGeneratedResolution.status === "failed") {
+            return this.fail(new Error(preGeneratedResolution.error));
         }
+        const preGeneratedOutcomeLibrary: PokieDevServerOptions["preGeneratedOutcomeLibrary"] =
+            preGeneratedResolution.status === "ok" ? preGeneratedResolution.library : undefined;
+        const preGeneratedLibrary = preGeneratedResolution.status === "ok" ? preGeneratedResolution.summary : undefined;
 
         const sessionRepository =
             options.repositoryMode === "file" ? new FileSessionRepository(this.resolveFileSessionDirectory()) : new InMemorySessionRepository();
