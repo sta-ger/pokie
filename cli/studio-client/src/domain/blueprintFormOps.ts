@@ -588,6 +588,15 @@ export function parseReelStripGenerationConstraintsJson(jsonText: string): {ok: 
     return {ok: true, constraints: parsed};
 }
 
+// Commits a reel's fully-formed replacement entry wholesale, rather than patching one of its own fields
+// like every mutator above -- the one primitive the Reel Strip Modeler's own explicit "Apply" action
+// needs so editing a reel (its own local, not-yet-committed draft) never touches the shared blueprint
+// until the user deliberately commits it. Reuses withReelStripGenerationEntry's own existing
+// tolerant-of-a-missing-entry behavior rather than duplicating it.
+export function applyReelStripGenerationEntry(blueprint: Record<string, unknown>, reelIndex: number, entry: Record<string, unknown>): void {
+    withReelStripGenerationEntry(blueprint, reelIndex, () => entry);
+}
+
 export function setReelStripGenerationConstraints(blueprint: Record<string, unknown>, reelIndex: number, constraints: unknown[]): void {
     withReelStripGenerationEntry(blueprint, reelIndex, (entry) => {
         const next = {...entry};

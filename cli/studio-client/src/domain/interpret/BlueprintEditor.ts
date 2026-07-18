@@ -44,6 +44,63 @@ export function isStaleReelStripGenerationRequest(requestedRevision: number, cur
     return requestedRevision !== currentRevision;
 }
 
+// Recursively sorts every object's own keys (arrays keep their order -- position is meaningful there,
+// e.g. a literal strip or a constraints list) so two structurally-identical entries compare equal by
+// JSON.stringify regardless of the order their own fields happen to have been assembled in by whichever
+// mutator produced each one.
+function canonicalize(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map(canonicalize);
+    }
+    if (typeof value === "object" && value !== null) {
+        return Object.fromEntries(
+            Object.entries(value as Record<string, unknown>)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([key, entryValue]) => [key, canonicalize(entryValue)]),
+        );
+    }
+    return value;
+}
+
+// The Reel Strip Modeler's own "does this reel have unapplied changes" check -- a reel's local, not-yet-
+// committed draft entry against the entry actually applied in the blueprint right now. Structural, not
+// reference equality (a freshly cloned draft is never `===` its source even when nothing was edited),
+// and canonicalized first so an edit-and-revert (e.g. toggling a source mode back and forth) doesn't
+// falsely read as dirty purely because of field insertion order.
+export function hasReelStripGenerationDraftChanged(draft: Record<string, unknown>, applied: Record<string, unknown>): boolean {
+    return JSON.stringify(canonicalize(draft)) !== JSON.stringify(canonicalize(applied));
+}
+
+// The Preview-stop-windows step's own visualization: the `rows` consecutive symbols a reel would show if
+// it stopped at position `stop`, wrapping around to the strip's own start once it runs past the end --
+// exactly what a real spin's screen window would look like for a reel that stopped there, for a strip
+// already resolved by the exact same generation/analysis pipeline "pokie build" itself uses. This is
+// purely a what-if slice over an already-resolved strip; it never selects a stop itself and is never a
+// substitute for the real RNG-driven stop selection a spin performs (see
+// ReelsSymbolsSequencesGenerator) -- there is no generation/validation logic here to duplicate, only
+// array indexing. Defensive against an out-of-range or negative `stop` (wraps via modulo) and against an
+// empty strip or non-positive `rows` (both simply produce no rows).
+// A one-line, plain-language summary of a reel's own current configuration for the Select-reel step --
+// enough to tell reels apart at a glance without opening each one. Never a substitute for actually
+// opening a reel to see (or edit) its full configuration.
+export function describeReelStripGenerationEntrySummary(entry: Record<string, unknown>): string {
+    if (entry.type === "generated") {
+        const length = typeof entry.length === "number" ? entry.length : "?";
+        const seed = typeof entry.seed === "number" ? entry.seed : "?";
+        return `Generated — length ${length}, seed ${seed}`;
+    }
+    const strip = Array.isArray(entry.strip) ? entry.strip : [];
+    return `Literal — ${strip.length} symbol(s)`;
+}
+
+export function computeReelStopWindow(strip: readonly string[], stop: number, rows: number): string[] {
+    if (strip.length === 0 || rows <= 0) {
+        return [];
+    }
+    const normalizedStop = ((stop % strip.length) + strip.length) % strip.length;
+    return Array.from({length: rows}, (_, i) => strip[(normalizedStop + i) % strip.length]);
+}
+
 export type BlueprintLoadView =
     | {status: "idle"}
     | {status: "loading"}

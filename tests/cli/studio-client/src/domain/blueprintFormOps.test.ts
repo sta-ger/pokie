@@ -4,6 +4,7 @@ import {
     addReelStripGenerationLiteralSymbol,
     addReelStripSymbol,
     addSymbol,
+    applyReelStripGenerationEntry,
     duplicateBetAt,
     duplicatePaylineAt,
     duplicatePaytablePayout,
@@ -410,6 +411,22 @@ describe("blueprintFormOps", () => {
         it("reports an error when the parsed JSON isn't an array", () => {
             const result = parseReelStripGenerationConstraintsJson('{"type": "minimumCircularDistance"}');
             expect(result).toEqual({ok: false, error: "Constraints must be a JSON array."});
+        });
+
+        it("applies a fully-formed replacement entry wholesale (the Reel Strip Modeler's own Apply action)", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "literal", strip: ["A"]}, {type: "literal", strip: ["B"]}]};
+
+            applyReelStripGenerationEntry(b, 0, {type: "generated", length: 5, seed: 7, symbolCounts: {A: 5}});
+
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 5, seed: 7, symbolCounts: {A: 5}}, {type: "literal", strip: ["B"]}]);
+        });
+
+        it("does nothing when the target reel index doesn't exist", () => {
+            const b: Record<string, unknown> = {reelStripGeneration: [{type: "literal", strip: ["A"]}]};
+
+            applyReelStripGenerationEntry(b, 5, {type: "literal", strip: ["Z"]});
+
+            expect(b.reelStripGeneration).toEqual([{type: "literal", strip: ["A"]}]);
         });
 
         it("keeps the outer array length in sync with reels", () => {
