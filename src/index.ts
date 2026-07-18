@@ -117,6 +117,7 @@ export * from "./generated/ReelStripGenerationConfig.js";
 export * from "./generated/ReelStripGenerationSpec.js";
 export * from "./generated/ReelStripGenerationSummary.js";
 export * from "./generated/buildGameBuildInfo.js";
+export * from "./generated/computeGameBlueprintHash.js";
 export * from "./generated/createReelStripConstraintFromSpec.js";
 export * from "./generated/loadGameBlueprint.js";
 export * from "./generated/materializeReelStrips.js";

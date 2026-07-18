@@ -1,5 +1,4 @@
-import {buildGameBuildInfo, GameBlueprint} from "pokie";
-import crypto from "crypto";
+import {buildGameBuildInfo, computeGameBlueprintHash, GameBlueprint} from "pokie";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
@@ -42,7 +41,7 @@ describe("buildGameBuildInfo", () => {
         const second = buildGameBuildInfo(blueprint, "1.3.0");
 
         expect(first.blueprintHash).toBe(second.blueprintHash);
-        expect(first.blueprintHash).toBe(`sha256:${crypto.createHash("sha256").update(JSON.stringify(blueprint)).digest("hex")}`);
+        expect(first.blueprintHash).toBe(computeGameBlueprintHash(blueprint));
     });
 
     it("changes the hash when the blueprint content changes", () => {

@@ -1,6 +1,7 @@
 import {
     buildRoundArtifact,
     buildWeightedOutcomeLibrary,
+    computeGameBlueprintHash,
     ExternalArtifactGenerationResult,
     ExternalDeploymentProjectedModeInput,
     ExternalDeploymentTarget,
@@ -683,7 +684,7 @@ describe("StudioServer", () => {
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/load`, {path: blueprintPath});
 
                 expect(status).toBe(200);
-                expect(body).toEqual({status: "ok", path: blueprintPath, blueprint: buildBlueprint()});
+                expect(body).toEqual({status: "ok", path: blueprintPath, blueprint: buildBlueprint(), blueprintHash: computeGameBlueprintHash(buildBlueprint())});
             });
 
             it("returns a safe load-error for a missing file", async () => {

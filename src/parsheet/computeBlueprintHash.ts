@@ -17,6 +17,10 @@ import type {GameBlueprint, GameBlueprintManifest} from "../generated/GameBluepr
 // never reconstructs an empty array/string for an optional field (see e.g. ManifestSheetMapper's own
 // "blank cell means omit the field" rule), so a source blueprint that used `[]`/`""` instead of
 // omitting the field would otherwise report a false "edited" mismatch on an untouched round trip too.
+//
+// Not a general-purpose "did this blueprint change" hash — see generated/computeGameBlueprintHash.ts's
+// own doc comment for why that one exists separately (this one can't represent every GameBlueprint
+// field, by design).
 export function computeBlueprintHash(blueprint: GameBlueprint): string {
     return `sha256:${crypto.createHash("sha256").update(JSON.stringify(canonicalizeBlueprint(blueprint))).digest("hex")}`;
 }

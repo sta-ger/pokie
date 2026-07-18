@@ -18,6 +18,11 @@ const BLUEPRINT = {
     paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
     availableBets: [1],
 };
+// A plain fixture string, not a real hash -- correctness of the actual hash algorithm/comparison is
+// verified against the real filesystem in applyGameBlueprintToProject.test.ts. This only has to be
+// something the fake /load response returns and the fake /apply response can be asserted to receive
+// back unchanged, proving the client threads it through rather than inventing its own.
+const BLUEPRINT_HASH = "sha256:loaded-blueprint";
 
 const GENERATED_INSPECT_REPORT: GamePackageInspectionReport = {
     packageRoot: PROJECT_ROOT,
@@ -46,7 +51,7 @@ const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: numb
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
-    "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: SOURCE_PATH, blueprint: BLUEPRINT}}),
+    "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: SOURCE_PATH, blueprint: BLUEPRINT, blueprintHash: BLUEPRINT_HASH}}),
 };
 
 // Mantine's Stepper.Step packs the step number/icon + label + description into one <button>, so its
@@ -80,20 +85,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
-            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: SOURCE_PATH}}),
-            "/api/home/blueprints/build": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    status: "ok",
-                    projectRoot: PROJECT_ROOT,
-                    manifest: GAME,
-                    createdFiles: ["src/generated/index.js"],
-                    buildInfo: GENERATED_INSPECT_REPORT.buildInfo,
-                    unchanged: false,
-                    warnings: [],
-                },
-            }),
+            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "ok", blueprintHash: "sha256:applied", warnings: []}}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -137,20 +129,14 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
 
         expect(await screen.findByText(/up to date/)).toBeInTheDocument();
 
-        const saveCall = calls.find((call) => call.url === "/api/home/blueprints/save");
-        const buildCall = calls.find((call) => call.url === "/api/home/blueprints/build");
-        expect(saveCall).toBeDefined();
-        expect(buildCall).toBeDefined();
-        const savedBody = JSON.parse(saveCall?.init?.body ?? "{}");
-        expect(savedBody.path).toBe(SOURCE_PATH);
-        expect(savedBody.overwrite).toBe(true);
-        expect(savedBody.blueprint.symbols).toEqual(["AA", "B", "S"]);
-        expect(savedBody.blueprint.winModel).toEqual({type: "ways"});
-        expect(savedBody.blueprint.mechanics.freeGames).toEqual({scatterSymbol: "S", awardsByCount: {3: 10}});
-        expect(savedBody.blueprint.betModes).toEqual([{id: "buy-bonus"}]);
-        const builtBody = JSON.parse(buildCall?.init?.body ?? "{}");
-        expect(builtBody.outDir).toBe(PROJECT_ROOT);
-        expect(builtBody.sourcePath).toBe(SOURCE_PATH);
+        const applyCalls = calls.filter((call) => call.url === "/api/project/blueprint/apply");
+        expect(applyCalls).toHaveLength(1);
+        const appliedBody = JSON.parse(applyCalls[0].init?.body ?? "{}");
+        expect(appliedBody.expectedHash).toBe(BLUEPRINT_HASH);
+        expect(appliedBody.blueprint.symbols).toEqual(["AA", "B", "S"]);
+        expect(appliedBody.blueprint.winModel).toEqual({type: "ways"});
+        expect(appliedBody.blueprint.mechanics.freeGames).toEqual({scatterSymbol: "S", awardsByCount: {3: 10}});
+        expect(appliedBody.blueprint.betModes).toEqual([{id: "buy-bonus"}]);
     });
 
     it("shows a validation error for an invalid config and blocks Apply", async () => {
@@ -237,14 +223,18 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("A");
     });
 
-    it("never writes the source blueprint when Apply's build fails, so Discard still matches the real file", async () => {
+    it("shows the server's error on a failed Apply, never marks the draft clean, and still lets Discard work", async () => {
         const user = userEvent.setup();
+        // The atomic build-then-commit rollback itself (a build/commit failure never leaving the
+        // project's source or generated output ahead of one another) is verified directly against the
+        // real filesystem in applyGameBlueprintToProject.test.ts -- this only covers what the frontend
+        // itself must do with a failed Apply: show the error, never mark the draft clean, and let
+        // Discard still work afterward.
         const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
-            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: SOURCE_PATH}}),
-            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: {status: "error", error: "Disk full."}}),
+            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "error", error: "Disk full."}}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -265,12 +255,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
 
         expect(await screen.findByText("Disk full.")).toBeInTheDocument();
         expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
-
-        // Build runs (and fails) before save is ever attempted -- a failed build must never leave the
-        // source blueprint file changed. Asserting no /save call at all is the actual rollback
-        // guarantee; asserting the file's own content on Discard (below) is the observable consequence.
-        expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
-        expect(calls.some((call) => call.url === "/api/home/blueprints/build")).toBe(true);
+        expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
 
         await user.click(screen.getByRole("button", {name: "Discard draft"}));
         await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
@@ -278,30 +263,17 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
     });
 
     it("refuses to apply and makes no writes when the source blueprint changed on disk since it was loaded", async () => {
+        // Conflict detection is now entirely server-side (see applyGameBlueprintToProject.test.ts for
+        // the actual hash-check-then-stage-then-commit behavior) -- this only covers the frontend's own
+        // handling of a "conflict" response: showing the message, never marking the draft clean, and
+        // never making a second, separate write call of its own.
         const user = userEvent.setup();
         const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const externallyModifiedBlueprint = {...BLUEPRINT, symbols: ["A", "B", "S", "EXTERNAL"]};
-        let loadCallCount = 0;
-        const calls: FakeCall[] = [];
-        const fetchImpl: FetchLike = (url, init) => {
-            calls.push({url, init});
-            if (url === "/api/home/blueprints/load") {
-                loadCallCount += 1;
-                // First call is the tab's own initial load; the second is Apply's pre-write conflict
-                // check -- simulating something else (a hand edit, another "pokie build") changing the
-                // file in between.
-                const blueprint = loadCallCount === 1 ? BLUEPRINT : externallyModifiedBlueprint;
-                return jsonResponse({status: "ok", path: SOURCE_PATH, blueprint});
-            }
-            if (url === "/api/home/blueprints/validate") {
-                return jsonResponse(okValidation);
-            }
-            if (url in BASE_ROUTES) {
-                const routed = BASE_ROUTES[url]({url, init});
-                return jsonResponse(routed.body, routed.status);
-            }
-            return Promise.reject(new Error(`unexpected fetch ${url}`));
-        };
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
+            "/api/project/blueprint/apply": () => ({ok: false, status: 409, body: {status: "conflict", currentHash: "sha256:external"}}),
+        });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToMechanicsEditorTab(user);
@@ -322,11 +294,10 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(await screen.findByText(/changed on disk since it was loaded here/)).toBeInTheDocument();
         expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
 
-        // Neither write endpoint was ever reached -- the conflict is caught before anything is saved
-        // or rebuilt, so the external edit is never silently clobbered.
-        expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
-        expect(calls.some((call) => call.url === "/api/home/blueprints/build")).toBe(false);
-        expect(loadCallCount).toBe(2);
+        // Exactly one write attempt, and exactly one load (the tab's own initial one) -- confirms the
+        // client no longer does its own separate load-then-compare round trip before applying.
+        expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/load")).toHaveLength(1);
     });
 
     it("ignores a stale validate response once a newer one has resolved", async () => {

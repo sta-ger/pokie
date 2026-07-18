@@ -179,8 +179,10 @@ export type StudioReelStripGenerationView = {
 };
 
 // POST /api/home/blueprints/load's own DTO — see cli/studio/blueprint/StudioBlueprintLoadView.ts's own
-// doc comment. `blueprint` is the raw parsed JSON value (unknown), not yet validated.
-export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: unknown} | {status: "load-error"; error: string};
+// doc comment. `blueprint` is the raw parsed JSON value (unknown), not yet validated. `blueprintHash`
+// is that content's own exact-content hash — carry it forward as the "expectedHash" a later
+// POST /api/project/blueprint/apply call is built from (see StudioBlueprintApplyView).
+export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: unknown; blueprintHash: string} | {status: "load-error"; error: string};
 
 // POST /api/home/blueprints/save's own DTO — see cli/studio/blueprint/StudioBlueprintSaveView.ts's own
 // doc comment. "conflict" means the file already exists and the request needs `overwrite: true` to
@@ -188,6 +190,15 @@ export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: un
 export type StudioBlueprintSaveView =
     | {status: "ok"; path: string}
     | {status: "conflict"; path: string; error: string}
+    | {status: "error"; error: string};
+
+// POST /api/project/blueprint/apply's own DTO — see cli/studio/blueprint/StudioBlueprintApplyView.ts's
+// own doc comment for the conditional-commit semantics behind it. "conflict" means the source
+// blueprint on disk no longer matches the snapshot this request was built from — never a write.
+export type StudioBlueprintApplyView =
+    | {status: "ok"; blueprintHash: string; warnings: ValidationIssue[]}
+    | {status: "conflict"; currentHash: string}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "error"; error: string};
 
 // Read from (or written to) a PAR sheet's own "Meta" sheet — never fed back into GameBlueprint fields,

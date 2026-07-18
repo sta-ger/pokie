@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import {computeGameBlueprintHash} from "./computeGameBlueprintHash.js";
 import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "./GameBlueprint.js";
 import type {GameBuildInfo} from "./GameBuildInfo.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
@@ -26,7 +26,7 @@ export function buildGameBuildInfo(
     previous: GameBuildInfo | undefined = undefined,
     reelStripGeneration: GameBuildInfoReelStripGeneration | undefined = undefined,
 ): GameBuildInfo {
-    const blueprintHash = `sha256:${crypto.createHash("sha256").update(JSON.stringify(blueprint)).digest("hex")}`;
+    const blueprintHash = computeGameBlueprintHash(blueprint);
 
     const isNoOpRebuild =
         previous !== undefined &&

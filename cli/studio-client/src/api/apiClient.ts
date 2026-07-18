@@ -4,6 +4,7 @@ import type {
     PokieGameManifest,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
+    StudioBlueprintApplyView,
     StudioBlueprintLoadView,
     StudioBlueprintSaveView,
     StudioBlueprintValidationView,
@@ -171,6 +172,27 @@ export async function saveBlueprint(
         throw new Error(await extractErrorMessage(response, "Failed to save blueprint"));
     }
     return (await response.json()) as StudioBlueprintSaveView;
+}
+
+// Commits an edited blueprint back to the current project's own source file and rebuilds its
+// generated package in place, as a single conditional-commit request — see
+// cli/studio/blueprint/applyGameBlueprintToProject.ts for the hash-based conflict check and atomic
+// publish semantics. `expectedHash` is the snapshot (see StudioBlueprintLoadView.blueprintHash) this
+// draft was built from; a 409 ("conflict") means the source changed on disk since — an expected
+// domain outcome, not a failed request, so it's parsed and returned as a typed result, not thrown.
+export async function applyProjectBlueprint(fetchImpl: FetchLike, blueprint: unknown, expectedHash: string): Promise<StudioBlueprintApplyView> {
+    const response = await fetchImpl("/api/project/blueprint/apply", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint, expectedHash}),
+    });
+    if (response.status === 409) {
+        return (await response.json()) as StudioBlueprintApplyView;
+    }
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to apply blueprint"));
+    }
+    return (await response.json()) as StudioBlueprintApplyView;
 }
 
 // Never writes anything — see StudioBlueprintService.importParSheet()'s own doc comment. Domain-level

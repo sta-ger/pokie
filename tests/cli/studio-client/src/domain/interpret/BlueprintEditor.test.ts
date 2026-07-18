@@ -139,7 +139,7 @@ describe("interpretBlueprintEditor", () => {
 
     describe("describeLoadResult", () => {
         it("maps a successful load to its path", () => {
-            expect(describeLoadResult({status: "ok", path: "/a/blueprint.json", blueprint: {}})).toEqual({
+            expect(describeLoadResult({status: "ok", path: "/a/blueprint.json", blueprint: {}, blueprintHash: "sha256:x"})).toEqual({
                 status: "ok",
                 path: "/a/blueprint.json",
             });

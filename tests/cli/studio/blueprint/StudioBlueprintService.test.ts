@@ -1,4 +1,4 @@
-import {GameBlueprint, ParSheetExporting, ParSheetImporting, resolveReelStripGeneration, ValidationIssue} from "pokie";
+import {computeGameBlueprintHash, GameBlueprint, ParSheetExporting, ParSheetImporting, resolveReelStripGeneration, ValidationIssue} from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
@@ -521,7 +521,12 @@ describe("StudioBlueprintService", () => {
 
             const result = service.load(blueprintPath);
 
-            expect(result).toEqual({status: "ok", path: blueprintPath, blueprint: buildBlueprint()});
+            expect(result).toEqual({
+                status: "ok",
+                path: blueprintPath,
+                blueprint: buildBlueprint(),
+                blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+            });
         });
 
         it("returns a safe load-error for a missing file", () => {

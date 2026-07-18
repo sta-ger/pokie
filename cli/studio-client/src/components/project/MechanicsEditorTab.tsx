@@ -1,7 +1,7 @@
 import {Anchor, Button, Stepper, Text} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState, type ReactNode} from "react";
-import {buildBlueprint, inspectProject, loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
+import {applyProjectBlueprint, inspectProject, loadBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {ValidationIssue} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {getWinModelType} from "../../domain/blueprintFormOps";
@@ -58,9 +58,11 @@ export function MechanicsEditorTab() {
 
     const [loadView, setLoadView] = useState<LoadView>({status: "loading"});
     const loadRequestIdRef = useRef(0);
-    const projectRootRef = useRef<string | undefined>(undefined);
-    const sourcePathRef = useRef<string | undefined>(undefined);
     const lastLoadedBlueprintRef = useRef<unknown>(undefined);
+    // The exact-content hash of `lastLoadedBlueprintRef`'s own content -- the "expectedHash" Apply
+    // sends, so the server can do its own conditional commit (see applyProjectBlueprint) instead of
+    // this tab trying to detect a conflict itself via a separate load-then-compare round trip.
+    const lastLoadedBlueprintHashRef = useRef<string | undefined>(undefined);
 
     const [validateView, setValidateView] = useState<BlueprintValidationView>({status: "idle"});
     const validateRequestIdRef = useRef(0);
@@ -130,8 +132,6 @@ export function MechanicsEditorTab() {
                     });
                     return undefined;
                 }
-                projectRootRef.current = report.packageRoot;
-                sourcePathRef.current = report.buildInfo.source;
                 return loadBlueprint(fetchImpl, report.buildInfo.source).then((result) => {
                     if (requestId !== loadRequestIdRef.current) {
                         return;
@@ -141,6 +141,7 @@ export function MechanicsEditorTab() {
                         return;
                     }
                     lastLoadedBlueprintRef.current = result.blueprint;
+                    lastLoadedBlueprintHashRef.current = result.blueprintHash;
                     nextFormGenerationIsClean.current = true;
                     editor.loadFrom(result.blueprint);
                     setLoadView({status: "ok"});
@@ -179,78 +180,49 @@ export function MechanicsEditorTab() {
             .finally(() => validateGuard.end());
     }
 
-    // Apply has two safety properties, in this order:
-    //
-    // 1. Optimistic conflict protection: re-reads the source blueprint right before writing anything,
-    //    and compares it against `lastLoadedBlueprintRef` -- the last content this tab actually knows
-    //    to be on disk (set on initial load and updated only after a fully successful Apply below). A
-    //    mismatch means something else (a hand edit, another "pokie build", a different Studio tab)
-    //    changed the file since this draft was started from it -- Apply refuses to overwrite that
-    //    silently and surfaces a conflict instead. This is a plain compare-then-write on the client;
-    //    it narrows the race window but doesn't close it (a real compare-and-swap would need backend
-    //    support this stabilization pass doesn't add) -- "optimistic", not "pessimistic"/locked.
-    // 2. Build before save: GamePackageGenerator/renderGeneratedGameModule only ever read the
-    //    in-memory `blueprint` value passed to them -- `sourcePath` is recorded into build-info.json
-    //    purely as a provenance string, never read back -- so building first and saving only after a
-    //    successful build means a failed build can *never* leave the source blueprint file changed.
-    //    `lastLoadedBlueprintRef`/markClean only advance once both steps have actually succeeded, so
-    //    Discard after any failure (build or save) always reverts to what's genuinely still on disk.
+    // Apply is a single request to the server's own conditional-commit endpoint (see
+    // applyGameBlueprintToProject.ts) -- this tab no longer does its own load-then-compare-then-write:
+    // the server re-checks the source blueprint's hash itself, immediately before staging its own
+    // build+save, and stages both before committing either, so a failed/conflicting Apply always
+    // leaves the project's source and generated output exactly as they were before the attempt (see
+    // that function's own doc comment for the full conditional-commit sequence). `lastLoadedBlueprintRef`/
+    // `lastLoadedBlueprintHashRef`/markClean only advance once the server reports "ok", so Discard
+    // after any failure or conflict reverts to what's genuinely still on disk.
     function runApply(): void {
-        const sourcePath = sourcePathRef.current;
-        const projectRoot = projectRootRef.current;
-        if (sourcePath === undefined || projectRoot === undefined || !applyGuard.begin()) {
+        const expectedHash = lastLoadedBlueprintHashRef.current;
+        if (expectedHash === undefined || !applyGuard.begin()) {
             return;
         }
         const appliedRevision = editor.state.revision;
         const requestId = ++applyRequestIdRef.current;
         const isStale = (): boolean => requestId !== applyRequestIdRef.current;
         const blueprint = editor.state.blueprint;
-        const expectedOnDisk = lastLoadedBlueprintRef.current;
         setApplyView({status: "loading"});
-        loadBlueprint(fetchImpl, sourcePath)
-            .then((freshLoad) => {
+        applyProjectBlueprint(fetchImpl, blueprint, expectedHash)
+            .then((result) => {
                 if (isStale()) {
-                    return undefined;
+                    return;
                 }
-                if (freshLoad.status === "load-error") {
-                    setApplyView({status: "error", message: freshLoad.error});
-                    return undefined;
-                }
-                if (JSON.stringify(freshLoad.blueprint) !== JSON.stringify(expectedOnDisk)) {
+                if (result.status === "conflict") {
                     setApplyView({
                         status: "conflict",
                         message:
                             "The project's blueprint file changed on disk since it was loaded here, so applying would silently overwrite those changes. Switch away from this tab and back to reload the latest version before applying.",
                     });
-                    return undefined;
+                    return;
                 }
-
-                return buildBlueprint(fetchImpl, blueprint, projectRoot, sourcePath).then((buildResult) => {
-                    if (isStale()) {
-                        return undefined;
-                    }
-                    if (buildResult.status === "invalid") {
-                        setApplyView({status: "invalid", errors: buildResult.errors, warnings: buildResult.warnings});
-                        return undefined;
-                    }
-                    if (buildResult.status !== "ok") {
-                        setApplyView({status: "error", message: buildResult.error});
-                        return undefined;
-                    }
-
-                    return saveBlueprint(fetchImpl, sourcePath, blueprint, true).then((saveResult) => {
-                        if (isStale()) {
-                            return;
-                        }
-                        if (saveResult.status !== "ok") {
-                            setApplyView({status: "error", message: saveResult.error});
-                            return;
-                        }
-                        lastLoadedBlueprintRef.current = blueprint;
-                        markClean(appliedRevision);
-                        setApplyView({status: "ok"});
-                    });
-                });
+                if (result.status === "invalid") {
+                    setApplyView({status: "invalid", errors: result.errors, warnings: result.warnings});
+                    return;
+                }
+                if (result.status !== "ok") {
+                    setApplyView({status: "error", message: result.error});
+                    return;
+                }
+                lastLoadedBlueprintRef.current = blueprint;
+                lastLoadedBlueprintHashRef.current = result.blueprintHash;
+                markClean(appliedRevision);
+                setApplyView({status: "ok"});
             })
             .catch((error: unknown) => {
                 if (isStale()) {

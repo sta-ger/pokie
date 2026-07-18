@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {GameBlueprint} from "pokie";
+import {computeGameBlueprintHash, GameBlueprint} from "pokie";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import {InMemoryRecentProjectsRepository} from "../../cli/studio/InMemoryRecentProjectsRepository.js";
@@ -61,7 +61,7 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
         expect(fs.readFileSync(blueprintPath, "utf-8").endsWith("\n")).toBe(true);
 
         const loaded = service.load(blueprintPath);
-        expect(loaded).toEqual({status: "ok", path: blueprintPath, blueprint});
+        expect(loaded).toEqual({status: "ok", path: blueprintPath, blueprint, blueprintHash: computeGameBlueprintHash(blueprint)});
 
         const preview = service.previewBuild(blueprint, outDir, blueprintPath);
         expect(preview.status).toBe("ok");

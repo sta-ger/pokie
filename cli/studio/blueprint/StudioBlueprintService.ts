@@ -1,5 +1,6 @@
 import {
     buildGameBuildInfo,
+    computeGameBlueprintHash,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -18,11 +19,13 @@ import {
 } from "pokie";
 import fs from "fs";
 import path from "path";
+import {applyGameBlueprintToProject} from "./applyGameBlueprintToProject.js";
 import {isPathWithin} from "../isPathWithin.js";
 import type {StudioHomeService} from "../home/StudioHomeService.js";
 import type {StudioBuildPreviewView} from "../home/StudioBuildPreviewView.js";
 import type {StudioBuildResult} from "../home/StudioBuildResult.js";
 import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
+import type {StudioBlueprintApplyView} from "./StudioBlueprintApplyView.js";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 import type {StudioBlueprintSaveView} from "./StudioBlueprintSaveView.js";
 import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationView.js";
@@ -100,7 +103,8 @@ export class StudioBlueprintService {
         }
 
         try {
-            return {status: "ok", path: resolved, blueprint: this.loadBlueprint(resolved)};
+            const blueprint = this.loadBlueprint(resolved);
+            return {status: "ok", path: resolved, blueprint, blueprintHash: computeGameBlueprintHash(blueprint)};
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -330,5 +334,30 @@ export class StudioBlueprintService {
             unchanged: generated.unchanged,
             warnings: validated.warnings,
         };
+    }
+
+    // Commits an edited blueprint back to an already-open project's own source file and rebuilds its
+    // generated package in place, as a single conditional-commit "transaction" — see
+    // applyGameBlueprintToProject.ts for the hash-based conflict check and stage-then-atomically-
+    // publish-both semantics this only adds the path-containment guard on top of. `projectRoot`/
+    // `sourcePath` are expected to already be resolved by the caller (StudioServer, from the current
+    // project's own build-info.json — see GamePackageInspector) rather than taken from client input,
+    // but this still applies the same studioRoot containment guard save()/build() do, defensively.
+    public applyToProject(projectRoot: string, sourcePath: string, expectedHash: string, blueprint: unknown): StudioBlueprintApplyView {
+        if (isPathWithin(this.studioRoot, projectRoot)) {
+            return {status: "error", error: outsideStudioRootMessage(projectRoot)};
+        }
+        if (isPathWithin(this.studioRoot, sourcePath)) {
+            return {status: "error", error: outsideStudioRootMessage(sourcePath)};
+        }
+
+        return applyGameBlueprintToProject({
+            projectRoot,
+            sourcePath,
+            expectedHash,
+            blueprint,
+            blueprintValidator: this.blueprintValidator,
+            gamePackageGenerator: this.gamePackageGenerator,
+        });
     }
 }

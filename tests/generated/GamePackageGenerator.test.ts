@@ -1,5 +1,4 @@
-import {GameBlueprint, GameBuildInfo, GamePackageGenerator, PokieGame} from "pokie";
-import crypto from "crypto";
+import {computeGameBlueprintHash, GameBlueprint, GameBuildInfo, GamePackageGenerator, PokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -108,8 +107,7 @@ describe("GamePackageGenerator", () => {
         expect(() => new Date(buildInfo.generatedAt).toISOString()).not.toThrow();
         expect(new Date(buildInfo.generatedAt).toISOString()).toBe(buildInfo.generatedAt);
 
-        const expectedHash = crypto.createHash("sha256").update(JSON.stringify(blueprint)).digest("hex");
-        expect(buildInfo.blueprintHash).toBe(`sha256:${expectedHash}`);
+        expect(buildInfo.blueprintHash).toBe(computeGameBlueprintHash(blueprint));
     });
 
     it("lists every file it generated in build-info.json's \"files\"", () => {
@@ -455,7 +453,7 @@ describe("GamePackageGenerator", () => {
 
         const result = generator.generate(blueprint, cwd);
 
-        expect(result.buildInfo.blueprintHash).toBe(`sha256:${crypto.createHash("sha256").update(JSON.stringify(blueprint)).digest("hex")}`);
+        expect(result.buildInfo.blueprintHash).toBe(computeGameBlueprintHash(blueprint));
     });
 
     it("omits reelStripGeneration from build-info.json when not given", () => {
