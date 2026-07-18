@@ -174,9 +174,12 @@ describe("applyGameBlueprintToProject", () => {
     });
 
     // The requirement this covers: a build that succeeds but whose source-blueprint commit
-    // subsequently fails must not leave the generated package ahead of the (unwritten) source --
-    // both must end up back at exactly what they were before this apply attempt.
-    it("rolls the generated package back to its previous state when committing the source blueprint fails after a successful build", async () => {
+    // subsequently fails must leave both source and the generated package at exactly what they were
+    // before this apply attempt. Source is committed first (see applyGameBlueprintToProject's own doc
+    // comment), so this failure happens before any GENERATED_PACKAGE_FILES entry is even attempted --
+    // the "rollback" here is really commitStagedPath's own single-resource restore-on-failure, exercised
+    // through the outer function's generic commit-error handling.
+    it("leaves source and the generated package untouched when committing the source blueprint itself fails", async () => {
         const original = buildBlueprint();
         seedProject(original);
         const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
@@ -207,6 +210,92 @@ describe("applyGameBlueprintToProject", () => {
         expect(result.error).toContain("rolled back");
         expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
         expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(original));
+        expect(tempArtifactsLeftBehind()).toEqual([]);
+    });
+
+    // The requirement this covers: source is committed *first*, so a later failure committing a
+    // GENERATED_PACKAGE_FILES entry must roll the already-committed source back too -- proving the
+    // "commit source first" reordering didn't quietly turn multi-resource rollback into a source-only
+    // concern. If this ever regressed to leaving source updated while the package it belongs to failed
+    // to update, a caller would see an internally inconsistent project with no way to tell from the
+    // response alone.
+    it("rolls the already-committed source blueprint back when a later generated-package-file commit fails", async () => {
+        const original = buildBlueprint();
+        seedProject(original);
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const edited = buildBlueprint({symbols: ["A", "B", "C"], paytable: {A: {3: 5}, B: {3: 2}, C: {3: 1}}});
+        const indexJsPath = path.join(projectRoot, "src", "generated", "index.js");
+
+        const result = await applyGameBlueprintToProject({
+            projectRoot,
+            sourcePath,
+            expectedHash: computeGameBlueprintHash(original),
+            blueprint: edited,
+            blueprintValidator,
+            gamePackageGenerator,
+            // Source commits cleanly; the first GENERATED_PACKAGE_FILES entry to reach index.js's own
+            // commit fails -- by then source is already committed and must be rolled back too.
+            rename: (from, to) => {
+                if (to === indexJsPath && !from.includes(".stale-")) {
+                    throw new Error("simulated disk failure committing a generated package file");
+                }
+                fs.renameSync(from, to);
+            },
+        });
+
+        expect(result.status).toBe("error");
+        if (result.status !== "error") {
+            throw new Error("expected error");
+        }
+        expect(result.error).toContain("rolled back");
+        expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(original));
+        expect(fs.readFileSync(indexJsPath, "utf-8")).toBe(indexJsBefore);
+        expect(tempArtifactsLeftBehind()).toEqual([]);
+    });
+
+    // The requirement this covers: source is committed as the very next statement after the pre-commit
+    // hash re-check (see applyGameBlueprintToProject's own doc comment, step 5) -- nothing else runs in
+    // between, so an external edit landing exactly as that check reads the file is either still caught
+    // by it (conflict, nothing written) or lands too late to matter (source already durably committed).
+    // Unlike the "build's own race window" test above -- which fakes the read's *return value* -- this
+    // one has the fake actually mutate the real file on disk, standing in for a genuine external process
+    // winning the race, and asserts the external edit's own content survives untouched (not reverted to
+    // the original, not overwritten by this apply), with zero renames attempted anywhere.
+    it("preserves a real external edit that lands exactly as the source commit's own hash check reads the file, with zero renames attempted", async () => {
+        const original = buildBlueprint();
+        seedProject(original);
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const externallyEdited = buildBlueprint({symbols: ["A", "B", "EXTERNAL"]});
+        let readCount = 0;
+        let renameCount = 0;
+
+        const result = await applyGameBlueprintToProject({
+            projectRoot,
+            sourcePath,
+            expectedHash: computeGameBlueprintHash(original),
+            blueprint: buildBlueprint({symbols: ["A", "B", "MINE"]}),
+            blueprintValidator,
+            gamePackageGenerator,
+            // The 2nd read is the pre-commit check that immediately gates the source's own rename (see
+            // step 5) -- write real content to the real file right as that read happens, then return
+            // what's actually now on disk, rather than a canned string.
+            readFile: (filePath) => {
+                readCount += 1;
+                if (readCount === 2) {
+                    fs.writeFileSync(sourcePath, serializeGameBlueprint(externallyEdited));
+                }
+                return fs.readFileSync(filePath, "utf-8");
+            },
+            rename: (from, to) => {
+                renameCount += 1;
+                fs.renameSync(from, to);
+            },
+        });
+
+        expect(result.status).toBe("conflict");
+        expect(renameCount).toBe(0);
+        expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(externallyEdited));
+        expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
         expect(tempArtifactsLeftBehind()).toEqual([]);
     });
 });

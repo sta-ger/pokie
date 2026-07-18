@@ -42,16 +42,27 @@ type CommittedResource = {readonly realPath: string; readonly stalePath: string 
 //      3's own duration would otherwise leave open for an external edit to land in unnoticed. A
 //      mismatch here discards the staged work and reports a conflict, same as step 1's check, with
 //      still zero real writes.
-//   5. Commit each of GENERATED_PACKAGE_FILES individually, then the source blueprint — one rename
-//      each (see commitStagedPath), never a whole-directory swap of projectRoot: a project directory
-//      can (and typically does, once `npm install`ed) hold real content this apply has no business
-//      touching, like node_modules or a user's own files, so only the exact files "pokie build" itself
-//      would ever write are ever replaced. If any commit in the sequence fails, every resource already
-//      committed is rolled back (in reverse order) before returning, so the set as a whole is always
-//      all-or-nothing. The one case this can't paper over — a rollback rename itself failing — is
+//   5. Commit the source blueprint *first*, as the very next statement after that re-check — nothing
+//      else (no other file write, no loop over unrelated resources) runs between the read this check
+//      performs and the rename it gates. This used to be the other way around: the source blueprint was
+//      committed *last*, after every GENERATED_PACKAGE_FILES entry, so a hand edit or another process's
+//      write landing in the (real, multi-rename-sized) gap between the check passing and the loop
+//      finally reaching the source resource would have been silently clobbered by a rename that never
+//      re-verified what it was about to overwrite — the source's own commit had a check bolted on
+//      *before* it, not a check the commit itself was conditioned on. Committing it first instead means
+//      any such edit is provably impossible to lose: either the check (immediately adjacent) still sees
+//      it and the whole apply reports a conflict with nothing touched yet, or it lands too late to
+//      matter because the source is already durably committed.
+//   6. Commit each of GENERATED_PACKAGE_FILES individually — one rename each (see commitStagedPath),
+//      never a whole-directory swap of projectRoot: a project directory can (and typically does, once
+//      `npm install`ed) hold real content this apply has no business touching, like node_modules or a
+//      user's own files, so only the exact files "pokie build" itself would ever write are ever
+//      replaced. If any commit in the sequence fails (source's own commit included), every resource
+//      already committed is rolled back (in reverse order) before returning, so the set as a whole is
+//      always all-or-nothing. The one case this can't paper over — a rollback rename itself failing — is
 //      reported with the exact stale path to restore by hand, the same residual risk
 //      publishDirectoryAtomically's own single-resource version already documents and accepts.
-//   6. Best-effort removal of the now-superseded stale backups and the (by then empty) staging
+//   7. Best-effort removal of the now-superseded stale backups and the (by then empty) staging
 //      directory (logged, never a reason to report the apply itself as failed).
 export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProjectOptions): StudioBlueprintApplyView {
     const {projectRoot, sourcePath, expectedHash, blueprint, blueprintValidator, gamePackageGenerator} = options;
@@ -110,12 +121,15 @@ export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProject
         return staleConflict;
     }
 
+    // Source is listed *first* deliberately (see step 5 above): it's committed as the very next
+    // statement after the check immediately above, before any GENERATED_PACKAGE_FILES entry, so nothing
+    // this apply does can ever land between that check passing and the write it gates.
     const resources: StagedResource[] = [
+        {realPath: sourcePath, stagedPath: sourceTempFile},
         ...GENERATED_PACKAGE_FILES.map((relativeFile) => {
             const segments = relativeFile.split("/");
             return {realPath: path.join(projectRoot, ...segments), stagedPath: path.join(packageTempDir, ...segments)};
         }),
-        {realPath: sourcePath, stagedPath: sourceTempFile},
     ];
 
     const committed: CommittedResource[] = [];
