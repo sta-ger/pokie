@@ -261,6 +261,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         expect(restartCall).toBeDefined();
         expect(JSON.parse(restartCall?.init?.body ?? "{}")).toEqual({
             preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"},
+            preGeneratedLibraryExpectedHash: "sha256:lib-a",
         });
     });
 
@@ -294,5 +295,51 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         expect(screen.getByText(/wasn't compared against the right library/)).toBeInTheDocument();
         // The diff table must never be shown alongside a stale-snapshot warning.
         expect(screen.queryByText("Metric")).not.toBeInTheDocument();
+    });
+
+    it("'Use in runtime' does not start a changed library -- the runtime start fails cleanly instead of silently running the new content", async () => {
+        const user = userEvent.setup();
+        // Select library A (hash "sha256:lib-a"), then the file on disk changes before the handoff --
+        // the backend re-resolves the same selector fresh at start time, finds a different hash, and
+        // must refuse the start rather than silently launching a runtime against the new content. The
+        // fake backend here plays the part of that real check by returning a "failed" start result with
+        // the same clear message StudioRuntimeManager.startInternal() produces.
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("lib-a")}),
+            "/api/project/runtime/restart": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "failed",
+                    error:
+                        "The selected pre-generated outcome library changed since you selected it in Outcome Libraries " +
+                        "(expected hash sha256:lib-a, found sha256:lib-a-changed). Re-select it in Outcome Libraries and try again.",
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToOutcomeLibrariesTab(user);
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
+        await user.click(screen.getByRole("button", {name: "Load library"}));
+        await screen.findByText("Loaded successfully");
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Compare or use"}));
+
+        await user.click(screen.getByRole("button", {name: "Use in runtime"}));
+
+        // Navigated to the Runtime tab, and shown a clear stale-library error with a re-select
+        // suggestion -- never the "running against a pre-generated outcome library" confirmation.
+        expect(await screen.findByText(/changed since you selected it in Outcome Libraries/)).toBeInTheDocument();
+        expect(screen.getByText(/Re-select it in Outcome Libraries and try again/)).toBeInTheDocument();
+        expect(screen.queryByText("Running against a pre-generated outcome library")).not.toBeInTheDocument();
+
+        const restartCall = calls.find((call) => call.url === "/api/project/runtime/restart");
+        expect(JSON.parse(restartCall?.init?.body ?? "{}")).toEqual({
+            preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"},
+            preGeneratedLibraryExpectedHash: "sha256:lib-a",
+        });
     });
 });

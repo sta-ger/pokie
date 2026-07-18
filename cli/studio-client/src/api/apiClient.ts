@@ -484,6 +484,10 @@ export type StartRuntimeOptions = {
     // job (StudioOutcomeLibraryService.resolveLibrary(), via StudioRuntimeManager); this is never
     // resolved or interpreted client-side.
     preGeneratedLibrarySelector?: OutcomeLibrarySelector;
+    // The hash already shown to the user for that library at Select/Inspect time -- same
+    // snapshot-consistency contract compareOutcomeLibraries' own expectedLeftHash uses, so a library
+    // that changed on disk since the handoff was offered is never silently started as-is.
+    preGeneratedLibraryExpectedHash?: string;
 };
 
 export type StartRuntimeResult = StudioRuntimeStateView | {status: "already-running"; state: StudioRuntimeStateView};

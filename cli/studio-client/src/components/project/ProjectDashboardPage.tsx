@@ -696,11 +696,15 @@ export function ProjectDashboardPage() {
                         // own key above.
                         <OutcomeLibrariesTab
                             key={projectKey ?? "no-project"}
-                            onUseInRuntime={(selector) => {
+                            onUseInRuntime={(selector, expectedHash) => {
                                 // restart() (not start()) so this always takes effect, whether the
                                 // runtime is currently stopped or already running some other
                                 // configuration -- see StudioRuntimeManager.restart()'s own doc comment.
-                                runtime.restart({preGeneratedLibrarySelector: selector});
+                                // expectedHash is the hash Outcome Libraries already showed for this
+                                // library -- passing it lets the server refuse to silently start against
+                                // content that changed on disk since (see StudioRuntimeManager.
+                                // startInternal()'s own doc comment).
+                                runtime.restart({preGeneratedLibrarySelector: selector, preGeneratedLibraryExpectedHash: expectedHash});
                                 setActiveTab("runtime");
                             }}
                         />

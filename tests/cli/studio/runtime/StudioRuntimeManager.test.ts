@@ -532,5 +532,51 @@ describe("StudioRuntimeManager", () => {
 
             await manager.stop();
         });
+
+        it("starts normally when preGeneratedLibraryExpectedHash matches the freshly-resolved library's hash", async () => {
+            const library = fakeOutcomeLibrary("lib-handoff");
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, stubResolver({status: "ok", library, source: "json"}));
+
+            const result = await manager.start(
+                "/fake/project",
+                startOptions({
+                    preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"},
+                    preGeneratedLibraryExpectedHash: computeWeightedOutcomeLibraryHash(library),
+                }),
+            );
+
+            expect(result.status).toBe("started");
+            if (result.status === "started" && result.view.status === "running") {
+                expect(result.view.preGenerated).toEqual({libraryId: "lib-handoff", hash: computeWeightedOutcomeLibraryHash(library)});
+            }
+
+            await manager.stop();
+        });
+
+        it("fails the whole start with a clear stale-library error when the library changed on disk since it was selected -- never silently starting against the new content", async () => {
+            // Simulates exactly the "Select library A -> file changes on disk -> Use in runtime" scenario:
+            // the selector still resolves successfully (the file is still readable/valid), but its content
+            // -- and therefore its hash -- no longer matches what Outcome Libraries showed the user.
+            const changedLibrary = fakeOutcomeLibrary("lib-handoff-changed");
+            const staleExpectedHash = computeWeightedOutcomeLibraryHash(fakeOutcomeLibrary("lib-handoff"));
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, stubResolver({status: "ok", library: changedLibrary, source: "json"}));
+
+            const result = await manager.start(
+                "/fake/project",
+                startOptions({
+                    preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"},
+                    preGeneratedLibraryExpectedHash: staleExpectedHash,
+                }),
+            );
+
+            expect(result.status).toBe("failed");
+            if (result.status === "failed") {
+                expect(result.error).toContain("changed since you selected it");
+                expect(result.error).toContain("Re-select it in Outcome Libraries");
+            }
+            // No server was ever started against the changed content -- the manager stays cleanly stopped.
+            expect(manager.getState().status).toBe("failed");
+            expect(await manager.createSession()).toEqual({status: "not-running"});
+        });
     });
 });

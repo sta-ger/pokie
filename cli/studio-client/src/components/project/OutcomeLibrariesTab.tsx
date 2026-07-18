@@ -116,7 +116,7 @@ function SelectorFieldsInput({fields, onChange, idPrefix}: {fields: SelectorFiel
 // action, an invalidate*() helper that bumps the ref/resets state/releases its own double-submit guard
 // immediately (so a superseded request never blocks a fresh one nor applies its late response), and
 // "Continue" only ever shown after a genuinely successful step.
-export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector: OutcomeLibrarySelector) => void}) {
+export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector: OutcomeLibrarySelector, expectedHash: string) => void}) {
     const fetchImpl = useStudioApi();
     const [activeStep, setActiveStep] = useState(0);
 
@@ -598,7 +598,7 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                                     onClick={() => {
                                         const selector = buildSelector(fields);
                                         if (selector !== undefined) {
-                                            onUseInRuntime(selector);
+                                            onUseInRuntime(selector, selectResult.provenance.hash);
                                         }
                                     }}
                                 >

@@ -237,10 +237,19 @@ export class StudioRuntimeManager {
             return this.fail(error);
         }
 
-        // Resolved *before* the server is ever created -- an unresolvable/invalid selector must fail the
-        // whole start attempt (never a server silently running in plain-RNG mode when the caller asked
-        // for pre-generated), same "no well-formed input, no pipeline call" ordering
-        // StudioDeploymentService.run() already follows for its own per-mode library loads.
+        // Resolved *before* the server is ever created -- an unresolvable/invalid/changed selector must
+        // fail the whole start attempt (never a server silently running in plain-RNG mode, or against
+        // content that moved on since the handoff was offered, when the caller asked for pre-generated),
+        // same "no well-formed input, no pipeline call" ordering StudioDeploymentService.run() already
+        // follows for its own per-mode library loads.
+        //
+        // "preGeneratedLibraryExpectedHash" is the hash the Outcome Libraries tab already showed the
+        // user for this library at Select/Inspect time -- same expectedLeftHash/leftSnapshotStale
+        // snapshot-consistency contract StudioOutcomeLibraryService.compare() uses. The library is
+        // *always* re-resolved fresh here (a handoff should run what's actually on disk now, not a
+        // cached copy), but if the freshly-resolved library's hash no longer matches what the user was
+        // shown, the whole start fails with a clear message rather than silently launching a runtime
+        // against content the user never actually reviewed.
         let preGeneratedOutcomeLibrary: PokieDevServerOptions["preGeneratedOutcomeLibrary"];
         let preGeneratedLibrary: {libraryId: string; hash: string} | undefined;
         if (options.preGeneratedLibrarySelector !== undefined) {
@@ -251,8 +260,18 @@ export class StudioRuntimeManager {
             if (resolved.status === "invalid") {
                 return this.fail(new Error(`The selected pre-generated outcome library is invalid: ${resolved.errors.map((issue) => issue.message).join(" ")}`));
             }
+            const hash = computeWeightedOutcomeLibraryHash(resolved.library);
+            if (options.preGeneratedLibraryExpectedHash !== undefined && hash !== options.preGeneratedLibraryExpectedHash) {
+                return this.fail(
+                    new Error(
+                        "The selected pre-generated outcome library changed since you selected it in Outcome Libraries " +
+                            `(expected hash ${options.preGeneratedLibraryExpectedHash}, found ${hash}). ` +
+                            "Re-select it in Outcome Libraries and try again.",
+                    ),
+                );
+            }
             preGeneratedOutcomeLibrary = resolved.library;
-            preGeneratedLibrary = {libraryId: resolved.library.libraryId, hash: computeWeightedOutcomeLibraryHash(resolved.library)};
+            preGeneratedLibrary = {libraryId: resolved.library.libraryId, hash};
         }
 
         const sessionRepository =
