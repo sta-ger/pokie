@@ -13,6 +13,8 @@ import type {
     StudioDeploymentRunView,
     StudioDeploymentTargetSummary,
     StudioHomeRecentProjectView,
+    StudioParSheetExportView,
+    StudioParSheetImportView,
     StudioReelStripGenerationView,
     StudioReplayJobView,
     StudioReplayListEntry,
@@ -165,6 +167,45 @@ export async function saveBlueprint(
         throw new Error(await extractErrorMessage(response, "Failed to save blueprint"));
     }
     return (await response.json()) as StudioBlueprintSaveView;
+}
+
+// Never writes anything — see StudioBlueprintService.importParSheet()'s own doc comment. Domain-level
+// import failures (missing/malformed workbook, mapping errors) are never thrown -- they come back as
+// "load-error" (a bad path) or as errors/warnings inside an "ok" result (a well-formed workbook whose own
+// content has problems), same convention as loadBlueprint()'s own "load-error" branch.
+export async function importParSheet(fetchImpl: FetchLike, path: string): Promise<StudioParSheetImportView> {
+    const response = await fetchImpl("/api/home/blueprints/par-import", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to import PAR sheet"));
+    }
+    return (await response.json()) as StudioParSheetImportView;
+}
+
+// A 409 ("conflict") is an expected domain outcome, not a failed request — same convention as
+// saveBlueprint()'s own 409 handling.
+export async function exportParSheet(
+    fetchImpl: FetchLike,
+    blueprint: unknown,
+    path: string,
+    overwrite: boolean,
+    sourcePath?: string,
+): Promise<StudioParSheetExportView> {
+    const response = await fetchImpl("/api/home/blueprints/par-export", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint, path, overwrite, sourcePath}),
+    });
+    if (response.status === 409) {
+        return (await response.json()) as StudioParSheetExportView;
+    }
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to export PAR sheet"));
+    }
+    return (await response.json()) as StudioParSheetExportView;
 }
 
 // Never writes anything — see StudioBlueprintService.previewBuild()'s own doc comment.

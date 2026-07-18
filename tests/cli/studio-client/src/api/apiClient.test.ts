@@ -8,6 +8,7 @@ import {
     closeProject,
     createProject,
     createRuntimeSession,
+    exportParSheet,
     FetchLike,
     getContext,
     getProjectContext,
@@ -16,6 +17,7 @@ import {
     getRuntimeSession,
     getRuntimeState,
     getSimulation,
+    importParSheet,
     initProject,
     inspectProject,
     listReplays,
@@ -367,6 +369,71 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"path" is required.'}}));
 
             await expect(saveBlueprint(fetchImpl, "", {}, false)).rejects.toThrow('"path" is required.');
+        });
+    });
+
+    describe("importParSheet", () => {
+        it("POSTs the path and returns the import result", async () => {
+            const body = {status: "ok", path: "/a/in.par.xlsx", blueprint: {manifest: {id: "a"}}, errors: [], warnings: []};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await importParSheet(fetchImpl, "./in.par.xlsx");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/par-import",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({path: "./in.par.xlsx"})},
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns a load-error result rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "load-error", error: "not found"}}));
+
+            expect(await importParSheet(fetchImpl, "./missing.par.xlsx")).toEqual({status: "load-error", error: "not found"});
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"path" is required.'}}));
+
+            await expect(importParSheet(fetchImpl, "")).rejects.toThrow('"path" is required.');
+        });
+    });
+
+    describe("exportParSheet", () => {
+        it("POSTs the blueprint/path/overwrite/sourcePath and returns the export result", async () => {
+            const body = {status: "ok", path: "/a/out.par.xlsx", warnings: []};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
+
+            const result = await exportParSheet(fetchImpl, {manifest: {id: "a"}}, "./out.par.xlsx", false, "blueprint.json");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/par-export",
+                    init: {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({blueprint: {manifest: {id: "a"}}, path: "./out.par.xlsx", overwrite: false, sourcePath: "blueprint.json"}),
+                    },
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns a typed conflict (not a thrown error) on 409", async () => {
+            const body = {status: "conflict", path: "/a/out.par.xlsx", error: "already exists"};
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body}));
+
+            const result = await exportParSheet(fetchImpl, {manifest: {id: "a"}}, "./out.par.xlsx", false);
+
+            expect(result).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"path" is required.'}}));
+
+            await expect(exportParSheet(fetchImpl, {}, "", false)).rejects.toThrow('"path" is required.');
         });
     });
 

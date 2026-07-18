@@ -14,6 +14,8 @@ import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
 import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
+import {validateParSheetExportRequest, ParSheetExportRequestInput} from "./blueprint/validateParSheetExportRequest.js";
+import {validateParSheetImportRequest, ParSheetImportRequestInput} from "./blueprint/validateParSheetImportRequest.js";
 import {validateSaveBlueprintRequest, SaveBlueprintRequestInput} from "./blueprint/validateSaveBlueprintRequest.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
@@ -283,6 +285,16 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/blueprints/reel-strip-generation-preview") {
             await this.handleBlueprintReelStripGenerationPreview(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/par-import") {
+            await this.handleBlueprintParImport(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/par-export") {
+            await this.handleBlueprintParExport(req, res);
             return;
         }
 
@@ -729,6 +741,40 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, this.blueprintService.previewReelStripGeneration(validated.blueprint));
+    }
+
+    private async handleBlueprintParImport(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateParSheetImportRequest((body ?? {}) as ParSheetImportRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.blueprintService.importParSheet(validated.path));
+    }
+
+    private async handleBlueprintParExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateParSheetExportRequest((body ?? {}) as ParSheetExportRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.blueprintService.exportParSheet(validated.blueprint, validated.path, validated.overwrite, validated.sourcePath);
+        this.sendJson(res, this.statusForParSheetExport(result.status), result);
+    }
+
+    private statusForParSheetExport(status: "ok" | "conflict" | "invalid" | "error"): number {
+        if (status === "ok") {
+            return 201;
+        }
+        return status === "conflict" ? 409 : 200;
     }
 
     private async handleBlueprintBuild(req: IncomingMessage, res: ServerResponse): Promise<void> {

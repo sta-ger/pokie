@@ -6,10 +6,15 @@ import {
     GamePackageGenerating,
     GamePackageGenerator,
     loadGameBlueprint,
+    ParSheetExporter,
+    ParSheetExporting,
+    ParSheetImporter,
+    ParSheetImporting,
     ReelStrip,
     ReelStripAnalyzer,
     ReelStripGenerationSummary,
     resolveReelStripGeneration,
+    ValidationIssue,
 } from "pokie";
 import fs from "fs";
 import path from "path";
@@ -21,6 +26,8 @@ import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 import type {StudioBlueprintSaveView} from "./StudioBlueprintSaveView.js";
 import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationView.js";
+import type {StudioParSheetExportView} from "./StudioParSheetExportView.js";
+import type {StudioParSheetImportView} from "./StudioParSheetImportView.js";
 import type {StudioReelStripGenerationReelView, StudioReelStripGenerationView} from "./StudioReelStripGenerationView.js";
 
 const outsideStudioRootMessage = (rawPath: string): string =>
@@ -30,14 +37,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// Drives GameBlueprintValidating/GamePackageGenerating/loadGameBlueprint/buildGameBuildInfo — the exact
-// same services `pokie build <config.json>` itself uses — directly, for the Blueprint Editor's five
-// /api/home/blueprints/* endpoints. No CLI command is ever spawned as a subprocess, and none of their
-// logic is reimplemented; this only adds the plain-data DTO conversions (never a stack trace) and the
-// path-containment/overwrite-confirmation rules a GUI editor needs on top. Mirrors StudioHomeService's
-// own "pokieVersion first, everything else an overridable collaborator" constructor shape; takes the
-// already-built StudioHomeService as a collaborator purely so a successful build can be remembered via
-// its own rememberRecentProject() — see that method's own doc comment for why that's public.
+// Drives GameBlueprintValidating/GamePackageGenerating/loadGameBlueprint/buildGameBuildInfo/
+// ParSheetImporting/ParSheetExporting — the exact same services `pokie build`/`pokie par import`/
+// `pokie par export` themselves use — directly, for the Blueprint Editor's /api/home/blueprints/*
+// endpoints. No CLI command is ever spawned as a subprocess, and none of their logic is reimplemented;
+// this only adds the plain-data DTO conversions (never a stack trace) and the path-containment/
+// overwrite-confirmation rules a GUI editor needs on top. Mirrors StudioHomeService's own "pokieVersion
+// first, everything else an overridable collaborator" constructor shape; takes the already-built
+// StudioHomeService as a collaborator purely so a successful build can be remembered via its own
+// rememberRecentProject() — see that method's own doc comment for why that's public.
 export class StudioBlueprintService {
     private readonly pokieVersion: string;
     private readonly studioRoot: string;
@@ -46,6 +54,8 @@ export class StudioBlueprintService {
     private readonly blueprintValidator: GameBlueprintValidating;
     private readonly gamePackageGenerator: GamePackageGenerating;
     private readonly resolveReelStripGeneration: typeof resolveReelStripGeneration;
+    private readonly parSheetImporter: ParSheetImporting;
+    private readonly parSheetExporter: ParSheetExporting;
 
     constructor(
         pokieVersion: string,
@@ -60,6 +70,10 @@ export class StudioBlueprintService {
         // ReelStripGenerator -- the real resolveReelStripGeneration is always what "pokie build" itself
         // (and this service, by default) actually runs.
         resolveReelStripGenerationFn: typeof resolveReelStripGeneration = resolveReelStripGeneration,
+        // Same "pokie par import/export" services the ParCommand CLI verb itself uses -- see
+        // importParSheet()/exportParSheet()'s own doc comments for what this service adds on top.
+        parSheetImporter: ParSheetImporting = new ParSheetImporter(),
+        parSheetExporter: ParSheetExporting = new ParSheetExporter(pokieVersion),
     ) {
         this.pokieVersion = pokieVersion;
         this.studioRoot = path.resolve(studioRoot);
@@ -68,6 +82,8 @@ export class StudioBlueprintService {
         this.blueprintValidator = blueprintValidator;
         this.gamePackageGenerator = gamePackageGenerator;
         this.resolveReelStripGeneration = resolveReelStripGenerationFn;
+        this.parSheetImporter = parSheetImporter;
+        this.parSheetExporter = parSheetExporter;
     }
 
     public validate(blueprint: unknown): StudioBlueprintValidationView {
@@ -114,6 +130,66 @@ export class StudioBlueprintService {
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
+    }
+
+    // Reads and maps a PAR sheet .xlsx workbook via ParSheetImporting (the exact same service "pokie par
+    // import" itself uses) — every diagnostic here (unknown/missing sheets or columns, blank required
+    // cells, provenance checks, the blueprint's own GameBlueprintValidator issues) comes straight from
+    // ParSheetImportResult.issues, split by severity the same way validate() splits GameBlueprintValidator's
+    // own issues; none of that mapping/validation logic is reimplemented here. Unlike load() (a JSON
+    // blueprint file, parsed as-is), "ok" here never means the result is error-free — the PAR Sheet
+    // Import/Export panel's own Diagnose & map step is what actually shows errors/warnings to the user,
+    // exactly like previewReelStripGeneration()'s own "surfaced alongside, never instead of" contract.
+    public async importParSheet(rawPath: string): Promise<StudioParSheetImportView> {
+        const resolved = path.resolve(process.cwd(), rawPath);
+        if (isPathWithin(this.studioRoot, resolved)) {
+            return {status: "load-error", error: outsideStudioRootMessage(rawPath)};
+        }
+
+        try {
+            const result = await this.parSheetImporter.importFromFile(resolved);
+            const errors = result.issues.filter((issue) => issue.severity === "error");
+            const warnings = result.issues.filter((issue) => issue.severity !== "error");
+            return {status: "ok", path: resolved, blueprint: result.blueprint, provenance: result.provenance, errors, warnings};
+        } catch (error) {
+            return {status: "load-error", error: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    // Writes a PAR sheet .xlsx workbook via ParSheetExporting (the exact same service "pokie par export"
+    // itself uses) — same overwrite-confirmation contract as save() (a "conflict" is reported, never a
+    // write, unless the request already set `overwrite: true`), checked *before* ParSheetExporting.
+    // exportToFile is ever called, since that call's own validation is comparatively expensive and the
+    // conflict check needs no I/O beyond an existsSync. Every validation/export diagnostic in the "ok"/
+    // "invalid" result comes straight from exportToFile's own returned issues (which already includes
+    // running the exact same GameBlueprintValidator every other Studio DTO uses, plus PAR export's own
+    // reel-source checks) — none of that is reimplemented or re-derived here.
+    public async exportParSheet(blueprint: unknown, rawOutPath: string, overwrite: boolean, sourcePath?: string): Promise<StudioParSheetExportView> {
+        const resolved = path.resolve(process.cwd(), rawOutPath);
+        if (isPathWithin(this.studioRoot, resolved)) {
+            return {status: "error", error: outsideStudioRootMessage(rawOutPath)};
+        }
+
+        if (fs.existsSync(resolved) && !overwrite) {
+            return {
+                status: "conflict",
+                path: resolved,
+                error: `"${resolved}" already exists. Resubmit with "overwrite": true to replace it.`,
+            };
+        }
+
+        let issues: ValidationIssue[];
+        try {
+            issues = await this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath);
+        } catch (error) {
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
+
+        const errors = issues.filter((issue) => issue.severity === "error");
+        if (errors.length > 0) {
+            return {status: "invalid", errors, warnings: issues.filter((issue) => issue.severity !== "error")};
+        }
+        return {status: "ok", path: resolved, warnings: issues};
     }
 
     // Never writes anything — same technique as StudioHomeService.previewBuild()/BuildCommand's own

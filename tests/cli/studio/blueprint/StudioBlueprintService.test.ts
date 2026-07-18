@@ -1,4 +1,5 @@
-import {GameBlueprint, resolveReelStripGeneration} from "pokie";
+import {GameBlueprint, ParSheetExporting, ParSheetImporting, resolveReelStripGeneration, ValidationIssue} from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -277,6 +278,233 @@ describe("StudioBlueprintService", () => {
             );
 
             expect(fs.readdirSync(tmpDir)).toEqual([]);
+        });
+    });
+
+    describe("importParSheet", () => {
+        async function writeParSheet(dir: string, sheets: Record<string, unknown[][]>): Promise<string> {
+            const filePath = path.join(dir, "in.par.xlsx");
+            const workbook = new ExcelJS.Workbook();
+            for (const [name, rows] of Object.entries(sheets)) {
+                const worksheet = workbook.addWorksheet(name);
+                rows.forEach((row) => worksheet.addRow(row));
+            }
+            await workbook.xlsx.writeFile(filePath);
+            return filePath;
+        }
+
+        const validSheets = {
+            Manifest: [
+                ["Key", "Value"],
+                ["Id", "crazy-fruits"],
+                ["Name", "Crazy Fruits"],
+                ["Version", "0.1.0"],
+                ["Reels", 2],
+                ["Rows", 2],
+            ],
+            Symbols: [
+                ["Symbol", "Wild", "Scatter"],
+                ["A", false, false],
+                ["W", true, false],
+            ],
+            Paytable: [
+                ["Symbol", "Matches", "Multiplier"],
+                ["A", 2, 5],
+            ],
+        };
+
+        it("reads and maps a valid PAR sheet, delegating entirely to ParSheetImporting (no error-level issues)", async () => {
+            const service = createService();
+            const filePath = await writeParSheet(tmpDir, validSheets);
+
+            const result = await service.importParSheet(filePath);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                return;
+            }
+            expect(result.path).toBe(filePath);
+            expect(result.blueprint).toMatchObject({manifest: {id: "crazy-fruits"}, reels: 2, rows: 2});
+            expect(result.errors).toEqual([]);
+            // No "Meta" sheet in this fixture -- ParSheetImporter's own provenance-missing warning.
+            expect(result.warnings.some((issue) => issue.code === "parsheet-provenance-missing")).toBe(true);
+        });
+
+        it("surfaces mapping errors (e.g. a missing required sheet) without throwing", async () => {
+            const service = createService();
+            const withoutPaytable = Object.fromEntries(Object.entries(validSheets).filter(([name]) => name !== "Paytable"));
+            const filePath = await writeParSheet(tmpDir, withoutPaytable);
+
+            const result = await service.importParSheet(filePath);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                return;
+            }
+            expect(result.errors.some((issue) => issue.code === "parsheet-missing-sheet")).toBe(true);
+        });
+
+        it("returns a safe load-error for a missing/unreadable file, never a stack trace", async () => {
+            const service = createService();
+
+            const result = await service.importParSheet(path.join(tmpDir, "missing.par.xlsx"));
+
+            expect(result.status).toBe("load-error");
+            if (result.status === "load-error") {
+                expect(JSON.stringify(result)).not.toContain("\\n    at ");
+            }
+        });
+
+        it("rejects a path that resolves inside Studio's own internal directory", async () => {
+            const service = createService();
+
+            const result = await service.importParSheet(path.join(studioRoot, "in.par.xlsx"));
+
+            expect(result.status).toBe("load-error");
+            if (result.status === "load-error") {
+                expect(result.error).toContain("internal directory");
+            }
+        });
+
+        it("never writes anything", async () => {
+            const service = createService();
+            const filePath = await writeParSheet(tmpDir, validSheets);
+
+            await service.importParSheet(filePath);
+
+            expect(fs.readdirSync(tmpDir)).toEqual(["in.par.xlsx"]);
+        });
+
+        it("returns a safe load-error (no stack trace) when the underlying importer throws", async () => {
+            const throwingImporter: ParSheetImporting = {
+                importFromFile: () => {
+                    throw new Error("simulated exceljs read failure");
+                },
+            };
+            const service = new StudioBlueprintService("1.2.1", studioRoot, homeService, undefined, undefined, undefined, undefined, throwingImporter);
+            const filePath = await writeParSheet(tmpDir, validSheets);
+
+            const result = await service.importParSheet(filePath);
+
+            expect(result.status).toBe("load-error");
+            if (result.status === "load-error") {
+                expect(JSON.stringify(result)).not.toContain("\\n    at ");
+            }
+        });
+    });
+
+    describe("exportParSheet", () => {
+        const exportableBlueprint = buildBlueprint({
+            reelStrips: [
+                ["A", "B", "A"],
+                ["B", "A", "B"],
+                ["A", "B", "A"],
+            ],
+        });
+
+        it("writes a new file that doesn't exist yet, delegating entirely to ParSheetExporting", async () => {
+            const service = createService();
+            const filePath = path.join(tmpDir, "out.par.xlsx");
+
+            const result = await service.exportParSheet(exportableBlueprint, filePath, false);
+
+            expect(result.status).toBe("ok");
+            if (result.status === "ok") {
+                expect(result.path).toBe(filePath);
+            }
+            expect(fs.existsSync(filePath)).toBe(true);
+        });
+
+        it("returns conflict and writes nothing when the file already exists and overwrite isn't set", async () => {
+            const service = createService();
+            const filePath = path.join(tmpDir, "out.par.xlsx");
+            fs.writeFileSync(filePath, "existing content");
+
+            const result = await service.exportParSheet(exportableBlueprint, filePath, false);
+
+            expect(result.status).toBe("conflict");
+            expect(fs.readFileSync(filePath, "utf-8")).toBe("existing content");
+        });
+
+        it("overwrites the file when overwrite is true", async () => {
+            const service = createService();
+            const filePath = path.join(tmpDir, "out.par.xlsx");
+            fs.writeFileSync(filePath, "existing content");
+
+            const result = await service.exportParSheet(exportableBlueprint, filePath, true);
+
+            expect(result.status).toBe("ok");
+            expect(fs.readFileSync(filePath, "utf-8")).not.toBe("existing content");
+        });
+
+        it("returns invalid and writes nothing for a blueprint whose reel source PAR export can't represent", async () => {
+            const service = createService();
+            const filePath = path.join(tmpDir, "out.par.xlsx");
+            const unsupportedBlueprint = buildBlueprint({
+                reelStripGeneration: [
+                    {type: "literal", strip: ["A", "B"]},
+                    {type: "literal", strip: ["B", "A"]},
+                    {type: "literal", strip: ["A", "B"]},
+                ],
+            });
+
+            const result = await service.exportParSheet(unsupportedBlueprint, filePath, false);
+
+            expect(result.status).toBe("invalid");
+            if (result.status === "invalid") {
+                expect(result.errors.some((issue) => issue.code === "parsheet-unsupported-reel-source")).toBe(true);
+            }
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
+
+        it("returns invalid and writes nothing for a structurally broken blueprint", async () => {
+            const service = createService();
+            const filePath = path.join(tmpDir, "out.par.xlsx");
+
+            const result = await service.exportParSheet(buildBlueprint({reels: 0}), filePath, false);
+
+            expect(result.status).toBe("invalid");
+            expect(fs.existsSync(filePath)).toBe(false);
+        });
+
+        it("rejects a path that resolves inside Studio's own internal directory", async () => {
+            const service = createService();
+
+            const result = await service.exportParSheet(exportableBlueprint, path.join(studioRoot, "out.par.xlsx"), true);
+
+            expect(result.status).toBe("error");
+            if (result.status === "error") {
+                expect(result.error).toContain("internal directory");
+            }
+            expect(fs.existsSync(path.join(studioRoot, "out.par.xlsx"))).toBe(false);
+        });
+
+        it("returns a safe error (no stack trace) when the underlying exporter throws", async () => {
+            const throwingExporter: ParSheetExporting = {
+                exportToFile: (): Promise<ValidationIssue[]> => {
+                    throw new Error("simulated exceljs write failure");
+                },
+            };
+            const service = new StudioBlueprintService(
+                "1.2.1",
+                studioRoot,
+                homeService,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                throwingExporter,
+            );
+            const filePath = path.join(tmpDir, "out.par.xlsx");
+
+            const result = await service.exportParSheet(exportableBlueprint, filePath, false);
+
+            expect(result.status).toBe("error");
+            if (result.status === "error") {
+                expect(JSON.stringify(result)).not.toContain("\\n    at ");
+            }
+            expect(fs.existsSync(filePath)).toBe(false);
         });
     });
 

@@ -19,6 +19,7 @@ import {
     WeightedOutcomeLibrary,
     WinEvaluationResult,
 } from "pokie";
+import ExcelJS from "exceljs";
 import fs from "fs";
 import http from "http";
 import os from "os";
@@ -817,6 +818,160 @@ describe("StudioServer", () => {
                 expect(reels[1]).toMatchObject({reelIndex: 1, type: "generated", success: true});
                 expect(reels[2]).toMatchObject({reelIndex: 2, type: "literal", strip: ["B", "A"]});
                 expect(fs.readdirSync(workDir)).toEqual([]);
+            });
+        });
+
+        describe("POST /api/home/blueprints/par-import", () => {
+            async function writeParSheet(sheets: Record<string, unknown[][]>): Promise<string> {
+                const filePath = path.join(workDir, "in.par.xlsx");
+                const workbook = new ExcelJS.Workbook();
+                for (const [name, rows] of Object.entries(sheets)) {
+                    const worksheet = workbook.addWorksheet(name);
+                    rows.forEach((row) => worksheet.addRow(row));
+                }
+                await workbook.xlsx.writeFile(filePath);
+                return filePath;
+            }
+
+            const validSheets = {
+                Manifest: [
+                    ["Key", "Value"],
+                    ["Id", "crazy-fruits"],
+                    ["Name", "Crazy Fruits"],
+                    ["Version", "0.1.0"],
+                    ["Reels", 2],
+                    ["Rows", 2],
+                ],
+                Symbols: [
+                    ["Symbol", "Wild", "Scatter"],
+                    ["A", false, false],
+                ],
+                Paytable: [
+                    ["Symbol", "Matches", "Multiplier"],
+                    ["A", 2, 5],
+                ],
+            };
+
+            it("rejects a body with no path field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-import`, {});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"path" is required.'});
+            });
+
+            it("reads and maps a valid PAR sheet", async () => {
+                const filePath = await writeParSheet(validSheets);
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-import`, {path: filePath});
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "ok", path: filePath, blueprint: {manifest: {id: "crazy-fruits"}, reels: 2, rows: 2}, errors: []});
+            });
+
+            it("returns a safe load-error for a missing file", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-import`, {
+                    path: path.join(workDir, "does-not-exist.par.xlsx"),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "load-error"});
+                expect(JSON.stringify(body)).not.toContain("\\n    at ");
+            });
+
+            it("returns a safe load-error for a path inside Studio's own internal directory", async () => {
+                const insidePath = path.join(homeStudioRoot, "index.html");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-import`, {path: insidePath});
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "load-error"});
+                expect((body as {error: string}).error).toContain("internal directory");
+            });
+        });
+
+        describe("POST /api/home/blueprints/par-export", () => {
+            const exportableBlueprint = buildBlueprint({
+                reelStrips: [
+                    ["A", "B", "A"],
+                    ["B", "A", "B"],
+                    ["A", "B", "A"],
+                ],
+            });
+
+            it("rejects a body with no path field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-export`, {blueprint: exportableBlueprint});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"path" is required.'});
+            });
+
+            it("rejects a body with no blueprint field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-export`, {
+                    path: path.join(workDir, "out.par.xlsx"),
+                });
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"blueprint" is required.'});
+            });
+
+            it("writes a new PAR sheet file", async () => {
+                const filePath = path.join(workDir, "out.par.xlsx");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-export`, {
+                    path: filePath,
+                    blueprint: exportableBlueprint,
+                });
+
+                expect(status).toBe(201);
+                expect(body).toMatchObject({status: "ok", path: filePath});
+                expect(fs.existsSync(filePath)).toBe(true);
+            });
+
+            it("returns 409 conflict and writes nothing when the file already exists and overwrite isn't set", async () => {
+                const filePath = path.join(workDir, "out.par.xlsx");
+                fs.writeFileSync(filePath, "existing content");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-export`, {
+                    path: filePath,
+                    blueprint: exportableBlueprint,
+                });
+
+                expect(status).toBe(409);
+                expect(body).toMatchObject({status: "conflict", path: filePath});
+                expect(fs.readFileSync(filePath, "utf-8")).toBe("existing content");
+            });
+
+            it("returns invalid and writes nothing for a blueprint whose reel source PAR export can't represent", async () => {
+                const filePath = path.join(workDir, "out.par.xlsx");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-export`, {
+                    path: filePath,
+                    blueprint: buildBlueprint({
+                        reelStripGeneration: [
+                            {type: "literal", strip: ["A", "B"]},
+                            {type: "literal", strip: ["B", "A"]},
+                            {type: "literal", strip: ["A", "B"]},
+                        ],
+                    }),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "invalid"});
+                expect((body as {errors: Array<{code: string}>}).errors.some((issue) => issue.code === "parsheet-unsupported-reel-source")).toBe(true);
+                expect(fs.existsSync(filePath)).toBe(false);
+            });
+
+            it("returns a safe error for a path inside Studio's own internal directory", async () => {
+                const insidePath = path.join(homeStudioRoot, "out.par.xlsx");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-export`, {
+                    path: insidePath,
+                    blueprint: exportableBlueprint,
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "error"});
+                expect((body as {error: string}).error).toContain("internal directory");
             });
         });
 

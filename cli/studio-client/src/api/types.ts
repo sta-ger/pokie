@@ -190,6 +190,42 @@ export type StudioBlueprintSaveView =
     | {status: "conflict"; path: string; error: string}
     | {status: "error"; error: string};
 
+// Read from (or written to) a PAR sheet's own "Meta" sheet — never fed back into GameBlueprint fields,
+// purely informational (see cli/studio/blueprint/StudioParSheetImportView.ts's own doc comment).
+export type ParSheetProvenance = {
+    schemaVersion?: number;
+    pokieVersion?: string;
+    exportedAt?: string;
+    source?: string;
+    blueprintHash?: string;
+};
+
+// POST /api/home/blueprints/par-import's own DTO — see
+// cli/studio/blueprint/StudioParSheetImportView.ts's own doc comment. "ok" here means "the file was read
+// and mapped", never "the result is error-free" -- errors/warnings are the PAR Sheet Import/Export
+// panel's own Diagnose & map step's data, not a gate on reaching "ok".
+export type StudioParSheetImportView =
+    | {
+          status: "ok";
+          path: string;
+          blueprint: unknown;
+          provenance?: ParSheetProvenance;
+          errors: ValidationIssue[];
+          warnings: ValidationIssue[];
+      }
+    | {status: "load-error"; error: string};
+
+// POST /api/home/blueprints/par-export's own DTO — see
+// cli/studio/blueprint/StudioParSheetExportView.ts's own doc comment. "conflict" mirrors
+// StudioBlueprintSaveView's own overwrite-confirmation contract; "invalid" (never a write) covers both a
+// blueprint that fails validation and one PAR export simply can't represent (e.g.
+// "parsheet-unsupported-reel-source").
+export type StudioParSheetExportView =
+    | {status: "ok"; path: string; warnings: ValidationIssue[]}
+    | {status: "conflict"; path: string; error: string}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
+    | {status: "error"; error: string};
+
 export type SimulationReportBreakdownComponent = {
     rounds: number;
     totalBet: number;

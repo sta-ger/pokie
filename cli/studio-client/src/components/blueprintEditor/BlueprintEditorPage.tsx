@@ -23,6 +23,7 @@ import {BlueprintLoadSaveControls} from "./BlueprintLoadSaveControls";
 import {BlueprintValidationPanel} from "./BlueprintValidationPanel";
 import {LayoutFieldset} from "./LayoutFieldset";
 import {MetadataFieldset} from "./MetadataFieldset";
+import {ParSheetImportExportPanel} from "./ParSheetImportExportPanel";
 import {PaylinesEditor} from "./PaylinesEditor";
 import {PaytableEditor} from "./PaytableEditor";
 import {ReelGenerationModeSelector} from "./ReelGenerationModeSelector";
@@ -175,6 +176,20 @@ export function BlueprintEditorPage({
             .finally(() => loadGuard.end());
     };
 
+    // A successful PAR sheet Apply is a wholesale blueprint replace exactly like Load (see
+    // ParSheetImportExportPanel's own doc comment) -- same "clean starting point" bookkeeping handleLoad's
+    // own success branch does, reusing `sourcePath` (the .xlsx path) as this blueprint's own
+    // BlueprintBuildPanel `sourcePath` going forward. `overwriteConfirmedForPath` resets since this isn't
+    // a JSON path Save has ever confirmed overwriting.
+    const handleApplyImportedBlueprint = (importedBlueprint: unknown, sourcePath: string): void => {
+        nextFormGenerationIsClean.current = true;
+        editor.loadFrom(importedBlueprint);
+        setBlueprintPath(sourcePath);
+        overwriteConfirmedForPath.current = undefined;
+        setLoadView({status: "idle"});
+        setSaveView({status: "idle"});
+    };
+
     useEffect(() => {
         if (initialPath) {
             handleLoad(initialPath);
@@ -324,6 +339,17 @@ export function BlueprintEditorPage({
                     ]}
                     mb="md"
                     aria-label="Blueprint editor mode"
+                />
+                <ParSheetImportExportPanel
+                    // A wholesale blueprint replace (New/Load/a successful JSON apply) must reset this
+                    // panel's own in-progress import/export state entirely -- same "remount via a
+                    // formGeneration-keyed ancestor" technique ReelStripGenerationEditor relies on (see
+                    // useBlueprintEditor's own doc comment), since this panel otherwise lives outside the
+                    // Form/JSON content's own key={editor.formGeneration} boundary.
+                    key={editor.formGeneration}
+                    blueprint={blueprint}
+                    revision={revision}
+                    onApplyImportedBlueprint={handleApplyImportedBlueprint}
                 />
             </Collapse>
 
