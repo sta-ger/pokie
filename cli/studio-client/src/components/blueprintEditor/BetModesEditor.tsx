@@ -1,4 +1,4 @@
-import {Button, Checkbox, Table, TextInput} from "@mantine/core";
+import {Button, Table, TextInput} from "@mantine/core";
 import {useState} from "react";
 import {addBetMode, asBetModesList, duplicateBetModeAt, moveBetModeAt, removeBetModeAt, setBetModeField} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
@@ -21,7 +21,6 @@ export function BetModesEditor({blueprint, mutate}: {blueprint: Record<string, u
                             <Table.Th>Id</Table.Th>
                             <Table.Th>Label</Table.Th>
                             <Table.Th>Cost multiplier</Table.Th>
-                            <Table.Th>Forces free games</Table.Th>
                             <Table.Th />
                         </Table.Tr>
                     </Table.Thead>
@@ -47,13 +46,6 @@ export function BetModesEditor({blueprint, mutate}: {blueprint: Record<string, u
                                         aria-label={`Bet mode ${index + 1} cost multiplier`}
                                         value={mode.costMultiplier ?? ""}
                                         onCommit={(value) => mutate((b) => setBetModeField(b, index, "costMultiplier", value))}
-                                    />
-                                </Table.Td>
-                                <Table.Td>
-                                    <Checkbox
-                                        aria-label={`Bet mode ${index + 1} forces free games`}
-                                        checked={mode.forcesFreeGames ?? false}
-                                        onChange={(event) => mutate((b) => setBetModeField(b, index, "forcesFreeGames", event.currentTarget.checked || undefined))}
                                     />
                                 </Table.Td>
                                 <Table.Td>

@@ -156,8 +156,8 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
 
         this.validateWinModel(b.winModel, b.paylines !== undefined, issues);
-        const hasFreeGames = this.validateMechanics(b.mechanics, scatters, issues);
-        this.validateBetModes(b.betModes, hasFreeGames, issues);
+        this.validateMechanics(b.mechanics, scatters, issues);
+        this.validateBetModes(b.betModes, issues);
 
         return issues;
     }
@@ -209,11 +209,9 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
     }
 
-    // Returns whether a valid mechanics.freeGames was configured, so validateBetModes can cross-check
-    // a bet mode's "forcesFreeGames" against it.
-    private validateMechanics(mechanics: unknown, scatters: string[], issues: ValidationIssue[]): boolean {
+    private validateMechanics(mechanics: unknown, scatters: string[], issues: ValidationIssue[]): void {
         if (mechanics === undefined) {
-            return false;
+            return;
         }
         if (typeof mechanics !== "object" || mechanics === null || Array.isArray(mechanics)) {
             issues.push({
@@ -222,15 +220,13 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 message: '"mechanics", if present, must be an object.',
                 path: "mechanics",
             });
-            return false;
+            return;
         }
 
         const m = mechanics as Record<string, unknown>;
-        if (m.freeGames === undefined) {
-            return false;
+        if (m.freeGames !== undefined) {
+            this.validateFreeGames(m.freeGames, scatters, issues);
         }
-        this.validateFreeGames(m.freeGames, scatters, issues);
-        return true;
     }
 
     private validateFreeGames(freeGames: unknown, scatters: string[], issues: ValidationIssue[]): void {
@@ -297,7 +293,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
     }
 
-    private validateBetModes(betModes: unknown, hasFreeGames: boolean, issues: ValidationIssue[]): void {
+    private validateBetModes(betModes: unknown, issues: ValidationIssue[]): void {
         if (betModes === undefined) {
             return;
         }
@@ -353,22 +349,6 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     severity: "error",
                     message: `"${path}.costMultiplier", if present, must be a positive, finite number.`,
                     path: `${path}.costMultiplier`,
-                });
-            }
-
-            if (e.forcesFreeGames !== undefined && typeof e.forcesFreeGames !== "boolean") {
-                issues.push({
-                    code: "blueprint-betmode-invalid-forcesfreegames",
-                    severity: "error",
-                    message: `"${path}.forcesFreeGames", if present, must be a boolean.`,
-                    path: `${path}.forcesFreeGames`,
-                });
-            } else if (e.forcesFreeGames === true && !hasFreeGames) {
-                issues.push({
-                    code: "blueprint-betmode-forces-freegames-without-mechanics",
-                    severity: "error",
-                    message: `"${path}.forcesFreeGames" is true, but "mechanics.freeGames" is not configured — there is no free games feature to force.`,
-                    path: `${path}.forcesFreeGames`,
                 });
             }
         });

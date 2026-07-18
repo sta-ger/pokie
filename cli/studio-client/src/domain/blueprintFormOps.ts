@@ -732,7 +732,10 @@ export function removeFreeGamesAward(blueprint: Record<string, unknown>, matchCo
 
 // ---- Bet modes ----
 
-export type BetModeFormValues = {id: string; label?: string; costMultiplier?: number; forcesFreeGames?: boolean};
+// No "forces free games"-style field here on purpose -- see BetMode.ts's own doc comment: nothing in
+// the runtime session-construction path reads a bet mode at all, so a field promising engine behavior
+// would be a public API this package couldn't actually honor.
+export type BetModeFormValues = {id: string; label?: string; costMultiplier?: number};
 
 export function asBetModesList(value: unknown): BetModeFormValues[] {
     if (!Array.isArray(value)) {
@@ -746,9 +749,6 @@ export function asBetModesList(value: unknown): BetModeFormValues[] {
         }
         if (typeof record.costMultiplier === "number") {
             result.costMultiplier = record.costMultiplier;
-        }
-        if (typeof record.forcesFreeGames === "boolean") {
-            result.forcesFreeGames = record.forcesFreeGames;
         }
         return result;
     });

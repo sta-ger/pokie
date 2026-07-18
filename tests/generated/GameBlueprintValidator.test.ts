@@ -723,10 +723,7 @@ describe("GameBlueprintValidator", () => {
         it("accepts well-formed bet modes", () => {
             const blueprint = {
                 ...validBlueprint(),
-                betModes: [
-                    {id: "base"},
-                    {id: "buy-free-spins", label: "Buy Free Spins", costMultiplier: 100, forcesFreeGames: true},
-                ],
+                betModes: [{id: "base"}, {id: "buy-free-spins", label: "Buy Free Spins", costMultiplier: 100}],
                 mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
             };
 
@@ -757,10 +754,19 @@ describe("GameBlueprintValidator", () => {
             expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-invalid-costmultiplier");
         });
 
-        it("flags forcesFreeGames without mechanics.freeGames configured", () => {
+        // BetMode intentionally has no "forces free games entry" (or similar behavior-promising) field
+        // -- see BetMode.ts's own doc comment for why. A stray "forcesFreeGames" key some older/hand-
+        // written blueprint might still carry is just inert extra data on the entry, same as any other
+        // unrecognized property elsewhere on the blueprint -- never specifically flagged.
+        it("does not flag a stray forcesFreeGames-shaped property on a bet mode entry", () => {
             const blueprint = {...validBlueprint(), betModes: [{id: "buy", forcesFreeGames: true}]};
 
-            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-forces-freegames-without-mechanics");
+            expect(codesOf(validator.validate(blueprint))).toEqual(
+                expect.not.arrayContaining([
+                    "blueprint-betmode-invalid-forcesfreegames",
+                    "blueprint-betmode-forces-freegames-without-mechanics",
+                ]),
+            );
         });
     });
 });

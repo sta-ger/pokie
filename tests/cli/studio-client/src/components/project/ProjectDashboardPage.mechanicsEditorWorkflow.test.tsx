@@ -199,6 +199,24 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("ZZ");
     });
 
+    it("does not offer a non-functional 'forces free games' bet-mode control", async () => {
+        // BetMode has no field promising engine behavior nothing in the runtime actually delivers
+        // (see BetMode.ts's own doc comment) -- the editor must not offer a control for one either,
+        // in addition to a bet mode row only ever committing id/label/costMultiplier.
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({...BASE_ROUTES});
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
+
+        expect(screen.queryByText(/forces free games/i)).not.toBeInTheDocument();
+        expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+        expect(calls.every((call) => !(call.init?.body ?? "").includes("forcesFreeGames"))).toBe(true);
+    });
+
     it("discards a draft back to the originally loaded blueprint", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
@@ -219,10 +237,10 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("A");
     });
 
-    it("leaves the draft intact and shows an error when Apply's build fails", async () => {
+    it("never writes the source blueprint when Apply's build fails, so Discard still matches the real file", async () => {
         const user = userEvent.setup();
         const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const {fetchImpl} = createRoutedFakeFetch({
+        const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
             "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: SOURCE_PATH}}),
@@ -231,6 +249,11 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToMechanicsEditorTab(user);
+
+        const symbolInput = screen.getByLabelText("Symbol 1 id");
+        await user.clear(symbolInput);
+        await user.type(symbolInput, "ZZ");
+        await user.tab();
 
         await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
         await user.click(screen.getByRole("button", {name: "Run validation"}));
@@ -243,8 +266,67 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(await screen.findByText("Disk full.")).toBeInTheDocument();
         expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
 
+        // Build runs (and fails) before save is ever attempted -- a failed build must never leave the
+        // source blueprint file changed. Asserting no /save call at all is the actual rollback
+        // guarantee; asserting the file's own content on Discard (below) is the observable consequence.
+        expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
+        expect(calls.some((call) => call.url === "/api/home/blueprints/build")).toBe(true);
+
+        await user.click(screen.getByRole("button", {name: "Discard draft"}));
         await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
         expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("A");
+    });
+
+    it("refuses to apply and makes no writes when the source blueprint changed on disk since it was loaded", async () => {
+        const user = userEvent.setup();
+        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
+        const externallyModifiedBlueprint = {...BLUEPRINT, symbols: ["A", "B", "S", "EXTERNAL"]};
+        let loadCallCount = 0;
+        const calls: FakeCall[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            calls.push({url, init});
+            if (url === "/api/home/blueprints/load") {
+                loadCallCount += 1;
+                // First call is the tab's own initial load; the second is Apply's pre-write conflict
+                // check -- simulating something else (a hand edit, another "pokie build") changing the
+                // file in between.
+                const blueprint = loadCallCount === 1 ? BLUEPRINT : externallyModifiedBlueprint;
+                return jsonResponse({status: "ok", path: SOURCE_PATH, blueprint});
+            }
+            if (url === "/api/home/blueprints/validate") {
+                return jsonResponse(okValidation);
+            }
+            if (url in BASE_ROUTES) {
+                const routed = BASE_ROUTES[url]({url, init});
+                return jsonResponse(routed.body, routed.status);
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+
+        const symbolInput = screen.getByLabelText("Symbol 1 id");
+        await user.clear(symbolInput);
+        await user.type(symbolInput, "ZZ");
+        await user.tab();
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
+        await user.click(screen.getByRole("button", {name: "Run validation"}));
+        await screen.findByText("No issues found.");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
+        await user.click(screen.getByRole("button", {name: "Apply"}));
+        await user.click(await screen.findByRole("button", {name: "Confirm"}));
+
+        expect(await screen.findByText(/changed on disk since it was loaded here/)).toBeInTheDocument();
+        expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
+
+        // Neither write endpoint was ever reached -- the conflict is caught before anything is saved
+        // or rebuilt, so the external edit is never silently clobbered.
+        expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
+        expect(calls.some((call) => call.url === "/api/home/blueprints/build")).toBe(false);
+        expect(loadCallCount).toBe(2);
     });
 
     it("ignores a stale validate response once a newer one has resolved", async () => {
