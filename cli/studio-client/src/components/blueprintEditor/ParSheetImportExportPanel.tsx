@@ -79,11 +79,13 @@ export function ParSheetImportExportPanel({
 
     // Any change to which file is being imported invalidates whatever was previously shown/pending for
     // the *old* path -- same "an input that changes what a shown result even means" reasoning every other
-    // tab in this app already follows (e.g. the Deployment tab's own invalidate() on a mode edit).
+    // tab in this app already follows (e.g. the Deployment tab's own invalidate() on a mode edit). The
+    // canonical preview describes *this* import's blueprint, so it goes stale right along with it.
     function invalidateImport(): void {
         importRequestIdRef.current++;
         setImportView({status: "idle"});
         importGuard.end();
+        invalidatePreview();
     }
 
     function handleImportPathChange(value: string): void {
@@ -98,6 +100,7 @@ export function ParSheetImportExportPanel({
             return;
         }
         const requestId = ++importRequestIdRef.current;
+        invalidatePreview();
         setImportView({status: "loading"});
         importParSheet(fetchImpl, importPath.trim())
             .then((result) => {
@@ -126,19 +129,36 @@ export function ParSheetImportExportPanel({
     // ---- Preview canonical model (reuses the exact same previewBlueprintBuild/BuildPreviewDisplay the
     // Home nav's own Build-from-Blueprint flow already shows) ----
     const [buildPreview, setBuildPreview] = useState<BuildPreviewView>({status: "idle"});
+    const previewRequestIdRef = useRef(0);
     const previewGuard = useDoubleSubmitGuard();
+
+    // Bumping the ref both marks any in-flight preview request stale (so its late response is ignored,
+    // see runCanonicalPreview's own check) and frees the guard immediately, so a fresh preview can start
+    // right away instead of waiting for that now-superseded request to settle.
+    function invalidatePreview(): void {
+        previewRequestIdRef.current++;
+        setBuildPreview({status: "idle"});
+        previewGuard.end();
+    }
 
     function runCanonicalPreview(): void {
         if (importResult === undefined || !previewGuard.begin()) {
             return;
         }
+        const requestId = ++previewRequestIdRef.current;
         setBuildPreview({status: "loading"});
         previewBlueprintBuild(fetchImpl, importResult.blueprint, undefined, importResult.path)
             .then((result) => {
+                if (requestId !== previewRequestIdRef.current) {
+                    return;
+                }
                 previewGuard.end();
                 setBuildPreview(describeBuildPreview(result));
             })
             .catch((error: unknown) => {
+                if (requestId !== previewRequestIdRef.current) {
+                    return;
+                }
                 previewGuard.end();
                 setBuildPreview({status: "error", message: errorMessage(error)});
             });
@@ -314,7 +334,7 @@ export function ParSheetImportExportPanel({
                             </Button>
                         </QuickActions>
                         <BuildPreviewDisplay view={buildPreview} />
-                        {buildPreview.status !== "idle" && buildPreview.status !== "loading" && (
+                        {buildPreview.status === "ok" && (
                             <QuickActions>
                                 <Button onClick={() => setActiveStep(3)}>Continue to Apply / Export</Button>
                             </QuickActions>

@@ -24,6 +24,14 @@ const IMPORTED_BLUEPRINT = {
     paytable: {A: {2: 5}},
 };
 
+const IMPORTED_BLUEPRINT_B = {
+    manifest: {id: "imported-game-b", name: "Imported Game B", version: "0.3.0"},
+    reels: 3,
+    rows: 3,
+    symbols: ["C", "D"],
+    paytable: {C: {2: 7}},
+};
+
 async function goToImportStep(): Promise<void> {
     await screen.findByText("PAR Sheet Import / Export");
 }
@@ -290,5 +298,208 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(screen.queryByText("Imported successfully")).not.toBeInTheDocument();
         expect(screen.getByLabelText("PAR sheet path")).toHaveValue("");
         expect(screen.queryByRole("button", {name: stepperStep("Diagnose & map", "Issues & provenance")})).toBeDisabled();
+    });
+
+    it("ignores a late canonical-preview response for file A once file B has been imported", async () => {
+        const user = userEvent.setup();
+        let resolvePreviewA: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === IMPORT_URL) {
+                const {path} = JSON.parse((init?.body as string | undefined) ?? "{}") as {path?: string};
+                if (path === "./b.par.xlsx") {
+                    return jsonResponse({status: "ok", path: "/games/b.par.xlsx", blueprint: IMPORTED_BLUEPRINT_B, errors: [], warnings: []});
+                }
+                return jsonResponse({status: "ok", path: "/games/a.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+            }
+            if (url === BUILD_PREVIEW_URL) {
+                return new Promise((res) => {
+                    resolvePreviewA = res;
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToImportStep();
+        await user.type(screen.getByLabelText("PAR sheet path"), "./a.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText("Imported successfully");
+
+        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
+        await screen.findByText("Working…");
+
+        // Re-import a different file (B) while A's preview request is still pending.
+        await user.click(screen.getByRole("button", {name: stepperStep("Import", "Read a PAR sheet")}));
+        await user.clear(screen.getByLabelText("PAR sheet path"));
+        await user.type(screen.getByLabelText("PAR sheet path"), "./b.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText("Imported successfully");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Preview canonical model", "What it becomes")}));
+        expect(screen.queryByText("Working…")).not.toBeInTheDocument();
+        expect(screen.queryByText(/id: "imported-game"/)).not.toBeInTheDocument();
+
+        // A's late response now arrives -- it must be ignored, since B has since been imported.
+        resolvePreviewA?.(
+            await jsonResponse({
+                status: "ok",
+                warnings: [],
+                manifest: IMPORTED_BLUEPRINT.manifest,
+                reels: 2,
+                rows: 2,
+                symbolsCount: 2,
+                blueprintHash: "sha256:a",
+                expectedFiles: ["package.json"],
+            }),
+        );
+        await new Promise((resolveTimeout) => {
+            setTimeout(resolveTimeout, 50);
+        });
+        expect(screen.queryByText(/id: "imported-game"/)).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Apply / Export"})).not.toBeInTheDocument();
+    });
+
+    it("clears an already-shown canonical preview when the import file changes", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === IMPORT_URL) {
+                const {path} = JSON.parse((init?.body as string | undefined) ?? "{}") as {path?: string};
+                if (path === "./b.par.xlsx") {
+                    return jsonResponse({status: "ok", path: "/games/b.par.xlsx", blueprint: IMPORTED_BLUEPRINT_B, errors: [], warnings: []});
+                }
+                return jsonResponse({status: "ok", path: "/games/a.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+            }
+            if (url === BUILD_PREVIEW_URL) {
+                return jsonResponse({
+                    status: "ok",
+                    warnings: [],
+                    manifest: IMPORTED_BLUEPRINT.manifest,
+                    reels: 2,
+                    rows: 2,
+                    symbolsCount: 2,
+                    blueprintHash: "sha256:a",
+                    expectedFiles: ["package.json"],
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToImportStep();
+        await user.type(screen.getByLabelText("PAR sheet path"), "./a.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText("Imported successfully");
+
+        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
+        await screen.findByText(/id: "imported-game"/);
+        expect(screen.getByRole("button", {name: "Continue to Apply / Export"})).toBeInTheDocument();
+
+        // Switch to a different file -- the already-ready preview for A must not survive.
+        await user.click(screen.getByRole("button", {name: stepperStep("Import", "Read a PAR sheet")}));
+        await user.clear(screen.getByLabelText("PAR sheet path"));
+        await user.type(screen.getByLabelText("PAR sheet path"), "./b.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText("Imported successfully");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Preview canonical model", "What it becomes")}));
+        expect(screen.queryByText(/id: "imported-game"/)).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Apply / Export"})).not.toBeInTheDocument();
+    });
+
+    it("does not offer Continue to Apply/Export after a failed canonical preview", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => {
+            if (url === IMPORT_URL) {
+                return jsonResponse({status: "ok", path: "/games/a.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+            }
+            if (url === BUILD_PREVIEW_URL) {
+                return Promise.reject(new Error("build preview backend unavailable"));
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToImportStep();
+        await user.type(screen.getByLabelText("PAR sheet path"), "./a.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText("Imported successfully");
+
+        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
+
+        expect(await screen.findByText("build preview backend unavailable")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Apply / Export"})).not.toBeInTheDocument();
+    });
+
+    it("allows starting a new canonical preview immediately after invalidation, without waiting for the stale request", async () => {
+        const user = userEvent.setup();
+        let resolvePreviewA: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
+        let previewCallCount = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === IMPORT_URL) {
+                const {path} = JSON.parse((init?.body as string | undefined) ?? "{}") as {path?: string};
+                if (path === "./b.par.xlsx") {
+                    return jsonResponse({status: "ok", path: "/games/b.par.xlsx", blueprint: IMPORTED_BLUEPRINT_B, errors: [], warnings: []});
+                }
+                return jsonResponse({status: "ok", path: "/games/a.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+            }
+            if (url === BUILD_PREVIEW_URL) {
+                previewCallCount += 1;
+                if (previewCallCount === 1) {
+                    return new Promise((res) => {
+                        resolvePreviewA = res;
+                    });
+                }
+                return jsonResponse({
+                    status: "ok",
+                    warnings: [],
+                    manifest: IMPORTED_BLUEPRINT_B.manifest,
+                    reels: 3,
+                    rows: 3,
+                    symbolsCount: 2,
+                    blueprintHash: "sha256:b",
+                    expectedFiles: ["package.json"],
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToImportStep();
+        await user.type(screen.getByLabelText("PAR sheet path"), "./a.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText("Imported successfully");
+
+        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
+        await screen.findByText("Working…");
+
+        // Re-import file B while A's preview request is still pending -- this must invalidate it and
+        // free up the double-submit guard right away, not just once A's stale request settles.
+        await user.click(screen.getByRole("button", {name: stepperStep("Import", "Read a PAR sheet")}));
+        await user.clear(screen.getByLabelText("PAR sheet path"));
+        await user.type(screen.getByLabelText("PAR sheet path"), "./b.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText("Imported successfully");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Preview canonical model", "What it becomes")}));
+        await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
+
+        expect(await screen.findByText(/id: "imported-game-b"/)).toBeInTheDocument();
+
+        resolvePreviewA?.(
+            await jsonResponse({
+                status: "ok",
+                warnings: [],
+                manifest: IMPORTED_BLUEPRINT.manifest,
+                reels: 2,
+                rows: 2,
+                symbolsCount: 2,
+                blueprintHash: "sha256:a",
+                expectedFiles: ["package.json"],
+            }),
+        );
     });
 });
