@@ -41,6 +41,17 @@ export type StudioRuntimeSpinResult =
     | {status: "not-running"}
     | {status: "error"; error: string};
 
+// resolvePreGeneratedLibraryOrFail()'s own result -- see that method's doc comment. "none" means no
+// preGeneratedLibrarySelector was requested at all (a plain start/restart).
+type PreGeneratedLibraryResolution =
+    | {status: "none"}
+    | {status: "ok"; library: WeightedOutcomeLibrary<string>; summary: {libraryId: string; hash: string}}
+    | {status: "failed"; error: string};
+
+// The non-"failed" subset restart() passes into startInternal() as its already-validated preflight
+// snapshot -- see startInternal()'s own doc comment for why this must be reused as-is, never re-resolved.
+type PinnedPreGeneratedLibraryResolution = Exclude<PreGeneratedLibraryResolution, {status: "failed"}>;
+
 // Owns at most one PokieDevServerHandling instance for "the current project" — a process-local
 // lifecycle manager, same "constructor-injected loadGame, everything else overridable" shape as
 // StudioSimulationService/StudioReplayExecutionService, but for a genuinely long-lived server resource
@@ -125,6 +136,12 @@ export class StudioRuntimeManager {
     // runtime (its server, sessions, recent-spin history) only to then fail to replace it with anything.
     // A failure here returns a plain result without going through fail() (which would overwrite
     // `this.state`) — the currently running (or stopped) state is left exactly as it was.
+    //
+    // The *exact* resolution this preflight already validated is then pinned and passed straight into
+    // startInternal() rather than re-resolved after teardown -- otherwise the file could change again in
+    // the gap between this check and the server actually starting, and the server would end up running
+    // something other than what was just validated (a second, narrower TOCTOU window on top of the one
+    // teardown-ordering itself used to open). See startInternal()'s own doc comment.
     public async restart(projectRoot: string, options?: ValidatedStartRuntimeRequest): Promise<StudioRuntimeStartResult> {
         const effectiveOptions = options ?? this.lastOptions;
         if (effectiveOptions === undefined) {
@@ -137,7 +154,7 @@ export class StudioRuntimeManager {
         }
 
         await this.stopServerIfAny();
-        return this.startInternal(projectRoot, effectiveOptions);
+        return this.startInternal(projectRoot, effectiveOptions, preflight);
     }
 
     // Idempotent — stopping an already-stopped runtime is a no-op that still returns a clean result,
@@ -252,11 +269,7 @@ export class StudioRuntimeManager {
     private async resolvePreGeneratedLibraryOrFail(
         projectRoot: string,
         options: ValidatedStartRuntimeRequest,
-    ): Promise<
-        | {status: "none"}
-        | {status: "ok"; library: WeightedOutcomeLibrary<string>; summary: {libraryId: string; hash: string}}
-        | {status: "failed"; error: string}
-    > {
+    ): Promise<PreGeneratedLibraryResolution> {
         if (options.preGeneratedLibrarySelector === undefined) {
             return {status: "none"};
         }
@@ -280,7 +293,18 @@ export class StudioRuntimeManager {
         return {status: "ok", library: resolved.library, summary: {libraryId: resolved.library.libraryId, hash}};
     }
 
-    private async startInternal(projectRoot: string, options: ValidatedStartRuntimeRequest): Promise<StudioRuntimeStartResult> {
+    // "pinnedPreGeneratedResolution", when given, is restart()'s own already-validated preflight result --
+    // reused as-is instead of resolving options.preGeneratedLibrarySelector a second time here. Re-resolving
+    // after teardown would leave a real (if narrow) TOCTOU window open: the file could change again in the
+    // gap between restart()'s preflight and this point, and the server would end up running content that
+    // was never actually the thing validated. start() never has a preflight of its own (nothing running yet
+    // to protect from a premature teardown), so it's omitted there and this method resolves fresh, exactly
+    // as it always has.
+    private async startInternal(
+        projectRoot: string,
+        options: ValidatedStartRuntimeRequest,
+        pinnedPreGeneratedResolution?: PinnedPreGeneratedLibraryResolution,
+    ): Promise<StudioRuntimeStartResult> {
         this.state = {status: "starting"};
 
         let game: PokieGame;
@@ -290,15 +314,11 @@ export class StudioRuntimeManager {
             return this.fail(error);
         }
 
-        // Resolved *before* the server is ever created -- an unresolvable/invalid/changed selector must
-        // fail the whole start attempt (never a server silently running in plain-RNG mode, or against
-        // content that moved on since the handoff was offered, when the caller asked for pre-generated),
-        // same "no well-formed input, no pipeline call" ordering StudioDeploymentService.run() already
-        // follows for its own per-mode library loads. restart() already ran this exact same check as its
-        // own preflight (before tearing down whatever was running) -- redoing it here is harmless (the
-        // common case just confirms the same result a moment later) and keeps this method's own
-        // contract self-contained for start()'s sake, which has nothing running yet to protect.
-        const preGeneratedResolution = await this.resolvePreGeneratedLibraryOrFail(projectRoot, options);
+        // An unresolvable/invalid/changed selector must fail the whole start attempt -- never a server
+        // silently running in plain-RNG mode, or against content that moved on since the handoff was
+        // offered, when the caller asked for pre-generated -- same "no well-formed input, no pipeline
+        // call" ordering StudioDeploymentService.run() already follows for its own per-mode library loads.
+        const preGeneratedResolution = pinnedPreGeneratedResolution ?? (await this.resolvePreGeneratedLibraryOrFail(projectRoot, options));
         if (preGeneratedResolution.status === "failed") {
             return this.fail(new Error(preGeneratedResolution.error));
         }

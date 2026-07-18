@@ -624,5 +624,44 @@ describe("StudioRuntimeManager", () => {
 
             await manager.stop();
         });
+
+        it("pins the preflight's own resolved library into the actual start -- never re-resolves it a second time after teardown", async () => {
+            // The resolver answers "ok" with a valid library the *first* time it's called (restart()'s
+            // own preflight) but "invalid" every time after -- simulating the file changing (or becoming
+            // unreadable) in the gap between preflight and the real start. If startInternal() were to
+            // resolve a second time after teardown (the TOCTOU this preflight is meant to close), it
+            // would see this second, "invalid" answer and the whole restart would fail -- instead, it
+            // must reuse the exact library/hash the preflight already validated, calling the resolver
+            // exactly once.
+            const pinnedLibrary = fakeOutcomeLibrary("lib-pinned");
+            const pinnedHash = computeWeightedOutcomeLibraryHash(pinnedLibrary);
+            let resolveCallCount = 0;
+            const resolveOutcomeLibrary = jest.fn((): Promise<ResolvedOutcomeLibrary> => {
+                resolveCallCount += 1;
+                if (resolveCallCount === 1) {
+                    return Promise.resolve({status: "ok", library: pinnedLibrary, source: "json"});
+                }
+                return Promise.resolve({
+                    status: "invalid",
+                    errors: [{code: "weighted-outcome-library-empty", severity: "error", message: "The library has no outcomes."}],
+                    warnings: [],
+                });
+            });
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, resolveOutcomeLibrary);
+
+            const result = await manager.restart("/fake/project", {
+                ...startOptions(),
+                preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"},
+                preGeneratedLibraryExpectedHash: pinnedHash,
+            });
+
+            expect(resolveOutcomeLibrary).toHaveBeenCalledTimes(1);
+            expect(result.status).toBe("started");
+            if (result.status === "started" && result.view.status === "running") {
+                expect(result.view.preGenerated).toEqual({libraryId: "lib-pinned", hash: pinnedHash});
+            }
+
+            await manager.stop();
+        });
     });
 });
