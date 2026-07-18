@@ -64,51 +64,6 @@ export function restoreStagedPath(
     }
 }
 
-export type RestoreSourceIfUnchangedResult =
-    | {readonly status: "restored"}
-    // Something wrote different content to `realPath` after this transaction's own commit and before
-    // this rollback ran -- despite the exclusive lock applyGameBlueprintToProject holds for its own
-    // commit/rollback sequence, a writer that never asked for that lock (a hand edit, another tool
-    // entirely) can still land here. Blindly restoring would silently destroy it, so this leaves
-    // `realPath` exactly as found instead and reports it, rather than throwing: an uncooperative edit
-    // surviving untouched is the whole point, not a failure of this rollback step.
-    | {readonly status: "external-edit-preserved"; readonly stalePath: string | undefined};
-
-// Same idea as restoreStagedPath, but conditional: only restores `realPath` from its stale backup if its
-// *current* content still equals what this transaction itself last wrote there. Generated package files
-// never need this (nothing but "pokie build" itself ever writes them), but the source blueprint is a
-// file a person edits directly, so a plain "delete whatever's there now and rename the backup over it"
-// rollback is exactly the kind of silent-overwrite this stabilization pass exists to close.
-export function restoreSourceIfUnchanged(
-    realPath: string,
-    stalePath: string | undefined,
-    expectedCurrentContent: string,
-    readFile: (filePath: string) => string,
-    rename: StagedPathRenamer = fs.renameSync,
-    remove: StagedPathRemover = (targetPath) => fs.rmSync(targetPath, {recursive: true, force: true}),
-): RestoreSourceIfUnchangedResult {
-    let currentContent: string | undefined;
-    try {
-        currentContent = readFile(realPath);
-    } catch {
-        currentContent = undefined;
-    }
-    if (currentContent !== expectedCurrentContent) {
-        return {status: "external-edit-preserved", stalePath};
-    }
-
-    try {
-        remove(realPath);
-        if (stalePath !== undefined) {
-            rename(stalePath, realPath);
-        }
-    } catch (error) {
-        const recovery = stalePath !== undefined ? ` The previous content is still intact at "${stalePath}" — rename it back to "${realPath}" by hand.` : "";
-        throw new Error(`Failed to roll "${realPath}" back to its previous state: ${error instanceof Error ? error.message : String(error)}.${recovery}`);
-    }
-    return {status: "restored"};
-}
-
 // Best-effort cleanup of a stale backup once the resource it belongs to is confirmed committed for
 // good (every resource in the transaction succeeded) -- a failure here is cosmetic, same as
 // publishDirectoryAtomically's own "cleanupWarning" convention: never a reason to treat the commit

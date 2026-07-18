@@ -2,14 +2,8 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {computeGameBlueprintHash, GENERATED_PACKAGE_FILES, type GameBlueprint, type GameBlueprintValidating, type GamePackageGenerating} from "pokie";
-import {
-    commitStagedPath,
-    finalizeStagedPathBackup,
-    restoreSourceIfUnchanged,
-    restoreStagedPath,
-    type StagedPathRemover,
-    type StagedPathRenamer,
-} from "./commitStagedPath.js";
+import {commitStagedPath, finalizeStagedPathBackup, restoreStagedPath, type StagedPathRemover, type StagedPathRenamer} from "./commitStagedPath.js";
+import {publishSourceBlueprint, type SourceLinker, type SourceReader, type SourceUnlinker} from "./publishSourceBlueprint.js";
 import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
 import type {StudioBlueprintApplyView} from "./StudioBlueprintApplyView.js";
 import {withExclusiveLock, type LockOpener, type LockReleaser} from "./withExclusiveLock.js";
@@ -22,15 +16,17 @@ export type ApplyGameBlueprintToProjectOptions = {
     readonly blueprintValidator: GameBlueprintValidating;
     readonly gamePackageGenerator: GamePackageGenerating;
     // Test seams -- default to the real filesystem.
-    readonly readFile?: (filePath: string) => string;
+    readonly readFile?: SourceReader;
     readonly rename?: StagedPathRenamer;
     readonly remove?: StagedPathRemover;
+    readonly link?: SourceLinker;
+    readonly unlink?: SourceUnlinker;
     readonly openLock?: LockOpener;
     readonly releaseLock?: LockReleaser;
 };
 
-type StagedResource = {readonly realPath: string; readonly stagedPath: string; readonly isSource: boolean};
-type CommittedResource = {readonly realPath: string; readonly stalePath: string | undefined; readonly isSource: boolean};
+type StagedResource = {readonly realPath: string; readonly stagedPath: string};
+type CommittedResource = {readonly realPath: string; readonly stalePath: string | undefined};
 
 // Applies an edited GameBlueprint to a live project as a single conditional-commit "transaction": the
 // project's own generated files (see GENERATED_PACKAGE_FILES) and its source blueprint file either all
@@ -40,41 +36,37 @@ type CommittedResource = {readonly realPath: string; readonly stalePath: string 
 // by it either.
 //
 //   1. Read the *current* source blueprint fresh and hash it — "expectedHash" is the hash the caller's
-//      own draft was started from (see StudioBlueprintLoadView.blueprintHash); a mismatch means
-//      something else changed the file since, and this request refuses to silently overwrite it. This is
-//      just the cheap upfront fast-fail, not the check the actual commit is conditioned on — see step 4.
+//      own draft was started from (see StudioBlueprintLoadView.blueprintHash). This is only the cheap
+//      upfront fast-fail (avoids wasted validate+generate work on an already-stale draft), not the check
+//      the actual publish is conditioned on — see step 6.
 //   2. Validate the new blueprint. Neither check so far has written anything.
 //   3. Stage the new generated package into a temp directory via the real GamePackageGenerator
 //      (unmodified: it's simply pointed at an empty temp directory instead of projectRoot), and the new
 //      source blueprint into a temp file via the same formatter save() uses. This is the slow part (real
-//      file generation), and still touches nothing real — deliberately done *before* acquiring the lock
-//      below, so the lock's held duration is as short as possible.
+//      file generation), and still touches nothing real — done *before* acquiring the lock below, so the
+//      lock's held duration is as short as possible.
 //   4. Acquire an exclusive, filesystem-level lock scoped to this source path (see withExclusiveLock) —
-//      a real ownership handoff via O_CREAT|O_EXCL, not a separate read used to decide whether a later,
-//      unrelated write should happen. Everything from here through step 6 runs while holding it, so two
-//      overlapping applies against the same source can never interleave their commits: the second one's
-//      own lock attempt fails outright rather than racing the first. If the lock can't be acquired, this
-//      reports an error and touches nothing.
-//   5. Re-check the source blueprint's hash *again*, now inside the lock, then commit the source
-//      blueprint as the very next statement — before any GENERATED_PACKAGE_FILES entry, and before
-//      anything else this function does. A mismatch here discards the staged work and reports a
-//      conflict, same as step 1's check, with still zero real writes.
-//   6. Commit each of GENERATED_PACKAGE_FILES individually — one rename each (see commitStagedPath),
+//      a real ownership handoff via O_CREAT|O_EXCL. Everything from here on runs while holding it, so
+//      two overlapping applies against the same source can never interleave their commits: the second
+//      one's own lock attempt fails outright. If the lock can't be acquired, this reports an error and
+//      touches nothing.
+//   5. Commit each of GENERATED_PACKAGE_FILES individually — one rename each (see commitStagedPath),
 //      never a whole-directory swap of projectRoot: a project directory can (and typically does, once
 //      `npm install`ed) hold real content this apply has no business touching, like node_modules or a
 //      user's own files, so only the exact files "pokie build" itself would ever write are ever
-//      replaced. If any commit in the sequence fails (source's own commit included), every resource
-//      already committed is rolled back (in reverse order) before returning. Source's own rollback is
-//      *conditional* (see restoreSourceIfUnchanged): it only restores the pre-apply content if the
-//      source blueprint's current content still equals what this transaction itself just wrote there. A
-//      lock only coordinates *cooperating* callers — anything going through this same function — so an
-//      uncooperative writer (a hand edit saved from a text editor, say) can in principle still land
-//      between this transaction's own source commit and a later rollback triggered by some other
-//      resource's failure; when that happens, the rollback leaves the source blueprint exactly as found
-//      instead of destroying it, and reports the situation as an explicit error rather than papering over
-//      it. The one case none of this can fix — a rollback rename itself failing on a resource that
-//      *wasn't* externally touched — is reported with the exact stale path to restore by hand, the same
-//      residual risk publishDirectoryAtomically's own single-resource version already documents.
+//      replaced. If any of these fail, every one already committed is rolled back (in reverse order) —
+//      a blind rename-back is safe here, since nothing but "pokie build" itself ever writes these files.
+//   6. Only once every generated file has committed, publish the source blueprint itself — *last*, and
+//      as a genuine ownership-based filesystem transaction (see publishSourceBlueprint), not a compare-
+//      then-rename: the current content is atomically captured (renamed away, not read-then-trusted),
+//      hashed, and only published with no-replace semantics that fail outright — rather than silently
+//      overwrite — if anything else wrote to sourcePath in the meantime. Committing source last like
+//      this means a generated-file failure never needs to roll back an already-published source, since
+//      source is never touched until every other resource has already durably committed; the one thing
+//      that can still fail at this final step is publishing source itself, in which case the already-
+//      committed generated files are rolled back the same way as step 5's own failure path, and source
+//      (never touched beyond being captured-then-restored by publishSourceBlueprint itself) is left
+//      exactly as publishSourceBlueprint's own result says it was left.
 //   7. Best-effort removal of the now-superseded stale backups and the (by then empty) staging
 //      directory (logged, never a reason to report the apply itself as failed), then release the lock.
 export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProjectOptions): StudioBlueprintApplyView {
@@ -82,6 +74,8 @@ export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProject
     const readFile = options.readFile ?? ((filePath: string) => fs.readFileSync(filePath, "utf-8"));
     const rename = options.rename ?? fs.renameSync;
     const remove = options.remove ?? ((targetPath: string) => fs.rmSync(targetPath, {recursive: true, force: true}));
+    const link = options.link ?? fs.linkSync;
+    const unlink = options.unlink ?? fs.unlinkSync;
 
     const checkHash = (): StudioBlueprintApplyView | undefined => {
         let currentText: string;
@@ -117,11 +111,10 @@ export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProject
 
     const packageTempDir = `${projectRoot}.tmp-${crypto.randomBytes(6).toString("hex")}`;
     const sourceTempFile = path.join(path.dirname(sourcePath), `.${path.basename(sourcePath)}.tmp-${crypto.randomBytes(6).toString("hex")}`);
-    const sourceContentToCommit = serializeGameBlueprint(blueprint);
     try {
         fs.mkdirSync(packageTempDir, {recursive: true});
         gamePackageGenerator.generate(blueprint as GameBlueprint, path.dirname(packageTempDir), path.basename(packageTempDir), sourcePath);
-        fs.writeFileSync(sourceTempFile, sourceContentToCommit);
+        fs.writeFileSync(sourceTempFile, serializeGameBlueprint(blueprint));
     } catch (error) {
         removeBestEffort(packageTempDir, remove);
         removeBestEffort(sourceTempFile, remove);
@@ -129,45 +122,26 @@ export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProject
     }
 
     const lockPath = `${sourcePath}.lock`;
-    let result: StudioBlueprintApplyView;
     try {
-        result = withExclusiveLock(
-            lockPath,
-            () => commitUnderLock(),
-            options.openLock,
-            options.releaseLock,
-        );
+        return withExclusiveLock(lockPath, () => commitUnderLock(), options.openLock, options.releaseLock);
     } catch (error) {
         removeBestEffort(packageTempDir, remove);
         removeBestEffort(sourceTempFile, remove);
         return {status: "error", error: error instanceof Error ? error.message : String(error)};
     }
-    return result;
 
     function commitUnderLock(): StudioBlueprintApplyView {
-        const staleConflict = checkHash();
-        if (staleConflict !== undefined) {
-            removeBestEffort(packageTempDir, remove);
-            removeBestEffort(sourceTempFile, remove);
-            return staleConflict;
-        }
-
-        // Source is listed *first* deliberately (see step 5 above): it's committed as the very next
-        // statement after the check immediately above, before any GENERATED_PACKAGE_FILES entry.
-        const resources: StagedResource[] = [
-            {realPath: sourcePath, stagedPath: sourceTempFile, isSource: true},
-            ...GENERATED_PACKAGE_FILES.map((relativeFile) => {
-                const segments = relativeFile.split("/");
-                return {realPath: path.join(projectRoot, ...segments), stagedPath: path.join(packageTempDir, ...segments), isSource: false};
-            }),
-        ];
+        const packageFiles: StagedResource[] = GENERATED_PACKAGE_FILES.map((relativeFile) => {
+            const segments = relativeFile.split("/");
+            return {realPath: path.join(projectRoot, ...segments), stagedPath: path.join(packageTempDir, ...segments)};
+        });
 
         const committed: CommittedResource[] = [];
         let commitError: unknown;
-        for (const resource of resources) {
+        for (const resource of packageFiles) {
             try {
                 const {stalePath} = commitStagedPath(resource.realPath, resource.stagedPath, rename);
-                committed.push({realPath: resource.realPath, stalePath, isSource: resource.isSource});
+                committed.push({realPath: resource.realPath, stalePath});
             } catch (error) {
                 commitError = error;
                 break;
@@ -175,61 +149,65 @@ export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProject
         }
 
         if (commitError !== undefined) {
-            const rollbackFailures: string[] = [];
-            let externalEditPreservedAt: string | undefined;
-            for (const done of [...committed].reverse()) {
-                try {
-                    if (done.isSource) {
-                        const restoreResult = restoreSourceIfUnchanged(done.realPath, done.stalePath, sourceContentToCommit, readFile, rename, remove);
-                        if (restoreResult.status === "external-edit-preserved") {
-                            externalEditPreservedAt = restoreResult.stalePath;
-                        }
-                    } else {
-                        restoreStagedPath(done.realPath, done.stalePath, rename, remove);
-                    }
-                } catch (rollbackError) {
-                    rollbackFailures.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError));
-                }
-            }
-            // Whatever wasn't committed yet (including the one that just failed) may still be sitting
-            // un-renamed at its staged path -- commitStagedPath never touches `stagedPath` on failure, and
-            // every not-yet-attempted resource's staged file was never touched at all.
-            removeBestEffort(packageTempDir, remove);
-            if (externalEditPreservedAt === undefined) {
-                removeBestEffort(sourceTempFile, remove);
-            }
+            return rollBackAndReport(committed, commitError, undefined);
+        }
 
-            const commitMessage = commitError instanceof Error ? commitError.message : String(commitError);
-            if (externalEditPreservedAt !== undefined) {
-                const rollbackNote = rollbackFailures.length > 0 ? ` Other rollback failures: ${rollbackFailures.join("; ")}.` : "";
-                return {
-                    status: "error",
-                    error:
-                        `Failed to apply the blueprint (${commitMessage}). The source blueprint was changed externally ` +
-                        `after this apply had already committed it, so it was left exactly as found instead of being ` +
-                        `rolled back — nothing of that external edit was touched. The pre-apply original is preserved ` +
-                        `at "${externalEditPreservedAt}" if you need to recover it.${rollbackNote}`,
-                };
-            }
-            if (rollbackFailures.length > 0) {
-                return {
-                    status: "error",
-                    error: `Failed to apply the blueprint (${commitMessage}), and failed to fully roll back what had already been committed: ${rollbackFailures.join("; ")}`,
-                };
-            }
-            return {
-                status: "error",
-                error: `Failed to apply the blueprint: ${commitMessage}. Everything already committed was rolled back to its previous state.`,
-            };
+        // Every generated file is durably committed. Source is published last, and only now: a failure
+        // here never needs to undo it, since it was never touched until this point.
+        const publishResult = publishSourceBlueprint(sourcePath, sourceTempFile, expectedHash, rename, link, unlink, readFile);
+        if (publishResult.status === "conflict") {
+            return rollBackAndReport(committed, undefined, publishResult);
+        }
+        if (publishResult.status === "error") {
+            return rollBackAndReport(committed, new Error(publishResult.error), undefined);
         }
 
         committed
             .map((done) => finalizeStagedPathBackup(done.stalePath, remove))
             .filter((warning): warning is string => warning !== undefined)
             .forEach((warning) => console.warn(`[StudioBlueprintService.applyToProject] ${warning}`));
+        removeBestEffort(publishResult.capturedPath, remove);
         removeBestEffort(packageTempDir, remove);
 
         return {status: "ok", blueprintHash: computeGameBlueprintHash(blueprint), warnings};
+    }
+
+    // Rolls every already-committed generated file back (reverse order) and cleans up staging. Used both
+    // when a generated-file commit itself fails, and when source's own publish fails or conflicts *after*
+    // every generated file already committed -- source itself never needs rolling back either way, since
+    // publishSourceBlueprint never leaves it silently overwritten (see its own doc comment); this only
+    // ever undoes the generated files, and reports whichever of the two failure kinds actually happened.
+    function rollBackAndReport(
+        committed: CommittedResource[],
+        commitError: unknown,
+        conflict: {readonly status: "conflict"; readonly currentHash: string} | undefined,
+    ): StudioBlueprintApplyView {
+        const rollbackFailures: string[] = [];
+        for (const done of [...committed].reverse()) {
+            try {
+                restoreStagedPath(done.realPath, done.stalePath, rename, remove);
+            } catch (rollbackError) {
+                rollbackFailures.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError));
+            }
+        }
+        removeBestEffort(packageTempDir, remove);
+        removeBestEffort(sourceTempFile, remove);
+
+        if (conflict !== undefined) {
+            return conflict;
+        }
+
+        const commitMessage = commitError instanceof Error ? commitError.message : String(commitError);
+        if (rollbackFailures.length > 0) {
+            return {
+                status: "error",
+                error: `Failed to apply the blueprint (${commitMessage}), and failed to fully roll back what had already been committed: ${rollbackFailures.join("; ")}`,
+            };
+        }
+        return {
+            status: "error",
+            error: `Failed to apply the blueprint: ${commitMessage}. Every generated file already committed was rolled back to its previous state.`,
+        };
     }
 }
 
