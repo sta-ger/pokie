@@ -1,5 +1,6 @@
 import type {
     GamePackageInspectionReport,
+    OutcomeLibrarySelector,
     PokieGameManifest,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
@@ -13,6 +14,9 @@ import type {
     StudioDeploymentRunView,
     StudioDeploymentTargetSummary,
     StudioHomeRecentProjectView,
+    StudioOutcomeLibraryCompareView,
+    StudioOutcomeLibraryDeepValidateView,
+    StudioOutcomeLibrarySelectView,
     StudioParSheetExportView,
     StudioParSheetImportView,
     StudioReelStripGenerationView,
@@ -644,4 +648,50 @@ export async function runDeployment(
         throw new Error(await extractErrorMessage(response, "Failed to run deployment"));
     }
     return (await response.json()) as StudioDeploymentRunView;
+}
+
+// Select/import -> Validate & analyze -> Inspect distribution/features all land in this one call — see
+// StudioOutcomeLibraryService.select()'s own doc comment. Never throws for a domain-level failure (an
+// unreadable path, an invalid library) — that's carried in the returned view's own "load-error"/"invalid"
+// status, same convention as every other selector-driven apiClient function here.
+export async function selectOutcomeLibrary(fetchImpl: FetchLike, selector: OutcomeLibrarySelector): Promise<StudioOutcomeLibrarySelectView> {
+    const response = await fetchImpl("/api/project/outcome-libraries/select", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({selector}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to select outcome library"));
+    }
+    return (await response.json()) as StudioOutcomeLibrarySelectView;
+}
+
+export async function compareOutcomeLibraries(
+    fetchImpl: FetchLike,
+    left: OutcomeLibrarySelector,
+    right: OutcomeLibrarySelector,
+): Promise<StudioOutcomeLibraryCompareView> {
+    const response = await fetchImpl("/api/project/outcome-libraries/compare", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({left, right}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to compare outcome libraries"));
+    }
+    return (await response.json()) as StudioOutcomeLibraryCompareView;
+}
+
+// Bundle-only deep audit (see StudioOutcomeLibraryDeepValidateView's own doc comment) — deliberately a
+// separate, explicitly-triggered call, never folded into selectOutcomeLibrary.
+export async function validateOutcomeLibraryDeep(fetchImpl: FetchLike, bundleDir: string, modeName: string): Promise<StudioOutcomeLibraryDeepValidateView> {
+    const response = await fetchImpl("/api/project/outcome-libraries/validate-deep", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({bundleDir, modeName}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to deep-validate the outcome library bundle"));
+    }
+    return (await response.json()) as StudioOutcomeLibraryDeepValidateView;
 }

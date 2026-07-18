@@ -2,6 +2,7 @@ import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
+import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
@@ -55,5 +56,10 @@ export type StudioServerOptions = {
     // Adapter SDK (ExternalDeploymentService); no `loadGame`/`pokieVersion` needed, unlike
     // simulationService/replayService/homeService, since it never touches a game package itself.
     deploymentService?: StudioDeploymentService;
+    // Drives the Project Dashboard's Outcome Libraries tab (POST /api/project/outcome-libraries/select,
+    // /compare, /validate-deep) — built directly on top of pokie's own WeightedOutcomeLibrary/
+    // OutcomeLibraryBundle/StakeEngine services; no `loadGame`/`pokieVersion` needed, same reasoning as
+    // deploymentService.
+    outcomeLibraryService?: StudioOutcomeLibraryService;
     toolHandlers?: StudioToolHandling[];
 };

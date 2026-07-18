@@ -38,18 +38,19 @@ import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DeploymentTab} from "./DeploymentTab";
+import {OutcomeLibrariesTab} from "./OutcomeLibrariesTab";
 import {OverviewTab} from "./OverviewTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
 import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 import {ValidationTab} from "./ValidationTab";
 
-export type ProjectTab = "overview" | "validation" | "simulation" | "replay" | "runtime" | "deployment";
+export type ProjectTab = "overview" | "validation" | "simulation" | "replay" | "runtime" | "deployment" | "outcomeLibraries";
 
 // Primary happy-path tabs (Overview -> Validate -> Simulate, which now also owns Reports) come first,
-// unlabeled/implicit; Replay/Runtime/Deployment are tagged `section: "Advanced"` so NavTabs visually
-// separates them -- everything's still one click away, just no longer presented as equal-weight to the
-// main flow.
+// unlabeled/implicit; Replay/Runtime/Deployment/Outcome Libraries are tagged `section: "Advanced"` so
+// NavTabs visually separates them -- everything's still one click away, just no longer presented as
+// equal-weight to the main flow.
 const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "overview", label: "Overview"},
     {value: "validation", label: "Validate"},
@@ -57,6 +58,7 @@ const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "replay", label: "Replay", section: "Advanced"},
     {value: "runtime", label: "Runtime", section: "Advanced"},
     {value: "deployment", label: "Deployment", section: "Advanced"},
+    {value: "outcomeLibraries", label: "Outcome Libraries", section: "Advanced"},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
@@ -687,6 +689,12 @@ export function ProjectDashboardPage() {
                             selectedArtifactPath={deployment.selectedArtifactPath}
                             onSelectArtifact={deployment.selectArtifact}
                         />
+                    )}
+                    {activeTab === "outcomeLibraries" && (
+                        // Forces a full remount on a genuine project switch -- OutcomeLibrariesTab owns all
+                        // of its own state locally (no page-level hook), same reasoning as DeploymentTab's
+                        // own key above.
+                        <OutcomeLibrariesTab key={projectKey ?? "no-project"} />
                     )}
                 </div>
             )}
