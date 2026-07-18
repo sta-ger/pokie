@@ -502,6 +502,14 @@ export function ReelStripGenerationEditor({
     const [activeStep, setActiveStep] = useState(0);
     const [selectedReelIndex, setSelectedReelIndex] = useState<number>();
     const [draftEntry, setDraftEntry] = useState<Record<string, unknown>>();
+    // Bumped only when a *fresh* draft is loaded wholesale -- a reel switch or a Discard -- never by an
+    // ordinary field edit within the current session. Used as (part of) a `key` on the Edit-or-generate
+    // step's field editors so every uncontrolled input in that subtree (NumberInput defaultValue,
+    // Textarea defaultValue + its own local parse-error state, the various "add new X" input buffers)
+    // remounts and picks up the fresh draft's own values, instead of silently keeping whatever the
+    // *previous* reel/session last typed into them -- React's own "reset every bit of local state"
+    // primitive, same technique this app already uses for formGeneration/projectKey remounts elsewhere.
+    const [draftGeneration, setDraftGeneration] = useState(0);
     const [preview, setPreview] = useState<ReelStripGenerationPreviewView>({status: "idle"});
     const [stop, setStop] = useState<number | string>(0);
     const [rows, setRows] = useState<number>(defaultRows);
@@ -543,17 +551,30 @@ export function ReelStripGenerationEditor({
     }, [entries.length, selectedReelIndex]);
 
     function selectReel(reelIndex: number): void {
-        const proceed = (): void => {
+        // `discardedReelIndex` is only set on the confirmed-switch-away-from-a-dirty-reel path below --
+        // that reel's own local/generated/counts-weights toggle bookkeeping in `drafts` must be cleared
+        // right along with its draftEntry, or a *future* type/source toggle on that same reel (this
+        // session or a later one) would restore values from the very edit the user just chose to discard
+        // (see setReelStripGenerationEntryType/setReelStripGenerationSourceMode's own stash-and-restore
+        // behavior). A same-reel reselect or a switch away from a *clean* reel never abandoned anything,
+        // so this stays untouched then -- the toggle-memory convenience those two functions provide is
+        // only broken for a reel whose in-progress edit was actually thrown away.
+        const proceed = (discardedReelIndex?: number): void => {
+            if (discardedReelIndex !== undefined) {
+                drafts.current.delete(discardedReelIndex);
+            }
             requestIdRef.current++;
             setSelectedReelIndex(reelIndex);
             setDraftEntry(cloneRecord(entries[reelIndex]));
             setPreview({status: "idle"});
             setStop(0);
             setRows(defaultRows);
+            setDraftGeneration((generation) => generation + 1);
             setActiveStep(1);
         };
         if (isDirty && selectedReelIndex !== undefined) {
-            confirm(`Reel ${selectedReelIndex + 1} has unapplied changes. Discard them and switch to Reel ${reelIndex + 1}?`, proceed);
+            const leavingReelIndex = selectedReelIndex;
+            confirm(`Reel ${leavingReelIndex + 1} has unapplied changes. Discard them and switch to Reel ${reelIndex + 1}?`, () => proceed(leavingReelIndex));
         } else {
             proceed();
         }
@@ -562,10 +583,18 @@ export function ReelStripGenerationEditor({
     // Every field editor above still calls `mutate((b) => someSetter(b, reelIndex, ...))` completely
     // unchanged -- this just points that same call at a scratch stand-in built from the *current* draft
     // (see makeScratchBlueprint) instead of the shared blueprint, and reads the result back out.
+    //
+    // Also invalidates any preview of this draft -- current, pending, or about to land -- the same way
+    // the revision-change effect above invalidates one for an edit elsewhere in the form: a preview
+    // (shown or still in flight) describes the draft as it was *before* this edit, so it's bumped stale
+    // (requestIdRef) and cleared back to idle immediately, rather than a slower in-flight response
+    // landing afterward and showing results for a draft that no longer exists.
     const localMutate: BlueprintMutate = (fn) => {
         if (selectedReelIndex === undefined) {
             return;
         }
+        requestIdRef.current++;
+        setPreview({status: "idle"});
         setDraftEntry((prevEntry) => {
             if (prevEntry === undefined) {
                 return prevEntry;
@@ -614,11 +643,17 @@ export function ReelStripGenerationEditor({
     }
 
     function discardDraft(): void {
-        if (appliedEntry === undefined) {
+        if (selectedReelIndex === undefined || appliedEntry === undefined) {
             return;
         }
+        // Same reasoning as selectReel()'s own confirmed-switch-away path -- this reel's in-progress
+        // edit is being thrown away, so its type/source toggle bookkeeping must go with it, or toggling
+        // types again (this session or a later one) would restore the very values just discarded.
+        drafts.current.delete(selectedReelIndex);
+        requestIdRef.current++;
         setDraftEntry(cloneRecord(appliedEntry));
         setPreview({status: "idle"});
+        setDraftGeneration((generation) => generation + 1);
     }
 
     const reelPreview: StudioReelStripGenerationReelView | undefined =
@@ -705,9 +740,16 @@ export function ReelStripGenerationEditor({
                             </Group>
                         </Radio.Group>
                         {draftEntry.type === "generated" ? (
-                            <GeneratedEditor reelIndex={selectedReelIndex} entry={draftEntry} symbols={symbols} mutate={localMutate} drafts={drafts} />
+                            <GeneratedEditor
+                                key={`${selectedReelIndex}-${draftGeneration}`}
+                                reelIndex={selectedReelIndex}
+                                entry={draftEntry}
+                                symbols={symbols}
+                                mutate={localMutate}
+                                drafts={drafts}
+                            />
                         ) : (
-                            <LiteralStripEditor reelIndex={selectedReelIndex} entry={draftEntry} mutate={localMutate} />
+                            <LiteralStripEditor key={`${selectedReelIndex}-${draftGeneration}`} reelIndex={selectedReelIndex} entry={draftEntry} mutate={localMutate} />
                         )}
 
                         <QuickActions>

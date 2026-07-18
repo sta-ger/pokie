@@ -343,4 +343,166 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
         expect(screen.queryByDisplayValue("W")).not.toBeInTheDocument();
     });
+
+    it("invalidates a pending Check & preview response when the draft itself is edited while it's in flight", async () => {
+        const user = userEvent.setup();
+        let resolver: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
+        const fetchImpl: FetchLike = (url) => {
+            if (url === RESOLVE_REELS_URL) {
+                return new Promise((res) => {
+                    resolver = res;
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await user.click(screen.getByRole("button", {name: "Check & preview"}));
+        expect(await screen.findByText("Working…")).toBeInTheDocument();
+
+        // Edit this reel's own draft (not another section) while its own request is still in flight.
+        await user.type(screen.getByLabelText("New symbol id for reel 1"), "W");
+        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+        await waitFor(() => expect(screen.queryByText("Working…")).not.toBeInTheDocument());
+
+        resolver?.(
+            await jsonResponse({
+                status: "ok",
+                errors: [],
+                warnings: [],
+                reels: [{reelIndex: 0, type: "literal", strip: ["A", "B"], analysis: LITERAL_AB_ANALYSIS}],
+            }),
+        );
+
+        await new Promise((resolveTimeout) => {
+            setTimeout(resolveTimeout, 100);
+        });
+        expect(screen.queryByText("Literal strip")).not.toBeInTheDocument();
+    });
+
+    it("invalidates an already-shown preview once the draft is edited again", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => {
+            if (url === RESOLVE_REELS_URL) {
+                return jsonResponse({
+                    status: "ok",
+                    errors: [],
+                    warnings: [],
+                    reels: [{reelIndex: 0, type: "literal", strip: ["A", "B"], analysis: LITERAL_AB_ANALYSIS}],
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await user.click(screen.getByRole("button", {name: "Check & preview"}));
+        expect(await screen.findByText("Literal strip")).toBeInTheDocument();
+
+        // Back to Edit or generate, and edit the draft again -- the preview just shown described the
+        // draft *before* this edit and must no longer count as current.
+        await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
+        await user.type(screen.getByLabelText("New symbol id for reel 1"), "C");
+        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+
+        // Inspect diagnostics is disabled again -- clicking it does nothing, so we're still on Edit or
+        // generate (only step 1's own "Check & preview" button exists here).
+        await user.click(screen.getByRole("button", {name: stepperStep("Inspect diagnostics", "Validation")}));
+        expect(screen.getByRole("button", {name: "Check & preview"})).toBeInTheDocument();
+    });
+
+    it("shows each reel's own Length/Seed when switching between two already-applied generated reels, never a stale value left over from the other", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await user.clear(screen.getByLabelText("Length"));
+        await user.type(screen.getByLabelText("Length"), "5");
+        await user.tab();
+        await user.clear(screen.getByLabelText("Seed"));
+        await user.type(screen.getByLabelText("Seed"), "11");
+        await user.tab();
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
+        await user.click(screen.getByRole("button", {name: "Apply"}));
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Select reel", "Which reel")}));
+        await user.click(screen.getByRole("button", {name: "Select reel 2"}));
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await user.clear(screen.getByLabelText("Length"));
+        await user.type(screen.getByLabelText("Length"), "9");
+        await user.tab();
+        await user.clear(screen.getByLabelText("Seed"));
+        await user.type(screen.getByLabelText("Seed"), "42");
+        await user.tab();
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
+        await user.click(screen.getByRole("button", {name: "Apply"}));
+
+        // Also leave reel 2 with a malformed constraints field showing its own local parse error --
+        // the parse fails, so nothing here is ever committed to the draft/blueprint, but the error and
+        // typed text are still local, uncontrolled UI state tied to *this* reel's own editor instance.
+        await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
+        await user.type(screen.getByLabelText("Constraints for reel 2"), "{{not valid json");
+        await user.tab();
+        expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+        // Switch back to reel 1 -- must show reel 1's own applied values, never reel 2's leftover ones,
+        // and no trace of reel 2's malformed constraints text or its parse error.
+        await user.click(screen.getByRole("button", {name: stepperStep("Select reel", "Which reel")}));
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        expect(screen.getByLabelText("Length")).toHaveValue("5");
+        expect(screen.getByLabelText("Seed")).toHaveValue("11");
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Constraints for reel 1")).toHaveValue("");
+
+        // And reel 2 the other way, confirming this isn't just reel 1 happening to win by coincidence.
+        await user.click(screen.getByRole("button", {name: stepperStep("Select reel", "Which reel")}));
+        await user.click(screen.getByRole("button", {name: "Select reel 2"}));
+        expect(screen.getByLabelText("Length")).toHaveValue("9");
+        expect(screen.getByLabelText("Seed")).toHaveValue("42");
+    }, 30000);
+
+    it("discarding a generated exploration clears its own type-toggle memory, so toggling back to Generated later doesn't resurrect it", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+
+        // Explore Generated with distinctive scalar values...
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await user.clear(screen.getByLabelText("Length"));
+        await user.type(screen.getByLabelText("Length"), "50");
+        await user.tab();
+        await user.clear(screen.getByLabelText("Seed"));
+        await user.type(screen.getByLabelText("Seed"), "777");
+        await user.tab();
+
+        // ...then toggle back to Literal -- this is what actually stashes the 50/777 exploration as this
+        // reel's own "restore point" for a future Generated toggle (see
+        // setReelStripGenerationEntryType's own stash-on-leaving-generated behavior).
+        await user.click(screen.getByRole("radio", {name: "Literal"}));
+
+        // Edit the literal strip too, so there's actually something to discard -- toggling back to
+        // Literal alone landed exactly on what's already applied (empty), leaving nothing dirty yet.
+        await user.type(screen.getByLabelText("New symbol id for reel 1"), "Z");
+        await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
+        await user.click(screen.getByRole("button", {name: "Discard"}));
+
+        // Toggle to Generated again -- must never resurrect the discarded 50/777 exploration.
+        await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
+
+        expect(screen.getByLabelText("Length")).toHaveValue("1");
+        expect(screen.getByLabelText("Seed")).toHaveValue("1");
+    });
 });
