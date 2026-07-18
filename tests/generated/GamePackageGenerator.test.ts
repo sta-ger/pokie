@@ -321,6 +321,89 @@ describe("GamePackageGenerator", () => {
         expect(session.getWinAmount()).toBeGreaterThan(0);
     });
 
+    it("wires a ways winModel into a playable generated package", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint({
+            winModel: {type: "ways"},
+            reelStrips: [
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ],
+        });
+
+        const result = generator.generate(blueprint, cwd);
+        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const session = game.createSession();
+        session.setBet(1);
+        session.play();
+
+        expect(session.getWinAmount()).toBeGreaterThan(0);
+    });
+
+    it("wires a clusters winModel (with minimumClusterSize) into a playable generated package", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        // A 3x3 all-"A" grid forms one 9-cell cluster -- unlike line/ways match-counts (bounded by
+        // "reels"), a cluster's size is bounded by the whole grid, so the paytable needs an entry at
+        // that actual size (9), not a reels-sized one.
+        const blueprint = buildBlueprint({
+            winModel: {type: "clusters", minimumClusterSize: 4},
+            paytable: {A: {9: 50}, B: {3: 2}},
+            reelStrips: [
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ],
+        });
+
+        const result = generator.generate(blueprint, cwd);
+        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const session = game.createSession();
+        session.setBet(1);
+        session.play();
+
+        expect(session.getWinAmount()).toBeGreaterThan(0);
+    });
+
+    it("wires mechanics.freeGames into a VideoSlotWithFreeGamesSession-backed generated package", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const blueprint = buildBlueprint({
+            symbols: ["A", "B", "S"],
+            scatters: ["S"],
+            paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
+            reelStrips: [
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+                ["A", "A", "A"],
+            ],
+        });
+
+        const result = generator.generate(blueprint, cwd);
+        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const session = game.createSession() as unknown as {getWonFreeGamesNumber?: () => number; setBet(bet: number): void; play(): void};
+
+        // getWonFreeGamesNumber only exists on VideoSlotWithFreeGamesSession -- its presence confirms
+        // the generated module actually wrapped the session (not just the config) for free games.
+        expect(typeof session.getWonFreeGamesNumber).toBe("function");
+        session.setBet(1);
+        session.play();
+        expect(session.getWonFreeGamesNumber?.()).toBeGreaterThanOrEqual(0);
+    });
+
+    it("exposes getBetModes() on the generated package only when betModes is configured", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const betModes = [{id: "base"}, {id: "buy-bonus", costMultiplier: 100}];
+        const withBetModes = generator.generate(buildBlueprint({betModes, manifest: {id: "with-bet-modes", name: "With", version: "0.1.0"}}), cwd);
+        const withoutBetModes = generator.generate(buildBlueprint({manifest: {id: "without-bet-modes", name: "Without", version: "0.1.0"}}), cwd);
+
+        const gameWithBetModes = require(path.join(withBetModes.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const gameWithoutBetModes = require(path.join(withoutBetModes.projectRoot, "src", "generated", "index.js")) as PokieGame;
+
+        expect(gameWithBetModes.getBetModes?.()).toEqual(betModes);
+        expect(gameWithoutBetModes.getBetModes).toBeUndefined();
+    });
+
     it("materializes reelStrips from a mixed literal/generated reelStripGeneration and records the per-reel summaries in build-info.json", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint({

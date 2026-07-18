@@ -23,6 +23,64 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
 // Full provenance:   ./build-info.json`
         : `// Game: ${manifest.name} (id: "${manifest.id}", version ${manifest.version})`;
 
+    // Absent winModel means today's default (line pays via VideoSlotConfig's own default win
+    // calculator) — every existing blueprint keeps generating byte-identical output.
+    const winModel = blueprint.winModel ?? {type: "lines" as const};
+    const freeGames = blueprint.mechanics?.freeGames;
+    const hasBetModes = (blueprint.betModes?.length ?? 0) > 0;
+
+    const requireNames = ["CustomLinesDefinitions", "SymbolsSequence", "VideoSlotConfig", "VideoSlotSession", "VideoSlotSessionSerializer"];
+    if (winModel.type === "ways" || winModel.type === "clusters") {
+        requireNames.push("VideoSlotWinCalculator", "SelectedEvaluatorGroupWinAggregationPolicy");
+        requireNames.push(winModel.type === "ways" ? "WaysWinCalculator" : "ClusterWinCalculator");
+    }
+    if (freeGames) {
+        requireNames.push("VideoSlotWithFreeGamesConfig", "VideoSlotWithFreeGamesSession");
+    }
+    requireNames.sort();
+
+    // Built once here (not inline in createConfig/createSession) since both the config-wrapping and
+    // the session/win-calculator construction below need to agree on it.
+    let winCalculatorDeclaration = "";
+    if (winModel.type === "ways") {
+        winCalculatorDeclaration = `    const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, undefined, undefined, new WaysWinCalculator(config), {
+        aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("ways"),
+    });
+`;
+    } else if (winModel.type === "clusters") {
+        winCalculatorDeclaration = `    const winCalculator = new VideoSlotWinCalculator(config, undefined, undefined, new ClusterWinCalculator(config, ${winModel.minimumClusterSize ?? 5}), undefined, undefined, {
+        aggregationPolicy: new SelectedEvaluatorGroupWinAggregationPolicy("cluster"),
+    });
+`;
+    }
+    const winCalculatorArgs = winModel.type === "lines" ? "" : ", undefined, winCalculator";
+    const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
+    // Only introduce an intermediate "config" local when a winCalculator actually needs to reference
+    // it — otherwise createSession() stays the exact one-liner it's always been.
+    const createSessionBody = winCalculatorDeclaration
+        ? `        const config = createConfig();
+${winCalculatorDeclaration}        return new ${sessionClassName}(config${winCalculatorArgs});
+`
+        : `        return new ${sessionClassName}(createConfig());
+`;
+
+    const freeGamesWrapCode = freeGames
+        ? `
+    const freeGamesConfig = new VideoSlotWithFreeGamesConfig(config);
+    for (const [count, awarded] of Object.entries(blueprint.mechanics.freeGames.awardsByCount)) {
+        freeGamesConfig.setFreeGamesForScatters(blueprint.mechanics.freeGames.scatterSymbol, Number(count), awarded);
+    }
+`
+        : "";
+    const configReturnExpression = freeGames ? "freeGamesConfig" : "config";
+
+    const betModesExport = hasBetModes
+        ? `
+    getBetModes() {
+        return blueprint.betModes;
+    },`
+        : "";
+
     return `// ============================================================================
 // GENERATED FILE — do not hand-edit.
 //
@@ -37,11 +95,7 @@ ${header}
 // pokie runtime
 // ---------------------------------------------------------------------------
 const {
-    CustomLinesDefinitions,
-    SymbolsSequence,
-    VideoSlotConfig,
-    VideoSlotSession,
-    VideoSlotSessionSerializer,
+${requireNames.map((name) => `    ${name},`).join("\n")}
 } = require("pokie");
 
 // ---------------------------------------------------------------------------
@@ -93,8 +147,8 @@ function createConfig() {
         }
         config.setSymbolsSequences(sequences);
     }
-
-    return config;
+${freeGamesWrapCode}
+    return ${configReturnExpression};
 }
 
 // ---------------------------------------------------------------------------
@@ -105,11 +159,10 @@ module.exports = {
         return blueprint.manifest;
     },
     createSession() {
-        return new VideoSlotSession(createConfig());
-    },
+${createSessionBody}    },
     getSessionSerializer() {
         return new VideoSlotSessionSerializer();
-    },
+    },${betModesExport}
 };
 `;
 }

@@ -38,6 +38,7 @@ import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DeploymentTab} from "./DeploymentTab";
+import {MechanicsEditorTab} from "./MechanicsEditorTab";
 import {OutcomeLibrariesTab} from "./OutcomeLibrariesTab";
 import {OverviewTab} from "./OverviewTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
@@ -45,12 +46,12 @@ import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 import {ValidationTab} from "./ValidationTab";
 
-export type ProjectTab = "overview" | "validation" | "simulation" | "replay" | "runtime" | "deployment" | "outcomeLibraries";
+export type ProjectTab = "overview" | "validation" | "simulation" | "replay" | "runtime" | "deployment" | "outcomeLibraries" | "mechanicsEditor";
 
 // Primary happy-path tabs (Overview -> Validate -> Simulate, which now also owns Reports) come first,
-// unlabeled/implicit; Replay/Runtime/Deployment/Outcome Libraries are tagged `section: "Advanced"` so
-// NavTabs visually separates them -- everything's still one click away, just no longer presented as
-// equal-weight to the main flow.
+// unlabeled/implicit; Replay/Runtime/Deployment/Outcome Libraries/Mechanics Editor are tagged
+// `section: "Advanced"` so NavTabs visually separates them -- everything's still one click away, just
+// no longer presented as equal-weight to the main flow.
 const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "overview", label: "Overview"},
     {value: "validation", label: "Validate"},
@@ -59,6 +60,7 @@ const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "runtime", label: "Runtime", section: "Advanced"},
     {value: "deployment", label: "Deployment", section: "Advanced"},
     {value: "outcomeLibraries", label: "Outcome Libraries", section: "Advanced"},
+    {value: "mechanicsEditor", label: "Mechanics Editor", section: "Advanced"},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
@@ -708,6 +710,12 @@ export function ProjectDashboardPage() {
                                 setActiveTab("runtime");
                             }}
                         />
+                    )}
+                    {activeTab === "mechanicsEditor" && (
+                        // Same reasoning as OutcomeLibrariesTab's own key above -- MechanicsEditorTab owns
+                        // all of its own draft state locally (via useBlueprintEditor), so a genuine project
+                        // switch is handled by a full remount rather than page-level cleanup.
+                        <MechanicsEditorTab key={projectKey ?? "no-project"} />
                     )}
                 </div>
             )}

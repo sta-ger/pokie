@@ -623,6 +623,185 @@ export function resizeReelStripGenerationToReelCount(blueprint: Record<string, u
     blueprint.reelStripGeneration = resized;
 }
 
+// ---- Win model (lines/ways/clusters) ----
+
+export type WinModelType = "lines" | "ways" | "clusters";
+
+export function getWinModelType(blueprint: Record<string, unknown>): WinModelType {
+    const winModel = blueprint.winModel;
+    if (typeof winModel !== "object" || winModel === null || Array.isArray(winModel)) {
+        return "lines";
+    }
+    const type = (winModel as Record<string, unknown>).type;
+    return type === "ways" || type === "clusters" ? type : "lines";
+}
+
+export function getWinModelMinimumClusterSize(blueprint: Record<string, unknown>): number | undefined {
+    const winModel = blueprint.winModel;
+    if (typeof winModel !== "object" || winModel === null || Array.isArray(winModel)) {
+        return undefined;
+    }
+    const size = (winModel as Record<string, unknown>).minimumClusterSize;
+    return typeof size === "number" ? size : undefined;
+}
+
+// "lines" is the implicit default (see GameBlueprint.winModel's own doc comment), so switching back to
+// it removes the field entirely rather than writing an explicit {type: "lines"} -- keeps a blueprint
+// that never touched this step exactly as small as it was before.
+export function setWinModelType(blueprint: Record<string, unknown>, type: WinModelType): void {
+    if (type === "lines") {
+        Reflect.deleteProperty(blueprint, "winModel");
+        return;
+    }
+    if (type === "ways") {
+        blueprint.winModel = {type: "ways"};
+        return;
+    }
+    const currentSize = getWinModelMinimumClusterSize(blueprint);
+    blueprint.winModel = currentSize === undefined ? {type: "clusters"} : {type: "clusters", minimumClusterSize: currentSize};
+}
+
+export function setWinModelMinimumClusterSize(blueprint: Record<string, unknown>, size: number | undefined): void {
+    const winModel: Record<string, unknown> = {type: "clusters"};
+    if (size !== undefined) {
+        winModel.minimumClusterSize = size;
+    }
+    blueprint.winModel = winModel;
+}
+
+// ---- Mechanics: free games (scatter-triggered) ----
+
+function asMechanics(value: unknown): Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : {};
+}
+
+function asFreeGames(value: unknown): {scatterSymbol: string; awardsByCount: Record<string, number>} {
+    const record = typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+    return {
+        scatterSymbol: typeof record.scatterSymbol === "string" ? record.scatterSymbol : "",
+        awardsByCount: asNumberRecord(record.awardsByCount),
+    };
+}
+
+export function hasFreeGames(blueprint: Record<string, unknown>): boolean {
+    return asMechanics(blueprint.mechanics).freeGames !== undefined;
+}
+
+export function getFreeGames(blueprint: Record<string, unknown>): {scatterSymbol: string; awardsByCount: Record<string, number>} {
+    return asFreeGames(asMechanics(blueprint.mechanics).freeGames);
+}
+
+// Disabling removes "mechanics.freeGames"; if that leaves "mechanics" empty, "mechanics" itself is
+// removed too, so a blueprint that never touched this step never carries an empty {} placeholder.
+export function setFreeGamesEnabled(blueprint: Record<string, unknown>, enabled: boolean): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    if (enabled) {
+        mechanics.freeGames = asFreeGames(mechanics.freeGames);
+        blueprint.mechanics = mechanics;
+        return;
+    }
+    Reflect.deleteProperty(mechanics, "freeGames");
+    if (Object.keys(mechanics).length === 0) {
+        Reflect.deleteProperty(blueprint, "mechanics");
+    } else {
+        blueprint.mechanics = mechanics;
+    }
+}
+
+export function setFreeGamesScatterSymbol(blueprint: Record<string, unknown>, scatterSymbol: string): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    mechanics.freeGames = {...asFreeGames(mechanics.freeGames), scatterSymbol};
+    blueprint.mechanics = mechanics;
+}
+
+export function setFreeGamesAward(blueprint: Record<string, unknown>, matchCount: number, awarded: number): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    const freeGames = asFreeGames(mechanics.freeGames);
+    mechanics.freeGames = {...freeGames, awardsByCount: {...freeGames.awardsByCount, [String(matchCount)]: awarded}};
+    blueprint.mechanics = mechanics;
+}
+
+export function removeFreeGamesAward(blueprint: Record<string, unknown>, matchCount: number): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    const freeGames = asFreeGames(mechanics.freeGames);
+    const awardsByCount = {...freeGames.awardsByCount};
+    Reflect.deleteProperty(awardsByCount, String(matchCount));
+    mechanics.freeGames = {...freeGames, awardsByCount};
+    blueprint.mechanics = mechanics;
+}
+
+// ---- Bet modes ----
+
+export type BetModeFormValues = {id: string; label?: string; costMultiplier?: number; forcesFreeGames?: boolean};
+
+export function asBetModesList(value: unknown): BetModeFormValues[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value.map((entry) => {
+        const record = typeof entry === "object" && entry !== null && !Array.isArray(entry) ? (entry as Record<string, unknown>) : {};
+        const result: BetModeFormValues = {id: typeof record.id === "string" ? record.id : ""};
+        if (typeof record.label === "string") {
+            result.label = record.label;
+        }
+        if (typeof record.costMultiplier === "number") {
+            result.costMultiplier = record.costMultiplier;
+        }
+        if (typeof record.forcesFreeGames === "boolean") {
+            result.forcesFreeGames = record.forcesFreeGames;
+        }
+        return result;
+    });
+}
+
+export function addBetMode(blueprint: Record<string, unknown>, id: string): void {
+    blueprint.betModes = [...asBetModesList(blueprint.betModes), {id}];
+}
+
+export function setBetModeField(
+    blueprint: Record<string, unknown>,
+    index: number,
+    field: keyof BetModeFormValues,
+    value: string | number | boolean | undefined,
+): void {
+    const betModes = asBetModesList(blueprint.betModes).map((mode) => ({...mode}));
+    if (betModes[index] === undefined) {
+        return;
+    }
+    if (value === undefined) {
+        Reflect.deleteProperty(betModes[index], field);
+    } else {
+        (betModes[index] as Record<string, unknown>)[field] = value;
+    }
+    blueprint.betModes = betModes;
+}
+
+export function removeBetModeAt(blueprint: Record<string, unknown>, index: number): void {
+    blueprint.betModes = removeAt(asBetModesList(blueprint.betModes), index);
+}
+
+export function duplicateBetModeAt(blueprint: Record<string, unknown>, index: number): void {
+    const betModes = asBetModesList(blueprint.betModes);
+    const original = betModes[index];
+    if (original === undefined) {
+        return;
+    }
+    const existingIds = new Set(betModes.map((mode) => mode.id));
+    let candidateId = `${original.id}-copy`;
+    let suffix = 2;
+    while (existingIds.has(candidateId)) {
+        candidateId = `${original.id}-copy-${suffix}`;
+        suffix++;
+    }
+    const next = [...betModes];
+    next.splice(index + 1, 0, {...original, id: candidateId});
+    blueprint.betModes = next;
+}
+
+export function moveBetModeAt(blueprint: Record<string, unknown>, fromIndex: number, toIndex: number): void {
+    blueprint.betModes = moveItem(asBetModesList(blueprint.betModes), fromIndex, toIndex);
+}
+
 // ---- Reel generation mode (reelStrips/reelStripGeneration/symbolWeights are mutually exclusive in practice) ----
 
 export type ReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";

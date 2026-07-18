@@ -85,7 +85,18 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const scatters = this.validateSymbolSubset(b.scatters, "scatters", symbolSet, symbolsValid, issues);
         this.validateWildScatterOverlap(wilds, scatters, issues);
 
-        const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, reels, reelsValid, issues);
+        // Line/ways match-counts are bounded by "reels" (a symbol can match on at most one reel each);
+        // a cluster's size is bounded by the whole grid ("reels" * "rows") instead, since a cluster can
+        // span every cell -- capping cluster paytable keys at "reels" would reject the very sizes a
+        // cluster-pay game actually needs to define payouts for.
+        const isClustersWinModel = this.isClustersWinModel(b.winModel);
+        let maxMatchCount: number | undefined;
+        if (isClustersWinModel) {
+            maxMatchCount = reelsValid && rowsValid ? (reels as number) * (rows as number) : undefined;
+        } else {
+            maxMatchCount = reelsValid ? (reels as number) : undefined;
+        }
+        const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, maxMatchCount, issues);
         this.validatePaylines(b.paylines, reels, reelsValid, rows, rowsValid, issues);
         const reelStripSymbols = this.validateReelStrips(b.reelStrips, symbolSet, symbolsValid, reels, reelsValid, rows, rowsValid, issues);
         const reelStripGenerationSymbols = this.validateReelStripGeneration(b.reelStripGeneration, symbolSet, symbolsValid, reels, reelsValid, issues);
@@ -120,7 +131,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         this.validateReachability(paytableSymbols, wilds, scatters, reelStripSymbols, reelStripGenerationSymbols, weightSymbols, issues);
         this.validateEverySymbolHasAPayout(symbolList, symbolsValid, paytableSymbols, wilds, scatters, issues);
 
-        const regularPayouts = this.validatePaytableQuality(b.paytable, wilds, scatters, reels, reelsValid, issues);
+        const regularPayouts = this.validatePaytableQuality(b.paytable, wilds, scatters, maxMatchCount, isClustersWinModel, issues);
         this.validateWeightingQuality(b.reelStrips, b.reelStripGeneration, b.symbolWeights, wilds, scatters, regularPayouts, issues);
 
         if (b.availableBets !== undefined) {
@@ -144,7 +155,223 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             }
         }
 
+        this.validateWinModel(b.winModel, b.paylines !== undefined, issues);
+        const hasFreeGames = this.validateMechanics(b.mechanics, scatters, issues);
+        this.validateBetModes(b.betModes, hasFreeGames, issues);
+
         return issues;
+    }
+
+    private validateWinModel(winModel: unknown, paylinesPresent: boolean, issues: ValidationIssue[]): void {
+        if (winModel === undefined) {
+            return;
+        }
+        if (typeof winModel !== "object" || winModel === null || Array.isArray(winModel)) {
+            issues.push({
+                code: "blueprint-winmodel-invalid-type",
+                severity: "error",
+                message: '"winModel", if present, must be an object with a "type" of "lines", "ways", or "clusters".',
+                path: "winModel",
+            });
+            return;
+        }
+
+        const w = winModel as Record<string, unknown>;
+        if (w.type !== "lines" && w.type !== "ways" && w.type !== "clusters") {
+            issues.push({
+                code: "blueprint-winmodel-invalid-type",
+                severity: "error",
+                message: '"winModel.type" must be one of: lines, ways, clusters.',
+                path: "winModel.type",
+            });
+            return;
+        }
+
+        if (w.type === "clusters" && w.minimumClusterSize !== undefined) {
+            const size = w.minimumClusterSize;
+            if (!(typeof size === "number" && Number.isInteger(size) && size >= 2)) {
+                issues.push({
+                    code: "blueprint-winmodel-invalid-minimumclustersize",
+                    severity: "error",
+                    message: '"winModel.minimumClusterSize", if present, must be an integer >= 2.',
+                    path: "winModel.minimumClusterSize",
+                });
+            }
+        }
+
+        if ((w.type === "ways" || w.type === "clusters") && paylinesPresent) {
+            issues.push({
+                code: "blueprint-winmodel-paylines-ignored",
+                severity: "warning",
+                message: `"paylines" is set, but "winModel.type" is "${w.type}" — ways/cluster wins ignore paylines entirely, so it has no effect.`,
+                suggestion: 'Remove "paylines", or set "winModel.type" to "lines" (or omit "winModel") to use it.',
+            });
+        }
+    }
+
+    // Returns whether a valid mechanics.freeGames was configured, so validateBetModes can cross-check
+    // a bet mode's "forcesFreeGames" against it.
+    private validateMechanics(mechanics: unknown, scatters: string[], issues: ValidationIssue[]): boolean {
+        if (mechanics === undefined) {
+            return false;
+        }
+        if (typeof mechanics !== "object" || mechanics === null || Array.isArray(mechanics)) {
+            issues.push({
+                code: "blueprint-mechanics-invalid",
+                severity: "error",
+                message: '"mechanics", if present, must be an object.',
+                path: "mechanics",
+            });
+            return false;
+        }
+
+        const m = mechanics as Record<string, unknown>;
+        if (m.freeGames === undefined) {
+            return false;
+        }
+        this.validateFreeGames(m.freeGames, scatters, issues);
+        return true;
+    }
+
+    private validateFreeGames(freeGames: unknown, scatters: string[], issues: ValidationIssue[]): void {
+        if (typeof freeGames !== "object" || freeGames === null || Array.isArray(freeGames)) {
+            issues.push({
+                code: "blueprint-mechanics-freegames-invalid",
+                severity: "error",
+                message: '"mechanics.freeGames" must be an object with "scatterSymbol" and "awardsByCount".',
+                path: "mechanics.freeGames",
+            });
+            return;
+        }
+
+        const f = freeGames as Record<string, unknown>;
+        const scatterSymbol = f.scatterSymbol;
+        if (typeof scatterSymbol !== "string" || scatterSymbol.length === 0) {
+            issues.push({
+                code: "blueprint-mechanics-freegames-missing-scatter",
+                severity: "error",
+                message: '"mechanics.freeGames.scatterSymbol" must be a non-empty symbol id.',
+                path: "mechanics.freeGames.scatterSymbol",
+            });
+        } else if (!scatters.includes(scatterSymbol)) {
+            issues.push({
+                code: "blueprint-mechanics-freegames-unknown-scatter",
+                severity: "error",
+                message: `"mechanics.freeGames.scatterSymbol" references "${scatterSymbol}", which is not listed in "scatters".`,
+                path: "mechanics.freeGames.scatterSymbol",
+            });
+        }
+
+        const awardsByCount = f.awardsByCount;
+        if (
+            typeof awardsByCount !== "object" ||
+            awardsByCount === null ||
+            Array.isArray(awardsByCount) ||
+            Object.keys(awardsByCount).length === 0
+        ) {
+            issues.push({
+                code: "blueprint-mechanics-freegames-empty-awards",
+                severity: "error",
+                message: '"mechanics.freeGames.awardsByCount" must be a non-empty object mapping match-count to free games awarded.',
+                path: "mechanics.freeGames.awardsByCount",
+            });
+            return;
+        }
+
+        for (const [count, awarded] of Object.entries(awardsByCount as Record<string, unknown>)) {
+            const countNumber = Number(count);
+            if (!(Number.isInteger(countNumber) && countNumber >= 2)) {
+                issues.push({
+                    code: "blueprint-mechanics-freegames-invalid-count",
+                    severity: "error",
+                    message: `"mechanics.freeGames.awardsByCount" has an invalid match-count key "${count}" (expected an integer >= 2).`,
+                });
+            }
+            if (!(typeof awarded === "number" && Number.isInteger(awarded) && awarded > 0)) {
+                issues.push({
+                    code: "blueprint-mechanics-freegames-invalid-award",
+                    severity: "error",
+                    message: `"mechanics.freeGames.awardsByCount.${count}" must be a positive integer.`,
+                });
+            }
+        }
+    }
+
+    private validateBetModes(betModes: unknown, hasFreeGames: boolean, issues: ValidationIssue[]): void {
+        if (betModes === undefined) {
+            return;
+        }
+        if (!Array.isArray(betModes)) {
+            issues.push({
+                code: "blueprint-betmodes-invalid",
+                severity: "error",
+                message: '"betModes", if present, must be an array of bet mode objects.',
+                path: "betModes",
+            });
+            return;
+        }
+
+        const seenIds = new Set<string>();
+        betModes.forEach((entry, index) => {
+            const path = `betModes[${index}]`;
+            if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+                issues.push({code: "blueprint-betmode-invalid-entry", severity: "error", message: `"${path}" must be an object.`, path});
+                return;
+            }
+
+            const e = entry as Record<string, unknown>;
+            if (typeof e.id !== "string" || e.id.length === 0) {
+                issues.push({
+                    code: "blueprint-betmode-invalid-id",
+                    severity: "error",
+                    message: `"${path}.id" must be a non-empty string.`,
+                    path: `${path}.id`,
+                });
+            } else if (seenIds.has(e.id)) {
+                issues.push({
+                    code: "blueprint-betmodes-duplicate-id",
+                    severity: "error",
+                    message: `"${path}.id" ("${e.id}") is used by more than one bet mode; ids must be unique.`,
+                    path: `${path}.id`,
+                });
+            } else {
+                seenIds.add(e.id);
+            }
+
+            if (e.label !== undefined && typeof e.label !== "string") {
+                issues.push({
+                    code: "blueprint-betmode-invalid-label",
+                    severity: "error",
+                    message: `"${path}.label", if present, must be a string.`,
+                    path: `${path}.label`,
+                });
+            }
+
+            if (e.costMultiplier !== undefined && !(typeof e.costMultiplier === "number" && Number.isFinite(e.costMultiplier) && e.costMultiplier > 0)) {
+                issues.push({
+                    code: "blueprint-betmode-invalid-costmultiplier",
+                    severity: "error",
+                    message: `"${path}.costMultiplier", if present, must be a positive, finite number.`,
+                    path: `${path}.costMultiplier`,
+                });
+            }
+
+            if (e.forcesFreeGames !== undefined && typeof e.forcesFreeGames !== "boolean") {
+                issues.push({
+                    code: "blueprint-betmode-invalid-forcesfreegames",
+                    severity: "error",
+                    message: `"${path}.forcesFreeGames", if present, must be a boolean.`,
+                    path: `${path}.forcesFreeGames`,
+                });
+            } else if (e.forcesFreeGames === true && !hasFreeGames) {
+                issues.push({
+                    code: "blueprint-betmode-forces-freegames-without-mechanics",
+                    severity: "error",
+                    message: `"${path}.forcesFreeGames" is true, but "mechanics.freeGames" is not configured — there is no free games feature to force.`,
+                    path: `${path}.forcesFreeGames`,
+                });
+            }
+        });
     }
 
     private validateManifest(manifest: unknown, issues: ValidationIssue[]): void {
@@ -225,13 +452,19 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
     }
 
+    private isClustersWinModel(winModel: unknown): boolean {
+        return typeof winModel === "object" && winModel !== null && !Array.isArray(winModel) && (winModel as Record<string, unknown>).type === "clusters";
+    }
+
+    // "maxMatchCount" is the upper bound a paytable match-count key may use -- "reels" for lines/ways
+    // (a symbol matches on at most one reel each), or "reels" * "rows" for clusters (a cluster can span
+    // the whole grid). `undefined` means no upper bound (reels/rows weren't valid enough to compute one).
     private validatePaytable(
         paytable: unknown,
         symbolSet: Set<string>,
         symbolsValid: boolean,
         wilds: string[],
-        reels: unknown,
-        reelsValid: boolean,
+        maxMatchCount: number | undefined,
         issues: ValidationIssue[],
     ): string[] {
         if (typeof paytable !== "object" || paytable === null || Array.isArray(paytable)) {
@@ -279,12 +512,12 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             const validPayouts: {times: number; multiplier: number}[] = [];
             for (const [times, multiplier] of Object.entries(payouts as Record<string, unknown>)) {
                 const timesNumber = Number(times);
-                const timesValid = Number.isInteger(timesNumber) && timesNumber >= 2 && (!reelsValid || timesNumber <= (reels as number));
+                const timesValid = Number.isInteger(timesNumber) && timesNumber >= 2 && (maxMatchCount === undefined || timesNumber <= maxMatchCount);
                 if (!timesValid) {
                     issues.push({
                         code: "blueprint-paytable-invalid-times",
                         severity: "error",
-                        message: `"paytable.${symbolId}" has an invalid match-count key "${times}" (expected an integer between 2 and "reels").`,
+                        message: `"paytable.${symbolId}" has an invalid match-count key "${times}" (expected an integer between 2 and ${maxMatchCount ?? '"reels"'}).`,
                     });
                 }
                 const multiplierValid = typeof multiplier === "number" && multiplier > 0;
@@ -1037,12 +1270,15 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
     // for a rare full-screen hit), so entry-tier/base-payout checks tuned for line-pay symbols don't apply.
     // Returns the per-symbol valid payouts for every considered (non-wild, non-scatter) symbol, so
     // validateWeightingQuality can cross-reference payout against reel weighting without re-parsing.
+    // "skipLinePayHeuristics" (true for a clusters winModel) turns off the two smells below that assume
+    // reel-based match-count semantics ("most line-pay symbols start at 3-of-a-kind") -- a cluster's
+    // match-count is a grid cell count, not a reels-matched count, so those heuristics don't apply.
     private validatePaytableQuality(
         paytable: unknown,
         wilds: string[],
         scatters: string[],
-        reels: unknown,
-        reelsValid: boolean,
+        maxMatchCount: number | undefined,
+        skipLinePayHeuristics: boolean,
         issues: ValidationIssue[],
     ): Map<string, SymbolPayout[]> {
         const regularPayouts = new Map<string, SymbolPayout[]>();
@@ -1061,8 +1297,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             const validPayouts: SymbolPayout[] = [];
             for (const [times, multiplier] of Object.entries(payouts as Record<string, unknown>)) {
                 const timesNumber = Number(times);
-                const timesValid =
-                    Number.isInteger(timesNumber) && timesNumber >= 2 && (!reelsValid || timesNumber <= (reels as number));
+                const timesValid = Number.isInteger(timesNumber) && timesNumber >= 2 && (maxMatchCount === undefined || timesNumber <= maxMatchCount);
                 const multiplierValid = typeof multiplier === "number" && multiplier > 0;
                 if (timesValid && multiplierValid) {
                     validPayouts.push({times: timesNumber, multiplier});
@@ -1074,7 +1309,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             validPayouts.sort((a, b) => a.times - b.times);
 
             const entryTier = validPayouts[0];
-            if (entryTier.times === FREQUENT_LOW_MATCH_COUNT) {
+            if (!skipLinePayHeuristics && entryTier.times === FREQUENT_LOW_MATCH_COUNT) {
                 issues.push({
                     code: "blueprint-paytable-frequent-low-match",
                     severity: "warning",
@@ -1083,7 +1318,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 });
             }
 
-            if (!validPayouts.some((payout) => payout.times === 3) && (!reelsValid || (reels as number) >= 3)) {
+            if (!skipLinePayHeuristics && !validPayouts.some((payout) => payout.times === 3) && (maxMatchCount === undefined || maxMatchCount >= 3)) {
                 issues.push({
                     code: "blueprint-paytable-missing-base-payout",
                     severity: "warning",

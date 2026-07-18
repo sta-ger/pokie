@@ -633,4 +633,134 @@ describe("GameBlueprintValidator", () => {
             ]),
         );
     });
+
+    describe("winModel", () => {
+        it("accepts an absent winModel, and each of lines/ways/clusters", () => {
+            expect(validator.validate(validBlueprint()).filter((issue) => issue.severity === "error")).toEqual([]);
+            expect(
+                validator
+                    .validate({...validBlueprint(), winModel: {type: "lines"}})
+                    .filter((issue) => issue.severity === "error"),
+            ).toEqual([]);
+            expect(
+                validator
+                    .validate({...validBlueprint(), paylines: undefined, winModel: {type: "ways"}})
+                    .filter((issue) => issue.severity === "error"),
+            ).toEqual([]);
+            expect(
+                validator
+                    .validate({...validBlueprint(), paylines: undefined, winModel: {type: "clusters", minimumClusterSize: 4}})
+                    .filter((issue) => issue.severity === "error"),
+            ).toEqual([]);
+        });
+
+        it("flags an invalid winModel.type", () => {
+            const blueprint = {...validBlueprint(), winModel: {type: "not-a-type"}} as unknown as GameBlueprint;
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-winmodel-invalid-type");
+        });
+
+        it("flags an invalid minimumClusterSize", () => {
+            const blueprint = {...validBlueprint(), paylines: undefined, winModel: {type: "clusters", minimumClusterSize: 1}};
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-winmodel-invalid-minimumclustersize");
+        });
+
+        it("warns when paylines is set alongside a ways/clusters winModel", () => {
+            const blueprint = {...validBlueprint(), winModel: {type: "ways"}};
+
+            const issues = validator.validate(blueprint);
+            expect(issues.find((issue) => issue.code === "blueprint-winmodel-paylines-ignored")?.severity).toBe("warning");
+        });
+    });
+
+    describe("mechanics.freeGames", () => {
+        function withFreeGames(overrides: Record<string, unknown> = {}) {
+            return {
+                ...validBlueprint(),
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8, 4: 15, 5: 20}, ...overrides}},
+            };
+        }
+
+        it("accepts a well-formed freeGames config", () => {
+            expect(validator.validate(withFreeGames()).filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it("flags a missing/non-string scatterSymbol", () => {
+            expect(codesOf(validator.validate(withFreeGames({scatterSymbol: ""})))).toContain(
+                "blueprint-mechanics-freegames-missing-scatter",
+            );
+        });
+
+        it("flags a scatterSymbol not listed in scatters", () => {
+            expect(codesOf(validator.validate(withFreeGames({scatterSymbol: "ZZ"})))).toContain(
+                "blueprint-mechanics-freegames-unknown-scatter",
+            );
+        });
+
+        it("flags an empty awardsByCount", () => {
+            expect(codesOf(validator.validate(withFreeGames({awardsByCount: {}})))).toContain(
+                "blueprint-mechanics-freegames-empty-awards",
+            );
+        });
+
+        it("flags an invalid match-count key and a non-positive award", () => {
+            const blueprint = withFreeGames({awardsByCount: {1: 5, 3: 0}});
+
+            expect(codesOf(validator.validate(blueprint))).toEqual(
+                expect.arrayContaining(["blueprint-mechanics-freegames-invalid-count", "blueprint-mechanics-freegames-invalid-award"]),
+            );
+        });
+
+        it("flags a non-object mechanics", () => {
+            const blueprint = {...validBlueprint(), mechanics: "nope"} as unknown as GameBlueprint;
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-mechanics-invalid");
+        });
+    });
+
+    describe("betModes", () => {
+        it("accepts well-formed bet modes", () => {
+            const blueprint = {
+                ...validBlueprint(),
+                betModes: [
+                    {id: "base"},
+                    {id: "buy-free-spins", label: "Buy Free Spins", costMultiplier: 100, forcesFreeGames: true},
+                ],
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
+            };
+
+            expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it("flags a non-array betModes", () => {
+            const blueprint = {...validBlueprint(), betModes: "nope"} as unknown as GameBlueprint;
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-invalid");
+        });
+
+        it("flags a missing/empty bet mode id", () => {
+            const blueprint = {...validBlueprint(), betModes: [{id: ""}]};
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-invalid-id");
+        });
+
+        it("flags duplicate bet mode ids", () => {
+            const blueprint = {...validBlueprint(), betModes: [{id: "base"}, {id: "base"}]};
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-duplicate-id");
+        });
+
+        it("flags an invalid costMultiplier", () => {
+            const blueprint = {...validBlueprint(), betModes: [{id: "base", costMultiplier: -5}]};
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-invalid-costmultiplier");
+        });
+
+        it("flags forcesFreeGames without mechanics.freeGames configured", () => {
+            const blueprint = {...validBlueprint(), betModes: [{id: "buy", forcesFreeGames: true}]};
+
+            expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-forces-freegames-without-mechanics");
+        });
+    });
 });

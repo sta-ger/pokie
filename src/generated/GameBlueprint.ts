@@ -1,3 +1,4 @@
+import type {BetMode} from "../gamepackage/BetMode.js";
 import type {ReelStripGenerationSpec} from "./ReelStripGenerationSpec.js";
 
 // Bumped only if the GameBlueprint JSON shape itself changes in a way older tooling couldn't parse.
@@ -11,6 +12,26 @@ export type GameBlueprintManifest = {
     version: string;
     description?: string;
     author?: string;
+};
+
+// How wins are evaluated. Omit (or {type: "lines"}) for today's default: paylines + Paytable, via
+// VideoSlotConfig's own default win calculator -- unchanged behavior for every existing blueprint.
+// "ways"/"clusters" opt into WaysWinCalculator/ClusterWinCalculator (see GamePackageGenerator);
+// "paylines" is ignored (a validator warning, not an error) when either is chosen.
+export type GameBlueprintWinModel =
+    | {type: "lines"}
+    | {type: "ways"}
+    | {type: "clusters"; minimumClusterSize?: number};
+
+// One scatter-triggered free games award. "scatterSymbol" must be one of blueprint.scatters.
+// "awardsByCount" mirrors paytable's shape: matchCount (as a string key) -> free games awarded.
+export type GameBlueprintFreeGames = {
+    scatterSymbol: string;
+    awardsByCount: Record<string, number>;
+};
+
+export type GameBlueprintMechanics = {
+    freeGames?: GameBlueprintFreeGames;
 };
 
 // The minimal vertical-slice authoring format for "pokie build": reels/rows, symbols, paylines,
@@ -46,4 +67,10 @@ export type GameBlueprint = {
     // default weighting.
     symbolWeights?: Record<string, number>;
     availableBets?: number[];
+    winModel?: GameBlueprintWinModel;
+    mechanics?: GameBlueprintMechanics;
+    // Selectable bet modes (e.g. base game, buy-the-feature). Purely declarative: the generated
+    // module exposes these via the optional PokieGame.getBetModes(), but nothing in the engine ever
+    // auto-selects one -- see BetMode's own doc comment.
+    betModes?: BetMode[];
 };
