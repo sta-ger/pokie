@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import {applyGameBlueprintToProject} from "../../../../cli/studio/blueprint/applyGameBlueprintToProject.js";
 import {serializeGameBlueprint} from "../../../../cli/studio/blueprint/serializeGameBlueprint.js";
+import type {StudioBlueprintApplyView} from "../../../../cli/studio/blueprint/StudioBlueprintApplyView.js";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
@@ -297,5 +298,115 @@ describe("applyGameBlueprintToProject", () => {
         expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(externallyEdited));
         expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
         expect(tempArtifactsLeftBehind()).toEqual([]);
+    });
+
+    // Race 1: a hash check that has already returned successfully must never let a second, independent
+    // apply commit "in between" it and the commit it gates. A separate read-then-write can't guarantee
+    // this by construction -- there's always a gap between the two calls for another cooperating caller
+    // to land in. This proves the *real* guarantee: applyGameBlueprintToProject holds a filesystem-level
+    // exclusive lock (see withExclusiveLock) across its own check-then-commit sequence, so a second call
+    // racing in during that exact window -- after the first's own hash check already passed, before it
+    // has written anything -- is refused outright rather than allowed to interleave.
+    it("refuses a second concurrent apply that races in right after the first's hash check already passed, so their commits can never interleave", async () => {
+        const original = buildBlueprint();
+        seedProject(original);
+        const firstEdit = buildBlueprint({symbols: ["A", "B", "FIRST"]});
+        const secondEdit = buildBlueprint({symbols: ["A", "B", "SECOND"]});
+        let readCount = 0;
+        let secondResult: StudioBlueprintApplyView | undefined;
+
+        const firstResult = await applyGameBlueprintToProject({
+            projectRoot,
+            sourcePath,
+            expectedHash: computeGameBlueprintHash(original),
+            blueprint: firstEdit,
+            blueprintValidator,
+            gamePackageGenerator,
+            // The 2nd read is the check made right after acquiring the lock, immediately before
+            // committing source -- fire a second, fully independent apply attempt exactly there, while
+            // the source blueprint is still untouched on disk and this first apply already holds the
+            // lock, standing in for a second Studio tab (or another API call) racing in at that moment.
+            readFile: (filePath) => {
+                readCount += 1;
+                if (readCount === 2 && secondResult === undefined) {
+                    secondResult = applyGameBlueprintToProject({
+                        projectRoot,
+                        sourcePath,
+                        expectedHash: computeGameBlueprintHash(original),
+                        blueprint: secondEdit,
+                        blueprintValidator,
+                        gamePackageGenerator,
+                    });
+                }
+                return fs.readFileSync(filePath, "utf-8");
+            },
+        });
+
+        expect(firstResult.status).toBe("ok");
+        expect(secondResult?.status).toBe("error");
+        if (secondResult?.status !== "error") {
+            throw new Error("expected the second, overlapping apply to be refused");
+        }
+        expect(secondResult.error).toContain("already in progress");
+        // Only the first apply's edit ever reached the source blueprint -- nothing from the refused,
+        // overlapping second attempt touched it, silently or otherwise.
+        expect(JSON.parse(fs.readFileSync(sourcePath, "utf-8"))).toEqual(firstEdit);
+        expect(tempArtifactsLeftBehind()).toEqual([]);
+    });
+
+    // Race 2: even with the lock above, it only coordinates *cooperating* callers -- anything going
+    // through applyGameBlueprintToProject. It can't stop an uncooperative writer (a hand edit saved from
+    // a text editor, say) that never asks for the lock at all. This proves the rollback path is still
+    // safe against that: source commits successfully, an external edit lands on the real source blueprint
+    // afterward, and *then* a generated-package-file commit fails, triggering a rollback of the
+    // already-committed source -- which must leave the external edit exactly as found rather than
+    // silently discarding it to restore the pre-apply original.
+    it("preserves an external edit that lands after source was committed but before a later generated-package-file failure rolls it back", async () => {
+        const original = buildBlueprint();
+        seedProject(original);
+        const edited = buildBlueprint({symbols: ["A", "B", "C"], paytable: {A: {3: 5}, B: {3: 2}, C: {3: 1}}});
+        const externallyEdited = buildBlueprint({symbols: ["A", "B", "EXTERNAL"]});
+        const indexJsPath = path.join(projectRoot, "src", "generated", "index.js");
+
+        const result = await applyGameBlueprintToProject({
+            projectRoot,
+            sourcePath,
+            expectedHash: computeGameBlueprintHash(original),
+            blueprint: edited,
+            blueprintValidator,
+            gamePackageGenerator,
+            // Source's own commit (2 renames: move current aside, move staged in) succeeds normally
+            // above this. The first attempt to commit a GENERATED_PACKAGE_FILES entry (index.js) is
+            // where an uncooperative external process -- one that never asked for this module's own
+            // lock -- writes directly to the now-already-committed source blueprint, and where this
+            // apply's own package-file commit then fails for an unrelated reason (simulated disk error).
+            rename: (from, to) => {
+                if (to === indexJsPath && !from.includes(".stale-")) {
+                    fs.writeFileSync(sourcePath, serializeGameBlueprint(externallyEdited));
+                    throw new Error("simulated disk failure committing a generated package file");
+                }
+                fs.renameSync(from, to);
+            },
+        });
+
+        expect(result.status).toBe("error");
+        if (result.status !== "error") {
+            throw new Error("expected error");
+        }
+        expect(result.error).toContain("changed externally");
+        expect(result.error).toContain("preserved");
+        // The external edit itself -- not the pre-apply original, and not this apply's own edit -- is
+        // what's on disk afterward: rolling back never silently overwrote it.
+        expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(externallyEdited));
+        // The generated package itself, meanwhile, still rolled back to its pre-apply state, since
+        // nothing external touched *it*.
+        expect(fs.readFileSync(indexJsPath, "utf-8")).not.toContain('"C"');
+        // Exactly one artifact survives, deliberately: the pre-apply original, left at its stale-backup
+        // path instead of being deleted or blindly renamed back over the external edit, exactly as the
+        // error message above points to for manual recovery.
+        const leftover = tempArtifactsLeftBehind();
+        expect(leftover.length).toBe(1);
+        expect(leftover[0]).toContain(".stale-");
+        expect(fs.readFileSync(path.join(cwd, leftover[0]), "utf-8")).toBe(serializeGameBlueprint(original));
     });
 });
