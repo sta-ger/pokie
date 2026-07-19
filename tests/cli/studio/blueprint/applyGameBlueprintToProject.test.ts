@@ -161,6 +161,106 @@ describe("applyGameBlueprintToProject", () => {
         expect(tempArtifactsLeftBehind()).toEqual([]);
     });
 
+    // The requirement this covers: restoreCapture's own link() call is what actually restores sourcePath
+    // -- by the time it succeeds, sourcePath is already durably back to the pre-apply original. Removing
+    // the now-redundant captured backup afterward is cleanup, not part of the transaction: a failure
+    // there must never bypass this apply's normal conflict/rollback reporting (an *uncaught throw* would
+    // skip straight past rollBackAndReport, leaving already-committed generated files stuck ahead of the
+    // just-restored source). It must still report "conflict", still roll the generated files back, and
+    // only *warn* about the leftover backup rather than fail outright or lose track of it.
+    it("still reports conflict and rolls generated files back when restoring an already-stale capture can't remove its own leftover backup", async () => {
+        const original = buildBlueprint();
+        seedProject(original);
+        const externallyEdited = buildBlueprint({symbols: ["A", "B", "EXTERNAL"]});
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        let readCount = 0;
+        const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+
+        try {
+            const result = await applyGameBlueprintToProject({
+                projectRoot,
+                sourcePath,
+                expectedHash: computeGameBlueprintHash(original),
+                blueprint: buildBlueprint({symbols: ["A", "B", "MINE"]}),
+                blueprintValidator,
+                gamePackageGenerator,
+                // Second read is publishSourceBlueprint reading back what it just captured -- already
+                // stale, forcing the restore-on-mismatch path below.
+                readFile: (filePath) => {
+                    readCount += 1;
+                    return readCount === 1 ? fs.readFileSync(filePath, "utf-8") : serializeGameBlueprint(externallyEdited);
+                },
+                // The restore's own link() (capturedPath -> sourcePath) succeeds normally; only its
+                // follow-up cleanup unlink of the now-redundant capturedPath fails.
+                unlink: (targetPath) => {
+                    if (targetPath.includes(".captured-")) {
+                        throw new Error("simulated disk failure removing the captured backup");
+                    }
+                    fs.unlinkSync(targetPath);
+                },
+            });
+
+            expect(result.status).toBe("conflict");
+            // Source itself is already correctly restored -- the leftover backup is a redundant copy,
+            // not the only surviving one.
+            expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(original));
+            expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
+            const leftover = tempArtifactsLeftBehind();
+            expect(leftover.length).toBe(1);
+            expect(leftover[0]).toContain(".captured-");
+            expect(fs.readFileSync(path.join(cwd, leftover[0]), "utf-8")).toBe(serializeGameBlueprint(original));
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("now-redundant backup"));
+        } finally {
+            warnSpy.mockRestore();
+        }
+    });
+
+    // The requirement this covers: the link() that actually publishes the new source blueprint already
+    // succeeded by the time the staging file is cleaned up -- sourcePath and every generated file are
+    // already durably consistent with the new blueprint. A failure removing that now-redundant staging
+    // file must never be reported as a failed Apply (an *uncaught throw* here would skip straight past
+    // this apply's own "ok" result and report a generic error despite nothing actually being wrong); it
+    // must only be logged as a warning.
+    it("reports success, not a failed Apply, when the staging file can't be removed after a successful publish", async () => {
+        const original = buildBlueprint();
+        seedProject(original);
+        const edited = buildBlueprint({symbols: ["A", "B", "C"], paytable: {A: {3: 5}, B: {3: 2}, C: {3: 1}}});
+        const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+
+        try {
+            const result = await applyGameBlueprintToProject({
+                projectRoot,
+                sourcePath,
+                expectedHash: computeGameBlueprintHash(original),
+                blueprint: edited,
+                blueprintValidator,
+                gamePackageGenerator,
+                // publishSourceBlueprint's own final publish link() succeeds; only its follow-up cleanup
+                // unlink of the now-redundant staging file fails.
+                unlink: (targetPath) => {
+                    if (targetPath.includes(".tmp-")) {
+                        throw new Error("simulated disk failure removing the staging file");
+                    }
+                    fs.unlinkSync(targetPath);
+                },
+            });
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.blueprintHash).toBe(computeGameBlueprintHash(edited));
+            expect(JSON.parse(fs.readFileSync(sourcePath, "utf-8"))).toEqual(edited);
+            expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toContain('"C"');
+            const leftover = tempArtifactsLeftBehind();
+            expect(leftover.length).toBe(1);
+            expect(leftover[0]).toContain(".tmp-");
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("could not be removed after publishing"));
+        } finally {
+            warnSpy.mockRestore();
+        }
+    });
+
     it("makes no writes when the new blueprint is invalid", async () => {
         const original = buildBlueprint();
         seedProject(original);

@@ -8,8 +8,11 @@ export type SourceUnlinker = (targetPath: string) => void;
 export type SourceReader = (filePath: string) => string;
 
 export type PublishSourceBlueprintResult =
-    | {readonly status: "ok"; readonly capturedPath: string}
-    | {readonly status: "conflict"; readonly currentHash: string}
+    // `cleanupWarning` on "ok"/"conflict" is never a reason to treat the transaction itself as failed —
+    // sourcePath (and, on "conflict", its restored original) is already durably correct either way; this
+    // only ever names a now-redundant temp file that a caller should remove by hand.
+    | {readonly status: "ok"; readonly capturedPath: string; readonly cleanupWarning?: string}
+    | {readonly status: "conflict"; readonly currentHash: string; readonly cleanupWarning?: string}
     | {readonly status: "error"; readonly error: string};
 
 // Publishes a new source blueprint as a genuine ownership-based filesystem transaction — not a hash read
@@ -79,7 +82,7 @@ export function publishSourceBlueprint(
                     `was left untouched.`,
             };
         }
-        return {status: "conflict", currentHash: capturedHash};
+        return {status: "conflict", currentHash: capturedHash, cleanupWarning: restore.cleanupWarning};
     }
 
     try {
@@ -104,20 +107,37 @@ export function publishSourceBlueprint(
                     `preserved at "${capturedPath}"; whatever is now at "${sourcePath}" was left untouched.`,
             };
         }
-        return {status: "error", error: `Failed to publish the new source blueprint: ${message(error)}. The pre-apply original was restored.`};
+        const recovery = restore.cleanupWarning !== undefined ? ` ${restore.cleanupWarning}` : "";
+        return {status: "error", error: `Failed to publish the new source blueprint: ${message(error)}. The pre-apply original was restored.${recovery}`};
     }
-    unlink(newContentPath);
 
-    return {status: "ok", capturedPath};
+    // sourcePath now durably holds the new content (the link above already succeeded) -- this only
+    // removes the now-redundant staging alias. A failure here is cosmetic, same as
+    // finalizeStagedPathBackup's own convention: never a reason to report an apply that already
+    // succeeded as failed.
+    let cleanupWarning: string | undefined;
+    try {
+        unlink(newContentPath);
+    } catch (error) {
+        cleanupWarning = `The staging file "${newContentPath}" could not be removed after publishing: ${message(error)}. Remove it manually.`;
+    }
+
+    return {status: "ok", capturedPath, cleanupWarning};
 }
 
-type RestoreResult = {readonly status: "restored"} | {readonly status: "restore-conflict"};
+type RestoreResult = {readonly status: "restored"; readonly cleanupWarning?: string} | {readonly status: "restore-conflict"};
 
 // Puts a just-captured original back with the same no-replace guarantee publishing itself uses: if
 // something else wrote a *new* file to sourcePath in the window between this call's own capture and this
 // restore attempt, linking fails with EEXIST instead of silently overwriting it — the captured original
 // stays exactly where it was captured to, recoverable by hand, and the second writer's content is left
 // exactly as they put it.
+//
+// The link above is what actually restores sourcePath -- by the time it succeeds, sourcePath is already
+// durably correct. Removing the now-redundant captured backup afterward is cleanup, not part of the
+// transaction: a failure there must never be treated as the restore itself failing (which would wrongly
+// skip the caller's own conflict/rollback reporting) -- it's surfaced as `cleanupWarning` on the still-
+// successful "restored" result instead.
 function restoreCapture(capturedPath: string, sourcePath: string, link: SourceLinker, unlink: SourceUnlinker): RestoreResult {
     try {
         link(capturedPath, sourcePath);
@@ -127,7 +147,14 @@ function restoreCapture(capturedPath: string, sourcePath: string, link: SourceLi
         }
         throw error;
     }
-    unlink(capturedPath);
+    try {
+        unlink(capturedPath);
+    } catch (error) {
+        return {
+            status: "restored",
+            cleanupWarning: `The pre-apply original's now-redundant backup at "${capturedPath}" could not be removed after being restored: ${message(error)}. Remove it manually.`,
+        };
+    }
     return {status: "restored"};
 }
 

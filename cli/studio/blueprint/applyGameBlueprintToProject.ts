@@ -155,8 +155,14 @@ export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProject
         // Every generated file is durably committed. Source is published last, and only now: a failure
         // here never needs to undo it, since it was never touched until this point.
         const publishResult = publishSourceBlueprint(sourcePath, sourceTempFile, expectedHash, rename, link, unlink, readFile);
+        // publishSourceBlueprint's own cleanup (removing a now-redundant captured backup or staging
+        // file) is best-effort and never changes whether the publish itself succeeded, conflicted, or
+        // failed (see its own doc comment) -- log it, but never let it change how this apply reports.
+        if (publishResult.status !== "error" && publishResult.cleanupWarning !== undefined) {
+            console.warn(`[StudioBlueprintService.applyToProject] ${publishResult.cleanupWarning}`);
+        }
         if (publishResult.status === "conflict") {
-            return rollBackAndReport(committed, undefined, publishResult);
+            return rollBackAndReport(committed, undefined, {status: "conflict", currentHash: publishResult.currentHash});
         }
         if (publishResult.status === "error") {
             return rollBackAndReport(committed, new Error(publishResult.error), undefined);
