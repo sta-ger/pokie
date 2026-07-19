@@ -77,15 +77,20 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
 
-        expect(await screen.findByText("base.json")).toBeInTheDocument();
+        // The artifact-list entry itself, not a bare text match -- "base.json" also appears, always
+        // mounted but hidden, inside Advanced details' full run-result JSON dump (see AdvancedDisclosure's
+        // own doc comment on why).
+        expect(await screen.findByRole("button", {name: "base.json"})).toBeInTheDocument();
         expect(screen.getByText(/Target diagnostic passed/)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Continue to Deploy"})).toBeInTheDocument();
 
         // Raw artifact content and the full stage list stay hidden until Advanced details is opened --
         // the first generated artifact is auto-selected, so its content appears as soon as Advanced opens.
-        expect(screen.queryByText(/"ok": true/)).not.toBeInTheDocument();
+        // The controlled region is always mounted (see AdvancedDisclosure's own doc comment on why),
+        // just hidden -- toBeVisible() (not toBeInTheDocument()) is what actually exercises that.
+        expect(screen.getByText(/"ok": true/)).not.toBeVisible();
         await user.click(screen.getByText(/Show advanced details/));
-        expect(await screen.findByText(/"ok": true/)).toBeInTheDocument();
+        expect(await screen.findByText(/"ok": true/)).toBeVisible();
     });
 
     it("shows a clear incompatible-target state and blocks proceeding to Preview artifacts", async () => {
@@ -140,7 +145,10 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
 
         expect(await screen.findByText("Content didn't validate for this target")).toBeInTheDocument();
-        expect(screen.getByText(/Artifact is missing relativePath/)).toBeInTheDocument();
+        // Scoped to the outcome banner itself -- the same message also appears, humanized differently,
+        // inside Advanced details' always-mounted-but-hidden raw stage list and JSON dump (see
+        // AdvancedDisclosure's own doc comment on why it stays mounted).
+        expect(within(screen.getByRole("alert")).getByText(/Artifact is missing relativePath/)).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Deploy"})).not.toBeInTheDocument();
     });
 
@@ -232,7 +240,9 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         await user.click(within(dialog).getByRole("button", {name: "Confirm"}));
 
         expect(await screen.findByText("Target couldn't be reached or written to")).toBeInTheDocument();
-        expect(screen.getByText(/EACCES: permission denied writing output/)).toBeInTheDocument();
+        // Scoped to the outcome banner itself -- see the Preview-artifacts test above for why a bare
+        // getByText would now match more than once.
+        expect(within(screen.getByRole("alert")).getByText(/EACCES: permission denied writing output/)).toBeInTheDocument();
         expect(screen.getByText("Not delivered.")).toBeInTheDocument();
     });
 
@@ -260,7 +270,10 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
-        expect(await screen.findByText("base.json")).toBeInTheDocument();
+        // The artifact-list entry itself, not a bare text match -- "base.json" also appears, always
+        // mounted but hidden, inside Advanced details' full run-result JSON dump (see AdvancedDisclosure's
+        // own doc comment on why).
+        expect(await screen.findByRole("button", {name: "base.json"})).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Back to Configure"}));
         await user.type(screen.getByLabelText("Mode name"), "-edited");
@@ -288,7 +301,9 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
-        expect(await screen.findByText("from-project-a.json")).toBeInTheDocument();
+        // The artifact-list entry itself -- see the "base.json" assertion above for why a bare
+        // getByText would now match more than once.
+        expect(await screen.findByRole("button", {name: "from-project-a.json"})).toBeInTheDocument();
 
         first.unmount();
 

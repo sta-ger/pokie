@@ -144,7 +144,10 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
 
         expect(await screen.findByText("Generation failed")).toBeInTheDocument();
         expect(screen.getByText(/Could not satisfy every constraint after 50 attempt/)).toBeInTheDocument();
-        expect(screen.getByText(/Symbol A repeats too many times in a row\./)).toBeInTheDocument();
+        // Scoped to the visible diagnostics list -- the same violation message also appears, always
+        // mounted but hidden, inside Advanced details' raw preview-response JSON dump (see
+        // AdvancedDisclosure's own doc comment on why).
+        expect(within(screen.getByRole("group", {name: /Generation attempts/})).getByText(/Symbol A repeats too many times in a row\./)).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Preview stop windows"})).not.toBeInTheDocument();
     });
 

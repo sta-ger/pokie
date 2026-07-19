@@ -10,13 +10,12 @@ function renderWithMantine(ui: React.ReactElement) {
 }
 
 describe("AdvancedDisclosure", () => {
-    it("starts closed, reveals its children on click, and includes the detail parenthetical", () => {
+    it("reveals its children on click and includes the detail parenthetical", () => {
         renderWithMantine(
             <AdvancedDisclosure detail="seed, workers">
                 <div>hidden content</div>
             </AdvancedDisclosure>,
         );
-        expect(screen.queryByText("hidden content")).toBeNull();
         const toggle = screen.getByRole("button", {name: "Show advanced details (seed, workers)"});
         fireEvent.click(toggle);
         expect(screen.getByText("hidden content")).not.toBeNull();
@@ -32,7 +31,11 @@ describe("AdvancedDisclosure", () => {
         expect(screen.getByRole("button", {name: "Show advanced details"})).not.toBeNull();
     });
 
-    it("exposes aria-expanded and aria-controls pointing at the revealed region's own id", () => {
+    // The controlled region must never be a dangling IDREF: aria-controls always names a real element
+    // in the DOM, in both the closed and open states -- it's toggled via the native `hidden` attribute,
+    // not conditional rendering, so the id-bearing element is present the whole time and only its
+    // hidden-ness (and therefore its presence in the accessibility tree) changes.
+    it("keeps the aria-controls target mounted in the DOM in both the closed and open states, hidden only while closed", () => {
         renderWithMantine(
             <AdvancedDisclosure detail="raw JSON">
                 <div>hidden content</div>
@@ -43,14 +46,22 @@ describe("AdvancedDisclosure", () => {
         const controlsId = toggle.getAttribute("aria-controls");
         expect(controlsId).toBeTruthy();
 
+        // Closed: the element aria-controls names already exists (no dangling IDREF) but is hidden --
+        // absent from the accessibility tree, so getByRole can't see it, yet still reachable by id.
+        const regionWhileClosed = document.getElementById(controlsId as string);
+        expect(regionWhileClosed).not.toBeNull();
+        expect(regionWhileClosed).toHaveAttribute("hidden");
+        expect(screen.queryByRole("group", {name: "Advanced details"})).toBeNull();
+
         fireEvent.click(toggle);
 
+        // Open: the *same* element (never a freshly-mounted one) is now visible/accessible.
         expect(toggle).toHaveAttribute("aria-expanded", "true");
-        // The revealed region's id matches what the (still-open) toggle's aria-controls named --
-        // and the toggle's own accessible name changed to "Hide", not a second element.
-        const region = document.getElementById(controlsId as string);
-        expect(region).not.toBeNull();
-        expect(region?.textContent).toContain("hidden content");
+        const regionWhileOpen = document.getElementById(controlsId as string);
+        expect(regionWhileOpen).toBe(regionWhileClosed);
+        expect(regionWhileOpen).not.toHaveAttribute("hidden");
+        expect(regionWhileOpen?.textContent).toContain("hidden content");
+        expect(screen.getByRole("group", {name: "Advanced details"})).toBe(regionWhileOpen);
         expect(screen.getByRole("button", {name: "Hide advanced details (raw JSON)"})).toHaveAttribute("aria-controls", controlsId);
     });
 });

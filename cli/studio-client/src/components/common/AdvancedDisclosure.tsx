@@ -11,8 +11,11 @@ import {PageSection} from "./PageSection";
 //
 // Follows the WAI-ARIA "Disclosure (Show/Hide)" pattern: the toggle is a real <button> (via
 // `component="button"`) carrying `aria-expanded` (so assistive tech announces open/closed state, not
-// just the Show/Hide label swap) and `aria-controls` pointing at the revealed region's own id, so a
-// screen reader user can tell which content the toggle governs before choosing to navigate into it.
+// just the Show/Hide label swap) and `aria-controls` pointing at the revealed region's own id. The
+// controlled region is always mounted -- toggled via the native `hidden` attribute, not conditional
+// rendering -- so `aria-controls` never names an element absent from the DOM (a dangling IDREF):
+// `hidden` removes it from both layout and the accessibility tree on its own, no extra `aria-hidden`
+// needed, and the *same* element (never a fresh one) is what gets revealed on open.
 export function AdvancedDisclosure({detail, defaultOpened = false, children}: {detail?: string; defaultOpened?: boolean; children: ReactNode}) {
     const [opened, {toggle}] = useDisclosure(defaultOpened);
     const contentId = useId();
@@ -23,11 +26,9 @@ export function AdvancedDisclosure({detail, defaultOpened = false, children}: {d
                     {opened ? "Hide" : "Show"} advanced details{detail ? ` (${detail})` : ""}
                 </Anchor>
             </Text>
-            {opened && (
-                <PageSection id={contentId} legend="Advanced details">
-                    {children}
-                </PageSection>
-            )}
+            <PageSection id={contentId} legend="Advanced details" hidden={!opened}>
+                {children}
+            </PageSection>
         </div>
     );
 }

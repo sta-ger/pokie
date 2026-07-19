@@ -209,15 +209,17 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await waitFor(() => expect(screen.getByText(/Snapshot captured for this round/)).toBeInTheDocument(), {timeout: 15000});
         expect(screen.queryByText("State snapshot unavailable for this game/session type.")).not.toBeInTheDocument();
         // The raw JSON stays hidden until Advanced details is opened -- only the plain-language status
-        // is visible in the main Inspector view.
-        expect(screen.queryByText(/"win": 0/)).not.toBeInTheDocument();
-        expect(screen.queryByText(/"win": 5/)).not.toBeInTheDocument();
-        expect(screen.queryByText("State before")).not.toBeInTheDocument();
-        expect(screen.queryByText("State after")).not.toBeInTheDocument();
+        // is visible in the main Inspector view. AdvancedDisclosure keeps its controlled region mounted
+        // (never a dangling aria-controls IDREF), just hidden, so toBeVisible() is what actually
+        // exercises that, not toBeInTheDocument().
+        expect(screen.getByText(/"win": 0/)).not.toBeVisible();
+        expect(screen.getByText(/"win": 5/)).not.toBeVisible();
+        expect(screen.getByText("State before")).not.toBeVisible();
+        expect(screen.getByText("State after")).not.toBeVisible();
 
         await user.click(screen.getByText(/Show advanced details/));
-        expect(screen.getByText("State before")).toBeInTheDocument();
-        expect(screen.getByText("State after")).toBeInTheDocument();
+        expect(screen.getByText("State before")).toBeVisible();
+        expect(screen.getByText("State after")).toBeVisible();
         expect(screen.getByText(/"win": 0/)).toBeInTheDocument();
         expect(screen.getByText(/"win": 5/)).toBeInTheDocument();
     }, 45000);
@@ -282,12 +284,17 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Find"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
 
-        await waitFor(() => expect(screen.getByText(/Show advanced details/)).toBeInTheDocument(), {timeout: 15000});
+        const advancedToggle = await screen.findByRole("button", {name: /Show advanced details/}, {timeout: 15000});
         // Not visible before opening Advanced details -- it's technical/internal, same treatment as the
-        // rest of the raw JSON.
-        expect(screen.queryByText(/reelStops/)).not.toBeInTheDocument();
+        // rest of the raw JSON. The controlled region is mounted-but-hidden (see AdvancedDisclosure's
+        // own doc comment on why), so this checks the region's own visibility via the toggle's
+        // aria-controls, not a per-text-match query -- "reelStops" would already match twice even while
+        // hidden (see below).
+        const advancedRegionId = advancedToggle.getAttribute("aria-controls");
+        expect(advancedRegionId).toBeTruthy();
+        expect(document.getElementById(advancedRegionId as string)).not.toBeVisible();
 
-        await user.click(screen.getByText(/Show advanced details/));
+        await user.click(advancedToggle);
         expect(screen.getByText(/may include RNG\/reel-stop data/)).toBeInTheDocument();
         // Appears twice: once in its own "Debug data" block, once more inside the full artifact JSON dump
         // right below it -- both under Advanced details, never in the main round view.
@@ -750,11 +757,13 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
         expect(screen.getByText("sess-2")).toBeInTheDocument();
 
-        // Raw state before/after now lives under Advanced details, not shown unconditionally.
-        expect(screen.queryByText("Raw state before")).not.toBeInTheDocument();
-        expect(screen.queryByText("Raw state after")).not.toBeInTheDocument();
+        // Raw state before/after now lives under Advanced details, not shown unconditionally -- the
+        // region is mounted-but-hidden (see AdvancedDisclosure's own doc comment), so this checks
+        // visibility, not DOM presence.
+        expect(screen.getByText("Raw state before")).not.toBeVisible();
+        expect(screen.getByText("Raw state after")).not.toBeVisible();
         await user.click(screen.getByText(/Show advanced details/));
-        expect(screen.getByText("Raw state before")).toBeInTheDocument();
-        expect(screen.getByText("Raw state after")).toBeInTheDocument();
+        expect(screen.getByText("Raw state before")).toBeVisible();
+        expect(screen.getByText("Raw state after")).toBeVisible();
     }, 45000);
 });
