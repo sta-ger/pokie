@@ -28,7 +28,16 @@ export function NextStepCallout({
     tone?: NextStepTone;
 }) {
     return (
-        <Alert color={TONE_COLOR[tone]} variant="light" icon={TONE_ICON[tone]} title={title} mb="md" style={{overflowWrap: "anywhere"}}>
+        <Alert
+            color={TONE_COLOR[tone]}
+            variant="light"
+            icon={TONE_ICON[tone]}
+            title={title}
+            role="status"
+            aria-live="polite"
+            mb="md"
+            style={{overflowWrap: "anywhere"}}
+        >
             <Text size="sm" mb={actionLabel && onAction ? "sm" : 0}>
                 {description}
             </Text>

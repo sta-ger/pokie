@@ -421,7 +421,7 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                                 <Table.Tbody>
                                     {selectResult.featureBreakdown.betModes.map((entry) => (
                                         <Table.Tr key={entry.key}>
-                                            <Table.Th>{entry.key}</Table.Th>
+                                            <Table.Th style={{overflowWrap: "anywhere"}}>{entry.key}</Table.Th>
                                             <Table.Td>
                                                 {(entry.weightedFrequency * 100).toFixed(2)}% ({entry.outcomeCount} outcomes)
                                             </Table.Td>
@@ -441,7 +441,7 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                                     <Table.Tbody>
                                         {selectResult.featureBreakdown.featureEvents.map((entry) => (
                                             <Table.Tr key={entry.key}>
-                                                <Table.Th>{entry.key}</Table.Th>
+                                                <Table.Th style={{overflowWrap: "anywhere"}}>{entry.key}</Table.Th>
                                                 <Table.Td>
                                                     {(entry.weightedFrequency * 100).toFixed(2)}% ({entry.outcomeCount} outcomes)
                                                 </Table.Td>

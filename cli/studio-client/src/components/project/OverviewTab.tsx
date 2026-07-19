@@ -36,7 +36,7 @@ function ProvenancePanel({provenance}: {provenance: ProvenanceView}) {
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Source</Table.Th>
-                        <Table.Td>{provenance.source}</Table.Td>
+                        <Table.Td style={{overflowWrap: "anywhere"}}>{provenance.source}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>pokie version</Table.Th>

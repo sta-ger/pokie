@@ -1,9 +1,12 @@
-import {MantineProvider} from "@mantine/core";
+import {MantineProvider, Stepper} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
 import {CodeBlock} from "../../../../../../cli/studio-client/src/components/common/CodeBlock";
+import {EmptyState} from "../../../../../../cli/studio-client/src/components/common/EmptyState";
 import {ErrorState} from "../../../../../../cli/studio-client/src/components/common/ErrorState";
+import {LoadingState} from "../../../../../../cli/studio-client/src/components/common/LoadingState";
+import {QuickActions} from "../../../../../../cli/studio-client/src/components/common/QuickActions";
 import {ScreenTable} from "../../../../../../cli/studio-client/src/components/common/ScreenTable";
 import {SuccessResult} from "../../../../../../cli/studio-client/src/components/common/SuccessResult";
 
@@ -39,13 +42,91 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
         expect(alert.style.overflowWrap).toBe("anywhere");
     });
 
+    it("EmptyState wraps a long unbroken message instead of letting it expand the page width", () => {
+        renderWithMantine(<EmptyState message={LONG_UNBROKEN_TEXT} />);
+        const status = screen.getByRole("status");
+        expect(status.style.overflowWrap).toBe("anywhere");
+    });
+
     it("SuccessResult wraps a long unbroken message instead of letting it expand the page width", () => {
         renderWithMantine(<SuccessResult message={LONG_UNBROKEN_TEXT} />);
         // The message renders as the Alert's title, so the wrapping style must be asserted on the
-        // Alert root (aria-live="polite"), not the title node itself.
-        const alert = screen.getByText(LONG_UNBROKEN_TEXT).closest('[aria-live="polite"]');
-        expect(alert).not.toBeNull();
-        expect((alert as HTMLElement).style.overflowWrap).toBe("anywhere");
+        // Alert root (role="status"), not the title node itself.
+        const status = screen.getByRole("status");
+        expect(status.style.overflowWrap).toBe("anywhere");
+    });
+});
+
+describe("Status/alert/live region semantics", () => {
+    it("ErrorState is role=alert with no conflicting explicit aria-live -- role=alert's own implicit assertive live region must not be quietly downgraded to polite", () => {
+        renderWithMantine(<ErrorState message="Something failed." />);
+        const alert = screen.getByRole("alert");
+        expect(alert).not.toHaveAttribute("aria-live");
+    });
+
+    it("LoadingState is role=status, not role=alert", () => {
+        renderWithMantine(<LoadingState label="Validating…" />);
+        expect(screen.getByRole("status").textContent).toContain("Validating…");
+    });
+
+    it("EmptyState is role=status, not role=alert", () => {
+        renderWithMantine(<EmptyState message="No completed simulations yet." />);
+        expect(screen.getByText("No completed simulations yet.")).toHaveAttribute("role", "status");
+    });
+
+    it("SuccessResult is role=status, not role=alert", () => {
+        renderWithMantine(<SuccessResult message="Applied successfully." />);
+        expect(screen.getByRole("status").textContent).toContain("Applied successfully.");
+    });
+});
+
+describe("Stepper wraps onto multiple lines instead of overflowing on a narrow viewport", () => {
+    it("Mantine's Stepper defaults to wrap=true (data-wrap present) when no wrap prop is passed", () => {
+        renderWithMantine(
+            <Stepper active={0} size="sm">
+                <Stepper.Step label="One" />
+                <Stepper.Step label="Two" />
+                <Stepper.Step label="Three" />
+            </Stepper>,
+        );
+        // Mantine's own CSS keys wrapping off this data attribute (`[data-wrap] { flex-wrap: wrap }`);
+        // its presence is what lets steps reflow onto a second line on a narrow viewport instead of
+        // forcing the whole page to scroll horizontally.
+        const root = screen.getByText("One").closest('[data-wrap]');
+        expect(root).not.toBeNull();
+    });
+
+    it("no Stepper in the app opts out of the default wrap=true (source guard)", () => {
+        const componentsRoot = join(__dirname, "../../../../../../cli/studio-client/src/components");
+        const filesWithSteppers = [
+            "blueprintEditor/ParSheetImportExportPanel.tsx",
+            "blueprintEditor/ReelStripGenerationEditor.tsx",
+            "blueprintEditor/BlueprintEditorPage.tsx",
+            "project/SimulationTab.tsx",
+            "project/OutcomeLibrariesTab.tsx",
+            "project/RuntimeTab.tsx",
+            "project/DeploymentTab.tsx",
+            "project/MechanicsEditorTab.tsx",
+            "project/ReplayTab.tsx",
+        ];
+        for (const relativePath of filesWithSteppers) {
+            const source = readFileSync(join(componentsRoot, relativePath), "utf8");
+            expect(source).toContain("<Stepper active=");
+            expect(source).not.toMatch(/<Stepper\b[^>]*\bwrap={false}/);
+        }
+    });
+});
+
+describe("Button/action groups wrap instead of overflowing (source + render guard)", () => {
+    it("QuickActions (the shared action-row wrapper) renders a Group with wrap=\"wrap\"", () => {
+        renderWithMantine(
+            <QuickActions>
+                <button type="button">Action</button>
+            </QuickActions>,
+        );
+        const group = screen.getByRole("button", {name: "Action"}).closest(".mantine-Group-root") as HTMLElement;
+        expect(group).not.toBeNull();
+        expect(group.style.getPropertyValue("--group-wrap")).toBe("wrap");
     });
 });
 
@@ -61,11 +142,13 @@ describe("Wide tables stay wrapped in Table.ScrollContainer (source guard)", () 
     const filesRequiringScrollContainer = [
         "common/ScreenTable.tsx",
         "common/SimulationReportDisplay.tsx",
+        "common/RoundArtifactInspector.tsx",
         "home/RecentProjectsPanel.tsx",
         "blueprintEditor/SymbolWeightsEditor.tsx",
         "blueprintEditor/PaytableEditor.tsx",
         "blueprintEditor/SymbolsTable.tsx",
         "blueprintEditor/ReelStripGenerationEditor.tsx",
+        "project/OutcomeLibrariesTab.tsx",
     ];
 
     it.each(filesRequiringScrollContainer)("%s wraps every <Table> in <Table.ScrollContainer>", (relativePath) => {

@@ -31,6 +31,28 @@ describe("AdvancedDisclosure", () => {
         );
         expect(screen.getByRole("button", {name: "Show advanced details"})).not.toBeNull();
     });
+
+    it("exposes aria-expanded and aria-controls pointing at the revealed region's own id", () => {
+        renderWithMantine(
+            <AdvancedDisclosure detail="raw JSON">
+                <div>hidden content</div>
+            </AdvancedDisclosure>,
+        );
+        const toggle = screen.getByRole("button", {name: "Show advanced details (raw JSON)"});
+        expect(toggle).toHaveAttribute("aria-expanded", "false");
+        const controlsId = toggle.getAttribute("aria-controls");
+        expect(controlsId).toBeTruthy();
+
+        fireEvent.click(toggle);
+
+        expect(toggle).toHaveAttribute("aria-expanded", "true");
+        // The revealed region's id matches what the (still-open) toggle's aria-controls named --
+        // and the toggle's own accessible name changed to "Hide", not a second element.
+        const region = document.getElementById(controlsId as string);
+        expect(region).not.toBeNull();
+        expect(region?.textContent).toContain("hidden content");
+        expect(screen.getByRole("button", {name: "Hide advanced details (raw JSON)"})).toHaveAttribute("aria-controls", controlsId);
+    });
 });
 
 describe("WarningState", () => {
@@ -48,6 +70,11 @@ describe("RecoveryNotice", () => {
         expect(screen.getByText("Stale selection")).not.toBeNull();
         fireEvent.click(screen.getByRole("button", {name: "Refresh"}));
         expect(onAction).toHaveBeenCalledTimes(1);
+    });
+
+    it("is announced as an alert -- every recovery notice needs the user's attention now", () => {
+        renderWithMantine(<RecoveryNotice title="Stale selection" message="This changed since you selected it." actionLabel="Refresh" onAction={() => undefined} />);
+        expect(screen.getByRole("alert").textContent).toContain("This changed since you selected it.");
     });
 });
 
@@ -70,5 +97,21 @@ describe("OutcomeBanner", () => {
     it("falls back to a 'no issues reported' message when both lists are empty", () => {
         renderWithMantine(<OutcomeBanner color="green" icon={null} title="Deployed successfully" errors={[]} warnings={[]} />);
         expect(screen.getByText("No issues reported.")).not.toBeNull();
+    });
+
+    it("is announced as an alert when it reports at least one error", () => {
+        renderWithMantine(
+            <OutcomeBanner color="red" icon={null} title="Incompatible with this target" errors={[{message: "Missing required field"}]} warnings={[]} />,
+        );
+        expect(screen.getByRole("alert")).toBeInTheDocument();
+        expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    it("is announced as a status, not an alert, when it has no errors (success or warnings-only)", () => {
+        renderWithMantine(
+            <OutcomeBanner color="blue" icon={null} title="Loaded with warnings" errors={[]} warnings={[{message: "Deprecated option used"}]} />,
+        );
+        expect(screen.getByRole("status")).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).toBeNull();
     });
 });

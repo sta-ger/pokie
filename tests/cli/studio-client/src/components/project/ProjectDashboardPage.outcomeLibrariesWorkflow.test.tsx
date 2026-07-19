@@ -106,6 +106,27 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         expect(screen.queryByRole("button", {name: "Continue to Inspect"})).not.toBeInTheDocument();
     });
 
+    it("wraps a long, unbroken feature/bet-mode key instead of letting it force horizontal page scroll", async () => {
+        const user = userEvent.setup();
+        const longKey = "extremely-long-bet-mode-identifier-with-no-natural-break-points-anywhere-in-it";
+        const view = okSelectView("lib-a");
+        view.featureBreakdown = {betModes: [{key: longKey, weightedFrequency: 1, outcomeCount: 3}], featureEvents: []};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: view}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToOutcomeLibrariesTab(user);
+
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
+        await user.click(screen.getByRole("button", {name: "Load library"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Inspect"}));
+
+        const keyCell = await screen.findByText(longKey);
+        expect(keyCell.style.overflowWrap).toBe("anywhere");
+    });
+
     it("compares two libraries and shows the RTP/hit-rate diff", async () => {
         const user = userEvent.setup();
         const compareView: StudioOutcomeLibraryCompareView = {
