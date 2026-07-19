@@ -11,6 +11,7 @@ import type {BetModesConfigRepresenting} from "./BetModesConfigRepresenting.js";
 import type {ForcedFeatureEntryHandling} from "./ForcedFeatureEntryHandling.js";
 import {ForcedFeatureEntryUnsupportedError} from "./ForcedFeatureEntryUnsupportedError.js";
 import {ForcingBetModeSelectionRejectedError} from "./ForcingBetModeSelectionRejectedError.js";
+import type {ModeAwareForcedFeatureEntryHandling} from "./ModeAwareForcedFeatureEntryHandling.js";
 import {NoOpForcedFeatureEntryHandler} from "./NoOpForcedFeatureEntryHandler.js";
 import {UnknownBetModeError} from "./UnknownBetModeError.js";
 
@@ -118,10 +119,10 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         const totalIntendedCharge = this.getStakeAmount();
 
         if (mode.forcesFeatureEntry() && totalIntendedCharge > 0) {
-            if (!this.forcedFeatureEntryHandler.canForceFeatureEntry(this.baseSession, mode)) {
+            if (!this.canForceFeatureEntry(mode)) {
                 throw new ForcedFeatureEntryUnsupportedError(mode.getId());
             }
-            this.forcedFeatureEntryHandler.forceFeatureEntry(this.baseSession, mode);
+            this.forceFeatureEntry(mode);
             // A forcing mode is a one-shot purchase intent, not a persistent one like ante: revert to
             // the default mode the instant the purchase actually succeeds, before the bonus round's
             // own first spin even plays out. Without this, the mode (and its stakeMultiplier) would
@@ -182,6 +183,31 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     // definition, only one that actively reports 0 is.
     private isInsideActiveZeroStakeFeature(): boolean {
         return this.supportsStakeAmount(this.baseSession) && this.baseSession.getStakeAmount() === 0;
+    }
+
+    // Prefers the additive ModeAwareForcedFeatureEntryHandling contract (see that interface's own doc
+    // comment on why it's a separate interface, not a new required parameter here) when the configured
+    // handler implements it, so several differently-priced/differently-granting buyFeature modes can be
+    // routed to different handling -- falling back to the plain, mode-agnostic
+    // ForcedFeatureEntryHandling methods otherwise, exactly as before this capability existed.
+    private canForceFeatureEntry(mode: BetModeDescribing): boolean {
+        return this.supportsModeAwareForcedEntry(this.forcedFeatureEntryHandler)
+            ? this.forcedFeatureEntryHandler.canForceFeatureEntryForMode(this.baseSession, mode)
+            : this.forcedFeatureEntryHandler.canForceFeatureEntry(this.baseSession);
+    }
+
+    private forceFeatureEntry(mode: BetModeDescribing): void {
+        if (this.supportsModeAwareForcedEntry(this.forcedFeatureEntryHandler)) {
+            this.forcedFeatureEntryHandler.forceFeatureEntryForMode(this.baseSession, mode);
+        } else {
+            this.forcedFeatureEntryHandler.forceFeatureEntry(this.baseSession);
+        }
+    }
+
+    private supportsModeAwareForcedEntry(
+        handler: ForcedFeatureEntryHandling<T>,
+    ): handler is ModeAwareForcedFeatureEntryHandling<T> {
+        return typeof (handler as Partial<ModeAwareForcedFeatureEntryHandling<T>>).canForceFeatureEntryForMode === "function";
     }
 
     private supportsStakeAmount(

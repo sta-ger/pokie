@@ -1,12 +1,17 @@
 import {
     BetModeDefinition,
     BetModesConfig,
+    ForcedFeatureEntryHandling,
     ForcedFeatureEntryUnsupportedError,
     ForcingBetModeSelectionRejectedError,
     FreeGamesForcedFeatureEntryHandler,
+    FreeGamesStateDetermining,
+    FreeGamesStateSetting,
     NoOpForcedFeatureEntryHandler,
+    PerModeForcedFeatureEntryHandler,
     SymbolsCombinationsGenerator,
     VideoSlotSession,
+    VideoSlotSessionHandling,
     VideoSlotWinCalculator,
     VideoSlotWithBetModesSession,
     VideoSlotWithFreeGamesConfig,
@@ -237,5 +242,104 @@ describe("VideoSlotWithBetModesSession", () => {
         const otherSession = new VideoSlotWithBetModesSession(otherInnerSession, anteModesConfig());
 
         testSessionStateRoundTripCarriesModeAndNestedFreeGamesState(session, innerSession, otherSession, otherInnerSession);
+    });
+
+    describe("backward compatibility with pre-existing ForcedFeatureEntryHandling implementations/call sites", () => {
+        // Stands in for external code written against ForcedFeatureEntryHandling before
+        // ModeAwareForcedFeatureEntryHandling existed: a plain class with only the original
+        // single-argument methods, no knowledge of BetModeDescribing or any "mode" parameter at all.
+        // This must keep compiling (a class declaring FEWER methods/parameters than an interface
+        // requires is never valid -- this class satisfies ForcedFeatureEntryHandling exactly, not more)
+        // and keep working when wired into VideoSlotWithBetModesSession.
+        class LegacyCountingForcedFeatureEntryHandler implements ForcedFeatureEntryHandling {
+            public timesForced = 0;
+
+            public canForceFeatureEntry(session: VideoSlotSessionHandling): boolean {
+                return typeof (session as Partial<FreeGamesStateSetting>).setFreeGamesSum === "function";
+            }
+
+            public forceFeatureEntry(session: VideoSlotSessionHandling): void {
+                this.timesForced++;
+                const freeGamesSession = session as unknown as FreeGamesStateSetting & FreeGamesStateDetermining;
+                freeGamesSession.setFreeGamesSum(freeGamesSession.getFreeGamesSum() + FREE_GAMES_TO_GRANT);
+            }
+        }
+
+        it("a legacy, mode-agnostic handler (single-argument methods only) still forces entry correctly through VideoSlotWithBetModesSession", () => {
+            const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+            const legacyHandler = new LegacyCountingForcedFeatureEntryHandler();
+            const session = new VideoSlotWithBetModesSession(innerSession, buyBonusModesConfig(), legacyHandler);
+            session.setCreditsAmount(1000);
+
+            session.setBetMode("buy-bonus");
+            session.play();
+
+            expect(legacyHandler.timesForced).toBe(1);
+            expect(session.getBetModeId()).toBe("base"); // one-shot, exactly as with a mode-aware handler
+            expect(innerSession.getFreeGamesSum()).toBe(FREE_GAMES_TO_GRANT);
+        });
+
+        it("external code typed against the plain ForcedFeatureEntryHandling interface can still call canForceFeatureEntry(session)/forceFeatureEntry(session) with a single argument", () => {
+            // The type annotation here is the actual compatibility assertion: if
+            // ForcedFeatureEntryHandling ever required a second (mode) parameter again, this line
+            // would fail to typecheck (tsc, not just at runtime) -- exactly the external call site the
+            // stabilization after 399d3e2 exists to keep working.
+            const handler: ForcedFeatureEntryHandling = new LegacyCountingForcedFeatureEntryHandler();
+            const session = new VideoSlotWithFreeGamesSession();
+
+            expect(handler.canForceFeatureEntry(session)).toBe(true);
+            handler.forceFeatureEntry(session);
+            expect(session.getFreeGamesSum()).toBe(FREE_GAMES_TO_GRANT);
+        });
+    });
+
+    describe("regression: several differently-priced buyFeature modes on one session", () => {
+        it("routes each buyFeature mode to its own handler via PerModeForcedFeatureEntryHandler, never confusing costs/grants", () => {
+            const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+            const modesConfig = new BetModesConfig(
+                [
+                    new BetModeDefinition("base"),
+                    new BetModeDefinition("buy-10", {stakeMultiplier: 50, forcesFeatureEntry: true}),
+                    new BetModeDefinition("buy-20", {stakeMultiplier: 100, forcesFeatureEntry: true}),
+                ],
+                "base",
+            );
+            const handler = new PerModeForcedFeatureEntryHandler(
+                new Map([
+                    ["buy-10", new FreeGamesForcedFeatureEntryHandler(10)],
+                    ["buy-20", new FreeGamesForcedFeatureEntryHandler(20)],
+                ]),
+            );
+            const session = new VideoSlotWithBetModesSession(innerSession, modesConfig, handler);
+            session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+
+            session.setBetMode("buy-10");
+            const stake10 = session.getStakeAmount();
+            expect(stake10).toBe(session.getBet() * 50);
+            session.play();
+            expect(session.getBetModeId()).toBe("base"); // one-shot -- reverted after the purchase
+            expect(innerSession.getFreeGamesSum()).toBe(10);
+
+            // Exhaust buy-10's granted free round entirely (fixed, deterministic count -- natural
+            // triggers are disabled) before buying again: setBetMode() rejects selecting another
+            // forcing mode while a zero-stake round is still active.
+            for (let i = 0; i < 10; i++) {
+                session.play();
+            }
+            expect(session.getStakeAmount()).toBeGreaterThan(0);
+
+            const sumBeforeBuy20 = innerSession.getFreeGamesSum();
+            session.setBetMode("buy-20");
+            const stake20 = session.getStakeAmount();
+            expect(stake20).toBe(session.getBet() * 100);
+            expect(stake20).not.toBe(stake10); // never confused with buy-10's price
+            session.play();
+            expect(session.getBetModeId()).toBe("base");
+            // getFreeGamesSum() accumulates (it's never reset mid this assertion -- the wrapped
+            // session's own beforeRoundPlayed() only resets once its round is fully replayed), so the
+            // grant this purchase actually added is the delta, not the raw total -- and that delta must
+            // be buy-20's own 20, never buy-10's 10.
+            expect(innerSession.getFreeGamesSum() - sumBeforeBuy20).toBe(20);
+        });
     });
 });

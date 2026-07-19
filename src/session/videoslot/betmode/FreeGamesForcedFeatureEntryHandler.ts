@@ -14,11 +14,9 @@ import type {VideoSlotSessionHandling} from "../VideoSlotSessionHandling.js";
 // silently charging the buy cost for an entry that never happens.
 //
 // Deliberately mode-agnostic: always grants the same fixed freeGamesToGrant no matter which mode's
-// forcesFeatureEntry() triggered it -- declared with fewer parameters than ForcedFeatureEntryHandling
-// itself (no `mode`), which is still a valid implementation of it (see that interface's own doc
-// comment). A game with several differently-priced buy-feature modes (different costs/grants) composes
-// multiple instances of this class behind PerModeForcedFeatureEntryHandler instead of teaching this one
-// about mode ids itself.
+// forcesFeatureEntry() triggered it. A game with several differently-priced buy-feature modes
+// (different costs/grants) composes multiple instances of this class behind
+// PerModeForcedFeatureEntryHandler instead of teaching this one about mode ids itself.
 export class FreeGamesForcedFeatureEntryHandler<T extends string | number | symbol = string>
 implements ForcedFeatureEntryHandling<T> {
     private readonly freeGamesToGrant: number;
