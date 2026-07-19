@@ -62,4 +62,53 @@ describe("computeBlueprintHash", () => {
 
         expect(computeBlueprintHash(withReelStrips)).not.toBe(computeBlueprintHash(withReorderedReelStrips));
     });
+
+    describe("winModel / mechanics / betModes", () => {
+        it("changes when winModel changes", () => {
+            const withLines: GameBlueprint = {...base, winModel: {type: "lines"}};
+            const withWays: GameBlueprint = {...base, winModel: {type: "ways"}};
+
+            expect(computeBlueprintHash(withLines)).not.toBe(computeBlueprintHash(base));
+            expect(computeBlueprintHash(withLines)).not.toBe(computeBlueprintHash(withWays));
+        });
+
+        it("changes when a clusters winModel's minimumClusterSize changes", () => {
+            const withFour: GameBlueprint = {...base, winModel: {type: "clusters", minimumClusterSize: 4}};
+            const withFive: GameBlueprint = {...base, winModel: {type: "clusters", minimumClusterSize: 5}};
+
+            expect(computeBlueprintHash(withFour)).not.toBe(computeBlueprintHash(withFive));
+        });
+
+        it("is independent of mechanics.freeGames.awardsByCount key order", () => {
+            const inOrder: GameBlueprint = {...base, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 8, "4": 15}}}};
+            const reordered: GameBlueprint = {...base, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"4": 15, "3": 8}}}};
+
+            expect(computeBlueprintHash(inOrder)).toBe(computeBlueprintHash(reordered));
+        });
+
+        it("changes when mechanics.freeGames content actually changes", () => {
+            const withMechanics: GameBlueprint = {...base, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 8}}}};
+            const withDifferentAward: GameBlueprint = {...base, mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 9}}}};
+
+            expect(computeBlueprintHash(withMechanics)).not.toBe(computeBlueprintHash(base));
+            expect(computeBlueprintHash(withMechanics)).not.toBe(computeBlueprintHash(withDifferentAward));
+        });
+
+        it("changes when betModes content or order changes, but hashes an empty betModes array the same as omitting it", () => {
+            const withBetModes: GameBlueprint = {...base, betModes: [{id: "base"}, {id: "buy-bonus", costMultiplier: 100}]};
+            const withReorderedBetModes: GameBlueprint = {...base, betModes: [{id: "buy-bonus", costMultiplier: 100}, {id: "base"}]};
+            const withEmptyBetModes: GameBlueprint = {...base, betModes: []};
+
+            expect(computeBlueprintHash(withBetModes)).not.toBe(computeBlueprintHash(base));
+            expect(computeBlueprintHash(withBetModes)).not.toBe(computeBlueprintHash(withReorderedBetModes));
+            expect(computeBlueprintHash(withEmptyBetModes)).toBe(computeBlueprintHash(base));
+        });
+
+        it("distinguishes betModes entries that differ only by an optional label/costMultiplier", () => {
+            const withLabel: GameBlueprint = {...base, betModes: [{id: "base", label: "Base Game"}]};
+            const withoutLabel: GameBlueprint = {...base, betModes: [{id: "base"}]};
+
+            expect(computeBlueprintHash(withLabel)).not.toBe(computeBlueprintHash(withoutLabel));
+        });
+    });
 });

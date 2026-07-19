@@ -1,5 +1,6 @@
 import crypto from "crypto";
-import type {GameBlueprint, GameBlueprintManifest} from "../generated/GameBlueprint.js";
+import type {BetMode} from "../gamepackage/BetMode.js";
+import type {GameBlueprint, GameBlueprintManifest, GameBlueprintMechanics, GameBlueprintWinModel} from "../generated/GameBlueprint.js";
 
 // A sha256 hash of exactly the GameBlueprint fields "pokie par export"/"pokie par import" can
 // represent (see ParSheetExporter's "no lossy export" preflight — reelStripGeneration/symbolWeights
@@ -9,8 +10,8 @@ import type {GameBlueprint, GameBlueprintManifest} from "../generated/GameBluepr
 // reconstructed by ParSheetImporter in its own fixed field order (and PaytableSheetMapper always
 // writes match-count rows sorted ascending, regardless of the original JSON's key order) — so hashing
 // raw insertion order would report a false "edited" mismatch on every untouched round trip. Array
-// element order (symbols, reelStrips, paylines, availableBets) is left as-is: those are semantically
-// order-sensitive, unlike a plain object's own key order.
+// element order (symbols, reelStrips, paylines, availableBets, betModes) is left as-is: those are
+// semantically order-sensitive, unlike a plain object's own key order.
 //
 // An empty optional array (e.g. `wilds: []`) and an omitted one hash identically, and likewise an
 // empty optional manifest string (`description: ""`) and an omitted one — because ParSheetImporter
@@ -38,7 +39,55 @@ function canonicalizeBlueprint(blueprint: GameBlueprint): Record<string, unknown
     setIfNonEmptyArray(canonical, "reelStrips", blueprint.reelStrips);
     setIfNonEmptyArray(canonical, "paylines", blueprint.paylines);
     setIfNonEmptyArray(canonical, "availableBets", blueprint.availableBets);
+    if (blueprint.winModel !== undefined) {
+        canonical.winModel = canonicalizeWinModel(blueprint.winModel);
+    }
+    const mechanics = canonicalizeMechanics(blueprint.mechanics);
+    if (mechanics !== undefined) {
+        canonical.mechanics = mechanics;
+    }
+    setIfNonEmptyArray(canonical, "betModes", canonicalizeBetModes(blueprint.betModes));
     return canonical;
+}
+
+function canonicalizeWinModel(winModel: GameBlueprintWinModel): Record<string, unknown> {
+    if (winModel.type === "clusters" && winModel.minimumClusterSize !== undefined) {
+        return {type: "clusters", minimumClusterSize: winModel.minimumClusterSize};
+    }
+    return {type: winModel.type};
+}
+
+// mechanics.freeGames is the only sub-field GameBlueprintMechanics declares today — see its own doc
+// comment — so an empty-vs-omitted "mechanics" object (`{}` vs. omitted entirely) hashes identically,
+// the same "present but empty means omitted" rule the array fields above already follow.
+function canonicalizeMechanics(mechanics: GameBlueprintMechanics | undefined): Record<string, unknown> | undefined {
+    const freeGames = mechanics?.freeGames;
+    if (freeGames === undefined) {
+        return undefined;
+    }
+    const awardsByCount: Record<string, number> = {};
+    for (const matches of Object.keys(freeGames.awardsByCount)
+        .map(Number)
+        .sort((a, b) => a - b)) {
+        awardsByCount[String(matches)] = freeGames.awardsByCount[String(matches)];
+    }
+    return {freeGames: {scatterSymbol: freeGames.scatterSymbol, awardsByCount}};
+}
+
+function canonicalizeBetModes(betModes: BetMode[] | undefined): Record<string, unknown>[] | undefined {
+    if (betModes === undefined) {
+        return undefined;
+    }
+    return betModes.map((mode) => {
+        const canonical: Record<string, unknown> = {id: mode.id};
+        if (mode.label) {
+            canonical.label = mode.label;
+        }
+        if (mode.costMultiplier !== undefined) {
+            canonical.costMultiplier = mode.costMultiplier;
+        }
+        return canonical;
+    });
 }
 
 function setIfNonEmptyArray<T>(canonical: Record<string, unknown>, key: string, value: T[] | undefined): void {

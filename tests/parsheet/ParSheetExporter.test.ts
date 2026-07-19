@@ -54,6 +54,52 @@ describe("ParSheetExporter", () => {
         expect(await readSheetNames()).toEqual(["Manifest", "Symbols", "Paytable", "ReelStrips", "Paylines", "AvailableBets", "Meta"]);
     });
 
+    it("also writes WinModel/Mechanics/BetModes when the blueprint has them", async () => {
+        const exporter = new ParSheetExporter("1.3.0");
+        const withNewFields: GameBlueprint = {
+            ...blueprint,
+            symbols: ["A", "W", "S"],
+            scatters: ["S"],
+            reelStrips: [
+                ["A", "W", "S"],
+                ["W", "A", "S"],
+            ],
+            winModel: {type: "clusters", minimumClusterSize: 5},
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 8, "4": 15}}},
+            betModes: [
+                {id: "base", label: "Base Game"},
+                {id: "buy-bonus", label: "Buy Bonus", costMultiplier: 100},
+            ],
+        };
+
+        const issues = await exporter.exportToFile(withNewFields, filePath, "config.json");
+
+        expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        expect(await readSheetNames()).toEqual([
+            "Manifest",
+            "Symbols",
+            "Paytable",
+            "ReelStrips",
+            "Paylines",
+            "AvailableBets",
+            "WinModel",
+            "Mechanics",
+            "BetModes",
+            "Meta",
+        ]);
+    });
+
+    it("omits the WinModel/Mechanics/BetModes sheets when the blueprint omits those optional fields", async () => {
+        const exporter = new ParSheetExporter("1.3.0");
+
+        await exporter.exportToFile(blueprint, filePath);
+
+        const names = await readSheetNames();
+        expect(names).not.toContain("WinModel");
+        expect(names).not.toContain("Mechanics");
+        expect(names).not.toContain("BetModes");
+    });
+
     it("runs GameBlueprintValidator itself and rejects an invalid blueprint without writing anything", async () => {
         const exporter = new ParSheetExporter("1.3.0");
         const invalid = {...blueprint, symbols: []}; // "symbols" must be a non-empty array

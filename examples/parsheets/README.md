@@ -16,5 +16,7 @@ npx pokie par export examples/parsheets/starter.blueprint.json --out /tmp/starte
 ```
 
 `starter.par.xlsx` was generated with the second command; open it in Excel/LibreOffice/Google Sheets to see the
-`Manifest`/`Symbols`/`Paytable`/`ReelStrips`/`Paylines`/`AvailableBets`/`Meta` sheet layout described in
+`Manifest`/`Symbols`/`Paytable`/`ReelStrips`/`Paylines`/`AvailableBets`/`Meta` sheet layout. `starter.blueprint.json`
+doesn't set `winModel`/`mechanics`/`betModes`, so this example doesn't exercise the optional `WinModel`/`Mechanics`/
+`BetModes` sheets — see the full workbook format (including those) in
 [docs/cli.md](../../docs/cli.md#workbook-format).

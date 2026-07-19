@@ -5,8 +5,12 @@ import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {AvailableBetsSheetMapper} from "./mapping/AvailableBetsSheetMapper.js";
 import type {AvailableBetsSheetMapping} from "./mapping/AvailableBetsSheetMapping.js";
+import {BetModesSheetMapper} from "./mapping/BetModesSheetMapper.js";
+import type {BetModesSheetMapping} from "./mapping/BetModesSheetMapping.js";
 import {ManifestSheetMapper} from "./mapping/ManifestSheetMapper.js";
 import type {ManifestSheetMapping} from "./mapping/ManifestSheetMapping.js";
+import {MechanicsSheetMapper} from "./mapping/MechanicsSheetMapper.js";
+import type {MechanicsSheetMapping} from "./mapping/MechanicsSheetMapping.js";
 import {PaylinesSheetMapper} from "./mapping/PaylinesSheetMapper.js";
 import type {PaylinesSheetMapping} from "./mapping/PaylinesSheetMapping.js";
 import {PaytableSheetMapper} from "./mapping/PaytableSheetMapper.js";
@@ -17,6 +21,8 @@ import {ReelStripsSheetMapper} from "./mapping/ReelStripsSheetMapper.js";
 import type {ReelStripsSheetMapping} from "./mapping/ReelStripsSheetMapping.js";
 import {SymbolsSheetMapper} from "./mapping/SymbolsSheetMapper.js";
 import type {SymbolsSheetMapping} from "./mapping/SymbolsSheetMapping.js";
+import {WinModelSheetMapper} from "./mapping/WinModelSheetMapper.js";
+import type {WinModelSheetMapping} from "./mapping/WinModelSheetMapping.js";
 import type {ParSheetExporting} from "./ParSheetExporting.js";
 import type {SheetGrid} from "./SheetGrid.js";
 import {writeFileAtomically} from "./writeFileAtomically.js";
@@ -33,6 +39,9 @@ export class ParSheetExporter implements ParSheetExporting {
     private readonly validator: GameBlueprintValidating;
     private readonly now: () => Date;
     private readonly writeWorkbook: (workbook: ExcelJS.Workbook, filePath: string) => Promise<void>;
+    private readonly winModelMapper: WinModelSheetMapping;
+    private readonly mechanicsMapper: MechanicsSheetMapping;
+    private readonly betModesMapper: BetModesSheetMapping;
 
     constructor(
         pokieVersion: string,
@@ -47,6 +56,12 @@ export class ParSheetExporter implements ParSheetExporting {
         now: () => Date = () => new Date(),
         writeWorkbook: (workbook: ExcelJS.Workbook, filePath: string) => Promise<void> = (workbook, filePath) =>
             writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath)),
+        // Appended after every pre-existing param (rather than grouped with the other sheet mappers
+        // above) so that no existing positional caller of this constructor is broken by their arrival --
+        // see the class-level API-evolution rule this codebase follows for public constructors.
+        winModelMapper: WinModelSheetMapping = new WinModelSheetMapper(),
+        mechanicsMapper: MechanicsSheetMapping = new MechanicsSheetMapper(),
+        betModesMapper: BetModesSheetMapping = new BetModesSheetMapper(),
     ) {
         this.pokieVersion = pokieVersion;
         this.manifestMapper = manifestMapper;
@@ -59,6 +74,9 @@ export class ParSheetExporter implements ParSheetExporting {
         this.validator = validator;
         this.now = now;
         this.writeWorkbook = writeWorkbook;
+        this.winModelMapper = winModelMapper;
+        this.mechanicsMapper = mechanicsMapper;
+        this.betModesMapper = betModesMapper;
     }
 
     // Runs full validation itself — the caller (CLI or any other library consumer) never needs to
@@ -103,6 +121,15 @@ export class ParSheetExporter implements ParSheetExporting {
         }
         if (typedBlueprint.availableBets) {
             addSheet(workbook, this.availableBetsMapper.sheetName, this.availableBetsMapper.toRows(typedBlueprint.availableBets));
+        }
+        if (typedBlueprint.winModel) {
+            addSheet(workbook, this.winModelMapper.sheetName, this.winModelMapper.toRows(typedBlueprint.winModel));
+        }
+        if (typedBlueprint.mechanics?.freeGames) {
+            addSheet(workbook, this.mechanicsMapper.sheetName, this.mechanicsMapper.toRows(typedBlueprint.mechanics.freeGames));
+        }
+        if (typedBlueprint.betModes) {
+            addSheet(workbook, this.betModesMapper.sheetName, this.betModesMapper.toRows(typedBlueprint.betModes));
         }
         addSheet(
             workbook,

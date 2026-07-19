@@ -6,8 +6,12 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {computeBlueprintHash} from "./computeBlueprintHash.js";
 import {AvailableBetsSheetMapper} from "./mapping/AvailableBetsSheetMapper.js";
 import type {AvailableBetsSheetMapping} from "./mapping/AvailableBetsSheetMapping.js";
+import {BetModesSheetMapper} from "./mapping/BetModesSheetMapper.js";
+import type {BetModesSheetMapping} from "./mapping/BetModesSheetMapping.js";
 import {ManifestSheetMapper} from "./mapping/ManifestSheetMapper.js";
 import type {ManifestSheetMapping} from "./mapping/ManifestSheetMapping.js";
+import {MechanicsSheetMapper} from "./mapping/MechanicsSheetMapper.js";
+import type {MechanicsSheetMapping} from "./mapping/MechanicsSheetMapping.js";
 import type {ParSheetProvenance} from "./mapping/ParSheetProvenance.js";
 import {PaylinesSheetMapper} from "./mapping/PaylinesSheetMapper.js";
 import type {PaylinesSheetMapping} from "./mapping/PaylinesSheetMapping.js";
@@ -19,16 +23,18 @@ import {ReelStripsSheetMapper} from "./mapping/ReelStripsSheetMapper.js";
 import type {ReelStripsSheetMapping} from "./mapping/ReelStripsSheetMapping.js";
 import {SymbolsSheetMapper} from "./mapping/SymbolsSheetMapper.js";
 import type {SymbolsSheetMapping} from "./mapping/SymbolsSheetMapping.js";
+import {WinModelSheetMapper} from "./mapping/WinModelSheetMapper.js";
+import type {WinModelSheetMapping} from "./mapping/WinModelSheetMapping.js";
 import type {ParSheetImporting} from "./ParSheetImporting.js";
 import type {ParSheetImportResult} from "./ParSheetImportResult.js";
 import type {SheetGrid} from "./SheetGrid.js";
 
 // "Manifest"/"Symbols"/"Paytable" are the minimum needed to describe a playable blueprint at all
 // (mirrors GameBlueprint's own required fields); the rest are optional, matching reelStrips/
-// paylines/availableBets being optional on GameBlueprint itself. "Meta" is provenance-only — see
-// ProvenanceSheetMapping.
+// paylines/availableBets/winModel/mechanics/betModes being optional on GameBlueprint itself. "Meta"
+// is provenance-only — see ProvenanceSheetMapping.
 const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
-const OPTIONAL_SHEETS = ["ReelStrips", "Paylines", "AvailableBets", "Meta"];
+const OPTIONAL_SHEETS = ["ReelStrips", "Paylines", "AvailableBets", "WinModel", "Mechanics", "BetModes", "Meta"];
 const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS];
 const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
@@ -42,6 +48,9 @@ export class ParSheetImporter implements ParSheetImporting {
     private readonly provenanceMapper: ProvenanceSheetMapping;
     private readonly validator: GameBlueprintValidating;
     private readonly readWorkbook: (filePath: string) => Promise<ExcelJS.Workbook>;
+    private readonly winModelMapper: WinModelSheetMapping;
+    private readonly mechanicsMapper: MechanicsSheetMapping;
+    private readonly betModesMapper: BetModesSheetMapping;
 
     constructor(
         manifestMapper: ManifestSheetMapping = new ManifestSheetMapper(),
@@ -57,6 +66,11 @@ export class ParSheetImporter implements ParSheetImporting {
             await workbook.xlsx.readFile(filePath);
             return workbook;
         },
+        // Appended after every pre-existing param, same reason as ParSheetExporter's own trailing
+        // winModel/mechanics/betModes mappers — never break an existing positional caller.
+        winModelMapper: WinModelSheetMapping = new WinModelSheetMapper(),
+        mechanicsMapper: MechanicsSheetMapping = new MechanicsSheetMapper(),
+        betModesMapper: BetModesSheetMapping = new BetModesSheetMapper(),
     ) {
         this.manifestMapper = manifestMapper;
         this.symbolsMapper = symbolsMapper;
@@ -67,6 +81,9 @@ export class ParSheetImporter implements ParSheetImporting {
         this.provenanceMapper = provenanceMapper;
         this.validator = validator;
         this.readWorkbook = readWorkbook;
+        this.winModelMapper = winModelMapper;
+        this.mechanicsMapper = mechanicsMapper;
+        this.betModesMapper = betModesMapper;
     }
 
     public async importFromFile(filePath: string): Promise<ParSheetImportResult> {
@@ -136,6 +153,27 @@ export class ParSheetImporter implements ParSheetImporting {
             issues.push(...availableBetsResult.issues);
             if (availableBetsResult.value.length > 0) {
                 blueprint.availableBets = availableBetsResult.value;
+            }
+        }
+        if (sheetsByName.has("WinModel")) {
+            const winModelResult = this.winModelMapper.fromRows(gridFor("WinModel"));
+            issues.push(...winModelResult.issues);
+            if (winModelResult.value !== undefined) {
+                blueprint.winModel = winModelResult.value;
+            }
+        }
+        if (sheetsByName.has("Mechanics")) {
+            const mechanicsResult = this.mechanicsMapper.fromRows(gridFor("Mechanics"));
+            issues.push(...mechanicsResult.issues);
+            if (mechanicsResult.value !== undefined) {
+                blueprint.mechanics = {freeGames: mechanicsResult.value};
+            }
+        }
+        if (sheetsByName.has("BetModes")) {
+            const betModesResult = this.betModesMapper.fromRows(gridFor("BetModes"));
+            issues.push(...betModesResult.issues);
+            if (betModesResult.value.length > 0) {
+                blueprint.betModes = betModesResult.value;
             }
         }
         let provenance: ParSheetProvenance | undefined;

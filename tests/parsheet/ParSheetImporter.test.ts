@@ -133,6 +133,125 @@ describe("ParSheetImporter", () => {
 
         expect(blueprint.paylines).toBeUndefined();
         expect(blueprint.availableBets).toBeUndefined();
+        expect(blueprint.winModel).toBeUndefined();
+        expect(blueprint.mechanics).toBeUndefined();
+        expect(blueprint.betModes).toBeUndefined();
+    });
+
+    describe("winModel / mechanics / betModes", () => {
+        it("round-trips winModel, mechanics.freeGames, and betModes through export -> import", async () => {
+            const original: GameBlueprint = {
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                reels: 2,
+                rows: 2,
+                symbols: ["A", "W", "S"],
+                wilds: ["W"],
+                scatters: ["S"],
+                paytable: {A: {"2": 5}},
+                reelStrips: [
+                    ["A", "W"],
+                    ["W", "S"],
+                ],
+                winModel: {type: "clusters", minimumClusterSize: 5},
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 8, "4": 15, "5": 25}}},
+                betModes: [
+                    {id: "base", label: "Base Game"},
+                    {id: "buy-bonus", label: "Buy Bonus", costMultiplier: 100},
+                ],
+            };
+            const exporter = new ParSheetExporter("1.3.0");
+            await exporter.exportToFile(original, filePath);
+            const importer = new ParSheetImporter();
+
+            const {blueprint, issues} = await importer.importFromFile(filePath);
+
+            expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+            expect(blueprint.winModel).toEqual(original.winModel);
+            expect(blueprint.mechanics).toEqual(original.mechanics);
+            expect(blueprint.betModes).toEqual(original.betModes);
+        });
+
+        it("round-trips a lines winModel with no mechanics/betModes present", async () => {
+            const original: GameBlueprint = {
+                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                reels: 2,
+                rows: 2,
+                symbols: ["A", "W"],
+                wilds: ["W"],
+                paytable: {A: {"2": 5}},
+                reelStrips: [
+                    ["A", "W"],
+                    ["W", "A"],
+                ],
+                winModel: {type: "ways"},
+            };
+            const exporter = new ParSheetExporter("1.3.0");
+            await exporter.exportToFile(original, filePath);
+            const importer = new ParSheetImporter();
+
+            const {blueprint, issues} = await importer.importFromFile(filePath);
+
+            expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+            expect(blueprint.winModel).toEqual({type: "ways"});
+            expect(blueprint.mechanics).toBeUndefined();
+            expect(blueprint.betModes).toBeUndefined();
+        });
+
+        // The "WinModel" sheet is Key/Value -- a hand-edited (or otherwise malformed) sheet with no
+        // recognizable "Type" can't become any GameBlueprintWinModel at all. This must be reported
+        // explicitly (an error) rather than silently omitted, so the caller knows winModel was lost.
+        it("explicitly reports and drops an invalid WinModel sheet, instead of silently defaulting to lines", async () => {
+            await writeWorkbook({
+                ...validSheets,
+                WinModel: [
+                    ["Key", "Value"],
+                    ["Type", "megaways"],
+                ],
+            });
+            const importer = new ParSheetImporter();
+
+            const {blueprint, issues} = await importer.importFromFile(filePath);
+
+            expect(blueprint.winModel).toBeUndefined();
+            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-winmodel-invalid-type", severity: "error"})]));
+        });
+
+        // A single freeGames award has exactly one scatterSymbol; a Mechanics sheet listing rows for two
+        // different scatter symbols is ambiguous and can't round-trip losslessly -- it must be reported
+        // as an explicit error, not silently resolved by picking one of them without saying so.
+        it("explicitly rejects a Mechanics sheet that lists more than one scatter symbol", async () => {
+            await writeWorkbook({
+                ...validSheets,
+                Mechanics: [
+                    ["Scatter Symbol", "Matches", "Free Games"],
+                    ["W", 3, 8],
+                    ["S", 3, 8],
+                ],
+            });
+            const importer = new ParSheetImporter();
+
+            const {issues} = await importer.importFromFile(filePath);
+
+            expect(issues).toEqual(
+                expect.arrayContaining([expect.objectContaining({code: "parsheet-mechanics-multiple-scatter-symbols", severity: "error"})]),
+            );
+        });
+
+        it("surfaces GameBlueprintValidator's own betModes-duplicate-id check for a BetModes sheet with a repeated id", async () => {
+            await writeWorkbook({
+                ...validSheets,
+                BetModes: [
+                    ["Id", "Label", "Cost Multiplier"],
+                    ["base", "Base Game", ""],
+                    ["base", "Base Game Again", ""],
+                ],
+            });
+            const importer = new ParSheetImporter();
+
+            const {issues} = await importer.importFromFile(filePath);
+
+            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "blueprint-betmodes-duplicate-id", severity: "error"})]));
+        });
     });
 
     describe("provenance", () => {

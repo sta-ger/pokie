@@ -495,10 +495,10 @@ workflow](#workflow) below.
 ## `pokie par import <input.xlsx>` / `pokie par export <config.json>`
 
 Round-trips a `GameBlueprint` to/from a "PAR sheet" — a workbook laid out the way a game designer would author
-symbols/reel strips/paytable/paylines/bets in Excel, instead of hand-writing JSON. Supports the same subset of
-`GameBlueprint` as [`pokie build --init-blueprint`](#starter-template-pokie-build---init-blueprint-file)'s
-literal-`reelStrips` path — manifest, reels/rows, symbols (with wilds/scatters), literal `reelStrips`, `paytable`,
-`paylines`, and `availableBets`. `reelStripGeneration`/`symbolWeights` (procedural reel generation, see
+symbols/reel strips/paytable/paylines/bets in Excel, instead of hand-writing JSON. Supports every `GameBlueprint`
+field except procedural reel generation — manifest, reels/rows, symbols (with wilds/scatters), literal `reelStrips`,
+`paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
+`reelStripGeneration`/`symbolWeights` (procedural reel generation, see
 [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)) are not supported by this command.
 
 ```
@@ -511,7 +511,7 @@ it).
 
 ### Workbook format
 
-A `.par.xlsx` workbook has up to seven sheets:
+A `.par.xlsx` workbook has up to ten sheets:
 
 | Sheet | Columns | Required | Maps to |
 |---|---|---|---|
@@ -521,6 +521,9 @@ A `.par.xlsx` workbook has up to seven sheets:
 | `ReelStrips` | `Reel 1`..`Reel N` (exact names — see below) — one row per strip position; a shorter (ragged) reel just leaves trailing blank cells | no | `reelStrips` (literal only) |
 | `Paylines` | `Line` (a 1-based label, not read back), `Reel 1`..`Reel N` (row index per reel) | no | `paylines` |
 | `AvailableBets` | `Bet` — one row per value | no | `availableBets` |
+| `WinModel` | `Key`, `Value` (rows: `Type` — one of `lines`/`ways`/`clusters`; `Minimum Cluster Size`, only for `clusters`) | no | `winModel` |
+| `Mechanics` | `Scatter Symbol`, `Matches`, `Free Games` — one row per award tier (a single free-games award has exactly one scatter symbol, repeated on every row) | no | `mechanics.freeGames` |
+| `BetModes` | `Id`, `Label`, `Cost Multiplier` — one row per selectable bet mode | no | `betModes` |
 | `Meta` | `Key`, `Value` (rows: `Schema Version`, `Pokie Version`, `Exported At`, `Source`, `Blueprint Hash`) | no | nothing — provenance only, see below |
 
 `ReelStrips`/`Paylines` columns must be named exactly `Reel 1`, `Reel 2`, ... `Reel N` (case-insensitive, one
@@ -586,6 +589,13 @@ shape as [`pokie build`'s validation](#validation)):
 - on export, a blueprint with no literal `reelStrips` at all (`parsheet-missing-reel-strips`) or one that uses
   `reelStripGeneration`/`symbolWeights` (`parsheet-unsupported-reel-source`, even if `reelStrips` is also
   present) — both abort the export with nothing written, see above;
+- on import, a `WinModel` sheet with no recognizable `Type` value at all (`parsheet-winmodel-missing-type` if
+  blank, `parsheet-winmodel-invalid-type` if present but not `lines`/`ways`/`clusters`) — `winModel` is dropped
+  rather than silently defaulting to `lines`; a `Minimum Cluster Size` given for a non-`clusters` type is ignored
+  with a warning (`parsheet-winmodel-cluster-size-ignored`);
+- on import, a `Mechanics` sheet whose rows disagree on which scatter symbol they're for
+  (`parsheet-mechanics-multiple-scatter-symbols`) — a single free-games award has exactly one scatter symbol, so
+  this can't round-trip losslessly and is reported as an error rather than silently picking one;
 - on import, provenance problems — see below;
 - everything `GameBlueprintValidator` itself already checks once the blueprint is assembled (unknown/duplicate
   symbols, unreachable symbols, out-of-range match counts, paytable/weighting quality warnings, ...) — these use

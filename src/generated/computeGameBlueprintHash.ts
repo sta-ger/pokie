@@ -15,10 +15,10 @@ import crypto from "crypto";
 // Deliberately NOT the same thing as parsheet/computeBlueprintHash.ts, despite the similar name: that
 // one also canonicalizes field order, but additionally drops empty-vs-omitted distinctions so a
 // PAR-sheet round trip hashes as unchanged, and — critically — has no representation at all for
-// reelStripGeneration, symbolWeights, winModel, mechanics, or betModes (PAR sheets can't carry them), so
-// it would silently ignore edits to exactly the fields a conflict check needs to catch. Use *this* one
-// for "did the raw blueprint content change", that one only for "does this still round-trip losslessly
-// through a PAR sheet".
+// reelStripGeneration/symbolWeights (PAR sheets can't carry procedural reel generation at all — see
+// ParSheetExporter's own preflight rejection of those two fields), so it would silently ignore edits to
+// exactly those fields a conflict check needs to catch. Use *this* one for "did the raw blueprint
+// content change", that one only for "does this still round-trip losslessly through a PAR sheet".
 export function computeGameBlueprintHash(blueprint: unknown): string {
     return `sha256:${crypto.createHash("sha256").update(JSON.stringify(canonicalize(blueprint))).digest("hex")}`;
 }
