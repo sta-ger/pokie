@@ -75,3 +75,77 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
         expect(getCalls).toBe(callsAtUnmount);
     });
 });
+
+describe("useSimulationPoll - resetForProjectSwitch", () => {
+    it("clears job/progress/error so a genuinely different project never shows a trace of the previous one's simulation", async () => {
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+            }
+            if (url === "/api/project/simulations/job-1") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 10))});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => {
+            result.current.run(10, undefined, 1);
+        });
+        await waitFor(() => expect(result.current.job?.status).toBe("completed"));
+
+        act(() => {
+            result.current.resetForProjectSwitch();
+        });
+
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.error).toBeUndefined();
+        expect(result.current.currentJobId).toBeUndefined();
+    });
+
+    it("discards a poll response already in flight before the reset, instead of letting it repopulate the previous project's job", async () => {
+        let releasePoll: (() => void) | undefined;
+        let pollCalls = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("queued", 0))});
+            }
+            if (url === "/api/project/simulations/job-1") {
+                pollCalls += 1;
+                if (pollCalls === 1) {
+                    return new Promise((resolve) => {
+                        releasePoll = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 10))});
+                    });
+                }
+                return Promise.reject(new Error("no further polls expected"));
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => {
+            result.current.run(10, undefined, 1);
+        });
+        await waitFor(() => expect(pollCalls).toBeGreaterThanOrEqual(1));
+
+        // The project switches while that first poll is still unresolved.
+        act(() => {
+            result.current.resetForProjectSwitch();
+        });
+        expect(result.current.job).toBeUndefined();
+
+        // Now let the stale poll for the *old* project's job resolve.
+        act(() => {
+            releasePoll?.();
+        });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 50);
+        });
+
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.progress).toBeUndefined();
+    });
+});

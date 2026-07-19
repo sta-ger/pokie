@@ -156,4 +156,60 @@ describe("useRuntimeManager - stale-response protection", () => {
         expect(result.current.sessionId).toBeUndefined();
         expect(result.current.session).toEqual({status: "idle"});
     });
+
+    // `state` (the runtime server's own host/port/baseUrl/repositoryMode) is shared across
+    // refresh()/start()/stop()/restart() -- unlike session state, none of the four had any stale-
+    // response protection at all, so a manual Refresh still in flight when Start is clicked could have
+    // its slower "stopped" response land *after* Start's "running" one and silently overwrite it.
+    it("discards a slow refresh() response once start() has already resolved afterward", async () => {
+        let resolveRefresh: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/runtime" && init === undefined) {
+                return new Promise((resolve) => {
+                    resolveRefresh = resolve;
+                });
+            }
+            if (url === "/api/project/runtime/start") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () =>
+                        Promise.resolve({
+                            status: "running",
+                            host: "127.0.0.1",
+                            port: 4123,
+                            baseUrl: "http://127.0.0.1:4123",
+                            debug: false,
+                            repositoryMode: "memory",
+                            startedAt: "2026-01-01T00:00:00.000Z",
+                        }),
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        const {result} = renderHook(() => useRuntimeManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refresh();
+        });
+        expect(result.current.state.status).toBe("loading");
+
+        act(() => {
+            result.current.start({});
+        });
+        await waitFor(() => expect(result.current.state.status).toBe("running"));
+
+        // The slow refresh() response finally lands -- must never overwrite the already-running state
+        // Start's own (later, actually-current) response already produced.
+        act(() => {
+            resolveRefresh?.({ok: true, status: 200, json: () => Promise.resolve({status: "stopped"})});
+        });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 0);
+        });
+
+        expect(result.current.state.status).toBe("running");
+        expect(result.current.running).toBe(true);
+    });
 });

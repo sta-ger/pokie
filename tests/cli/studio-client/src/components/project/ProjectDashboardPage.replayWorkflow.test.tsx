@@ -766,4 +766,122 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByText("Raw state before")).toBeVisible();
         expect(screen.getByText("Raw state after")).toBeVisible();
     }, 45000);
+
+    it("discards an out-of-order Recent Replays list response, keeping only the latest refresh's result", async () => {
+        const user = userEvent.setup();
+        const entryOld: StudioReplayListEntry = {id: "old", round: 1, status: "completed", startedAt: "2026-01-01T00:00:00.000Z", game: GAME};
+        const entryNew: StudioReplayListEntry = {id: "new", round: 2, status: "completed", startedAt: "2026-01-02T00:00:00.000Z", game: GAME};
+        let releaseFirstList: (() => void) | undefined;
+        let listCalls = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/replays" && init?.method === undefined) {
+                listCalls += 1;
+                if (listCalls === 1) {
+                    return new Promise((resolve) => {
+                        releaseFirstList = () => resolve({ok: true, status: 200, json: () => Promise.resolve([entryOld])});
+                    });
+                }
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([entryNew])});
+            }
+            const route = BASE_ROUTES[path];
+            if (route) {
+                const {ok, status, body} = route();
+                return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+            }
+            return Promise.reject(new Error(`no fake route for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+        await waitFor(() => expect(listCalls).toBeGreaterThanOrEqual(1));
+
+        const recentReplaysSection = screen.getByText("Recent replays").closest("fieldset") as HTMLElement;
+        // A second refresh (the initial project-load fetch is still in flight) must win -- its response
+        // lands first and is the one actually current.
+        await user.click(within(recentReplaysSection).getByRole("button", {name: "Refresh"}));
+        await waitFor(() => expect(within(recentReplaysSection).getByText(/round 2 —/)).toBeInTheDocument());
+
+        // Now let the first, slower request resolve -- it must not overwrite the newer result.
+        releaseFirstList?.();
+        await new Promise((resolve) => {
+            setTimeout(resolve, 50);
+        });
+        expect(within(recentReplaysSection).getByText(/round 2 —/)).toBeInTheDocument();
+        expect(within(recentReplaysSection).queryByText(/round 1 —/)).not.toBeInTheDocument();
+    });
+
+    // Clicking "Inspect" used to always jump to the Inspect step regardless of whether the underlying
+    // fetch actually succeeded -- a failure was silently dropped, landing the user on step 3 with
+    // whatever replay.job happened to already be there (stale or empty), no error, no explanation.
+    it("stays put and shows an error instead of silently jumping to Inspect when loading a stored replay fails", async () => {
+        const user = userEvent.setup();
+        const entry: StudioReplayListEntry = {id: "bad", round: 1, status: "completed", startedAt: "2026-01-01T00:00:00.000Z", game: GAME};
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/replays" && init?.method === undefined) {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([entry])});
+            }
+            if (path === "/api/project/replays/bad") {
+                return Promise.resolve({ok: false, status: 404, json: () => Promise.resolve({error: "That replay no longer exists."})});
+            }
+            const route = BASE_ROUTES[path];
+            if (route) {
+                const {ok, status, body} = route();
+                return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+            }
+            return Promise.reject(new Error(`no fake route for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+        const recentReplaysSection = await screen.findByText("round 1 —", {exact: false}).then((el) => el.closest("fieldset") as HTMLElement);
+
+        await user.click(within(recentReplaysSection).getByRole("button", {name: "Inspect"}));
+
+        expect(await within(recentReplaysSection).findByText("That replay no longer exists.")).toBeInTheDocument();
+        // Still on Find -- the Inspect step's own Stepper button was never reached/advanced to.
+        expect(screen.getByRole("radio", {name: "Seed & Round"})).toBeInTheDocument();
+    });
+
+    // inspectReachable stays true off a *stale* `result` from an earlier, different-method
+    // reproduction, so jumping the Stepper back to Find, switching to "Session Spin", then forward to
+    // Inspect again without picking a spin used to render nothing at all -- none of Inspect's own
+    // branches matched that exact (findMethod, selection) combination.
+    it("shows an explanatory EmptyState, not a blank screen, when Inspect is reached via Session Spin with nothing selected", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    return {ok: true, status: 200, body: jobFor("job-1", {status: "queued", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-1": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-1", {status: "running", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: jobFor("job-1", {status: "completed", descriptor: descriptorFor({artifact: artifactFor()})})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Find"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: stepperStep("Inspect", "See results")})).not.toBeDisabled(), {timeout: 15000});
+
+        // Back to Find, switch method, then straight to Inspect (still enabled off the stale `result`)
+        // without ever picking a spin.
+        await user.click(screen.getByRole("button", {name: stepperStep("Find", "Locate a round")}));
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+        await user.click(screen.getByRole("button", {name: stepperStep("Inspect", "See results")}));
+
+        expect(screen.getByText("Pick a spin in the Find step first.")).toBeInTheDocument();
+    }, 45000);
 });

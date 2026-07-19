@@ -52,6 +52,15 @@ export function useRuntimeManager() {
     // a project switch can never repopulate what that reset just cleared).
     const sessionRequestIdRef = useRef(0);
 
+    // Same convention, one level up: guards `state` (the runtime server's own host/port/baseUrl/
+    // repositoryMode/preGenerated status) against a stale response from refresh()/start()/stop()/
+    // restart() landing after a newer one already did. Unlike those four calls' own useDoubleSubmitGuard
+    // (which only stops *the same* action re-entering while its own call is still in flight), this is
+    // what stops *different* actions' responses from racing each other -- e.g. a manual Refresh still in
+    // flight when Start is clicked: without this, Refresh's slower "not running" response could land
+    // after Start's and silently overwrite the just-started state.
+    const stateRequestIdRef = useRef(0);
+
     const startGuard = useDoubleSubmitGuard();
     const stopGuard = useDoubleSubmitGuard();
     const restartGuard = useDoubleSubmitGuard();
@@ -64,10 +73,19 @@ export function useRuntimeManager() {
     }, []);
 
     const refresh = useCallback(() => {
+        const requestId = ++stateRequestIdRef.current;
         setState({status: "loading"});
         getRuntimeState(fetchImpl)
-            .then((result) => setState(describeRuntimeState(result)))
-            .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
+            .then((result) => {
+                if (requestId === stateRequestIdRef.current) {
+                    setState(describeRuntimeState(result));
+                }
+            })
+            .catch((error: unknown) => {
+                if (requestId === stateRequestIdRef.current) {
+                    setState({status: "error", message: errorMessage(error)});
+                }
+            });
     }, [fetchImpl]);
 
     // Called from stop()/restart() -- the runtime instance itself just changed (a new/no server), so any
@@ -105,14 +123,22 @@ export function useRuntimeManager() {
             if (!startGuard.begin()) {
                 return;
             }
+            const requestId = ++stateRequestIdRef.current;
             setState({status: "loading"});
             startRuntime(fetchImpl, options)
                 .then((result) => {
+                    if (requestId !== stateRequestIdRef.current) {
+                        return;
+                    }
                     const view = describeStartResult(result);
                     setState(view);
                     pushHistory("Start", view.status === "running" ? `running at ${view.baseUrl}` : view.status);
                 })
-                .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}))
+                .catch((error: unknown) => {
+                    if (requestId === stateRequestIdRef.current) {
+                        setState({status: "error", message: errorMessage(error)});
+                    }
+                })
                 .finally(() => startGuard.end());
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,14 +149,22 @@ export function useRuntimeManager() {
         if (!stopGuard.begin()) {
             return;
         }
+        const requestId = ++stateRequestIdRef.current;
         stopRuntime(fetchImpl)
             .then((result) => {
+                if (requestId !== stateRequestIdRef.current) {
+                    return;
+                }
                 const view = describeRuntimeState(result);
                 setState(view);
                 pushHistory("Stop", view.status);
                 resetSession();
             })
-            .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}))
+            .catch((error: unknown) => {
+                if (requestId === stateRequestIdRef.current) {
+                    setState({status: "error", message: errorMessage(error)});
+                }
+            })
             .finally(() => stopGuard.end());
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchImpl, pushHistory, resetSession]);
@@ -140,15 +174,23 @@ export function useRuntimeManager() {
             if (!restartGuard.begin()) {
                 return;
             }
+            const requestId = ++stateRequestIdRef.current;
             setState({status: "loading"});
             restartRuntime(fetchImpl, options)
                 .then((result) => {
+                    if (requestId !== stateRequestIdRef.current) {
+                        return;
+                    }
                     const view = describeRuntimeState(result);
                     setState(view);
                     pushHistory("Restart", view.status === "running" ? `running at ${view.baseUrl}` : view.status);
                     resetSession();
                 })
-                .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}))
+                .catch((error: unknown) => {
+                    if (requestId === stateRequestIdRef.current) {
+                        setState({status: "error", message: errorMessage(error)});
+                    }
+                })
                 .finally(() => restartGuard.end());
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps

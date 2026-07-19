@@ -1,4 +1,4 @@
-import {screen} from "@testing-library/react";
+import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {GamePackageInspectionReport, StudioBlueprintValidationView} from "../../../../../../cli/studio-client/src/api/types";
@@ -384,5 +384,111 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         // show the previous, already-loaded "ZZ" symbol form).
         expect(await screen.findByText(/wasn't built from a tracked source blueprint/)).toBeInTheDocument();
         expect(screen.queryByLabelText("Symbol 1 id")).not.toBeInTheDocument();
+    });
+
+    // Regression test for a bug AdvancedDisclosure's always-mounted-content fix (see its own doc
+    // comment) exposed: BlueprintJsonPanel's Textarea is uncontrolled (defaultValue, read via a ref on
+    // Apply), which only stays correct if the panel remounts fresh every time the blueprint changes.
+    // Without that, "Show advanced details" would keep showing the blueprint exactly as it was at
+    // first load, and clicking "Apply JSON" against that stale text would silently revert the user's
+    // own form edits.
+    it("keeps the raw blueprint JSON panel in sync with form edits instead of showing what the blueprint looked like at first load", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+
+        await user.click(screen.getByRole("button", {name: "Show advanced details (raw blueprint JSON)"}));
+        const jsonTextarea = screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement;
+        expect(jsonTextarea.value).toContain('"A"');
+        expect(jsonTextarea.value).not.toContain('"AA"');
+
+        const symbolInput = screen.getByLabelText("Symbol 1 id");
+        await user.clear(symbolInput);
+        await user.type(symbolInput, "AA");
+        await user.tab();
+
+        // The panel (still open) must reflect the edit -- not the pre-edit "A" it was mounted with.
+        expect(screen.getByLabelText("Blueprint JSON")).not.toBe(jsonTextarea);
+        expect((screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement).value).toContain('"AA"');
+    });
+
+    // MechanicsEditorTab is conditionally *mounted* (only while activeTab === "mechanicsEditor"), so
+    // switching to any other Project Dashboard tab used to discard an unapplied draft with zero warning
+    // -- unlike Home's guided Blueprint Editor, which has a full navigation-blocking guard for exactly
+    // this. A plain confirm() is the proportionate fix (not a second copy of that whole guard system).
+    describe("warns before losing an unapplied draft", () => {
+        async function makeADirtyEdit(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+            const symbolInput = screen.getByLabelText("Symbol 1 id");
+            await user.clear(symbolInput);
+            await user.type(symbolInput, "AA");
+            await user.tab();
+            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
+        }
+
+        it("asks for confirmation before switching to another tab, and Cancel keeps the draft in place", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await makeADirtyEdit(user);
+
+            await user.click(screen.getByRole("button", {name: "Overview"}));
+            expect(await screen.findByRole("button", {name: "Confirm"})).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Cancel"}));
+            // Mantine's Modal unmounts its content only after its own closing transition -- the button
+            // can briefly still be in the DOM right after the click.
+            await waitFor(() => expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument());
+            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
+            expect(screen.getByRole("button", {name: "Overview"})).not.toHaveAttribute("aria-current");
+        });
+
+        it("navigates away and discards the draft once the user confirms", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await makeADirtyEdit(user);
+
+            await user.click(screen.getByRole("button", {name: "Overview"}));
+            await user.click(await screen.findByRole("button", {name: "Confirm"}));
+
+            expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
+            expect(screen.queryByLabelText("Symbol 1 id")).not.toBeInTheDocument();
+        });
+
+        it("does not ask for confirmation switching tabs once the draft is clean again (freshly loaded, no edits)", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+
+            await user.click(screen.getByRole("button", {name: "Overview"}));
+            expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
+            expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
+        });
+
+        it("asks for confirmation before closing the project while the draft is unapplied", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch({
+                ...BASE_ROUTES,
+                "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
+            });
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await makeADirtyEdit(user);
+
+            await user.click(screen.getByRole("button", {name: "Close project"}));
+            expect(await screen.findByText(/unapplied Mechanics Editor draft/)).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Confirm"}));
+            expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
+        });
     });
 });

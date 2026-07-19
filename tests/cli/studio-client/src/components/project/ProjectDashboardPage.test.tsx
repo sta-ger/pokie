@@ -227,4 +227,65 @@ describe("ProjectDashboardPage", () => {
         expect(await screen.findByText("Validation failed")).toBeInTheDocument();
         expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();
     });
+
+    describe("Close project", () => {
+        it("navigates to Home once the server confirms the project actually closed", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch({
+                ...baseFetchRoutes(),
+                "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
+            });
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "Crazy Fruits"});
+
+            await user.click(screen.getByRole("button", {name: "Close project"}));
+
+            await waitFor(() => expect(screen.queryByRole("heading", {name: "Crazy Fruits"})).not.toBeInTheDocument());
+            expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
+        });
+
+        // Every other mutating apiClient.ts function throws on a non-ok response; closeProject() used to
+        // be the one exception (it parsed the body regardless of status), and the page-level handler threw
+        // the failure away entirely -- so a failed close was indistinguishable from the button silently
+        // doing nothing. It must now surface an error, stay on the project, and let the user retry.
+        it("shows an error and stays on the project when closing fails, and lets the user retry", async () => {
+            const user = userEvent.setup();
+            let shouldFail = true;
+            const fetchImpl = (url: string, init?: RequestInit) => {
+                const [path] = url.split("?");
+                if (path === "/api/projects/close") {
+                    if (shouldFail) {
+                        return Promise.resolve({
+                            ok: false,
+                            status: 500,
+                            json: () => Promise.resolve({error: "close failed: a spin is still writing to disk"}),
+                        });
+                    }
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({context: {status: "empty"}})});
+                }
+                const routes = baseFetchRoutes() as Record<string, (call: {url: string; init?: RequestInit}) => {ok: boolean; status: number; body: unknown}>;
+                const route = routes[path];
+                if (route) {
+                    const {ok, status, body} = route({url, init});
+                    return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+                }
+                return Promise.reject(new Error(`no fake route for ${url}`));
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "Crazy Fruits"});
+
+            await user.click(screen.getByRole("button", {name: "Close project"}));
+
+            expect(await screen.findByText(/Couldn't close the project/)).toBeInTheDocument();
+            expect(screen.getByText(/a spin is still writing to disk/)).toBeInTheDocument();
+            expect(screen.getByRole("heading", {name: "Crazy Fruits"})).toBeInTheDocument();
+
+            shouldFail = false;
+            await user.click(screen.getByRole("button", {name: "Close project"}));
+
+            await waitFor(() => expect(screen.queryByRole("heading", {name: "Crazy Fruits"})).not.toBeInTheDocument());
+        });
+    });
 });

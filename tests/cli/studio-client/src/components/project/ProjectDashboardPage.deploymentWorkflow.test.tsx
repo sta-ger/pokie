@@ -1,5 +1,6 @@
-import {screen, within} from "@testing-library/react";
+import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {StudioDeploymentRunView, StudioDeploymentStageSummary} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -325,5 +326,44 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         expect(await screen.findByText("No deployment targets registered.")).toBeInTheDocument();
         expect(screen.queryByText("from-project-a.json")).not.toBeInTheDocument();
         expect(screen.queryByLabelText("Mode name")).not.toBeInTheDocument();
+    });
+
+    // hasActiveOperation (the check "Close project" gates on) used to check simulation/replay/runtime
+    // but not an in-flight Deployment run -- closing while a Check/Deploy request is still executing
+    // gave no warning at all, unlike every other kind of active operation.
+    it("warns before closing the project while a Deployment run is still in flight", async () => {
+        const user = userEvent.setup();
+        let resolveRun: ((response: unknown) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/runs") {
+                return new Promise((resolve) => {
+                    resolveRun = resolve;
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route) {
+                const {ok, status, body} = route({url, init});
+                return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+            }
+            return Promise.reject(new Error(`no fake route for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToDeploymentConfigure(user);
+        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+
+        await user.click(screen.getByRole("button", {name: "Close project"}));
+        expect(await screen.findByText(/active simulation, replay, deployment, or running runtime/)).toBeInTheDocument();
+
+        // Cancelling leaves the project open and the run still going.
+        await user.click(screen.getByRole("button", {name: "Cancel"}));
+        expect(screen.getByRole("heading", {name: "A"})).toBeInTheDocument();
+
+        // Flushes the response so the test doesn't leave a dangling unawaited state update behind --
+        // once it lands, the Stepper auto-advances past Configure (see DeploymentTab's own
+        // pendingAdvanceStepRef effect), so "Check compatibility & preview" is no longer rendered at all.
+        resolveRun?.({ok: true, status: 200, json: () => Promise.resolve(baseRunView({stages: [stage("descriptor", "ok")]}))});
+        await waitFor(() => expect(screen.queryByRole("button", {name: "Check compatibility & preview"})).not.toBeInTheDocument());
     });
 });

@@ -82,7 +82,7 @@ export function ReplayTab({
     listView: ReplayListView;
     listError: string | undefined;
     onRefreshList: () => void;
-    onInspectStored: (id: string) => void;
+    onInspectStored: (id: string) => Promise<void>;
     onCompareStored: (id: string) => void;
     expected: ExpectedReplayState;
     onLoadExpectedFromPaste: (raw: string) => void;
@@ -618,6 +618,13 @@ export function ReplayTab({
                     )}
 
                     {findMethod !== "spin" && !result && <EmptyState message="Reproduce a round to inspect it." />}
+                    {/* Reachable by jumping the Stepper back to Find, switching the method to "Session
+                        Spin", then forward to Inspect again without picking a spin -- inspectReachable
+                        stays true off a *stale* `result` from a previous, different-method reproduction,
+                        so this step must still have a fallback for its own method/selection combination
+                        rather than rendering nothing (every other findMethod/data combination above
+                        already has one). */}
+                    {findMethod === "spin" && !selectedSpin && <EmptyState message="Pick a spin in the Find step first." />}
                 </div>
             )}
 
@@ -664,8 +671,12 @@ export function ReplayTab({
                                         type="button"
                                         onClick={() => {
                                             setFindMethod("seedRound");
-                                            onInspectStored(entry.id);
-                                            setActiveStep(3);
+                                            // Only advance to Inspect once the fetch actually succeeds --
+                                            // a failure is surfaced below via listError instead of
+                                            // silently landing on a stale or empty Inspect step.
+                                            onInspectStored(entry.id)
+                                                .then(() => setActiveStep(3))
+                                                .catch(() => undefined);
                                         }}
                                     >
                                         Inspect

@@ -84,11 +84,29 @@ export function ProjectDashboardPage() {
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
-    const setActiveTab = useCallback(
+    const navigateToTab = useCallback(
         (value: ProjectTab): void => {
             navigate(`/project/${value}`);
         },
         [navigate],
+    );
+
+    // MechanicsEditorTab owns its own draft entirely locally (no page-level hook, unlike every other
+    // tab's state) and reports its own dirty-ness up through this -- mirroring BlueprintEditorPage's own
+    // onDirtyChange prop exactly (see its doc comment). Unlike Home's guided Blueprint Editor (which has
+    // a full useDesignNavigationGuard -- useBlocker, a beforeunload listener, the works), leaving this
+    // tab is just an ordinary same-page tab switch, so a plain confirm() before navigating away is the
+    // proportionate amount of protection here, not a second copy of that whole guard system.
+    const [isMechanicsEditorDirty, setIsMechanicsEditorDirty] = useState(false);
+    const setActiveTab = useCallback(
+        (value: ProjectTab): void => {
+            if (activeTab === "mechanicsEditor" && value !== "mechanicsEditor" && isMechanicsEditorDirty) {
+                confirm("Leave Mechanics Editor? Your unapplied draft will be lost.", () => navigateToTab(value));
+                return;
+            }
+            navigateToTab(value);
+        },
+        [activeTab, isMechanicsEditorDirty, confirm, navigateToTab],
     );
 
     const header = useProjectContext();
@@ -285,10 +303,24 @@ export function ProjectDashboardPage() {
 
     const [replayListView, setReplayListView] = useState<ReplayListView>({status: "empty"});
     const [replayListError, setReplayListError] = useState<string>();
+    // Same monotonic-requestId convention as refreshReports/refreshRecentSpins above -- without it, a
+    // refresh still in flight from before a project switch could land afterward and repopulate the
+    // list with the *previous* project's replays.
+    const replayListRequestIdRef = useRef(0);
     const refreshReplayList = useCallback(() => {
+        const requestId = ++replayListRequestIdRef.current;
         listReplays(fetchImpl)
-            .then((entries) => setReplayListView(describeReplayList(entries)))
-            .catch((error: unknown) => setReplayListError(errorMessage(error)));
+            .then((entries) => {
+                if (requestId === replayListRequestIdRef.current) {
+                    setReplayListError(undefined);
+                    setReplayListView(describeReplayList(entries));
+                }
+            })
+            .catch((error: unknown) => {
+                if (requestId === replayListRequestIdRef.current) {
+                    setReplayListError(errorMessage(error));
+                }
+            });
     }, [fetchImpl]);
     const replay = useReplayPoll(refreshReplayList);
 
@@ -390,12 +422,24 @@ export function ProjectDashboardPage() {
         [replay.run, clearExpectedReplay],
     );
 
+    // Returns the fetch's own promise (rather than swallowing a failure) so ReplayTab's "Inspect" click
+    // handler only advances to the Inspect step on success -- previously a failed fetch here (network
+    // blip, a since-deleted job) still jumped the user to step 3 with the *previous* replay.job left
+    // showing (or nothing at all), no error, no indication anything went wrong. Also surfaces the
+    // failure through replayListError -- the same state the "Recent replays" section right below this
+    // list already displays -- since there's no other error slot naturally reachable from this click.
     const onInspectStored = useCallback(
-        (id: string) => {
+        (id: string): Promise<void> => {
             clearExpectedReplay();
-            getReplay(fetchImpl, id)
-                .then((job) => replay.selectExisting(job))
-                .catch(() => undefined);
+            return getReplay(fetchImpl, id)
+                .then((job) => {
+                    replay.selectExisting(job);
+                    setReplayListError(undefined);
+                })
+                .catch((error: unknown) => {
+                    setReplayListError(errorMessage(error));
+                    throw error;
+                });
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [fetchImpl, clearExpectedReplay, replay.selectExisting],
@@ -468,6 +512,14 @@ export function ProjectDashboardPage() {
         recentSpinsRequestIdRef.current++;
         setRecentSpinsView({status: "empty"});
         setRecentSpinsError(undefined);
+        replayListRequestIdRef.current++;
+        setReplayListView({status: "empty"});
+        setReplayListError(undefined);
+        // simulation/replay own no page-level view state to reset here (their job/progress/error live
+        // inside useSimulationPoll/useReplayPoll themselves) -- resetForProjectSwitch() is what a
+        // genuinely different project needs to stop showing the previous one's simulation/replay job.
+        simulation.resetForProjectSwitch();
+        replay.resetForProjectSwitch();
         refreshInspect();
         refreshReports();
         refreshReplayList();
@@ -484,7 +536,8 @@ export function ProjectDashboardPage() {
     const hasActiveOperation =
         (simulation.job !== undefined && isSimulationActive(simulation.job)) ||
         (replay.job !== undefined && isReplayActive(replay.job)) ||
-        runtime.running;
+        runtime.running ||
+        deployment.runLoading;
 
     const activeTabLabel = PROJECT_TABS.find((tab) => tab.value === activeTab)?.label ?? "Overview";
     const projectName = header.status === "loaded" ? header.name : "Project";
@@ -524,14 +577,25 @@ export function ProjectDashboardPage() {
             : undefined;
     const onConfigureGameModel = blueprintSource ? () => navigate("/home/design", {state: {initialBlueprintPath: blueprintSource}}) : undefined;
 
+    const [closeError, setCloseError] = useState<string>();
+    const closeGuard = useDoubleSubmitGuard();
     const handleClose = (): void => {
         const doClose = (): void => {
+            if (!closeGuard.begin()) {
+                return;
+            }
+            setCloseError(undefined);
             closeProject(fetchImpl)
                 .then(() => navigate("/home/design"))
-                .catch(() => undefined);
+                // A failed close must be visible, not indistinguishable from the button silently doing
+                // nothing -- the guard is released here too, so the user can actually retry.
+                .catch((error: unknown) => setCloseError(errorMessage(error)))
+                .finally(() => closeGuard.end());
         };
-        if (hasActiveOperation) {
-            confirm("This project has an active simulation, replay, or running runtime. Close the project anyway?", doClose);
+        if (isMechanicsEditorDirty) {
+            confirm("This project has an unapplied Mechanics Editor draft. Close the project anyway? Your draft will be lost.", doClose);
+        } else if (hasActiveOperation) {
+            confirm("This project has an active simulation, replay, deployment, or running runtime. Close the project anyway?", doClose);
         } else {
             doClose();
         }
@@ -558,9 +622,14 @@ export function ProjectDashboardPage() {
             <div>
                 <Title order={2}>{header.status === "loaded" ? header.name : "Project"}</Title>
                 <Text c="dimmed">{header.projectRoot}</Text>
-                <Button variant="default" size="xs" mt="xs" onClick={handleClose}>
+                <Button variant="default" size="xs" mt="xs" onClick={handleClose} loading={closeGuard.isBlocked()}>
                     Close project
                 </Button>
+                {closeError && (
+                    <div style={{marginTop: "0.5rem"}}>
+                        <ErrorState message={`Couldn't close the project: ${closeError}`} />
+                    </div>
+                )}
             </div>
 
             {header.status === "loading" && (
@@ -725,7 +794,7 @@ export function ProjectDashboardPage() {
                         // Same reasoning as OutcomeLibrariesTab's own key above -- MechanicsEditorTab owns
                         // all of its own draft state locally (via useBlueprintEditor), so a genuine project
                         // switch is handled by a full remount rather than page-level cleanup.
-                        <MechanicsEditorTab key={projectKey ?? "no-project"} />
+                        <MechanicsEditorTab key={projectKey ?? "no-project"} onDirtyChange={setIsMechanicsEditorDirty} />
                     )}
                 </div>
             )}

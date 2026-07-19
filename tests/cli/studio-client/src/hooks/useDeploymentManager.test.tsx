@@ -416,3 +416,60 @@ describe("useDeploymentManager - project switch immediately followed by refresh,
         expect(result.current.runError).toBeUndefined();
     });
 });
+
+// DeploymentTab's Stepper doesn't gate navigation on runLoading -- without clearing runResult the
+// instant a new run starts, a user could jump to Check compatibility/Preview artifacts/Review result
+// mid-run and see the *previous* run's outcome banner with nothing indicating a newer, possibly
+// different-outcome run is currently executing.
+describe("useDeploymentManager - run() clears the previous result immediately", () => {
+    it("clears runResult the instant a new run starts, not only once the new response lands", async () => {
+        let resolveFirstRun: ((response: unknown) => void) | undefined;
+        let runCalls = 0;
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([TARGET])});
+            }
+            if (path === "/api/project/deployment/runs") {
+                runCalls += 1;
+                if (runCalls === 1) {
+                    return new Promise((resolve) => {
+                        resolveFirstRun = resolve;
+                    });
+                }
+                return new Promise(() => {
+                    // Second run: deliberately never resolves -- only its *absence* of a stale result matters here.
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refreshTargets();
+        });
+        await waitFor(() => expect(result.current.targetsView.status).toBe("loaded"));
+        act(() => {
+            result.current.selectTarget(TARGET);
+        });
+
+        act(() => {
+            result.current.run(false);
+        });
+        act(() => {
+            resolveFirstRun?.(okRunResponse());
+        });
+        await waitFor(() => expect(result.current.runResult).toBeDefined());
+        const firstResult = result.current.runResult;
+
+        // Start a second run (e.g. after editing a mode and going back to Configure) -- before its
+        // response ever arrives, the first run's result must already be gone.
+        act(() => {
+            result.current.run(false);
+        });
+
+        expect(result.current.runResult).toBeUndefined();
+        expect(result.current.runResult).not.toBe(firstResult);
+        expect(result.current.runLoading).toBe(true);
+    });
+});

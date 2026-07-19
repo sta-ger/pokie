@@ -51,7 +51,7 @@ type ApplyView =
 // guards, and progressive JSON disclosure follow OutcomeLibrariesTab's own established lifecycle
 // discipline; project-switch cleanup is a full remount, not page-level state -- see
 // ProjectDashboardPage's `key={projectKey ?? "no-project"}` on this component.
-export function MechanicsEditorTab() {
+export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boolean) => void} = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
@@ -110,8 +110,13 @@ export function MechanicsEditorTab() {
     // Refs must never be read during render (react-hooks/refs) -- derive isDirty in an effect with no
     // dependency array instead, which runs after every render (a mutate/markClean/formGeneration
     // change always re-renders anyway) -- same pattern BlueprintEditorPage's own onDirtyChange uses.
+    // Also reports it up via onDirtyChange, same as BlueprintEditorPage -- ProjectDashboardPage gates
+    // switching away from this tab (or closing the project) on it, since unlike Home's guided editor
+    // this tab has no navigation-blocking guard of its own.
     useEffect(() => {
-        setIsDirty(editor.state.revision !== cleanRevisionRef.current);
+        const dirty = editor.state.revision !== cleanRevisionRef.current;
+        setIsDirty(dirty);
+        onDirtyChange?.(dirty);
     });
 
     // Runs once per mount -- this component is remounted wholesale (key={projectKey}) on a genuine
@@ -405,7 +410,21 @@ export function MechanicsEditorTab() {
             )}
 
             <AdvancedDisclosure detail="raw blueprint JSON">
-                <BlueprintJsonPanel jsonText={editor.state.jsonText} jsonError={editor.state.jsonError} onApply={editor.applyJson} />
+                {/* BlueprintJsonPanel's Textarea is uncontrolled (defaultValue, read via a ref on Apply)
+                    -- correct as long as it remounts fresh whenever the underlying blueprint changes.
+                    AdvancedDisclosure keeps its children mounted at all times now (see its own doc
+                    comment on why), so without this key the panel would capture the blueprint's JSON
+                    once at initial load and silently go stale on every subsequent field edit -- and
+                    clicking "Apply JSON" against that stale text would revert those edits. Keyed on
+                    `revision` (bumped by every mutate(), not just New/Load/a JSON apply) so it always
+                    remounts with the current jsonText, same convention ReelStripGenerationEditor/
+                    ParSheetImportExportPanel already use for "must never show stale content" panels. */}
+                <BlueprintJsonPanel
+                    key={editor.state.revision}
+                    jsonText={editor.state.jsonText}
+                    jsonError={editor.state.jsonError}
+                    onApply={editor.applyJson}
+                />
             </AdvancedDisclosure>
         </PageSection>
     );

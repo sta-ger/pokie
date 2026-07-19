@@ -123,5 +123,20 @@ export function useReplayPoll(onTerminal?: () => void) {
         }
     }
 
-    return {progress, job, error, run, cancel, selectExisting};
+    // Called from ProjectDashboardPage's own projectKey effect -- same reasoning/convention as
+    // useSimulationPoll's own resetForProjectSwitch() (see its doc comment): clears `currentJobId`
+    // first so an in-flight poll response from the old project is discarded rather than repopulating
+    // what's cleared here, cancels the pending recursive-poll timer outright, then clears job state.
+    function resetForProjectSwitch(): void {
+        currentJobId.current = undefined;
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
+        setProgress(undefined);
+        setJob(undefined);
+        setError(undefined);
+    }
+
+    return {progress, job, error, run, cancel, selectExisting, resetForProjectSwitch};
 }

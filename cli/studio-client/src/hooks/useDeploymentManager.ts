@@ -171,6 +171,12 @@ export function useDeploymentManager() {
             // loading indicator, and a stale-but-not-yet-cleared error could outlive a run that actually
             // succeeds (see the success branch below, which clears it again for the same reason).
             setRunError(undefined);
+            // Same reasoning for the previous run's *result*: DeploymentTab's Stepper doesn't gate
+            // navigation on runLoading, so leaving the old runResult in place while a new Check/Deploy is
+            // in flight would let the user jump straight to Check compatibility/Preview artifacts/Review
+            // result and see the previous run's outcome banner with nothing indicating a newer run (which
+            // may land a different outcome entirely) is currently executing.
+            setRunResult(undefined);
             setRunLoading(true);
 
             runDeployment(fetchImpl, selectedTarget.id, modes, publish)

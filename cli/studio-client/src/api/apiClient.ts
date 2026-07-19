@@ -283,6 +283,9 @@ export async function openProject(fetchImpl: FetchLike, projectRoot: string): Pr
 
 export async function closeProject(fetchImpl: FetchLike): Promise<StudioContext> {
     const response = await fetchImpl("/api/projects/close", {method: "POST"});
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to close project"));
+    }
     const body = (await response.json()) as {context: StudioContext};
     return body.context;
 }
