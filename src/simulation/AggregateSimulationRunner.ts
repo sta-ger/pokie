@@ -1,4 +1,6 @@
+import type {StakeAmountDetermining} from "../session/StakeAmountDetermining.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
+import type {BetModeForNextSimulationRoundSetting} from "./BetModeForNextSimulationRoundSetting.js";
 import {ExplicitSimulationRoundCategoryDeterminer} from "./ExplicitSimulationRoundCategoryDeterminer.js";
 import {FallbackSimulationRoundCategoryDeterminer} from "./FallbackSimulationRoundCategoryDeterminer.js";
 import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
@@ -32,6 +34,7 @@ export class AggregateSimulationRunner {
     private readonly rounds: number;
     private readonly playStrategy?: NextSessionRoundPlayableDetermining;
     private readonly roundCategoryDeterminer: SimulationRoundCategoryDetermining;
+    private readonly betModeSelector?: BetModeForNextSimulationRoundSetting;
 
     private lastBreakdown: Record<string, SimulationBreakdownComponent> | undefined;
 
@@ -40,11 +43,20 @@ export class AggregateSimulationRunner {
         rounds: number,
         playStrategy?: NextSessionRoundPlayableDetermining,
         roundCategoryDeterminer: SimulationRoundCategoryDetermining = createDefaultRoundCategoryDeterminer(),
+        // Locks the run to one bet mode (see FixedBetModeForNextSimulationRoundSetting) — absent by
+        // default, so an existing caller that never touches bet modes gets byte-identical behavior.
+        // Its presence also switches the *breakdown's* own bet accounting from the nominal getBet()
+        // (used for the overall accumulator below, unconditionally, exactly as always) to
+        // getStakeAmount() (see resolveStakeAmount()): a mode-locked run's whole point is measuring
+        // what a bet mode actually costs, which is exactly what StakeAmountDetermining -- already the
+        // runtime's own source of truth, never recomputed here -- reports.
+        betModeSelector: BetModeForNextSimulationRoundSetting | undefined = undefined,
     ) {
         this.session = session;
         this.rounds = rounds;
         this.playStrategy = playStrategy;
         this.roundCategoryDeterminer = roundCategoryDeterminer;
+        this.betModeSelector = betModeSelector;
     }
 
     public run(): SimulationAccumulator {
@@ -59,7 +71,12 @@ export class AggregateSimulationRunner {
             if (this.playStrategy && !this.playStrategy.canPlayNextSimulationRound(this.session)) {
                 break;
             }
-            const bet = this.session.getBet();
+            this.betModeSelector?.setBetModeForNextRound(this.session);
+
+            const nominalBet = this.session.getBet();
+            // Read before play(), same as nominalBet — getStakeAmount()'s own contract (see
+            // StakeAmountDetermining) is "what the *next* play() will actually charge".
+            const stakeAmount = this.betModeSelector ? this.resolveStakeAmount() : nominalBet;
             const supportsCategorization = this.roundCategoryDeterminer.supportsRoundCategorization(this.session);
             // Normalized/validated here, centrally, regardless of which determiner produced it — an
             // injected custom SimulationRoundCategoryDetermining (see the extension point) gets the same
@@ -73,11 +90,15 @@ export class AggregateSimulationRunner {
 
             this.session.play();
             const payout = this.session.getWinAmount();
-            accumulator.addRound(bet, payout);
+            // Unconditionally nominal-bet-based, exactly as before betModeSelector existed — free/bonus
+            // rounds still count at their nominal wager value here, which is what makes this the right
+            // basis for the *overall*, mode-blind accumulator (see SimulationAccumulator's own bet > 0
+            // requirement: stakeAmount is 0 mid a free round, which this never feeds it).
+            accumulator.addRound(nominalBet, payout);
 
             if (category !== undefined) {
                 categorizationSupported = true;
-                this.addToCategoryTotals(categoryTotals, category, bet, payout);
+                this.addToCategoryTotals(categoryTotals, category, stakeAmount, payout);
             }
         }
 
@@ -104,6 +125,14 @@ export class AggregateSimulationRunner {
             totals.maxWin = payout;
         }
         categoryTotals.set(category, totals);
+    }
+
+    private resolveStakeAmount(): number {
+        return this.supportsStakeAmount(this.session) ? this.session.getStakeAmount() : this.session.getBet();
+    }
+
+    private supportsStakeAmount(session: GameSessionHandling): session is GameSessionHandling & StakeAmountDetermining {
+        return typeof (session as Partial<StakeAmountDetermining>).getStakeAmount === "function";
     }
 
     private toBreakdownComponents(categoryTotals: Map<string, CategoryTotals>): Record<string, SimulationBreakdownComponent> {

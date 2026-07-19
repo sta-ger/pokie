@@ -651,3 +651,110 @@ describe("SimulationReportBuilder", () => {
         });
     });
 });
+
+describe("SimulationReportBuilder betMode", () => {
+    const manifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+    test("without betMode, core metrics come straight from statistics -- fully backward compatible", () => {
+        const accumulator = new SimulationAccumulator();
+        accumulator.addRound(1, 0);
+        accumulator.addRound(1, 5);
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({
+            manifest,
+            requestedRounds: 2,
+            statistics: accumulator.getStatistics(),
+            durationMs: 10,
+            breakdown: {base: {rounds: 2, totalBet: 2, totalWin: 5, rtp: 2.5, hitFrequency: 0.5, maxWin: 5}},
+        });
+
+        expect(report.betMode).toBeUndefined();
+        expect(report.totalBet).toBe(accumulator.getStatistics().totalBet);
+        expect(report.rtp).toBe(accumulator.getStatistics().rtp);
+    });
+
+    test("with betMode, core totalBet/totalWin/rtp/hitFrequency/maxWin are derived from the (stake-based) breakdown, not nominal-bet statistics", () => {
+        const accumulator = new SimulationAccumulator();
+        // Nominal-bet-based statistics a real ante-mode-locked AggregateSimulationRunner would still
+        // produce for its OWN accumulator (unconditionally nominal, see its own doc comment) --
+        // understates the real 1.25x ante cost, which is exactly why betMode must override this.
+        for (let i = 0; i < 100; i++) {
+            accumulator.addRound(1, i % 10 === 0 ? 8 : 0);
+        }
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({
+            manifest,
+            requestedRounds: 100,
+            statistics: accumulator.getStatistics(),
+            durationMs: 10,
+            betMode: "ante",
+            breakdown: {base: {rounds: 100, totalBet: 125, totalWin: 80, rtp: 0.64, hitFrequency: 0.1, maxWin: 8}},
+        });
+
+        expect(report.betMode).toBe("ante");
+        expect(report.totalBet).toBe(125); // the breakdown's stake-based figure, not statistics.totalBet (100)
+        expect(report.totalWin).toBe(80);
+        expect(report.rtp).toBeCloseTo(80 / 125, 10);
+        expect(report.hitFrequency).toBe(0.1);
+        expect(report.maxWin).toBe(8);
+    });
+
+    test("sums multiple breakdown categories (e.g. a buy-bonus mode's base + freeGames) into the core metrics", () => {
+        const statistics = new SimulationAccumulator().getStatistics();
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({
+            manifest,
+            requestedRounds: 100,
+            statistics,
+            durationMs: 10,
+            betMode: "buy-bonus",
+            breakdown: {
+                base: {rounds: 25, totalBet: 1250, totalWin: 900, rtp: 0.72, hitFrequency: 1, maxWin: 40},
+                freeGames: {rounds: 75, totalBet: 0, totalWin: 600, rtp: 0, hitFrequency: 0.2, maxWin: 60},
+            },
+        });
+
+        expect(report.totalBet).toBe(1250); // freeGames' own 0 contributes nothing
+        expect(report.totalWin).toBe(1500);
+        expect(report.rtp).toBeCloseTo(1500 / 1250, 10);
+        expect(report.maxWin).toBe(60);
+    });
+
+    test("warns (falling back to nominal statistics) when betMode is set but no breakdown is available", () => {
+        const accumulator = new SimulationAccumulator();
+        accumulator.addRound(1, 0);
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({
+            manifest,
+            requestedRounds: 1,
+            statistics: accumulator.getStatistics(),
+            durationMs: 10,
+            betMode: "ante",
+        });
+
+        expect(report.totalBet).toBe(accumulator.getStatistics().totalBet); // fell back, not silently wrong
+        expect(report.warnings).toEqual(
+            expect.arrayContaining([expect.stringContaining('Bet mode "ante" was locked for this run, but no per-round categorization')]),
+        );
+    });
+
+    test("includes --mode in the reproducibility re-run command when betMode is set", () => {
+        const statistics = new SimulationAccumulator().getStatistics();
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({
+            manifest,
+            requestedRounds: 100,
+            statistics,
+            durationMs: 10,
+            packageRoot: "./game",
+            betMode: "buy-bonus",
+        });
+
+        expect(report.reproducibility!.command).toBe("pokie sim ./game --rounds 100 --mode buy-bonus");
+    });
+});

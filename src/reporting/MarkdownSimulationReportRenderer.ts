@@ -11,6 +11,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Requested rounds**: ${report.requestedRounds}`,
             `- **Actual rounds**: ${report.rounds}`,
             `- **Seed**: ${report.seed ?? "_none_"}`,
+            ...(report.betMode !== undefined ? [`- **Bet mode**: ${report.betMode}`] : []),
             `- **Total bet**: ${report.totalBet.toFixed(2)}`,
             `- **Total win**: ${report.totalWin.toFixed(2)}`,
             `- **RTP**: ${(report.rtp * 100).toFixed(2)}%`,

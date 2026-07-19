@@ -21,10 +21,11 @@ type SimOptions = {
     out?: string;
     format: SimFormat;
     workers: number;
+    mode?: string;
 };
 
 const USAGE =
-    "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--out <file>] [--format json]";
+    "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>] [--out <file>] [--format json]";
 
 export class SimCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
@@ -79,6 +80,7 @@ export class SimCommand implements CliCommandHandling {
             workers: options.workers,
             loadGame: this.loadGame,
             workerEntryUrl: this.workerEntryUrl,
+            betModeId: options.mode,
         });
         const result = await runner.run();
         const durationMs = Date.now() - startedAt;
@@ -93,6 +95,7 @@ export class SimCommand implements CliCommandHandling {
             breakdown: result.breakdown,
             workers: result.workers,
             workerSeedStrategy: result.workerSeedStrategy,
+            betMode: result.betMode,
         });
 
         if (options.out) {
@@ -120,6 +123,7 @@ export class SimCommand implements CliCommandHandling {
         let out: string | undefined;
         let format: SimFormat = "summary";
         let workers = 1;
+        let mode: string | undefined;
 
         for (let i = 0; i < rest.length; i++) {
             const flag = rest[i];
@@ -167,12 +171,20 @@ export class SimCommand implements CliCommandHandling {
                     i++;
                     break;
                 }
+                case "--mode": {
+                    if (value === undefined) {
+                        throw new Error(`--mode requires a bet mode id. ${USAGE}`);
+                    }
+                    mode = value;
+                    i++;
+                    break;
+                }
                 default:
                     throw new Error(`Unknown option "${flag}". ${USAGE}`);
             }
         }
 
-        return {packageRoot, rounds, seed, out, format, workers};
+        return {packageRoot, rounds, seed, out, format, workers, mode};
     }
 
     private printSummary(report: SimulationReport): void {
@@ -181,6 +193,9 @@ export class SimCommand implements CliCommandHandling {
         console.log(`  rounds          ${report.rounds}${roundsSuffix}`);
         if (report.seed !== null) {
             console.log(`  seed            ${report.seed}`);
+        }
+        if (report.betMode !== undefined) {
+            console.log(`  bet mode        ${report.betMode}`);
         }
         console.log(`  workers         ${report.workers ?? 1}`);
         console.log(`  total bet       ${report.totalBet.toFixed(2)}`);

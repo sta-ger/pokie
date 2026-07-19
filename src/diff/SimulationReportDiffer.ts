@@ -28,6 +28,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         const hitFrequency = this.metricDiff(left.hitFrequency, right.hitFrequency);
         const maxWin = this.metricDiff(left.maxWin, right.maxWin);
         const breakdown = this.diffBreakdown(left.breakdown, right.breakdown);
+        const betMode = this.diffBetMode(left.betMode, right.betMode);
 
         return {
             game: {
@@ -40,6 +41,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
                 right: right.seed,
                 changed: left.seed !== right.seed,
             },
+            betMode,
             requestedRounds: this.metricDiff(left.requestedRounds, right.requestedRounds),
             rounds: this.metricDiff(left.rounds, right.rounds),
             totalBet: this.metricDiff(left.totalBet, right.totalBet),
@@ -49,8 +51,22 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             maxWin,
             durationMs: this.metricDiff(left.durationMs, right.durationMs),
             spinsPerSecond: this.metricDiff(left.spinsPerSecond, right.spinsPerSecond),
-            warnings: this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown),
+            warnings: this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown, betMode),
             breakdown,
+        };
+    }
+
+    private diffBetMode(
+        left: string | undefined,
+        right: string | undefined,
+    ): SimulationReportDiff["betMode"] {
+        if (left === undefined && right === undefined) {
+            return undefined;
+        }
+        return {
+            left: left ?? null,
+            right: right ?? null,
+            changed: left !== right,
         };
     }
 
@@ -67,8 +83,16 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
         breakdown: SimulationReportBreakdownDiff | undefined,
         leftBreakdown: SimulationReportBreakdown | undefined,
         rightBreakdown: SimulationReportBreakdown | undefined,
+        betMode: SimulationReportDiff["betMode"],
     ): string[] {
         const warnings: string[] = [];
+
+        // A cross-mode comparison (e.g. "base" vs "buy-bonus") is exactly the point of per-bet-mode
+        // reports, not a mistake — but every RTP/hit-frequency delta below is meaningless without
+        // knowing the two sides aren't measuring the same thing, so this always fires first.
+        if (betMode?.changed) {
+            warnings.push(`Comparing different bet modes: "${betMode.left ?? "(none)"}" -> "${betMode.right ?? "(none)"}"`);
+        }
 
         if (Math.abs(rtp.delta) >= this.rtpDeltaWarningThreshold) {
             warnings.push(

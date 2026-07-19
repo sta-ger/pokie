@@ -1,6 +1,7 @@
 import {BASE_SIMULATION_CATEGORY} from "../simulation/SimulationCategoryNames.js";
 import {SimulationCategoryOrdering} from "../simulation/SimulationCategoryOrdering.js";
 import type {SimulationBreakdownComponent} from "../simulation/SimulationBreakdownComponent.js";
+import {summarizeSimulationBreakdown} from "../simulation/SimulationBreakdownMerging.js";
 import type {SimulationReport, SimulationReportReproducibility} from "./SimulationReport.js";
 import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from "./SimulationReportBreakdown.js";
 import type {SimulationReportBuilding} from "./SimulationReportBuilding.js";
@@ -19,27 +20,43 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
     public static readonly MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING: number = 20;
 
     public build(input: SimulationReportInput): SimulationReport {
-        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy} = input;
+        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy, betMode} = input;
         const workers = input.workers ?? 1;
         const spinsPerSecond = Math.round(statistics.rounds / (Math.max(durationMs, 1) / 1000));
+
+        // A locked bet mode's own totals — summed across whatever categories the breakdown has (see
+        // AggregateSimulationRunner's betModeSelector parameter, which makes those categories
+        // stake-based rather than nominal-bet-based) — are the correct core rtp/totalBet/totalWin/
+        // hitFrequency/maxWin for that mode; `statistics` alone stays nominal-bet-based always (see its
+        // own doc comment), which would understate an ante/buy mode's real cost.
+        const betModeSummary = betMode !== undefined && input.breakdown ? summarizeSimulationBreakdown(input.breakdown) : undefined;
+        const betModeSummaryMissing = betMode !== undefined && betModeSummary === undefined;
+        const nominalHitFrequency = statistics.rounds > 0 ? statistics.hitCount / statistics.rounds : 0;
 
         const core: CoreMetrics = {
             game: {id: manifest.id, name: manifest.name, version: manifest.version},
             requestedRounds,
             rounds: statistics.rounds,
             seed: seed ?? null,
-            totalBet: statistics.totalBet,
-            totalWin: statistics.totalPayout,
-            rtp: statistics.rtp,
-            hitFrequency: statistics.rounds > 0 ? statistics.hitCount / statistics.rounds : 0,
-            maxWin: statistics.maxWin,
+            totalBet: betModeSummary ? betModeSummary.totalBet : statistics.totalBet,
+            totalWin: betModeSummary ? betModeSummary.totalWin : statistics.totalPayout,
+            rtp: betModeSummary ? betModeSummary.rtp : statistics.rtp,
+            hitFrequency: betModeSummary ? betModeSummary.hitFrequency : nominalHitFrequency,
+            maxWin: betModeSummary ? betModeSummary.maxWin : statistics.maxWin,
             durationMs,
             spinsPerSecond,
             workers,
+            betMode,
         };
 
         const breakdown = this.buildBreakdown(input.breakdown, core.totalBet);
         const warnings = this.buildWarnings(core, breakdown);
+        if (betModeSummaryMissing) {
+            warnings.push(
+                `Bet mode "${betMode}" was locked for this run, but no per-round categorization was available — ` +
+                    `rtp/totalBet/totalWin reflect the nominal bet, not "${betMode}"'s actual stake.`,
+            );
+        }
 
         return {
             ...core,
@@ -66,6 +83,9 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         }
         if (core.workers !== 1) {
             parts.push("--workers", String(core.workers));
+        }
+        if (core.betMode !== undefined) {
+            parts.push("--mode", core.betMode);
         }
 
         return {

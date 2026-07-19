@@ -342,3 +342,31 @@ describe("SimulationReportDiffer", () => {
         });
     });
 });
+
+describe("SimulationReportDiffer betMode", () => {
+    test("omits the betMode field entirely when neither side locked a mode", () => {
+        const diff = new SimulationReportDiffer().diff(left, right);
+
+        expect(diff.betMode).toBeUndefined();
+    });
+
+    test("reports betMode as unchanged when both sides locked the same mode", () => {
+        const diff = new SimulationReportDiffer().diff({...left, betMode: "ante"}, {...right, betMode: "ante"});
+
+        expect(diff.betMode).toEqual({left: "ante", right: "ante", changed: false});
+        expect(diff.warnings.some((warning) => warning.includes("Comparing different bet modes"))).toBe(false);
+    });
+
+    test("flags a cross-mode comparison (e.g. base vs buy-bonus) as changed, with a dedicated warning", () => {
+        const diff = new SimulationReportDiffer().diff({...left, betMode: "base"}, {...right, betMode: "buy-bonus"});
+
+        expect(diff.betMode).toEqual({left: "base", right: "buy-bonus", changed: true});
+        expect(diff.warnings[0]).toBe('Comparing different bet modes: "base" -> "buy-bonus"');
+    });
+
+    test("treats one side having a betMode and the other not as changed too", () => {
+        const diff = new SimulationReportDiffer().diff(left, {...right, betMode: "ante"});
+
+        expect(diff.betMode).toEqual({left: null, right: "ante", changed: true});
+    });
+});

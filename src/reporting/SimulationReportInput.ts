@@ -18,4 +18,11 @@ export type SimulationReportInput = {
     // A human-readable description of how per-worker seeds were derived — see
     // WorkerSeedStrategy.describe(). Only meaningful alongside `workers`.
     workerSeedStrategy?: string;
+    // Set when the run was locked to one bet mode (see ParallelSimulationRunOptions.betModeId). When
+    // present, SimulationReportBuilder derives the report's core rtp/totalBet/totalWin/hitFrequency/
+    // maxWin from `breakdown` (summed across categories, via summarizeSimulationBreakdown) instead of
+    // from `statistics` directly — `statistics` stays nominal-bet-based (see AggregateSimulationRunner),
+    // which understates a locked ante/buy mode's real cost; `breakdown`'s own totals are stake-based
+    // whenever a bet mode was locked (see AggregateSimulationRunner's own betModeSelector parameter).
+    betMode?: string;
 };

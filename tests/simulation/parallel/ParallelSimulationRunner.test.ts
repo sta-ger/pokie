@@ -353,3 +353,76 @@ describe("ParallelSimulationRunner (workers>1, via injected coordinator)", () =>
         expect(progressUpdates).toEqual([3, 5, 7]);
     });
 });
+
+describe("ParallelSimulationRunner betModeId (workers=1, in-process)", () => {
+    function createBetModeAwareFakeGame(): PokieGame & {selectedModesSeen: string[]} {
+        const selectedModesSeen: string[] = [];
+        return {
+            getManifest: () => manifest,
+            selectedModesSeen,
+            createSession() {
+                let credits = 1_000_000;
+                let bet = 1;
+                let round = 0;
+                let winAmount = 0;
+                let currentMode = "base";
+                const modes: Record<string, number> = {base: 1, ante: 1.25};
+
+                return {
+                    getCreditsAmount: () => credits,
+                    setCreditsAmount: (value: number) => {
+                        credits = value;
+                    },
+                    getBet: () => bet,
+                    setBet: (value: number) => {
+                        bet = value;
+                    },
+                    getAvailableBets: () => [1],
+                    canPlayNextGame: () => true,
+                    getBetModeId: () => currentMode,
+                    setBetMode: (modeId: string) => {
+                        if (!(modeId in modes)) {
+                            throw new Error(`unknown mode ${modeId}`);
+                        }
+                        currentMode = modeId;
+                        selectedModesSeen.push(modeId);
+                    },
+                    getStakeAmount: () => bet * modes[currentMode],
+                    play: () => {
+                        round++;
+                        winAmount = round % 5 === 0 ? bet * 10 : 0;
+                        credits = credits - bet * modes[currentMode] + winAmount;
+                    },
+                    getWinAmount: () => winAmount,
+                } as unknown as GameSessionHandling;
+            },
+        };
+    }
+
+    test("without betModeId, the session's mode is never touched", async () => {
+        const game = createBetModeAwareFakeGame();
+        const runner = new ParallelSimulationRunner("/fake/root", 20, {loadGame: () => Promise.resolve(game)});
+
+        const result = await runner.run();
+
+        expect(game.selectedModesSeen).toEqual([]);
+        expect(result.betMode).toBeUndefined();
+    });
+
+    test("with betModeId, the mode is (re-)selected before every round and echoed back on the result", async () => {
+        const game = createBetModeAwareFakeGame();
+        const runner = new ParallelSimulationRunner("/fake/root", 20, {
+            loadGame: () => Promise.resolve(game),
+            betModeId: "ante",
+        });
+
+        const result = await runner.run();
+
+        expect(game.selectedModesSeen.every((mode) => mode === "ante")).toBe(true);
+        expect(game.selectedModesSeen.length).toBe(20);
+        expect(result.betMode).toBe("ante");
+        // ante's 1.25x actually drove the session's own getStakeAmount() reporting, reflected in the
+        // (stake-based, since betModeId was set) breakdown -- never recomputed by the runner itself.
+        expect(result.breakdown!.base.totalBet).toBeCloseTo(1.25 * 20, 10);
+    });
+});

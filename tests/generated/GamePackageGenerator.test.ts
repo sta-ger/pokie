@@ -402,6 +402,48 @@ describe("GamePackageGenerator", () => {
         expect(gameWithoutBetModes.getBetModes).toBeUndefined();
     });
 
+    it("wires createSession()'s session to actually support bet-mode selection, using costMultiplier as the runtime stakeMultiplier", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const betModes = [{id: "base"}, {id: "ante", costMultiplier: 1.25}];
+        const result = generator.generate(
+            buildBlueprint({betModes, manifest: {id: "with-ante", name: "With Ante", version: "0.1.0"}}),
+            cwd,
+        );
+
+        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const session = game.createSession() as unknown as {
+            getBetModeId(): string;
+            setBetMode(modeId: string): void;
+            getStakeAmount(): number;
+            getBet(): number;
+            setCreditsAmount(amount: number): void;
+            getCreditsAmount(): number;
+            getWinAmount(): number;
+            play(): void;
+        };
+
+        expect(session.getBetModeId()).toBe("base"); // the first configured mode is the default
+        expect(session.getStakeAmount()).toBe(session.getBet());
+
+        session.setBetMode("ante");
+        expect(session.getStakeAmount()).toBeCloseTo(session.getBet() * 1.25, 10);
+
+        session.setCreditsAmount(1000);
+        const creditsBefore = session.getCreditsAmount();
+        session.play();
+        expect(session.getCreditsAmount()).toBeCloseTo(creditsBefore - session.getBet() * 1.25 + session.getWinAmount(), 10);
+    });
+
+    it("createSession() behaves exactly as before -- no bet-mode wrapping at all -- when the blueprint has no betModes", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const result = generator.generate(buildBlueprint({manifest: {id: "no-modes", name: "No Modes", version: "0.1.0"}}), cwd);
+
+        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const session = game.createSession();
+
+        expect((session as Partial<{setBetMode: unknown}>).setBetMode).toBeUndefined();
+    });
+
     it("materializes reelStrips from a mixed literal/generated reelStripGeneration and records the per-reel summaries in build-info.json", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint({

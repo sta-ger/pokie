@@ -20,6 +20,22 @@ export function mergeSimulationBreakdowns(
     return merged;
 }
 
+// Folds every category of a breakdown into one overall component -- reuses the exact same
+// mergeComponent() the rest of this file already relies on, so a mode-locked simulation's overall
+// rtp/totalBet/totalWin/hitFrequency/maxWin (summed across "base"/"freeGames"/whatever else) is never
+// a second, parallel implementation of this arithmetic (see SimulationReportBuilder). undefined for an
+// empty breakdown (nothing to summarize), same as getBreakdownStatistics() itself being undefined
+// signals "not categorized" rather than "categorized with zero categories".
+export function summarizeSimulationBreakdown(
+    breakdown: Record<string, SimulationBreakdownComponent>,
+): SimulationBreakdownComponent | undefined {
+    const components = Object.values(breakdown);
+    if (components.length === 0) {
+        return undefined;
+    }
+    return components.reduce(mergeComponent);
+}
+
 function mergeComponent(a: SimulationBreakdownComponent, b: SimulationBreakdownComponent): SimulationBreakdownComponent {
     const rounds = a.rounds + b.rounds;
     const totalBet = a.totalBet + b.totalBet;

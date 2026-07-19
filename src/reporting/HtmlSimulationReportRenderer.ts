@@ -10,6 +10,7 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ["Requested rounds", String(report.requestedRounds)],
             ["Actual rounds", String(report.rounds)],
             ["Seed", report.seed === null ? "none" : this.escapeHtml(report.seed)],
+            ...(report.betMode !== undefined ? ([["Bet mode", this.escapeHtml(report.betMode)]] as Array<[string, string]>) : []),
             ["Total bet", report.totalBet.toFixed(2)],
             ["Total win", report.totalWin.toFixed(2)],
             ["RTP", `${(report.rtp * 100).toFixed(2)}%`],

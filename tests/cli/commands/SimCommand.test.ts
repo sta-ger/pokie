@@ -251,6 +251,101 @@ describe("SimCommand", () => {
     });
 });
 
+describe("SimCommand --mode", () => {
+    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+    function createBetModeAwareFakeGame(): PokieGame {
+        return {
+            getManifest: () => manifest,
+            createSession() {
+                let credits = 1_000_000;
+                const bet = 1;
+                let round = 0;
+                let winAmount = 0;
+                let currentMode = "base";
+                const modes: Record<string, number> = {base: 1, ante: 1.25};
+
+                return {
+                    getCreditsAmount: () => credits,
+                    setCreditsAmount: (value: number) => {
+                        credits = value;
+                    },
+                    getBet: () => bet,
+                    setBet: () => undefined,
+                    getAvailableBets: () => [1],
+                    canPlayNextGame: () => true,
+                    getBetModeId: () => currentMode,
+                    setBetMode: (modeId: string) => {
+                        if (!(modeId in modes)) {
+                            throw new Error(`Unknown bet mode "${modeId}". Available modes: ${Object.keys(modes).join(", ")}.`);
+                        }
+                        currentMode = modeId;
+                    },
+                    getStakeAmount: () => bet * modes[currentMode],
+                    play: () => {
+                        round++;
+                        winAmount = round % 5 === 0 ? bet * 10 : 0;
+                        credits = credits - bet * modes[currentMode] + winAmount;
+                    },
+                    getWinAmount: () => winAmount,
+                } as unknown as GameSessionHandling;
+            },
+        };
+    }
+
+    it("plays under the selected mode and labels the JSON report with betMode", async () => {
+        const writeFile = jest.fn();
+        const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()), writeFile);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./crazy-fruits", "--rounds", "40", "--mode", "ante", "--out", "report.json"]);
+
+        const [, contents] = writeFile.mock.calls[0];
+        const report = JSON.parse(contents) as SimulationReport;
+
+        expect(report.betMode).toBe("ante");
+        expect(report.totalBet).toBeCloseTo(1.25 * 40, 10); // the mode's real cost, not the nominal bet
+
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("prints the bet mode line in the console summary", async () => {
+        const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./crazy-fruits", "--rounds", "20", "--mode", "ante"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("bet mode        ante");
+
+        logSpy.mockRestore();
+    });
+
+    it("omits the bet mode line entirely when --mode isn't given", async () => {
+        const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./crazy-fruits", "--rounds", "20"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).not.toContain("bet mode");
+
+        logSpy.mockRestore();
+    });
+
+    it("surfaces the runtime's own error for an unknown mode id, rather than silently ignoring --mode", async () => {
+        const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()));
+
+        await expect(command.run(["./crazy-fruits", "--rounds", "20", "--mode", "typo-mode"])).rejects.toThrow(/Unknown bet mode "typo-mode"/);
+    });
+
+    it("throws a descriptive error when --mode is given with no value", async () => {
+        const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()));
+
+        await expect(command.run(["./crazy-fruits", "--mode"])).rejects.toThrow(/--mode requires a bet mode id/);
+    });
+});
+
 describe("SimCommand (integration, real loadPokieGame + fixture game package)", () => {
     const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
     let outDir: string;

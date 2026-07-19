@@ -1,6 +1,7 @@
 import {loadPokieGame} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import {FixedBetModeForNextSimulationRoundSetting} from "../FixedBetModeForNextSimulationRoundSetting.js";
 import type {SimulationBreakdownComponent} from "../SimulationBreakdownComponent.js";
 import type {SimulationStatistics} from "../SimulationStatistics.js";
 import {SimulationStatisticsMerger} from "../SimulationStatisticsMerger.js";
@@ -50,6 +51,12 @@ export type ParallelSimulationRunOptions = {
     // different build (e.g. a test pointing at source, or an embedder shipping its own copy).
     workerEntryUrl?: URL;
     createWorkerCoordinator?: (workerEntryUrl: URL | undefined) => SimulationWorkerCoordinator;
+    // Locks the whole run to one bet mode id (see VideoSlotWithBetModesSession/BetModeSelecting) --
+    // (re-)selected before every round (see FixedBetModeForNextSimulationRoundSetting), whether
+    // workers===1 (in-process) or workers>1 (each worker builds its own instance from the plain string
+    // it receives, see SimulationWorkerRequest.betModeId). A session that doesn't support bet modes at
+    // all is unaffected either way — fully backward compatible for games without configured betModes.
+    betModeId?: string;
 };
 
 export type ParallelSimulationResult = {
@@ -58,6 +65,10 @@ export type ParallelSimulationResult = {
     breakdown?: Record<string, SimulationBreakdownComponent>;
     workers: number;
     workerSeedStrategy: string;
+    // Echoes back options.betModeId, when the run was locked to one — lets a caller (e.g.
+    // SimulationReportBuilder) label the resulting report without threading its own copy of the option
+    // through separately.
+    betMode?: string;
 };
 
 // The public entry point for running a simulation, sequentially or in parallel, programmatically —
@@ -109,16 +120,24 @@ export class ParallelSimulationRunner {
 
         const chunkSize = Math.max(1, this.options.chunkSize ?? this.rounds);
         const yieldToEventLoop = this.options.yieldToEventLoop ?? defaultYieldToEventLoop;
+        const betModeSelector =
+            this.options.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(this.options.betModeId) : undefined;
 
-        const {accumulator, breakdown} = await runChunkedSimulation(session, this.rounds, chunkSize, {
-            shouldStop: () => this.options.signal?.aborted ?? false,
-            onChunkComplete: async ({roundsCompleted, isFinished}) => {
-                this.options.onProgress?.(roundsCompleted);
-                if (!isFinished) {
-                    await yieldToEventLoop();
-                }
+        const {accumulator, breakdown} = await runChunkedSimulation(
+            session,
+            this.rounds,
+            chunkSize,
+            {
+                shouldStop: () => this.options.signal?.aborted ?? false,
+                onChunkComplete: async ({roundsCompleted, isFinished}) => {
+                    this.options.onProgress?.(roundsCompleted);
+                    if (!isFinished) {
+                        await yieldToEventLoop();
+                    }
+                },
             },
-        });
+            betModeSelector,
+        );
 
         return {
             manifest: game.getManifest(),
@@ -126,6 +145,7 @@ export class ParallelSimulationRunner {
             breakdown,
             workers: 1,
             workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, 1),
+            betMode: this.options.betModeId,
         };
     }
 
@@ -150,6 +170,7 @@ export class ParallelSimulationRunner {
             breakdown: merged.breakdown,
             workers,
             workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, workers),
+            betMode: this.options.betModeId,
         };
     }
 
@@ -170,6 +191,7 @@ export class ParallelSimulationRunner {
                 rounds: share,
                 seed: WorkerSeedStrategy.deriveSeed(this.options.seed, workerIndex, workers),
                 progressChunkSize,
+                betModeId: this.options.betModeId,
             });
         });
         return requests;

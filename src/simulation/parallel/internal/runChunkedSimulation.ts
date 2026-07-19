@@ -1,4 +1,5 @@
 import {AggregateSimulationRunner} from "../../AggregateSimulationRunner.js";
+import type {BetModeForNextSimulationRoundSetting} from "../../BetModeForNextSimulationRoundSetting.js";
 import {SimulationAccumulator} from "../../SimulationAccumulator.js";
 import type {SimulationBreakdownComponent} from "../../SimulationBreakdownComponent.js";
 import {mergeSimulationBreakdowns} from "../../SimulationBreakdownMerging.js";
@@ -45,6 +46,9 @@ export async function runChunkedSimulation(
     rounds: number,
     chunkSize: number,
     callbacks: ChunkedSimulationCallbacks = {},
+    // Locks every chunk's AggregateSimulationRunner to one bet mode (see ParallelSimulationRunOptions.
+    // betModeId) — undefined by default, so a caller that never touches bet modes is unaffected.
+    betModeSelector: BetModeForNextSimulationRoundSetting | undefined = undefined,
 ): Promise<ChunkedSimulationResult> {
     const accumulator = new SimulationAccumulator();
     let breakdown: Record<string, SimulationBreakdownComponent> | undefined;
@@ -57,7 +61,7 @@ export async function runChunkedSimulation(
         }
 
         const chunkRounds = Math.min(chunkSize, roundsRemaining);
-        const runner = new AggregateSimulationRunner(session, chunkRounds);
+        const runner = new AggregateSimulationRunner(session, chunkRounds, undefined, undefined, betModeSelector);
         const chunkAccumulator = runner.run();
         accumulator.merge(chunkAccumulator);
         const chunkBreakdown = runner.getBreakdownStatistics();

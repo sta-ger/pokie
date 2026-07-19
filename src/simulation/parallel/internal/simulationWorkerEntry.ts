@@ -1,5 +1,6 @@
 import {loadPokieGame} from "../../../gamepackage/loadPokieGame.js";
 import {parentPort, workerData} from "worker_threads";
+import {FixedBetModeForNextSimulationRoundSetting} from "../../FixedBetModeForNextSimulationRoundSetting.js";
 import {runChunkedSimulation} from "./runChunkedSimulation.js";
 import type {SimulationWorkerMessage} from "./SimulationWorkerMessage.js";
 import type {SimulationWorkerRequest} from "../SimulationWorkerRequest.js";
@@ -25,6 +26,9 @@ async function main(): Promise<void> {
         // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
         session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
+        const betModeSelector =
+            request.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(request.betModeId) : undefined;
+
         const {accumulator, breakdown, roundsCompleted} = await runChunkedSimulation(
             session,
             request.rounds,
@@ -35,6 +39,7 @@ async function main(): Promise<void> {
                     port.postMessage(progress);
                 },
             },
+            betModeSelector,
         );
 
         const result: SimulationWorkerMessage = {

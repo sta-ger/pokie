@@ -14,4 +14,9 @@ export type SimulationWorkerRequest = {
     // How many rounds to play before reporting an interim progress message — mirrors
     // StudioSimulationService's previous chunkSize concept, now generalized to per-worker chunking.
     progressChunkSize: number;
+    // Locks this worker's share of the run to one bet mode (see ParallelSimulationRunOptions.betModeId)
+    // — a plain string (not a FixedBetModeForNextSimulationRoundSetting instance), since only plain
+    // data survives the worker_threads structured-clone boundary; simulationWorkerEntry.ts builds the
+    // real strategy object from it locally.
+    betModeId?: string;
 };

@@ -37,6 +37,9 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     if (freeGames) {
         requireNames.push("VideoSlotWithFreeGamesConfig", "VideoSlotWithFreeGamesSession");
     }
+    if (hasBetModes) {
+        requireNames.push("BetModeDefinition", "BetModesConfig", "VideoSlotWithBetModesSession");
+    }
     requireNames.sort();
 
     // Built once here (not inline in createConfig/createSession) since both the config-wrapping and
@@ -57,12 +60,27 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
     // Only introduce an intermediate "config" local when a winCalculator actually needs to reference
     // it — otherwise createSession() stays the exact one-liner it's always been.
-    const createSessionBody = winCalculatorDeclaration
-        ? `        const config = createConfig();
-${winCalculatorDeclaration}        return new ${sessionClassName}(config${winCalculatorArgs});
+    const sessionConstructionExpression = winCalculatorDeclaration
+        ? `new ${sessionClassName}(config${winCalculatorArgs})`
+        : `new ${sessionClassName}(createConfig())`;
+    const configDeclaration = winCalculatorDeclaration ? `        const config = createConfig();\n${winCalculatorDeclaration}` : "";
+    // Only stakeMultiplier (from the blueprint's own costMultiplier) is ever derived here —
+    // forcesFeatureEntry stays false for every blueprint-derived mode, since the declarative
+    // GameBlueprint/BetMode shape (see gamepackage/BetMode.ts) has no field for what a forced entry
+    // should actually do (see ForcedFeatureEntryHandling) or how many free games it should grant. A
+    // buy-bonus-style forcing mode still needs a hand-composed createSession() wiring a real
+    // ForcedFeatureEntryHandling — this wraps in the *ante*-style cost-multiplier runtime automatically,
+    // nothing more. The first configured mode is the default (BetModesConfig requires one, and the
+    // blueprint schema has no separate "is default" flag); GameBlueprintValidator already guarantees
+    // every mode has a unique, non-empty id, so blueprint.betModes[0].id is always safe to use as-is.
+    const betModesWrapCode = hasBetModes
+        ? `        const session = ${sessionConstructionExpression};
+        const betModes = blueprint.betModes.map((mode) => new BetModeDefinition(mode.id, {stakeMultiplier: mode.costMultiplier}));
+        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, blueprint.betModes[0].id));
 `
-        : `        return new ${sessionClassName}(createConfig());
+        : `        return ${sessionConstructionExpression};
 `;
+    const createSessionBody = `${configDeclaration}${betModesWrapCode}`;
 
     const freeGamesWrapCode = freeGames
         ? `

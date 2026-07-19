@@ -34,4 +34,7 @@ export type SimulationReport = {
     warnings?: string[];
     recommendations?: string[];
     breakdown?: SimulationReportBreakdown;
+    // The bet mode this run was locked to (see ParallelSimulationRunOptions.betModeId) — absent for a
+    // run that never selected one, same as every other additive-optional field on this type.
+    betMode?: string;
 };

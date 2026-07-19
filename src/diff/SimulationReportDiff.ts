@@ -37,6 +37,14 @@ export type SimulationReportDiff = {
         right: string | null;
         changed: boolean;
     };
+    // Present whenever either side locked a bet mode (see ParallelSimulationRunOptions.betModeId) --
+    // absent for a plain diff between two reports that never selected one, same as every other
+    // additive-optional field this diff carries over from SimulationReport itself.
+    betMode?: {
+        left: string | null;
+        right: string | null;
+        changed: boolean;
+    };
     requestedRounds: SimulationReportMetricDiff;
     rounds: SimulationReportMetricDiff;
     totalBet: SimulationReportMetricDiff;
