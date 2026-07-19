@@ -1,6 +1,6 @@
 import {modals} from "@mantine/modals";
 import {useCallback, useEffect, useRef} from "react";
-import {useBlocker} from "react-router-dom";
+import {useNavigationBlockerConfirm} from "./useNavigationBlockerConfirm";
 
 // Every call site below spreads this one constant, so these apply uniformly to the router blocker's
 // modal, guardedAction's modal, and the hashchange fallback's modal alike. Escape/click-outside/the
@@ -54,7 +54,11 @@ export function useDesignNavigationGuard(isDirty: boolean): GuardedAction {
     // some later, unrelated navigation bypass the guard.
     const suppressNextBlockRef = useRef(false);
 
-    const blocker = useBlocker(({currentLocation, nextLocation}) => {
+    // blocker.proceed() (inside the shared hook) resumes the exact transition that was blocked -- not a
+    // new navigate() call -- so confirming performs the original navigation exactly once. blocker.reset()
+    // leaves the router at currentLocation (URL unchanged); nothing in Home ever unmounted while blocked,
+    // so the draft and focus are untouched for free.
+    useNavigationBlockerConfirm(({currentLocation, nextLocation}) => {
         const leavingHome = currentLocation.pathname.startsWith("/home/") && !nextLocation.pathname.startsWith("/home/");
         if (!isDirty || !leavingHome) {
             return false;
@@ -64,22 +68,7 @@ export function useDesignNavigationGuard(isDirty: boolean): GuardedAction {
             return false;
         }
         return true;
-    });
-
-    useEffect(() => {
-        if (blocker.state !== "blocked") {
-            return;
-        }
-        modals.openConfirmModal({
-            ...CONFIRM_MODAL,
-            // blocker.proceed() resumes the exact transition that was blocked -- not a new navigate()
-            // call -- so confirming performs the original navigation exactly once. blocker.reset() leaves
-            // the router at currentLocation (URL unchanged); nothing in Home ever unmounted while
-            // blocked, so the draft and focus are untouched for free.
-            onConfirm: () => blocker.proceed(),
-            onCancel: () => blocker.reset(),
-        });
-    }, [blocker]);
+    }, CONFIRM_MODAL);
 
     const guardedAction = useCallback<GuardedAction>(
         (action) => {

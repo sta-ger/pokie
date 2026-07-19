@@ -31,6 +31,7 @@ import {describeSimulationReport, isSimulationActive} from "../../domain/interpr
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {useNavigationBlockerConfirm} from "../../hooks/useNavigationBlockerConfirm";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useRuntimeManager} from "../../hooks/useRuntimeManager";
@@ -84,7 +85,7 @@ export function ProjectDashboardPage() {
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
-    const navigateToTab = useCallback(
+    const setActiveTab = useCallback(
         (value: ProjectTab): void => {
             navigate(`/project/${value}`);
         },
@@ -93,20 +94,80 @@ export function ProjectDashboardPage() {
 
     // MechanicsEditorTab owns its own draft entirely locally (no page-level hook, unlike every other
     // tab's state) and reports its own dirty-ness up through this -- mirroring BlueprintEditorPage's own
-    // onDirtyChange prop exactly (see its doc comment). Unlike Home's guided Blueprint Editor (which has
-    // a full useDesignNavigationGuard -- useBlocker, a beforeunload listener, the works), leaving this
-    // tab is just an ordinary same-page tab switch, so a plain confirm() before navigating away is the
-    // proportionate amount of protection here, not a second copy of that whole guard system.
+    // onDirtyChange prop exactly (see its doc comment).
     const [isMechanicsEditorDirty, setIsMechanicsEditorDirty] = useState(false);
-    const setActiveTab = useCallback(
-        (value: ProjectTab): void => {
-            if (activeTab === "mechanicsEditor" && value !== "mechanicsEditor" && isMechanicsEditorDirty) {
-                confirm("Leave Mechanics Editor? Your unapplied draft will be lost.", () => navigateToTab(value));
-                return;
+    // Consumed by the blocker predicate to let exactly one subsequent navigate() through unblocked --
+    // same convention/reasoning as useDesignNavigationGuard's own suppressNextBlockRef (see its doc
+    // comment): react-router's useBlocker only re-registers its predicate via a useEffect, which runs
+    // *after* the commit that cleared isMechanicsEditorDirty -- a promise-chain navigate() (like Close
+    // project's own closeProject().then(() => navigate(...)) below) resolves via microtasks, which can
+    // race ahead of that effect and still see the *old* (dirty) predicate. Clearing isMechanicsEditorDirty
+    // alone is therefore not enough for a confirmed action with its own async work before its own
+    // navigate() call; this flag is what actually guarantees that navigate() isn't blocked a second time.
+    const suppressMechanicsEditorBlockRef = useRef(false);
+    // MechanicsEditorTab doesn't unmount in the same commit as a blocker-confirmed Leave (a NavTabs
+    // click or Back/Forward that the blocker below had to ask about) -- react-router keeps the outgoing
+    // route's tree mounted for one or more extra renders while the transition is in flight, and
+    // MechanicsEditorTab's own dirty-tracking effect (no dependency array, runs after every render --
+    // see its own doc comment) keeps re-reporting `true` during those renders, since the draft itself
+    // hasn't actually been discarded, only abandoned. Left unguarded, one of those stale echoes lands
+    // *after* onLeave's setIsMechanicsEditorDirty(false) and silently re-dirties this page's state
+    // forever (confirmed via instrumentation: the last dirty:true report before the real unmount always
+    // wins), which a *later* Close project would then wrongly warn about. This ref is what actually
+    // prevents that -- set the instant a Leave is confirmed, it makes handleMechanicsEditorDirtyChange
+    // below ignore every further report from *this* (doomed) instance; the effect right after it resets
+    // the ref the moment activeTab actually leaves "mechanicsEditor", which is the same commit
+    // MechanicsEditorTab itself unmounts in, so a genuinely fresh mount's reports are never mistakenly
+    // ignored. Close project doesn't need this: it lets its own navigate() through via
+    // suppressMechanicsEditorBlockRef regardless of isMechanicsEditorDirty's value, and the whole page
+    // (including this ref) unmounts with it either way.
+    const ignoreMechanicsEditorDirtyReportsRef = useRef(false);
+    useEffect(() => {
+        if (activeTab !== "mechanicsEditor") {
+            return undefined;
+        }
+        return () => {
+            ignoreMechanicsEditorDirtyReportsRef.current = false;
+        };
+    }, [activeTab]);
+    const handleMechanicsEditorDirtyChange = useCallback((dirty: boolean) => {
+        if (ignoreMechanicsEditorDirtyReportsRef.current) {
+            return;
+        }
+        setIsMechanicsEditorDirty(dirty);
+    }, []);
+    // Guards a dirty Mechanics Editor draft against *every* way of leaving it -- a NavTabs click, browser
+    // Back/Forward, and any other in-app navigate() call are all just "history transitions" to a data
+    // router, blocked uniformly by useNavigationBlockerConfirm's predicate below (the same mechanism
+    // useDesignNavigationGuard uses for a dirty Home Design & Build draft -- see its own doc comment).
+    // Deliberately not the *full* guard system Home has (no guardedAction as its own exported action, no
+    // hashchange fallback, no beforeunload) -- Close project is this tab's only "action with a side
+    // effect before its own navigate() call", handled inline via suppressMechanicsEditorBlockRef instead
+    // of a second copy of guardedAction. onLeave clears isMechanicsEditorDirty and locks out further
+    // stale reports (see ignoreMechanicsEditorDirtyReportsRef above) the instant the user actually
+    // confirms leaving -- never on Cancel -- so a *later* Close project doesn't show a ghost "unapplied
+    // draft" warning for a draft the user already agreed to lose.
+    useNavigationBlockerConfirm(
+        ({currentLocation, nextLocation}) => {
+            const leavingMechanicsEditor = currentLocation.pathname === "/project/mechanicsEditor" && nextLocation.pathname !== currentLocation.pathname;
+            if (!isMechanicsEditorDirty || !leavingMechanicsEditor) {
+                return false;
             }
-            navigateToTab(value);
+            if (suppressMechanicsEditorBlockRef.current) {
+                suppressMechanicsEditorBlockRef.current = false;
+                return false;
+            }
+            return true;
         },
-        [activeTab, isMechanicsEditorDirty, confirm, navigateToTab],
+        {
+            title: "Unapplied changes",
+            children: "You have an unapplied draft in Mechanics Editor. Leave and lose it?",
+            labels: {confirm: "Leave", cancel: "Stay"},
+        },
+        () => {
+            ignoreMechanicsEditorDirtyReportsRef.current = true;
+            setIsMechanicsEditorDirty(false);
+        },
     );
 
     const header = useProjectContext();
@@ -584,21 +645,47 @@ export function ProjectDashboardPage() {
             if (!closeGuard.begin()) {
                 return;
             }
+            // Clears eagerly, before the (async) close even starts -- the user has just explicitly agreed
+            // to lose the draft below, so it must never linger and show a ghost "unapplied draft" warning
+            // on some later close attempt.
+            setIsMechanicsEditorDirty(false);
+            // This is the one call site with an async side effect (closeProject) before its own eventual
+            // navigate() -- exactly useDesignNavigationGuard's guardedAction shape (see its doc comment).
+            // Setting isMechanicsEditorDirty above is NOT enough on its own: useBlocker re-registers its
+            // predicate via a useEffect, which runs after commit, while closeProject().then(navigate) below
+            // resolves via microtasks that can fire first and still see the router's stale (dirty)
+            // predicate. This ref is what actually lets that navigate() through unblocked.
+            suppressMechanicsEditorBlockRef.current = true;
             setCloseError(undefined);
             closeProject(fetchImpl)
                 .then(() => navigate("/home/design"))
                 // A failed close must be visible, not indistinguishable from the button silently doing
-                // nothing -- the guard is released here too, so the user can actually retry.
-                .catch((error: unknown) => setCloseError(errorMessage(error)))
+                // nothing -- the guard is released here too, so the user can actually retry. The close
+                // never reached its own navigate() call, so the suppression must not linger and bypass
+                // some later, unrelated navigation.
+                .catch((error: unknown) => {
+                    suppressMechanicsEditorBlockRef.current = false;
+                    setCloseError(errorMessage(error));
+                })
                 .finally(() => closeGuard.end());
         };
+        // Both risks named together when both apply -- a project can simultaneously have an unapplied
+        // Mechanics Editor draft *and* an active simulation/replay/deployment/runtime; picking only one
+        // to mention would silently hide the other.
+        const risks: string[] = [];
         if (isMechanicsEditorDirty) {
-            confirm("This project has an unapplied Mechanics Editor draft. Close the project anyway? Your draft will be lost.", doClose);
-        } else if (hasActiveOperation) {
-            confirm("This project has an active simulation, replay, deployment, or running runtime. Close the project anyway?", doClose);
-        } else {
-            doClose();
+            risks.push("an unapplied Mechanics Editor draft");
         }
+        if (hasActiveOperation) {
+            risks.push("an active simulation, replay, deployment, or running runtime");
+        }
+        if (risks.length === 0) {
+            doClose();
+            return;
+        }
+        const risksText = risks.length === 2 ? `${risks[0]} and ${risks[1]}` : risks[0];
+        const lossWarning = isMechanicsEditorDirty ? " Any unapplied draft will be lost." : "";
+        confirm(`This project has ${risksText}. Close the project anyway?${lossWarning}`, doClose);
     };
 
     if (header.status === "empty") {
@@ -794,7 +881,7 @@ export function ProjectDashboardPage() {
                         // Same reasoning as OutcomeLibrariesTab's own key above -- MechanicsEditorTab owns
                         // all of its own draft state locally (via useBlueprintEditor), so a genuine project
                         // switch is handled by a full remount rather than page-level cleanup.
-                        <MechanicsEditorTab key={projectKey ?? "no-project"} onDirtyChange={setIsMechanicsEditorDirty} />
+                        <MechanicsEditorTab key={projectKey ?? "no-project"} onDirtyChange={handleMechanicsEditorDirtyChange} />
                     )}
                 </div>
             )}

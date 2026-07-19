@@ -436,12 +436,12 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             await makeADirtyEdit(user);
 
             await user.click(screen.getByRole("button", {name: "Overview"}));
-            expect(await screen.findByRole("button", {name: "Confirm"})).toBeInTheDocument();
+            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
 
-            await user.click(screen.getByRole("button", {name: "Cancel"}));
+            await user.click(screen.getByRole("button", {name: "Stay"}));
             // Mantine's Modal unmounts its content only after its own closing transition -- the button
             // can briefly still be in the DOM right after the click.
-            await waitFor(() => expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument());
+            await waitFor(() => expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument());
             expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
             expect(screen.getByRole("button", {name: "Overview"})).not.toHaveAttribute("aria-current");
         });
@@ -455,7 +455,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             await makeADirtyEdit(user);
 
             await user.click(screen.getByRole("button", {name: "Overview"}));
-            await user.click(await screen.findByRole("button", {name: "Confirm"}));
+            await user.click(await screen.findByRole("button", {name: "Leave"}));
 
             expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
             expect(screen.queryByLabelText("Symbol 1 id")).not.toBeInTheDocument();
@@ -469,7 +469,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             await goToMechanicsEditorTab(user);
 
             await user.click(screen.getByRole("button", {name: "Overview"}));
-            expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
+            expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument();
             expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
         });
 
@@ -489,6 +489,116 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
 
             await user.click(screen.getByRole("button", {name: "Confirm"}));
             expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
+        });
+
+        // MechanicsEditorTab is conditionally *mounted* only while activeTab === "mechanicsEditor" --
+        // clicking a different NavTabs entry was already guarded, but browser Back/Forward (and any
+        // other in-app navigate() call) bypasses that entirely, going straight through the router. This
+        // reuses useNavigationBlockerConfirm (the same mechanism useDesignNavigationGuard already uses
+        // for a dirty Home Design & Build draft), not a tab-specific workaround -- see
+        // ProjectDashboardPage's own doc comment on why.
+        it("blocks browser Back navigation while the draft is unapplied, and Stay keeps it in place", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+
+            const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await makeADirtyEdit(user);
+
+            router.navigate(-1);
+            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Stay"}));
+            await waitFor(() => expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument());
+            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
+            expect(router.state.location.pathname).toBe("/project/mechanicsEditor");
+        });
+
+        it("lets Back navigation through and discards the draft once the user confirms Leave", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+
+            const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await makeADirtyEdit(user);
+
+            router.navigate(-1);
+            await user.click(await screen.findByRole("button", {name: "Leave"}));
+
+            expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
+            expect(screen.queryByLabelText("Symbol 1 id")).not.toBeInTheDocument();
+            expect(router.state.location.pathname).toBe("/project/overview");
+        });
+
+        // The instant Leave/Confirm is chosen (whether that was a Back-navigation prompt or the tab-click
+        // one), isMechanicsEditorDirty must be cleared -- otherwise a *later*, unrelated Close project
+        // would still warn about a draft the user already explicitly agreed to lose.
+        it(
+            "clears the dirty flag once Back navigation is confirmed, so a later Close project shows no ghost 'unapplied draft' warning",
+            async () => {
+                const user = userEvent.setup();
+                const {fetchImpl} = createRoutedFakeFetch({
+                    ...BASE_ROUTES,
+                    "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
+                });
+
+                const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+                await goToMechanicsEditorTab(user);
+                await makeADirtyEdit(user);
+
+                router.navigate(-1);
+                await user.click(await screen.findByRole("button", {name: "Leave"}));
+                await screen.findByRole("button", {name: "Re-run Inspect"});
+
+                await user.click(screen.getByRole("button", {name: "Close project"}));
+                // No risks left at all -- closes immediately, no confirmation modal of any kind.
+                expect(screen.queryByText(/unapplied Mechanics Editor draft/)).not.toBeInTheDocument();
+                expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
+            },
+            // This chains more sequential steps (tab switch, dirty edit, Back nav, confirm, tab
+            // unmount/remount, Close project, a second navigate) than any other test in this file -- the
+            // project's global 15000ms testTimeout leaves too little headroom under concurrent Jest
+            // workers, same reasoning as happyPath.test.tsx's own explicit per-test timeout.
+            30000,
+        );
+
+        // A project can simultaneously have an unapplied Mechanics Editor draft *and* an active
+        // operation (here, a running Runtime server) -- the close warning must name both risks, not
+        // silently pick one over the other.
+        it("names both risks when the draft is unapplied and another operation is active at the same time", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch({
+                ...BASE_ROUTES,
+                "/api/project/runtime/start": () => ({
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "running",
+                        host: "127.0.0.1",
+                        port: 4123,
+                        baseUrl: "http://127.0.0.1:4123",
+                        debug: false,
+                        repositoryMode: "memory",
+                        startedAt: "2026-01-01T00:00:00.000Z",
+                    },
+                }),
+            });
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Runtime"}));
+            await user.click(screen.getByRole("button", {name: "Start"}));
+            await waitFor(() => expect(screen.getByText(/running at/)).toBeInTheDocument());
+
+            await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+            await makeADirtyEdit(user);
+
+            await user.click(screen.getByRole("button", {name: "Close project"}));
+            expect(
+                await screen.findByText(
+                    /This project has an unapplied Mechanics Editor draft and an active simulation, replay, deployment, or running runtime\./,
+                ),
+            ).toBeInTheDocument();
         });
     });
 });
