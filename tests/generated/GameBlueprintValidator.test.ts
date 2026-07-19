@@ -768,5 +768,182 @@ describe("GameBlueprintValidator", () => {
                 ]),
             );
         });
+
+        describe("explicit runtime-semantics contract (runtimeType/isDefault/forcedFreeGames)", () => {
+            it("accepts a fully-determined base + persistent ante contract", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "ante", runtimeType: "ante", costMultiplier: 1.25},
+                    ],
+                };
+
+                expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+            });
+
+            it("accepts a fully-determined base + one-shot buy-feature contract, alongside mechanics.freeGames", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 10},
+                    ],
+                    mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
+                };
+
+                expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+            });
+
+            it("flags an incomplete opt-in: some modes set runtimeType, others don't", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "legacy"}],
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-incomplete-runtimetype");
+            });
+
+            it("flags isDefault/forcedFreeGames used without any runtimeType at all", () => {
+                const blueprint = {...validBlueprint(), betModes: [{id: "base", isDefault: true}]};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-runtimetype-required");
+            });
+
+            it("flags an invalid runtimeType value", () => {
+                const blueprint = {...validBlueprint(), betModes: [{id: "base", runtimeType: "bogus", isDefault: true}]};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-invalid-runtimetype");
+            });
+
+            it("flags zero default modes", () => {
+                const blueprint = {...validBlueprint(), betModes: [{id: "base", runtimeType: "base"}]};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-missing-default");
+            });
+
+            it("flags more than one default mode", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "ante", runtimeType: "ante", costMultiplier: 1.25, isDefault: true},
+                    ],
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-multiple-defaults");
+            });
+
+            it("flags a buyFeature mode marked as the default", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [{id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 10, isDefault: true}],
+                    mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-default-is-buyfeature");
+            });
+
+            it("flags an ante mode with no costMultiplier", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "ante", runtimeType: "ante"},
+                    ],
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-ante-missing-costmultiplier");
+            });
+
+            it("flags a base mode with a costMultiplier other than 1", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [{id: "base", runtimeType: "base", isDefault: true, costMultiplier: 2}],
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-base-invalid-costmultiplier");
+            });
+
+            it("flags a buyFeature mode with no costMultiplier", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "buy-bonus", runtimeType: "buyFeature", forcedFreeGames: 10},
+                    ],
+                    mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-buyfeature-missing-costmultiplier");
+            });
+
+            it("flags a buyFeature mode with no forcedFreeGames", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100},
+                    ],
+                    mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-buyfeature-missing-forcedfreegames");
+            });
+
+            it("flags forcedFreeGames set on a non-buyFeature mode", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [{id: "base", runtimeType: "base", isDefault: true, forcedFreeGames: 5}],
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-forcedfreegames-not-buyfeature");
+            });
+
+            it("flags a non-positive-integer forcedFreeGames", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 0},
+                    ],
+                    mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-invalid-forcedfreegames");
+            });
+
+            it("flags more than one buyFeature mode", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "buy-10", runtimeType: "buyFeature", costMultiplier: 50, forcedFreeGames: 10},
+                        {id: "buy-20", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 20},
+                    ],
+                    mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-multiple-buyfeature");
+            });
+
+            it("flags a buyFeature mode when mechanics.freeGames isn't configured", () => {
+                const blueprint = {
+                    ...validBlueprint(),
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 10},
+                    ],
+                };
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-buyfeature-requires-freegames");
+            });
+
+            it("flags an invalid isDefault type", () => {
+                const blueprint = {...validBlueprint(), betModes: [{id: "base", runtimeType: "base", isDefault: "yes"}]};
+
+                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-invalid-isdefault");
+            });
+        });
     });
 });

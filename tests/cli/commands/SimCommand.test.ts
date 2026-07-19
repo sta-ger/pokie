@@ -1,4 +1,13 @@
-import {GameSessionHandling, loadPokieGame, MAX_SIMULATION_WORKERS, PokieGame, PokieGameManifest, SimulationReport} from "pokie";
+import {
+    BetMode,
+    GamePackageGenerator,
+    GameSessionHandling,
+    loadPokieGame,
+    MAX_SIMULATION_WORKERS,
+    PokieGame,
+    PokieGameManifest,
+    SimulationReport,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -354,6 +363,64 @@ describe("SimCommand --mode", () => {
         await expect(command.run(["./crazy-fruits", "--rounds", "20", "--mode", "ante"])).rejects.toThrow(
             /does not support bet mode selection/,
         );
+    });
+});
+
+// End-to-end: a REAL "pokie build"-generated package (not a fake session) whose blueprint carries a
+// fully-determined explicit runtime-semantics contract, run through the real CLI --mode flag.
+describe("SimCommand --mode (integration, real generated package)", () => {
+    let cwd: string;
+
+    beforeEach(() => {
+        cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-betmode-test-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(cwd, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    function generateGameWithAnteMode(): string {
+        const betModes: BetMode[] = [
+            {id: "base", runtimeType: "base", isDefault: true},
+            {id: "ante", runtimeType: "ante", costMultiplier: 1.25},
+        ];
+        const result = new GamePackageGenerator("1.3.0").generate(
+            {
+                manifest: {id: "generated-ante-game", name: "Generated Ante Game", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}, B: {3: 2}},
+                betModes,
+            },
+            cwd,
+        );
+        return result.projectRoot;
+    }
+
+    it("plays a real generated package under the locked mode and reports its actual (ante-adjusted) cost", async () => {
+        const packageRoot = generateGameWithAnteMode();
+        const command = new SimCommand(loadPokieGame);
+        const outFile = path.join(cwd, "report.json");
+
+        await command.run([packageRoot, "--rounds", "200", "--seed", "demo", "--mode", "ante", "--out", outFile]);
+
+        const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
+        expect(report.betMode).toBe("ante");
+        expect(report.rounds).toBe(200);
+        // The generated package's default bet is 1 (GamePackageGenerator's own default), so ante's
+        // 1.25x cost multiplier -- read from the real, codegen-wired VideoSlotWithBetModesSession's
+        // own getStakeAmount(), never recomputed by the CLI/simulation layer -- makes this exact.
+        expect(report.totalBet).toBeCloseTo(200 * 1.25, 10);
+    });
+
+    it("fails clearly for a mode id the generated package's blueprint never configured", async () => {
+        const packageRoot = generateGameWithAnteMode();
+        const command = new SimCommand(loadPokieGame);
+
+        await expect(command.run([packageRoot, "--rounds", "20", "--mode", "buy-bonus"])).rejects.toThrow(/Unknown bet mode "buy-bonus"/);
     });
 });
 

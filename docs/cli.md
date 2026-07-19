@@ -523,11 +523,21 @@ A `.par.xlsx` workbook has up to ten sheets:
 | `AvailableBets` | `Bet` — one row per value | no | `availableBets` |
 | `WinModel` | `Key`, `Value` (rows: `Type` — one of `lines`/`ways`/`clusters`; `Minimum Cluster Size`, only for `clusters`) | no | `winModel` |
 | `Mechanics` | `Scatter Symbol`, `Matches`, `Free Games` — one row per award tier (a single free-games award has exactly one scatter symbol, repeated on every row) | no | `mechanics.freeGames` |
-| `BetModes` | `Id`, `Label`, `Cost Multiplier` — one row per selectable bet mode | no | `betModes` |
+| `BetModes` | `Id`, `Label`, `Cost Multiplier`, `Runtime Type`, `Is Default`, `Forced Free Games` — one row per selectable bet mode | no | `betModes` |
 | `Meta` | `Key`, `Value` (rows: `Schema Version`, `Pokie Version`, `Exported At`, `Source`, `Blueprint Hash`) | no | nothing — provenance only, see below |
 
 `ReelStrips`/`Paylines` columns must be named exactly `Reel 1`, `Reel 2`, ... `Reel N` (case-insensitive, one
 physical column per reel) — a column with any other name is never treated as reel data (see Diagnostics below).
+
+`BetModes`' `Runtime Type`/`Is Default`/`Forced Free Games` columns are an explicit, opt-in runtime-semantics
+contract, separate from `Id`/`Label`/`Cost Multiplier` (which stay pure metadata unless `Runtime Type` is also
+set): leave `Runtime Type` blank on every row for the old metadata-only behavior, or set it to `base`/`ante`/
+`buyFeature` on *every* row to opt in — a mix of blank and set is a validation error, as is a `buyFeature` row
+missing `Cost Multiplier`/`Forced Free Games`, or having anything other than exactly one `Is Default` row. Only a
+blueprint whose whole `BetModes` sheet validates cleanly under this contract gets `pokie build`'s generated
+session actually wired for bet-mode selection (`VideoSlotWithBetModesSession`) — see `betModes` in
+[the `GameBlueprint` format](#the-gameblueprint-format) and `gamepackage/BetMode.ts`'s own doc comment for the
+full contract.
 
 `pokie par export` preflights the *entire* export before writing anything: if the blueprint fails any check (see
 below), **no file is created and an existing file at the output path is left completely untouched** — there is no

@@ -123,6 +123,7 @@ export * from "./generated/loadGameBlueprint.js";
 export * from "./generated/materializeReelStrips.js";
 export * from "./generated/renderGeneratedGameModule.js";
 export * from "./generated/renderGeneratedPackageReadme.js";
+export * from "./generated/resolveBetModeCodegenWiring.js";
 export * from "./generated/resolveReelStripGeneration.js";
 export * from "./json/InvalidJsonValueError.js";
 export * from "./json/JsonValue.js";

@@ -1,4 +1,4 @@
-import {computeGameBlueprintHash, GameBlueprint, GameBuildInfo, GamePackageGenerator, PokieGame} from "pokie";
+import {BetMode, computeGameBlueprintHash, GameBlueprint, GameBuildInfo, GamePackageGenerator, PokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -450,6 +450,106 @@ describe("GamePackageGenerator", () => {
 
         expect((session as Partial<{getBetModeId: unknown}>).getBetModeId).toBeUndefined();
         expect(game.getBetModes?.()).toEqual(betModes);
+    });
+
+    describe("explicit runtime-semantics contract (runtimeType/isDefault/forcedFreeGames)", () => {
+        function createSessionAs(result: {projectRoot: string}) {
+            const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+            return game.createSession() as unknown as {
+                getBetModeId(): string;
+                setBetMode(modeId: string): void;
+                getStakeAmount(): number;
+                getBet(): number;
+                setCreditsAmount(amount: number): void;
+                getCreditsAmount(): number;
+                getWinAmount(): number;
+                play(): void;
+            };
+        }
+
+        it("wires a persistent ante mode when the whole betModes array is a fully-determined, valid contract", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            // "ante" listed first, isDefault on "base" (second) -- the explicit flag, not array order,
+            // must decide the starting mode (see the array-order regression test above).
+            const betModes: BetMode[] = [
+                {id: "ante", runtimeType: "ante", costMultiplier: 1.25},
+                {id: "base", runtimeType: "base", isDefault: true},
+            ];
+            const result = generator.generate(
+                buildBlueprint({betModes, manifest: {id: "explicit-ante", name: "Explicit Ante", version: "0.1.0"}}),
+                cwd,
+            );
+
+            const session = createSessionAs(result);
+            expect(session.getBetModeId()).toBe("base"); // explicit isDefault, not betModes[0]
+            expect(session.getStakeAmount()).toBe(session.getBet());
+
+            session.setBetMode("ante");
+            expect(session.getStakeAmount()).toBeCloseTo(session.getBet() * 1.25, 10);
+
+            session.setCreditsAmount(1000);
+            const creditsBefore = session.getCreditsAmount();
+            session.play();
+            expect(session.getCreditsAmount()).toBeCloseTo(creditsBefore - session.getBet() * 1.25 + session.getWinAmount(), 10);
+        });
+
+        it("wires a one-shot buyFeature mode that actually forces entry into mechanics.freeGames for the declared count", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const betModes: BetMode[] = [
+                {id: "base", runtimeType: "base", isDefault: true},
+                {id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 7},
+            ];
+            const result = generator.generate(
+                buildBlueprint({
+                    symbols: ["A", "B", "S"],
+                    scatters: ["S"],
+                    paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
+                    mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
+                    betModes,
+                    manifest: {id: "explicit-buy-bonus", name: "Explicit Buy Bonus", version: "0.1.0"},
+                }),
+                cwd,
+            );
+
+            const session = createSessionAs(result);
+            session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+            expect(session.getBetModeId()).toBe("base");
+
+            session.setBetMode("buy-bonus");
+            const stakeAmount = session.getStakeAmount();
+            expect(stakeAmount).toBeCloseTo(session.getBet() * 100, 10);
+
+            const creditsBefore = session.getCreditsAmount();
+            session.play();
+
+            expect(session.getCreditsAmount()).toBeCloseTo(creditsBefore - stakeAmount, 10);
+            expect(session.getBetModeId()).toBe("base"); // one-shot -- reverted after the purchase
+            // getFreeGamesNum()/getFreeGamesSum() aren't exposed on the outer bet-mode-wrapped session
+            // (VideoSlotWithBetModesSession only forwards VideoSlotSessionHandling, not the free-games-
+            // specific extension) -- proving the forced entry actually granted free spins, rather than
+            // just relabeling the mode, goes through the same public contract a caller actually has:
+            // the very next play() must be free (stake 0), meaning a free round is genuinely active.
+            expect(session.getStakeAmount()).toBe(0);
+            const creditsBeforeFreeSpin = session.getCreditsAmount();
+            session.play();
+            expect(session.getCreditsAmount()).toBeGreaterThanOrEqual(creditsBeforeFreeSpin); // never charged
+        });
+
+        it("falls back to metadata-only (no wrapping) for an incomplete/invalid runtime-semantics attempt", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            // "ante" opts in; "base" doesn't -- incomplete, so this must not wire anything at all.
+            const betModes: BetMode[] = [{id: "ante", runtimeType: "ante", costMultiplier: 1.25, isDefault: true}, {id: "base"}];
+            const result = generator.generate(
+                buildBlueprint({betModes, manifest: {id: "incomplete-semantics", name: "Incomplete", version: "0.1.0"}}),
+                cwd,
+            );
+
+            const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+            const session = game.createSession();
+
+            expect((session as Partial<{setBetMode: unknown}>).setBetMode).toBeUndefined();
+            expect(game.getBetModes?.()).toEqual(betModes);
+        });
     });
 
     it("createSession() behaves exactly as before -- no bet-mode wrapping at all -- when the blueprint has no betModes", () => {

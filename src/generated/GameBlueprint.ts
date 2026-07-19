@@ -69,8 +69,9 @@ export type GameBlueprint = {
     availableBets?: number[];
     winModel?: GameBlueprintWinModel;
     mechanics?: GameBlueprintMechanics;
-    // Selectable bet modes (e.g. base game, buy-the-feature). Purely declarative: the generated
-    // module exposes these via the optional PokieGame.getBetModes(), but nothing in the engine ever
-    // auto-selects one -- see BetMode's own doc comment.
+    // Selectable bet modes (e.g. base game, ante bet, buy-the-feature). Always exposed via the
+    // optional PokieGame.getBetModes() as declarative data; additionally wired into a real,
+    // bet-mode-aware generated session ONLY when every mode's runtimeType is set and the whole array
+    // validates cleanly -- see BetMode's own doc comment and resolveBetModeCodegenWiring.ts.
     betModes?: BetMode[];
 };

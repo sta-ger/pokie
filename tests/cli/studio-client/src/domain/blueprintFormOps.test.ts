@@ -1,6 +1,8 @@
 import {
     addBet,
     addPayline,
+    asBetModesList,
+    setBetModeField,
     addReelStripGenerationLiteralSymbol,
     addReelStripSymbol,
     addSymbol,
@@ -117,6 +119,34 @@ describe("blueprintFormOps", () => {
 
             removeBetAt(b, 0);
             expect(b.availableBets).toEqual([10, 2, 2]);
+        });
+    });
+
+    describe("betModes", () => {
+        // Regression: runtimeType/isDefault/forcedFreeGames (the explicit, opt-in runtime-semantics
+        // contract -- see gamepackage/BetMode.ts's own doc comment) have no dedicated editor UI yet,
+        // but must still round-trip losslessly through every existing bet-mode form operation --
+        // editing an unrelated field (e.g. Label) on the SAME blueprint must never silently strip them.
+        it("preserves runtimeType/isDefault/forcedFreeGames across an unrelated field edit", () => {
+            const b: Record<string, unknown> = {
+                betModes: [
+                    {id: "base", runtimeType: "base", isDefault: true},
+                    {id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 10},
+                ],
+            };
+
+            setBetModeField(b, 1, "label", "Buy Bonus");
+
+            expect(asBetModesList(b.betModes)).toEqual([
+                {id: "base", runtimeType: "base", isDefault: true},
+                {id: "buy-bonus", label: "Buy Bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 10},
+            ]);
+        });
+
+        it("drops an unrecognized runtimeType/malformed isDefault/forcedFreeGames rather than passing them through as-is", () => {
+            const parsed = asBetModesList([{id: "base", runtimeType: "bogus", isDefault: "yes", forcedFreeGames: "ten"}]);
+
+            expect(parsed).toEqual([{id: "base"}]);
         });
     });
 

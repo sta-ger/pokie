@@ -732,10 +732,20 @@ export function removeFreeGamesAward(blueprint: Record<string, unknown>, matchCo
 
 // ---- Bet modes ----
 
-// No "forces free games"-style field here on purpose -- see BetMode.ts's own doc comment: nothing in
-// the runtime session-construction path reads a bet mode at all, so a field promising engine behavior
-// would be a public API this package couldn't actually honor.
-export type BetModeFormValues = {id: string; label?: string; costMultiplier?: number};
+// runtimeType/isDefault/forcedFreeGames are the explicit, opt-in runtime-semantics contract (see
+// BetMode.ts's own doc comment) -- there is no dedicated editor UI for them yet (still just Id/Label/
+// Cost multiplier columns in BetModesEditor.tsx), but they still have to round-trip losslessly through
+// every existing bet-mode operation below (add/remove/duplicate/move/setField); dropping them the
+// moment a user edits an unrelated field on the same blueprint would silently destroy explicit runtime
+// semantics a hand-authored or CLI-edited blueprint had set.
+export type BetModeFormValues = {
+    id: string;
+    label?: string;
+    costMultiplier?: number;
+    runtimeType?: "base" | "ante" | "buyFeature";
+    isDefault?: boolean;
+    forcedFreeGames?: number;
+};
 
 export function asBetModesList(value: unknown): BetModeFormValues[] {
     if (!Array.isArray(value)) {
@@ -749,6 +759,15 @@ export function asBetModesList(value: unknown): BetModeFormValues[] {
         }
         if (typeof record.costMultiplier === "number") {
             result.costMultiplier = record.costMultiplier;
+        }
+        if (record.runtimeType === "base" || record.runtimeType === "ante" || record.runtimeType === "buyFeature") {
+            result.runtimeType = record.runtimeType;
+        }
+        if (typeof record.isDefault === "boolean") {
+            result.isDefault = record.isDefault;
+        }
+        if (typeof record.forcedFreeGames === "number") {
+            result.forcedFreeGames = record.forcedFreeGames;
         }
         return result;
     });

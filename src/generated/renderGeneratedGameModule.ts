@@ -1,5 +1,6 @@
 import type {GameBlueprint} from "./GameBlueprint.js";
 import type {GameBuildInfo} from "./GameBuildInfo.js";
+import {resolveBetModeCodegenWiring} from "./resolveBetModeCodegenWiring.js";
 
 // Plain CommonJS, not TypeScript: unlike "pokie create"/"pokie init" (which scaffold a TS project
 // for a developer to hand-edit), "pokie build" output is meant to be immediately loadable with no
@@ -28,6 +29,7 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     const winModel = blueprint.winModel ?? {type: "lines" as const};
     const freeGames = blueprint.mechanics?.freeGames;
     const hasBetModes = (blueprint.betModes?.length ?? 0) > 0;
+    const betModeWiring = resolveBetModeCodegenWiring(blueprint);
 
     const requireNames = ["CustomLinesDefinitions", "SymbolsSequence", "VideoSlotConfig", "VideoSlotSession", "VideoSlotSessionSerializer"];
     if (winModel.type === "ways" || winModel.type === "clusters") {
@@ -36,6 +38,12 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     }
     if (freeGames) {
         requireNames.push("VideoSlotWithFreeGamesConfig", "VideoSlotWithFreeGamesSession");
+    }
+    if (betModeWiring) {
+        requireNames.push("BetModeDefinition", "BetModesConfig", "VideoSlotWithBetModesSession");
+        if (betModeWiring.buyFeatureMode) {
+            requireNames.push("FreeGamesForcedFeatureEntryHandler");
+        }
     }
     requireNames.sort();
 
@@ -57,25 +65,27 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
     // Only introduce an intermediate "config" local when a winCalculator actually needs to reference
     // it — otherwise createSession() stays the exact one-liner it's always been.
-    //
-    // Deliberately does NOT wrap the session in VideoSlotWithBetModesSession, even when betModes is
-    // configured: the declarative blueprint/BetMode shape (see gamepackage/BetMode.ts) has only
-    // id/label/costMultiplier — it has no field distinguishing a persistent ante-style stake
-    // multiplier from a one-shot buy-bonus/forced-feature-entry mode, and no explicit "default mode"
-    // flag. A high costMultiplier is exactly as likely to mean "buy the bonus" (forcesFeatureEntry,
-    // one-shot) as "ante" (persistent, applies to every spin) — guessing either one here would silently
-    // wire the wrong runtime semantics for whichever guess is wrong (see git history for the version of
-    // this file that guessed "always ante"), and guessing which array entry is "the default" would be
-    // just as unfounded. Until the blueprint schema itself carries an explicit runtime-semantics
-    // contract (mode kind + explicit default), a game that wants real bet-mode runtime behavior needs
-    // a hand-composed createSession() wiring VideoSlotWithBetModesSession itself — getBetModes() below
-    // still exposes the declarative data as-is, for a caller to build that UI/logic externally.
-    const createSessionBody = winCalculatorDeclaration
-        ? `        const config = createConfig();
-${winCalculatorDeclaration}        return new ${sessionClassName}(config${winCalculatorArgs});
+    const sessionConstructionExpression = winCalculatorDeclaration
+        ? `new ${sessionClassName}(config${winCalculatorArgs})`
+        : `new ${sessionClassName}(createConfig())`;
+    const configDeclaration = winCalculatorDeclaration ? `        const config = createConfig();\n${winCalculatorDeclaration}` : "";
+    // Only wraps the session in VideoSlotWithBetModesSession when resolveBetModeCodegenWiring()
+    // reports the whole betModes array validates cleanly under the explicit runtime-semantics contract
+    // (see that function and gamepackage/BetMode.ts's own doc comment) -- costMultiplier alone (the
+    // old, still-supported metadata-only shape) is never enough, and never guessed at, here.
+    const betModesWrapCode = betModeWiring
+        ? `        const session = ${sessionConstructionExpression};
+        const betModes = blueprint.betModes.map((mode) => new BetModeDefinition(mode.id, {
+            stakeMultiplier: mode.costMultiplier,
+            forcesFeatureEntry: mode.runtimeType === "buyFeature",
+        }));
+        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
+    betModeWiring.buyFeatureMode ? `, new FreeGamesForcedFeatureEntryHandler(${betModeWiring.buyFeatureMode.forcedFreeGames})` : ""
+});
 `
-        : `        return new ${sessionClassName}(createConfig());
+        : `        return ${sessionConstructionExpression};
 `;
+    const createSessionBody = `${configDeclaration}${betModesWrapCode}`;
 
     const freeGamesWrapCode = freeGames
         ? `

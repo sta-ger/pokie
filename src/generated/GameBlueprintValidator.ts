@@ -157,7 +157,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
 
         this.validateWinModel(b.winModel, b.paylines !== undefined, issues);
         this.validateMechanics(b.mechanics, scatters, issues);
-        this.validateBetModes(b.betModes, issues);
+        this.validateBetModes(b.betModes, b.mechanics, issues);
 
         return issues;
     }
@@ -293,7 +293,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
     }
 
-    private validateBetModes(betModes: unknown, issues: ValidationIssue[]): void {
+    private validateBetModes(betModes: unknown, mechanics: unknown, issues: ValidationIssue[]): void {
         if (betModes === undefined) {
             return;
         }
@@ -308,6 +308,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
 
         const seenIds = new Set<string>();
+        const entries: Record<string, unknown>[] = [];
         betModes.forEach((entry, index) => {
             const path = `betModes[${index}]`;
             if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
@@ -316,6 +317,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             }
 
             const e = entry as Record<string, unknown>;
+            entries.push(e);
             if (typeof e.id !== "string" || e.id.length === 0) {
                 issues.push({
                     code: "blueprint-betmode-invalid-id",
@@ -352,6 +354,194 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 });
             }
         });
+
+        this.validateBetModeRuntimeSemantics(entries, mechanics, issues);
+    }
+
+    // The explicit, opt-in runtime-semantics contract (see gamepackage/BetMode.ts's own doc comment).
+    // "Opt in" means "opt in completely": if ANY mode sets runtimeType, EVERY mode must, and the whole
+    // array must validate cleanly under it (exactly one non-buyFeature default; ante/buyFeature both
+    // requiring their own specific fields; at most one buyFeature mode, and only alongside
+    // mechanics.freeGames) -- there is no partial/best-effort reading of this contract, on purpose:
+    // renderGeneratedGameModule.ts (see resolveBetModeCodegenWiring.ts) only ever wires
+    // VideoSlotWithBetModesSession into a generated session when this entire method reports zero
+    // errors, and a caller who left it half-specified almost certainly meant to finish specifying it,
+    // not to silently fall back to metadata-only.
+    private validateBetModeRuntimeSemantics(entries: Record<string, unknown>[], mechanics: unknown, issues: ValidationIssue[]): void {
+        const withRuntimeType = entries.filter((e) => e.runtimeType !== undefined);
+        if (withRuntimeType.length === 0) {
+            // Nobody opted in -- still validate isDefault/forcedFreeGames aren't used without
+            // runtimeType (using either without the other is itself an incomplete opt-in attempt).
+            entries.forEach((e, index) => {
+                if (e.isDefault !== undefined || e.forcedFreeGames !== undefined) {
+                    issues.push({
+                        code: "blueprint-betmode-runtimetype-required",
+                        severity: "error",
+                        message: `"betModes[${index}]" sets isDefault/forcedFreeGames but no "runtimeType" -- ` +
+                            'set "runtimeType" on every bet mode to opt into explicit runtime semantics, or remove isDefault/forcedFreeGames entirely.',
+                        path: `betModes[${index}]`,
+                    });
+                }
+            });
+            return;
+        }
+
+        if (withRuntimeType.length !== entries.length) {
+            entries.forEach((e, index) => {
+                if (e.runtimeType === undefined) {
+                    issues.push({
+                        code: "blueprint-betmodes-incomplete-runtimetype",
+                        severity: "error",
+                        message: `"betModes[${index}]" has no "runtimeType", but another bet mode in this array does -- ` +
+                            "either every bet mode must set an explicit runtimeType, or none of them may.",
+                        path: `betModes[${index}].runtimeType`,
+                    });
+                }
+            });
+            return;
+        }
+
+        let validSoFar = true;
+        const defaults: {entry: Record<string, unknown>; index: number}[] = [];
+        const buyFeatureModes: {entry: Record<string, unknown>; index: number}[] = [];
+
+        entries.forEach((e, index) => {
+            const path = `betModes[${index}]`;
+            const runtimeType = e.runtimeType;
+            if (runtimeType !== "base" && runtimeType !== "ante" && runtimeType !== "buyFeature") {
+                issues.push({
+                    code: "blueprint-betmode-invalid-runtimetype",
+                    severity: "error",
+                    message: `"${path}.runtimeType" must be one of: base, ante, buyFeature.`,
+                    path: `${path}.runtimeType`,
+                });
+                validSoFar = false;
+                return;
+            }
+
+            if (e.isDefault !== undefined && typeof e.isDefault !== "boolean") {
+                issues.push({
+                    code: "blueprint-betmode-invalid-isdefault",
+                    severity: "error",
+                    message: `"${path}.isDefault", if present, must be a boolean.`,
+                    path: `${path}.isDefault`,
+                });
+                validSoFar = false;
+            } else if (e.isDefault === true) {
+                defaults.push({entry: e, index});
+            }
+
+            if (e.forcedFreeGames !== undefined && !(typeof e.forcedFreeGames === "number" && Number.isInteger(e.forcedFreeGames) && e.forcedFreeGames > 0)) {
+                issues.push({
+                    code: "blueprint-betmode-invalid-forcedfreegames",
+                    severity: "error",
+                    message: `"${path}.forcedFreeGames", if present, must be a positive integer.`,
+                    path: `${path}.forcedFreeGames`,
+                });
+                validSoFar = false;
+            }
+
+            if (runtimeType === "buyFeature") {
+                buyFeatureModes.push({entry: e, index});
+                if (e.costMultiplier === undefined) {
+                    issues.push({
+                        code: "blueprint-betmode-buyfeature-missing-costmultiplier",
+                        severity: "error",
+                        message: `"${path}" has runtimeType "buyFeature", so "costMultiplier" is required (the buy price).`,
+                        path: `${path}.costMultiplier`,
+                    });
+                    validSoFar = false;
+                }
+                if (e.forcedFreeGames === undefined) {
+                    issues.push({
+                        code: "blueprint-betmode-buyfeature-missing-forcedfreegames",
+                        severity: "error",
+                        message: `"${path}" has runtimeType "buyFeature", so "forcedFreeGames" is required (how many free games it forces entry into).`,
+                        path: `${path}.forcedFreeGames`,
+                    });
+                    validSoFar = false;
+                }
+            } else if (e.forcedFreeGames !== undefined) {
+                issues.push({
+                    code: "blueprint-betmode-forcedfreegames-not-buyfeature",
+                    severity: "error",
+                    message: `"${path}.forcedFreeGames" is only meaningful on a "buyFeature" mode, but "${path}.runtimeType" is "${runtimeType as string}".`,
+                    path: `${path}.forcedFreeGames`,
+                });
+                validSoFar = false;
+            }
+
+            if (runtimeType === "ante" && e.costMultiplier === undefined) {
+                issues.push({
+                    code: "blueprint-betmode-ante-missing-costmultiplier",
+                    severity: "error",
+                    message: `"${path}" has runtimeType "ante", so "costMultiplier" is required (the always-applied stake multiplier).`,
+                    path: `${path}.costMultiplier`,
+                });
+                validSoFar = false;
+            }
+
+            if (runtimeType === "base" && e.costMultiplier !== undefined && e.costMultiplier !== 1) {
+                issues.push({
+                    code: "blueprint-betmode-base-invalid-costmultiplier",
+                    severity: "error",
+                    message: `"${path}" has runtimeType "base", so "costMultiplier" must be 1 if present -- a persistent, always-on multiplier belongs on an "ante" mode instead.`,
+                    path: `${path}.costMultiplier`,
+                });
+                validSoFar = false;
+            }
+        });
+
+        if (!validSoFar) {
+            return;
+        }
+
+        if (defaults.length === 0) {
+            issues.push({
+                code: "blueprint-betmodes-missing-default",
+                severity: "error",
+                message: 'Exactly one bet mode must set "isDefault": true once "runtimeType" is used -- none does.',
+                path: "betModes",
+            });
+        } else if (defaults.length > 1) {
+            issues.push({
+                code: "blueprint-betmodes-multiple-defaults",
+                severity: "error",
+                message: `Exactly one bet mode must set "isDefault": true, but ${defaults.length} do (${defaults
+                    .map(({index}) => `betModes[${index}]`)
+                    .join(", ")}).`,
+                path: "betModes",
+            });
+        } else if (defaults[0].entry.runtimeType === "buyFeature") {
+            issues.push({
+                code: "blueprint-betmodes-default-is-buyfeature",
+                severity: "error",
+                message: `"betModes[${defaults[0].index}]" is both the default mode and runtimeType "buyFeature" -- a one-shot purchase can never be a safe default/landing mode.`,
+                path: `betModes[${defaults[0].index}]`,
+            });
+        }
+
+        if (buyFeatureModes.length > 1) {
+            issues.push({
+                code: "blueprint-betmodes-multiple-buyfeature",
+                severity: "error",
+                message: `At most one "buyFeature" bet mode is supported, but ${buyFeatureModes.length} are configured (${buyFeatureModes
+                    .map(({index}) => `betModes[${index}]`)
+                    .join(", ")}) -- the generated-session wiring has no per-mode dispatch for multiple different buy costs/grants.`,
+                path: "betModes",
+            });
+        }
+
+        const hasFreeGamesMechanic =
+            typeof mechanics === "object" && mechanics !== null && !Array.isArray(mechanics) && (mechanics as Record<string, unknown>).freeGames !== undefined;
+        if (buyFeatureModes.length > 0 && !hasFreeGamesMechanic) {
+            issues.push({
+                code: "blueprint-betmodes-buyfeature-requires-freegames",
+                severity: "error",
+                message: `"betModes[${buyFeatureModes[0].index}]" has runtimeType "buyFeature", which forces entry into "mechanics.freeGames", but "mechanics.freeGames" is not configured on this blueprint.`,
+                path: "mechanics.freeGames",
+            });
+        }
     }
 
     private validateManifest(manifest: unknown, issues: ValidationIssue[]): void {

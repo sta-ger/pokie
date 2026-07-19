@@ -110,5 +110,31 @@ describe("computeBlueprintHash", () => {
 
             expect(computeBlueprintHash(withLabel)).not.toBe(computeBlueprintHash(withoutLabel));
         });
+
+        // Regression: the explicit, opt-in runtime-semantics fields (runtimeType/isDefault/
+        // forcedFreeGames -- see gamepackage/BetMode.ts's own doc comment) must never be silently
+        // dropped from provenance -- two blueprints differing only in whether a mode is actually
+        // wired as a real runtime ante/buy-feature mode are NOT the same blueprint, even though they'd
+        // hash identically if these fields weren't canonicalized.
+        it("distinguishes betModes entries that differ only by the explicit runtime-semantics fields", () => {
+            const metadataOnly: GameBlueprint = {...base, betModes: [{id: "base", costMultiplier: 1}]};
+            const withRuntimeType: GameBlueprint = {...base, betModes: [{id: "base", costMultiplier: 1, runtimeType: "base"}]};
+            const withIsDefault: GameBlueprint = {
+                ...base,
+                betModes: [{id: "base", costMultiplier: 1, runtimeType: "base", isDefault: true}],
+            };
+            const withForcedFreeGames: GameBlueprint = {
+                ...base,
+                betModes: [{id: "buy", runtimeType: "buyFeature", costMultiplier: 1, forcedFreeGames: 10}],
+            };
+            const withDifferentForcedFreeGames: GameBlueprint = {
+                ...base,
+                betModes: [{id: "buy", runtimeType: "buyFeature", costMultiplier: 1, forcedFreeGames: 20}],
+            };
+
+            expect(computeBlueprintHash(withRuntimeType)).not.toBe(computeBlueprintHash(metadataOnly));
+            expect(computeBlueprintHash(withIsDefault)).not.toBe(computeBlueprintHash(withRuntimeType));
+            expect(computeBlueprintHash(withForcedFreeGames)).not.toBe(computeBlueprintHash(withDifferentForcedFreeGames));
+        });
     });
 });
