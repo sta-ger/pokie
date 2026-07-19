@@ -359,6 +359,7 @@ export * from "./session/videoslot/betmode/BetModesConfig.js";
 export * from "./session/videoslot/betmode/BetModesConfigRepresenting.js";
 export * from "./session/videoslot/betmode/ForcedFeatureEntryHandling.js";
 export * from "./session/videoslot/betmode/ForcedFeatureEntryUnsupportedError.js";
+export * from "./session/videoslot/betmode/ForcingBetModeSelectionRejectedError.js";
 export * from "./session/videoslot/betmode/FreeGamesForcedFeatureEntryHandler.js";
 export * from "./session/videoslot/betmode/NoOpForcedFeatureEntryHandler.js";
 export * from "./session/videoslot/betmode/UnknownBetModeError.js";

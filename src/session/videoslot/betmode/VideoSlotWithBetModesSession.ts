@@ -10,6 +10,7 @@ import {BetModesConfig} from "./BetModesConfig.js";
 import type {BetModesConfigRepresenting} from "./BetModesConfigRepresenting.js";
 import type {ForcedFeatureEntryHandling} from "./ForcedFeatureEntryHandling.js";
 import {ForcedFeatureEntryUnsupportedError} from "./ForcedFeatureEntryUnsupportedError.js";
+import {ForcingBetModeSelectionRejectedError} from "./ForcingBetModeSelectionRejectedError.js";
 import {NoOpForcedFeatureEntryHandler} from "./NoOpForcedFeatureEntryHandler.js";
 import {UnknownBetModeError} from "./UnknownBetModeError.js";
 
@@ -32,6 +33,13 @@ import {UnknownBetModeError} from "./UnknownBetModeError.js";
 // zero-stake round. And it never charges silently for an entry that didn't happen: a forcing mode
 // whose ForcedFeatureEntryHandling reports it can't actually perform entry (canForceFeatureEntry())
 // makes play() throw ForcedFeatureEntryUnsupportedError before anything is charged or mutated.
+//
+// setBetMode() itself refuses to *select* a forcing mode while a zero-stake feature round is already
+// active (ForcingBetModeSelectionRejectedError) -- without that, the selection would otherwise sit
+// latent until the round finishes, and the very next ordinary spin would then force (and charge for) a
+// brand new bonus entry the player never took any fresh action to request at that point. A caller who
+// wants to buy again must call setBetMode() a second time once the round is over -- a deliberate,
+// explicit purchase, never a deferred one. Non-forcing modes (base/ante) are never restricted by this.
 export class VideoSlotWithBetModesSession<T extends string | number | symbol = string>
     extends AbstractVideoSlotSessionDecorator<T>
     implements
@@ -59,8 +67,15 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public setBetMode(modeId: string): void {
-        if (this.betModesConfig.getBetMode(modeId) === undefined) {
+        const mode = this.betModesConfig.getBetMode(modeId);
+        if (mode === undefined) {
             throw new UnknownBetModeError(modeId, this.betModesConfig.getBetModeIds());
+        }
+        // Reject rather than silently latch a forcing mode while a zero-stake round is already
+        // active -- see the class doc comment on why an accepted-but-not-yet-armed selection here
+        // would resurface as an unrequested, auto-charged purchase the instant that round finishes.
+        if (mode.forcesFeatureEntry() && this.isInsideActiveZeroStakeFeature()) {
+            throw new ForcingBetModeSelectionRejectedError(modeId);
         }
         this.currentBetModeId = modeId;
     }
@@ -141,6 +156,16 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
 
     private computeBaseStakeAmount(): number {
         return this.supportsStakeAmount(this.baseSession) ? this.baseSession.getStakeAmount() : this.baseSession.getBet();
+    }
+
+    // True only when the wrapped session both supports StakeAmountDetermining and currently reports a
+    // 0 stake -- i.e. a zero-stake feature round (free games or otherwise) is genuinely in progress
+    // right now, whether it got there via an earlier forced entry or a natural trigger. Deliberately
+    // not the same computeBaseStakeAmount() fallback used for charging (which returns getBet() when
+    // unsupported): a session with no such contract at all is never "mid a zero-stake feature" by
+    // definition, only one that actively reports 0 is.
+    private isInsideActiveZeroStakeFeature(): boolean {
+        return this.supportsStakeAmount(this.baseSession) && this.baseSession.getStakeAmount() === 0;
     }
 
     private supportsStakeAmount(

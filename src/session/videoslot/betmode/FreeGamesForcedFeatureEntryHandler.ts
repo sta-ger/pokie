@@ -7,10 +7,11 @@ import type {VideoSlotSessionHandling} from "../VideoSlotSessionHandling.js";
 // way FreeGamesRoundHandler.afterRoundPlayed grants a natural scatter-triggered win (extends
 // getFreeGamesSum() rather than replacing it, so buying into an already-running round -- if a caller
 // ever allows that -- extends it instead of clobbering the count). Feature-detected against the
-// wrapped session (typically a VideoSlotWithFreeGamesSession further down the decorator chain): a
-// session that doesn't support FreeGamesStateSetting/FreeGamesStateDetermining is left untouched, so
-// wiring a buy-bonus mode onto a game without a free-games mechanic never crashes -- it just doesn't
-// grant anything beyond the stake charge.
+// wrapped session (typically a VideoSlotWithFreeGamesSession further down the decorator chain):
+// canForceFeatureEntry() reports false for a session that doesn't support
+// FreeGamesStateSetting/FreeGamesStateDetermining, so wiring a buy-bonus mode onto a game without a
+// free-games mechanic fails explicitly at play() time (ForcedFeatureEntryUnsupportedError) rather than
+// silently charging the buy cost for an entry that never happens.
 export class FreeGamesForcedFeatureEntryHandler<T extends string | number | symbol = string>
 implements ForcedFeatureEntryHandling<T> {
     private readonly freeGamesToGrant: number;

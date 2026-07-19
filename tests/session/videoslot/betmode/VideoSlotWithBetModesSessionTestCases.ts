@@ -2,6 +2,7 @@ import {
     BetModeSessionState,
     BuildableFromSessionState,
     ConvertableToSessionState,
+    ForcingBetModeSelectionRejectedError,
     UnknownBetModeError,
     VideoSlotWithBetModesSession,
     VideoSlotWithFreeGamesSessionHandling,
@@ -118,24 +119,83 @@ export const testBuyBonusIsOneShotAndTheBonusRoundTerminates = (
     expect(innerSession.getFreeGamesNum()).toBe(freeGamesToGrant); // the bonus round actually finished
 };
 
-// Regression: attempting to (re-)select the buy-bonus mode while a free-games round is already
-// active must not grant extra free spins, and must not charge anything -- the spin just continues
-// the existing round like any other free spin.
-export const testBuyModeDuringActiveFreeGamesGrantsNoExtraSpinsOrCharge = (
+// Regression: selecting the buy-bonus mode while a free-games round is already active must be
+// rejected outright, not silently accepted and left to auto-fire once the round finishes (a
+// latent/deferred buy). See testNoLatentBuyAfterFeatureEndsWithoutFreshExplicitPurchase for the full
+// end-to-end lifecycle this protects.
+export const testSelectingForcingModeDuringActiveFreeGamesIsRejected = (
     session: VideoSlotWithBetModesSession<string>,
     innerSession: VideoSlotWithFreeGamesSessionHandling,
 ): void => {
     innerSession.setFreeGamesSum(3);
     innerSession.setFreeGamesNum(1); // mid an unrelated, already-active free-games round
 
-    session.setBetMode("buy-bonus");
-    const creditsBefore = session.getCreditsAmount();
+    expect(() => session.setBetMode("buy-bonus")).toThrow(ForcingBetModeSelectionRejectedError);
+    expect(session.getBetModeId()).toBe("base"); // the rejected selection never took effect
 
+    const creditsBefore = session.getCreditsAmount();
     session.play();
 
-    expect(innerSession.getFreeGamesSum()).toBe(3); // unchanged -- no extra grant
-    expect(innerSession.getFreeGamesNum()).toBe(2); // the round simply continued
-    expect(session.getCreditsAmount()).toBe(creditsBefore); // nothing charged
+    expect(innerSession.getFreeGamesSum()).toBe(3); // unchanged -- no grant was ever attempted
+    expect(innerSession.getFreeGamesNum()).toBe(2); // the round simply continued under "base"
+    expect(session.getCreditsAmount()).toBe(creditsBefore); // a free spin -- nothing charged
+};
+
+// Non-forcing modes are never restricted by the active-feature guard -- only forcesFeatureEntry()
+// modes are gated, so ante-style persistent modes must remain freely selectable at any time.
+export const testNonForcingModeStaysSelectableDuringActiveFreeGames = (
+    session: VideoSlotWithBetModesSession<string>,
+    innerSession: VideoSlotWithFreeGamesSessionHandling,
+): void => {
+    innerSession.setFreeGamesSum(3);
+    innerSession.setFreeGamesNum(1); // mid an active free-games round
+
+    expect(() => session.setBetMode("ante")).not.toThrow();
+    expect(session.getBetModeId()).toBe("ante");
+};
+
+// Regression: the full lifecycle this stabilization protects. Selecting a forcing mode mid an
+// already-active free-games round is rejected; playing the round out to completion must not leave
+// any latent purchase behind; and the very next ordinary spin after the round ends must behave like
+// a plain spin under whatever mode was actually selected -- never an unrequested, auto-charged buy.
+// A genuinely fresh, explicit setBetMode() call made only after the round is over must still work.
+export const testNoLatentBuyAfterFeatureEndsWithoutFreshExplicitPurchase = (
+    session: VideoSlotWithBetModesSession<string>,
+    innerSession: VideoSlotWithFreeGamesSessionHandling,
+    freeGamesToGrant: number,
+): void => {
+    innerSession.setFreeGamesSum(2);
+    innerSession.setFreeGamesNum(0); // an unrelated free-games round, 2 spins remaining
+
+    expect(session.getBetModeId()).toBe("base");
+    expect(() => session.setBetMode("buy-bonus")).toThrow(ForcingBetModeSelectionRejectedError);
+    expect(session.getBetModeId()).toBe("base");
+
+    // Play the active round out to completion under the unchanged ("base") mode.
+    while (innerSession.getFreeGamesNum() < innerSession.getFreeGamesSum()) {
+        session.play();
+    }
+    expect(innerSession.getFreeGamesNum()).toBe(2);
+    expect(innerSession.getFreeGamesSum()).toBe(2); // no extra grant snuck in anywhere along the way
+
+    // The very next ordinary spin, with no fresh setBetMode("buy-bonus") call since the round ended,
+    // must be a plain, normal-cost spin -- not an unrequested buy.
+    const bet = session.getBet();
+    const creditsBeforeOrdinarySpin = session.getCreditsAmount();
+    session.play();
+
+    expect(session.getCreditsAmount()).toBe(creditsBeforeOrdinarySpin - bet + session.getWinAmount());
+    expect(innerSession.getFreeGamesSum()).toBe(0); // the finished round was cleared, no new bonus forced
+
+    // A genuinely fresh, explicit purchase now (after the round is truly over) still works normally.
+    expect(() => session.setBetMode("buy-bonus")).not.toThrow();
+    const stakeAmount = session.getStakeAmount();
+    const creditsBeforeBuy = session.getCreditsAmount();
+    session.play();
+
+    expect(session.getCreditsAmount()).toBe(creditsBeforeBuy - stakeAmount);
+    expect(innerSession.getFreeGamesSum()).toBe(freeGamesToGrant); // a genuinely new bonus was granted
+    expect(innerSession.getFreeGamesNum()).toBe(1);
 };
 
 // Regression: a forcing mode wired to a handler that can't actually perform entry against this

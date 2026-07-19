@@ -2,6 +2,7 @@ import {
     BetModeDefinition,
     BetModesConfig,
     ForcedFeatureEntryUnsupportedError,
+    ForcingBetModeSelectionRejectedError,
     FreeGamesForcedFeatureEntryHandler,
     NoOpForcedFeatureEntryHandler,
     SymbolsCombinationsGenerator,
@@ -17,11 +18,13 @@ import {
     testAnteModeGatesCanPlayNextGameOnTheFullCost,
     testBuyBonusForcesFeatureEntryAndChargesTheBuyCost,
     testBuyBonusIsOneShotAndTheBonusRoundTerminates,
-    testBuyModeDuringActiveFreeGamesGrantsNoExtraSpinsOrCharge,
     testDefaultBetModeBehavesLikeThePlainSession,
     testForcedEntryUnsupportedByHandlerFailsExplicitlyWithoutCharging,
     testInsufficientBaseCreditsBlockPlayRegardlessOfMode,
     testInvalidBetModeThrowsAndLeavesTheCurrentModeUnchanged,
+    testNoLatentBuyAfterFeatureEndsWithoutFreshExplicitPurchase,
+    testNonForcingModeStaysSelectableDuringActiveFreeGames,
+    testSelectingForcingModeDuringActiveFreeGamesIsRejected,
     testSessionStateRoundTripCarriesModeAlone,
     testSessionStateRoundTripCarriesModeAndNestedFreeGamesState,
 } from "./VideoSlotWithBetModesSessionTestCases.js";
@@ -101,14 +104,60 @@ describe("VideoSlotWithBetModesSession", () => {
         testBuyBonusIsOneShotAndTheBonusRoundTerminates(session, innerSession, FREE_GAMES_TO_GRANT);
     });
 
-    it("grants no extra free spins or charge when buy-bonus is selected mid an already-active free-games round", () => {
+    it("rejects selecting the buy-bonus mode mid an already-active free-games round", () => {
         const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
         const session = new VideoSlotWithBetModesSession(
             innerSession,
             buyBonusModesConfig(),
             new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
         );
-        testBuyModeDuringActiveFreeGamesGrantsNoExtraSpinsOrCharge(session, innerSession);
+        testSelectingForcingModeDuringActiveFreeGamesIsRejected(session, innerSession);
+    });
+
+    it("throws the typed ForcingBetModeSelectionRejectedError, carrying the offending mode id", () => {
+        const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+        const session = new VideoSlotWithBetModesSession(
+            innerSession,
+            buyBonusModesConfig(),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        innerSession.setFreeGamesSum(3);
+        innerSession.setFreeGamesNum(1);
+
+        try {
+            session.setBetMode("buy-bonus");
+            throw new Error("expected setBetMode() to throw");
+        } catch (error) {
+            expect(error).toBeInstanceOf(ForcingBetModeSelectionRejectedError);
+            expect((error as ForcingBetModeSelectionRejectedError).getModeId()).toBe("buy-bonus");
+        }
+    });
+
+    it("still allows selecting a non-forcing (ante) mode mid an already-active free-games round", () => {
+        const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+        const session = new VideoSlotWithBetModesSession(
+            innerSession,
+            new BetModesConfig(
+                [
+                    new BetModeDefinition("base"),
+                    new BetModeDefinition("ante", {stakeMultiplier: 1.25}),
+                    new BetModeDefinition("buy-bonus", {stakeMultiplier: 50, forcesFeatureEntry: true}),
+                ],
+                "base",
+            ),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        testNonForcingModeStaysSelectableDuringActiveFreeGames(session, innerSession);
+    });
+
+    it("regression: no latent/deferred buy -- a rejected mid-feature selection never auto-fires once the round ends", () => {
+        const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+        const session = new VideoSlotWithBetModesSession(
+            innerSession,
+            buyBonusModesConfig(),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        testNoLatentBuyAfterFeatureEndsWithoutFreshExplicitPurchase(session, innerSession, FREE_GAMES_TO_GRANT);
     });
 
     it("fails explicitly instead of silently charging when the default no-op handler can't perform entry", () => {
