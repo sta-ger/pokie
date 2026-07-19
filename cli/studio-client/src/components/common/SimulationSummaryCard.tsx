@@ -1,4 +1,6 @@
 import {List, Table, Text} from "@mantine/core";
+import {EmptyState} from "./EmptyState";
+import {ErrorState} from "./ErrorState";
 import {formatConfidenceInterval} from "./SimulationReportDisplay";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 
@@ -30,18 +32,14 @@ export type SimulationOutcome =
 // summary" never reads as a wall of text.
 export function SimulationSummaryCard({outcome}: {outcome: SimulationOutcome}) {
     if (outcome.kind === "failed") {
-        return (
-            <Text size="sm" c="red" role="alert">
-                Simulation failed after {formatElapsedMs(outcome.durationMs)}: {outcome.error ?? "Unknown error."}
-            </Text>
-        );
+        return <ErrorState message={`Simulation failed after ${formatElapsedMs(outcome.durationMs)}: ${outcome.error ?? "Unknown error."}`} />;
     }
 
     if (outcome.kind === "cancelled") {
         return (
-            <Text size="sm" c="dimmed">
-                Cancelled after {formatElapsedMs(outcome.durationMs)} — {outcome.roundsCompleted}/{outcome.rounds} rounds completed.
-            </Text>
+            <EmptyState
+                message={`Cancelled after ${formatElapsedMs(outcome.durationMs)} — ${outcome.roundsCompleted}/${outcome.rounds} rounds completed.`}
+            />
         );
     }
 

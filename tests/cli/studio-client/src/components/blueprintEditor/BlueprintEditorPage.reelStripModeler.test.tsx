@@ -95,7 +95,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         // Apply" actually means at the wire level.
         expect(lastRequestBody?.blueprint.reelStripGeneration[0]).toEqual({type: "generated", length: 1, seed: 1, symbolCounts: {}});
 
-        await user.click(screen.getByRole("button", {name: "Continue to preview stop windows"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Preview stop windows"}));
 
         const stopWindowSection = screen.getByRole("group", {name: "Stop window preview"});
         const stopInput = within(stopWindowSection).getByLabelText("Stop position");
@@ -145,7 +145,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(await screen.findByText("Generation failed")).toBeInTheDocument();
         expect(screen.getByText(/Could not satisfy every constraint after 50 attempt/)).toBeInTheDocument();
         expect(screen.getByText(/Symbol A repeats too many times in a row\./)).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Continue to preview stop windows"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Preview stop windows"})).not.toBeInTheDocument();
     });
 
     it("shows blueprint-level configuration issues, and a clear invalid-configuration state when this reel's own entry couldn't be resolved", async () => {
@@ -169,7 +169,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
 
         expect(await screen.findByText(/Paytable is empty\./)).toBeInTheDocument();
         expect(screen.getByText("Invalid reel configuration")).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Continue to preview stop windows"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Preview stop windows"})).not.toBeInTheDocument();
     });
 
     it("shows a local parse error for malformed constraints JSON, without ever sending a request", async () => {

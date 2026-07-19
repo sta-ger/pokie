@@ -573,13 +573,13 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await goToReplayTab(user);
 
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
-        const pickSection = (await screen.findByText("Or pick from Recent Replays to reproduce & compare")).closest("fieldset") as HTMLElement;
+        const pickSection = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset") as HTMLElement;
 
         await user.click(within(pickSection).getByRole("button", {name: /round 1/}));
         // Back to Find to pick a *different* comparison target before replay-x's slow fetch resolves.
         await user.click(screen.getByRole("button", {name: stepperStep("Find", "Locate a round")}));
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
-        const pickSectionAgain = screen.getByText("Or pick from Recent Replays to reproduce & compare").closest("fieldset") as HTMLElement;
+        const pickSectionAgain = screen.getByText("Or pick from recent replays to reproduce & compare").closest("fieldset") as HTMLElement;
         await user.click(within(pickSectionAgain).getByRole("button", {name: /round 2/}));
 
         await waitFor(() => expect(screen.getByText(/Round 2, seed seed-y\./)).toBeInTheDocument());
@@ -626,7 +626,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/overview"]});
         await goToReplayTab(user);
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
-        const pickSection = (await screen.findByText("Or pick from Recent Replays to reproduce & compare")).closest("fieldset") as HTMLElement;
+        const pickSection = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset") as HTMLElement;
         await user.click(within(pickSection).getByRole("button", {name: /round 1/}));
         await waitFor(() => expect(screen.getByText("Validating artifact…")).toBeInTheDocument());
 

@@ -1,4 +1,4 @@
-import {Button, Text} from "@mantine/core";
+import {Button, List, Text} from "@mantine/core";
 import type {ProjectValidationView} from "../../domain/interpret/ProjectDashboard";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
@@ -9,7 +9,7 @@ export function ValidationTab({view, onValidate}: {view: ProjectValidationView; 
     return (
         <div>
             <QuickActions>
-                <Button variant="default" onClick={onValidate} loading={view.status === "loading"}>
+                <Button onClick={onValidate} loading={view.status === "loading"}>
                     Run Validate
                 </Button>
             </QuickActions>
@@ -29,13 +29,11 @@ export function ValidationTab({view, onValidate}: {view: ProjectValidationView; 
                             <Text fw={600} size="sm" mb={4}>
                                 Suggestions
                             </Text>
-                            <ul>
+                            <List size="sm" spacing={4}>
                                 {view.summary.suggestions.map((suggestion, index) => (
-                                    <li key={index}>
-                                        <Text size="sm">{suggestion}</Text>
-                                    </li>
+                                    <List.Item key={index}>{suggestion}</List.Item>
                                 ))}
-                            </ul>
+                            </List>
                         </div>
                     )}
                 </div>

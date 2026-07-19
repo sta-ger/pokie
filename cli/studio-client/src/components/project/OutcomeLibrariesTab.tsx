@@ -1,5 +1,4 @@
-import {Alert, Anchor, Button, Group, SegmentedControl, Stepper, Table, Text, TextInput} from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
+import {Alert, Button, Group, SegmentedControl, Stepper, Table, Text, TextInput} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useRef, useState, type ReactNode} from "react";
 import {compareOutcomeLibraries, selectOutcomeLibrary, validateOutcomeLibraryDeep} from "../../api/apiClient";
@@ -18,12 +17,15 @@ import {
     type OutcomeLibrarySelectRequestView,
 } from "../../domain/interpret/OutcomeLibraries";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
+import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {RecoveryNotice} from "../common/RecoveryNotice";
 
 const OUTCOME_BANNER: Record<OutcomeLibraryOutcome, {color: string; icon: ReactNode; title: string}> = {
     success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Loaded successfully"},
@@ -136,8 +138,6 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
     const [compareView, setCompareView] = useState<OutcomeLibraryCompareRequestView>({status: "idle"});
     const compareRequestIdRef = useRef(0);
     const compareGuard = useDoubleSubmitGuard();
-
-    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
 
     function invalidateDeepValidate(): void {
         deepValidateRequestIdRef.current++;
@@ -283,21 +283,13 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
 
         return (
             <div>
-                <Alert
+                <OutcomeBanner
                     color={OUTCOME_BANNER[selectOutcome].color}
-                    variant="light"
                     icon={OUTCOME_BANNER[selectOutcome].icon}
                     title={OUTCOME_BANNER[selectOutcome].title}
-                    mb="sm"
-                >
-                    <IssueList title="Errors" issues={selectView.errors} />
-                    <IssueList title="Warnings" issues={selectView.warnings} />
-                    {selectView.errors.length === 0 && selectView.warnings.length === 0 && (
-                        <Text size="sm" c="dimmed">
-                            No issues reported.
-                        </Text>
-                    )}
-                </Alert>
+                    errors={selectView.errors}
+                    warnings={selectView.warnings}
+                />
 
                 {selectResult && (
                     <PageSection legend="Provenance">
@@ -460,21 +452,14 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                             )}
                         </PageSection>
 
-                        <Text size="sm" mt="sm">
-                            <Anchor component="button" type="button" onClick={toggleAdvanced}>
-                                {advancedOpened ? "Hide" : "Show"} advanced details (raw outcome sample)
-                            </Anchor>
-                        </Text>
-                        {advancedOpened && (
-                            <PageSection legend="Advanced details">
-                                <Text size="sm" c="dimmed" mb="sm">
-                                    {selectResult.sampleTruncated
-                                        ? `Showing the first ${selectResult.sampleOutcomes.length} of ${selectResult.provenance.outcomeCount.toLocaleString()} outcomes.`
-                                        : `Showing all ${selectResult.sampleOutcomes.length} outcomes.`}
-                                </Text>
-                                <CodeBlock>{JSON.stringify(selectResult.sampleOutcomes, null, 2)}</CodeBlock>
-                            </PageSection>
-                        )}
+                        <AdvancedDisclosure detail="raw outcome sample">
+                            <Text size="sm" c="dimmed" mb="sm">
+                                {selectResult.sampleTruncated
+                                    ? `Showing the first ${selectResult.sampleOutcomes.length} of ${selectResult.provenance.outcomeCount.toLocaleString()} outcomes.`
+                                    : `Showing all ${selectResult.sampleOutcomes.length} outcomes.`}
+                            </Text>
+                            <CodeBlock>{JSON.stringify(selectResult.sampleOutcomes, null, 2)}</CodeBlock>
+                        </AdvancedDisclosure>
 
                         <QuickActions>
                             <Button onClick={() => setActiveStep(3)}>Continue to Compare or use</Button>
@@ -502,15 +487,13 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                             {compareResult && (
                                 <div>
                                     {compareResult.leftSnapshotStale && (
-                                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title="The left library changed since you selected it" mb="sm">
-                                            <Text size="sm" mb="sm">
-                                                Its content on disk no longer matches what Inspect showed you, so it wasn&apos;t compared against the
-                                                right library. Re-select it to refresh, then compare again.
-                                            </Text>
-                                            <Button size="xs" variant="light" onClick={runSelect}>
-                                                Re-select the left library
-                                            </Button>
-                                        </Alert>
+                                        <RecoveryNotice
+                                            title="The left library changed since you selected it"
+                                            message="Its content on disk no longer matches what Inspect showed you, so it wasn't compared against the right library. Re-select it to refresh, then compare again."
+                                            actionLabel="Re-select the left library"
+                                            actionVariant="light"
+                                            onAction={runSelect}
+                                        />
                                     )}
                                     {compareResult.left.status === "load-error" && <ErrorState message={compareResult.left.error} />}
                                     {compareResult.left.status === "invalid" && (
@@ -526,42 +509,44 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                                     )}
                                     {compareResult.diff && (
                                         <div>
-                                            <Table withRowBorders={false} mb="sm">
-                                                <Table.Thead>
-                                                    <Table.Tr>
-                                                        <Table.Th>Metric</Table.Th>
-                                                        <Table.Th>Left</Table.Th>
-                                                        <Table.Th>Right</Table.Th>
-                                                        <Table.Th>Delta</Table.Th>
-                                                    </Table.Tr>
-                                                </Table.Thead>
-                                                <Table.Tbody>
-                                                    <Table.Tr>
-                                                        <Table.Th>RTP</Table.Th>
-                                                        <Table.Td>{(compareResult.diff.rtp.left * 100).toFixed(2)}%</Table.Td>
-                                                        <Table.Td>{(compareResult.diff.rtp.right * 100).toFixed(2)}%</Table.Td>
-                                                        <Table.Td>{(compareResult.diff.rtp.delta * 100).toFixed(2)} pp</Table.Td>
-                                                    </Table.Tr>
-                                                    <Table.Tr>
-                                                        <Table.Th>Hit rate</Table.Th>
-                                                        <Table.Td>{(compareResult.diff.hitFrequency.left * 100).toFixed(2)}%</Table.Td>
-                                                        <Table.Td>{(compareResult.diff.hitFrequency.right * 100).toFixed(2)}%</Table.Td>
-                                                        <Table.Td>{(compareResult.diff.hitFrequency.delta * 100).toFixed(2)} pp</Table.Td>
-                                                    </Table.Tr>
-                                                    <Table.Tr>
-                                                        <Table.Th>Volatility (std. dev.)</Table.Th>
-                                                        <Table.Td>{compareResult.diff.standardDeviation.left.toFixed(4)}</Table.Td>
-                                                        <Table.Td>{compareResult.diff.standardDeviation.right.toFixed(4)}</Table.Td>
-                                                        <Table.Td>{compareResult.diff.standardDeviation.delta.toFixed(4)}</Table.Td>
-                                                    </Table.Tr>
-                                                    <Table.Tr>
-                                                        <Table.Th>Max win</Table.Th>
-                                                        <Table.Td>{compareResult.diff.maxWin.left.toFixed(2)}</Table.Td>
-                                                        <Table.Td>{compareResult.diff.maxWin.right.toFixed(2)}</Table.Td>
-                                                        <Table.Td>{compareResult.diff.maxWin.delta.toFixed(2)}</Table.Td>
-                                                    </Table.Tr>
-                                                </Table.Tbody>
-                                            </Table>
+                                            <Table.ScrollContainer minWidth={480}>
+                                                <Table withRowBorders={false} mb="sm">
+                                                    <Table.Thead>
+                                                        <Table.Tr>
+                                                            <Table.Th>Metric</Table.Th>
+                                                            <Table.Th>Left</Table.Th>
+                                                            <Table.Th>Right</Table.Th>
+                                                            <Table.Th>Delta</Table.Th>
+                                                        </Table.Tr>
+                                                    </Table.Thead>
+                                                    <Table.Tbody>
+                                                        <Table.Tr>
+                                                            <Table.Th>RTP</Table.Th>
+                                                            <Table.Td>{(compareResult.diff.rtp.left * 100).toFixed(2)}%</Table.Td>
+                                                            <Table.Td>{(compareResult.diff.rtp.right * 100).toFixed(2)}%</Table.Td>
+                                                            <Table.Td>{(compareResult.diff.rtp.delta * 100).toFixed(2)} pp</Table.Td>
+                                                        </Table.Tr>
+                                                        <Table.Tr>
+                                                            <Table.Th>Hit rate</Table.Th>
+                                                            <Table.Td>{(compareResult.diff.hitFrequency.left * 100).toFixed(2)}%</Table.Td>
+                                                            <Table.Td>{(compareResult.diff.hitFrequency.right * 100).toFixed(2)}%</Table.Td>
+                                                            <Table.Td>{(compareResult.diff.hitFrequency.delta * 100).toFixed(2)} pp</Table.Td>
+                                                        </Table.Tr>
+                                                        <Table.Tr>
+                                                            <Table.Th>Volatility (std. dev.)</Table.Th>
+                                                            <Table.Td>{compareResult.diff.standardDeviation.left.toFixed(4)}</Table.Td>
+                                                            <Table.Td>{compareResult.diff.standardDeviation.right.toFixed(4)}</Table.Td>
+                                                            <Table.Td>{compareResult.diff.standardDeviation.delta.toFixed(4)}</Table.Td>
+                                                        </Table.Tr>
+                                                        <Table.Tr>
+                                                            <Table.Th>Max win</Table.Th>
+                                                            <Table.Td>{compareResult.diff.maxWin.left.toFixed(2)}</Table.Td>
+                                                            <Table.Td>{compareResult.diff.maxWin.right.toFixed(2)}</Table.Td>
+                                                            <Table.Td>{compareResult.diff.maxWin.delta.toFixed(2)}</Table.Td>
+                                                        </Table.Tr>
+                                                    </Table.Tbody>
+                                                </Table>
+                                            </Table.ScrollContainer>
                                             {compareResult.diff.warnings.length > 0 && (
                                                 <IssueList title="Notable changes" issues={compareResult.diff.warnings.map((message) => ({message}))} />
                                             )}

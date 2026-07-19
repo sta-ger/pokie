@@ -1,5 +1,4 @@
-import {Anchor, Button, Stepper, Text} from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
+import {Button, Stepper, Text} from "@mantine/core";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import {applyProjectBlueprint, inspectProject, loadBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {ValidationIssue} from "../../api/types";
@@ -22,9 +21,11 @@ import {PaytableEditor} from "../blueprintEditor/PaytableEditor";
 import {ReelGenerationModeSelector} from "../blueprintEditor/ReelGenerationModeSelector";
 import {SymbolsTable} from "../blueprintEditor/SymbolsTable";
 import {WinModelSelector} from "../blueprintEditor/WinModelSelector";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
+import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 
@@ -86,8 +87,6 @@ export function MechanicsEditorTab() {
     const [applyView, setApplyView] = useState<ApplyView>({status: "idle"});
     const applyRequestIdRef = useRef(0);
     const applyGuard = useDoubleSubmitGuard();
-
-    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
 
     // Dirty-tracking: same cleanRevisionRef/nextFormGenerationIsClean/markClean scheme as
     // BlueprintEditorPage's own (see its doc comment) -- kept local to this tab rather than shared,
@@ -250,9 +249,7 @@ export function MechanicsEditorTab() {
     if (loadView.status === "loading") {
         return (
             <PageSection legend="Mechanics Editor">
-                <Text size="sm" c="dimmed">
-                    Loading the project&apos;s blueprint…
-                </Text>
+                <LoadingState label="Loading the project's blueprint…" />
             </PageSection>
         );
     }
@@ -382,7 +379,7 @@ export function MechanicsEditorTab() {
                             <Button onClick={handleApply} loading={applyView.status === "loading"} disabled={applyBlocked}>
                                 Apply
                             </Button>
-                            <Button variant="default" onClick={handleDiscard} disabled={!isDirty}>
+                            <Button variant="default" color="red" onClick={handleDiscard} disabled={!isDirty}>
                                 Discard draft
                             </Button>
                         </QuickActions>
@@ -407,12 +404,9 @@ export function MechanicsEditorTab() {
                 </div>
             )}
 
-            <Text size="sm" mt="sm">
-                <Anchor component="button" type="button" onClick={toggleAdvanced}>
-                    {advancedOpened ? "Hide" : "Show"} raw blueprint JSON
-                </Anchor>
-            </Text>
-            {advancedOpened && <BlueprintJsonPanel jsonText={editor.state.jsonText} jsonError={editor.state.jsonError} onApply={editor.applyJson} />}
+            <AdvancedDisclosure detail="raw blueprint JSON">
+                <BlueprintJsonPanel jsonText={editor.state.jsonText} jsonError={editor.state.jsonError} onApply={editor.applyJson} />
+            </AdvancedDisclosure>
         </PageSection>
     );
 }

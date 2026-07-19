@@ -1,5 +1,4 @@
 import {Alert, Anchor, Button, List, Stepper, Text, TextInput} from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import type {StudioDeploymentModeInput, StudioDeploymentStageSummary, StudioDeploymentTargetSummary} from "../../api/types";
@@ -17,13 +16,15 @@ import {
     type DeploymentTargetsListView,
 } from "../../domain/interpret/Deployment";
 import {useConfirm} from "../../hooks/useConfirm";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
-import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
+import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {RowActions} from "../common/RowActions";
 
 const OUTCOME_BANNER: Record<DeploymentOutcomeKind, {color: string; icon: ReactNode; title: string}> = {
     success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Deployed successfully"},
@@ -100,21 +101,24 @@ function stageKeysForOutcome(outcome: DeploymentOutcomeKind): readonly StudioDep
 // One reusable banner for every step that shows a run outcome -- Check-compatibility, Preview artifacts,
 // and Review result all classify the exact same server-computed `runResult.stages` through
 // describeDeploymentOutcome and just show a different slice of `issues` (see each call site's own choice
-// of stage-key group), never re-deriving pass/fail themselves.
-function OutcomeBanner({outcome, issues}: {outcome: DeploymentOutcomeKind; issues: ReturnType<typeof collectStageIssues>}) {
+// of stage-key group), never re-deriving pass/fail themselves. Just supplies this tab's own outcome-kind
+// map to the shared common/OutcomeBanner renderer.
+function DeploymentOutcomeBanner({outcome, issues}: {outcome: DeploymentOutcomeKind; issues: ReturnType<typeof collectStageIssues>}) {
     const {errors, warnings} = splitIssuesBySeverity(issues);
     const banner = OUTCOME_BANNER[outcome];
-    return (
-        <Alert color={banner.color} variant="light" icon={banner.icon} title={banner.title} mb="sm">
-            <IssueList title="Errors" issues={errors} />
-            <IssueList title="Warnings" issues={warnings} />
-            {errors.length === 0 && warnings.length === 0 && (
-                <Text size="sm" c="dimmed">
-                    No issues reported.
-                </Text>
-            )}
-        </Alert>
-    );
+    return <OutcomeBanner color={banner.color} icon={banner.icon} title={banner.title} errors={errors} warnings={warnings} />;
+}
+
+// Humanizes the raw stage-status/issue-severity enum strings for AdvancedRunDetails -- same "translate
+// technical fields into readable copy" treatment as describeTargetCapability/describeTargetRequirements
+// give the target metadata above.
+const STAGE_STATUS_LABEL: Record<string, string> = {ok: "OK", skipped: "Skipped", error: "Error"};
+function describeStageStatus(status: string): string {
+    return STAGE_STATUS_LABEL[status] ?? status;
+}
+const ISSUE_SEVERITY_LABEL: Record<string, string> = {error: "Error", warning: "Warning"};
+function describeIssueSeverity(severity: string): string {
+    return ISSUE_SEVERITY_LABEL[severity] ?? severity;
 }
 
 // Raw stage-by-stage status plus (when there is one) the currently-selected artifact's full content --
@@ -127,47 +131,37 @@ function AdvancedRunDetails({
     runResult: DeploymentRunResultView;
     selectedArtifact: {relativePath: string; content: string} | undefined;
 }) {
-    const [opened, {toggle}] = useDisclosure(false);
     return (
-        <div>
-            <Text size="sm" mt="sm">
-                <Anchor component="button" type="button" onClick={toggle}>
-                    {opened ? "Hide" : "Show"} advanced details (raw artifacts, full pipeline diagnostics)
-                </Anchor>
-            </Text>
-            {opened && (
-                <PageSection legend="Advanced details">
-                    <List size="sm">
-                        {runResult.stages.map((stage) => (
-                            <List.Item key={stage.key}>
-                                {stage.label}: {stage.status}
-                                {stage.issues.length > 0 && (
-                                    <List size="sm" withPadding>
-                                        {stage.issues.map((issue, index) => (
-                                            <List.Item key={index}>
-                                                {issue.severity}: {issue.message}
-                                            </List.Item>
-                                        ))}
-                                    </List>
-                                )}
-                            </List.Item>
-                        ))}
-                    </List>
-                    {selectedArtifact && (
-                        <div>
-                            <Text fw={600} size="sm" mt="sm" style={{overflowWrap: "anywhere"}}>
-                                {selectedArtifact.relativePath}
-                            </Text>
-                            <CodeBlock>{selectedArtifact.content}</CodeBlock>
-                        </div>
-                    )}
-                    <Text size="sm" fw={600} mt="sm" mb={4}>
-                        Full run result
+        <AdvancedDisclosure detail="raw artifacts, full pipeline diagnostics">
+            <List size="sm">
+                {runResult.stages.map((stage) => (
+                    <List.Item key={stage.key}>
+                        {stage.label}: {describeStageStatus(stage.status)}
+                        {stage.issues.length > 0 && (
+                            <List size="sm" withPadding>
+                                {stage.issues.map((issue, index) => (
+                                    <List.Item key={index}>
+                                        {describeIssueSeverity(issue.severity)}: {issue.message}
+                                    </List.Item>
+                                ))}
+                            </List>
+                        )}
+                    </List.Item>
+                ))}
+            </List>
+            {selectedArtifact && (
+                <div>
+                    <Text fw={600} size="sm" mt="sm" style={{overflowWrap: "anywhere"}}>
+                        {selectedArtifact.relativePath}
                     </Text>
-                    <CodeBlock>{JSON.stringify(runResult, null, 2)}</CodeBlock>
-                </PageSection>
+                    <CodeBlock>{selectedArtifact.content}</CodeBlock>
+                </div>
             )}
-        </div>
+            <Text size="sm" fw={600} mt="sm" mb={4}>
+                Full run result
+            </Text>
+            <CodeBlock>{JSON.stringify(runResult, null, 2)}</CodeBlock>
+        </AdvancedDisclosure>
     );
 }
 
@@ -298,7 +292,7 @@ export function DeploymentTab({
             {activeStep === 0 && (
                 <div>
                     <QuickActions>
-                        <Button variant="default" onClick={onRefreshTargets}>
+                        <Button variant="default" size="xs" onClick={onRefreshTargets}>
                             Refresh
                         </Button>
                     </QuickActions>
@@ -320,28 +314,28 @@ export function DeploymentTab({
                             relative to the project root, the same file a Simulation run or `pokie build` would use.
                         </Text>
 
-                        {modes.map((mode, index) => (
-                            <QuickActions key={index}>
-                                <TextInput
-                                    label="Mode name"
-                                    value={mode.modeName}
-                                    onChange={(event) => onUpdateMode(index, {modeName: event.currentTarget.value})}
-                                />
-                                <TextInput
-                                    label="Outcome library path"
-                                    value={mode.libraryPath}
-                                    onChange={(event) => onUpdateMode(index, {libraryPath: event.currentTarget.value})}
-                                />
-                                <Button variant="subtle" color="red" onClick={() => onRemoveMode(index)}>
-                                    Remove
+                        <PageSection legend="Deployment modes">
+                            {modes.map((mode, index) => (
+                                <QuickActions key={index}>
+                                    <TextInput
+                                        label="Mode name"
+                                        value={mode.modeName}
+                                        onChange={(event) => onUpdateMode(index, {modeName: event.currentTarget.value})}
+                                    />
+                                    <TextInput
+                                        label="Outcome library path"
+                                        value={mode.libraryPath}
+                                        onChange={(event) => onUpdateMode(index, {libraryPath: event.currentTarget.value})}
+                                    />
+                                    <RowActions itemLabel={`mode ${index + 1}`} onRemove={() => onRemoveMode(index)} />
+                                </QuickActions>
+                            ))}
+                            <QuickActions>
+                                <Button variant="default" onClick={onAddMode}>
+                                    Add mode
                                 </Button>
                             </QuickActions>
-                        ))}
-                        <QuickActions>
-                            <Button variant="default" onClick={onAddMode}>
-                                Add mode
-                            </Button>
-                        </QuickActions>
+                        </PageSection>
 
                         <QuickActions>
                             <Button onClick={handleCheckAndPreview} loading={runLoading}>
@@ -358,7 +352,7 @@ export function DeploymentTab({
                     <EmptyState message="Run a compatibility check from Configure first." />
                 ) : (
                     <div>
-                        <OutcomeBanner
+                        <DeploymentOutcomeBanner
                             outcome={outcome === "incompatible" ? "incompatible" : "success"}
                             issues={collectStageIssues(runResult.stages, COMPATIBILITY_STAGE_KEYS)}
                         />
@@ -373,7 +367,7 @@ export function DeploymentTab({
                             </QuickActions>
                         ) : (
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(3)}>Continue to preview artifacts</Button>
+                                <Button onClick={() => setActiveStep(3)}>Continue to Preview artifacts</Button>
                             </QuickActions>
                         )}
                     </div>
@@ -385,10 +379,10 @@ export function DeploymentTab({
                 ) : (
                     <div>
                         {outcome === "validation-failure" && (
-                            <OutcomeBanner outcome={outcome} issues={collectStageIssues(runResult.stages, PREVIEW_STAGE_KEYS)} />
+                            <DeploymentOutcomeBanner outcome={outcome} issues={collectStageIssues(runResult.stages, PREVIEW_STAGE_KEYS)} />
                         )}
                         {outcome === "transport-failure" && (
-                            <OutcomeBanner outcome={outcome} issues={collectStageIssues(runResult.stages, TRANSPORT_STAGE_KEYS)} />
+                            <DeploymentOutcomeBanner outcome={outcome} issues={collectStageIssues(runResult.stages, TRANSPORT_STAGE_KEYS)} />
                         )}
 
                         <PageSection legend="Generated artifacts">
@@ -453,7 +447,7 @@ export function DeploymentTab({
                     <EmptyState message="Nothing has been deployed yet." />
                 ) : (
                     <div>
-                        <OutcomeBanner outcome={outcome} issues={collectStageIssues(runResult.stages, stageKeysForOutcome(outcome))} />
+                        <DeploymentOutcomeBanner outcome={outcome} issues={collectStageIssues(runResult.stages, stageKeysForOutcome(outcome))} />
                         <Text size="sm">{runResult.delivered ? "Delivered to the target." : "Not delivered."}</Text>
 
                         <AdvancedRunDetails runResult={runResult} selectedArtifact={selectedArtifact} />

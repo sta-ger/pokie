@@ -1,6 +1,5 @@
 import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Stepper, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
-import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {useLocation} from "react-router-dom";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
@@ -9,6 +8,7 @@ import type {ReplayComparisonView, ReplayListView, ReplayProgressView, ReplayRes
 import type {ReportListView} from "../../domain/interpret/Reports";
 import {describeRuntimeScreen, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {useConfirm} from "../../hooks/useConfirm";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
@@ -115,7 +115,6 @@ export function ReplayTab({
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
     const [selectedSimEntry, setSelectedSimEntry] = useState<StudioSimulationReportListEntry>();
     const [simRound, setSimRound] = useState(1);
-    const [spinAdvancedOpened, {toggle: toggleSpinAdvanced}] = useDisclosure(false);
 
     const active = progress !== undefined && (progress.status === "queued" || progress.status === "running");
     const terminal = progress !== undefined && !active;
@@ -250,7 +249,7 @@ export function ReplayTab({
                                 </Button>
                             </QuickActions>
 
-                            <PageSection legend="Or pick from Recent Replays to reproduce & compare">
+                            <PageSection legend="Or pick from recent replays to reproduce & compare">
                                 <QuickActions>
                                     <Button variant="default" size="xs" onClick={onRefreshList}>
                                         Refresh
@@ -284,7 +283,7 @@ export function ReplayTab({
                     {findMethod === "spin" && (
                         <div>
                             {spinNotFound && autoSelectSpin && selectedSpin === undefined && (
-                                <Alert color="orange" variant="light" title="Round no longer available" mb="sm">
+                                <Alert color="yellow" variant="light" title="Round no longer available" mb="sm">
                                     The exact round handed off here (session {autoSelectSpin.sessionId}, request{" "}
                                     {autoSelectSpin.requestId}) isn&apos;t available in the recent spin history anymore. Pick
                                     a spin below instead, if it&apos;s still listed.
@@ -521,52 +520,45 @@ export function ReplayTab({
                                 </Text>
                             )}
 
-                            <Text size="sm" mt="sm">
-                                <Anchor component="button" type="button" onClick={toggleSpinAdvanced}>
-                                    {spinAdvancedOpened ? "Hide" : "Show"} advanced details (raw JSON, debug data, raw state)
-                                </Anchor>
-                            </Text>
-                            {spinAdvancedOpened && (
-                                <PageSection legend="Advanced details">
-                                    {selectedSpin.debug?.debugData && (
-                                        <div>
-                                            <Group gap="xs" mb={4}>
-                                                <Text size="sm" fw={600}>
-                                                    Debug data
+                            <AdvancedDisclosure detail="raw JSON, debug data, raw state">
+                                {selectedSpin.debug?.debugData && (
+                                    <div>
+                                        <Group gap="xs" mb={4}>
+                                            <Text size="sm" fw={600}>
+                                                Debug data
+                                            </Text>
+                                            <Badge size="xs" variant="light">
+                                                game-provided, may include RNG/reel-stop data
+                                            </Badge>
+                                        </Group>
+                                        <CodeBlock>{JSON.stringify(selectedSpin.debug.debugData, null, 2)}</CodeBlock>
+                                    </div>
+                                )}
+                                {(selectedSpin.debug?.stateBefore !== undefined || selectedSpin.debug?.stateAfter !== undefined) && (
+                                    <div>
+                                        {selectedSpin.debug?.stateBefore !== undefined && (
+                                            <div>
+                                                <Text size="sm" fw={600} mt="sm" mb={4}>
+                                                    Raw state before
                                                 </Text>
-                                                <Badge size="xs" variant="light">
-                                                    game-provided, may include RNG/reel-stop data
-                                                </Badge>
-                                            </Group>
-                                            <CodeBlock>{JSON.stringify(selectedSpin.debug.debugData, null, 2)}</CodeBlock>
-                                        </div>
-                                    )}
-                                    {(selectedSpin.debug?.stateBefore !== undefined || selectedSpin.debug?.stateAfter !== undefined) && (
-                                        <div>
-                                            {selectedSpin.debug?.stateBefore !== undefined && (
-                                                <div>
-                                                    <Text size="sm" fw={600} mt="sm" mb={4}>
-                                                        Raw state before
-                                                    </Text>
-                                                    <CodeBlock>{JSON.stringify(selectedSpin.debug.stateBefore, null, 2)}</CodeBlock>
-                                                </div>
-                                            )}
-                                            {selectedSpin.debug?.stateAfter !== undefined && (
-                                                <div>
-                                                    <Text size="sm" fw={600} mt="sm" mb={4}>
-                                                        Raw state after
-                                                    </Text>
-                                                    <CodeBlock>{JSON.stringify(selectedSpin.debug.stateAfter, null, 2)}</CodeBlock>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    <Text size="sm" fw={600} mt="sm" mb={4}>
-                                        Full session view
-                                    </Text>
-                                    <CodeBlock>{JSON.stringify(selectedSpin, null, 2)}</CodeBlock>
-                                </PageSection>
-                            )}
+                                                <CodeBlock>{JSON.stringify(selectedSpin.debug.stateBefore, null, 2)}</CodeBlock>
+                                            </div>
+                                        )}
+                                        {selectedSpin.debug?.stateAfter !== undefined && (
+                                            <div>
+                                                <Text size="sm" fw={600} mt="sm" mb={4}>
+                                                    Raw state after
+                                                </Text>
+                                                <CodeBlock>{JSON.stringify(selectedSpin.debug.stateAfter, null, 2)}</CodeBlock>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                <Text size="sm" fw={600} mt="sm" mb={4}>
+                                    Full session view
+                                </Text>
+                                <CodeBlock>{JSON.stringify(selectedSpin, null, 2)}</CodeBlock>
+                            </AdvancedDisclosure>
                         </div>
                     )}
 
@@ -651,9 +643,9 @@ export function ReplayTab({
                 </div>
             )}
 
-            <PageSection legend="Recent Replays">
+            <PageSection legend="Recent replays">
                 <QuickActions>
-                    <Button variant="default" onClick={onRefreshList}>
+                    <Button variant="default" size="xs" onClick={onRefreshList}>
                         Refresh
                     </Button>
                 </QuickActions>

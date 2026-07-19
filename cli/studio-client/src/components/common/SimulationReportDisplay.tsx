@@ -1,6 +1,6 @@
-import {Anchor, Collapse, List, Table, Text} from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
+import {List, Table, Text} from "@mantine/core";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
+import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {PageSection} from "./PageSection";
 
 export function formatConfidenceInterval(interval: {low: number; high: number} | undefined): string {
@@ -14,8 +14,6 @@ export function formatConfidenceInterval(interval: {low: number; high: number} |
 // view -- one formatting implementation, not duplicated, same reasoning as the old dom.ts's
 // renderSimulationReport (which both call sites shared via SimulationReportElements/prefix).
 export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
-    const [histogramOpened, {toggle: toggleHistogram}] = useDisclosure(false);
-
     return (
         <div>
             <Table withRowBorders={false}>
@@ -131,35 +129,26 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
             )}
 
             {view.payoutHistogram && Object.keys(view.payoutHistogram).length > 0 && (
-                <div>
-                    <Text size="sm" mt="sm">
-                        <Anchor component="button" type="button" onClick={toggleHistogram}>
-                            {histogramOpened ? "Hide" : "Show"} advanced settings (payout histogram)
-                        </Anchor>
-                    </Text>
-                    <Collapse expanded={histogramOpened}>
-                        <PageSection legend="Payout histogram">
-                            <Table.ScrollContainer minWidth={300}>
-                                <Table>
-                                    <Table.Thead>
-                                        <Table.Tr>
-                                            <Table.Th>Payout bucket</Table.Th>
-                                            <Table.Th>Rounds</Table.Th>
-                                        </Table.Tr>
-                                    </Table.Thead>
-                                    <Table.Tbody>
-                                        {Object.entries(view.payoutHistogram).map(([bucket, count]) => (
-                                            <Table.Tr key={bucket}>
-                                                <Table.Td>{bucket}</Table.Td>
-                                                <Table.Td>{count}</Table.Td>
-                                            </Table.Tr>
-                                        ))}
-                                    </Table.Tbody>
-                                </Table>
-                            </Table.ScrollContainer>
-                        </PageSection>
-                    </Collapse>
-                </div>
+                <AdvancedDisclosure detail="payout histogram">
+                    <Table.ScrollContainer minWidth={300}>
+                        <Table>
+                            <Table.Thead>
+                                <Table.Tr>
+                                    <Table.Th>Payout bucket</Table.Th>
+                                    <Table.Th>Rounds</Table.Th>
+                                </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                                {Object.entries(view.payoutHistogram).map(([bucket, count]) => (
+                                    <Table.Tr key={bucket}>
+                                        <Table.Td>{bucket}</Table.Td>
+                                        <Table.Td>{count}</Table.Td>
+                                    </Table.Tr>
+                                ))}
+                            </Table.Tbody>
+                        </Table>
+                    </Table.ScrollContainer>
+                </AdvancedDisclosure>
             )}
 
             {view.reproducibilityCommand !== undefined && (

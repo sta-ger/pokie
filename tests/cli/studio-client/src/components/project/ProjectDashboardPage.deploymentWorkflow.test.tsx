@@ -75,7 +75,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         await goToDeploymentConfigure(user);
 
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to preview artifacts"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
 
         expect(await screen.findByText("base.json")).toBeInTheDocument();
         expect(screen.getByText(/Target diagnostic passed/)).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         expect(await screen.findByText("Incompatible with this target")).toBeInTheDocument();
         expect(screen.getByText(/Library was built with an older pokie version/)).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Continue to preview artifacts"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Preview artifacts"})).not.toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Back to Configure"})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Choose a different target"})).toBeInTheDocument();
     });
@@ -137,7 +137,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to preview artifacts"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
 
         expect(await screen.findByText("Content didn't validate for this target")).toBeInTheDocument();
         expect(screen.getByText(/Artifact is missing relativePath/)).toBeInTheDocument();
@@ -177,7 +177,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to preview artifacts"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Deploy"}));
 
         await user.click(screen.getByRole("button", {name: "Deploy"}));
@@ -224,7 +224,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to preview artifacts"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Deploy"}));
 
         await user.click(screen.getByRole("button", {name: "Deploy"}));
@@ -259,7 +259,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to preview artifacts"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         expect(await screen.findByText("base.json")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Back to Configure"}));
@@ -287,7 +287,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to preview artifacts"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         expect(await screen.findByText("from-project-a.json")).toBeInTheDocument();
 
         first.unmount();

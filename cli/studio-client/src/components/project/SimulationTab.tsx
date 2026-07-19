@@ -6,6 +6,7 @@ import type {StudioSimulationReportListEntry} from "../../api/types";
 import type {ReportListView} from "../../domain/interpret/Reports";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
 import {useConfirm} from "../../hooks/useConfirm";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
@@ -13,6 +14,7 @@ import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {SimulationReportDisplay} from "../common/SimulationReportDisplay";
 import {formatElapsedMs, SimulationSummaryCard, type SimulationOutcome} from "../common/SimulationSummaryCard";
+import {WarningState} from "../common/WarningState";
 
 export type ReportDetailState =
     | {status: "empty"}
@@ -69,7 +71,6 @@ export function SimulationTab({
 }) {
     const confirm = useConfirm();
     const form = useForm<FormValues>({mode: "uncontrolled", initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1}});
-    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
     const [fullReportOpened, {toggle: toggleFullReport, close: closeFullReport}] = useDisclosure(false);
     const [compareOpened, setCompareOpened] = useState(false);
 
@@ -166,17 +167,12 @@ export function SimulationTab({
                             Run Simulation
                         </Button>
                     </QuickActions>
-                    <Text size="sm" mb="sm">
-                        <Anchor component="button" type="button" onClick={toggleAdvanced}>
-                            {advancedOpened ? "Hide" : "Show"} advanced settings (seed, workers)
-                        </Anchor>
-                    </Text>
-                    <Collapse expanded={advancedOpened}>
+                    <AdvancedDisclosure detail="seed, workers">
                         <QuickActions>
                             <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
                             <NumberInput label="Workers" min={1} step={1} required {...form.getInputProps("workers")} key={form.key("workers")} />
                         </QuickActions>
-                    </Collapse>
+                    </AdvancedDisclosure>
                 </form>
             )}
 
@@ -314,39 +310,42 @@ export function SimulationTab({
 
             <PageSection legend="Recent runs">
                 <QuickActions>
-                    <Button variant="default" onClick={onRefreshRecentRuns}>
+                    <Button variant="default" size="xs" onClick={onRefreshRecentRuns}>
                         Refresh
                     </Button>
                 </QuickActions>
                 {recentRunsError && <ErrorState message={recentRunsError} />}
-                {runAgainNotice && <ErrorState message={runAgainNotice} />}
+                {runAgainNotice && <WarningState message={runAgainNotice} />}
                 {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
                 {recentRuns.status === "loaded" && (
                     <List listStyleType="none" spacing={4}>
-                        {recentRuns.entries.map((entry) => (
-                            <List.Item key={entry.id}>
-                                <Group gap="xs" wrap="wrap" align="baseline">
-                                    <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                                        {entry.game.id} v{entry.game.version} — {entry.actualRounds}/{entry.requestedRounds} rounds, RTP{" "}
-                                        {(entry.rtp * 100).toFixed(2)}%, {new Date(entry.startedAt).toLocaleString()}
-                                        {entry.hasWarnings ? " (has warnings)" : ""}
-                                    </Text>
-                                    <Anchor
-                                        component="button"
-                                        type="button"
-                                        onClick={() => {
-                                            onOpenHistoric(entry);
-                                            setActiveStep(2);
-                                        }}
-                                    >
-                                        Open
-                                    </Anchor>
-                                    <Anchor component="button" type="button" onClick={() => onRunAgain(entry)}>
-                                        Run again
-                                    </Anchor>
-                                </Group>
-                            </List.Item>
-                        ))}
+                        {recentRuns.entries.map((entry) => {
+                            const isSelected = entry.id === currentReportId;
+                            return (
+                                <List.Item key={entry.id}>
+                                    <Group gap="xs" wrap="wrap" align="baseline">
+                                        <Text size="sm" style={{overflowWrap: "anywhere"}}>
+                                            {entry.game.id} v{entry.game.version} — {entry.actualRounds}/{entry.requestedRounds} rounds, RTP{" "}
+                                            {(entry.rtp * 100).toFixed(2)}%, {new Date(entry.startedAt).toLocaleString()}
+                                            {entry.hasWarnings ? " (has warnings)" : ""}
+                                        </Text>
+                                        <Button
+                                            size="xs"
+                                            variant={isSelected ? "filled" : "default"}
+                                            onClick={() => {
+                                                onOpenHistoric(entry);
+                                                setActiveStep(2);
+                                            }}
+                                        >
+                                            Open
+                                        </Button>
+                                        <Anchor component="button" type="button" onClick={() => onRunAgain(entry)}>
+                                            Run again
+                                        </Anchor>
+                                    </Group>
+                                </List.Item>
+                            );
+                        })}
                     </List>
                 )}
             </PageSection>

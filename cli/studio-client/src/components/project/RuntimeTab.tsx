@@ -1,6 +1,5 @@
-import {Alert, Anchor, Button, Checkbox, Collapse, List, NumberInput, Select, SegmentedControl, Stepper, Table, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Button, Checkbox, List, NumberInput, Select, SegmentedControl, Stepper, Table, Text, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
-import {useDisclosure} from "@mantine/hooks";
 import {IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
@@ -16,12 +15,14 @@ import {
     type RuntimeSpinResultView,
     type RuntimeStateView,
 } from "../../domain/interpret/Runtime";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {RecoveryNotice} from "../common/RecoveryNotice";
 import {ScreenTable} from "../common/ScreenTable";
 
 type StartFormValues = {host: string; port: string; debug: boolean; repositoryMode: "memory" | "file"; seed: string};
@@ -64,7 +65,6 @@ function formatFieldValue(value: unknown): string {
 // with the raw public/internal JSON tucked behind Advanced details, same convention as
 // RoundArtifactInspector in the Replay & Debug tab.
 function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
-    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
     // studioRequestId is Studio's own bookkeeping (see StudioRuntimeSessionView's own doc comment), never
     // part of the game's actual public response -- excluded here alongside `debug` so "Public response"
     // stays an honest dump of what the game server itself returned.
@@ -122,29 +122,22 @@ function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
                 </PageSection>
             )}
 
-            <Text size="sm" mt="sm">
-                <Anchor component="button" type="button" onClick={toggleAdvanced}>
-                    {advancedOpened ? "Hide" : "Show"} advanced details (raw JSON, debug data)
-                </Anchor>
-            </Text>
-            {advancedOpened && (
-                <PageSection legend="Advanced details">
-                    <Text size="sm" fw={600} mb={4}>
-                        Public response
+            <AdvancedDisclosure detail="raw JSON, debug data">
+                <Text size="sm" fw={600} mb={4}>
+                    Public response
+                </Text>
+                <CodeBlock>{JSON.stringify(publicFields, null, 2)}</CodeBlock>
+                <Text size="sm" fw={600} mt="sm" mb={4}>
+                    Debug response
+                </Text>
+                {debug === undefined ? (
+                    <Text size="sm" c="dimmed">
+                        Debug mode is disabled for this runtime — restart it with debug mode on to see internal/debug data.
                     </Text>
-                    <CodeBlock>{JSON.stringify(publicFields, null, 2)}</CodeBlock>
-                    <Text size="sm" fw={600} mt="sm" mb={4}>
-                        Debug response
-                    </Text>
-                    {debug === undefined ? (
-                        <Text size="sm" c="dimmed">
-                            Debug mode is disabled for this runtime — restart it with debug mode on to see internal/debug data.
-                        </Text>
-                    ) : (
-                        <CodeBlock>{JSON.stringify(debug, null, 2)}</CodeBlock>
-                    )}
-                </PageSection>
-            )}
+                ) : (
+                    <CodeBlock>{JSON.stringify(debug, null, 2)}</CodeBlock>
+                )}
+            </AdvancedDisclosure>
         </div>
     );
 }
@@ -163,32 +156,10 @@ function RoundOutcome({session, onCreateNew, onReloadSession}: {session: Session
         return <ErrorState message={session.message} />;
     }
     if (session.status === "blocked") {
-        return (
-            <div>
-                <Alert color="orange" variant="light" title="Can't play this round" mb="sm">
-                    {session.message}
-                </Alert>
-                <QuickActions>
-                    <Button variant="default" onClick={onCreateNew}>
-                        Create a new session
-                    </Button>
-                </QuickActions>
-            </div>
-        );
+        return <RecoveryNotice title="Can't play this round" message={session.message} actionLabel="Create a new session" onAction={onCreateNew} />;
     }
     if (session.status === "conflict") {
-        return (
-            <div>
-                <Alert color="orange" variant="light" title="Session changed elsewhere" mb="sm">
-                    {session.message}
-                </Alert>
-                <QuickActions>
-                    <Button variant="default" onClick={onReloadSession}>
-                        Reload session
-                    </Button>
-                </QuickActions>
-            </div>
-        );
+        return <RecoveryNotice title="Session changed elsewhere" message={session.message} actionLabel="Reload session" onAction={onReloadSession} />;
     }
     return null;
 }
@@ -242,7 +213,6 @@ export function RuntimeTab({
     const [createSeed, setCreateSeed] = useState("");
     const [createInitialBalance, setCreateInitialBalance] = useState("");
     const [restoreSessionId, setRestoreSessionId] = useState("");
-    const [advancedSpinOpened, {toggle: toggleAdvancedSpin}] = useDisclosure(false);
     const [manualRequestId, setManualRequestId] = useState("");
     const [manualExpectedVersion, setManualExpectedVersion] = useState<number | string>("");
 
@@ -396,7 +366,7 @@ export function RuntimeTab({
                         <Button variant="default" onClick={handleRestart} loading={state.status === "loading"}>
                             Restart
                         </Button>
-                        <Button variant="subtle" onClick={onRefresh}>
+                        <Button variant="default" onClick={onRefresh}>
                             Refresh
                         </Button>
                     </QuickActions>
@@ -555,20 +525,17 @@ export function RuntimeTab({
                             </QuickActions>
                             {session.status === "loading" && <LoadingState label="Spinning…" />}
 
-                            <Text size="sm" mt="sm">
-                                <Anchor component="button" type="button" onClick={toggleAdvancedSpin}>
-                                    {advancedSpinOpened ? "Hide" : "Show"} advanced spin options (request id, expected version)
-                                </Anchor>
-                            </Text>
-                            <Collapse expanded={advancedSpinOpened}>
+                            <AdvancedDisclosure detail="request id, expected version">
                                 <QuickActions>
                                     <TextInput
                                         label="Request id override (optional)"
+                                        description="Overrides the automatic idempotency id -- a repeated request id is treated as a retry of the same spin instead of a new one."
                                         value={manualRequestId}
                                         onChange={(event) => setManualRequestId(event.currentTarget.value)}
                                     />
                                     <NumberInput
                                         label="Expected session version override (optional)"
+                                        description="Overrides the automatic optimistic-locking check -- the spin is refused as a conflict if the session's version doesn't match this."
                                         min={1}
                                         step={1}
                                         value={manualExpectedVersion}
@@ -578,7 +545,7 @@ export function RuntimeTab({
                                         Spin with overrides
                                     </Button>
                                 </QuickActions>
-                            </Collapse>
+                            </AdvancedDisclosure>
                         </div>
                     )}
                 </div>
@@ -654,7 +621,7 @@ export function RuntimeTab({
                             Debug this round in Replay &amp; Debug
                         </Button>
                     </QuickActions>
-                    <PageSection legend="Request/Response History">
+                    <PageSection legend="Request/response history">
                         {history.length === 0 ? (
                             <EmptyState message="No requests yet this session." />
                         ) : (

@@ -1,5 +1,4 @@
-import {Alert, Anchor, Button, Stepper, Text, TextInput} from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
+import {Button, Stepper, Text, TextInput} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import {exportParSheet, importParSheet, previewBlueprintBuild} from "../../api/apiClient";
@@ -20,14 +19,16 @@ import {
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
-import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
+import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {RecoveryNotice} from "../common/RecoveryNotice";
 
 const IMPORT_OUTCOME_BANNER: Record<ParSheetImportOutcome, {color: string; icon: ReactNode; title: string}> = {
     success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Imported successfully"},
@@ -236,8 +237,6 @@ export function ParSheetImportExportPanel({
             });
     }
 
-    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
-
     return (
         <PageSection legend="PAR Sheet Import / Export">
             <Text size="sm" c="dimmed" mb="sm">
@@ -277,21 +276,13 @@ export function ParSheetImportExportPanel({
                     <EmptyState message="Import a PAR sheet first." />
                 ) : (
                     <div>
-                        <Alert
+                        <OutcomeBanner
                             color={IMPORT_OUTCOME_BANNER[importOutcome].color}
-                            variant="light"
                             icon={IMPORT_OUTCOME_BANNER[importOutcome].icon}
                             title={IMPORT_OUTCOME_BANNER[importOutcome].title}
-                            mb="sm"
-                        >
-                            <IssueList title="Errors" issues={importResult.errors} />
-                            <IssueList title="Warnings" issues={importResult.warnings} />
-                            {importResult.errors.length === 0 && importResult.warnings.length === 0 && (
-                                <Text size="sm" c="dimmed">
-                                    No issues reported.
-                                </Text>
-                            )}
-                        </Alert>
+                            errors={importResult.errors}
+                            warnings={importResult.warnings}
+                        />
 
                         <PageSection legend="Provenance / source">
                             <Text size="sm">{describeParSheetProvenanceSummary(importResult.provenance)}</Text>
@@ -299,27 +290,20 @@ export function ParSheetImportExportPanel({
 
                         {previewReachable && (
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(2)}>Continue to preview canonical model</Button>
+                                <Button onClick={() => setActiveStep(2)}>Continue to Preview canonical model</Button>
                             </QuickActions>
                         )}
 
-                        <Text size="sm" mt="sm">
-                            <Anchor component="button" type="button" onClick={toggleAdvanced}>
-                                {advancedOpened ? "Hide" : "Show"} advanced details (raw blueprint, raw import response)
-                            </Anchor>
-                        </Text>
-                        {advancedOpened && (
-                            <PageSection legend="Advanced details">
-                                <Text size="sm" fw={600} mb={4}>
-                                    Raw imported blueprint
-                                </Text>
-                                <CodeBlock>{JSON.stringify(importResult.blueprint, null, 2)}</CodeBlock>
-                                <Text size="sm" fw={600} mt="sm" mb={4}>
-                                    Raw import response
-                                </Text>
-                                <CodeBlock>{JSON.stringify(importResult, null, 2)}</CodeBlock>
-                            </PageSection>
-                        )}
+                        <AdvancedDisclosure detail="raw blueprint, raw import response">
+                            <Text size="sm" fw={600} mb={4}>
+                                Raw imported blueprint
+                            </Text>
+                            <CodeBlock>{JSON.stringify(importResult.blueprint, null, 2)}</CodeBlock>
+                            <Text size="sm" fw={600} mt="sm" mb={4}>
+                                Raw import response
+                            </Text>
+                            <CodeBlock>{JSON.stringify(importResult, null, 2)}</CodeBlock>
+                        </AdvancedDisclosure>
                     </div>
                 ))}
 
@@ -383,28 +367,16 @@ export function ParSheetImportExportPanel({
                         {exportView.status === "error" && <ErrorState message={exportView.message} />}
                         {exportView.status === "failed" && <ErrorState message={exportView.message} />}
                         {exportView.status === "conflict" && (
-                            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title={exportView.error} style={{overflowWrap: "anywhere"}}>
-                                <Button color="red" onClick={() => runExport(true)}>
-                                    Overwrite
-                                </Button>
-                            </Alert>
+                            <RecoveryNotice title={exportView.error} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => runExport(true)} />
                         )}
                         {exportOutcome !== undefined && (exportView.status === "ok" || exportView.status === "invalid") && (
-                            <Alert
+                            <OutcomeBanner
                                 color={EXPORT_OUTCOME_BANNER[exportOutcome].color}
-                                variant="light"
                                 icon={EXPORT_OUTCOME_BANNER[exportOutcome].icon}
                                 title={EXPORT_OUTCOME_BANNER[exportOutcome].title}
-                                mb="sm"
-                            >
-                                {exportView.status === "ok" && <IssueList title="Warnings" issues={exportView.warnings} />}
-                                {exportView.status === "invalid" && (
-                                    <>
-                                        <IssueList title="Errors" issues={exportView.errors} />
-                                        <IssueList title="Warnings" issues={exportView.warnings} />
-                                    </>
-                                )}
-                            </Alert>
+                                errors={exportView.status === "invalid" ? exportView.errors : []}
+                                warnings={exportView.warnings}
+                            />
                         )}
                     </PageSection>
                 </div>

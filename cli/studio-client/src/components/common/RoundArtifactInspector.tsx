@@ -1,8 +1,8 @@
-import {Alert, Anchor, Badge, Button, Group, List, Table, Text} from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
+import {Alert, Badge, Button, Group, List, Table, Text} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck, IconInfoCircle} from "@tabler/icons-react";
 import {useState, type ReactNode} from "react";
 import type {ComparisonDimensionResult, ReplayComparisonDimensions, ReplayComparisonView, RoundArtifactDisplayView} from "../../domain/interpret/Replay";
+import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {CodeBlock} from "./CodeBlock";
 import {PageSection} from "./PageSection";
 import {QuickActions} from "./QuickActions";
@@ -53,7 +53,6 @@ export function RoundArtifactInspector({
     stateAfter?: unknown;
 }) {
     const [stepIndex, setStepIndex] = useState(0);
-    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
 
     const step = artifact.steps[stepIndex] ?? artifact.steps[0];
     const hasMultipleSteps = artifact.steps.length > 1;
@@ -200,52 +199,45 @@ export function RoundArtifactInspector({
                 )}
             </PageSection>
 
-            <Text size="sm" mt="sm">
-                <Anchor component="button" type="button" onClick={toggleAdvanced}>
-                    {advancedOpened ? "Hide" : "Show"} advanced details (raw JSON, debug data)
-                </Anchor>
-            </Text>
-            {advancedOpened && (
-                <PageSection legend="Advanced details">
-                    {(stateBefore !== undefined || stateAfter !== undefined) && (
-                        <div>
-                            {stateBefore !== undefined && (
-                                <div>
-                                    <Text size="sm" fw={600} mb={4}>
-                                        State before
-                                    </Text>
-                                    <CodeBlock>{JSON.stringify(stateBefore, null, 2)}</CodeBlock>
-                                </div>
-                            )}
-                            {stateAfter !== undefined && (
-                                <div>
-                                    <Text size="sm" fw={600} mt="sm" mb={4}>
-                                        State after
-                                    </Text>
-                                    <CodeBlock>{JSON.stringify(stateAfter, null, 2)}</CodeBlock>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    {artifact.debug && (
-                        <div>
-                            <Group gap="xs" mb={4} mt={stateBefore !== undefined || stateAfter !== undefined ? "sm" : undefined}>
-                                <Text size="sm" fw={600}>
-                                    Debug data
+            <AdvancedDisclosure detail="raw JSON, debug data">
+                {(stateBefore !== undefined || stateAfter !== undefined) && (
+                    <div>
+                        {stateBefore !== undefined && (
+                            <div>
+                                <Text size="sm" fw={600} mb={4}>
+                                    State before
                                 </Text>
-                                <Badge size="xs" variant="light">
-                                    game-provided, may include RNG/reel-stop data
-                                </Badge>
-                            </Group>
-                            <CodeBlock>{JSON.stringify(artifact.debug, null, 2)}</CodeBlock>
-                        </div>
-                    )}
-                    <Text size="sm" fw={600} mt="sm" mb={4}>
-                        Full artifact
-                    </Text>
-                    <CodeBlock>{JSON.stringify(artifact, null, 2)}</CodeBlock>
-                </PageSection>
-            )}
+                                <CodeBlock>{JSON.stringify(stateBefore, null, 2)}</CodeBlock>
+                            </div>
+                        )}
+                        {stateAfter !== undefined && (
+                            <div>
+                                <Text size="sm" fw={600} mt="sm" mb={4}>
+                                    State after
+                                </Text>
+                                <CodeBlock>{JSON.stringify(stateAfter, null, 2)}</CodeBlock>
+                            </div>
+                        )}
+                    </div>
+                )}
+                {artifact.debug && (
+                    <div>
+                        <Group gap="xs" mb={4} mt={stateBefore !== undefined || stateAfter !== undefined ? "sm" : undefined}>
+                            <Text size="sm" fw={600}>
+                                Debug data
+                            </Text>
+                            <Badge size="xs" variant="light">
+                                game-provided, may include RNG/reel-stop data
+                            </Badge>
+                        </Group>
+                        <CodeBlock>{JSON.stringify(artifact.debug, null, 2)}</CodeBlock>
+                    </div>
+                )}
+                <Text size="sm" fw={600} mt="sm" mb={4}>
+                    Full artifact
+                </Text>
+                <CodeBlock>{JSON.stringify(artifact, null, 2)}</CodeBlock>
+            </AdvancedDisclosure>
         </div>
     );
 }

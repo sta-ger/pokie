@@ -74,7 +74,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(await screen.findByText("Imported successfully")).toBeInTheDocument();
         expect(screen.getByText('Exported by pokie v1.2.0 on 2026-01-01 from "blueprint.json".')).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Preview canonical model"}));
         await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
 
         await waitFor(() => expect(screen.getByText(/Imported Game/)).toBeInTheDocument());
@@ -135,7 +135,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(await screen.findByText("This sheet has unsupported/invalid data")).toBeInTheDocument();
         expect(screen.getByText(/Required sheet "Paytable" is missing\./)).toBeInTheDocument();
         // Preview canonical model is unreachable for an invalid import.
-        expect(screen.queryByRole("button", {name: "Continue to preview canonical model"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Preview canonical model"})).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: stepperStep("Apply / Export", "Commit or write out")}));
         expect(screen.getByRole("button", {name: "Apply"})).toBeDisabled();
@@ -325,7 +325,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.click(screen.getByRole("button", {name: "Import"}));
         await screen.findByText("Imported successfully");
 
-        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Preview canonical model"}));
         await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
         await screen.findByText("Working…");
 
@@ -391,7 +391,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.click(screen.getByRole("button", {name: "Import"}));
         await screen.findByText("Imported successfully");
 
-        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Preview canonical model"}));
         await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
         await screen.findByText(/id: "imported-game"/);
         expect(screen.getByRole("button", {name: "Continue to Apply / Export"})).toBeInTheDocument();
@@ -426,7 +426,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.click(screen.getByRole("button", {name: "Import"}));
         await screen.findByText("Imported successfully");
 
-        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Preview canonical model"}));
         await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
 
         expect(await screen.findByText("build preview backend unavailable")).toBeInTheDocument();
@@ -472,7 +472,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.click(screen.getByRole("button", {name: "Import"}));
         await screen.findByText("Imported successfully");
 
-        await user.click(screen.getByRole("button", {name: "Continue to preview canonical model"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Preview canonical model"}));
         await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
         await screen.findByText("Working…");
 

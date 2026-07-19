@@ -91,7 +91,7 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         await waitFor(() => expect(runRequests).toHaveLength(2));
         runRequests[1].resolve(stageResult("second"));
-        await user.click(await screen.findByRole("button", {name: "Continue to preview artifacts"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         await waitFor(() => expect(screen.getAllByText("second.json").length).toBeGreaterThan(0));
     });
 });

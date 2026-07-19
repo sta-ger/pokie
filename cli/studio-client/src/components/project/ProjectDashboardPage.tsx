@@ -35,6 +35,8 @@ import {useProjectContext} from "../../hooks/useProjectContext";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useRuntimeManager} from "../../hooks/useRuntimeManager";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
+import {ErrorState} from "../common/ErrorState";
+import {LoadingState} from "../common/LoadingState";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DeploymentTab} from "./DeploymentTab";
@@ -561,8 +563,16 @@ export function ProjectDashboardPage() {
                 </Button>
             </div>
 
-            {header.status === "loading" && <Text mt="md">Loading project…</Text>}
-            {header.status === "error" && <Text mt="md">{header.message}</Text>}
+            {header.status === "loading" && (
+                <div style={{marginTop: "1rem"}}>
+                    <LoadingState label="Loading project…" />
+                </div>
+            )}
+            {header.status === "error" && (
+                <div style={{marginTop: "1rem"}}>
+                    <ErrorState message={header.message} />
+                </div>
+            )}
 
             {(header.status === "loaded" || header.status === "error") && (
                 <div ref={panelRef} tabIndex={-1} style={{marginTop: "1rem"}}>

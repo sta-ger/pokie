@@ -1,5 +1,4 @@
-import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Radio, Select, Stepper, Table, Text, TextInput, Textarea} from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
+import {Alert, Badge, Button, Group, List, NumberInput, Radio, Select, Stepper, Table, Text, TextInput, Textarea} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState} from "react";
 import {previewReelStripGeneration} from "../../api/apiClient";
@@ -39,6 +38,7 @@ import {useStudioApi} from "../../context/StudioApiProvider";
 import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {BufferedTextInput} from "../common/BufferedTextInput";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
@@ -441,31 +441,21 @@ function AnalysisTable({analysis}: {analysis: ReelStripAnalysis}) {
 }
 
 function AdvancedReelDetails({draftEntry, reelPreview}: {draftEntry: Record<string, unknown>; reelPreview: StudioReelStripGenerationReelView | undefined}) {
-    const [opened, {toggle}] = useDisclosure(false);
     return (
-        <div>
-            <Text size="sm" mt="sm">
-                <Anchor component="button" type="button" onClick={toggle}>
-                    {opened ? "Hide" : "Show"} advanced details (raw draft config, raw preview response)
-                </Anchor>
+        <AdvancedDisclosure detail="raw draft config, raw preview response">
+            <Text size="sm" fw={600} mb={4}>
+                Draft reelStripGeneration entry
             </Text>
-            {opened && (
-                <PageSection legend="Advanced details">
-                    <Text size="sm" fw={600} mb={4}>
-                        Draft reelStripGeneration entry
+            <CodeBlock>{JSON.stringify(draftEntry, null, 2)}</CodeBlock>
+            {reelPreview && (
+                <div>
+                    <Text size="sm" fw={600} mt="sm" mb={4}>
+                        Raw preview response for this reel
                     </Text>
-                    <CodeBlock>{JSON.stringify(draftEntry, null, 2)}</CodeBlock>
-                    {reelPreview && (
-                        <div>
-                            <Text size="sm" fw={600} mt="sm" mb={4}>
-                                Raw preview response for this reel
-                            </Text>
-                            <CodeBlock>{JSON.stringify(reelPreview, null, 2)}</CodeBlock>
-                        </div>
-                    )}
-                </PageSection>
+                    <CodeBlock>{JSON.stringify(reelPreview, null, 2)}</CodeBlock>
+                </div>
             )}
-        </div>
+        </AdvancedDisclosure>
     );
 }
 
@@ -817,7 +807,7 @@ export function ReelStripGenerationEditor({
 
                         {stopWindowReachable && (
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(3)}>Continue to preview stop windows</Button>
+                                <Button onClick={() => setActiveStep(3)}>Continue to Preview stop windows</Button>
                             </QuickActions>
                         )}
 

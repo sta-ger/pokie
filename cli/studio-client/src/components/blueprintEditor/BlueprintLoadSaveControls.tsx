@@ -1,9 +1,9 @@
-import {Alert, Button, Collapse, TextInput} from "@mantine/core";
-import {IconAlertTriangle} from "@tabler/icons-react";
+import {Button, Collapse, TextInput} from "@mantine/core";
 import {useState} from "react";
 import type {BlueprintLoadView, BlueprintSaveView} from "../../domain/interpret/BlueprintEditor";
 import {ErrorState} from "../common/ErrorState";
 import {QuickActions} from "../common/QuickActions";
+import {RecoveryNotice} from "../common/RecoveryNotice";
 import {SuccessResult} from "../common/SuccessResult";
 
 export function BlueprintLoadSaveControls({
@@ -58,11 +58,7 @@ export function BlueprintLoadSaveControls({
             {loadView.status === "error" || loadView.status === "load-error" ? <ErrorState message={loadView.message} /> : null}
 
             {saveView.status === "conflict" && (
-                <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} title={saveView.message} style={{overflowWrap: "anywhere"}}>
-                    <Button color="red" onClick={() => onOverwrite(saveView.path)}>
-                        Overwrite
-                    </Button>
-                </Alert>
+                <RecoveryNotice title={saveView.message} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => onOverwrite(saveView.path)} />
             )}
             {(saveView.status === "error" || saveView.status === "failed") && <ErrorState message={saveView.message} />}
             {saveView.status === "ok" && <SuccessResult message={`Saved to "${saveView.path}".`} />}
