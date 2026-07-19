@@ -25,10 +25,18 @@ export class BetModesConfig implements BetModesConfigRepresenting {
             }
             byId.set(mode.getId(), mode);
         }
-        if (!byId.has(defaultModeId)) {
+        const defaultMode = byId.get(defaultModeId);
+        if (defaultMode === undefined) {
             throw new Error(
                 `Default bet mode "${defaultModeId}" is not among the configured modes: ${[...byId.keys()].join(", ")}.`,
             );
+        }
+        // VideoSlotWithBetModesSession.play() reverts to the default mode immediately after a
+        // successful forced entry, precisely so a one-shot buy never lingers as a persistent
+        // selection -- a forcing default would defeat that landing spot entirely (reverting "to
+        // default" would just re-arm the same purchase, indefinitely).
+        if (defaultMode.forcesFeatureEntry()) {
+            throw new Error(`Default bet mode "${defaultModeId}" cannot have forcesFeatureEntry() true.`);
         }
         this.modes = byId;
         this.defaultModeId = defaultModeId;

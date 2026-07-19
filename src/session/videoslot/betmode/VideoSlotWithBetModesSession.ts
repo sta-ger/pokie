@@ -27,19 +27,25 @@ import {UnknownBetModeError} from "./UnknownBetModeError.js";
 // forced entry, a no-op forced-entry handler), this behaves exactly like the wrapped session on its
 // own -- the backward-compatible path for a game that never configures bet modes at all.
 //
-// A forcing mode's entry is one-shot per purchase: play() only invokes it while getStakeAmount() is
-// still positive (see play()'s own comment), so it neither re-grants on every subsequent free spin of
-// the round it just started, nor grants extra free spins to a "buy" attempted mid an already-active
-// zero-stake round. And it never charges silently for an entry that didn't happen: a forcing mode
-// whose ForcedFeatureEntryHandling reports it can't actually perform entry (canForceFeatureEntry())
-// makes play() throw ForcedFeatureEntryUnsupportedError before anything is charged or mutated.
+// Persistent modes (base/ante) and one-shot forcing purchases (buy-bonus) have deliberately different
+// lifetimes. A persistent mode's stakeMultiplier applies to every spin indefinitely, until a caller
+// explicitly changes it. A forcing mode is a single purchase: play() only forces entry while
+// getStakeAmount() is still positive (see play()'s own comment) -- so it neither re-grants on every
+// subsequent free spin of the round it just started, nor grants extra free spins to a "buy" attempted
+// mid an already-active zero-stake round -- and the instant that purchase actually succeeds, the mode
+// reverts to the default one, so it never lingers to auto-repurchase itself once the round it bought
+// finishes. It never charges silently for an entry that didn't happen either: a forcing mode whose
+// ForcedFeatureEntryHandling reports it can't actually perform entry (canForceFeatureEntry()) makes
+// play() throw ForcedFeatureEntryUnsupportedError before anything is charged or mutated -- and, since
+// nothing was purchased, the mode selection is left exactly as it was, for the caller to retry.
 //
 // setBetMode() itself refuses to *select* a forcing mode while a zero-stake feature round is already
 // active (ForcingBetModeSelectionRejectedError) -- without that, the selection would otherwise sit
 // latent until the round finishes, and the very next ordinary spin would then force (and charge for) a
 // brand new bonus entry the player never took any fresh action to request at that point. A caller who
 // wants to buy again must call setBetMode() a second time once the round is over -- a deliberate,
-// explicit purchase, never a deferred one. Non-forcing modes (base/ante) are never restricted by this.
+// explicit purchase, never a deferred one. Non-forcing modes (base/ante) are never restricted by this,
+// and never auto-revert either -- persistent means persistent.
 export class VideoSlotWithBetModesSession<T extends string | number | symbol = string>
     extends AbstractVideoSlotSessionDecorator<T>
     implements
@@ -116,6 +122,16 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
                 throw new ForcedFeatureEntryUnsupportedError(mode.getId());
             }
             this.forcedFeatureEntryHandler.forceFeatureEntry(this.baseSession);
+            // A forcing mode is a one-shot purchase intent, not a persistent one like ante: revert to
+            // the default mode the instant the purchase actually succeeds, before the bonus round's
+            // own first spin even plays out. Without this, the mode (and its stakeMultiplier) would
+            // stay selected past the round it just bought, so the very next ordinary spin once that
+            // round finishes -- with no fresh setBetMode() call from the player -- would still read
+            // forcesFeatureEntry() true and a positive stake, silently forcing (and charging for) an
+            // unrequested second purchase. Reverting here, not merely refusing to re-fire, is also what
+            // keeps a state snapshot taken any time after this point (including mid the bought round)
+            // from ever carrying a "consumed" forcing selection to restore in the first place.
+            this.currentBetModeId = this.betModesConfig.getDefaultBetModeId();
         }
 
         // Whatever the wrapped session's own play() is now about to net-charge for this spin (0, for

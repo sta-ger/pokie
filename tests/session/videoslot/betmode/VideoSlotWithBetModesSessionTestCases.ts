@@ -198,6 +198,109 @@ export const testNoLatentBuyAfterFeatureEndsWithoutFreshExplicitPurchase = (
     expect(innerSession.getFreeGamesNum()).toBe(1);
 };
 
+// Regression: the full one-shot purchase lifecycle. An explicit buy forces entry and charges once;
+// the bonus plays out to completion without any further charge/grant; the very next ordinary spin --
+// with no new explicit setBetMode() call -- is a plain, normal-cost spin, not an unrequested
+// repurchase; and a genuinely new explicit buy afterward still works exactly like the first one.
+export const testForcingModeIsOneShotNotPersistentAcrossACompleteBonusLifecycle = (
+    session: VideoSlotWithBetModesSession<string>,
+    innerSession: VideoSlotWithFreeGamesSessionHandling,
+    freeGamesToGrant: number,
+): void => {
+    session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+
+    // Explicit buy.
+    expect(session.getBetModeId()).toBe("base");
+    session.setBetMode("buy-bonus");
+    session.play();
+
+    // Reverted to the default mode immediately -- a one-shot purchase, not a persistent selection.
+    expect(session.getBetModeId()).toBe("base");
+    expect(innerSession.getFreeGamesSum()).toBe(freeGamesToGrant);
+    expect(innerSession.getFreeGamesNum()).toBe(1);
+
+    // Bonus plays out to completion.
+    while (innerSession.getFreeGamesNum() < innerSession.getFreeGamesSum()) {
+        session.play();
+        expect(innerSession.getFreeGamesSum()).toBe(freeGamesToGrant); // never re-grants along the way
+    }
+    expect(innerSession.getFreeGamesNum()).toBe(freeGamesToGrant);
+
+    // The next play(), with no new explicit buy, is a plain normal-cost spin -- no forced entry.
+    const bet = session.getBet();
+    const creditsBeforeOrdinarySpin = session.getCreditsAmount();
+    session.play();
+
+    expect(session.getCreditsAmount()).toBe(creditsBeforeOrdinarySpin - bet + session.getWinAmount());
+    expect(innerSession.getFreeGamesSum()).toBe(0); // no bonus was forced
+
+    // A genuinely new explicit buy afterward works again, exactly like the first one.
+    session.setBetMode("buy-bonus");
+    const stakeAmount = session.getStakeAmount();
+    const creditsBeforeSecondBuy = session.getCreditsAmount();
+    session.play();
+
+    expect(session.getCreditsAmount()).toBe(creditsBeforeSecondBuy - stakeAmount);
+    expect(session.getBetModeId()).toBe("base"); // reverted again after this purchase too
+    expect(innerSession.getFreeGamesSum()).toBe(freeGamesToGrant); // a genuinely new bonus was granted
+    expect(innerSession.getFreeGamesNum()).toBe(1);
+};
+
+// Regression: unlike a one-shot forcing mode, a persistent (non-forcing) mode like ante never
+// auto-reverts -- it stays selected, and keeps applying its multiplier, across as many spins as the
+// caller wants, until they explicitly change it themselves.
+export const testAnteModeStaysPersistentAcrossMultipleSpins = (session: VideoSlotWithBetModesSession<string>): void => {
+    session.setBetMode("ante");
+    const bet = session.getBet();
+
+    for (let i = 0; i < 3; i++) {
+        expect(session.getBetModeId()).toBe("ante"); // never auto-reverts, unlike a forcing mode
+        const creditsBefore = session.getCreditsAmount();
+        session.play();
+        expect(session.getCreditsAmount()).toBe(creditsBefore - bet * 1.25 + session.getWinAmount());
+    }
+
+    expect(session.getBetModeId()).toBe("ante"); // still the caller's own persistent choice
+};
+
+// Regression: a state snapshot captured any time after a successful purchase (including mid the
+// bought round) never carries a "consumed" buy intent to restore -- there's no separate flag to lose
+// or misrestore, because the mode itself is already back to the default the instant the purchase
+// succeeded (see VideoSlotWithBetModesSession.play()). Restoring must not resurrect the purchase.
+export const testSerializationDoesNotResurrectAConsumedBuyIntent = (
+    session: VideoSlotWithBetModesSession<string> &
+        ConvertableToSessionState<BetModeSessionState> &
+        BuildableFromSessionState<BetModeSessionState>,
+    otherSession: VideoSlotWithBetModesSession<string> & BuildableFromSessionState<BetModeSessionState>,
+    otherInnerSession: VideoSlotWithFreeGamesSessionHandling,
+): void => {
+    session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+    session.setBetMode("buy-bonus");
+    session.play(); // successful buy -- mode already reverted to "base" before this returns
+
+    expect(session.getBetModeId()).toBe("base");
+
+    const state = session.toSessionState();
+    expect(state.betModeId).toBe("base"); // nothing "consumed" was ever there to capture
+
+    otherSession.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+    otherSession.fromSessionState(state);
+
+    expect(otherSession.getBetModeId()).toBe("base");
+
+    // Playing the restored bonus round out, then one more ordinary spin, must never re-force entry or
+    // re-charge the buy cost.
+    while (otherInnerSession.getFreeGamesNum() < otherInnerSession.getFreeGamesSum()) {
+        otherSession.play();
+    }
+    const bet = otherSession.getBet();
+    const creditsBefore = otherSession.getCreditsAmount();
+    otherSession.play();
+
+    expect(otherSession.getCreditsAmount()).toBe(creditsBefore - bet + otherSession.getWinAmount());
+    expect(otherInnerSession.getFreeGamesSum()).toBe(0);
+};
+
 // Regression: a forcing mode wired to a handler that can't actually perform entry against this
 // session must fail explicitly, before charging or mutating anything -- never a silent no-op that
 // still takes the buy/ante cost.

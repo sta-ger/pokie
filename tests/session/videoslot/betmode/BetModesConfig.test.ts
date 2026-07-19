@@ -34,4 +34,11 @@ describe("BetModesConfig", () => {
             /Default bet mode "ante" is not among the configured modes/,
         );
     });
+
+    it("rejects a default mode with forcesFeatureEntry() true", () => {
+        const forcingDefault = new BetModeDefinition("buy-bonus", {forcesFeatureEntry: true});
+        expect(() => new BetModesConfig([forcingDefault], "buy-bonus")).toThrow(
+            /Default bet mode "buy-bonus" cannot have forcesFeatureEntry\(\) true/,
+        );
+    });
 });

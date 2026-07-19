@@ -16,15 +16,18 @@ import {
 import {
     testAnteModeChargesTheMultipliedStake,
     testAnteModeGatesCanPlayNextGameOnTheFullCost,
+    testAnteModeStaysPersistentAcrossMultipleSpins,
     testBuyBonusForcesFeatureEntryAndChargesTheBuyCost,
     testBuyBonusIsOneShotAndTheBonusRoundTerminates,
     testDefaultBetModeBehavesLikeThePlainSession,
     testForcedEntryUnsupportedByHandlerFailsExplicitlyWithoutCharging,
+    testForcingModeIsOneShotNotPersistentAcrossACompleteBonusLifecycle,
     testInsufficientBaseCreditsBlockPlayRegardlessOfMode,
     testInvalidBetModeThrowsAndLeavesTheCurrentModeUnchanged,
     testNoLatentBuyAfterFeatureEndsWithoutFreshExplicitPurchase,
     testNonForcingModeStaysSelectableDuringActiveFreeGames,
     testSelectingForcingModeDuringActiveFreeGamesIsRejected,
+    testSerializationDoesNotResurrectAConsumedBuyIntent,
     testSessionStateRoundTripCarriesModeAlone,
     testSessionStateRoundTripCarriesModeAndNestedFreeGamesState,
 } from "./VideoSlotWithBetModesSessionTestCases.js";
@@ -158,6 +161,37 @@ describe("VideoSlotWithBetModesSession", () => {
             new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
         );
         testNoLatentBuyAfterFeatureEndsWithoutFreshExplicitPurchase(session, innerSession, FREE_GAMES_TO_GRANT);
+    });
+
+    it("regression: forcing mode is one-shot, not persistent, across a complete buy -> bonus -> ordinary-spin -> fresh-buy lifecycle", () => {
+        const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+        const session = new VideoSlotWithBetModesSession(
+            innerSession,
+            buyBonusModesConfig(),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        testForcingModeIsOneShotNotPersistentAcrossACompleteBonusLifecycle(session, innerSession, FREE_GAMES_TO_GRANT);
+    });
+
+    it("ante mode stays persistent (never auto-reverts) across repeated spins", () => {
+        const session = new VideoSlotWithBetModesSession(new VideoSlotSession(), anteModesConfig());
+        testAnteModeStaysPersistentAcrossMultipleSpins(session);
+    });
+
+    it("serialization/replay never resurrects an already-consumed buy intent", () => {
+        const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+        const session = new VideoSlotWithBetModesSession(
+            innerSession,
+            buyBonusModesConfig(),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        const otherInnerSession = createFreeGamesSessionWithNoNaturalTriggers();
+        const otherSession = new VideoSlotWithBetModesSession(
+            otherInnerSession,
+            buyBonusModesConfig(),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        testSerializationDoesNotResurrectAConsumedBuyIntent(session, otherSession, otherInnerSession);
     });
 
     it("fails explicitly instead of silently charging when the default no-op handler can't perform entry", () => {
