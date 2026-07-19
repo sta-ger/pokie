@@ -216,6 +216,28 @@ describe("ParSheetImporter", () => {
             expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-winmodel-invalid-type", severity: "error"})]));
         });
 
+        // A non-numeric "Minimum Cluster Size" used to be silently dropped -- the resulting clusters
+        // winModel just came back without minimumClusterSize, with no diagnostic at all. This must be
+        // reported explicitly (an error) instead.
+        it("explicitly reports a non-numeric Minimum Cluster Size, instead of silently dropping it from a clusters winModel", async () => {
+            await writeWorkbook({
+                ...validSheets,
+                WinModel: [
+                    ["Key", "Value"],
+                    ["Type", "clusters"],
+                    ["Minimum Cluster Size", "five"],
+                ],
+            });
+            const importer = new ParSheetImporter();
+
+            const {blueprint, issues} = await importer.importFromFile(filePath);
+
+            expect(blueprint.winModel).toEqual({type: "clusters"});
+            expect(issues).toEqual(
+                expect.arrayContaining([expect.objectContaining({code: "parsheet-winmodel-invalid-cluster-size", severity: "error"})]),
+            );
+        });
+
         // A single freeGames award has exactly one scatterSymbol; a Mechanics sheet listing rows for two
         // different scatter symbols is ambiguous and can't round-trip losslessly -- it must be reported
         // as an explicit error, not silently resolved by picking one of them without saying so.

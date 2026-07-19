@@ -51,7 +51,20 @@ export class WinModelSheetMapper implements WinModelSheetMapping {
 
         const rawType = values.get("Type");
         const type = rawType?.toLowerCase();
-        const minimumClusterSize = cellToNumber(values.get("Minimum Cluster Size"));
+        // cellToText again (not just values.get) collapses a present-but-blank "Minimum Cluster Size"
+        // row back to undefined -- toRows never writes that row when omitting the field, but a
+        // hand-edited sheet could still have a blank Value cell there, and that must mean "no value
+        // given", not "malformed".
+        const rawMinimumClusterSize = cellToText(values.get("Minimum Cluster Size"));
+        const minimumClusterSize = cellToNumber(rawMinimumClusterSize);
+        if (rawMinimumClusterSize !== undefined && minimumClusterSize === undefined) {
+            issues.push({
+                code: "parsheet-winmodel-invalid-cluster-size",
+                severity: "error",
+                message: `Sheet "${this.sheetName}" has "Minimum Cluster Size" = "${rawMinimumClusterSize}", which is not a number, so it can't be recovered.`,
+                details: {sheet: this.sheetName, minimumClusterSize: rawMinimumClusterSize},
+            });
+        }
 
         if (type === undefined) {
             issues.push({

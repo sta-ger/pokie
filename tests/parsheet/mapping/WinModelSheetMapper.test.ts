@@ -84,6 +84,47 @@ describe("WinModelSheetMapper", () => {
         expect(issues).toEqual([expect.objectContaining({code: "parsheet-winmodel-cluster-size-ignored", severity: "warning"})]);
     });
 
+    it("reports a non-numeric Minimum Cluster Size for a clusters type, instead of silently dropping it", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Key", "Value"],
+            ["Type", "clusters"],
+            ["Minimum Cluster Size", "five"],
+        ]);
+
+        expect(value).toEqual({type: "clusters"});
+        expect(issues).toEqual([
+            expect.objectContaining({
+                code: "parsheet-winmodel-invalid-cluster-size",
+                severity: "error",
+                details: {sheet: "WinModel", minimumClusterSize: "five"},
+            }),
+        ]);
+    });
+
+    it("reports a non-numeric Minimum Cluster Size even for a non-clusters type (still lost, still not silent)", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Key", "Value"],
+            ["Type", "lines"],
+            ["Minimum Cluster Size", "five"],
+        ]);
+
+        expect(value).toEqual({type: "lines"});
+        expect(issues).toEqual([expect.objectContaining({code: "parsheet-winmodel-invalid-cluster-size", severity: "error"})]);
+        // Malformed and "doesn't apply to this type" are two different problems -- only one is reported here.
+        expect(issues.some((issue) => issue.code === "parsheet-winmodel-cluster-size-ignored")).toBe(false);
+    });
+
+    it("does not treat a present-but-blank Minimum Cluster Size cell as malformed", () => {
+        const {value, issues} = mapper.fromRows([
+            ["Key", "Value"],
+            ["Type", "clusters"],
+            ["Minimum Cluster Size", ""],
+        ]);
+
+        expect(value).toEqual({type: "clusters"});
+        expect(issues).toEqual([]);
+    });
+
     it("warns about an unrecognized key", () => {
         const {issues} = mapper.fromRows([
             ["Key", "Value"],

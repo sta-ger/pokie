@@ -592,7 +592,8 @@ shape as [`pokie build`'s validation](#validation)):
 - on import, a `WinModel` sheet with no recognizable `Type` value at all (`parsheet-winmodel-missing-type` if
   blank, `parsheet-winmodel-invalid-type` if present but not `lines`/`ways`/`clusters`) — `winModel` is dropped
   rather than silently defaulting to `lines`; a `Minimum Cluster Size` given for a non-`clusters` type is ignored
-  with a warning (`parsheet-winmodel-cluster-size-ignored`);
+  with a warning (`parsheet-winmodel-cluster-size-ignored`); a `Minimum Cluster Size` that's present but not a
+  number is reported (`parsheet-winmodel-invalid-cluster-size`, error) rather than silently dropped;
 - on import, a `Mechanics` sheet whose rows disagree on which scatter symbol they're for
   (`parsheet-mechanics-multiple-scatter-symbols`) — a single free-games award has exactly one scatter symbol, so
   this can't round-trip losslessly and is reported as an error rather than silently picking one;
