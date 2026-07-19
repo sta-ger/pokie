@@ -22,7 +22,13 @@ implements ForcedFeatureEntryHandling<T> {
         this.freeGamesToGrant = freeGamesToGrant;
     }
 
+    public canForceFeatureEntry(session: VideoSlotSessionHandling<T>): boolean {
+        return this.supportsFreeGamesState(session);
+    }
+
     public forceFeatureEntry(session: VideoSlotSessionHandling<T>): void {
+        // VideoSlotWithBetModesSession always checks canForceFeatureEntry() first -- this guard is
+        // defense in depth for a handler called directly, not the primary safeguard.
         if (!this.supportsFreeGamesState(session)) {
             return;
         }

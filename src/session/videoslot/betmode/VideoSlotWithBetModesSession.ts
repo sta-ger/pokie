@@ -9,6 +9,7 @@ import type {BetModeSessionState} from "./BetModeSessionState.js";
 import {BetModesConfig} from "./BetModesConfig.js";
 import type {BetModesConfigRepresenting} from "./BetModesConfigRepresenting.js";
 import type {ForcedFeatureEntryHandling} from "./ForcedFeatureEntryHandling.js";
+import {ForcedFeatureEntryUnsupportedError} from "./ForcedFeatureEntryUnsupportedError.js";
 import {NoOpForcedFeatureEntryHandler} from "./NoOpForcedFeatureEntryHandler.js";
 import {UnknownBetModeError} from "./UnknownBetModeError.js";
 
@@ -24,6 +25,13 @@ import {UnknownBetModeError} from "./UnknownBetModeError.js";
 // With both constructor arguments left at their defaults (a single "base" mode, stakeMultiplier 1, no
 // forced entry, a no-op forced-entry handler), this behaves exactly like the wrapped session on its
 // own -- the backward-compatible path for a game that never configures bet modes at all.
+//
+// A forcing mode's entry is one-shot per purchase: play() only invokes it while getStakeAmount() is
+// still positive (see play()'s own comment), so it neither re-grants on every subsequent free spin of
+// the round it just started, nor grants extra free spins to a "buy" attempted mid an already-active
+// zero-stake round. And it never charges silently for an entry that didn't happen: a forcing mode
+// whose ForcedFeatureEntryHandling reports it can't actually perform entry (canForceFeatureEntry())
+// makes play() throw ForcedFeatureEntryUnsupportedError before anything is charged or mutated.
 export class VideoSlotWithBetModesSession<T extends string | number | symbol = string>
     extends AbstractVideoSlotSessionDecorator<T>
     implements
@@ -77,16 +85,30 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
             return;
         }
         const mode = this.resolveActiveBetMode();
-        // Computed before any forced entry mutates the wrapped session's state (e.g. an unfinished
-        // free-games round reads back as 0 stake) -- what a buy-feature mode actually costs is
-        // resolved against the state as it was when the player chose to spend it, not after.
-        const baseStakeAmount = this.computeBaseStakeAmount();
+        // getStakeAmount() itself, computed before any forced entry mutates the wrapped session's
+        // state -- this is the one true "what does this spin cost" figure, identical to what a caller
+        // (or SpinCommandHandler, via determineStakeAmount()) already read before calling play(). A
+        // positive value here means this is a genuinely new, chargeable spin; 0 means we're already
+        // mid a zero-stake feature round (e.g. an unfinished free-games round granted by an earlier
+        // forced entry, or a naturally triggered one) -- forcing entry only ever happens on the
+        // former, which is what makes it one-shot per purchase rather than repeated on every
+        // subsequent free spin, and what stops a "buy" attempted mid an already-active round from
+        // granting extra free spins on top.
+        const totalIntendedCharge = this.getStakeAmount();
 
-        if (mode.forcesFeatureEntry()) {
+        if (mode.forcesFeatureEntry() && totalIntendedCharge > 0) {
+            if (!this.forcedFeatureEntryHandler.canForceFeatureEntry(this.baseSession)) {
+                throw new ForcedFeatureEntryUnsupportedError(mode.getId());
+            }
             this.forcedFeatureEntryHandler.forceFeatureEntry(this.baseSession);
         }
 
-        const extraCost = baseStakeAmount * (mode.getStakeMultiplier() - 1);
+        // Whatever the wrapped session's own play() is now about to net-charge for this spin (0, for
+        // instance, if forceFeatureEntry() just put it mid a free round it banks/reverts instead of
+        // charging for) is topped up to exactly totalIntendedCharge -- never assumed to already equal
+        // the base bet, which is what let a buy-bonus's first (forced, free) spin silently go
+        // undercharged by a full base bet before this fix.
+        const extraCost = totalIntendedCharge - this.computeBaseStakeAmount();
         if (extraCost !== 0) {
             this.baseSession.setCreditsAmount(this.baseSession.getCreditsAmount() - extraCost);
         }

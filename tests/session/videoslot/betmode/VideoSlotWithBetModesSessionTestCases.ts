@@ -78,18 +78,77 @@ export const testBuyBonusForcesFeatureEntryAndChargesTheBuyCost = (
 ): void => {
     session.setBetMode("buy-bonus");
     const bet = session.getBet();
-    expect(session.getStakeAmount()).toBe(bet * 50);
+    const stakeAmount = session.getStakeAmount();
+    expect(stakeAmount).toBe(bet * 50);
     expect(innerSession.getFreeGamesSum()).toBe(0);
 
     const creditsBefore = session.getCreditsAmount();
     session.play();
 
     // The buy spin itself is played as the first free game: its own stake/win are banked (not paid
-    // out) by the free-games decorator, so only the ante-style extra cost (multiplier - 1) ever
-    // actually leaves the balance -- deterministic regardless of the round's win amount.
-    expect(session.getCreditsAmount()).toBe(creditsBefore - bet * 49);
+    // out) by the free-games decorator. The full buy cost still has to actually leave the balance
+    // though -- topped up on top of whatever that inner free spin nets to (0, banked) -- deterministic
+    // regardless of the round's win amount, and always equal to getStakeAmount() read before play().
+    expect(session.getCreditsAmount()).toBe(creditsBefore - stakeAmount);
     expect(innerSession.getFreeGamesSum()).toBeGreaterThanOrEqual(freeGamesToGrant);
     expect(innerSession.getFreeGamesNum()).toBe(1);
+};
+
+// Regression: forcing entry is one-shot per purchase -- a buy-bonus round must not re-grant
+// freeGamesToGrant on every subsequent free spin (which would make the round effectively never end),
+// and it must actually terminate after exactly the granted number of spins.
+export const testBuyBonusIsOneShotAndTheBonusRoundTerminates = (
+    session: VideoSlotWithBetModesSession<string>,
+    innerSession: VideoSlotWithFreeGamesSessionHandling,
+    freeGamesToGrant: number,
+): void => {
+    session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+    session.setBetMode("buy-bonus");
+    session.play(); // the buy spin -- consumes free spin #1
+
+    expect(innerSession.getFreeGamesSum()).toBe(freeGamesToGrant);
+    expect(innerSession.getFreeGamesNum()).toBe(1);
+
+    while (innerSession.getFreeGamesNum() < innerSession.getFreeGamesSum()) {
+        session.play();
+        // Never grows beyond the originally granted amount -- no re-grant on each free spin.
+        expect(innerSession.getFreeGamesSum()).toBe(freeGamesToGrant);
+    }
+
+    expect(innerSession.getFreeGamesNum()).toBe(freeGamesToGrant); // the bonus round actually finished
+};
+
+// Regression: attempting to (re-)select the buy-bonus mode while a free-games round is already
+// active must not grant extra free spins, and must not charge anything -- the spin just continues
+// the existing round like any other free spin.
+export const testBuyModeDuringActiveFreeGamesGrantsNoExtraSpinsOrCharge = (
+    session: VideoSlotWithBetModesSession<string>,
+    innerSession: VideoSlotWithFreeGamesSessionHandling,
+): void => {
+    innerSession.setFreeGamesSum(3);
+    innerSession.setFreeGamesNum(1); // mid an unrelated, already-active free-games round
+
+    session.setBetMode("buy-bonus");
+    const creditsBefore = session.getCreditsAmount();
+
+    session.play();
+
+    expect(innerSession.getFreeGamesSum()).toBe(3); // unchanged -- no extra grant
+    expect(innerSession.getFreeGamesNum()).toBe(2); // the round simply continued
+    expect(session.getCreditsAmount()).toBe(creditsBefore); // nothing charged
+};
+
+// Regression: a forcing mode wired to a handler that can't actually perform entry against this
+// session must fail explicitly, before charging or mutating anything -- never a silent no-op that
+// still takes the buy/ante cost.
+export const testForcedEntryUnsupportedByHandlerFailsExplicitlyWithoutCharging = (
+    session: VideoSlotWithBetModesSession<string>,
+): void => {
+    session.setBetMode("buy-bonus");
+    const creditsBefore = session.getCreditsAmount();
+
+    expect(() => session.play()).toThrow(/cannot perform entry/);
+    expect(session.getCreditsAmount()).toBe(creditsBefore);
 };
 
 export const testSessionStateRoundTripCarriesModeAlone = (

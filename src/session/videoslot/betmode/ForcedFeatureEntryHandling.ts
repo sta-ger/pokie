@@ -6,5 +6,11 @@ import type {VideoSlotSessionHandling} from "../VideoSlotSessionHandling.js";
 // interface, never a change to the bet-mode runtime itself. See FreeGamesForcedFeatureEntryHandler for
 // the common "grant N free games" case, and NoOpForcedFeatureEntryHandler for the safe default.
 export interface ForcedFeatureEntryHandling<T extends string | number | symbol = string> {
+    // Checked by VideoSlotWithBetModesSession.play() *before* charging anything, for every mode with
+    // forcesFeatureEntry() true -- a false here makes play() fail explicitly (see
+    // ForcedFeatureEntryUnsupportedError) instead of silently charging the buy/ante cost for an entry
+    // that never actually happened.
+    canForceFeatureEntry(session: VideoSlotSessionHandling<T>): boolean;
+
     forceFeatureEntry(session: VideoSlotSessionHandling<T>): void;
 }

@@ -1,17 +1,25 @@
 import {
     BetModeDefinition,
     BetModesConfig,
+    ForcedFeatureEntryUnsupportedError,
     FreeGamesForcedFeatureEntryHandler,
     NoOpForcedFeatureEntryHandler,
+    SymbolsCombinationsGenerator,
     VideoSlotSession,
+    VideoSlotWinCalculator,
     VideoSlotWithBetModesSession,
+    VideoSlotWithFreeGamesConfig,
+    VideoSlotWithFreeGamesConfigRepresenting,
     VideoSlotWithFreeGamesSession,
 } from "pokie";
 import {
     testAnteModeChargesTheMultipliedStake,
     testAnteModeGatesCanPlayNextGameOnTheFullCost,
     testBuyBonusForcesFeatureEntryAndChargesTheBuyCost,
+    testBuyBonusIsOneShotAndTheBonusRoundTerminates,
+    testBuyModeDuringActiveFreeGamesGrantsNoExtraSpinsOrCharge,
     testDefaultBetModeBehavesLikeThePlainSession,
+    testForcedEntryUnsupportedByHandlerFailsExplicitlyWithoutCharging,
     testInsufficientBaseCreditsBlockPlayRegardlessOfMode,
     testInvalidBetModeThrowsAndLeavesTheCurrentModeUnchanged,
     testSessionStateRoundTripCarriesModeAlone,
@@ -28,6 +36,24 @@ const buyBonusModesConfig = (): BetModesConfig =>
         [new BetModeDefinition("base"), new BetModeDefinition("buy-bonus", {stakeMultiplier: 50, forcesFeatureEntry: true})],
         "base",
     );
+
+// Disables every natural scatter-triggered free-games award, so the only source of free games in a
+// test using this config is an explicit forced entry -- required for asserting an exact
+// getFreeGamesSum()/getFreeGamesNum() count without RNG-driven retriggers muddying it.
+const createFreeGamesConfigWithNoNaturalTriggers = (): VideoSlotWithFreeGamesConfigRepresenting => {
+    const config = new VideoSlotWithFreeGamesConfig();
+    config.getScatterSymbols().forEach((scatter) => {
+        for (let i = 0; i < config.getReelsNumber() * config.getReelsSymbolsNumber(); i++) {
+            config.setFreeGamesForScatters(scatter, i, 0);
+        }
+    });
+    return config;
+};
+
+const createFreeGamesSessionWithNoNaturalTriggers = (): VideoSlotWithFreeGamesSession => {
+    const config = createFreeGamesConfigWithNoNaturalTriggers();
+    return new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config), new VideoSlotWinCalculator(config));
+};
 
 describe("VideoSlotWithBetModesSession", () => {
     it("behaves exactly like the wrapped session when no bet modes are configured", () => {
@@ -55,7 +81,7 @@ describe("VideoSlotWithBetModesSession", () => {
         testInvalidBetModeThrowsAndLeavesTheCurrentModeUnchanged(session);
     });
 
-    it("forces free-games entry and charges the buy cost for a buy-bonus mode", () => {
+    it("forces free-games entry and charges exactly getStakeAmount() as the buy cost", () => {
         const innerSession = new VideoSlotWithFreeGamesSession();
         const session = new VideoSlotWithBetModesSession(
             innerSession,
@@ -65,14 +91,54 @@ describe("VideoSlotWithBetModesSession", () => {
         testBuyBonusForcesFeatureEntryAndChargesTheBuyCost(session, innerSession, FREE_GAMES_TO_GRANT);
     });
 
-    it("never forces entry through the default no-op handler even when a mode claims forcesFeatureEntry", () => {
-        const innerSession = new VideoSlotWithFreeGamesSession();
-        const session = new VideoSlotWithBetModesSession(innerSession, buyBonusModesConfig(), new NoOpForcedFeatureEntryHandler());
+    it("grants free games exactly once per purchase and the bonus round actually terminates", () => {
+        const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+        const session = new VideoSlotWithBetModesSession(
+            innerSession,
+            buyBonusModesConfig(),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        testBuyBonusIsOneShotAndTheBonusRoundTerminates(session, innerSession, FREE_GAMES_TO_GRANT);
+    });
 
+    it("grants no extra free spins or charge when buy-bonus is selected mid an already-active free-games round", () => {
+        const innerSession = createFreeGamesSessionWithNoNaturalTriggers();
+        const session = new VideoSlotWithBetModesSession(
+            innerSession,
+            buyBonusModesConfig(),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        testBuyModeDuringActiveFreeGamesGrantsNoExtraSpinsOrCharge(session, innerSession);
+    });
+
+    it("fails explicitly instead of silently charging when the default no-op handler can't perform entry", () => {
+        const session = new VideoSlotWithBetModesSession(new VideoSlotSession(), buyBonusModesConfig(), new NoOpForcedFeatureEntryHandler());
+        testForcedEntryUnsupportedByHandlerFailsExplicitlyWithoutCharging(session);
+    });
+
+    it("fails explicitly (not just no-op) when a capable handler is wired to a session it can't act on", () => {
+        // FreeGamesForcedFeatureEntryHandler is a real, capable handler in general -- but this
+        // session is a plain VideoSlotSession with no free-games state at all, so it still can't
+        // perform entry here, and that must fail loudly rather than quietly charging nothing for it.
+        const session = new VideoSlotWithBetModesSession(
+            new VideoSlotSession(),
+            buyBonusModesConfig(),
+            new FreeGamesForcedFeatureEntryHandler(FREE_GAMES_TO_GRANT),
+        );
+        testForcedEntryUnsupportedByHandlerFailsExplicitlyWithoutCharging(session);
+    });
+
+    it("throws the typed ForcedFeatureEntryUnsupportedError, carrying the offending mode id", () => {
+        const session = new VideoSlotWithBetModesSession(new VideoSlotSession(), buyBonusModesConfig(), new NoOpForcedFeatureEntryHandler());
         session.setBetMode("buy-bonus");
-        session.play();
 
-        expect(innerSession.getFreeGamesSum()).toBe(0);
+        try {
+            session.play();
+            throw new Error("expected play() to throw");
+        } catch (error) {
+            expect(error).toBeInstanceOf(ForcedFeatureEntryUnsupportedError);
+            expect((error as ForcedFeatureEntryUnsupportedError).getModeId()).toBe("buy-bonus");
+        }
     });
 
     it("round-trips the selected bet mode alone via toSessionState/fromSessionState", () => {
