@@ -37,9 +37,6 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     if (freeGames) {
         requireNames.push("VideoSlotWithFreeGamesConfig", "VideoSlotWithFreeGamesSession");
     }
-    if (hasBetModes) {
-        requireNames.push("BetModeDefinition", "BetModesConfig", "VideoSlotWithBetModesSession");
-    }
     requireNames.sort();
 
     // Built once here (not inline in createConfig/createSession) since both the config-wrapping and
@@ -60,27 +57,25 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
     // Only introduce an intermediate "config" local when a winCalculator actually needs to reference
     // it — otherwise createSession() stays the exact one-liner it's always been.
-    const sessionConstructionExpression = winCalculatorDeclaration
-        ? `new ${sessionClassName}(config${winCalculatorArgs})`
-        : `new ${sessionClassName}(createConfig())`;
-    const configDeclaration = winCalculatorDeclaration ? `        const config = createConfig();\n${winCalculatorDeclaration}` : "";
-    // Only stakeMultiplier (from the blueprint's own costMultiplier) is ever derived here —
-    // forcesFeatureEntry stays false for every blueprint-derived mode, since the declarative
-    // GameBlueprint/BetMode shape (see gamepackage/BetMode.ts) has no field for what a forced entry
-    // should actually do (see ForcedFeatureEntryHandling) or how many free games it should grant. A
-    // buy-bonus-style forcing mode still needs a hand-composed createSession() wiring a real
-    // ForcedFeatureEntryHandling — this wraps in the *ante*-style cost-multiplier runtime automatically,
-    // nothing more. The first configured mode is the default (BetModesConfig requires one, and the
-    // blueprint schema has no separate "is default" flag); GameBlueprintValidator already guarantees
-    // every mode has a unique, non-empty id, so blueprint.betModes[0].id is always safe to use as-is.
-    const betModesWrapCode = hasBetModes
-        ? `        const session = ${sessionConstructionExpression};
-        const betModes = blueprint.betModes.map((mode) => new BetModeDefinition(mode.id, {stakeMultiplier: mode.costMultiplier}));
-        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, blueprint.betModes[0].id));
+    //
+    // Deliberately does NOT wrap the session in VideoSlotWithBetModesSession, even when betModes is
+    // configured: the declarative blueprint/BetMode shape (see gamepackage/BetMode.ts) has only
+    // id/label/costMultiplier — it has no field distinguishing a persistent ante-style stake
+    // multiplier from a one-shot buy-bonus/forced-feature-entry mode, and no explicit "default mode"
+    // flag. A high costMultiplier is exactly as likely to mean "buy the bonus" (forcesFeatureEntry,
+    // one-shot) as "ante" (persistent, applies to every spin) — guessing either one here would silently
+    // wire the wrong runtime semantics for whichever guess is wrong (see git history for the version of
+    // this file that guessed "always ante"), and guessing which array entry is "the default" would be
+    // just as unfounded. Until the blueprint schema itself carries an explicit runtime-semantics
+    // contract (mode kind + explicit default), a game that wants real bet-mode runtime behavior needs
+    // a hand-composed createSession() wiring VideoSlotWithBetModesSession itself — getBetModes() below
+    // still exposes the declarative data as-is, for a caller to build that UI/logic externally.
+    const createSessionBody = winCalculatorDeclaration
+        ? `        const config = createConfig();
+${winCalculatorDeclaration}        return new ${sessionClassName}(config${winCalculatorArgs});
 `
-        : `        return ${sessionConstructionExpression};
+        : `        return new ${sessionClassName}(createConfig());
 `;
-    const createSessionBody = `${configDeclaration}${betModesWrapCode}`;
 
     const freeGamesWrapCode = freeGames
         ? `

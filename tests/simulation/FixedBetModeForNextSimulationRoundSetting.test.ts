@@ -1,5 +1,6 @@
 import {
     BetModeDefinition,
+    BetModeSimulationUnsupportedError,
     BetModesConfig,
     FixedBetModeForNextSimulationRoundSetting,
     GameSessionHandling,
@@ -29,10 +30,25 @@ const buyBonusModesConfig = (): BetModesConfig =>
     );
 
 describe("FixedBetModeForNextSimulationRoundSetting", () => {
-    it("is a no-op against a session that doesn't support BetModeSelecting at all", () => {
+    it("fails clearly (BetModeSimulationUnsupportedError) against a session that doesn't support BetModeSelecting at all", () => {
         const session = createPlainFakeSession();
 
-        expect(() => new FixedBetModeForNextSimulationRoundSetting("ante").setBetModeForNextRound(session)).not.toThrow();
+        expect(() => new FixedBetModeForNextSimulationRoundSetting("ante").setBetModeForNextRound(session)).toThrow(
+            BetModeSimulationUnsupportedError,
+        );
+    });
+
+    it("the unsupported-session error names the requested mode and never silently proceeds", () => {
+        const session = createPlainFakeSession();
+
+        try {
+            new FixedBetModeForNextSimulationRoundSetting("ante").setBetModeForNextRound(session);
+            throw new Error("expected setBetModeForNextRound() to throw");
+        } catch (error) {
+            expect(error).toBeInstanceOf(BetModeSimulationUnsupportedError);
+            expect((error as BetModeSimulationUnsupportedError).getModeId()).toBe("ante");
+            expect((error as Error).message).toContain('"ante"');
+        }
     });
 
     it("selects the fixed mode on a session that supports BetModeSelecting", () => {

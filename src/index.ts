@@ -457,6 +457,7 @@ export * from "./simulation/AggregateSimulationRunner.js";
 export * from "./simulation/AsyncSimulationHandling.js";
 export * from "./simulation/BetForNextSimulationRoundSetting.js";
 export * from "./simulation/BetModeForNextSimulationRoundSetting.js";
+export * from "./simulation/BetModeSimulationUnsupportedError.js";
 export * from "./simulation/ConfidenceIntervalCalculator.js";
 export * from "./simulation/ExplicitSimulationRoundCategoryDeterminer.js";
 export * from "./simulation/FallbackSimulationRoundCategoryDeterminer.js";

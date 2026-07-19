@@ -344,6 +344,17 @@ describe("SimCommand --mode", () => {
 
         await expect(command.run(["./crazy-fruits", "--mode"])).rejects.toThrow(/--mode requires a bet mode id/);
     });
+
+    // Regression: --mode against a game whose session doesn't support bet modes at all must fail
+    // clearly, never silently simulate the plain base game and still label the report with the
+    // requested mode.
+    it("fails clearly, rather than silently simulating the base game, when the game has no bet modes at all", async () => {
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
+
+        await expect(command.run(["./crazy-fruits", "--rounds", "20", "--mode", "ante"])).rejects.toThrow(
+            /does not support bet mode selection/,
+        );
+    });
 });
 
 describe("SimCommand (integration, real loadPokieGame + fixture game package)", () => {

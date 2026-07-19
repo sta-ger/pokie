@@ -402,36 +402,54 @@ describe("GamePackageGenerator", () => {
         expect(gameWithoutBetModes.getBetModes).toBeUndefined();
     });
 
-    it("wires createSession()'s session to actually support bet-mode selection, using costMultiplier as the runtime stakeMultiplier", () => {
+    // Regression: the blueprint's declarative BetMode shape (id/label/costMultiplier only) has no
+    // field distinguishing a persistent ante-style multiplier from a one-shot buy-bonus/
+    // forced-feature-entry mode, and no explicit "default mode" flag. Wiring createSession() to guess
+    // either from costMultiplier/array order would silently misapply the wrong runtime semantics --
+    // e.g. exactly the case below, where a high-multiplier "buy-bonus"-named mode must NOT become a
+    // persistent 100x base mode the session just keeps charging forever. Until the blueprint schema
+    // itself carries an explicit runtime-semantics contract, createSession() must not guess at all.
+    it("a high-multiplier buy-bonus-like blueprint mode never becomes a persistent high-multiplier base mode -- no bet-mode wrapping happens at all", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const betModes = [{id: "base"}, {id: "ante", costMultiplier: 1.25}];
+        const betModes = [{id: "base"}, {id: "buy-bonus", costMultiplier: 100}];
         const result = generator.generate(
-            buildBlueprint({betModes, manifest: {id: "with-ante", name: "With Ante", version: "0.1.0"}}),
+            buildBlueprint({betModes, manifest: {id: "with-buy-bonus-like-mode", name: "With Buy Bonus", version: "0.1.0"}}),
             cwd,
         );
 
         const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
-        const session = game.createSession() as unknown as {
-            getBetModeId(): string;
-            setBetMode(modeId: string): void;
-            getStakeAmount(): number;
-            getBet(): number;
-            setCreditsAmount(amount: number): void;
-            getCreditsAmount(): number;
-            getWinAmount(): number;
-            play(): void;
-        };
+        const session = game.createSession();
 
-        expect(session.getBetModeId()).toBe("base"); // the first configured mode is the default
-        expect(session.getStakeAmount()).toBe(session.getBet());
+        // No BetModeSelecting/StakeAmountDetermining wiring at all -- getBet()/getStakeAmount() (if
+        // present) are never silently multiplied by 100x, and there's no setBetMode() to even select
+        // "buy-bonus" with, persistent or otherwise.
+        const candidate = session as Partial<{setBetMode: unknown; getBetModeId: unknown; getStakeAmount: unknown}>;
+        expect(candidate.setBetMode).toBeUndefined();
+        expect(candidate.getBetModeId).toBeUndefined();
+        expect(candidate.getStakeAmount).toBeUndefined();
+        // getBetModes() still exposes the declarative data as-is, for a caller to build real runtime
+        // wiring (or a UI) externally -- only createSession() itself never guesses from it.
+        expect(game.getBetModes?.()).toEqual(betModes);
+    });
 
-        session.setBetMode("ante");
-        expect(session.getStakeAmount()).toBeCloseTo(session.getBet() * 1.25, 10);
+    // Regression: with no explicit "default mode" contract in the blueprint schema, the first array
+    // entry must never be silently treated as a runtime default -- since there is no wiring at all,
+    // there is no "default" to derive incorrectly in the first place.
+    it("does not derive a default mode from betModes array order -- there is no runtime mode concept to default at all", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        // "ante" listed first here, on purpose -- if anything ever silently picked "index 0" as the
+        // runtime default again, this ordering would catch it defaulting to "ante" instead of "base".
+        const betModes = [{id: "ante", costMultiplier: 1.25}, {id: "base"}];
+        const result = generator.generate(
+            buildBlueprint({betModes, manifest: {id: "no-implied-default", name: "No Implied Default", version: "0.1.0"}}),
+            cwd,
+        );
 
-        session.setCreditsAmount(1000);
-        const creditsBefore = session.getCreditsAmount();
-        session.play();
-        expect(session.getCreditsAmount()).toBeCloseTo(creditsBefore - session.getBet() * 1.25 + session.getWinAmount(), 10);
+        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const session = game.createSession();
+
+        expect((session as Partial<{getBetModeId: unknown}>).getBetModeId).toBeUndefined();
+        expect(game.getBetModes?.()).toEqual(betModes);
     });
 
     it("createSession() behaves exactly as before -- no bet-mode wrapping at all -- when the blueprint has no betModes", () => {

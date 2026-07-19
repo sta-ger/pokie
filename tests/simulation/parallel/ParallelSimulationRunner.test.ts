@@ -425,4 +425,20 @@ describe("ParallelSimulationRunner betModeId (workers=1, in-process)", () => {
         // (stake-based, since betModeId was set) breakdown -- never recomputed by the runner itself.
         expect(result.breakdown!.base.totalBet).toBeCloseTo(1.25 * 20, 10);
     });
+
+    // Regression: a caller who explicitly asked to lock this run to a bet mode must never get back a
+    // report for a plain base-game run silently mislabeled with the requested mode.
+    test("betModeId against a game/session that doesn't support bet modes at all fails clearly, not silently as base", async () => {
+        const game: PokieGame = {
+            getManifest: () => manifest,
+            createSession: () => createFakeSession(),
+        };
+        const runner = new ParallelSimulationRunner("/fake/root", 20, {
+            loadGame: () => Promise.resolve(game),
+            betModeId: "ante",
+        });
+
+        await expect(runner.run()).rejects.toThrow(/does not support bet mode selection/);
+        await expect(runner.run()).rejects.toThrow(/"ante"/);
+    });
 });
