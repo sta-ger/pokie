@@ -11,6 +11,9 @@ import type {VideoSlotSessionHandling} from "../VideoSlotSessionHandling.js";
 // that never happens.
 export class NoOpForcedFeatureEntryHandler<T extends string | number | symbol = string>
 implements ForcedFeatureEntryHandling<T> {
+    // Fewer parameters than ForcedFeatureEntryHandling declares (no `mode`) -- still a valid
+    // implementation of it (see that interface's own doc comment on why), and this handler has no use
+    // for which mode triggered the call anyway: it can never force anything, regardless.
     public canForceFeatureEntry(_session: VideoSlotSessionHandling<T>): boolean {
         return false;
     }

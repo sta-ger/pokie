@@ -118,10 +118,10 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         const totalIntendedCharge = this.getStakeAmount();
 
         if (mode.forcesFeatureEntry() && totalIntendedCharge > 0) {
-            if (!this.forcedFeatureEntryHandler.canForceFeatureEntry(this.baseSession)) {
+            if (!this.forcedFeatureEntryHandler.canForceFeatureEntry(this.baseSession, mode)) {
                 throw new ForcedFeatureEntryUnsupportedError(mode.getId());
             }
-            this.forcedFeatureEntryHandler.forceFeatureEntry(this.baseSession);
+            this.forcedFeatureEntryHandler.forceFeatureEntry(this.baseSession, mode);
             // A forcing mode is a one-shot purchase intent, not a persistent one like ante: revert to
             // the default mode the instant the purchase actually succeeds, before the bonus round's
             // own first spin even plays out. Without this, the mode (and its stakeMultiplier) would

@@ -913,7 +913,7 @@ describe("GameBlueprintValidator", () => {
                 expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-invalid-forcedfreegames");
             });
 
-            it("flags more than one buyFeature mode", () => {
+            it("validates cleanly with multiple buyFeature modes carrying different costs/grants -- no per-mode-count restriction", () => {
                 const blueprint = {
                     ...validBlueprint(),
                     betModes: [
@@ -924,7 +924,7 @@ describe("GameBlueprintValidator", () => {
                     mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
                 };
 
-                expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-multiple-buyfeature");
+                expect(validator.validate(blueprint)).toEqual([]);
             });
 
             it("flags a buyFeature mode when mechanics.freeGames isn't configured", () => {

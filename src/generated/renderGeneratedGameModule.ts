@@ -41,8 +41,8 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     }
     if (betModeWiring) {
         requireNames.push("BetModeDefinition", "BetModesConfig", "VideoSlotWithBetModesSession");
-        if (betModeWiring.buyFeatureMode) {
-            requireNames.push("FreeGamesForcedFeatureEntryHandler");
+        if (betModeWiring.buyFeatureModes.length > 0) {
+            requireNames.push("FreeGamesForcedFeatureEntryHandler", "PerModeForcedFeatureEntryHandler");
         }
     }
     requireNames.sort();
@@ -73,14 +73,23 @@ export function renderGeneratedGameModule(blueprint: GameBlueprint, buildInfo?: 
     // reports the whole betModes array validates cleanly under the explicit runtime-semantics contract
     // (see that function and gamepackage/BetMode.ts's own doc comment) -- costMultiplier alone (the
     // old, still-supported metadata-only shape) is never enough, and never guessed at, here.
+    const forcedFeatureEntryHandlerDeclaration =
+        betModeWiring && betModeWiring.buyFeatureModes.length > 0
+            ? `        const forcedFeatureEntryHandler = new PerModeForcedFeatureEntryHandler(new Map([
+${betModeWiring.buyFeatureModes
+        .map(({id, forcedFreeGames}) => `            [${JSON.stringify(id)}, new FreeGamesForcedFeatureEntryHandler(${forcedFreeGames})],`)
+        .join("\n")}
+        ]));
+`
+            : "";
     const betModesWrapCode = betModeWiring
         ? `        const session = ${sessionConstructionExpression};
         const betModes = blueprint.betModes.map((mode) => new BetModeDefinition(mode.id, {
             stakeMultiplier: mode.costMultiplier,
             forcesFeatureEntry: mode.runtimeType === "buyFeature",
         }));
-        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
-    betModeWiring.buyFeatureMode ? `, new FreeGamesForcedFeatureEntryHandler(${betModeWiring.buyFeatureMode.forcedFreeGames})` : ""
+${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
+    betModeWiring.buyFeatureModes.length > 0 ? ", forcedFeatureEntryHandler" : ""
 });
 `
         : `        return ${sessionConstructionExpression};

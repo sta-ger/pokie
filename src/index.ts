@@ -101,6 +101,7 @@ export * from "./gamepackage/isPokieGame.js";
 export * from "./gamepackage/loadPokieGame.js";
 export * from "./gamepackage/readPokiePackageConfig.js";
 export * from "./gamepackage/resolvePokieGameEntryModule.js";
+export * from "./generated/BetModeRuntimeSemanticsInvalidError.js";
 export * from "./generated/GameBlueprint.js";
 export * from "./generated/GameBlueprintValidating.js";
 export * from "./generated/GameBlueprintValidator.js";
@@ -363,6 +364,7 @@ export * from "./session/videoslot/betmode/ForcedFeatureEntryUnsupportedError.js
 export * from "./session/videoslot/betmode/ForcingBetModeSelectionRejectedError.js";
 export * from "./session/videoslot/betmode/FreeGamesForcedFeatureEntryHandler.js";
 export * from "./session/videoslot/betmode/NoOpForcedFeatureEntryHandler.js";
+export * from "./session/videoslot/betmode/PerModeForcedFeatureEntryHandler.js";
 export * from "./session/videoslot/betmode/UnknownBetModeError.js";
 export * from "./session/videoslot/betmode/VideoSlotWithBetModesSession.js";
 export * from "./session/videoslot/cascade/CascadeRefillResult.js";

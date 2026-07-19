@@ -1,4 +1,4 @@
-import {GameBlueprint, resolveBetModeCodegenWiring} from "pokie";
+import {BetModeRuntimeSemanticsInvalidError, GameBlueprint, resolveBetModeCodegenWiring} from "pokie";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
@@ -16,7 +16,7 @@ describe("resolveBetModeCodegenWiring", () => {
         expect(resolveBetModeCodegenWiring(buildBlueprint())).toBeUndefined();
     });
 
-    it("returns undefined for the old pure-metadata shape (costMultiplier only, no runtimeType)", () => {
+    it("returns undefined for the old pure-metadata shape (costMultiplier only, no runtimeType) -- never throws", () => {
         const blueprint = buildBlueprint({betModes: [{id: "base"}, {id: "buy-bonus", costMultiplier: 100}]});
 
         expect(resolveBetModeCodegenWiring(blueprint)).toBeUndefined();
@@ -30,7 +30,7 @@ describe("resolveBetModeCodegenWiring", () => {
             ],
         });
 
-        expect(resolveBetModeCodegenWiring(blueprint)).toEqual({defaultModeId: "base", buyFeatureMode: undefined});
+        expect(resolveBetModeCodegenWiring(blueprint)).toEqual({defaultModeId: "base", buyFeatureModes: []});
     });
 
     it("resolves a fully-determined base + buyFeature contract, including the forced free games count", () => {
@@ -44,39 +44,11 @@ describe("resolveBetModeCodegenWiring", () => {
 
         expect(resolveBetModeCodegenWiring(blueprint)).toEqual({
             defaultModeId: "base",
-            buyFeatureMode: {id: "buy-bonus", forcedFreeGames: 10},
+            buyFeatureModes: [{id: "buy-bonus", forcedFreeGames: 10}],
         });
     });
 
-    it("returns undefined for an incomplete opt-in (some modes missing runtimeType)", () => {
-        const blueprint = buildBlueprint({betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "legacy"}]});
-
-        expect(resolveBetModeCodegenWiring(blueprint)).toBeUndefined();
-    });
-
-    it("returns undefined with zero or multiple default modes", () => {
-        const noDefault = buildBlueprint({betModes: [{id: "base", runtimeType: "base"}]});
-        const twoDefaults = buildBlueprint({
-            betModes: [
-                {id: "base", runtimeType: "base", isDefault: true},
-                {id: "ante", runtimeType: "ante", costMultiplier: 1.25, isDefault: true},
-            ],
-        });
-
-        expect(resolveBetModeCodegenWiring(noDefault)).toBeUndefined();
-        expect(resolveBetModeCodegenWiring(twoDefaults)).toBeUndefined();
-    });
-
-    it("returns undefined when the default mode is buyFeature", () => {
-        const blueprint = buildBlueprint({
-            betModes: [{id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 10, isDefault: true}],
-            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
-        });
-
-        expect(resolveBetModeCodegenWiring(blueprint)).toBeUndefined();
-    });
-
-    it("returns undefined for more than one buyFeature mode -- no per-mode dispatch supported", () => {
+    it("resolves multiple buyFeature modes with different costs/grants, each reported in buyFeatureModes", () => {
         const blueprint = buildBlueprint({
             betModes: [
                 {id: "base", runtimeType: "base", isDefault: true},
@@ -86,10 +58,44 @@ describe("resolveBetModeCodegenWiring", () => {
             mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
         });
 
-        expect(resolveBetModeCodegenWiring(blueprint)).toBeUndefined();
+        expect(resolveBetModeCodegenWiring(blueprint)).toEqual({
+            defaultModeId: "base",
+            buyFeatureModes: [
+                {id: "buy-10", forcedFreeGames: 10},
+                {id: "buy-20", forcedFreeGames: 20},
+            ],
+        });
     });
 
-    it("returns undefined for a buyFeature mode without mechanics.freeGames configured", () => {
+    it("throws for an incomplete opt-in (some modes missing runtimeType)", () => {
+        const blueprint = buildBlueprint({betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "legacy"}]});
+
+        expect(() => resolveBetModeCodegenWiring(blueprint)).toThrow(BetModeRuntimeSemanticsInvalidError);
+    });
+
+    it("throws with zero or multiple default modes", () => {
+        const noDefault = buildBlueprint({betModes: [{id: "base", runtimeType: "base"}]});
+        const twoDefaults = buildBlueprint({
+            betModes: [
+                {id: "base", runtimeType: "base", isDefault: true},
+                {id: "ante", runtimeType: "ante", costMultiplier: 1.25, isDefault: true},
+            ],
+        });
+
+        expect(() => resolveBetModeCodegenWiring(noDefault)).toThrow(BetModeRuntimeSemanticsInvalidError);
+        expect(() => resolveBetModeCodegenWiring(twoDefaults)).toThrow(BetModeRuntimeSemanticsInvalidError);
+    });
+
+    it("throws when the default mode is buyFeature", () => {
+        const blueprint = buildBlueprint({
+            betModes: [{id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 10, isDefault: true}],
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
+        });
+
+        expect(() => resolveBetModeCodegenWiring(blueprint)).toThrow(BetModeRuntimeSemanticsInvalidError);
+    });
+
+    it("throws for a buyFeature mode without mechanics.freeGames configured", () => {
         const blueprint = buildBlueprint({
             betModes: [
                 {id: "base", runtimeType: "base", isDefault: true},
@@ -97,10 +103,10 @@ describe("resolveBetModeCodegenWiring", () => {
             ],
         });
 
-        expect(resolveBetModeCodegenWiring(blueprint)).toBeUndefined();
+        expect(() => resolveBetModeCodegenWiring(blueprint)).toThrow(BetModeRuntimeSemanticsInvalidError);
     });
 
-    it("returns undefined for an ante mode missing costMultiplier, or a base mode with a non-1 costMultiplier", () => {
+    it("throws for an ante mode missing costMultiplier, or a base mode with a non-1 costMultiplier", () => {
         const anteMissingCost = buildBlueprint({
             betModes: [
                 {id: "base", runtimeType: "base", isDefault: true},
@@ -111,11 +117,11 @@ describe("resolveBetModeCodegenWiring", () => {
             betModes: [{id: "base", runtimeType: "base", isDefault: true, costMultiplier: 2}],
         });
 
-        expect(resolveBetModeCodegenWiring(anteMissingCost)).toBeUndefined();
-        expect(resolveBetModeCodegenWiring(baseWrongCost)).toBeUndefined();
+        expect(() => resolveBetModeCodegenWiring(anteMissingCost)).toThrow(BetModeRuntimeSemanticsInvalidError);
+        expect(() => resolveBetModeCodegenWiring(baseWrongCost)).toThrow(BetModeRuntimeSemanticsInvalidError);
     });
 
-    it("returns undefined for a buyFeature mode missing costMultiplier or forcedFreeGames", () => {
+    it("throws for a buyFeature mode missing costMultiplier or forcedFreeGames", () => {
         const missingCost = buildBlueprint({
             betModes: [
                 {id: "base", runtimeType: "base", isDefault: true},
@@ -131,7 +137,7 @@ describe("resolveBetModeCodegenWiring", () => {
             mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 8}}},
         });
 
-        expect(resolveBetModeCodegenWiring(missingCost)).toBeUndefined();
-        expect(resolveBetModeCodegenWiring(missingGrant)).toBeUndefined();
+        expect(() => resolveBetModeCodegenWiring(missingCost)).toThrow(BetModeRuntimeSemanticsInvalidError);
+        expect(() => resolveBetModeCodegenWiring(missingGrant)).toThrow(BetModeRuntimeSemanticsInvalidError);
     });
 });

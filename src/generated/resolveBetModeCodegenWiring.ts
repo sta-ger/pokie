@@ -1,16 +1,18 @@
 import type {GameBlueprint} from "./GameBlueprint.js";
+import {BetModeRuntimeSemanticsInvalidError} from "./BetModeRuntimeSemanticsInvalidError.js";
 
 export type BetModeCodegenWiring = {
     defaultModeId: string;
-    buyFeatureMode?: {id: string; forcedFreeGames: number};
+    buyFeatureModes: {id: string; forcedFreeGames: number}[];
 };
 
 // Decides whether renderGeneratedGameModule.ts may safely wire a blueprint's betModes into a real,
-// bet-mode-aware generated session (VideoSlotWithBetModesSession) -- returns undefined (metadata-only,
-// today's behavior) unless the WHOLE array validates cleanly under the explicit runtime-semantics
-// contract (see gamepackage/BetMode.ts's own doc comment): every mode's runtimeType set and valid,
-// exactly one non-buyFeature default, ante/buyFeature each carrying their own required fields, at most
-// one buyFeature mode, and mechanics.freeGames configured whenever a buyFeature mode exists.
+// bet-mode-aware generated session (VideoSlotWithBetModesSession) -- returns undefined only for the
+// legacy case where NO bet mode sets "runtimeType" at all (metadata-only, today's behavior, exactly as
+// if the explicit runtime-semantics contract had never been introduced). Any number of "buyFeature"
+// modes are supported, each carrying its own costMultiplier/forcedFreeGames -- see
+// gamepackage/BetMode.ts's own doc comment and PerModeForcedFeatureEntryHandler, which is what lets
+// renderGeneratedGameModule.ts route forced entry per mode id without hard-coding any of them.
 //
 // Deliberately independent of GameBlueprintValidator: GamePackageGenerator.generate() (and this
 // function's own callers) don't require validation to have run first, so this re-checks every
@@ -19,70 +21,90 @@ export type BetModeCodegenWiring = {
 // non-emptiness/uniqueness) -- those are prerequisites for the blueprint being valid at all, not
 // specific to "should the bet-mode runtime be wired".
 //
-// Returns undefined (never guesses/wires a best-effort subset) for anything short of a fully
-// consistent contract -- an incomplete or invalid attempt at explicit semantics falls back to the
-// same plain, metadata-only getBetModes() this package already had, exactly as if runtimeType had
-// never been set at all.
+// Once ANY mode sets "runtimeType", the whole array has committed to the explicit contract -- an
+// incomplete or invalid attempt from that point on throws BetModeRuntimeSemanticsInvalidError rather
+// than silently degrading to metadata-only, so a direct GamePackageGenerator.generate() call (which
+// skips GameBlueprintValidator) can never produce a generated package that quietly drops semantics
+// its blueprint clearly intended to have. Only the case where NO mode sets "runtimeType" at all keeps
+// returning undefined -- that is genuinely the old, pre-runtimeType schema, not a broken opt-in.
 export function resolveBetModeCodegenWiring(blueprint: GameBlueprint): BetModeCodegenWiring | undefined {
     const betModes = blueprint.betModes;
     if (!betModes || betModes.length === 0) {
         return undefined;
     }
-    if (!betModes.every((mode) => mode.runtimeType !== undefined)) {
+    if (!betModes.some((mode) => mode.runtimeType !== undefined)) {
         return undefined;
     }
+    if (!betModes.every((mode) => mode.runtimeType !== undefined)) {
+        throw new BetModeRuntimeSemanticsInvalidError(
+            '"runtimeType" is set on some bet modes but not all -- every bet mode must set an explicit ' +
+                '"runtimeType" once any one of them does.',
+        );
+    }
     if (!betModes.every((mode) => mode.runtimeType === "base" || mode.runtimeType === "ante" || mode.runtimeType === "buyFeature")) {
-        return undefined;
+        throw new BetModeRuntimeSemanticsInvalidError('Every bet mode\'s "runtimeType" must be one of: base, ante, buyFeature.');
     }
 
     for (const mode of betModes) {
         if (mode.runtimeType === "buyFeature") {
             if (!(typeof mode.costMultiplier === "number" && Number.isFinite(mode.costMultiplier) && mode.costMultiplier > 0)) {
-                return undefined;
+                throw new BetModeRuntimeSemanticsInvalidError(
+                    `Bet mode "${mode.id}" has runtimeType "buyFeature", so "costMultiplier" must be a positive, finite number.`,
+                );
             }
             if (!(typeof mode.forcedFreeGames === "number" && Number.isInteger(mode.forcedFreeGames) && mode.forcedFreeGames > 0)) {
-                return undefined;
+                throw new BetModeRuntimeSemanticsInvalidError(
+                    `Bet mode "${mode.id}" has runtimeType "buyFeature", so "forcedFreeGames" must be a positive integer.`,
+                );
             }
         } else if (mode.runtimeType === "ante") {
             if (!(typeof mode.costMultiplier === "number" && Number.isFinite(mode.costMultiplier) && mode.costMultiplier > 0)) {
-                return undefined;
+                throw new BetModeRuntimeSemanticsInvalidError(
+                    `Bet mode "${mode.id}" has runtimeType "ante", so "costMultiplier" must be a positive, finite number.`,
+                );
             }
             if (mode.forcedFreeGames !== undefined) {
-                return undefined;
+                throw new BetModeRuntimeSemanticsInvalidError(
+                    `Bet mode "${mode.id}" has runtimeType "ante", so "forcedFreeGames" must not be set.`,
+                );
             }
         } else {
             // "base"
             if (mode.costMultiplier !== undefined && mode.costMultiplier !== 1) {
-                return undefined;
+                throw new BetModeRuntimeSemanticsInvalidError(
+                    `Bet mode "${mode.id}" has runtimeType "base", so "costMultiplier" must be 1 if present.`,
+                );
             }
             if (mode.forcedFreeGames !== undefined) {
-                return undefined;
+                throw new BetModeRuntimeSemanticsInvalidError(
+                    `Bet mode "${mode.id}" has runtimeType "base", so "forcedFreeGames" must not be set.`,
+                );
             }
         }
     }
 
     const defaults = betModes.filter((mode) => mode.isDefault === true);
     if (defaults.length !== 1) {
-        return undefined;
+        throw new BetModeRuntimeSemanticsInvalidError(
+            `Exactly one bet mode must set "isDefault": true, but ${defaults.length} do.`,
+        );
     }
     const defaultMode = defaults[0];
     if (defaultMode.runtimeType === "buyFeature") {
-        return undefined;
+        throw new BetModeRuntimeSemanticsInvalidError(
+            `Bet mode "${defaultMode.id}" is both the default mode and runtimeType "buyFeature" -- a one-shot purchase can never be a safe default.`,
+        );
     }
 
     const buyFeatureModes = betModes.filter((mode) => mode.runtimeType === "buyFeature");
-    if (buyFeatureModes.length > 1) {
-        return undefined;
-    }
-    if (buyFeatureModes.length === 1 && blueprint.mechanics?.freeGames === undefined) {
-        return undefined;
+    if (buyFeatureModes.length > 0 && blueprint.mechanics?.freeGames === undefined) {
+        throw new BetModeRuntimeSemanticsInvalidError(
+            'A "buyFeature" bet mode forces entry into "mechanics.freeGames", but "mechanics.freeGames" is not configured on this blueprint.',
+        );
     }
 
     return {
         defaultModeId: defaultMode.id,
-        buyFeatureMode:
-            buyFeatureModes.length === 1
-                ? {id: buyFeatureModes[0].id, forcedFreeGames: buyFeatureModes[0].forcedFreeGames as number}
-                : undefined,
+        buyFeatureModes: buyFeatureModes.map((mode) => ({id: mode.id, forcedFreeGames: mode.forcedFreeGames as number})),
     };
 }

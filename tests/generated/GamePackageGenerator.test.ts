@@ -1,4 +1,4 @@
-import {BetMode, computeGameBlueprintHash, GameBlueprint, GameBuildInfo, GamePackageGenerator, PokieGame} from "pokie";
+import {BetMode, BetModeRuntimeSemanticsInvalidError, computeGameBlueprintHash, GameBlueprint, GameBuildInfo, GamePackageGenerator, PokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -535,20 +535,67 @@ describe("GamePackageGenerator", () => {
             expect(session.getCreditsAmount()).toBeGreaterThanOrEqual(creditsBeforeFreeSpin); // never charged
         });
 
-        it("falls back to metadata-only (no wrapping) for an incomplete/invalid runtime-semantics attempt", () => {
+        it("fails clearly (throws) rather than silently falling back to metadata-only for an incomplete/invalid runtime-semantics attempt", () => {
             const generator = new GamePackageGenerator("1.3.0");
-            // "ante" opts in; "base" doesn't -- incomplete, so this must not wire anything at all.
+            // "ante" opts in; "base" doesn't -- incomplete. Calling generate() directly (as this test
+            // does) skips GameBlueprintValidator entirely, so this is the one guard standing between an
+            // attempted-but-broken opt-in and a generated package that quietly ignores it.
             const betModes: BetMode[] = [{id: "ante", runtimeType: "ante", costMultiplier: 1.25, isDefault: true}, {id: "base"}];
+
+            expect(() =>
+                generator.generate(
+                    buildBlueprint({betModes, manifest: {id: "incomplete-semantics", name: "Incomplete", version: "0.1.0"}}),
+                    cwd,
+                ),
+            ).toThrow(BetModeRuntimeSemanticsInvalidError);
+        });
+
+        it("wires multiple buyFeature modes with different costs/grants, each dispatched to its own forced entry via PerModeForcedFeatureEntryHandler", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const betModes: BetMode[] = [
+                {id: "base", runtimeType: "base", isDefault: true},
+                {id: "buy-10", runtimeType: "buyFeature", costMultiplier: 50, forcedFreeGames: 10},
+                {id: "buy-20", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 20},
+            ];
             const result = generator.generate(
-                buildBlueprint({betModes, manifest: {id: "incomplete-semantics", name: "Incomplete", version: "0.1.0"}}),
+                buildBlueprint({
+                    symbols: ["A", "B", "S"],
+                    scatters: ["S"],
+                    paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
+                    mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
+                    betModes,
+                    manifest: {id: "explicit-multi-buy-bonus", name: "Explicit Multi Buy Bonus", version: "0.1.0"},
+                }),
                 cwd,
             );
 
-            const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
-            const session = game.createSession();
+            // Two independent sessions from the same generated package -- avoids relying on real,
+            // RNG-driven gameplay to fully exhaust one forced-entry free round before buying the other
+            // (setBetMode() rejects selecting a forcing mode while a zero-stake round is still active),
+            // while still proving each mode routes to its own distinct forced entry via the real
+            // generated session, not a shared/confused one.
+            const session10 = createSessionAs(result);
+            session10.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+            session10.setBetMode("buy-10");
+            const stake10 = session10.getStakeAmount();
+            expect(stake10).toBeCloseTo(session10.getBet() * 50, 10);
+            const creditsBefore10 = session10.getCreditsAmount();
+            session10.play();
+            expect(session10.getCreditsAmount()).toBeCloseTo(creditsBefore10 - stake10, 10);
+            expect(session10.getBetModeId()).toBe("base"); // one-shot -- reverted after the purchase
+            expect(session10.getStakeAmount()).toBe(0); // proves a free round is genuinely active
 
-            expect((session as Partial<{setBetMode: unknown}>).setBetMode).toBeUndefined();
-            expect(game.getBetModes?.()).toEqual(betModes);
+            const session20 = createSessionAs(result);
+            session20.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+            session20.setBetMode("buy-20");
+            const stake20 = session20.getStakeAmount();
+            expect(stake20).toBeCloseTo(session20.getBet() * 100, 10);
+            expect(stake20).not.toBeCloseTo(stake10, 10); // never confused with buy-10's price
+            const creditsBefore20 = session20.getCreditsAmount();
+            session20.play();
+            expect(session20.getCreditsAmount()).toBeCloseTo(creditsBefore20 - stake20, 10);
+            expect(session20.getBetModeId()).toBe("base");
+            expect(session20.getStakeAmount()).toBe(0);
         });
     });
 

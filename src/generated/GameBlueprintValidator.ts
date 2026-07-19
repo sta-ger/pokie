@@ -361,12 +361,13 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
     // The explicit, opt-in runtime-semantics contract (see gamepackage/BetMode.ts's own doc comment).
     // "Opt in" means "opt in completely": if ANY mode sets runtimeType, EVERY mode must, and the whole
     // array must validate cleanly under it (exactly one non-buyFeature default; ante/buyFeature both
-    // requiring their own specific fields; at most one buyFeature mode, and only alongside
-    // mechanics.freeGames) -- there is no partial/best-effort reading of this contract, on purpose:
-    // renderGeneratedGameModule.ts (see resolveBetModeCodegenWiring.ts) only ever wires
-    // VideoSlotWithBetModesSession into a generated session when this entire method reports zero
-    // errors, and a caller who left it half-specified almost certainly meant to finish specifying it,
-    // not to silently fall back to metadata-only.
+    // requiring their own specific fields; any number of buyFeature modes -- each with its own
+    // costMultiplier/forcedFreeGames, routed at runtime by PerModeForcedFeatureEntryHandler rather than
+    // restricted to just one -- but only alongside mechanics.freeGames) -- there is no partial/best-effort
+    // reading of this contract, on purpose: renderGeneratedGameModule.ts (see
+    // resolveBetModeCodegenWiring.ts) only ever wires VideoSlotWithBetModesSession into a generated
+    // session when this entire method reports zero errors, and a caller who left it half-specified
+    // almost certainly meant to finish specifying it, not to silently fall back to metadata-only.
     private validateBetModeRuntimeSemantics(entries: Record<string, unknown>[], mechanics: unknown, issues: ValidationIssue[]): void {
         const withRuntimeType = entries.filter((e) => e.runtimeType !== undefined);
         if (withRuntimeType.length === 0) {
@@ -518,17 +519,6 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                 severity: "error",
                 message: `"betModes[${defaults[0].index}]" is both the default mode and runtimeType "buyFeature" -- a one-shot purchase can never be a safe default/landing mode.`,
                 path: `betModes[${defaults[0].index}]`,
-            });
-        }
-
-        if (buyFeatureModes.length > 1) {
-            issues.push({
-                code: "blueprint-betmodes-multiple-buyfeature",
-                severity: "error",
-                message: `At most one "buyFeature" bet mode is supported, but ${buyFeatureModes.length} are configured (${buyFeatureModes
-                    .map(({index}) => `betModes[${index}]`)
-                    .join(", ")}) -- the generated-session wiring has no per-mode dispatch for multiple different buy costs/grants.`,
-                path: "betModes",
             });
         }
 

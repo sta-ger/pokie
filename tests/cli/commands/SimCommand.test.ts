@@ -422,6 +422,53 @@ describe("SimCommand --mode (integration, real generated package)", () => {
 
         await expect(command.run([packageRoot, "--rounds", "20", "--mode", "buy-bonus"])).rejects.toThrow(/Unknown bet mode "buy-bonus"/);
     });
+
+    function generateGameWithTwoBuyFeatureModes(): string {
+        const betModes: BetMode[] = [
+            {id: "base", runtimeType: "base", isDefault: true},
+            {id: "buy-10", runtimeType: "buyFeature", costMultiplier: 50, forcedFreeGames: 10},
+            {id: "buy-20", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 20},
+        ];
+        const result = new GamePackageGenerator("1.3.0").generate(
+            {
+                manifest: {id: "generated-multi-buy-game", name: "Generated Multi Buy Game", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B", "S"],
+                scatters: ["S"],
+                paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
+                betModes,
+            },
+            cwd,
+        );
+        return result.projectRoot;
+    }
+
+    it("runs pokie sim --mode separately for each of several differently-priced buyFeature modes, reporting each mode's own cost", async () => {
+        const packageRoot = generateGameWithTwoBuyFeatureModes();
+        const command = new SimCommand(loadPokieGame);
+        const outFile10 = path.join(cwd, "report-buy-10.json");
+        const outFile20 = path.join(cwd, "report-buy-20.json");
+
+        // Exactly 1 round each: the whole round is the forced purchase itself (see the GamePackageGenerator
+        // "wires a one-shot buyFeature mode" test for why a buyFeature round's *own* cost, not a
+        // multi-round run mixing in the free spins it then grants at 0 cost, is what isolates each
+        // mode's price cleanly).
+        await command.run([packageRoot, "--rounds", "1", "--seed", "demo", "--mode", "buy-10", "--out", outFile10]);
+        await command.run([packageRoot, "--rounds", "1", "--seed", "demo", "--mode", "buy-20", "--out", outFile20]);
+
+        const report10 = JSON.parse(fs.readFileSync(outFile10, "utf-8")) as SimulationReport;
+        const report20 = JSON.parse(fs.readFileSync(outFile20, "utf-8")) as SimulationReport;
+
+        expect(report10.betMode).toBe("buy-10");
+        expect(report20.betMode).toBe("buy-20");
+        // The generated package's default bet is 1, so buy-10's 50x and buy-20's 100x costs must be
+        // reported distinctly per mode -- never confused with each other, and never falling back to
+        // the same handler/cost regardless of which mode id was actually requested.
+        expect(report10.totalBet).toBeCloseTo(50, 10);
+        expect(report20.totalBet).toBeCloseTo(100, 10);
+    });
 });
 
 describe("SimCommand (integration, real loadPokieGame + fixture game package)", () => {
