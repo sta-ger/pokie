@@ -600,5 +600,66 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
                 ),
             ).toBeInTheDocument();
         });
+
+        // A failed close must never be silently treated like a successful one -- the draft was never
+        // actually discarded, so every other way of leaving Mechanics Editor (a tab click here) has to
+        // keep asking for confirmation exactly as it did before Close project was ever attempted.
+        it("keeps the dirty-navigation guard active after a failed Close project", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch({
+                ...BASE_ROUTES,
+                "/api/projects/close": () => ({ok: false, status: 500, body: {error: "disk write failed"}}),
+            });
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await makeADirtyEdit(user);
+
+            await user.click(screen.getByRole("button", {name: "Close project"}));
+            await user.click(await screen.findByRole("button", {name: "Confirm"}));
+            expect(await screen.findByText(/Couldn't close the project/)).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Overview"}));
+            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Stay"}));
+            await waitFor(() => expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument());
+            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
+        });
+
+        // While closeProject()'s own request is still in flight, the draft is exactly as unapplied as it
+        // was before the click -- nothing has actually been discarded yet -- so an attempt to leave via
+        // some other route in the meantime must still be caught by the guard, not slip through a window
+        // where the flag was cleared eagerly.
+        it("keeps the draft protected while Close project is still pending", async () => {
+            const user = userEvent.setup();
+            const fetchImpl: FetchLike = (url, init) => {
+                if (url in BASE_ROUTES) {
+                    const routed = BASE_ROUTES[url]({url, init});
+                    return jsonResponse(routed.body, routed.status);
+                }
+                if (url === "/api/projects/close") {
+                    return new Promise(() => {
+                        // Deliberately never resolves -- this test only cares about the guard's behavior
+                        // while the close request is still pending.
+                    });
+                }
+                return Promise.reject(new Error(`unexpected fetch ${url}`));
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await makeADirtyEdit(user);
+
+            await user.click(screen.getByRole("button", {name: "Close project"}));
+            await user.click(await screen.findByRole("button", {name: "Confirm"}));
+
+            await user.click(screen.getByRole("button", {name: "Overview"}));
+            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Stay"}));
+            await waitFor(() => expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument());
+            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
+        });
     });
 });

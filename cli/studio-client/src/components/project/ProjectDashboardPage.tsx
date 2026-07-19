@@ -104,6 +104,10 @@ export function ProjectDashboardPage() {
     // race ahead of that effect and still see the *old* (dirty) predicate. Clearing isMechanicsEditorDirty
     // alone is therefore not enough for a confirmed action with its own async work before its own
     // navigate() call; this flag is what actually guarantees that navigate() isn't blocked a second time.
+    // Close project only sets this (and clears isMechanicsEditorDirty) inside closeProject()'s own
+    // .then(), never before the request starts -- until the request actually succeeds, the draft is
+    // still there and every other way of leaving Mechanics Editor must stay guarded, including a second
+    // Close attempt while the first is still pending or after it failed.
     const suppressMechanicsEditorBlockRef = useRef(false);
     // MechanicsEditorTab doesn't unmount in the same commit as a blocker-confirmed Leave (a NavTabs
     // click or Back/Forward that the blocker below had to ask about) -- react-router keeps the outgoing
@@ -645,28 +649,32 @@ export function ProjectDashboardPage() {
             if (!closeGuard.begin()) {
                 return;
             }
-            // Clears eagerly, before the (async) close even starts -- the user has just explicitly agreed
-            // to lose the draft below, so it must never linger and show a ghost "unapplied draft" warning
-            // on some later close attempt.
-            setIsMechanicsEditorDirty(false);
-            // This is the one call site with an async side effect (closeProject) before its own eventual
-            // navigate() -- exactly useDesignNavigationGuard's guardedAction shape (see its doc comment).
-            // Setting isMechanicsEditorDirty above is NOT enough on its own: useBlocker re-registers its
-            // predicate via a useEffect, which runs after commit, while closeProject().then(navigate) below
-            // resolves via microtasks that can fire first and still see the router's stale (dirty)
-            // predicate. This ref is what actually lets that navigate() through unblocked.
-            suppressMechanicsEditorBlockRef.current = true;
+            // Deliberately does NOT clear isMechanicsEditorDirty (or arm the suppress ref) here, before
+            // the request even starts -- the draft isn't actually gone until closeProject() genuinely
+            // succeeds. While the request is pending, or if it fails, the draft is exactly as unapplied
+            // as it was before this click, so the navigation-blocker guard above must keep protecting it
+            // against any other way of leaving Mechanics Editor -- clearing eagerly would open a window
+            // where a pending/failed close silently leaves the draft undefended.
             setCloseError(undefined);
             closeProject(fetchImpl)
-                .then(() => navigate("/home/design"))
-                // A failed close must be visible, not indistinguishable from the button silently doing
-                // nothing -- the guard is released here too, so the user can actually retry. The close
-                // never reached its own navigate() call, so the suppression must not linger and bypass
-                // some later, unrelated navigation.
-                .catch((error: unknown) => {
-                    suppressMechanicsEditorBlockRef.current = false;
-                    setCloseError(errorMessage(error));
+                .then(() => {
+                    // Only now is the draft actually gone -- this is the one call site with an async side
+                    // effect (closeProject) before its own eventual navigate() -- exactly
+                    // useDesignNavigationGuard's guardedAction shape (see its doc comment). Setting
+                    // isMechanicsEditorDirty alone would not be enough for that navigate() call below:
+                    // useBlocker re-registers its predicate via a useEffect, which runs after commit,
+                    // while navigate() here runs synchronously in this same microtask and could still see
+                    // the router's stale (dirty) predicate. The suppress ref is what actually lets this
+                    // specific navigate() through unblocked regardless.
+                    setIsMechanicsEditorDirty(false);
+                    suppressMechanicsEditorBlockRef.current = true;
+                    navigate("/home/design");
                 })
+                // A failed close must be visible, not indistinguishable from the button silently doing
+                // nothing -- the guard is released here too, so the user can actually retry. Dirty state
+                // and the suppress ref were never touched above, so the draft and its guard are exactly
+                // as they were before this attempt.
+                .catch((error: unknown) => setCloseError(errorMessage(error)))
                 .finally(() => closeGuard.end());
         };
         // Both risks named together when both apply -- a project can simultaneously have an unapplied
