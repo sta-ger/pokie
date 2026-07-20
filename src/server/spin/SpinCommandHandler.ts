@@ -19,6 +19,7 @@ import type {SpinCommandHandling} from "./SpinCommandHandling.js";
 import type {SpinCommandResult} from "./SpinCommandResult.js";
 import type {SpinOperationLog} from "./SpinOperationLog.js";
 import type {SpinOperationRecord} from "./SpinOperationRecord.js";
+import type {SpinReconciliationOutcome} from "./SpinReconciliationOutcome.js";
 import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js";
 
 // Orchestrates a single spin end-to-end: replay an idempotent retry, load the persisted session
@@ -131,13 +132,19 @@ export class SpinCommandHandler implements SpinCommandHandling {
         wallet: TransactionalWalletPort,
         idempotencyRepository: IdempotencyRepository<SpinCommandResult> = new InMemoryIdempotencyRepository(),
         operationLog: SpinOperationLog = new InMemorySpinOperationLog(),
+        // Additive: defaults to a SpinReconciliationService built from the four collaborators above (its
+        // own default, production-safe quiescence window — see that class's own doc comment). Accepting
+        // an already-constructed one directly, rather than individual config knobs for it, is what lets a
+        // caller (e.g. a test simulating a crash without a real wait) configure things like a shorter
+        // quiescence window or an injected clock without this class needing to know those knobs exist.
+        reconciliationService: SpinReconciliationServicing = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog),
     ) {
         this.game = game;
         this.sessionRepository = sessionRepository;
         this.wallet = wallet;
         this.idempotencyRepository = idempotencyRepository;
         this.operationLog = operationLog;
-        this.reconciliationService = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+        this.reconciliationService = reconciliationService;
         this.sessionSerializer = resolveGameSessionSerializer(game);
     }
 
@@ -145,10 +152,42 @@ export class SpinCommandHandler implements SpinCommandHandling {
         this.liveSessions.set(sessionId, session);
     }
 
-    // Exposes the reconciliation service this handler already builds its own inline recovery from, so a
-    // caller that owns this handler (e.g. PokieDevServer, or an ops tool) can additionally run an
-    // explicit reconcileAll() sweep — e.g. once at startup, over whatever a durable operationLog carried
-    // across a restart — rather than waiting for each interrupted requestId to happen to be retried.
+    // Reconciles one (sessionId, requestId)'s own SpinOperationRecord, the same way an interrupted
+    // requestId retried through handle() would trigger internally (see reconcilePendingAttempt()) — but
+    // callable directly, e.g. from an ops tool. Routed through the same per-session enqueue() queue
+    // handle() itself uses, so this can never run concurrently with a handle() call for the same
+    // sessionId on this instance: either it runs before that call's own turn in the queue starts, or
+    // after it has already fully finished — never mid-flight. That's a real, same-instance guarantee, not
+    // just documentation — see reconciliationService's own doc comment for why racing a live attempt
+    // matters and what this does and doesn't protect against (a durable operationLog shared across
+    // multiple process/instances is not covered by this queue at all; that's what
+    // SpinReconciliationService's own quiescence window is for).
+    public reconcileOne(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {
+        return this.enqueue(sessionId, () => this.reconciliationService.reconcileOne(sessionId, requestId));
+    }
+
+    // Sweeps every currently-incomplete SpinOperationRecord (e.g. once at startup, over whatever a
+    // durable operationLog carried across a restart) via reconcileOne() above — so each individual
+    // record's own reconciliation is still serialized against handle() calls for its own sessionId,
+    // exactly as if it had been reconciled one at a time by hand. Different sessions' records are still
+    // reconciled sequentially here (one at a time, in operationLog.listIncomplete()'s own order) — this
+    // is a startup/ops sweep, not a hot path, so that's a deliberate simplicity choice, not a limitation
+    // worth optimizing away.
+    public async reconcileAll(): Promise<readonly SpinReconciliationOutcome[]> {
+        const pending = await this.operationLog.listIncomplete();
+        const outcomes: SpinReconciliationOutcome[] = [];
+        for (const record of pending) {
+            outcomes.push(await this.reconcileOne(record.sessionId, record.requestId));
+        }
+        return outcomes;
+    }
+
+    // Raw access to the underlying service, for a caller that needs SpinReconciliationServicing itself
+    // (e.g. to construct its own equivalent over the same stores from another process). Calling
+    // reconcileOne()/reconcileAll() directly on the object this returns is NOT protected by this
+    // handler's own per-session queue — a caller doing that while handle() might concurrently run for the
+    // same session is responsible for its own external synchronization. Prefer this handler's own
+    // reconcileOne()/reconcileAll() above unless that's genuinely not possible.
     public getReconciliationService(): SpinReconciliationServicing {
         return this.reconciliationService;
     }
@@ -234,16 +273,25 @@ export class SpinCommandHandler implements SpinCommandHandling {
     // Consulted only on an idempotency cache miss for a requestId-bearing call — an interrupted prior
     // attempt for this exact (sessionId, requestId) is the one thing that can make a plain "no cached
     // result, so run a fresh spin" unsafe: it could mean this requestId is genuinely new, or it could
-    // mean an earlier attempt got partway through the mutating phase and never reached a terminal
-    // checkpoint (a process crash, or an in-process compensation failure — see the class doc comment).
-    // Returns a result to short-circuit the normal fresh-spin path below only when reconciliation
-    // determined the attempt is already done ("resumed"/"already-committed") or genuinely ambiguous
-    // ("recovery-required"); returns undefined — "safe to proceed" — when there was no pending record, or
-    // it was cleanly resolved as never having applied anything ("no-action-needed") or safely reversed
-    // ("reversed"), in which case the caller runs a genuinely fresh spin.
+    // mean an earlier attempt got partway through the mutating phase and never reached a point
+    // SpinReconciliationService itself is willing to trust without re-verifying (see its own doc comment
+    // — a "committed" record is never enough on its own either, since idempotencyRepository might not
+    // actually still hold what it implies). Every checkpoint — including "committed" — is routed through
+    // reconciliationService.reconcileOne(); there is deliberately no shortcut here that skips it based on
+    // the checkpoint value alone, since that's exactly the class of mistake this whole mechanism exists
+    // to close.
+    //
+    // Returns a result to short-circuit the normal fresh-spin path below whenever reconciliation
+    // determined the attempt is already done ("resumed"/"already-committed") or can't be safely
+    // proceeded with right now ("manual-recovery-required"/"deferred" — both surfaced as the same
+    // "recovery-required" SpinCommandResult, distinguished only by "reason": one needs a human, the other
+    // just needs a short wait for a still-live attempt to finish). Returns undefined — "safe to
+    // proceed" — only when there was no pending record at all, or it was cleanly resolved as never having
+    // applied anything ("no-action-needed") or safely reversed ("reversed"), in which case the caller
+    // runs a genuinely fresh spin.
     private async reconcilePendingAttempt(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined> {
         const pending = await this.operationLog.load(sessionId, requestId);
-        if (pending === undefined || pending.checkpoint === "committed" || pending.checkpoint === "compensated") {
+        if (pending === undefined) {
             return undefined;
         }
 
@@ -251,13 +299,14 @@ export class SpinCommandHandler implements SpinCommandHandling {
         if (outcome.status === "resumed") {
             return outcome.result;
         }
-        if (outcome.status === "manual-recovery-required") {
+        if (outcome.status === "manual-recovery-required" || outcome.status === "deferred") {
             return {status: "recovery-required", sessionId, requestId, reason: outcome.reason};
         }
         if (outcome.status === "already-committed") {
-            // Reconciliation found a terminal record concurrently closed out by another call for this
-            // exact requestId — the idempotency cache-miss above raced it. Its result is now in
-            // idempotencyRepository; fetch it rather than falling through to a fresh spin.
+            // Reconciliation re-verified idempotencyRepository directly and found the result already
+            // there (possibly written concurrently by another call racing this same requestId — the
+            // idempotency cache-miss above raced it). Fetch it rather than falling through to a fresh
+            // spin.
             const cached = await this.idempotencyRepository.load(sessionId, requestId);
             if (cached !== undefined) {
                 return cached;
@@ -361,7 +410,18 @@ export class SpinCommandHandler implements SpinCommandHandling {
                 result.requestId = requestId;
                 await this.idempotencyRepository.save(sessionId, requestId, result);
             }
-            await checkpoint({checkpoint: "committed", updatedAt: new Date().toISOString()});
+            // capturedResult is carried forward onto the terminal "committed" checkpoint too (not just
+            // "settled"/"session-saved") — see SpinReconciliationService's own handling of a "committed"
+            // record whose idempotency result has since gone missing (a durability mismatch between
+            // operationLog and idempotencyRepository, or a crash between the idempotency save above
+            // succeeding and this checkpoint write landing): without it there would be nothing left to
+            // safely rebuild that result from, forcing a needless manual-recovery-required instead of a
+            // clean backfill.
+            await checkpoint({
+                checkpoint: "committed",
+                updatedAt: new Date().toISOString(),
+                capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion},
+            });
 
             return result;
         } catch (error) {

@@ -5,18 +5,26 @@ import {isWalletTransactionInspecting} from "../wallet/isWalletTransactionInspec
 import type {TransactionalWalletPort} from "../wallet/TransactionalWalletPort.js";
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
 import type {SpinCommandResult} from "./SpinCommandResult.js";
+import type {SpinOperationCapturedResult, SpinOperationRecord} from "./SpinOperationRecord.js";
 import type {SpinOperationLog} from "./SpinOperationLog.js";
-import type {SpinOperationRecord} from "./SpinOperationRecord.js";
 import type {SpinReconciliationOutcome} from "./SpinReconciliationOutcome.js";
 import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js";
+
+// How long a non-terminal SpinOperationRecord's own "updatedAt" must be in the past before this class is
+// willing to act on it at all — see the class doc comment's "Racing a live attempt" section. Deliberately
+// generous: every individual step a live playAndSettle() attempt awaits (a wallet call, a repository
+// save) is expected to resolve in well under a second even under load; this is a safety margin, not a
+// performance budget.
+const DEFAULT_MINIMUM_QUIESCENCE_MS = 30_000;
 
 // Resolves one requestId-bearing SpinOperationRecord left in-flight by a process crash (or a
 // same-process compensation failure — see SpinCommandHandler's own catch block) into exactly one of:
 // "no-action-needed" (nothing was ever applied), "already-committed" (nothing to do, it finished), a
-// safe automatic "reversed" or "resumed", or an honest "manual-recovery-required" when neither can be
-// established safely. Never claims true atomicity — see this package's own v1.3 gap-audit note on why
-// full cross-store atomicity is a v2 concern: every branch below only ever acts when it can be certain,
-// and defers to a human otherwise.
+// safe automatic "reversed" or "resumed", "deferred" (too recent to safely act on yet), or an honest
+// "manual-recovery-required" when none of the above can be established safely. Never claims true
+// atomicity — see this package's own v1.3 gap-audit note on why full cross-store atomicity is a v2
+// concern: every branch below only ever acts when it can be certain, and defers to a human (or to time)
+// otherwise.
 //
 // Deliberately has no PokieGame/live-session access at all — constructed from only the wallet,
 // sessionRepository, idempotencyRepository, and operationLog a SpinCommandHandler itself already holds.
@@ -24,22 +32,61 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 // session.play() a second time for an attempt it's recovering, no matter what a future change here might
 // try to do — resuming an attempt can only ever replay already-computed data (SpinOperationRecord's own
 // capturedResult), never recompute it.
+//
+// No checkpoint is ever trusted as proof of what did NOT happen — only of what DID. "started" being the
+// last checkpoint written proves nothing was applied *as of the moment that checkpoint was durably
+// recorded*; it says nothing about whatever ran afterward before a crash prevented the next checkpoint
+// write from landing (the debit call itself could have already succeeded). Every checkpoint from
+// "started" through "session-saved" is treated as "at least this much might have happened," and — when
+// the wallet supports WalletTransactionInspecting — verified directly rather than assumed. Likewise, the
+// terminal "committed" checkpoint proves this handler's own process *believed* the idempotency write
+// succeeded, never that idempotencyRepository still has it (a non-durable IdempotencyRepository paired
+// with a durable SpinOperationLog, or a crash between that save succeeding and this checkpoint landing,
+// can both leave it missing) — SpinCommandHandler.handleSerialized() would otherwise fall through to a
+// fresh, re-charging spin for a requestId that already genuinely completed, so a "committed" record is
+// always re-verified against idempotencyRepository directly, with its own capturedResult (carried forward
+// onto every "committed" write — see SpinCommandHandler's own checkpoint() calls) as the only safe source
+// to rebuild a missing result from.
+//
+// Racing a live attempt: reconcileOne()/reconcileAll() read/act on SpinOperationLog independently of
+// SpinCommandHandler's own per-session enqueue() queue — calling them directly while a live handle() call
+// for the same (sessionId, requestId) might still be running risks reconciling a record that isn't
+// abandoned at all, just mid-flight (e.g. reversing a debit the live attempt is about to credit against).
+// Two mitigations, deliberately not a distributed lock (this package makes no cross-process locking
+// claim):
+//   - SpinCommandHandler.reconcileOne()/reconcileAll() (not this class's own methods, called directly)
+//     route through the same per-session queue handle() uses, so on one handler instance a reconciliation
+//     call can never run concurrently with a handle() call for the same session. Prefer those over
+//     calling a SpinReconciliationServicing instance directly unless the caller provides its own
+//     equivalent external synchronization.
+//   - Independently of that: every non-terminal checkpoint here is additionally required to be
+//     "quiescent" — its own "updatedAt" must be at least minimumQuiescenceMs in the past — before this
+//     class will act on it at all (see deferIfNotYetQuiescent()). A record updated more recently than
+//     that is assumed to still be actively progressing and is returned as "deferred" instead of acted on,
+//     an explicit, bounded safety margin rather than a guarantee — the closest this package gets to
+//     cross-instance quiescence semantics without mandating a shared lock manager.
 export class SpinReconciliationService implements SpinReconciliationServicing {
     private readonly wallet: TransactionalWalletPort;
     private readonly sessionRepository: SessionRepository;
     private readonly idempotencyRepository: IdempotencyRepository<SpinCommandResult>;
     private readonly operationLog: SpinOperationLog;
+    private readonly minimumQuiescenceMs: number;
+    private readonly now: () => Date;
 
     constructor(
         wallet: TransactionalWalletPort,
         sessionRepository: SessionRepository,
         idempotencyRepository: IdempotencyRepository<SpinCommandResult>,
         operationLog: SpinOperationLog,
+        minimumQuiescenceMs: number = DEFAULT_MINIMUM_QUIESCENCE_MS,
+        now: () => Date = () => new Date(),
     ) {
         this.wallet = wallet;
         this.sessionRepository = sessionRepository;
         this.idempotencyRepository = idempotencyRepository;
         this.operationLog = operationLog;
+        this.minimumQuiescenceMs = minimumQuiescenceMs;
+        this.now = now;
     }
 
     public async reconcileOne(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {
@@ -79,9 +126,15 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
 
         switch (record.checkpoint) {
             case "committed":
-                return {status: "already-committed", sessionId, requestId, reason: "This attempt already reached the terminal committed checkpoint."};
+                // Terminal in the sense that nothing further ever happens to *this attempt* once written
+                // (playAndSettle() only returns after it) — so there's no live-attempt race to defer for
+                // here, unlike every non-terminal checkpoint below. Still re-verified against
+                // idempotencyRepository directly rather than trusted blindly — see the class doc comment.
+                return this.reconcileCommitted(record);
 
             case "compensated":
+                // Also terminal the same way: written only after this attempt's own compensating writes
+                // already finished, synchronously, in the same call — no live-attempt race possible.
                 await this.operationLog.delete(sessionId, requestId);
                 return {
                     status: "no-action-needed",
@@ -91,23 +144,22 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                 };
 
             case "started":
-                // By code order alone: nothing was applied yet when this checkpoint was written (it's
-                // written before the debit is even attempted) — always safe, regardless of wallet
-                // inspection support.
-                await this.operationLog.delete(sessionId, requestId);
-                return {
-                    status: "no-action-needed",
-                    sessionId,
-                    requestId,
-                    reason: "This attempt never got past the 'started' checkpoint — the stake debit was never attempted, nothing to undo.",
-                };
-
-            case "debited":
-                return this.reconcileDebitedOnly(record);
+            case "debited": {
+                const deferred = this.deferIfNotYetQuiescent(record);
+                if (deferred !== undefined) {
+                    return deferred;
+                }
+                return this.reconcileNotYetSettled(record);
+            }
 
             case "settled":
-            case "session-saved":
+            case "session-saved": {
+                const deferred = this.deferIfNotYetQuiescent(record);
+                if (deferred !== undefined) {
+                    return deferred;
+                }
                 return this.reconcileSettled(record);
+            }
 
             default:
                 // Exhaustive over every SpinOperationCheckpoint above — unreachable in practice, kept
@@ -116,11 +168,33 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         }
     }
 
-    // The wallet debit was confirmed applied; whether the matching win settlement also applied before a
-    // crash is unknown from the checkpoint alone. Resolved for certain only when the wallet can be asked
-    // directly (WalletTransactionInspecting) — otherwise this is always manual-recovery-required, since
-    // reversing the debit blindly could leave an already-applied credit un-reversed.
-    private async reconcileDebitedOnly(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
+    // See the class doc comment's "Racing a live attempt" section. Returns a "deferred" outcome when
+    // "record" was updated too recently to safely assume it's abandoned rather than still actively
+    // progressing; undefined when it's old enough to act on.
+    private deferIfNotYetQuiescent(record: SpinOperationRecord): SpinReconciliationOutcome | undefined {
+        const updatedAtMs = Date.parse(record.updatedAt);
+        const ageMs = this.now().getTime() - updatedAtMs;
+        if (Number.isNaN(updatedAtMs) || ageMs < this.minimumQuiescenceMs) {
+            return {
+                status: "deferred",
+                sessionId: record.sessionId,
+                requestId: record.requestId,
+                reason:
+                    `This attempt's own checkpoint ("${record.checkpoint}") was last updated ` +
+                    `${Number.isNaN(updatedAtMs) ? "at an unparseable timestamp" : `${ageMs}ms ago`} — too recently to safely assume it's ` +
+                    "genuinely abandoned rather than still actively in flight; reconciling it now risks racing a live attempt. Retry once " +
+                    `it has been quiescent for at least ${this.minimumQuiescenceMs}ms.`,
+            };
+        }
+        return undefined;
+    }
+
+    // Handles both "started" and "debited": neither checkpoint alone proves what actually happened next
+    // (a crash can land after the underlying wallet call already succeeded but before the matching
+    // checkpoint write does) — so both are resolved the same way, by asking the wallet directly rather
+    // than trusting either checkpoint value as proof of what did NOT happen. Always manual-recovery-
+    // required when the wallet can't be asked at all.
+    private async reconcileNotYetSettled(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
         const {sessionId, requestId} = record;
 
         if (!isWalletTransactionInspecting(this.wallet)) {
@@ -129,15 +203,18 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                 sessionId,
                 requestId,
                 reason:
-                    `The stake debit ("${record.debitTransactionId}") was applied, but whether the matching win settlement ` +
-                    `("${record.creditTransactionId}") also applied before the process stopped is unknown, and this wallet doesn't ` +
-                    "support transaction inspection to check — reversing the debit without knowing could leave an already-applied " +
-                    "credit un-reversed. Resolve by inspecting the wallet's own records directly.",
+                    `This attempt's own checkpoint ("${record.checkpoint}") only proves the wallet's state as of when it was last ` +
+                    "durably recorded, not what happened afterward — a debit can complete before a crash prevents the matching checkpoint " +
+                    `write from ever landing. Whether the stake debit ("${record.debitTransactionId}") and/or the win settlement ` +
+                    `("${record.creditTransactionId}") actually applied is unknown, and this wallet doesn't support transaction ` +
+                    "inspection to check. Resolve by inspecting the wallet's own records directly.",
                 record,
             };
         }
 
+        const debitStatus = await this.wallet.getTransactionStatus(sessionId, record.debitTransactionId);
         const creditStatus = await this.wallet.getTransactionStatus(sessionId, record.creditTransactionId);
+
         if (creditStatus === "applied") {
             return {
                 status: "manual-recovery-required",
@@ -145,15 +222,28 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                 requestId,
                 reason:
                     `The wallet reports the win settlement ("${record.creditTransactionId}") as applied, but this attempt's own ` +
-                    'operation record never advanced past "debited" — the checkpoint and wallet reality disagree in a way that ' +
-                    "can't be safely resolved automatically (no captured session-state result to resume from). Resolve by hand.",
+                    `operation record never advanced past "${record.checkpoint}" — the checkpoint and wallet reality disagree in a way ` +
+                    "that can't be safely resolved automatically (no captured session-state result to resume from). Resolve by hand.",
                 record,
             };
         }
 
-        // creditStatus is "absent" or "reversed" — the win settlement is not currently in effect, so
-        // reversing the debit (idempotent — a no-op if it's already reversed) restores a clean
-        // pre-attempt wallet state.
+        if (debitStatus !== "applied") {
+            // Neither leg is currently applied — whether because neither ever ran, or an earlier
+            // (possibly interrupted) reconciliation already cleaned this up — safe to treat as a clean
+            // slate for a fresh retry.
+            await this.operationLog.delete(sessionId, requestId);
+            return {
+                status: "no-action-needed",
+                sessionId,
+                requestId,
+                reason: `Checkpoint "${record.checkpoint}", but the wallet confirms neither the debit nor the win settlement is currently applied — nothing to undo.`,
+            };
+        }
+
+        // debitStatus === "applied", creditStatus is "absent" or "reversed" — the stake was charged but
+        // the win settlement never landed; reversing the debit (idempotent — a no-op if it's already
+        // reversed) restores a clean pre-attempt wallet state.
         await this.wallet.reverse(sessionId, record.debitTransactionId);
         await this.operationLog.delete(sessionId, requestId);
         return {
@@ -170,16 +260,6 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     // is exactly "settled") and the idempotency result — are (re)applied here, each already-idempotent on
     // its own terms (a repeat save() with the same value is harmless; saveVersioned() either succeeds
     // identically or reports a genuine conflict).
-    //
-    // Before trusting that, though: this checkpoint only proves the wallet *was* settled at the moment it
-    // was written — not that it still is. A same-process compensation failure (see SpinCommandHandler's
-    // own catch block) can leave the checkpoint at "settled"/"session-saved" (session restore failed)
-    // while the wallet reversal it ran alongside *succeeded* — the one partial-compensation combination
-    // that would make a blind resume silently disagree with the wallet's own current state. When the
-    // wallet supports inspection, both legs are re-verified as still "applied" before resuming; a
-    // mismatch is always manual-recovery-required, never guessed at. Without inspection this specific
-    // partial-compensation race remains a real, narrow, documented residual risk (never a concern for a
-    // genuine process crash, since no compensation ever runs in that case at all).
     private async reconcileSettled(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
         const {sessionId, requestId} = record;
         const captured = record.capturedResult;
@@ -195,22 +275,19 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
             };
         }
 
-        if (isWalletTransactionInspecting(this.wallet)) {
-            const debitStatus = await this.wallet.getTransactionStatus(sessionId, record.debitTransactionId);
-            const creditStatus = await this.wallet.getTransactionStatus(sessionId, record.creditTransactionId);
-            if (debitStatus !== "applied" || creditStatus !== "applied") {
-                return {
-                    status: "manual-recovery-required",
-                    sessionId,
-                    requestId,
-                    reason:
-                        `Operation record's checkpoint is "${record.checkpoint}" (implying the wallet is still fully settled for this ` +
-                        `attempt), but the wallet reports debit="${debitStatus}"/credit="${creditStatus}" — most likely a same-process ` +
-                        "compensation partially reversed the wallet without also restoring the session state. Resuming would silently " +
-                        "write an idempotency result claiming a settlement the wallet no longer reflects. Resolve by hand.",
-                    record,
-                };
-            }
+        const mismatch = await this.walletSettlementMismatch(record);
+        if (mismatch !== undefined) {
+            return {
+                status: "manual-recovery-required",
+                sessionId,
+                requestId,
+                reason:
+                    `Operation record's checkpoint is "${record.checkpoint}" (implying the wallet is still fully settled for this ` +
+                    `attempt), but ${mismatch} — most likely a same-process compensation partially reversed the wallet without also ` +
+                    "restoring the session state. Resuming would silently write an idempotency result claiming a settlement the wallet " +
+                    "no longer reflects. Resolve by hand.",
+                record,
+            };
         }
 
         let newVersion = captured.newVersion;
@@ -237,18 +314,10 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
             }
         }
 
-        const result: SpinCommandResult = {
-            status: "played",
-            sessionId,
-            state: captured.newState,
-            previousState: captured.previousState,
-            credits: captured.credits,
-            win: captured.win,
-            requestId,
-            ...(newVersion !== undefined ? {version: newVersion} : {}),
-        };
+        const finalCaptured: SpinOperationCapturedResult = {...captured, newVersion};
+        const result = this.buildPlayedResult(record, finalCaptured);
         await this.idempotencyRepository.save(sessionId, requestId, result);
-        await this.operationLog.record({...record, checkpoint: "committed", updatedAt: new Date().toISOString()});
+        await this.operationLog.record({...record, checkpoint: "committed", updatedAt: new Date().toISOString(), capturedResult: finalCaptured});
 
         return {
             status: "resumed",
@@ -259,6 +328,92 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                     ? "The wallet was already fully settled — persisted the already-computed session state and idempotency result without re-playing the round."
                     : "The wallet and session state were already fully settled — persisted only the missing idempotency result without re-playing the round.",
             result,
+        };
+    }
+
+    // A "committed" record proves this handler's own process believed the idempotency write succeeded —
+    // never that idempotencyRepository still has it (see the class doc comment). Re-verified directly,
+    // and backfilled from the record's own capturedResult (never re-playing) when it's missing; a record
+    // with no capturedResult to rebuild from, or whose wallet no longer matches what "committed" implies,
+    // is manual-recovery-required rather than ever falling through to a fresh spin.
+    private async reconcileCommitted(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
+        const {sessionId, requestId} = record;
+        const alreadyCached = await this.idempotencyRepository.load(sessionId, requestId);
+        if (alreadyCached !== undefined) {
+            return {
+                status: "already-committed",
+                sessionId,
+                requestId,
+                reason: 'This attempt already reached the terminal "committed" checkpoint, and idempotencyRepository already holds its result.',
+            };
+        }
+
+        if (record.capturedResult === undefined) {
+            return {
+                status: "manual-recovery-required",
+                sessionId,
+                requestId,
+                reason:
+                    'This attempt\'s operation record reached the terminal "committed" checkpoint, but idempotencyRepository has no ' +
+                    "result for it and there's no captured data left to safely rebuild one from. Never falling through to a fresh, " +
+                    "re-charging spin for an already-committed requestId — resolve by hand.",
+                record,
+            };
+        }
+
+        const mismatch = await this.walletSettlementMismatch(record);
+        if (mismatch !== undefined) {
+            return {
+                status: "manual-recovery-required",
+                sessionId,
+                requestId,
+                reason:
+                    'This attempt\'s operation record reached the terminal "committed" checkpoint (implying the wallet is fully settled ' +
+                    `for it), but ${mismatch}, and idempotencyRepository is missing its result — backfilling now would silently disagree ` +
+                    "with the wallet's own current state. Resolve by hand.",
+                record,
+            };
+        }
+
+        const result = this.buildPlayedResult(record, record.capturedResult);
+        await this.idempotencyRepository.save(sessionId, requestId, result);
+
+        return {
+            status: "resumed",
+            sessionId,
+            requestId,
+            reason:
+                'This attempt already reached the terminal "committed" checkpoint, but idempotencyRepository was missing its result — ' +
+                "backfilled it from the attempt's own captured data, never re-playing the round.",
+            result,
+        };
+    }
+
+    // Returns undefined when the wallet confirms both legs are still "applied" (or when the wallet can't
+    // be asked at all, in which case the caller proceeds on trust — see the class doc comment's own note
+    // on that residual risk), or a human-readable description of the mismatch otherwise.
+    private async walletSettlementMismatch(record: SpinOperationRecord): Promise<string | undefined> {
+        if (!isWalletTransactionInspecting(this.wallet)) {
+            return undefined;
+        }
+        const debitStatus = await this.wallet.getTransactionStatus(record.sessionId, record.debitTransactionId);
+        const creditStatus = await this.wallet.getTransactionStatus(record.sessionId, record.creditTransactionId);
+        if (debitStatus !== "applied" || creditStatus !== "applied") {
+            return `the wallet reports debit="${debitStatus}"/credit="${creditStatus}"`;
+        }
+        return undefined;
+    }
+
+    private buildPlayedResult(record: SpinOperationRecord, captured: SpinOperationCapturedResult): SpinCommandResult {
+        return {
+            status: "played",
+            sessionId: record.sessionId,
+            state: captured.newState,
+            previousState: captured.previousState,
+            credits: captured.credits,
+            win: captured.win,
+            requestId: record.requestId,
+            ...(captured.newVersion !== undefined ? {version: captured.newVersion} : {}),
         };
     }
 
