@@ -36,7 +36,9 @@ function reconciliationServiceWithZeroQuiescence(
     idempotencyRepository: IdempotencyRepository<SpinCommandResult>,
     operationLog: SpinOperationLog,
 ): SpinReconciliationService {
-    return new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true, 0);
+    // structurallyOwned: true (exclusiveStartupAuthority is irrelevant once that's granted — it short-
+    // circuits first, see SpinReconciliationService's own withOwnership()), minimumQuiescenceMs: 0.
+    return new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true, undefined, 0);
 }
 
 // End-to-end reconciliation/retry recovery coverage for SpinCommandHandler: what happens to a *retried*
@@ -605,5 +607,69 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
         expect(liveResult).toMatchObject({status: "played"});
         expect(reconcileOutcome).toMatchObject({status: "no-action-needed"}); // the stuck record — nothing was ever applied
         expect(executionOrder).toEqual(["live-debit-started", "live-handle-resolved", "reconcile-resolved"]);
+    });
+
+    it("a slow live handler racing an external, non-authorized reconciler (a separate process/instance) is never mutated by it, regardless of how old its checkpoint looks", async () => {
+        const {game, stats} = createInstrumentedGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const realWallet = new InMemoryWallet();
+        const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+        const operationLog = new InMemorySpinOperationLog();
+
+        let releaseDebit: () => void = () => undefined;
+        const debitGate = new Promise<void>((resolve) => {
+            releaseDebit = resolve;
+        });
+        let notifyDebitStarted: () => void = () => undefined;
+        const debitStartedSignal = new Promise<void>((resolve) => {
+            notifyDebitStarted = resolve;
+        });
+        const blockingWallet: TransactionalWalletPort & WalletTransactionInspecting = {
+            getBalance: (sessionId) => realWallet.getBalance(sessionId),
+            setBalance: (sessionId, balance) => realWallet.setBalance(sessionId, balance),
+            debit: async (sessionId, transactionId, amount) => {
+                notifyDebitStarted();
+                await debitGate; // held open until the test explicitly releases it — simulates a genuinely slow, still-live spin
+                return realWallet.debit(sessionId, transactionId, amount);
+            },
+            credit: (sessionId, transactionId, amount) => realWallet.credit(sessionId, transactionId, amount),
+            reverse: (sessionId, transactionId) => realWallet.reverse(sessionId, transactionId),
+            getTransactionStatus: (sessionId, transactionId) => realWallet.getTransactionStatus(sessionId, transactionId),
+        };
+        await seedSession(sessionRepository, blockingWallet, "session-1", 1000);
+
+        // "Process A": the live, slow handler — no reconciliation-specific wiring at all, exactly what a
+        // normal deployment would construct.
+        const handlerA = new SpinCommandHandler(game, sessionRepository, blockingWallet, idempotencyRepository, operationLog);
+        const livePromise = handlerA.handle("session-1", "request-1");
+
+        await debitStartedSignal; // process A has written "started" and is now genuinely mid-flight
+
+        const stuckWhileLive = await operationLog.load("session-1", "request-1");
+        expect(stuckWhileLive?.checkpoint).toBe("started");
+
+        // "Process B": a standalone reconciler over the SAME durable stores — sharing nothing with
+        // handlerA, in particular not its enqueue() queue, simulating a genuinely separate process (e.g.
+        // an ops sweep run against the wrong assumption that no handler is live). Deliberately NOT granted
+        // structuralOwnership or exclusiveStartupAuthority — the default, safe posture — and its own clock
+        // is set far in the future, so the checkpoint looks comfortably past any quiescence window; the
+        // only thing that can still be protecting process A's live attempt here is the ownership gate
+        // itself, not quiescence.
+        const farFuture = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
+        const externalReconciler = new SpinReconciliationService(blockingWallet, sessionRepository, idempotencyRepository, operationLog, false, false, 0, undefined, farFuture);
+
+        const externalOutcome = await externalReconciler.reconcileOne("session-1", "request-1");
+
+        expect(externalOutcome).toMatchObject({status: "manual-recovery-required"});
+        // Process A's own record is completely untouched by process B's refused attempt.
+        await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "started"});
+
+        // Process A, completely undisturbed, finishes normally.
+        releaseDebit();
+        const liveResult = await livePromise;
+
+        expect(liveResult).toMatchObject({status: "played"});
+        expect(stats.playCalls).toBe(1); // exactly the one, genuine play — process B never touched anything
+        await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "committed"});
     });
 });

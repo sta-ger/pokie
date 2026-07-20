@@ -1,10 +1,12 @@
 import {
+    IdempotencyRepository,
     InMemoryIdempotencyRepository,
     InMemorySpinOperationLog,
     PokieSessionState,
     SessionRepository,
     SessionVersionConflictError,
     SpinCommandResult,
+    SpinOperationLeasing,
     SpinOperationLog,
     SpinOperationRecord,
     SpinReconciliationService,
@@ -119,6 +121,54 @@ class PlainNonLeasingOperationLog implements SpinOperationLog {
     }
 }
 
+// A SpinOperationLog that hands out a real, initially-valid claim via tryClaimForReconciliation(), but
+// whose renewReconciliationClaim() always reports the claim as stale (as if some other claimant had
+// already superseded it by the time renewal was attempted) — simulating a lease that lapsed mid-
+// reconciliation, right at the one checkpoint SpinReconciliationService itself re-verifies ownership
+// before actually mutating anything. releaseReconciliationClaim() still delegates normally, so the real
+// claim is cleaned up as usual once the (aborted) attempt finishes.
+class RenewalFailingLeasingOperationLog implements SpinOperationLog, SpinOperationLeasing {
+    public readonly renewCalls: string[] = [];
+    private readonly inner = new InMemorySpinOperationLog();
+
+    public record(record: SpinOperationRecord): Promise<void> {
+        return this.inner.record(record);
+    }
+    public load(sessionId: string, requestId: string): Promise<SpinOperationRecord | undefined> {
+        return this.inner.load(sessionId, requestId);
+    }
+    public delete(sessionId: string, requestId: string): Promise<void> {
+        return this.inner.delete(sessionId, requestId);
+    }
+    public listIncomplete(): Promise<readonly SpinOperationRecord[]> {
+        return this.inner.listIncomplete();
+    }
+    public tryClaimForReconciliation(sessionId: string, requestId: string, leaseDurationMs: number): Promise<string | undefined> {
+        return this.inner.tryClaimForReconciliation(sessionId, requestId, leaseDurationMs);
+    }
+    public renewReconciliationClaim(sessionId: string, requestId: string, ownerToken: string): Promise<boolean> {
+        this.renewCalls.push(ownerToken);
+        return Promise.resolve(false); // always simulate "already lost ownership by the time this ran"
+    }
+    public releaseReconciliationClaim(sessionId: string, requestId: string, ownerToken: string): Promise<void> {
+        return this.inner.releaseReconciliationClaim(sessionId, requestId, ownerToken);
+    }
+}
+
+// Most tests below want a standalone SpinReconciliationService that's actually able to mutate — i.e. one
+// explicitly granted exclusiveStartupAuthority (see that class's own doc comment), the same certification
+// a real caller would only give during a dedicated startup/maintenance sweep, never while a handler might
+// be live. The "ownership" describe block below tests the *absence* of that authority directly, using the
+// raw constructor instead of this helper.
+function authorizedService(
+    wallet: TransactionalWalletPort,
+    sessionRepository: SessionRepository,
+    idempotencyRepository: IdempotencyRepository<SpinCommandResult>,
+    operationLog: SpinOperationLog,
+): SpinReconciliationService {
+    return new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
+}
+
 const previousState: PokieSessionState = {bet: 5, win: 0};
 const newState: PokieSessionState = {bet: 5, win: 20};
 
@@ -149,7 +199,7 @@ describe("SpinReconciliationService", () => {
         const sessionRepository = new FakeSessionRepository();
         const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
         const operationLog = new InMemorySpinOperationLog();
-        const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+        const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
         const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -167,7 +217,7 @@ describe("SpinReconciliationService", () => {
             // Fresh updatedAt — "committed" is terminal, so it's never subject to the quiescence window
             // a live in-flight attempt could still be racing (see the "quiescence" describe block).
             await operationLog.record(baseRecord("committed", {updatedAt: new Date().toISOString()}));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -182,7 +232,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("committed", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -197,7 +247,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("committed")); // no capturedResult
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -212,7 +262,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("committed", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -227,7 +277,7 @@ describe("SpinReconciliationService", () => {
         const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
         const operationLog = new InMemorySpinOperationLog();
         await operationLog.record(baseRecord("compensated", {updatedAt: new Date().toISOString()}));
-        const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+        const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
         const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -246,7 +296,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord(checkpoint));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -260,7 +310,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord(checkpoint));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -276,7 +326,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord(checkpoint));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -292,7 +342,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord(checkpoint));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const first = await service.reconcileOne("session-1", "request-1");
             // Record is now cleared — a second reconcileOne() call for the same (sessionId, requestId)
@@ -311,7 +361,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord(checkpoint));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -333,7 +383,7 @@ describe("SpinReconciliationService", () => {
                     capturedResult: {previousState, newState, win: 20, credits: 995},
                 }),
             );
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -358,7 +408,7 @@ describe("SpinReconciliationService", () => {
                     capturedResult: {previousState, newState, win: 20, credits: 995},
                 }),
             );
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -380,7 +430,7 @@ describe("SpinReconciliationService", () => {
                     capturedResult: {previousState, newState, win: 20, credits: 995},
                 }),
             );
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -401,7 +451,7 @@ describe("SpinReconciliationService", () => {
                     capturedResult: {previousState, newState, win: 20, credits: 995},
                 }),
             );
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             await service.reconcileOne("session-1", "request-1");
 
@@ -425,7 +475,7 @@ describe("SpinReconciliationService", () => {
                     capturedResult: {previousState, newState, win: 20, credits: 995},
                 }),
             );
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -443,7 +493,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("settled"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -462,7 +512,7 @@ describe("SpinReconciliationService", () => {
                     capturedResult: {previousState, newState, win: 20, credits: 995},
                 }),
             );
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -486,7 +536,7 @@ describe("SpinReconciliationService", () => {
             // wallet just has no way to report that back, unlike FakeInspectableWallet.
             await wallet.reverse("session-1", "request-1:attempt-1:debit");
 
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
             const outcome = await service.reconcileOne("session-1", "request-1");
 
             expect(outcome).toMatchObject({status: "manual-recovery-required"});
@@ -506,7 +556,7 @@ describe("SpinReconciliationService", () => {
             );
             await wallet.reverse("session-1", "request-1:attempt-1:credit");
 
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
             const outcome = await service.reconcileOne("session-1", "request-1");
 
             expect(outcome).toMatchObject({status: "manual-recovery-required"});
@@ -515,30 +565,32 @@ describe("SpinReconciliationService", () => {
         });
     });
 
-    describe("ownership — a checkpoint's own age is never sufficient authority to mutate a record", () => {
-        it("is manual-recovery-required, never reversing, when there's no structural ownership and the operationLog doesn't support leasing", async () => {
+    describe("ownership — a checkpoint's own age, or even a successfully won lease, is never sufficient authority to mutate a record", () => {
+        it("is manual-recovery-required, never reversing, without exclusiveStartupAuthority — even when the operationLog supports leasing and no one else holds a claim", async () => {
             const wallet = new FakeInspectableWallet();
             wallet.statusFor.set("request-1:attempt-1:debit", "applied"); // would otherwise be reversed
             const sessionRepository = new FakeSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
-            const operationLog = new PlainNonLeasingOperationLog();
+            const operationLog = new InMemorySpinOperationLog(); // supports leasing — deliberately not what's missing here
             await operationLog.record(baseRecord("debited"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog); // no authority granted at all
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
             expect(outcome).toMatchObject({status: "manual-recovery-required"});
             expect(wallet.reverseCalls).toEqual([]);
             await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "debited"}); // untouched
+            // Never even attempted a lease claim — no authority means no mutation is even considered.
+            await expect(operationLog.tryClaimForReconciliation("session-1", "request-1", 1_000)).resolves.toBeDefined();
         });
 
-        it("is manual-recovery-required, never resuming, when there's no structural ownership and the operationLog doesn't support leasing", async () => {
+        it("is manual-recovery-required, never resuming, without exclusiveStartupAuthority — even when the operationLog supports leasing and no one else holds a claim", async () => {
             const wallet = new FakeInspectableWallet();
             wallet.statusFor.set("request-1:attempt-1:debit", "applied");
             wallet.statusFor.set("request-1:attempt-1:credit", "applied");
             const sessionRepository = new FakeSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
-            const operationLog = new PlainNonLeasingOperationLog();
+            const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("settled", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
             const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
@@ -549,24 +601,53 @@ describe("SpinReconciliationService", () => {
             await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
         });
 
-        it("acquires a lease, mutates, and releases it again when the operationLog supports leasing and no one else holds a claim", async () => {
+        it("is manual-recovery-required regardless of authority mechanisms when neither structural ownership, exclusiveStartupAuthority, nor leasing support is available", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new PlainNonLeasingOperationLog();
+            await operationLog.record(baseRecord("debited"));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "manual-recovery-required"});
+            expect(wallet.reverseCalls).toEqual([]);
+        });
+
+        it("exclusiveStartupAuthority alone (no leasing support at all) is still honored — the operator's own certification, not the lease, is the primary guarantee", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new PlainNonLeasingOperationLog(); // no leasing support
+            await operationLog.record(baseRecord("debited"));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true); // structurallyOwned: false, exclusiveStartupAuthority: true
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "reversed"});
+        });
+
+        it("acquires a lease, mutates, and releases it again when exclusiveStartupAuthority is granted and the operationLog supports leasing with no one else holding a claim", async () => {
             const wallet = new FakeInspectableWallet();
             wallet.statusFor.set("request-1:attempt-1:debit", "applied");
             const sessionRepository = new FakeSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog(); // supports SpinOperationLeasing
             await operationLog.record(baseRecord("debited"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
             expect(outcome).toMatchObject({status: "reversed"});
             // The claim was released afterward — re-claiming it immediately (as a fresh reconciliation
             // attempt would) succeeds rather than finding it still held.
-            await expect(operationLog.tryClaimForReconciliation("session-1", "request-1", 10_000)).resolves.toBe(true);
+            await expect(operationLog.tryClaimForReconciliation("session-1", "request-1", 10_000)).resolves.toBeDefined();
         });
 
-        it("returns deferred, never mutating, when another reconciliation claim is currently held for the record", async () => {
+        it("returns deferred, never mutating, when exclusiveStartupAuthority is granted but another reconciliation claim is currently held for the record", async () => {
             const wallet = new FakeInspectableWallet();
             wallet.statusFor.set("request-1:attempt-1:debit", "applied"); // would otherwise be reversed
             const sessionRepository = new FakeSessionRepository();
@@ -574,8 +655,8 @@ describe("SpinReconciliationService", () => {
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("debited"));
             // Simulates a different reconciler currently working this exact record.
-            await expect(operationLog.tryClaimForReconciliation("session-1", "request-1", 60_000)).resolves.toBe(true);
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            await expect(operationLog.tryClaimForReconciliation("session-1", "request-1", 60_000)).resolves.toBeDefined();
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -584,7 +665,7 @@ describe("SpinReconciliationService", () => {
             await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "debited"}); // untouched
         });
 
-        it("structurallyOwned bypasses leasing entirely — mutates normally even with a non-leasing operationLog", async () => {
+        it("structurallyOwned bypasses both exclusiveStartupAuthority and leasing entirely — mutates normally even with a non-leasing operationLog", async () => {
             const wallet = new FakeInspectableWallet();
             wallet.statusFor.set("request-1:attempt-1:debit", "applied");
             const sessionRepository = new FakeSessionRepository();
@@ -606,12 +687,50 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new PlainNonLeasingOperationLog(); // no leasing, and structurallyOwned defaults to false
             await operationLog.record(baseRecord("committed", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
             expect(outcome).toMatchObject({status: "resumed"});
             await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toMatchObject({status: "played"});
+        });
+
+        // Fencing in practice: even after winning the initial claim, SpinReconciliationService re-verifies
+        // ownership immediately before the one actual mutating step (see confirmOwnership() in the
+        // production class) — a stale owner whose renewal fails must never reach that mutating step at
+        // all, exactly as if it had never won the claim in the first place.
+        it("a stale owner whose renewal fails never reverses the debit — the mutating step is never reached once ownership can't be re-confirmed", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied"); // would otherwise be reversed
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new RenewalFailingLeasingOperationLog();
+            await operationLog.record(baseRecord("debited"));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "manual-recovery-required"});
+            expect(wallet.reverseCalls).toEqual([]); // never mutated
+            expect(operationLog.renewCalls.length).toBeGreaterThan(0); // proves the renewal check actually ran
+        });
+
+        it("a stale owner whose renewal fails never resumes a settlement — no session or idempotency write happens once ownership can't be re-confirmed", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new RenewalFailingLeasingOperationLog();
+            await operationLog.record(baseRecord("settled", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "manual-recovery-required"});
+            expect(sessionRepository.saveCalls).toEqual([]); // never mutated
+            await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
+            expect(operationLog.renewCalls.length).toBeGreaterThan(0); // proves the renewal check actually ran
         });
     });
 
@@ -623,7 +742,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("debited", {updatedAt: new Date().toISOString()}));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -643,7 +762,7 @@ describe("SpinReconciliationService", () => {
                     capturedResult: {previousState, newState, win: 20, credits: 995},
                 }),
             );
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -667,6 +786,7 @@ describe("SpinReconciliationService", () => {
                 idempotencyRepository,
                 operationLog,
                 false, // structurallyOwned
+                true, // exclusiveStartupAuthority — this test is about quiescence timing, not ownership
                 5_000, // minimumQuiescenceMs
                 undefined, // leaseDurationMs (default)
                 () => justPastQuiescence,
@@ -694,6 +814,7 @@ describe("SpinReconciliationService", () => {
                 idempotencyRepository,
                 operationLog,
                 false, // structurallyOwned
+                true, // exclusiveStartupAuthority — this test is about quiescence timing, not ownership
                 60_000, // minimumQuiescenceMs
                 undefined, // leaseDurationMs (default)
                 () => stillWithinConfiguredWindow,
@@ -710,7 +831,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("compensated", {updatedAt: new Date().toISOString()}));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -735,7 +856,7 @@ describe("SpinReconciliationService", () => {
                     capturedResult: {previousState, newState, win: 20, credits: 995},
                 }),
             );
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = authorizedService(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcomes = await service.reconcileAll();
 

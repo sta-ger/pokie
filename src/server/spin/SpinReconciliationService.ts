@@ -16,22 +16,23 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 // Deliberately generous: every individual step a live playAndSettle() attempt awaits (a wallet call, a
 // repository save) is expected to resolve in well under a second even under load; this is a safety
 // margin, not a performance budget. Checked before, and independently of, the ownership gate below — a
-// record can fail either check on its own.
+// record can fail either check on its own. Never sufficient by itself — see "Ownership, not just age."
 const DEFAULT_MINIMUM_QUIESCENCE_MS = 30_000;
 
-// How long a won reconciliation claim (see SpinOperationLeasing) is held for by default — comfortably
-// longer than any single reconcileOne() call is expected to take, short enough that a claim from a caller
-// that crashed mid-reconciliation itself doesn't block real recovery for long.
+// How long a won reconciliation claim (see SpinOperationLeasing) is held for by default before it must be
+// renewed — comfortably longer than a single step of reconciliation's own mutating work is expected to
+// take, short enough that a claim from a caller that crashed mid-reconciliation doesn't block real
+// recovery for long.
 const DEFAULT_LEASE_DURATION_MS = 10_000;
 
 // Resolves one requestId-bearing SpinOperationRecord left in-flight by a process crash (or a
 // same-process compensation failure — see SpinCommandHandler's own catch block) into exactly one of:
 // "no-action-needed" (nothing was ever applied), "already-committed" (nothing to do, it finished), a
-// safe automatic "reversed" or "resumed", "deferred" (too recent, or not confirmed owned, to safely act on
-// yet), or an honest "manual-recovery-required" when none of the above can be established safely. Never
-// claims true atomicity — see this package's own v1.3 gap-audit note on why full cross-store atomicity is
-// a v2 concern: every mutating branch below only ever acts when it can be certain, and defers to a human
-// (or to time, or to whoever currently holds ownership) otherwise.
+// safe automatic "reversed" or "resumed", "deferred" (a lease is contested right now, or a record is too
+// recent to safely act on yet), or an honest "manual-recovery-required" when none of the above can be
+// established safely. Never claims true atomicity — see this package's own v1.3 gap-audit note on why
+// full cross-store atomicity is a v2 concern: every mutating branch below only ever acts when it can be
+// certain, and defers to a human (or to time, or to whoever currently holds ownership) otherwise.
 //
 // Deliberately has no PokieGame/live-session access at all — constructed from only the wallet,
 // sessionRepository, idempotencyRepository, and operationLog a SpinCommandHandler itself already holds.
@@ -65,41 +66,64 @@ const DEFAULT_LEASE_DURATION_MS = 10_000;
 // guessing when no such proof is available. (This is stricter than checking only for a *known* mismatch:
 // "can't verify" and "verified mismatch" are both refused, not just the latter.)
 //
-// Ownership, not just age: reconcileOne()/reconcileAll() read/act on SpinOperationLog independently of
-// SpinCommandHandler's own per-session enqueue() queue — calling them directly while a live handle() call
-// for the same (sessionId, requestId) might still be running (in this process or another) risks
-// reconciling a record that isn't abandoned at all, just mid-flight (e.g. reversing a debit the live
-// attempt is about to credit against, or overwriting a live attempt's own newer session state with stale
-// captured data). A checkpoint's own age is never, by itself, sufficient authority to perform a mutating
-// action (reverse a debit, resume a settlement) — clock skew between processes, or simply two reconcilers
-// racing each other, can each independently satisfy an age threshold without the record actually being
-// abandoned. Every mutating outcome is therefore additionally gated on confirmed ownership (see
-// withOwnership()), established one of two ways:
-//   - **Structural**: this instance was constructed with structurallyOwned = true, meaning the caller
-//     already guarantees every call into it is serialized against any live attempt for the same session —
-//     exactly what SpinCommandHandler's own internally-built instance is, via its own reconcileOne()/
-//     reconcileAll() wrapper methods routing through enqueue(). This is the strong case: no further check
-//     needed, because the guarantee is real, not inferred from timing.
-//   - **Leased**: when operationLog additionally implements SpinOperationLeasing, an explicit, exclusive,
-//     time-boxed claim is taken before acting and released afterward (see tryClaimForReconciliation()) —
-//     the closest thing to genuine cross-process ownership this package offers, still bounded and
-//     revocable rather than a true distributed lock.
-//   - **Neither**: a standalone instance with no structural guarantee and an operationLog that doesn't
-//     support leasing has no way to establish ownership at all — every mutating outcome becomes
-//     manual-recovery-required instead, never a guess. A contested lease (someone else currently holds
-//     the claim) returns "deferred", not manual-recovery-required — that's not ambiguous, it just means
-//     try again shortly.
-// Quiescence and ownership are independent, both-required checks, in that order (quiescence is a cheap,
-// local, always-applicable filter checked first; ownership is what actually authorizes acting).
+// Ownership, not just age — and not reconciler-vs-reconciler alone: reconcileOne()/reconcileAll() read/act
+// on SpinOperationLog independently of SpinCommandHandler's own per-session enqueue() queue — calling them
+// directly while a live handle() call for the same (sessionId, requestId) might still be running (in this
+// process or another) risks reconciling a record that isn't abandoned at all, just mid-flight (e.g.
+// reversing a debit the live attempt is about to credit against, or overwriting a live attempt's own
+// newer session state with stale captured data). A checkpoint's own age is never, by itself, sufficient
+// authority — clock skew, or simply two reconcilers racing each other, can each independently satisfy an
+// age threshold without the record actually being abandoned. And a lease alone only ever serializes
+// *reconcilers against each other* — nothing in this package makes a live playAndSettle() attempt
+// acquire, renew, or respect any lease at all, so a lease can never by itself prove no live handler is
+// concurrently running somewhere else. Closing that gap without either (a) making every live attempt hold
+// and renew a distributed lock (a far larger change this package does not make, and would start to look
+// like a real cross-process atomicity claim this package explicitly disclaims) or (b) mandating a single
+// shared transactional store (breaking the "any of the three storages plugs in independently" model) is
+// not possible in general — so this class instead narrows *when* a mutating outcome is permitted at all,
+// to cases where the caller can genuinely guarantee the answer:
+//   - **Structural** (structurallyOwned = true): this instance's own caller already guarantees every call
+//     into it is serialized against any live attempt for the same session — exactly what
+//     SpinCommandHandler's own internally-built instance is, via its own reconcileOne()/reconcileAll()
+//     wrapper methods routing through enqueue(). The strong case: no further check needed, because the
+//     guarantee is real, not inferred from timing, and only ever covers this one same-instance handler
+//     (which is exactly the scope it needs to cover — a live handle() call for the same session on the
+//     same instance).
+//   - **Exclusive-startup authority** (exclusiveStartupAuthority = true): the caller explicitly certifies
+//     that, for as long as this instance is used, no SpinCommandHandler anywhere (this process or any
+//     other) is currently processing requests against these same stores — true, for example, during a
+//     dedicated startup/maintenance reconciliation sweep run *before* a server starts accepting traffic,
+//     never while it's live. This is an operational contract this class cannot verify on its own — get it
+//     wrong (grant this while a handler really is live) and this class's own guarantees don't hold; that
+//     residual is exactly the kind of thing "no true cross-store atomicity" already accepts. Without
+//     either structural ownership or this explicit authority, every mutating outcome is
+//     manual-recovery-required, unconditionally — a checkpoint's own age, or even a successfully won
+//     lease, is deliberately *not* enough on its own to authorize mutation; see withOwnership().
+//   - **Leasing, once authority is already established**: with exclusiveStartupAuthority granted and
+//     operationLog implementing SpinOperationLeasing, an explicit, exclusive, time-boxed, *fenced* claim
+//     (see that interface's own doc comment on owner tokens) is taken before acting, re-verified
+//     immediately before the actual mutating write (see confirmOwnership()), and released afterward. This
+//     protects against multiple reconciler processes/workers that were each independently granted
+//     exclusive-startup authority (e.g. by an operator mistake) from racing each other; it does not, and
+//     cannot, protect against a live handler that was never supposed to be running in the first place —
+//     only the authority contract above does that. When operationLog doesn't support leasing at all,
+//     exclusive-startup authority alone is still honored (the operator's own certification is the primary
+//     guarantee here, not the lease).
+// Quiescence and ownership are independent, both-required checks for the two genuinely mutating paths
+// (reverse, resume) — quiescence is a cheap, local, always-applicable filter checked first; ownership is
+// what actually authorizes acting. The "committed" backfill is deliberately exempt from both: it's
+// terminal (nothing further ever touches a truly-committed attempt) and idempotent regardless of who or
+// how many times performs it, so there is no live-attempt race to guard against there.
 export class SpinReconciliationService implements SpinReconciliationServicing {
     private readonly wallet: TransactionalWalletPort;
     private readonly sessionRepository: SessionRepository;
     private readonly idempotencyRepository: IdempotencyRepository<SpinCommandResult>;
     private readonly operationLog: SpinOperationLog;
-    private readonly minimumQuiescenceMs: number;
-    private readonly now: () => Date;
     private readonly structurallyOwned: boolean;
+    private readonly exclusiveStartupAuthority: boolean;
+    private readonly minimumQuiescenceMs: number;
     private readonly leaseDurationMs: number;
+    private readonly now: () => Date;
 
     constructor(
         wallet: TransactionalWalletPort,
@@ -107,8 +131,10 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         idempotencyRepository: IdempotencyRepository<SpinCommandResult>,
         operationLog: SpinOperationLog,
         // Additive constructor parameters — every one of them optional, defaulting to the conservative,
-        // safe-by-default behavior of a standalone instance with no special guarantees.
+        // safe-by-default behavior of a standalone instance with no special guarantees: no mutating
+        // outcome is ever produced unless the caller opts into one of the two authority mechanisms above.
         structurallyOwned = false,
+        exclusiveStartupAuthority = false,
         minimumQuiescenceMs: number = DEFAULT_MINIMUM_QUIESCENCE_MS,
         leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
         now: () => Date = () => new Date(),
@@ -118,6 +144,7 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         this.idempotencyRepository = idempotencyRepository;
         this.operationLog = operationLog;
         this.structurallyOwned = structurallyOwned;
+        this.exclusiveStartupAuthority = exclusiveStartupAuthority;
         this.minimumQuiescenceMs = minimumQuiescenceMs;
         this.leaseDurationMs = leaseDurationMs;
         this.now = now;
@@ -187,7 +214,7 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                 if (deferred !== undefined) {
                     return deferred;
                 }
-                return this.withOwnership(record, () => this.reconcileNotYetSettled(record));
+                return this.withOwnership(record, (ownershipToken) => this.reconcileNotYetSettled(record, ownershipToken));
             }
 
             case "settled":
@@ -196,7 +223,7 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                 if (deferred !== undefined) {
                     return deferred;
                 }
-                return this.withOwnership(record, () => this.reconcileSettled(record));
+                return this.withOwnership(record, (ownershipToken) => this.reconcileSettled(record, ownershipToken));
             }
 
             default:
@@ -227,34 +254,47 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         return undefined;
     }
 
-    // See the class doc comment's "Ownership, not just age" section. Runs "action" only once ownership of
-    // "record" is confirmed one of the two ways described there; otherwise returns manual-recovery-required
-    // (no ownership possible at all) or "deferred" (a lease is held by someone else right now).
-    private async withOwnership(record: SpinOperationRecord, action: () => Promise<SpinReconciliationOutcome>): Promise<SpinReconciliationOutcome> {
+    // See the class doc comment's "Ownership, not just age" section. Runs "action" — passing it the won
+    // lease's own owner token, or undefined when structurallyOwned made a lease unnecessary — only once
+    // authority over "record" is confirmed; otherwise returns manual-recovery-required (no authority
+    // possible at all) or "deferred" (a lease is held by someone else right now).
+    private async withOwnership(
+        record: SpinOperationRecord,
+        action: (ownershipToken: string | undefined) => Promise<SpinReconciliationOutcome>,
+    ): Promise<SpinReconciliationOutcome> {
         const {sessionId, requestId} = record;
 
         if (this.structurallyOwned) {
-            return action();
+            return action(undefined);
         }
 
-        if (!isSpinOperationLeasing(this.operationLog)) {
+        if (!this.exclusiveStartupAuthority) {
             return {
                 status: "manual-recovery-required",
                 sessionId,
                 requestId,
                 reason:
-                    "No confirmed ownership to safely mutate this record: this SpinReconciliationService has no structural same-instance " +
-                    "guarantee (only SpinCommandHandler's own reconcileOne()/reconcileAll() have that — see its own doc comment), and " +
-                    "this operationLog doesn't implement SpinOperationLeasing to establish one explicitly. A checkpoint's own age alone " +
-                    "is never sufficient authority to reverse or resume a record that might still belong to a live attempt in another " +
-                    "process. Resolve by hand, reconcile through a leasing-capable operationLog, or through a trusted same-instance " +
-                    "handler instead.",
+                    "No confirmed authority to safely mutate this record: this SpinReconciliationService has no structural same-instance " +
+                    "guarantee (only SpinCommandHandler's own reconcileOne()/reconcileAll() have that — see its own doc comment) and no " +
+                    "exclusiveStartupAuthority was granted. Neither a checkpoint's own age nor a successfully won reconciliation lease is " +
+                    "ever sufficient authority on its own — a lease only ever serializes reconcilers against *each other*, never against a " +
+                    "live SpinCommandHandler attempt that was never told to acquire or respect one. Resolve by hand, construct this " +
+                    "service with exclusiveStartupAuthority: true only when no handler is running anywhere against these same stores " +
+                    "(e.g. a dedicated startup sweep before serving traffic), or reconcile through a trusted same-instance handler instead.",
                 record,
             };
         }
 
-        const claimed = await this.operationLog.tryClaimForReconciliation(sessionId, requestId, this.leaseDurationMs);
-        if (!claimed) {
+        if (!isSpinOperationLeasing(this.operationLog)) {
+            // exclusiveStartupAuthority alone (no leasing support) is still honored — the operator has
+            // already certified sole access; leasing, when available, is additional protection against
+            // multiple reconciler processes/workers racing *each other* under that same certified
+            // authority, not a further requirement for the authority itself to be honored.
+            return action(undefined);
+        }
+
+        const ownerToken = await this.operationLog.tryClaimForReconciliation(sessionId, requestId, this.leaseDurationMs);
+        if (ownerToken === undefined) {
             return {
                 status: "deferred",
                 sessionId,
@@ -263,10 +303,39 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
             };
         }
         try {
-            return await action();
+            return await action(ownerToken);
         } finally {
-            await this.operationLog.releaseReconciliationClaim(sessionId, requestId);
+            await this.operationLog.releaseReconciliationClaim(sessionId, requestId, ownerToken);
         }
+    }
+
+    // Re-verifies (and, on success, extends) a lease immediately before the actual mutating step it
+    // guards — see SpinOperationLeasing's own doc comment on why this narrows, without eliminating, the
+    // window in which a claim could lapse mid-reconciliation. Always true when ownershipToken is
+    // undefined (structurallyOwned, or exclusiveStartupAuthority without leasing support — both already
+    // trusted for this call's whole duration, nothing further to check).
+    private confirmOwnership(record: SpinOperationRecord, ownershipToken: string | undefined): Promise<boolean> {
+        if (ownershipToken === undefined) {
+            return Promise.resolve(true);
+        }
+        if (!isSpinOperationLeasing(this.operationLog)) {
+            // Structurally unreachable — a token is only ever minted when leasing is supported — kept as
+            // a fail-safe rather than a cast.
+            return Promise.resolve(false);
+        }
+        return this.operationLog.renewReconciliationClaim(record.sessionId, record.requestId, ownershipToken, this.leaseDurationMs);
+    }
+
+    private ownershipLapsedOutcome(record: SpinOperationRecord): SpinReconciliationOutcome {
+        return {
+            status: "manual-recovery-required",
+            sessionId: record.sessionId,
+            requestId: record.requestId,
+            reason:
+                "This reconciliation's own claim on the record lapsed (expired, or was superseded by another claimant) partway through " +
+                "— stopped here rather than risk mutating it concurrently with whoever holds the claim now. Resolve by hand.",
+            record,
+        };
     }
 
     // Handles both "started" and "debited": neither checkpoint alone proves what actually happened next
@@ -274,8 +343,9 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     // checkpoint write does) — so both are resolved the same way, by asking the wallet directly rather
     // than trusting either checkpoint value as proof of what did NOT happen. Always manual-recovery-
     // required when the wallet can't be asked at all. Only ever reached once withOwnership() above has
-    // confirmed this call is authorized to mutate this record.
-    private async reconcileNotYetSettled(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
+    // confirmed this call is authorized to mutate this record; re-confirms that authority again
+    // immediately before the one actual mutating step (wallet.reverse()) via confirmOwnership().
+    private async reconcileNotYetSettled(record: SpinOperationRecord, ownershipToken: string | undefined): Promise<SpinReconciliationOutcome> {
         const {sessionId, requestId} = record;
 
         if (!isWalletTransactionInspecting(this.wallet)) {
@@ -307,6 +377,10 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                     "that can't be safely resolved automatically (no captured session-state result to resume from). Resolve by hand.",
                 record,
             };
+        }
+
+        if (!(await this.confirmOwnership(record, ownershipToken))) {
+            return this.ownershipLapsedOutcome(record);
         }
 
         if (debitStatus !== "applied") {
@@ -341,13 +415,14 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     // is exactly "settled") and the idempotency result — are (re)applied here, each already-idempotent on
     // its own terms (a repeat save() with the same value is harmless; saveVersioned() either succeeds
     // identically or reports a genuine conflict). Only ever reached once withOwnership() above has
-    // confirmed this call is authorized to mutate this record.
+    // confirmed this call is authorized to mutate this record; re-confirms that authority again
+    // immediately before starting the mutating writes via confirmOwnership().
     //
     // Never auto-resumes without durable proof the wallet is still actually settled — see
     // verifyDurableSettlement() and the class doc comment's own "No durable proof, no auto-resume"
     // section. That covers both a known mismatch (e.g. a same-process compensation partially reversed the
     // wallet without also restoring the session) and simply having no way to check at all.
-    private async reconcileSettled(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
+    private async reconcileSettled(record: SpinOperationRecord, ownershipToken: string | undefined): Promise<SpinReconciliationOutcome> {
         const {sessionId, requestId} = record;
         const captured = record.capturedResult;
         if (captured === undefined) {
@@ -374,6 +449,10 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                     "settlement that doesn't actually hold. Resolve by hand.",
                 record,
             };
+        }
+
+        if (!(await this.confirmOwnership(record, ownershipToken))) {
+            return this.ownershipLapsedOutcome(record);
         }
 
         let newVersion = captured.newVersion;
