@@ -5,6 +5,7 @@ import {
     SessionRepository,
     SessionVersionConflictError,
     SpinCommandResult,
+    SpinOperationLog,
     SpinOperationRecord,
     SpinReconciliationService,
     TransactionalWalletPort,
@@ -98,6 +99,26 @@ class FakeVersionedSessionRepository implements VersionedSessionRepository {
     }
 }
 
+// A plain SpinOperationLog with no SpinOperationLeasing at all — the "no way to establish ownership"
+// baseline every no-ownership manual-recovery test needs. Backed by a real InMemorySpinOperationLog for
+// its own required methods so records still round-trip normally.
+class PlainNonLeasingOperationLog implements SpinOperationLog {
+    private readonly inner = new InMemorySpinOperationLog();
+
+    public record(record: SpinOperationRecord): Promise<void> {
+        return this.inner.record(record);
+    }
+    public load(sessionId: string, requestId: string): Promise<SpinOperationRecord | undefined> {
+        return this.inner.load(sessionId, requestId);
+    }
+    public delete(sessionId: string, requestId: string): Promise<void> {
+        return this.inner.delete(sessionId, requestId);
+    }
+    public listIncomplete(): Promise<readonly SpinOperationRecord[]> {
+        return this.inner.listIncomplete();
+    }
+}
+
 const previousState: PokieSessionState = {bet: 5, win: 0};
 const newState: PokieSessionState = {bet: 5, win: 20};
 
@@ -154,7 +175,9 @@ describe("SpinReconciliationService", () => {
         });
 
         it("backfills idempotencyRepository from the record's own capturedResult, and resumes, when the result is missing", async () => {
-            const wallet = new FakeNonInspectingWallet();
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
             const sessionRepository = new FakeSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
@@ -299,7 +322,9 @@ describe("SpinReconciliationService", () => {
 
     describe("checkpoint at 'settled' or 'session-saved' — resuming from the captured result", () => {
         it("persists the session state and the idempotency result, never re-playing, for a 'settled' record", async () => {
-            const wallet = new FakeNonInspectingWallet();
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
             const sessionRepository = new FakeSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
@@ -322,7 +347,9 @@ describe("SpinReconciliationService", () => {
         });
 
         it("persists only the missing idempotency result — never re-saves the session — for a 'session-saved' record", async () => {
-            const wallet = new FakeNonInspectingWallet();
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
             const sessionRepository = new FakeSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
@@ -341,7 +368,9 @@ describe("SpinReconciliationService", () => {
         });
 
         it("saves via saveVersioned() using the record's own expectedVersion when the repository is versioned", async () => {
-            const wallet = new FakeNonInspectingWallet();
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
             const sessionRepository = new FakeVersionedSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
@@ -360,7 +389,9 @@ describe("SpinReconciliationService", () => {
         });
 
         it("carries the newly-assigned version forward onto the terminal committed record, so a later backfill also gets it right", async () => {
-            const wallet = new FakeNonInspectingWallet();
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
             const sessionRepository = new FakeVersionedSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
@@ -381,7 +412,9 @@ describe("SpinReconciliationService", () => {
         });
 
         it("is manual-recovery-required, never a silent overwrite, when resuming hits a SessionVersionConflictError", async () => {
-            const wallet = new FakeNonInspectingWallet();
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
             const sessionRepository = new FakeVersionedSessionRepository();
             sessionRepository.conflictOnNextSaveVersioned = true;
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
@@ -397,6 +430,10 @@ describe("SpinReconciliationService", () => {
             const outcome = await service.reconcileOne("session-1", "request-1");
 
             expect(outcome).toMatchObject({status: "manual-recovery-required"});
+            // Genuinely reached (and failed on) the saveVersioned() conflict itself — not just
+            // short-circuited earlier for an unrelated reason (e.g. no wallet proof), which would make
+            // the bare status assertion above pass vacuously.
+            expect((outcome as {reason: string}).reason).toContain("moved on");
             await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
         });
 
@@ -431,6 +468,150 @@ describe("SpinReconciliationService", () => {
 
             expect(outcome).toMatchObject({status: "manual-recovery-required"});
             await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
+        });
+    });
+
+    describe("partial compensation with no durable settlement proof available at all", () => {
+        it("never resumes a 'settled' record when one wallet leg was actually reversed but the wallet can't be inspected to reveal it", async () => {
+            const wallet = new FakeNonInspectingWallet();
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new InMemorySpinOperationLog();
+            await operationLog.record(
+                baseRecord("settled", {
+                    capturedResult: {previousState, newState, win: 20, credits: 995},
+                }),
+            );
+            // Simulates a same-process compensation that already reversed the debit leg for real — this
+            // wallet just has no way to report that back, unlike FakeInspectableWallet.
+            await wallet.reverse("session-1", "request-1:attempt-1:debit");
+
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "manual-recovery-required"});
+            expect(sessionRepository.saveCalls).toEqual([]);
+            await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
+        });
+
+        it("never resumes a 'session-saved' record when one wallet leg was actually reversed but the wallet can't be inspected to reveal it", async () => {
+            const wallet = new FakeNonInspectingWallet();
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new InMemorySpinOperationLog();
+            await operationLog.record(
+                baseRecord("session-saved", {
+                    capturedResult: {previousState, newState, win: 20, credits: 995},
+                }),
+            );
+            await wallet.reverse("session-1", "request-1:attempt-1:credit");
+
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "manual-recovery-required"});
+            expect(sessionRepository.saveCalls).toEqual([]); // never re-saves either
+            await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
+        });
+    });
+
+    describe("ownership — a checkpoint's own age is never sufficient authority to mutate a record", () => {
+        it("is manual-recovery-required, never reversing, when there's no structural ownership and the operationLog doesn't support leasing", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied"); // would otherwise be reversed
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new PlainNonLeasingOperationLog();
+            await operationLog.record(baseRecord("debited"));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "manual-recovery-required"});
+            expect(wallet.reverseCalls).toEqual([]);
+            await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "debited"}); // untouched
+        });
+
+        it("is manual-recovery-required, never resuming, when there's no structural ownership and the operationLog doesn't support leasing", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new PlainNonLeasingOperationLog();
+            await operationLog.record(baseRecord("settled", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "manual-recovery-required"});
+            expect(sessionRepository.saveCalls).toEqual([]);
+            await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
+        });
+
+        it("acquires a lease, mutates, and releases it again when the operationLog supports leasing and no one else holds a claim", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new InMemorySpinOperationLog(); // supports SpinOperationLeasing
+            await operationLog.record(baseRecord("debited"));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "reversed"});
+            // The claim was released afterward — re-claiming it immediately (as a fresh reconciliation
+            // attempt would) succeeds rather than finding it still held.
+            await expect(operationLog.tryClaimForReconciliation("session-1", "request-1", 10_000)).resolves.toBe(true);
+        });
+
+        it("returns deferred, never mutating, when another reconciliation claim is currently held for the record", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied"); // would otherwise be reversed
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new InMemorySpinOperationLog();
+            await operationLog.record(baseRecord("debited"));
+            // Simulates a different reconciler currently working this exact record.
+            await expect(operationLog.tryClaimForReconciliation("session-1", "request-1", 60_000)).resolves.toBe(true);
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "deferred"});
+            expect(wallet.reverseCalls).toEqual([]);
+            await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "debited"}); // untouched
+        });
+
+        it("structurallyOwned bypasses leasing entirely — mutates normally even with a non-leasing operationLog", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new PlainNonLeasingOperationLog();
+            await operationLog.record(baseRecord("debited"));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "reversed"});
+        });
+
+        it("never gates the terminal 'committed' backfill on ownership — no live attempt can still be racing an already-committed record", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
+            const sessionRepository = new FakeSessionRepository();
+            const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operationLog = new PlainNonLeasingOperationLog(); // no leasing, and structurallyOwned defaults to false
+            await operationLog.record(baseRecord("committed", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
+            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+
+            const outcome = await service.reconcileOne("session-1", "request-1");
+
+            expect(outcome).toMatchObject({status: "resumed"});
+            await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toMatchObject({status: "played"});
         });
     });
 
@@ -485,7 +666,9 @@ describe("SpinReconciliationService", () => {
                 sessionRepository,
                 idempotencyRepository,
                 operationLog,
+                false, // structurallyOwned
                 5_000, // minimumQuiescenceMs
+                undefined, // leaseDurationMs (default)
                 () => justPastQuiescence,
             );
 
@@ -510,7 +693,9 @@ describe("SpinReconciliationService", () => {
                 sessionRepository,
                 idempotencyRepository,
                 operationLog,
-                60_000,
+                false, // structurallyOwned
+                60_000, // minimumQuiescenceMs
+                undefined, // leaseDurationMs (default)
                 () => stillWithinConfiguredWindow,
             );
 

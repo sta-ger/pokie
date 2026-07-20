@@ -4,6 +4,7 @@ import type {SessionRepository} from "../session/SessionRepository.js";
 import {isWalletTransactionInspecting} from "../wallet/isWalletTransactionInspecting.js";
 import type {TransactionalWalletPort} from "../wallet/TransactionalWalletPort.js";
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
+import {isSpinOperationLeasing} from "./isSpinOperationLeasing.js";
 import type {SpinCommandResult} from "./SpinCommandResult.js";
 import type {SpinOperationCapturedResult, SpinOperationRecord} from "./SpinOperationRecord.js";
 import type {SpinOperationLog} from "./SpinOperationLog.js";
@@ -11,20 +12,26 @@ import type {SpinReconciliationOutcome} from "./SpinReconciliationOutcome.js";
 import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js";
 
 // How long a non-terminal SpinOperationRecord's own "updatedAt" must be in the past before this class is
-// willing to act on it at all — see the class doc comment's "Racing a live attempt" section. Deliberately
-// generous: every individual step a live playAndSettle() attempt awaits (a wallet call, a repository
-// save) is expected to resolve in well under a second even under load; this is a safety margin, not a
-// performance budget.
+// even willing to *consider* acting on it — see the class doc comment's "Racing a live attempt" section.
+// Deliberately generous: every individual step a live playAndSettle() attempt awaits (a wallet call, a
+// repository save) is expected to resolve in well under a second even under load; this is a safety
+// margin, not a performance budget. Checked before, and independently of, the ownership gate below — a
+// record can fail either check on its own.
 const DEFAULT_MINIMUM_QUIESCENCE_MS = 30_000;
+
+// How long a won reconciliation claim (see SpinOperationLeasing) is held for by default — comfortably
+// longer than any single reconcileOne() call is expected to take, short enough that a claim from a caller
+// that crashed mid-reconciliation itself doesn't block real recovery for long.
+const DEFAULT_LEASE_DURATION_MS = 10_000;
 
 // Resolves one requestId-bearing SpinOperationRecord left in-flight by a process crash (or a
 // same-process compensation failure — see SpinCommandHandler's own catch block) into exactly one of:
 // "no-action-needed" (nothing was ever applied), "already-committed" (nothing to do, it finished), a
-// safe automatic "reversed" or "resumed", "deferred" (too recent to safely act on yet), or an honest
-// "manual-recovery-required" when none of the above can be established safely. Never claims true
-// atomicity — see this package's own v1.3 gap-audit note on why full cross-store atomicity is a v2
-// concern: every branch below only ever acts when it can be certain, and defers to a human (or to time)
-// otherwise.
+// safe automatic "reversed" or "resumed", "deferred" (too recent, or not confirmed owned, to safely act on
+// yet), or an honest "manual-recovery-required" when none of the above can be established safely. Never
+// claims true atomicity — see this package's own v1.3 gap-audit note on why full cross-store atomicity is
+// a v2 concern: every mutating branch below only ever acts when it can be certain, and defers to a human
+// (or to time, or to whoever currently holds ownership) otherwise.
 //
 // Deliberately has no PokieGame/live-session access at all — constructed from only the wallet,
 // sessionRepository, idempotencyRepository, and operationLog a SpinCommandHandler itself already holds.
@@ -48,23 +55,42 @@ const DEFAULT_MINIMUM_QUIESCENCE_MS = 30_000;
 // onto every "committed" write — see SpinCommandHandler's own checkpoint() calls) as the only safe source
 // to rebuild a missing result from.
 //
-// Racing a live attempt: reconcileOne()/reconcileAll() read/act on SpinOperationLog independently of
+// No durable proof, no auto-resume: resuming a "settled"/"session-saved"/"committed" record means writing
+// a result that *claims* the wallet is (or still is) fully settled for this attempt. That claim is only
+// ever trusted when it can be directly verified — via WalletTransactionInspecting today; this seam is
+// deliberately named around "durable settlement proof" rather than that one interface specifically, so
+// another explicit proof mechanism could plug in later without changing this class's own contract. A
+// wallet that can't be asked at all is never treated as "probably fine" — see verifyDurableSettlement()
+// and every one of its call sites below, all of which return manual-recovery-required rather than ever
+// guessing when no such proof is available. (This is stricter than checking only for a *known* mismatch:
+// "can't verify" and "verified mismatch" are both refused, not just the latter.)
+//
+// Ownership, not just age: reconcileOne()/reconcileAll() read/act on SpinOperationLog independently of
 // SpinCommandHandler's own per-session enqueue() queue — calling them directly while a live handle() call
-// for the same (sessionId, requestId) might still be running risks reconciling a record that isn't
-// abandoned at all, just mid-flight (e.g. reversing a debit the live attempt is about to credit against).
-// Two mitigations, deliberately not a distributed lock (this package makes no cross-process locking
-// claim):
-//   - SpinCommandHandler.reconcileOne()/reconcileAll() (not this class's own methods, called directly)
-//     route through the same per-session queue handle() uses, so on one handler instance a reconciliation
-//     call can never run concurrently with a handle() call for the same session. Prefer those over
-//     calling a SpinReconciliationServicing instance directly unless the caller provides its own
-//     equivalent external synchronization.
-//   - Independently of that: every non-terminal checkpoint here is additionally required to be
-//     "quiescent" — its own "updatedAt" must be at least minimumQuiescenceMs in the past — before this
-//     class will act on it at all (see deferIfNotYetQuiescent()). A record updated more recently than
-//     that is assumed to still be actively progressing and is returned as "deferred" instead of acted on,
-//     an explicit, bounded safety margin rather than a guarantee — the closest this package gets to
-//     cross-instance quiescence semantics without mandating a shared lock manager.
+// for the same (sessionId, requestId) might still be running (in this process or another) risks
+// reconciling a record that isn't abandoned at all, just mid-flight (e.g. reversing a debit the live
+// attempt is about to credit against, or overwriting a live attempt's own newer session state with stale
+// captured data). A checkpoint's own age is never, by itself, sufficient authority to perform a mutating
+// action (reverse a debit, resume a settlement) — clock skew between processes, or simply two reconcilers
+// racing each other, can each independently satisfy an age threshold without the record actually being
+// abandoned. Every mutating outcome is therefore additionally gated on confirmed ownership (see
+// withOwnership()), established one of two ways:
+//   - **Structural**: this instance was constructed with structurallyOwned = true, meaning the caller
+//     already guarantees every call into it is serialized against any live attempt for the same session —
+//     exactly what SpinCommandHandler's own internally-built instance is, via its own reconcileOne()/
+//     reconcileAll() wrapper methods routing through enqueue(). This is the strong case: no further check
+//     needed, because the guarantee is real, not inferred from timing.
+//   - **Leased**: when operationLog additionally implements SpinOperationLeasing, an explicit, exclusive,
+//     time-boxed claim is taken before acting and released afterward (see tryClaimForReconciliation()) —
+//     the closest thing to genuine cross-process ownership this package offers, still bounded and
+//     revocable rather than a true distributed lock.
+//   - **Neither**: a standalone instance with no structural guarantee and an operationLog that doesn't
+//     support leasing has no way to establish ownership at all — every mutating outcome becomes
+//     manual-recovery-required instead, never a guess. A contested lease (someone else currently holds
+//     the claim) returns "deferred", not manual-recovery-required — that's not ambiguous, it just means
+//     try again shortly.
+// Quiescence and ownership are independent, both-required checks, in that order (quiescence is a cheap,
+// local, always-applicable filter checked first; ownership is what actually authorizes acting).
 export class SpinReconciliationService implements SpinReconciliationServicing {
     private readonly wallet: TransactionalWalletPort;
     private readonly sessionRepository: SessionRepository;
@@ -72,20 +98,28 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     private readonly operationLog: SpinOperationLog;
     private readonly minimumQuiescenceMs: number;
     private readonly now: () => Date;
+    private readonly structurallyOwned: boolean;
+    private readonly leaseDurationMs: number;
 
     constructor(
         wallet: TransactionalWalletPort,
         sessionRepository: SessionRepository,
         idempotencyRepository: IdempotencyRepository<SpinCommandResult>,
         operationLog: SpinOperationLog,
+        // Additive constructor parameters — every one of them optional, defaulting to the conservative,
+        // safe-by-default behavior of a standalone instance with no special guarantees.
+        structurallyOwned = false,
         minimumQuiescenceMs: number = DEFAULT_MINIMUM_QUIESCENCE_MS,
+        leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
         now: () => Date = () => new Date(),
     ) {
         this.wallet = wallet;
         this.sessionRepository = sessionRepository;
         this.idempotencyRepository = idempotencyRepository;
         this.operationLog = operationLog;
+        this.structurallyOwned = structurallyOwned;
         this.minimumQuiescenceMs = minimumQuiescenceMs;
+        this.leaseDurationMs = leaseDurationMs;
         this.now = now;
     }
 
@@ -127,9 +161,13 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         switch (record.checkpoint) {
             case "committed":
                 // Terminal in the sense that nothing further ever happens to *this attempt* once written
-                // (playAndSettle() only returns after it) — so there's no live-attempt race to defer for
-                // here, unlike every non-terminal checkpoint below. Still re-verified against
-                // idempotencyRepository directly rather than trusted blindly — see the class doc comment.
+                // (playAndSettle() only returns after it) — so there's no live-attempt race to defer or
+                // gate ownership for here, unlike every non-terminal checkpoint below. Still re-verified
+                // against idempotencyRepository directly rather than trusted blindly — see the class doc
+                // comment. Its own backfill writes only ever the same, already-fully-computed value
+                // regardless of who does it or how many times, so it's deliberately not gated on
+                // ownership either — unlike reversing a debit or resuming a settlement, there is no live
+                // state here it could race or clobber.
                 return this.reconcileCommitted(record);
 
             case "compensated":
@@ -149,7 +187,7 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                 if (deferred !== undefined) {
                     return deferred;
                 }
-                return this.reconcileNotYetSettled(record);
+                return this.withOwnership(record, () => this.reconcileNotYetSettled(record));
             }
 
             case "settled":
@@ -158,7 +196,7 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
                 if (deferred !== undefined) {
                     return deferred;
                 }
-                return this.reconcileSettled(record);
+                return this.withOwnership(record, () => this.reconcileSettled(record));
             }
 
             default:
@@ -189,11 +227,54 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         return undefined;
     }
 
+    // See the class doc comment's "Ownership, not just age" section. Runs "action" only once ownership of
+    // "record" is confirmed one of the two ways described there; otherwise returns manual-recovery-required
+    // (no ownership possible at all) or "deferred" (a lease is held by someone else right now).
+    private async withOwnership(record: SpinOperationRecord, action: () => Promise<SpinReconciliationOutcome>): Promise<SpinReconciliationOutcome> {
+        const {sessionId, requestId} = record;
+
+        if (this.structurallyOwned) {
+            return action();
+        }
+
+        if (!isSpinOperationLeasing(this.operationLog)) {
+            return {
+                status: "manual-recovery-required",
+                sessionId,
+                requestId,
+                reason:
+                    "No confirmed ownership to safely mutate this record: this SpinReconciliationService has no structural same-instance " +
+                    "guarantee (only SpinCommandHandler's own reconcileOne()/reconcileAll() have that — see its own doc comment), and " +
+                    "this operationLog doesn't implement SpinOperationLeasing to establish one explicitly. A checkpoint's own age alone " +
+                    "is never sufficient authority to reverse or resume a record that might still belong to a live attempt in another " +
+                    "process. Resolve by hand, reconcile through a leasing-capable operationLog, or through a trusted same-instance " +
+                    "handler instead.",
+                record,
+            };
+        }
+
+        const claimed = await this.operationLog.tryClaimForReconciliation(sessionId, requestId, this.leaseDurationMs);
+        if (!claimed) {
+            return {
+                status: "deferred",
+                sessionId,
+                requestId,
+                reason: "Another reconciliation claim is currently held for this record — deferring rather than risking a concurrent mutation.",
+            };
+        }
+        try {
+            return await action();
+        } finally {
+            await this.operationLog.releaseReconciliationClaim(sessionId, requestId);
+        }
+    }
+
     // Handles both "started" and "debited": neither checkpoint alone proves what actually happened next
     // (a crash can land after the underlying wallet call already succeeded but before the matching
     // checkpoint write does) — so both are resolved the same way, by asking the wallet directly rather
     // than trusting either checkpoint value as proof of what did NOT happen. Always manual-recovery-
-    // required when the wallet can't be asked at all.
+    // required when the wallet can't be asked at all. Only ever reached once withOwnership() above has
+    // confirmed this call is authorized to mutate this record.
     private async reconcileNotYetSettled(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
         const {sessionId, requestId} = record;
 
@@ -259,7 +340,13 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     // session.play(). Only the still-outstanding step(s) — persisting the session state (if checkpoint
     // is exactly "settled") and the idempotency result — are (re)applied here, each already-idempotent on
     // its own terms (a repeat save() with the same value is harmless; saveVersioned() either succeeds
-    // identically or reports a genuine conflict).
+    // identically or reports a genuine conflict). Only ever reached once withOwnership() above has
+    // confirmed this call is authorized to mutate this record.
+    //
+    // Never auto-resumes without durable proof the wallet is still actually settled — see
+    // verifyDurableSettlement() and the class doc comment's own "No durable proof, no auto-resume"
+    // section. That covers both a known mismatch (e.g. a same-process compensation partially reversed the
+    // wallet without also restoring the session) and simply having no way to check at all.
     private async reconcileSettled(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
         const {sessionId, requestId} = record;
         const captured = record.capturedResult;
@@ -275,17 +362,16 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
             };
         }
 
-        const mismatch = await this.walletSettlementMismatch(record);
-        if (mismatch !== undefined) {
+        const verification = await this.verifyDurableSettlement(record);
+        if (!verification.verified) {
             return {
                 status: "manual-recovery-required",
                 sessionId,
                 requestId,
                 reason:
                     `Operation record's checkpoint is "${record.checkpoint}" (implying the wallet is still fully settled for this ` +
-                    `attempt), but ${mismatch} — most likely a same-process compensation partially reversed the wallet without also ` +
-                    "restoring the session state. Resuming would silently write an idempotency result claiming a settlement the wallet " +
-                    "no longer reflects. Resolve by hand.",
+                    `attempt), but ${verification.reason} Resuming would risk silently writing an idempotency result claiming a ` +
+                    "settlement that doesn't actually hold. Resolve by hand.",
                 record,
             };
         }
@@ -335,7 +421,8 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     // never that idempotencyRepository still has it (see the class doc comment). Re-verified directly,
     // and backfilled from the record's own capturedResult (never re-playing) when it's missing; a record
     // with no capturedResult to rebuild from, or whose wallet no longer matches what "committed" implies,
-    // is manual-recovery-required rather than ever falling through to a fresh spin.
+    // is manual-recovery-required rather than ever falling through to a fresh spin. Not gated on
+    // ownership — see reconcileOneInternal's own "committed" case for why.
     private async reconcileCommitted(record: SpinOperationRecord): Promise<SpinReconciliationOutcome> {
         const {sessionId, requestId} = record;
         const alreadyCached = await this.idempotencyRepository.load(sessionId, requestId);
@@ -361,16 +448,16 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
             };
         }
 
-        const mismatch = await this.walletSettlementMismatch(record);
-        if (mismatch !== undefined) {
+        const verification = await this.verifyDurableSettlement(record);
+        if (!verification.verified) {
             return {
                 status: "manual-recovery-required",
                 sessionId,
                 requestId,
                 reason:
                     'This attempt\'s operation record reached the terminal "committed" checkpoint (implying the wallet is fully settled ' +
-                    `for it), but ${mismatch}, and idempotencyRepository is missing its result — backfilling now would silently disagree ` +
-                    "with the wallet's own current state. Resolve by hand.",
+                    `for it), but ${verification.reason} idempotencyRepository is missing its result, and backfilling now would risk ` +
+                    "silently disagreeing with the wallet's own current state. Resolve by hand.",
                 record,
             };
         }
@@ -389,19 +476,35 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         };
     }
 
-    // Returns undefined when the wallet confirms both legs are still "applied" (or when the wallet can't
-    // be asked at all, in which case the caller proceeds on trust — see the class doc comment's own note
-    // on that residual risk), or a human-readable description of the mismatch otherwise.
-    private async walletSettlementMismatch(record: SpinOperationRecord): Promise<string | undefined> {
+    // Whether the wallet's own current state can be *durably confirmed* to still match what a
+    // "settled"/"session-saved"/"committed" checkpoint implies (both legs "applied"). Verified is true
+    // only when asked directly and confirmed — never inferred, and never assumed true just because
+    // nothing contradicts it. See the class doc comment's "No durable proof, no auto-resume" section:
+    // this is what makes "can't verify" and "verified mismatch" both refuse to auto-resume, not just the
+    // latter. The seam is deliberately named around "durable settlement proof" in general, even though
+    // WalletTransactionInspecting is the only such proof this package currently knows how to check.
+    private async verifyDurableSettlement(record: SpinOperationRecord): Promise<{verified: true} | {verified: false; reason: string}> {
         if (!isWalletTransactionInspecting(this.wallet)) {
-            return undefined;
+            return {
+                verified: false,
+                reason:
+                    "no durable settlement proof is available for this wallet — it doesn't implement WalletTransactionInspecting, and no " +
+                    "other explicit durable settlement-proof mechanism is configured, so there's no way to confirm the wallet is still " +
+                    "actually settled before trusting the checkpoint.",
+            };
         }
         const debitStatus = await this.wallet.getTransactionStatus(record.sessionId, record.debitTransactionId);
         const creditStatus = await this.wallet.getTransactionStatus(record.sessionId, record.creditTransactionId);
         if (debitStatus !== "applied" || creditStatus !== "applied") {
-            return `the wallet reports debit="${debitStatus}"/credit="${creditStatus}"`;
+            return {
+                verified: false,
+                reason:
+                    `the wallet reports debit="${debitStatus}"/credit="${creditStatus}", not "applied"/"applied" as the checkpoint ` +
+                    "implies — most likely a same-process compensation partially reversed the wallet without also restoring the session " +
+                    "state.",
+            };
         }
-        return undefined;
+        return {verified: true};
     }
 
     private buildPlayedResult(record: SpinOperationRecord, captured: SpinOperationCapturedResult): SpinCommandResult {

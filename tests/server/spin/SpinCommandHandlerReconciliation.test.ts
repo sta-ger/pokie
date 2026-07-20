@@ -21,18 +21,22 @@ import {
     WalletTransactionStatus,
 } from "pokie";
 
-// Every "retry" handler below is constructed with a zero-quiescence SpinReconciliationService: these
-// scenarios are about crash-window *correctness* (reverse/resume/manual-recovery decisions), already
-// covered on their own terms by SpinReconciliationService.test.ts's dedicated "quiescence" describe block
-// — without this, every retry here (which happens milliseconds after the "crash") would be deferred by
-// the library's own default 30s production safety margin, and these tests would have to sleep for real.
+// Every "retry" handler below is constructed with a zero-quiescence, structurally-owned
+// SpinReconciliationService — standing in for exactly what SpinCommandHandler's own default construction
+// builds internally (see its own doc comment: every call into it is already serialized through enqueue()),
+// just with a shorter quiescence window for test speed. These scenarios are about crash-window
+// *correctness* (reverse/resume/manual-recovery decisions) and ownership/quiescence are already covered on
+// their own terms by SpinReconciliationService.test.ts's dedicated describe blocks — without
+// structurallyOwned: true and a zero quiescence window here, every retry below (which happens
+// milliseconds after the "crash") would be deferred by the library's own default production safety
+// margins, and these tests would have to sleep for real.
 function reconciliationServiceWithZeroQuiescence(
     wallet: TransactionalWalletPort,
     sessionRepository: SessionRepository,
     idempotencyRepository: IdempotencyRepository<SpinCommandResult>,
     operationLog: SpinOperationLog,
 ): SpinReconciliationService {
-    return new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, 0);
+    return new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true, 0);
 }
 
 // End-to-end reconciliation/retry recovery coverage for SpinCommandHandler: what happens to a *retried*
@@ -403,6 +407,63 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
         expect(stats.playCalls).toBe(1); // never re-played
         // No wrong idempotency result claiming a settlement (credits: 995) the wallet no longer reflects.
         await expect(realIdempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
+    });
+
+    it("never resumes a partially-compensated attempt when the wallet can't be inspected at all — no proof is treated the same as a known mismatch", async () => {
+        const {game, stats} = createInstrumentedGame();
+        const realSessionRepository = new InMemorySessionRepository();
+        let saveCount = 0;
+        const flakyRepository: SessionRepository = {
+            load: (sessionId) => realSessionRepository.load(sessionId),
+            save: (sessionId, state) => {
+                saveCount++;
+                if (saveCount === 2) {
+                    return Promise.reject(new Error("disk full during restore"));
+                }
+                return realSessionRepository.save(sessionId, state);
+            },
+        };
+        // No WalletTransactionInspecting at all — unlike ReconciliationTestWallet above, reconciliation
+        // has no way to check the wallet's own current state, regardless of what it actually is.
+        const wallet = new NonInspectingReconciliationTestWallet();
+        const realIdempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+        let failNextIdempotencySave = true;
+        const idempotencyRepository: IdempotencyRepository<SpinCommandResult> = {
+            load: (sessionId, requestId) => realIdempotencyRepository.load(sessionId, requestId),
+            save: (sessionId, requestId, result) => {
+                if (failNextIdempotencySave) {
+                    failNextIdempotencySave = false;
+                    return Promise.reject(new Error("idempotency store unavailable"));
+                }
+                return realIdempotencyRepository.save(sessionId, requestId, result);
+            },
+        };
+        const operationLog = new InMemorySpinOperationLog();
+        await seedSession(realSessionRepository, wallet, "session-1", 1000);
+
+        const handler1 = new SpinCommandHandler(game, flakyRepository, wallet, idempotencyRepository, operationLog);
+        await expect(handler1.handle("session-1", "request-1")).rejects.toThrow("idempotency store unavailable");
+
+        // The wallet's own compensation succeeded for real (checkpoint is stuck at "session-saved" only
+        // because the session-restore half of compensation failed) — but this wallet has no way to prove
+        // that to reconciliation.
+        await expect(wallet.getBalance("session-1")).resolves.toBe(1000);
+        expect(stats.playCalls).toBe(1);
+
+        const handler2 = new SpinCommandHandler(
+            game,
+            flakyRepository,
+            wallet,
+            idempotencyRepository,
+            operationLog,
+            reconciliationServiceWithZeroQuiescence(wallet, flakyRepository, idempotencyRepository, operationLog),
+        );
+        const retry = await handler2.handle("session-1", "request-1");
+
+        expect(retry).toMatchObject({status: "recovery-required"});
+        expect(stats.playCalls).toBe(1); // never re-played
+        await expect(realIdempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
+        expect(saveCount).toBe(2); // only the original attempt's own real save + failed restore — no third, resumed save
     });
 
     it("crash window: the wallet debit really applied but the operation log is still stuck at 'started' — 'started' is never trusted as proof nothing happened", async () => {

@@ -132,12 +132,16 @@ export class SpinCommandHandler implements SpinCommandHandling {
         wallet: TransactionalWalletPort,
         idempotencyRepository: IdempotencyRepository<SpinCommandResult> = new InMemoryIdempotencyRepository(),
         operationLog: SpinOperationLog = new InMemorySpinOperationLog(),
-        // Additive: defaults to a SpinReconciliationService built from the four collaborators above (its
-        // own default, production-safe quiescence window — see that class's own doc comment). Accepting
-        // an already-constructed one directly, rather than individual config knobs for it, is what lets a
-        // caller (e.g. a test simulating a crash without a real wait) configure things like a shorter
-        // quiescence window or an injected clock without this class needing to know those knobs exist.
-        reconciliationService: SpinReconciliationServicing = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog),
+        // Additive: defaults to a SpinReconciliationService built from the four collaborators above,
+        // constructed with structurallyOwned = true — every call into this handler's own reconciliation
+        // (both the inline check in handleSerialized and the reconcileOne()/reconcileAll() wrapper methods
+        // below) is already serialized through enqueue(), the real, structural same-instance guarantee
+        // SpinReconciliationService's own doc comment describes, so it never needs to fall back to
+        // SpinOperationLeasing itself. Accepting an already-constructed instance directly, rather than
+        // individual config knobs for it, is what lets a caller (e.g. a test simulating a crash without a
+        // real wait) configure things like a shorter quiescence window or an injected clock without this
+        // class needing to know those knobs exist.
+        reconciliationService: SpinReconciliationServicing = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true),
     ) {
         this.game = game;
         this.sessionRepository = sessionRepository;
