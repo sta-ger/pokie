@@ -62,6 +62,7 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ["Game version", this.escapeHtml(report.game.version)],
             ["Requested rounds", String(report.requestedRounds)],
             ["Actual rounds", String(report.rounds)],
+            ...(report.stopReason !== undefined ? ([["Stop reason", this.escapeHtml(report.stopReason)]] as Array<[string, string]>) : []),
             ["Seed", report.seed === null ? "none" : this.escapeHtml(report.seed)],
             ...(report.betMode !== undefined ? ([["Bet mode", this.escapeHtml(report.betMode)]] as Array<[string, string]>) : []),
             ["Total bet", report.totalBet.toFixed(2)],
@@ -93,6 +94,7 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             "            </tbody>",
             "        </table>",
             ...this.renderBreakdownSection(report),
+            ...this.renderConvergenceSection(report),
             ...this.renderReproducibilitySection(report),
             ...this.renderListSection("Warnings", report.warnings),
             ...this.renderListSection("Recommendations", report.recommendations),
@@ -182,6 +184,32 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ...rows,
             "                </tbody>",
             "            </table>",
+            "        </section>",
+        ];
+    }
+
+    private renderConvergenceSection(report: SimulationReport): string[] {
+        if (!report.convergence) {
+            return [];
+        }
+
+        const convergence = report.convergence;
+        const items = [
+            `Min rounds: ${convergence.minRounds}`,
+            `RTP tolerance: ${(convergence.rtpTolerance * 100).toFixed(3)} pp`,
+            `Check interval: ${convergence.checkIntervalRounds}`,
+            `Stable checks required: ${convergence.stableChecks}`,
+            `Checks performed: ${convergence.checksPerformed}`,
+            `Consecutive stable checks: ${convergence.consecutiveStableChecks}`,
+            `Achieved RTP half-width: ${(convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp`,
+        ];
+
+        return [
+            "        <section>",
+            "            <h2>Convergence</h2>",
+            "            <ul>",
+            ...items.map((item) => `                <li>${item}</li>`),
+            "            </ul>",
             "        </section>",
         ];
     }

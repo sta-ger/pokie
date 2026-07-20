@@ -132,4 +132,65 @@ describe("MarkdownSimulationReportRenderer", () => {
         expect(markdown).toContain("| base | 8820 | 8820.00 | 7938.00 | 90.00% | 81.00 pp | 20.00% | 90.00 |");
         expect(markdown).toContain("| freeGames | 980 | 980.00 | 1393.40 | 142.18% | 14.22 pp | 60.00% | 120.50 |");
     });
+
+    it("omits the Stop reason line and Convergence section when the report never enabled convergence (old/legacy report)", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render(report);
+
+        expect(markdown).not.toContain("Stop reason");
+        expect(markdown).not.toContain("## Convergence");
+    });
+
+    it("renders Stop reason and a Convergence section for a converged run, with requested/actual rounds already present", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render({
+            ...report,
+            requestedRounds: 5_000_000,
+            rounds: 150_000,
+            stopReason: "converged",
+            convergence: {
+                minRounds: 100_000,
+                rtpTolerance: 0.002,
+                checkIntervalRounds: 25_000,
+                stableChecks: 3,
+                checksPerformed: 3,
+                consecutiveStableChecks: 3,
+                achievedRtpHalfWidth: 0.0015,
+            },
+        });
+
+        expect(markdown).toContain("**Requested rounds**: 5000000");
+        expect(markdown).toContain("**Actual rounds**: 150000");
+        expect(markdown).toContain("**Stop reason**: converged");
+        expect(markdown).toContain("## Convergence");
+        expect(markdown).toContain("**Min rounds**: 100000");
+        expect(markdown).toContain("**RTP tolerance**: 0.200 pp");
+        expect(markdown).toContain("**Check interval**: 25000");
+        expect(markdown).toContain("**Stable checks required**: 3");
+        expect(markdown).toContain("**Checks performed**: 3");
+        expect(markdown).toContain("**Consecutive stable checks**: 3");
+        expect(markdown).toContain("**Achieved RTP half-width**: 0.150 pp");
+    });
+
+    it("renders Stop reason 'maxRounds' and a Convergence section for a run that never satisfied its own criteria (fallback)", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render({
+            ...report,
+            requestedRounds: 1000,
+            rounds: 1000,
+            stopReason: "maxRounds",
+            convergence: {
+                minRounds: 10_000,
+                rtpTolerance: 0.001,
+                checkIntervalRounds: 200,
+                stableChecks: 3,
+                checksPerformed: 5,
+                consecutiveStableChecks: 0,
+                achievedRtpHalfWidth: 0.08,
+            },
+        });
+
+        expect(markdown).toContain("**Stop reason**: maxRounds");
+        expect(markdown).toContain("## Convergence");
+        expect(markdown).toContain("**Min rounds**: 10000");
+        expect(markdown).toContain("**Consecutive stable checks**: 0");
+        expect(markdown).toContain("**Achieved RTP half-width**: 8.000 pp");
+    });
 });

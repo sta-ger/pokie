@@ -238,16 +238,25 @@ export class ParallelSimulationRunner {
         return requests;
     }
 
-    // sessionStopped takes precedence over converged (a session ending early is the more notable/
-    // surprising outcome of the two), which in turn takes precedence over maxRounds. A worker result
-    // without stopReason (an older hand-built SimulationWorkerResult) is treated as "maxRounds" — the
-    // same "absent means the pre-existing behavior" default used everywhere else in this file.
+    // sessionStopped always takes precedence — a session ending early is the most notable outcome, and
+    // worth surfacing regardless of what any other worker did. Otherwise, "converged" requires EVERY
+    // contributing worker to have independently converged: if even one worker exhausted its own share
+    // without satisfying its own checker, the merged report mixes a converged estimate with a plain
+    // fixed-round one, and the honest overall answer is "maxRounds" — a single converged worker among
+    // several that didn't never makes the whole run "converged". A worker result without stopReason (an
+    // older hand-built SimulationWorkerResult) is treated as "maxRounds" — the same "absent means the
+    // pre-existing behavior" default used everywhere else in this file. An empty `results` (e.g. a
+    // zero-round request) is "maxRounds" too — Array.prototype.every() on an empty array is vacuously
+    // true, which would otherwise misreport "converged" for a run that never played anything.
     private aggregateStopReason(results: SimulationWorkerResult[]): SimulationStopReason {
+        if (results.length === 0) {
+            return "maxRounds";
+        }
         const reasons = results.map((result) => result.stopReason ?? "maxRounds");
         if (reasons.some((reason) => reason === "sessionStopped")) {
             return "sessionStopped";
         }
-        if (reasons.some((reason) => reason === "converged")) {
+        if (reasons.every((reason) => reason === "converged")) {
             return "converged";
         }
         return "maxRounds";

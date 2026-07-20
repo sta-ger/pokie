@@ -155,4 +155,65 @@ describe("HtmlSimulationReportRenderer", () => {
             "<td>&lt;bonus&gt;</td><td>980</td><td>980.00</td><td>1393.40</td><td>142.18%</td><td>14.22 pp</td><td>60.00%</td><td>120.50</td>",
         );
     });
+
+    it("omits the Convergence section and Stop reason row when the report never enabled convergence (old/legacy report)", () => {
+        const html = new HtmlSimulationReportRenderer().render(report);
+
+        expect(html).not.toContain("Convergence");
+        expect(html).not.toContain("Stop reason");
+    });
+
+    it("renders Stop reason and a Convergence section for a converged run, with requested/actual rounds already present", () => {
+        const html = new HtmlSimulationReportRenderer().render({
+            ...report,
+            requestedRounds: 5_000_000,
+            rounds: 150_000,
+            stopReason: "converged",
+            convergence: {
+                minRounds: 100_000,
+                rtpTolerance: 0.002,
+                checkIntervalRounds: 25_000,
+                stableChecks: 3,
+                checksPerformed: 3,
+                consecutiveStableChecks: 3,
+                achievedRtpHalfWidth: 0.0015,
+            },
+        });
+
+        expect(html).toContain("<td>5000000</td>");
+        expect(html).toContain("<td>150000</td>");
+        expect(html).toContain("<th scope=\"row\">Stop reason</th><td>converged</td>");
+        expect(html).toContain("<h2>Convergence</h2>");
+        expect(html).toContain("Min rounds: 100000");
+        expect(html).toContain("RTP tolerance: 0.200 pp");
+        expect(html).toContain("Check interval: 25000");
+        expect(html).toContain("Stable checks required: 3");
+        expect(html).toContain("Checks performed: 3");
+        expect(html).toContain("Consecutive stable checks: 3");
+        expect(html).toContain("Achieved RTP half-width: 0.150 pp");
+    });
+
+    it("renders Stop reason 'maxRounds' and a Convergence section for a run that never satisfied its own criteria (fallback)", () => {
+        const html = new HtmlSimulationReportRenderer().render({
+            ...report,
+            requestedRounds: 1000,
+            rounds: 1000,
+            stopReason: "maxRounds",
+            convergence: {
+                minRounds: 10_000,
+                rtpTolerance: 0.001,
+                checkIntervalRounds: 200,
+                stableChecks: 3,
+                checksPerformed: 5,
+                consecutiveStableChecks: 0,
+                achievedRtpHalfWidth: 0.08,
+            },
+        });
+
+        expect(html).toContain("<th scope=\"row\">Stop reason</th><td>maxRounds</td>");
+        expect(html).toContain("<h2>Convergence</h2>");
+        expect(html).toContain("Min rounds: 10000");
+        expect(html).toContain("Consecutive stable checks: 0");
+        expect(html).toContain("Achieved RTP half-width: 8.000 pp");
+    });
 });

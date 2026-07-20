@@ -1181,9 +1181,13 @@ between threads, which real cross-worker coordination would make non-determinist
 that `--min-rounds`/`--check-interval` should be sized relative to each worker's share (roughly `--rounds /
 --workers`), not to the total `--rounds` — a `--min-rounds` picked for the whole run will rarely be reached by any
 individual worker's smaller share. The report's `stopReason` and `convergence` fields summarize across every
-worker (`"sessionStopped"` beats `"converged"` beats `"maxRounds"`; `checksPerformed` sums, `consecutiveStableChecks`
-takes the minimum, `achievedRtpHalfWidth` takes the maximum — the weakest-converged, least-precise worker, not a
-made-up global statistic).
+worker: `"sessionStopped"` always wins (a session ending early is the most notable outcome, regardless of what any
+other worker did); otherwise `"converged"` requires **every** worker to have independently converged — a single
+converged worker among several that instead exhausted their own share and hit `"maxRounds"` still reports the
+whole run as `"maxRounds"`, not `"converged"`, since the merged report would otherwise mix a converged estimate
+with a plain fixed-round one. `convergence.checksPerformed` sums, `consecutiveStableChecks` takes the minimum,
+`achievedRtpHalfWidth` takes the maximum — the weakest-converged, least-precise worker, not a made-up global
+statistic.
 
 The legacy fixed-round `Simulation`/`SimulationConfig` class (see [Simulation](simulation.md)) is entirely
 unaffected by this feature — it has no concept of convergence and never will; adaptive early stop only exists on

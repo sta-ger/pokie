@@ -383,10 +383,13 @@ for the whole run will rarely be reached by any individual worker's smaller shar
 
 `ParallelSimulationResult.stopReason`/`.convergence` (and, from there, `SimulationReport.stopReason`/`.convergence`
 — see [`pokie sim`'s JSON report](cli.md#pokie-sim-packageroot)) summarize across every worker when `workers > 1`:
-`stopReason` precedence is `"sessionStopped"` (a session ending early is the most notable outcome) beats
-`"converged"` beats `"maxRounds"`; `convergence.checksPerformed` sums across workers, `consecutiveStableChecks`
-takes the minimum (the weakest-converged worker), `achievedRtpHalfWidth` takes the maximum (the least-precise
-worker's estimate) — a conservative summary, never a made-up statistic recomputed from the merged accumulator.
+`"sessionStopped"` always wins, regardless of what any other worker did (a session ending early is the most
+notable outcome). Otherwise, `"converged"` requires **every** worker to have independently converged — if even one
+worker instead exhausted its own share and hit `"maxRounds"`, the whole run reports `"maxRounds"`, not
+`"converged"`, since the merged report would otherwise mix a converged estimate with a plain fixed-round one.
+`convergence.checksPerformed` sums across workers, `consecutiveStableChecks` takes the minimum (the
+weakest-converged worker), `achievedRtpHalfWidth` takes the maximum (the least-precise worker's estimate) — a
+conservative summary, never a made-up statistic recomputed from the merged accumulator.
 
 See [`pokie sim`'s `--min-rounds`/`--rtp-tolerance`/`--check-interval`/`--stable-checks`
 flags](cli.md#adaptive-early-stop-convergence) for the CLI surface of this same feature.

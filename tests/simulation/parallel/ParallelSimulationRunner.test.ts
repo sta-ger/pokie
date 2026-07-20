@@ -608,7 +608,7 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
         });
     });
 
-    test("aggregates stopReason across workers: sessionStopped beats converged beats maxRounds", async () => {
+    test("aggregates stopReason across workers: sessionStopped always wins; converged requires EVERY worker to have converged", async () => {
         const makeRunner = (stopReasons: Array<"maxRounds" | "sessionStopped" | "converged">) =>
             new ParallelSimulationRunner("/fake/root", 10, {
                 workers: stopReasons.length,
@@ -627,8 +627,15 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
             });
 
         expect((await makeRunner(["maxRounds", "maxRounds"]).run()).stopReason).toBe("maxRounds");
-        expect((await makeRunner(["maxRounds", "converged"]).run()).stopReason).toBe("converged");
+        expect((await makeRunner(["converged", "converged"]).run()).stopReason).toBe("converged");
+        // A single worker that only reached maxRounds (without converging) drags the whole run down to
+        // maxRounds -- a mix of a converged estimate and a plain fixed-round one is honestly reported
+        // as "the run did not fully converge", not "converged".
+        expect((await makeRunner(["maxRounds", "converged"]).run()).stopReason).toBe("maxRounds");
+        expect((await makeRunner(["converged", "converged", "maxRounds"]).run()).stopReason).toBe("maxRounds");
+        // sessionStopped always wins, even alongside a converged worker or a maxRounds worker.
         expect((await makeRunner(["converged", "sessionStopped", "maxRounds"]).run()).stopReason).toBe("sessionStopped");
+        expect((await makeRunner(["converged", "converged", "sessionStopped"]).run()).stopReason).toBe("sessionStopped");
     });
 
     test("treats a worker result without stopReason as 'maxRounds' (backward compatible with an older SimulationWorkerResult)", async () => {
@@ -706,5 +713,65 @@ describe("ParallelSimulationRunner convergence (workers>1, via injected coordina
             consecutiveStableChecks: 1,
             achievedRtpHalfWidth: 0.02,
         });
+        // Consistency check: worker 1 only reached "maxRounds" (never converged), so the aggregated
+        // stopReason must be "maxRounds" too, even though worker 0 individually converged -- and the
+        // aggregated consecutiveStableChecks (1) is correspondingly below its own stableChecks
+        // requirement (3), which is what an honest, not-fully-converged summary should look like.
+        expect(result.stopReason).toBe("maxRounds");
+        expect(result.convergence!.consecutiveStableChecks).toBeLessThan(result.convergence!.stableChecks);
+    });
+
+    test("stopReason is 'converged' and the aggregated convergence outcome is internally consistent when every worker converged", async () => {
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            workers: 2,
+            convergence: {minRounds: 5, rtpTolerance: 0.01, checkIntervalRounds: 5},
+            createWorkerCoordinator: () =>
+                makeFakeCoordinator((requests) =>
+                    Promise.resolve([
+                        {
+                            workerIndex: 0,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(requests[0].rounds),
+                            roundsCompleted: requests[0].rounds,
+                            stopReason: "converged" as const,
+                            convergence: {
+                                minRounds: 5,
+                                rtpTolerance: 0.01,
+                                checkIntervalRounds: 5,
+                                stableChecks: 3,
+                                checksPerformed: 4,
+                                consecutiveStableChecks: 3,
+                                achievedRtpHalfWidth: 0.002,
+                            },
+                        },
+                        {
+                            workerIndex: 1,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(requests[1].rounds),
+                            roundsCompleted: requests[1].rounds,
+                            stopReason: "converged" as const,
+                            convergence: {
+                                minRounds: 5,
+                                rtpTolerance: 0.01,
+                                checkIntervalRounds: 5,
+                                stableChecks: 3,
+                                checksPerformed: 5,
+                                consecutiveStableChecks: 4,
+                                achievedRtpHalfWidth: 0.006,
+                            },
+                        },
+                    ]),
+                ),
+        });
+
+        const result = await runner.run();
+
+        expect(result.stopReason).toBe("converged");
+        // Every worker converged, so the aggregated consecutiveStableChecks (the minimum across
+        // workers) must itself meet the stableChecks requirement -- an aggregated "converged" report
+        // can never show a consecutiveStableChecks below its own stableChecks threshold.
+        expect(result.convergence!.consecutiveStableChecks).toBeGreaterThanOrEqual(result.convergence!.stableChecks);
+        expect(result.convergence!.checksPerformed).toBe(9);
+        expect(result.convergence!.achievedRtpHalfWidth).toBeCloseTo(0.006, 10);
     });
 });

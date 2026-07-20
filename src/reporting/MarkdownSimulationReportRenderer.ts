@@ -11,6 +11,7 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Game version**: ${report.game.version}`,
             `- **Requested rounds**: ${report.requestedRounds}`,
             `- **Actual rounds**: ${report.rounds}`,
+            ...(report.stopReason !== undefined ? [`- **Stop reason**: ${report.stopReason}`] : []),
             `- **Seed**: ${report.seed ?? "_none_"}`,
             ...(report.betMode !== undefined ? [`- **Bet mode**: ${report.betMode}`] : []),
             `- **Total bet**: ${report.totalBet.toFixed(2)}`,
@@ -47,6 +48,22 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
                         `${(component.hitFrequency * 100).toFixed(2)}% | ${component.maxWin.toFixed(2)} |`,
                 );
             });
+        }
+
+        if (report.convergence) {
+            const convergence = report.convergence;
+            lines.push(
+                "",
+                "## Convergence",
+                "",
+                `- **Min rounds**: ${convergence.minRounds}`,
+                `- **RTP tolerance**: ${(convergence.rtpTolerance * 100).toFixed(3)} pp`,
+                `- **Check interval**: ${convergence.checkIntervalRounds}`,
+                `- **Stable checks required**: ${convergence.stableChecks}`,
+                `- **Checks performed**: ${convergence.checksPerformed}`,
+                `- **Consecutive stable checks**: ${convergence.consecutiveStableChecks}`,
+                `- **Achieved RTP half-width**: ${(convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp`,
+            );
         }
 
         if (report.reproducibility) {
