@@ -143,43 +143,64 @@ export class SpinCommandHandler implements SpinCommandHandling {
     private readonly liveSessions = new Map<string, GameSessionHandling>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
+    // Overload 1 (current, preferred): singleInstanceDeployment (see the class doc comment's own
+    // "Multi-instance safety" section) — defaults to false, the safe posture for any deployment that
+    // can't rule out a second SpinCommandHandler instance sharing these same stores. Set it to true only
+    // when this is certifiably the *sole* SpinCommandHandler instance — in this process or any other —
+    // ever operating against sessionRepository/wallet/idempotencyRepository/operationLog. An explicit
+    // reconciliationService, when supplied, always wins regardless of singleInstanceDeployment's value —
+    // that flag only ever shapes what this handler builds *by default*.
+    constructor(
+        game: PokieGame,
+        sessionRepository: SessionRepository,
+        wallet: TransactionalWalletPort,
+        idempotencyRepository?: IdempotencyRepository<SpinCommandResult>,
+        operationLog?: SpinOperationLog,
+        singleInstanceDeployment?: boolean,
+        reconciliationService?: SpinReconciliationServicing,
+    );
+    // Overload 2 (legacy — kept only for backward compatibility, see the implementation below): the
+    // signature from before singleInstanceDeployment existed, where a caller's own already-constructed
+    // SpinReconciliationServicing was passed directly as the 6th (and final) positional argument. Still
+    // compiles and behaves exactly as it always did — the supplied service is used as-is, the same as
+    // passing it via position 7 in overload 1 above.
+    constructor(
+        game: PokieGame,
+        sessionRepository: SessionRepository,
+        wallet: TransactionalWalletPort,
+        idempotencyRepository: IdempotencyRepository<SpinCommandResult> | undefined,
+        operationLog: SpinOperationLog | undefined,
+        reconciliationService: SpinReconciliationServicing,
+    );
     constructor(
         game: PokieGame,
         sessionRepository: SessionRepository,
         wallet: TransactionalWalletPort,
         idempotencyRepository: IdempotencyRepository<SpinCommandResult> = new InMemoryIdempotencyRepository(),
         operationLog: SpinOperationLog = new InMemorySpinOperationLog(),
-        // Additive, explicit opt-in — defaults to false, the safe posture for any deployment that can't
-        // rule out a second SpinCommandHandler instance sharing these same stores. Set this to true only
-        // when you can certify this is the *sole* SpinCommandHandler instance — in this process or any
-        // other — ever operating against sessionRepository/wallet/idempotencyRepository/operationLog; that
-        // certification is exactly what makes this instance's own enqueue() queue (see the class doc
-        // comment's own "Multi-instance safety" section) sufficient authority for its default
-        // reconciliationService below to auto-reverse/auto-resume rather than reporting
-        // manual-recovery-required. Irrelevant whenever a caller supplies its own reconciliationService
-        // directly (the next parameter) — it only shapes what this handler builds by default.
-        singleInstanceDeployment = false,
-        // Additive: defaults to a SpinReconciliationService built from the four collaborators above,
-        // constructed with structurallyOwned = singleInstanceDeployment. Accepting an already-constructed
-        // instance directly, rather than individual config knobs for it, is what lets a caller (e.g. a
-        // test simulating a crash without a real wait, or a deployment wiring its own
-        // exclusiveStartupAuthority-based ops reconciliation) configure things like a shorter quiescence
-        // window, an injected clock, or a wholly different authority model without this class needing to
-        // know those knobs exist.
-        reconciliationService: SpinReconciliationServicing = new SpinReconciliationService(
-            wallet,
-            sessionRepository,
-            idempotencyRepository,
-            operationLog,
-            singleInstanceDeployment,
-        ),
+        // Disambiguated at runtime below: a boolean here is overload 1's singleInstanceDeployment; an
+        // object here is overload 2's legacy reconciliationService. The two overload signatures above are
+        // what actually keep both call shapes type-checking correctly for callers — this implementation
+        // signature just has to be able to accept either.
+        singleInstanceDeploymentOrLegacyReconciliationService: boolean | SpinReconciliationServicing = false,
+        reconciliationService: SpinReconciliationServicing | undefined = undefined,
     ) {
+        const legacyReconciliationService =
+            typeof singleInstanceDeploymentOrLegacyReconciliationService === "boolean" ? undefined : singleInstanceDeploymentOrLegacyReconciliationService;
+        const singleInstanceDeployment =
+            typeof singleInstanceDeploymentOrLegacyReconciliationService === "boolean" ? singleInstanceDeploymentOrLegacyReconciliationService : false;
+
         this.game = game;
         this.sessionRepository = sessionRepository;
         this.wallet = wallet;
         this.idempotencyRepository = idempotencyRepository;
         this.operationLog = operationLog;
-        this.reconciliationService = reconciliationService;
+        // Precedence: an explicit reconciliationService — whichever overload it arrived through — always
+        // wins; only when none was supplied at all does singleInstanceDeployment shape the default build.
+        this.reconciliationService =
+            legacyReconciliationService ??
+            reconciliationService ??
+            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment);
         this.sessionSerializer = resolveGameSessionSerializer(game);
     }
 

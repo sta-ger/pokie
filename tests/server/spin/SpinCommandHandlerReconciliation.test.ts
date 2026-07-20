@@ -750,4 +750,79 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
         expect(stats.playCalls).toBe(1); // exactly the one, genuine play — instance B never touched anything
         await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "committed"});
     });
+
+    it("backward compatibility: the pre-singleInstanceDeployment legacy signature (reconciliationService as the bare 6th positional argument, no boolean) still compiles and behaves exactly as before", async () => {
+        const {game, stats} = createInstrumentedGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new ReconciliationTestWallet();
+        const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+        const operationLog = new InMemorySpinOperationLog();
+        await seedSession(sessionRepository, wallet, "session-1", 1000);
+
+        wallet.failNextCredit = true;
+        wallet.failReverse = true; // in-process compensation itself fails -> checkpoint stays "debited"
+        const handler1 = new SpinCommandHandler(game, sessionRepository, wallet, idempotencyRepository, operationLog);
+        await expect(handler1.handle("session-1", "request-1")).rejects.toThrow("wallet credit failed");
+
+        const stuck = await operationLog.load("session-1", "request-1");
+        expect(stuck?.checkpoint).toBe("debited");
+        expect(stats.playCalls).toBe(1);
+
+        wallet.failReverse = false; // the outage is "over" by the time of the retry
+        // The exact call shape every pre-singleInstanceDeployment call site used: 6 positional arguments,
+        // with an already-constructed SpinReconciliationServicing directly as the last one — no boolean in
+        // between. This must still type-check (see SpinCommandHandler's own legacy constructor overload)
+        // and behave identically: the supplied service is used as-is.
+        const handler2 = new SpinCommandHandler(
+            game,
+            sessionRepository,
+            wallet,
+            idempotencyRepository,
+            operationLog,
+            reconciliationServiceWithZeroQuiescence(wallet, sessionRepository, idempotencyRepository, operationLog),
+        );
+        const retry = await handler2.handle("session-1", "request-1");
+
+        expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
+        expect(stats.playCalls).toBe(2); // exactly one NEW play — reconciling the old attempt never itself plays
+        await expect(wallet.getBalance("session-1")).resolves.toBe(995); // reversed to 1000, then genuinely re-debited 5
+        await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "committed"});
+    });
+
+    it("regression: an explicit singleInstanceDeployment: true opt-in (new 6-argument boolean form, no custom reconciliationService) still authorizes this handler's own default-built service to auto-recover a genuinely abandoned same-instance record", async () => {
+        const {game, stats} = createInstrumentedGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const wallet = new ReconciliationTestWallet();
+        const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+        const operationLog = new InMemorySpinOperationLog();
+        await seedSession(sessionRepository, wallet, "session-1", 1000);
+
+        wallet.failNextCredit = true;
+        wallet.failReverse = true; // in-process compensation itself fails -> checkpoint stays "debited"
+        const handler1 = new SpinCommandHandler(game, sessionRepository, wallet, idempotencyRepository, operationLog);
+        await expect(handler1.handle("session-1", "request-1")).rejects.toThrow("wallet credit failed");
+
+        const stuck = await operationLog.load("session-1", "request-1");
+        expect(stuck?.checkpoint).toBe("debited");
+        expect(stats.playCalls).toBe(1);
+
+        // Age the checkpoint past the default quiescence window (30s) without injecting a custom clock or
+        // reconciliationService — this test is specifically about the plain singleInstanceDeployment: true
+        // boolean opt-in authorizing the handler's own *default-built* SpinReconciliationService, not about
+        // any other constructor knob.
+        if (stuck !== undefined) {
+            await operationLog.record({...stuck, updatedAt: new Date(Date.now() - 3600 * 1000).toISOString()});
+        }
+
+        wallet.failReverse = false; // the outage is "over" by the time of the retry
+        // Position 6 is the boolean singleInstanceDeployment opt-in — no reconciliationService supplied at
+        // all, so this handler builds its own, constructed with structurallyOwned: true.
+        const handler2 = new SpinCommandHandler(game, sessionRepository, wallet, idempotencyRepository, operationLog, true);
+        const retry = await handler2.handle("session-1", "request-1");
+
+        expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
+        expect(stats.playCalls).toBe(2); // exactly one NEW play — reconciling the old attempt never itself plays
+        await expect(wallet.getBalance("session-1")).resolves.toBe(995); // reversed to 1000, then genuinely re-debited 5
+        await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "committed"});
+    });
 });
