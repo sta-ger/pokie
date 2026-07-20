@@ -85,6 +85,22 @@ describe("sheetCellParsing", () => {
 
             expect(issues).toEqual([expect.objectContaining({code: "parsheet-missing-column", severity: "error"})]);
         });
+
+        it("does not report a column listed in optionalColumns as missing when absent", () => {
+            const issues: ValidationIssue[] = [];
+            const found = resolveColumnIndexes([], ["Symbol", "Extra Info"], "Symbols", issues, new Set(["Extra Info"]));
+
+            expect(found).toEqual({});
+            expect(issues).toEqual([expect.objectContaining({code: "parsheet-missing-column", details: {sheet: "Symbols", column: "Symbol"}})]);
+        });
+
+        it("still recognizes and resolves an optional column's index when it IS present, same as a required one", () => {
+            const issues: ValidationIssue[] = [];
+            const found = resolveColumnIndexes(["Symbol", "Extra Info"], ["Symbol", "Extra Info"], "Symbols", issues, new Set(["Extra Info"]));
+
+            expect(found).toEqual({Symbol: 0, "Extra Info": 1});
+            expect(issues).toEqual([]);
+        });
     });
 
     describe("resolveReelColumns", () => {

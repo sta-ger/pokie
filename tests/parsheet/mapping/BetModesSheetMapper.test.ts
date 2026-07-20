@@ -40,14 +40,13 @@ describe("BetModesSheetMapper", () => {
         expect(issues).toEqual([expect.objectContaining({code: "parsheet-betmodes-invalid-cost-multiplier-cell", severity: "error"})]);
     });
 
-    it("reports a missing column", () => {
+    it("reports a missing required column", () => {
         const {issues} = mapper.fromRows([["Id"]]);
 
         expect(issues).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({code: "parsheet-missing-column", severity: "error", details: {sheet: "BetModes", column: "Label"}}),
                 expect.objectContaining({code: "parsheet-missing-column", severity: "error", details: {sheet: "BetModes", column: "Cost Multiplier"}}),
-                expect.objectContaining({code: "parsheet-missing-column", severity: "error", details: {sheet: "BetModes", column: "Target RTP"}}),
                 expect.objectContaining({code: "parsheet-missing-column", severity: "error", details: {sheet: "BetModes", column: "Runtime Type"}}),
                 expect.objectContaining({code: "parsheet-missing-column", severity: "error", details: {sheet: "BetModes", column: "Is Default"}}),
                 expect.objectContaining({
@@ -57,6 +56,8 @@ describe("BetModesSheetMapper", () => {
                 }),
             ]),
         );
+        // "Target RTP" is optional -- never reported as missing, even when every other column is.
+        expect(issues).toEqual(expect.not.arrayContaining([expect.objectContaining({details: {sheet: "BetModes", column: "Target RTP"}})]));
     });
 
     it("round-trips toRows -> fromRows back to the original bet modes (pure metadata shape)", () => {
@@ -70,6 +71,59 @@ describe("BetModesSheetMapper", () => {
 
         expect(issues).toEqual([]);
         expect(value).toEqual(original);
+    });
+
+    describe("legacy sheets without a Target RTP column (backward compatibility)", () => {
+        const LEGACY_COLUMNS = ["Id", "Label", "Cost Multiplier", "Runtime Type", "Is Default", "Forced Free Games"];
+
+        it("imports a pure-metadata legacy sheet exactly as before -- targetRtp simply absent, no error/warning", () => {
+            const {value, issues} = mapper.fromRows([
+                LEGACY_COLUMNS,
+                ["base", "Base Game", "", "", "", ""],
+                ["buy-bonus", "Buy Bonus", 100, "", "", ""],
+            ]);
+
+            expect(issues).toEqual([]);
+            expect(value).toEqual([
+                {id: "base", label: "Base Game"},
+                {id: "buy-bonus", label: "Buy Bonus", costMultiplier: 100},
+            ]);
+        });
+
+        it("imports a legacy sheet using the explicit runtime-semantics contract, still with no Target RTP column at all", () => {
+            const {value, issues} = mapper.fromRows([
+                LEGACY_COLUMNS,
+                ["base", "Base", "", "base", true, ""],
+                ["buy-bonus", "Buy Bonus", 100, "buyFeature", "", 10],
+            ]);
+
+            expect(issues).toEqual([]);
+            expect(value).toEqual([
+                {id: "base", label: "Base", runtimeType: "base", isDefault: true},
+                {id: "buy-bonus", label: "Buy Bonus", costMultiplier: 100, runtimeType: "buyFeature", forcedFreeGames: 10},
+            ]);
+        });
+
+        it("still reports every OTHER missing column on a legacy-shaped header, just never Target RTP", () => {
+            const {issues} = mapper.fromRows([["Id", "Label"]]);
+
+            expect(issues).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({code: "parsheet-missing-column", details: {sheet: "BetModes", column: "Cost Multiplier"}}),
+                    expect.objectContaining({code: "parsheet-missing-column", details: {sheet: "BetModes", column: "Runtime Type"}}),
+                ]),
+            );
+            expect(issues).toEqual(expect.not.arrayContaining([expect.objectContaining({details: {sheet: "BetModes", column: "Target RTP"}})]));
+        });
+
+        it("re-exporting a legacy-imported bet mode (toRows) still writes the Target RTP column, blank", () => {
+            const {value} = mapper.fromRows([LEGACY_COLUMNS, ["base", "Base Game", "", "", "", ""]]);
+
+            const rows = mapper.toRows(value);
+
+            expect(rows[0]).toEqual(["Id", "Label", "Cost Multiplier", "Target RTP", "Runtime Type", "Is Default", "Forced Free Games"]);
+            expect(rows[1]).toEqual(["base", "Base Game", "", "", "", false, ""]);
+        });
     });
 
     describe("Target RTP", () => {

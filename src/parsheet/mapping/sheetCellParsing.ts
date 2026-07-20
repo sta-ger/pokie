@@ -50,15 +50,19 @@ export function isBlankRow(row: unknown[]): boolean {
 }
 
 // Matches a header row against a fixed, ordered set of expected column names (case-insensitive):
-// pushes "parsheet-missing-column" (error) for every expected column not found, and
-// "parsheet-unknown-column" (warning) for every header cell that isn't one of them. Returns a
-// name -> column-index map (only for columns that were found) so callers can look up cells by name
-// regardless of physical column order.
+// pushes "parsheet-missing-column" (error) for every expected column not found (unless it's listed in
+// `optionalColumns` -- absent there is simply backward compatibility with an older sheet shape, not an
+// error), and "parsheet-unknown-column" (warning) for every header cell that isn't one of them. Returns
+// a name -> column-index map (only for columns that were found) so callers can look up cells by name
+// regardless of physical column order -- a caller must itself tolerate an optional column's index
+// being absent from the result (see BetModesSheetMapper's "Target RTP", which degrades to "absent" via
+// plain JS array-indexing-by-undefined rather than needing its own branch).
 export function resolveColumnIndexes(
     headerRow: unknown[],
     expectedColumns: string[],
     sheetName: string,
     issues: ValidationIssue[],
+    optionalColumns: ReadonlySet<string> = new Set(),
 ): Record<string, number> {
     const found: Record<string, number> = {};
     headerRow.forEach((cell, index) => {
@@ -80,7 +84,7 @@ export function resolveColumnIndexes(
     });
 
     for (const column of expectedColumns) {
-        if (!(column in found)) {
+        if (!(column in found) && !optionalColumns.has(column)) {
             issues.push({
                 code: "parsheet-missing-column",
                 severity: "error",

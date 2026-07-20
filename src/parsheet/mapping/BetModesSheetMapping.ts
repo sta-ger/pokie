@@ -10,7 +10,9 @@ import type {SheetGrid} from "../SheetGrid.js";
 // required fields, etc.) is left to GameBlueprintValidator once the array is assembled (mirrors
 // AvailableBetsSheetMapper not re-checking duplicate bets itself) -- this only reports a blank "Id"
 // cell, or a cell that's present but not parseable as its own column's basic type (number/boolean/one
-// of the three known Runtime Type strings).
+// of the three known Runtime Type strings). "Target RTP" is optional on import (an older exported sheet
+// without it still imports exactly as before, with targetRtp simply absent) but always written on
+// export, same as every other column.
 export interface BetModesSheetMapping {
     readonly sheetName: string;
 

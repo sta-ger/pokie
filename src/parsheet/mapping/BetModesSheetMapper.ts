@@ -5,6 +5,11 @@ import type {BetModesSheetMapping} from "./BetModesSheetMapping.js";
 import {cellToBoolean, cellToNumber, cellToText, isBlankRow, resolveColumnIndexes} from "./sheetCellParsing.js";
 
 const COLUMNS = ["Id", "Label", "Cost Multiplier", "Target RTP", "Runtime Type", "Is Default", "Forced Free Games"];
+// "Target RTP" is optional on IMPORT (an older sheet exported before this column existed must keep
+// importing exactly as before, with targetRtp simply absent) -- but toRows() always WRITES it, so any
+// export produced by this version of pokie (or read back by it) has the column, same as every other
+// field. See resolveColumnIndexes' own doc comment for what "optional" means here.
+const OPTIONAL_COLUMNS = new Set(["Target RTP"]);
 const VALID_RUNTIME_TYPES = new Set(["base", "ante", "buyFeature"]);
 
 export class BetModesSheetMapper implements BetModesSheetMapping {
@@ -13,7 +18,7 @@ export class BetModesSheetMapper implements BetModesSheetMapping {
     public fromRows(rows: SheetGrid): {value: BetMode[]; issues: ValidationIssue[]} {
         const issues: ValidationIssue[] = [];
         const [header, ...dataRows] = rows;
-        const columns = resolveColumnIndexes(header ?? [], COLUMNS, this.sheetName, issues);
+        const columns = resolveColumnIndexes(header ?? [], COLUMNS, this.sheetName, issues, OPTIONAL_COLUMNS);
         const idIndex = columns.Id;
         const labelIndex = columns.Label;
         const costIndex = columns["Cost Multiplier"];
@@ -27,7 +32,6 @@ export class BetModesSheetMapper implements BetModesSheetMapping {
             idIndex !== undefined &&
             labelIndex !== undefined &&
             costIndex !== undefined &&
-            targetRtpIndex !== undefined &&
             runtimeTypeIndex !== undefined &&
             isDefaultIndex !== undefined &&
             forcedFreeGamesIndex !== undefined
@@ -60,7 +64,9 @@ export class BetModesSheetMapper implements BetModesSheetMapping {
                     return;
                 }
 
-                const rawTargetRtp = row[targetRtpIndex];
+                // targetRtpIndex is undefined for a sheet exported before this column existed --
+                // undefined here (not a lookup into `row`) is exactly "absent", never a malformed cell.
+                const rawTargetRtp = targetRtpIndex !== undefined ? row[targetRtpIndex] : undefined;
                 const targetRtp = cellToNumber(rawTargetRtp);
                 if (cellToText(rawTargetRtp) !== undefined && targetRtp === undefined) {
                     issues.push({

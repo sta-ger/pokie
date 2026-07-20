@@ -274,6 +274,26 @@ describe("ParSheetImporter", () => {
 
             expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "blueprint-betmodes-duplicate-id", severity: "error"})]));
         });
+
+        it("imports a legacy BetModes sheet with no Target RTP column exactly as before -- targetRtp simply absent, no error", async () => {
+            await writeWorkbook({
+                ...validSheets,
+                BetModes: [
+                    ["Id", "Label", "Cost Multiplier", "Runtime Type", "Is Default", "Forced Free Games"],
+                    ["base", "Base Game", "", "", "", ""],
+                    ["buy-bonus", "Buy Bonus", 100, "", "", ""],
+                ],
+            });
+            const importer = new ParSheetImporter();
+
+            const {blueprint, issues} = await importer.importFromFile(filePath);
+
+            expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+            expect(blueprint.betModes).toEqual([
+                {id: "base", label: "Base Game"},
+                {id: "buy-bonus", label: "Buy Bonus", costMultiplier: 100},
+            ]);
+        });
     });
 
     describe("provenance", () => {
