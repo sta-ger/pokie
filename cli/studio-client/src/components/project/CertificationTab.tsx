@@ -18,10 +18,12 @@ import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
+import {FieldWarningText} from "../common/FieldWarningText";
 import {IssueList} from "../common/IssueList";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {WarningState} from "../common/WarningState";
 
 const OUTCOME_BANNER: Record<CertificationOutcome, {color: string; icon: ReactNode; title: string}> = {
     success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Clean"},
@@ -43,15 +45,41 @@ type ModeFields = {modeName: string; seed: string; sampleCount: number};
 
 const EMPTY_MODE: ModeFields = {modeName: "", seed: "", sampleCount: 100};
 
+type ModeRowStatus = "empty" | "incomplete" | "valid";
+
 function isModeValid(mode: ModeFields): boolean {
     return mode.modeName.trim().length > 0 && mode.seed.trim().length > 0 && Number.isInteger(mode.sampleCount) && mode.sampleCount > 0;
 }
 
-// Only fully-filled-in rows are sent -- an incomplete row (still being typed) is silently excluded
-// rather than blocking the whole request, but if that leaves nothing, the Build button stays disabled
-// (see its own `disabled` check below).
+// "empty" (never touched -- still exactly what "Add mode" produced) is the only status silently
+// excluded from the submitted mode list (see toModeInputs). "incomplete" (the user typed *something*
+// into this row, but it still isn't valid -- e.g. a mode name with no seed) must never be silently
+// dropped the same way: see hasIncompleteModeRow, which blocks Build and surfaces a diagnostic instead
+// of quietly submitting a build that's missing a mode the user thought they'd included.
+function classifyModeRow(mode: ModeFields): ModeRowStatus {
+    if (isModeValid(mode)) {
+        return "valid";
+    }
+    const touched = mode.modeName.trim().length > 0 || mode.seed.trim().length > 0 || mode.sampleCount !== EMPTY_MODE.sampleCount;
+    return touched ? "incomplete" : "empty";
+}
+
 function toModeInputs(modes: readonly ModeFields[]): CertificationBuildModeInput[] {
-    return modes.filter(isModeValid).map((mode) => ({modeName: mode.modeName.trim(), seed: mode.seed.trim(), sampleCount: mode.sampleCount}));
+    return modes.filter((mode) => classifyModeRow(mode) === "valid").map((mode) => ({modeName: mode.modeName.trim(), seed: mode.seed.trim(), sampleCount: mode.sampleCount}));
+}
+
+// Per-field detail for an "incomplete" row -- shown right next to the field that's actually missing,
+// rather than a single vague "this row is wrong" message. Empty object for anything other than an
+// "incomplete" row (an "empty" row is never nagged at, a "valid" one has nothing to warn about).
+function modeFieldWarnings(mode: ModeFields): {modeName?: string; seed?: string; sampleCount?: string} {
+    if (classifyModeRow(mode) !== "incomplete") {
+        return {};
+    }
+    return {
+        modeName: mode.modeName.trim().length === 0 ? "Mode name is required." : undefined,
+        seed: mode.seed.trim().length === 0 ? "Seed is required." : undefined,
+        sampleCount: Number.isInteger(mode.sampleCount) && mode.sampleCount > 0 ? undefined : "Sample count must be a positive integer.",
+    };
 }
 
 // Guided Select/configure -> Validate -> Build bundle -> Inspect -> Export workflow, built entirely on
@@ -139,7 +167,8 @@ export function CertificationTab() {
 
     function runBuild(): void {
         const modeInputs = toModeInputs(modes);
-        if (modeInputs.length === 0 || bundleDir.trim().length === 0 || outDir.trim().length === 0 || !buildGuard.begin()) {
+        const hasIncompleteMode = modes.some((mode) => classifyModeRow(mode) === "incomplete");
+        if (modeInputs.length === 0 || hasIncompleteMode || bundleDir.trim().length === 0 || outDir.trim().length === 0 || !buildGuard.begin()) {
             return;
         }
         const requestId = ++buildRequestIdRef.current;
@@ -161,6 +190,7 @@ export function CertificationTab() {
             });
     }
 
+    const hasIncompleteModeRow = modes.some((mode) => classifyModeRow(mode) === "incomplete");
     const validateReachable = bundleDir.trim().length > 0;
     const validateOutcome = validateView.status === "ok" ? describeCertificationOutcome(validateView) : undefined;
     const buildReachable = validateOutcome !== undefined && validateOutcome !== "invalid";
@@ -215,8 +245,11 @@ export function CertificationTab() {
         return (
             <div>
                 <TextInput label="Output directory" value={outDir} onChange={(event) => handleOutDirChange(event.currentTarget.value)} mb="sm" />
+                {hasIncompleteModeRow && (
+                    <WarningState message="One or more mode rows on Select/configure are incomplete. Fill in mode name, seed, and a positive sample count, or remove the row, before building." />
+                )}
                 <QuickActions>
-                    <Button onClick={runBuild} loading={buildView.status === "loading"} disabled={toModeInputs(modes).length === 0}>
+                    <Button onClick={runBuild} loading={buildView.status === "loading"} disabled={toModeInputs(modes).length === 0 || hasIncompleteModeRow}>
                         Build certification bundle
                     </Button>
                 </QuickActions>
@@ -268,33 +301,45 @@ export function CertificationTab() {
                     <Text size="sm" fw={600} mb={4}>
                         Modes to sample
                     </Text>
-                    {modes.map((mode, index) => (
-                        <Group key={index} gap="sm" wrap="wrap" mb="sm" align="flex-end">
-                            <TextInput
-                                label="Mode name"
-                                placeholder="base"
-                                value={mode.modeName}
-                                onChange={(event) => handleModesChange(modes.map((m, i) => (i === index ? {...m, modeName: event.currentTarget.value} : m)))}
-                            />
-                            <TextInput
-                                label="Seed"
-                                placeholder="cert-2026-07-20-base"
-                                value={mode.seed}
-                                onChange={(event) => handleModesChange(modes.map((m, i) => (i === index ? {...m, seed: event.currentTarget.value} : m)))}
-                            />
-                            <NumberInput
-                                label="Sample count"
-                                min={1}
-                                value={mode.sampleCount}
-                                onChange={(value) => handleModesChange(modes.map((m, i) => (i === index ? {...m, sampleCount: Number(value) || 0} : m)))}
-                            />
-                            {modes.length > 1 && (
-                                <Button variant="subtle" color="red" onClick={() => handleModesChange(modes.filter((_, i) => i !== index))}>
-                                    Remove
-                                </Button>
-                            )}
-                        </Group>
-                    ))}
+                    {modes.map((mode, index) => {
+                        const warnings = modeFieldWarnings(mode);
+                        return (
+                            <Group key={index} gap="sm" wrap="wrap" mb="sm" align="flex-end">
+                                <div>
+                                    <TextInput
+                                        label="Mode name"
+                                        placeholder="base"
+                                        value={mode.modeName}
+                                        onChange={(event) => handleModesChange(modes.map((m, i) => (i === index ? {...m, modeName: event.currentTarget.value} : m)))}
+                                    />
+                                    <FieldWarningText message={warnings.modeName} />
+                                </div>
+                                <div>
+                                    <TextInput
+                                        label="Seed"
+                                        placeholder="cert-2026-07-20-base"
+                                        value={mode.seed}
+                                        onChange={(event) => handleModesChange(modes.map((m, i) => (i === index ? {...m, seed: event.currentTarget.value} : m)))}
+                                    />
+                                    <FieldWarningText message={warnings.seed} />
+                                </div>
+                                <div>
+                                    <NumberInput
+                                        label="Sample count"
+                                        min={1}
+                                        value={mode.sampleCount}
+                                        onChange={(value) => handleModesChange(modes.map((m, i) => (i === index ? {...m, sampleCount: Number(value) || 0} : m)))}
+                                    />
+                                    <FieldWarningText message={warnings.sampleCount} />
+                                </div>
+                                {modes.length > 1 && (
+                                    <Button variant="subtle" color="red" onClick={() => handleModesChange(modes.filter((_, i) => i !== index))}>
+                                        Remove
+                                    </Button>
+                                )}
+                            </Group>
+                        );
+                    })}
                     <QuickActions>
                         <Button variant="default" onClick={() => handleModesChange([...modes, {...EMPTY_MODE}])}>
                             Add mode

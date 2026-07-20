@@ -211,7 +211,11 @@ export function ProvablyFairTab() {
     }
 
     const generateReachable = configureView.status === "ok";
-    const verifyReachable = generateReachable;
+    // Verify is deliberately reachable regardless of Configure/Generate -- pasting an external
+    // proof/commitment to independently verify someone else's round (the actual real-world Provably
+    // Fair use case) must never require running through this session's own Configure/Generate first.
+    // Only the "generated in this session" path within Verify depends on a proof actually having been
+    // generated (see its own EmptyState below).
     const verifyResult = verifyView.status === "ok" ? verifyView : undefined;
     const verifyOutcome = verifyResult !== undefined ? describeFairnessOutcome(verifyResult) : undefined;
     const diagnosticsReachable = verifyResult !== undefined;
@@ -227,7 +231,7 @@ export function ProvablyFairTab() {
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step label="Configure" description="Seeds & mode" />
                 <Stepper.Step label="Generate/inspect proof" description="Reveal" disabled={!generateReachable} />
-                <Stepper.Step label="Verify" description="Cross-check" disabled={!verifyReachable} />
+                <Stepper.Step label="Verify" description="Cross-check" />
                 <Stepper.Step label="Review diagnostics" description="Issues" disabled={!diagnosticsReachable} />
             </Stepper>
 
@@ -360,86 +364,83 @@ export function ProvablyFairTab() {
                     </div>
                 ))}
 
-            {activeStep === 2 &&
-                (!verifyReachable ? (
-                    <EmptyState message="Compute commitments first." />
-                ) : (
-                    <div>
-                        <SegmentedControl
-                            value={verifySource}
-                            onChange={(value) => {
-                                setVerifySource(value as "generated" | "paste");
-                                invalidateVerify();
-                            }}
-                            data={[
-                                {label: "Generated in this session", value: "generated"},
-                                {label: "Paste external proof/commitment", value: "paste"},
-                            ]}
-                            mb="sm"
-                        />
-                        {verifySource === "generated" && generatedProof === undefined && (
-                            <EmptyState message="Generate a round proof first, or switch to pasting an external one." />
-                        )}
-                        {verifySource === "paste" && (
-                            <div>
-                                <Textarea
-                                    label="Proof JSON"
-                                    autosize
-                                    minRows={4}
-                                    value={pastedProofText}
-                                    onChange={(event) => {
-                                        setPastedProofText(event.currentTarget.value);
-                                        invalidateVerify();
-                                    }}
-                                    mb="sm"
-                                />
-                                {pastedProof?.status === "error" && <ErrorState message={`Proof JSON: ${pastedProof.message}`} />}
-                                <Textarea
-                                    label="Commitment JSON"
-                                    autosize
-                                    minRows={4}
-                                    value={pastedCommitmentText}
-                                    onChange={(event) => {
-                                        setPastedCommitmentText(event.currentTarget.value);
-                                        invalidateVerify();
-                                    }}
-                                    mb="sm"
-                                />
-                                {pastedCommitment?.status === "error" && <ErrorState message={`Commitment JSON: ${pastedCommitment.message}`} />}
-                            </div>
-                        )}
-                        <TextInput
-                            label="Source outcome-library bundle directory"
-                            value={verifyBundleDir}
-                            onChange={(event) => {
-                                setVerifyBundleDir(event.currentTarget.value);
-                                invalidateVerify();
-                            }}
-                            mb="sm"
-                        />
-                        <QuickActions>
-                            <Button onClick={runVerify} loading={verifyView.status === "loading"} disabled={resolveVerifyInputs() === undefined}>
-                                Verify
-                            </Button>
-                        </QuickActions>
-                        {verifyView.status === "error" && <ErrorState message={verifyView.message} />}
-                        {verifyView.status === "load-error" && <ErrorState message={verifyView.error} />}
-                        {verifyOutcome !== undefined && (
-                            <div>
-                                <OutcomeBanner
-                                    color={OUTCOME_BANNER[verifyOutcome].color}
-                                    icon={OUTCOME_BANNER[verifyOutcome].icon}
-                                    title={OUTCOME_BANNER[verifyOutcome].title}
-                                    errors={verifyResult?.errors ?? []}
-                                    warnings={verifyResult?.warnings ?? []}
-                                />
-                                <QuickActions>
-                                    <Button onClick={() => setActiveStep(3)}>Continue to Review diagnostics</Button>
-                                </QuickActions>
-                            </div>
-                        )}
-                    </div>
-                ))}
+            {activeStep === 2 && (
+                <div>
+                    <SegmentedControl
+                        value={verifySource}
+                        onChange={(value) => {
+                            setVerifySource(value as "generated" | "paste");
+                            invalidateVerify();
+                        }}
+                        data={[
+                            {label: "Generated in this session", value: "generated"},
+                            {label: "Paste external proof/commitment", value: "paste"},
+                        ]}
+                        mb="sm"
+                    />
+                    {verifySource === "generated" && generatedProof === undefined && (
+                        <EmptyState message="Generate a round proof first, or switch to pasting an external one." />
+                    )}
+                    {verifySource === "paste" && (
+                        <div>
+                            <Textarea
+                                label="Proof JSON"
+                                autosize
+                                minRows={4}
+                                value={pastedProofText}
+                                onChange={(event) => {
+                                    setPastedProofText(event.currentTarget.value);
+                                    invalidateVerify();
+                                }}
+                                mb="sm"
+                            />
+                            {pastedProof?.status === "error" && <ErrorState message={`Proof JSON: ${pastedProof.message}`} />}
+                            <Textarea
+                                label="Commitment JSON"
+                                autosize
+                                minRows={4}
+                                value={pastedCommitmentText}
+                                onChange={(event) => {
+                                    setPastedCommitmentText(event.currentTarget.value);
+                                    invalidateVerify();
+                                }}
+                                mb="sm"
+                            />
+                            {pastedCommitment?.status === "error" && <ErrorState message={`Commitment JSON: ${pastedCommitment.message}`} />}
+                        </div>
+                    )}
+                    <TextInput
+                        label="Source outcome-library bundle directory"
+                        value={verifyBundleDir}
+                        onChange={(event) => {
+                            setVerifyBundleDir(event.currentTarget.value);
+                            invalidateVerify();
+                        }}
+                        mb="sm"
+                    />
+                    <QuickActions>
+                        <Button onClick={runVerify} loading={verifyView.status === "loading"} disabled={resolveVerifyInputs() === undefined}>
+                            Verify
+                        </Button>
+                    </QuickActions>
+                    {verifyView.status === "error" && <ErrorState message={verifyView.message} />}
+                    {verifyView.status === "load-error" && <ErrorState message={verifyView.error} />}
+                    {verifyOutcome !== undefined && (
+                        <div>
+                            <OutcomeBanner
+                                color={OUTCOME_BANNER[verifyOutcome].color}
+                                icon={OUTCOME_BANNER[verifyOutcome].icon}
+                                title={OUTCOME_BANNER[verifyOutcome].title}
+                                errors={verifyResult?.errors ?? []}
+                                warnings={verifyResult?.warnings ?? []}
+                            />
+                            <QuickActions>
+                                <Button onClick={() => setActiveStep(3)}>Continue to Review diagnostics</Button>
+                            </QuickActions>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {activeStep === 3 &&
                 (verifyResult === undefined ? (

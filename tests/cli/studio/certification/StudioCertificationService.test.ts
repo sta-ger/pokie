@@ -125,5 +125,28 @@ describe("StudioCertificationService", () => {
 
             expect(view.status).toBe("load-error");
         });
+
+        // A not-yet-existing outDir must not be exempted from the symlink-escape check just because its
+        // exact leaf isn't there yet: an existing ancestor directory somewhere inside the project that is
+        // itself a symlink pointing outside it, with further not-yet-existing path components appended
+        // past that point, escapes the project root just as surely as a direct symlink would -- and would
+        // otherwise let the builder actually write the certification bundle outside the project.
+        it("reports load-error, and never writes anything, for a nested outDir escaping through a symlinked ancestor", async () => {
+            await buildSourceOutcomeLibraryBundle(path.join(tmpRoot, "bundle"), ["base"]);
+            const outside = fs.mkdtempSync(path.join(os.tmpdir(), "studio-cert-service-outside-"));
+            try {
+                fs.symlinkSync(outside, path.join(tmpRoot, "evil"));
+                const service = new StudioCertificationService(CERTIFICATION_TEST_POKIE_VERSION);
+
+                const view = await service.build(tmpRoot, "bundle", [{modeName: "base", seed: "s", sampleCount: 1}], "evil/nested/certification");
+
+                expect(view.status).toBe("load-error");
+                if (view.status !== "load-error") throw new Error("expected load-error");
+                expect(view.error).toContain("resolves, through a symlink, outside the project root");
+                expect(fs.readdirSync(outside)).toEqual([]);
+            } finally {
+                fs.rmSync(outside, {recursive: true, force: true});
+            }
+        });
     });
 });

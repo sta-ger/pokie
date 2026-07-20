@@ -286,4 +286,53 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         expect(screen.queryByText("Clean")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Build bundle"})).not.toBeInTheDocument();
     });
+
+    it("blocks Build and surfaces a diagnostic for a partially-filled mode row, instead of silently dropping it", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+            "/api/project/certification/build": () => ({ok: true, status: 200, body: okBuildView()}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+        await fillSelectStep(user, "./bundle");
+
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
+
+        // Add a second mode row and fill in only its mode name -- the seed is left blank, so this row
+        // is "touched" but not valid, and must never be silently dropped from the request.
+        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        await user.click(screen.getByRole("button", {name: "Add mode"}));
+        const modeNameInputs = screen.getAllByLabelText("Mode name");
+        await user.type(modeNameInputs[1], "bonus");
+        expect(await screen.findByText("Seed is required.")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: /Build bundle/i}));
+
+        expect(
+            await screen.findByText(
+                "One or more mode rows on Select/configure are incomplete. Fill in mode name, seed, and a positive sample count, or remove the row, before building.",
+            ),
+        ).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Build certification bundle"})).toBeDisabled();
+
+        // Removing the incomplete row (rather than completing it) clears the block; the still-valid
+        // first row is submitted normally, with no trace of the removed one.
+        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        const removeButtons = screen.getAllByRole("button", {name: "Remove"});
+        await user.click(removeButtons[removeButtons.length - 1]);
+        await user.click(screen.getByRole("button", {name: /Build bundle/i}));
+        expect(screen.queryByText(/incomplete/)).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Build certification bundle"})).not.toBeDisabled();
+
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText("Clean");
+
+        const buildCall = calls.find((call) => call.url === "/api/project/certification/build");
+        expect(JSON.parse(buildCall?.init?.body ?? "{}").modes).toEqual([{modeName: "base", seed: "cert-seed-1", sampleCount: 100}]);
+    });
 });

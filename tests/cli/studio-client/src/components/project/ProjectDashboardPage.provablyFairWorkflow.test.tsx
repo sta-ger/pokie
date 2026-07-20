@@ -94,6 +94,43 @@ describe("ProjectDashboardPage - Provably Fair workflow", () => {
         expect(await screen.findByText("Verified")).toBeInTheDocument();
     });
 
+    it("verifies a pasted external proof/commitment directly, with no Configure/Generate for an unrelated round in this session", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/fairness/configure": () => {
+                throw new Error("Configure must never be called for a direct external verify.");
+            },
+            "/api/project/fairness/generate": () => {
+                throw new Error("Generate must never be called for a direct external verify.");
+            },
+            "/api/project/fairness/verify": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToProvablyFairTab(user);
+
+        // Jump straight to Verify -- the Stepper step itself must never be gated behind Configure, since
+        // verifying someone else's already-published proof/commitment is the actual real-world Provably
+        // Fair use case and has nothing to do with this session's own Configure/Generate.
+        await user.click(screen.getByRole("button", {name: /Verify/}));
+        await user.click(screen.getByText("Paste external proof/commitment"));
+
+        await user.click(screen.getByLabelText("Proof JSON"));
+        await user.paste(JSON.stringify(PROOF));
+        await user.click(screen.getByLabelText("Commitment JSON"));
+        await user.paste(JSON.stringify(COMMITMENT));
+        await user.type(screen.getByLabelText("Source outcome-library bundle directory"), "./bundle");
+
+        await user.click(screen.getByRole("button", {name: "Verify", exact: true}));
+
+        expect(await screen.findByText("Verified")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/project/fairness/configure")).toBe(false);
+        expect(calls.some((call) => call.url === "/api/project/fairness/generate")).toBe(false);
+        const verifyCall = calls.find((call) => call.url === "/api/project/fairness/verify");
+        expect(JSON.parse(verifyCall?.init?.body ?? "{}")).toEqual({proof: PROOF, commitment: COMMITMENT, sourceBundleDir: "./bundle"});
+    });
+
     it("reports an invalid configuration for a domain-level rejection (e.g. an invalid seed/mode combination)", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
