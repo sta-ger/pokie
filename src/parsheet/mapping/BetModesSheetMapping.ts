@@ -2,8 +2,8 @@ import type {BetMode} from "../../gamepackage/BetMode.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 
-// Maps the optional "BetModes" sheet (Id/Label/Cost Multiplier/Runtime Type/Is Default/Forced Free
-// Games, one row per selectable bet mode) to/from GameBlueprint's betModes -- including the explicit,
+// Maps the optional "BetModes" sheet (Id/Label/Cost Multiplier/Target RTP/Runtime Type/Is Default/
+// Forced Free Games, one row per selectable bet mode) to/from GameBlueprint's betModes -- including the explicit,
 // opt-in runtime-semantics fields (see gamepackage/BetMode.ts's own doc comment), so a PAR sheet
 // round-trip never silently drops them back to metadata-only. Whether the whole array is a
 // consistent, complete runtime-semantics specification (exactly one default, ante/buyFeature's own

@@ -263,9 +263,9 @@ describe("ParSheetImporter", () => {
             await writeWorkbook({
                 ...validSheets,
                 BetModes: [
-                    ["Id", "Label", "Cost Multiplier", "Runtime Type", "Is Default", "Forced Free Games"],
-                    ["base", "Base Game", "", "", "", ""],
-                    ["base", "Base Game Again", "", "", "", ""],
+                    ["Id", "Label", "Cost Multiplier", "Target RTP", "Runtime Type", "Is Default", "Forced Free Games"],
+                    ["base", "Base Game", "", "", "", "", ""],
+                    ["base", "Base Game Again", "", "", "", "", ""],
                 ],
             });
             const importer = new ParSheetImporter();

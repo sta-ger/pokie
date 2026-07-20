@@ -523,7 +523,7 @@ A `.par.xlsx` workbook has up to ten sheets:
 | `AvailableBets` | `Bet` — one row per value | no | `availableBets` |
 | `WinModel` | `Key`, `Value` (rows: `Type` — one of `lines`/`ways`/`clusters`; `Minimum Cluster Size`, only for `clusters`) | no | `winModel` |
 | `Mechanics` | `Scatter Symbol`, `Matches`, `Free Games` — one row per award tier (a single free-games award has exactly one scatter symbol, repeated on every row) | no | `mechanics.freeGames` |
-| `BetModes` | `Id`, `Label`, `Cost Multiplier`, `Runtime Type`, `Is Default`, `Forced Free Games` — one row per selectable bet mode | no | `betModes` |
+| `BetModes` | `Id`, `Label`, `Cost Multiplier`, `Target RTP`, `Runtime Type`, `Is Default`, `Forced Free Games` — one row per selectable bet mode | no | `betModes` |
 | `Meta` | `Key`, `Value` (rows: `Schema Version`, `Pokie Version`, `Exported At`, `Source`, `Blueprint Hash`) | no | nothing — provenance only, see below |
 
 `ReelStrips`/`Paylines` columns must be named exactly `Reel 1`, `Reel 2`, ... `Reel N` (case-insensitive, one
@@ -538,6 +538,12 @@ blueprint whose whole `BetModes` sheet validates cleanly under this contract get
 session actually wired for bet-mode selection (`VideoSlotWithBetModesSession`) — see `betModes` in
 [the `GameBlueprint` format](#the-gameblueprint-format) and `gamepackage/BetMode.ts`'s own doc comment for the
 full contract.
+
+`Target RTP` is independent of that opt-in — it's meaningful (and optional) on any row, with or without `Runtime
+Type` set, same as `Cost Multiplier` always was. A blank cell means the mode simply doesn't declare a target; a
+non-numeric cell (e.g. `"very high"`) is `parsheet-betmodes-invalid-targetrtp-cell` and drops that row, same
+treatment as an invalid `Cost Multiplier`/`Forced Free Games` cell. See
+[`pokie sim`'s `targetRtp`/`rtpDeviation`](#pokie-sim-packageroot) for where an imported value ends up being used.
 
 `pokie par export` preflights the *entire* export before writing anything: if the blueprint fails any check (see
 below), **no file is created and an existing file at the output path is left completely untouched** — there is no

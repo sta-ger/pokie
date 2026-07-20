@@ -734,14 +734,17 @@ export function removeFreeGamesAward(blueprint: Record<string, unknown>, matchCo
 
 // runtimeType/isDefault/forcedFreeGames are the explicit, opt-in runtime-semantics contract (see
 // BetMode.ts's own doc comment) -- there is no dedicated editor UI for them yet (still just Id/Label/
-// Cost multiplier columns in BetModesEditor.tsx), but they still have to round-trip losslessly through
-// every existing bet-mode operation below (add/remove/duplicate/move/setField); dropping them the
-// moment a user edits an unrelated field on the same blueprint would silently destroy explicit runtime
-// semantics a hand-authored or CLI-edited blueprint had set.
+// Cost multiplier/Target RTP columns in BetModesEditor.tsx), but they still have to round-trip
+// losslessly through every existing bet-mode operation below (add/remove/duplicate/move/setField);
+// dropping them the moment a user edits an unrelated field on the same blueprint would silently destroy
+// explicit runtime semantics a hand-authored or CLI-edited blueprint had set. targetRtp DOES have a
+// dedicated column (it's meaningful with or without the runtimeType opt-in, same as costMultiplier
+// always was), but is still parsed/preserved the same defensive way as the others.
 export type BetModeFormValues = {
     id: string;
     label?: string;
     costMultiplier?: number;
+    targetRtp?: number;
     runtimeType?: "base" | "ante" | "buyFeature";
     isDefault?: boolean;
     forcedFreeGames?: number;
@@ -759,6 +762,9 @@ export function asBetModesList(value: unknown): BetModeFormValues[] {
         }
         if (typeof record.costMultiplier === "number") {
             result.costMultiplier = record.costMultiplier;
+        }
+        if (typeof record.targetRtp === "number") {
+            result.targetRtp = record.targetRtp;
         }
         if (record.runtimeType === "base" || record.runtimeType === "ante" || record.runtimeType === "buyFeature") {
             result.runtimeType = record.runtimeType;

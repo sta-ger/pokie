@@ -21,6 +21,7 @@ export function BetModesEditor({blueprint, mutate}: {blueprint: Record<string, u
                             <Table.Th>Id</Table.Th>
                             <Table.Th>Label</Table.Th>
                             <Table.Th>Cost multiplier</Table.Th>
+                            <Table.Th>Target RTP</Table.Th>
                             <Table.Th />
                         </Table.Tr>
                     </Table.Thead>
@@ -46,6 +47,13 @@ export function BetModesEditor({blueprint, mutate}: {blueprint: Record<string, u
                                         aria-label={`Bet mode ${index + 1} cost multiplier`}
                                         value={mode.costMultiplier ?? ""}
                                         onCommit={(value) => mutate((b) => setBetModeField(b, index, "costMultiplier", value))}
+                                    />
+                                </Table.Td>
+                                <Table.Td>
+                                    <BufferedNumberInput
+                                        aria-label={`Bet mode ${index + 1} target RTP`}
+                                        value={mode.targetRtp ?? ""}
+                                        onCommit={(value) => mutate((b) => setBetModeField(b, index, "targetRtp", value))}
                                     />
                                 </Table.Td>
                                 <Table.Td>

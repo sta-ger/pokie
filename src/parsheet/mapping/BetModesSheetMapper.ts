@@ -4,7 +4,7 @@ import type {SheetGrid} from "../SheetGrid.js";
 import type {BetModesSheetMapping} from "./BetModesSheetMapping.js";
 import {cellToBoolean, cellToNumber, cellToText, isBlankRow, resolveColumnIndexes} from "./sheetCellParsing.js";
 
-const COLUMNS = ["Id", "Label", "Cost Multiplier", "Runtime Type", "Is Default", "Forced Free Games"];
+const COLUMNS = ["Id", "Label", "Cost Multiplier", "Target RTP", "Runtime Type", "Is Default", "Forced Free Games"];
 const VALID_RUNTIME_TYPES = new Set(["base", "ante", "buyFeature"]);
 
 export class BetModesSheetMapper implements BetModesSheetMapping {
@@ -17,6 +17,7 @@ export class BetModesSheetMapper implements BetModesSheetMapping {
         const idIndex = columns.Id;
         const labelIndex = columns.Label;
         const costIndex = columns["Cost Multiplier"];
+        const targetRtpIndex = columns["Target RTP"];
         const runtimeTypeIndex = columns["Runtime Type"];
         const isDefaultIndex = columns["Is Default"];
         const forcedFreeGamesIndex = columns["Forced Free Games"];
@@ -26,6 +27,7 @@ export class BetModesSheetMapper implements BetModesSheetMapping {
             idIndex !== undefined &&
             labelIndex !== undefined &&
             costIndex !== undefined &&
+            targetRtpIndex !== undefined &&
             runtimeTypeIndex !== undefined &&
             isDefaultIndex !== undefined &&
             forcedFreeGamesIndex !== undefined
@@ -53,6 +55,18 @@ export class BetModesSheetMapper implements BetModesSheetMapping {
                         code: "parsheet-betmodes-invalid-cost-multiplier-cell",
                         severity: "error",
                         message: `Sheet "${this.sheetName}", row ${rowNumber}: "Cost Multiplier" is not a number, so this row is ignored.`,
+                        details: {sheet: this.sheetName, row: rowNumber, id},
+                    });
+                    return;
+                }
+
+                const rawTargetRtp = row[targetRtpIndex];
+                const targetRtp = cellToNumber(rawTargetRtp);
+                if (cellToText(rawTargetRtp) !== undefined && targetRtp === undefined) {
+                    issues.push({
+                        code: "parsheet-betmodes-invalid-targetrtp-cell",
+                        severity: "error",
+                        message: `Sheet "${this.sheetName}", row ${rowNumber}: "Target RTP" is not a number, so this row is ignored.`,
                         details: {sheet: this.sheetName, row: rowNumber, id},
                     });
                     return;
@@ -101,6 +115,9 @@ export class BetModesSheetMapper implements BetModesSheetMapping {
                 if (costMultiplier !== undefined) {
                     betMode.costMultiplier = costMultiplier;
                 }
+                if (targetRtp !== undefined) {
+                    betMode.targetRtp = targetRtp;
+                }
                 if (rawRuntimeType !== undefined) {
                     betMode.runtimeType = rawRuntimeType as BetMode["runtimeType"];
                 }
@@ -124,6 +141,7 @@ export class BetModesSheetMapper implements BetModesSheetMapping {
                 mode.id,
                 mode.label ?? "",
                 mode.costMultiplier ?? "",
+                mode.targetRtp ?? "",
                 mode.runtimeType ?? "",
                 mode.isDefault === true,
                 mode.forcedFreeGames ?? "",

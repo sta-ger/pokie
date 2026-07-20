@@ -136,5 +136,17 @@ describe("computeBlueprintHash", () => {
             expect(computeBlueprintHash(withIsDefault)).not.toBe(computeBlueprintHash(withRuntimeType));
             expect(computeBlueprintHash(withForcedFreeGames)).not.toBe(computeBlueprintHash(withDifferentForcedFreeGames));
         });
+
+        // Regression: targetRtp (see gamepackage/BetMode.ts's own doc comment) must never be silently
+        // dropped from provenance either -- otherwise a blueprint edit that ONLY changes a mode's
+        // declared RTP target would hash identically to the unedited one, hiding a real change.
+        it("distinguishes betModes entries that differ only by targetRtp", () => {
+            const withoutTargetRtp: GameBlueprint = {...base, betModes: [{id: "base", costMultiplier: 1}]};
+            const withTargetRtp: GameBlueprint = {...base, betModes: [{id: "base", costMultiplier: 1, targetRtp: 0.94}]};
+            const withDifferentTargetRtp: GameBlueprint = {...base, betModes: [{id: "base", costMultiplier: 1, targetRtp: 0.965}]};
+
+            expect(computeBlueprintHash(withTargetRtp)).not.toBe(computeBlueprintHash(withoutTargetRtp));
+            expect(computeBlueprintHash(withTargetRtp)).not.toBe(computeBlueprintHash(withDifferentTargetRtp));
+        });
     });
 });

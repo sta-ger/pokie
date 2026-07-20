@@ -86,6 +86,9 @@ function canonicalizeBetModes(betModes: BetMode[] | undefined): Record<string, u
         if (mode.costMultiplier !== undefined) {
             canonical.costMultiplier = mode.costMultiplier;
         }
+        if (mode.targetRtp !== undefined) {
+            canonical.targetRtp = mode.targetRtp;
+        }
         // The explicit, opt-in runtime-semantics fields (see gamepackage/BetMode.ts's own doc comment)
         // -- omitted here would mean two blueprints differing only in these fields (e.g. one with a
         // fully wired ante/buy-feature contract, one without) hash identically, hiding a real

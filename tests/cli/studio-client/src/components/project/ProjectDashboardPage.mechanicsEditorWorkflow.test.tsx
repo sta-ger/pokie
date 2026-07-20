@@ -188,7 +188,8 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
     it("does not offer a non-functional 'forces free games' bet-mode control", async () => {
         // BetMode has no field promising engine behavior nothing in the runtime actually delivers
         // (see BetMode.ts's own doc comment) -- the editor must not offer a control for one either,
-        // in addition to a bet mode row only ever committing id/label/costMultiplier.
+        // in addition to a bet mode row only ever committing id/label/costMultiplier/targetRtp (the
+        // only fields BetModesEditor.tsx has dedicated columns for).
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({...BASE_ROUTES});
 
