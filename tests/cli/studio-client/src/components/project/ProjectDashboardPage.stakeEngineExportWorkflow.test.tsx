@@ -135,7 +135,7 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
         expect(screen.queryByRole("button", {name: "Continue to Export"})).not.toBeInTheDocument();
     });
 
-    it("returns a conflict for a pre-existing outDir and succeeds once the user chooses Overwrite", async () => {
+    it("returns an overwritable conflict for a directory recognized as a prior export, and succeeds once the user chooses Overwrite", async () => {
         const user = userEvent.setup();
         let exportCallCount = 0;
         const {fetchImpl} = createRoutedFakeFetch({
@@ -149,7 +149,12 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
                     return {
                         ok: false,
                         status: 409,
-                        body: {status: "conflict", outDir: "/games/a/stakeengine", error: '"stakeengine" already exists and is not empty.'},
+                        body: {
+                            status: "conflict",
+                            outDir: "/games/a/stakeengine",
+                            overwritable: true,
+                            error: '"stakeengine" already exists and is not empty. Resubmit with "overwrite": true to replace it.',
+                        },
                     };
                 }
                 expect(body.overwrite).toBe(true);
@@ -166,7 +171,7 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
         await user.click(screen.getByRole("button", {name: "Continue to Export"}));
 
         await user.click(screen.getByRole("button", {name: "Export to Stake Engine"}));
-        expect(await screen.findByText('"stakeengine" already exists and is not empty.')).toBeInTheDocument();
+        expect(await screen.findByText(/already exists and is not empty\. Resubmit/)).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Review result"})).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Overwrite"}));
@@ -174,10 +179,43 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
         expect(exportCallCount).toBe(2);
     });
 
-    it("ignores a late export response once a newer one has already landed", async () => {
+    it("never offers Overwrite for a conflict on a directory unrelated to any prior export", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/stakeengine/validate": () => ({ok: true, status: 200, body: okValidateView()}),
+            "/api/project/stakeengine/export": () => ({
+                ok: false,
+                status: 409,
+                body: {
+                    status: "conflict",
+                    outDir: "/games/a/stakeengine",
+                    overwritable: false,
+                    error: '"stakeengine" already exists and is not empty, and wasn\'t produced by a previous Stake Engine export.',
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToStakeEngineExportTab(user);
+        await fillConfigureStep(user, "./outcomes/base.json");
+        await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
+        await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Export"}));
+
+        await user.click(screen.getByRole("button", {name: "Export to Stake Engine"}));
+        expect(await screen.findByText(/wasn't produced by a previous Stake Engine export/)).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Overwrite"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Review result"})).not.toBeInTheDocument();
+
+        expect(calls.filter((call) => call.url === "/api/project/stakeengine/export")).toHaveLength(1);
+    });
+
+    it("blocks a second Export until the first genuinely settles, even after Configure invalidates its stale result", async () => {
         const user = userEvent.setup();
         let resolveFirst: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
-        let callCount = 0;
+        let exportCallCount = 0;
         const fetchImpl: FetchLike = (url, init) => {
             if (url in BASE_ROUTES) {
                 const routed = BASE_ROUTES[url]({url, init});
@@ -187,17 +225,13 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
                 return jsonResponse(okValidateView());
             }
             if (url === "/api/project/stakeengine/export") {
-                callCount += 1;
-                if (callCount === 1) {
+                exportCallCount += 1;
+                if (exportCallCount === 1) {
                     return new Promise((res) => {
                         resolveFirst = res;
                     });
                 }
-                return jsonResponse({
-                    status: "invalid",
-                    errors: [{code: "second-response-error", severity: "error", message: "The second, faster response."}],
-                    warnings: [],
-                });
+                return jsonResponse(okExportView({outDir: "/games/a/stakeengine-b"}));
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
@@ -210,24 +244,34 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
         await screen.findByText("Clean");
         await user.click(screen.getByRole("button", {name: "Continue to Export"}));
 
+        // Export A starts, still pending server-side (a real write in progress).
         await user.click(screen.getByRole("button", {name: "Export to Stake Engine"}));
-        // Changing the output directory while the first export is still in flight invalidates it and frees
-        // the guard right away, so a new Export click doesn't have to wait for the stale request.
+        expect(exportCallCount).toBe(1);
+
+        // A Configure edit while A is still in flight invalidates the *displayed* result -- but A itself
+        // is still genuinely running on the server, so a second Export (B) must not be allowed to start yet.
         await user.click(screen.getByRole("button", {name: /Source, modes & output/i}));
         await user.type(screen.getByLabelText("Output directory"), "-changed");
         await user.click(screen.getByRole("button", {name: /Write to disk/i}));
+
         await user.click(screen.getByRole("button", {name: "Export to Stake Engine"}));
+        expect(exportCallCount).toBe(1); // still just A -- B was blocked, not merely ignored once it landed.
 
-        expect(await screen.findByText(/The second, faster response\./)).toBeInTheDocument();
-
-        resolveFirst?.(await jsonResponse(okExportView()));
+        // A finally settles. Its own result is stale by now (Configure changed since it started) and must
+        // never be displayed, but the write guard is released the instant it does.
+        resolveFirst?.(await jsonResponse(okExportView({outDir: "/games/a/stakeengine-a"})));
         await new Promise((resolveTimeout) => {
             setTimeout(resolveTimeout, 50);
         });
-
-        // The stale first response (a clean export) must never have overwritten the second, error one.
-        expect(screen.getByText(/The second, faster response\./)).toBeInTheDocument();
+        expect(screen.queryByText("/games/a/stakeengine-a")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Review result"})).not.toBeInTheDocument();
+
+        // Now that A has settled, B can actually run, and its own (non-stale) result is what gets shown.
+        await user.click(screen.getByRole("button", {name: "Export to Stake Engine"}));
+        expect(await screen.findByRole("button", {name: "Continue to Review result"})).toBeInTheDocument();
+        expect(exportCallCount).toBe(2);
+        await user.click(screen.getByRole("button", {name: "Continue to Review result"}));
+        expect(await screen.findByText("/games/a/stakeengine-b")).toBeInTheDocument();
     });
 
     it("does not send a second validate request while the first is still in flight (double-submit guard)", async () => {

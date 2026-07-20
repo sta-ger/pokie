@@ -107,10 +107,17 @@ export function StakeEngineExportTab() {
     const exportRequestIdRef = useRef(0);
     const exportGuard = useDoubleSubmitGuard();
 
+    // Bumps the request id and resets the *displayed* result to idle -- but deliberately never touches
+    // exportGuard here. Response freshness (which result, if any, is worth showing) and write-operation
+    // ownership (whether a new export is allowed to start) are two different questions: a previous Export
+    // request may still be running server-side (a real, side-effecting write) at the moment the user edits
+    // Configure, and ending the guard here would let a second Export fire while the first is still in
+    // flight, racing two writes against each other. The guard is only ever released once the in-flight
+    // request actually settles -- see runExport()'s own .then()/.catch(), which call exportGuard.end()
+    // unconditionally (whether or not that settled response turns out to still be the current one).
     function invalidateExport(): void {
         exportRequestIdRef.current++;
         setExportView({status: "idle"});
-        exportGuard.end();
     }
 
     function invalidateValidate(): void {
@@ -168,17 +175,25 @@ export function StakeEngineExportTab() {
         setExportView({status: "loading"});
         exportStakeEngine(fetchImpl, modeInputs, outDir.trim(), overwrite)
             .then((result) => {
+                // The write this request represents has genuinely finished on the server either way --
+                // the guard is released unconditionally, so a new Export can be started the instant this
+                // settles, even if its own result is about to be discarded as stale below.
+                exportGuard.end();
                 if (requestId !== exportRequestIdRef.current) {
+                    // Stale -- never show this result, but still re-render (a fresh object, not a no-op)
+                    // so the now-freed guard is reflected immediately (e.g. the Export button's own loading
+                    // state, which reads exportGuard.isBlocked() rather than exportView.status alone).
+                    setExportView({status: "idle"});
                     return;
                 }
-                exportGuard.end();
                 setExportView(describeStakeEngineExportResult(result));
             })
             .catch((error: unknown) => {
+                exportGuard.end();
                 if (requestId !== exportRequestIdRef.current) {
+                    setExportView({status: "idle"});
                     return;
                 }
-                exportGuard.end();
                 setExportView({status: "network-error", message: errorMessage(error)});
             });
     }
@@ -274,7 +289,12 @@ export function StakeEngineExportTab() {
                 <QuickActions>
                     <Button
                         onClick={() => runExport(false)}
-                        loading={exportView.status === "loading"}
+                        // Reflects exportGuard, not just exportView.status -- a Configure edit resets the
+                        // *displayed* result to idle (see invalidateExport()'s own doc comment) while the
+                        // previous export may still genuinely be writing on the server; the button must stay
+                        // disabled/spinning through that whole window, not just while its own now-discarded
+                        // result was still going to be shown.
+                        loading={exportGuard.isBlocked()}
                         disabled={toModeInputs(modes).length === 0 || hasIncompleteModeRow}
                     >
                         Export to Stake Engine
@@ -282,15 +302,18 @@ export function StakeEngineExportTab() {
                 </QuickActions>
                 {exportView.status === "network-error" && <ErrorState message={exportView.message} />}
                 {exportView.status === "load-error" && <ErrorState message={exportView.error} />}
-                {exportView.status === "conflict" && (
-                    <RecoveryNotice
-                        title={exportView.error}
-                        message="Exporting will replace the existing directory's contents."
-                        actionLabel="Overwrite"
-                        actionColor="red"
-                        onAction={() => runExport(true)}
-                    />
-                )}
+                {exportView.status === "conflict" &&
+                    (exportView.overwritable ? (
+                        <RecoveryNotice
+                            title={exportView.error}
+                            message="Exporting will replace the existing directory's contents."
+                            actionLabel="Overwrite"
+                            actionColor="red"
+                            onAction={() => runExport(true)}
+                        />
+                    ) : (
+                        <ErrorState message={exportView.error} />
+                    ))}
                 {exportOutcome !== undefined && (
                     <OutcomeBanner
                         color={OUTCOME_BANNER[exportOutcome].color}

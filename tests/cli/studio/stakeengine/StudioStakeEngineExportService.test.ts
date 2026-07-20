@@ -111,7 +111,7 @@ describe("StudioStakeEngineExportService", () => {
             expect(fs.existsSync(path.join(tmpRoot, "stakeengine"))).toBe(false);
         });
 
-        it("returns a conflict view (never writes) for a pre-existing non-empty outDir without overwrite", async () => {
+        it("returns a non-overwritable conflict view (never writes) for a pre-existing directory unrelated to any prior export", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
             writeLibraryFile(tmpRoot, "base.json", library);
             fs.mkdirSync(path.join(tmpRoot, "stakeengine"));
@@ -122,8 +122,40 @@ describe("StudioStakeEngineExportService", () => {
 
             expect(view.status).toBe("conflict");
             if (view.status !== "conflict") throw new Error("expected conflict");
-            expect(view.error).toContain("overwrite");
+            // Never offers an overwrite path for a directory that isn't recognized as a prior export's own
+            // output -- resubmitting with overwrite:true could never actually succeed here (the exporter
+            // itself still refuses it -- see the "does not accept overwrite:true either" test below), so the
+            // view must say so up front rather than let a caller try and fail.
+            expect(view.overwritable).toBe(false);
+            expect(view.error).not.toContain("overwrite");
             expect(fs.readFileSync(path.join(tmpRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing content");
+        });
+
+        it("still refuses (as load-error, never writing) an unrelated directory even when overwrite:true is explicitly requested", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            writeLibraryFile(tmpRoot, "base.json", library);
+            fs.mkdirSync(path.join(tmpRoot, "stakeengine"));
+            fs.writeFileSync(path.join(tmpRoot, "stakeengine", "unrelated.txt"), "pre-existing content");
+            const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
+
+            const view = await service.export(tmpRoot, [{modeName: "base", libraryPath: "base.json", cost: 1}], "stakeengine", true);
+
+            expect(view.status).toBe("load-error");
+            expect(fs.readFileSync(path.join(tmpRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing content");
+        });
+
+        it("returns an overwritable conflict view for a pre-existing directory recognized as a prior export's own output", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            writeLibraryFile(tmpRoot, "base.json", library);
+            const service = new StudioStakeEngineExportService(TEST_POKIE_VERSION);
+            await service.export(tmpRoot, [{modeName: "base", libraryPath: "base.json", cost: 1}], "stakeengine", false);
+
+            const view = await service.export(tmpRoot, [{modeName: "base", libraryPath: "base.json", cost: 1}], "stakeengine", false);
+
+            expect(view.status).toBe("conflict");
+            if (view.status !== "conflict") throw new Error("expected conflict");
+            expect(view.overwritable).toBe(true);
+            expect(view.error).toContain("overwrite");
         });
 
         it("resubmitting with overwrite:true replaces a directory recognized as a prior export's own output", async () => {

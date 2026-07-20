@@ -532,6 +532,7 @@ export * from "./stakeengine/StakeEngineRoundEventsImporter.js";
 export * from "./stakeengine/StakeEngineRoundEventsImporting.js";
 export * from "./stakeengine/StakeEngineRoundEventsProjecting.js";
 export * from "./stakeengine/StakeEngineRoundEventsProjector.js";
+export * from "./stakeengine/isRecognizedStakeEngineExportDirectory.js";
 export * from "./validation/ValidationIssue.js";
 export * from "./validation/ValidationIssueSeverity.js";
 export * from "./validation/ValidationResult.js";

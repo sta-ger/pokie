@@ -797,9 +797,11 @@ export type StakeEngineManifest = {
 // POST /api/project/stakeengine/export's own DTO — see
 // cli/studio/stakeengine/StudioStakeEngineExportView.ts's own doc comment. Mirrors StakeEngineExporter's
 // own "no partial export" contract: `manifest` is present iff `status` is "ok". "conflict" mirrors
-// StudioParSheetExportView's own overwrite-confirmation contract — never a write.
+// StudioParSheetExportView's own overwrite-confirmation contract — never a write. `overwritable` is only
+// `true` when `outDir` is recognized as a prior Stake Engine export's own output — resubmitting with
+// `overwrite: true` can never succeed otherwise, so the UI must never offer that action when it's `false`.
 export type StudioStakeEngineExportView =
     | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineManifest; warnings: ValidationIssue[]}
-    | {status: "conflict"; outDir: string; error: string}
+    | {status: "conflict"; outDir: string; overwritable: boolean; error: string}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "load-error"; error: string};

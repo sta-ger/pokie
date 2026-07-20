@@ -3689,7 +3689,29 @@ describe("StudioServer", () => {
                 outDir: "stakeengine",
             });
             expect(conflictResponse.status).toBe(409);
-            expect((conflictResponse.body as {status: string}).status).toBe("conflict");
+            const conflictView = conflictResponse.body as {status: string; overwritable?: boolean; error?: string};
+            expect(conflictView.status).toBe("conflict");
+            // Never offers an overwrite path for a directory unrelated to any prior export -- see the next
+            // test for confirmation that overwrite:true genuinely can't succeed here either.
+            expect(conflictView.overwritable).toBe(false);
+            expect(conflictView.error).not.toContain("overwrite");
+            expect(fs.readFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing");
+        });
+
+        it("still refuses (as load-error, never writing) an unrelated directory even when overwrite:true is explicitly requested", async () => {
+            writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
+            fs.mkdirSync(path.join(stakeProjectRoot, "stakeengine"));
+            fs.writeFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "pre-existing");
+            const projectBaseUrl = await startServerForProject(stakeProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                outDir: "stakeengine",
+                overwrite: true,
+            });
+
+            expect(status).toBe(200);
+            expect((body as {status: string}).status).toBe("load-error");
             expect(fs.readFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing");
         });
 
@@ -3712,6 +3734,8 @@ describe("StudioServer", () => {
                 outDir: "stakeengine",
             });
             expect(conflictResponse.status).toBe(409);
+            const conflictView = conflictResponse.body as {status: string; overwritable?: boolean};
+            expect(conflictView.overwritable).toBe(true);
 
             const overwriteResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
                 modes: [{modeName: "bonus", libraryPath: "bonus.json", cost: 1}],
