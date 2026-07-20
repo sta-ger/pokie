@@ -4,6 +4,7 @@ import type {PreGeneratedSessionRepository} from "./pregenerated/PreGeneratedSes
 import type {PreGeneratedSpinCommandResult} from "./pregenerated/PreGeneratedSpinCommandResult.js";
 import type {SessionRepository} from "./session/SessionRepository.js";
 import type {SpinCommandResult} from "./spin/SpinCommandResult.js";
+import type {SpinOperationLog} from "./spin/SpinOperationLog.js";
 import type {WalletPort} from "./wallet/WalletPort.js";
 
 export type PokieDevServerOptions = {
@@ -12,6 +13,12 @@ export type PokieDevServerOptions = {
     sessionRepository?: SessionRepository;
     wallet?: WalletPort;
     idempotencyRepository?: IdempotencyRepository<SpinCommandResult>;
+    // Additive, opt-in-only: what SpinCommandHandler checkpoints each requestId-bearing spin attempt's
+    // own progress to, for reconciliation/retry recovery after an interrupted attempt (see
+    // SpinCommandHandler's own doc comment). Defaults to an in-memory log, the same "lost on a
+    // crash/restart" tradeoff idempotencyRepository's own default already has — a deployment that needs
+    // this to survive a crash must provide a durable implementation itself.
+    spinOperationLog?: SpinOperationLog;
     // Additive, opt-in-only pre-generated round support (see PokieDevServer's own doc comment,
     // "Pre-generated rounds"): when given, `POST /pregenerated-sessions` and
     // `POST /pregenerated-sessions/:id/spin` become active, drawing rounds from this fixed,

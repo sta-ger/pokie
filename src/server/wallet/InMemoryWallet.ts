@@ -1,6 +1,8 @@
 import {TransactionalWalletAdapter} from "./TransactionalWalletAdapter.js";
 import type {TransactionalWalletPort} from "./TransactionalWalletPort.js";
 import type {WalletPort} from "./WalletPort.js";
+import type {WalletTransactionInspecting} from "./WalletTransactionInspecting.js";
+import type {WalletTransactionStatus} from "./WalletTransactionStatus.js";
 
 // Default WalletPort: ephemeral by design, same as the dev server's original standalone
 // behavior — a real process restart resets every session's balance back to `initialBalance`,
@@ -21,10 +23,10 @@ import type {WalletPort} from "./WalletPort.js";
 // composing a TransactionalWalletAdapter over itself (the same adapter PokieDevServer reaches for
 // to give a caller's own plain WalletPort transactional behavior). It's the same shim either way;
 // InMemoryWallet just doesn't make a caller wrap it manually.
-export class InMemoryWallet implements WalletPort, TransactionalWalletPort {
+export class InMemoryWallet implements WalletPort, TransactionalWalletPort, WalletTransactionInspecting {
     private readonly balances = new Map<string, number>();
     private readonly initialBalance: number;
-    private readonly transactional: TransactionalWalletPort;
+    private readonly transactional: TransactionalWalletPort & WalletTransactionInspecting;
 
     constructor(initialBalance = 0) {
         this.initialBalance = initialBalance;
@@ -50,5 +52,9 @@ export class InMemoryWallet implements WalletPort, TransactionalWalletPort {
 
     public reverse(sessionId: string, transactionId: string): Promise<number> {
         return this.transactional.reverse(sessionId, transactionId);
+    }
+
+    public getTransactionStatus(sessionId: string, transactionId: string): Promise<WalletTransactionStatus> {
+        return this.transactional.getTransactionStatus(sessionId, transactionId);
     }
 }

@@ -13,8 +13,13 @@ import {restoreFeatureState} from "../session/restoreFeatureState.js";
 import {SessionVersionConflictError} from "../session/SessionVersionConflictError.js";
 import type {SessionRepository} from "../session/SessionRepository.js";
 import type {TransactionalWalletPort} from "../wallet/TransactionalWalletPort.js";
+import {InMemorySpinOperationLog} from "./InMemorySpinOperationLog.js";
+import {SpinReconciliationService} from "./SpinReconciliationService.js";
 import type {SpinCommandHandling} from "./SpinCommandHandling.js";
 import type {SpinCommandResult} from "./SpinCommandResult.js";
+import type {SpinOperationLog} from "./SpinOperationLog.js";
+import type {SpinOperationRecord} from "./SpinOperationRecord.js";
+import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js";
 
 // Orchestrates a single spin end-to-end: replay an idempotent retry, load the persisted session
 // state (reconstructing a live session on a cache miss, e.g. after a restart), gate on
@@ -95,11 +100,27 @@ import type {SpinCommandResult} from "./SpinCommandResult.js";
 // A caller can additionally declare its own expected version via handle()'s third parameter — a
 // precondition checked up front in handleSerialized(), before canPlayNextGame()/play()/any wallet
 // transaction, distinct from (and checked before) the storage-level conflict above.
+//
+// Reconciliation/retry recovery: every requestId-bearing attempt's own progress through the mutating
+// phase below is additionally checkpointed to `operationLog` (see SpinOperationCheckpoint) — started,
+// debited, settled, session-saved, committed, or (when this handler's own in-process compensation fully
+// succeeds) compensated. This is still not true cross-store atomicity — see the class doc comment above
+// on process-crash/compensation-failure risk, and this package's own v1.3 gap-audit note on why full
+// atomicity is a v2 concern — but it closes the one genuinely dangerous consequence of that gap: on a
+// retried requestId whose idempotency result is missing, handleSerialized() now consults this attempt's
+// own operationLog record *before* ever running a fresh spin. If that record isn't terminal,
+// `reconciliationService` resolves it first — resuming an already-fully-settled attempt from its own
+// captured result (never calling session.play() again), safely reversing a debit whose matching
+// settlement is confirmed to have never applied, or returning a "recovery-required" SpinCommandResult
+// when neither can be established safely — so a repeated requestId can never re-debit the wallet or
+// re-play the round, whichever of those interruption windows it landed in.
 export class SpinCommandHandler implements SpinCommandHandling {
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
     private readonly wallet: TransactionalWalletPort;
     private readonly idempotencyRepository: IdempotencyRepository<SpinCommandResult>;
+    private readonly operationLog: SpinOperationLog;
+    private readonly reconciliationService: SpinReconciliationServicing;
     private readonly sessionSerializer: GameSessionSerializing | undefined;
     private readonly liveSessions = new Map<string, GameSessionHandling>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
@@ -109,16 +130,27 @@ export class SpinCommandHandler implements SpinCommandHandling {
         sessionRepository: SessionRepository,
         wallet: TransactionalWalletPort,
         idempotencyRepository: IdempotencyRepository<SpinCommandResult> = new InMemoryIdempotencyRepository(),
+        operationLog: SpinOperationLog = new InMemorySpinOperationLog(),
     ) {
         this.game = game;
         this.sessionRepository = sessionRepository;
         this.wallet = wallet;
         this.idempotencyRepository = idempotencyRepository;
+        this.operationLog = operationLog;
+        this.reconciliationService = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
         this.sessionSerializer = resolveGameSessionSerializer(game);
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling): void {
         this.liveSessions.set(sessionId, session);
+    }
+
+    // Exposes the reconciliation service this handler already builds its own inline recovery from, so a
+    // caller that owns this handler (e.g. PokieDevServer, or an ops tool) can additionally run an
+    // explicit reconcileAll() sweep — e.g. once at startup, over whatever a durable operationLog carried
+    // across a restart — rather than waiting for each interrupted requestId to happen to be retried.
+    public getReconciliationService(): SpinReconciliationServicing {
+        return this.reconciliationService;
     }
 
     public handle(sessionId: string, requestId?: string, expectedVersion?: number): Promise<SpinCommandResult> {
@@ -147,6 +179,11 @@ export class SpinCommandHandler implements SpinCommandHandling {
             const cached = await this.idempotencyRepository.load(sessionId, requestId);
             if (cached !== undefined) {
                 return cached;
+            }
+
+            const recovered = await this.reconcilePendingAttempt(sessionId, requestId);
+            if (recovered !== undefined) {
+                return recovered;
             }
         }
 
@@ -194,6 +231,45 @@ export class SpinCommandHandler implements SpinCommandHandling {
         return {state: await this.sessionRepository.load(sessionId), version: undefined};
     }
 
+    // Consulted only on an idempotency cache miss for a requestId-bearing call — an interrupted prior
+    // attempt for this exact (sessionId, requestId) is the one thing that can make a plain "no cached
+    // result, so run a fresh spin" unsafe: it could mean this requestId is genuinely new, or it could
+    // mean an earlier attempt got partway through the mutating phase and never reached a terminal
+    // checkpoint (a process crash, or an in-process compensation failure — see the class doc comment).
+    // Returns a result to short-circuit the normal fresh-spin path below only when reconciliation
+    // determined the attempt is already done ("resumed"/"already-committed") or genuinely ambiguous
+    // ("recovery-required"); returns undefined — "safe to proceed" — when there was no pending record, or
+    // it was cleanly resolved as never having applied anything ("no-action-needed") or safely reversed
+    // ("reversed"), in which case the caller runs a genuinely fresh spin.
+    private async reconcilePendingAttempt(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined> {
+        const pending = await this.operationLog.load(sessionId, requestId);
+        if (pending === undefined || pending.checkpoint === "committed" || pending.checkpoint === "compensated") {
+            return undefined;
+        }
+
+        const outcome = await this.reconciliationService.reconcileOne(sessionId, requestId);
+        if (outcome.status === "resumed") {
+            return outcome.result;
+        }
+        if (outcome.status === "manual-recovery-required") {
+            return {status: "recovery-required", sessionId, requestId, reason: outcome.reason};
+        }
+        if (outcome.status === "already-committed") {
+            // Reconciliation found a terminal record concurrently closed out by another call for this
+            // exact requestId — the idempotency cache-miss above raced it. Its result is now in
+            // idempotencyRepository; fetch it rather than falling through to a fresh spin.
+            const cached = await this.idempotencyRepository.load(sessionId, requestId);
+            if (cached !== undefined) {
+                return cached;
+            }
+        }
+        // "reversed"/"no-action-needed" (or the defensive fallback above): wallet and session are clean
+        // (or were never touched) — discard any stale cached live session and let the caller run a
+        // genuinely fresh spin below.
+        this.liveSessions.delete(sessionId);
+        return undefined;
+    }
+
     private async playAndSettle(
         sessionId: string,
         session: GameSessionHandling,
@@ -208,12 +284,36 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const creditTransactionId = `${roundId}:${attemptId}:credit`;
 
         const stakeAmount = determineStakeAmount(session, session.getBet());
+        const startedAt = new Date().toISOString();
+
+        // Every checkpoint() call below is a no-op unless requestId is defined — SpinOperationLog is
+        // scoped to requestId-bearing attempts only, the same scope idempotency itself already has (see
+        // the class doc comment). Declared once here so every call site below stays a one-liner.
+        const checkpoint = (record: Omit<SpinOperationRecord, "sessionId" | "requestId" | "attemptId" | "debitTransactionId" | "creditTransactionId" | "stakeAmount" | "expectedVersion" | "startedAt">): Promise<void> => {
+            if (requestId === undefined) {
+                return Promise.resolve();
+            }
+            return this.operationLog.record({
+                sessionId,
+                requestId,
+                attemptId,
+                debitTransactionId,
+                creditTransactionId,
+                stakeAmount,
+                expectedVersion,
+                startedAt,
+                ...record,
+            });
+        };
+
+        await checkpoint({checkpoint: "started", updatedAt: startedAt});
 
         const appliedTransactionIds: string[] = [];
         let sessionStateSaved = false;
         try {
             await this.wallet.debit(sessionId, debitTransactionId, stakeAmount);
             appliedTransactionIds.push(debitTransactionId);
+            await checkpoint({checkpoint: "debited", updatedAt: new Date().toISOString()});
 
             session.play();
             const win = session.getWinAmount();
@@ -227,6 +327,11 @@ export class SpinCommandHandler implements SpinCommandHandling {
             appliedTransactionIds.push(creditTransactionId);
 
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer);
+            await checkpoint({
+                checkpoint: "settled",
+                updatedAt: new Date().toISOString(),
+                capturedResult: {previousState: state, newState, win, credits: newBalance},
+            });
 
             let newVersion: number | undefined;
             if (isVersionedSessionRepository(this.sessionRepository) && expectedVersion !== undefined) {
@@ -235,6 +340,11 @@ export class SpinCommandHandler implements SpinCommandHandling {
                 await this.sessionRepository.save(sessionId, newState);
             }
             sessionStateSaved = true;
+            await checkpoint({
+                checkpoint: "session-saved",
+                updatedAt: new Date().toISOString(),
+                capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion},
+            });
 
             const result: SpinCommandResult = {
                 status: "played",
@@ -251,14 +361,37 @@ export class SpinCommandHandler implements SpinCommandHandling {
                 result.requestId = requestId;
                 await this.idempotencyRepository.save(sessionId, requestId, result);
             }
+            await checkpoint({checkpoint: "committed", updatedAt: new Date().toISOString()});
 
             return result;
         } catch (error) {
+            let compensationFullySucceeded = true;
             if (sessionStateSaved) {
-                await this.restoreSessionState(sessionId, state);
+                compensationFullySucceeded = (await this.restoreSessionState(sessionId, state)) && compensationFullySucceeded;
             }
-            await this.reverseApplied(sessionId, appliedTransactionIds);
+            compensationFullySucceeded = (await this.reverseApplied(sessionId, appliedTransactionIds)) && compensationFullySucceeded;
             this.liveSessions.delete(sessionId);
+
+            // Only ever mark this attempt "compensated" when every compensating write actually
+            // succeeded — see the class doc comment. If any of them failed, the record is left at
+            // whatever checkpoint() call above it last reached: an honest, undisguised "this is exactly
+            // how far we got," for SpinReconciliationService to resolve on the next retry (or an
+            // explicit reconcileAll() sweep) rather than a checkpoint lying about a compensation that
+            // didn't fully happen.
+            if (compensationFullySucceeded) {
+                if (appliedTransactionIds.length === 0 && !sessionStateSaved) {
+                    // Nothing was ever applied in the first place (e.g. the debit itself threw) — there
+                    // was nothing to compensate, so "compensated" would overstate what happened here;
+                    // just clear the record, the same as the "started"-only case in
+                    // SpinReconciliationService.
+                    if (requestId !== undefined) {
+                        await this.operationLog.delete(sessionId, requestId);
+                    }
+                } else {
+                    await checkpoint({checkpoint: "compensated", updatedAt: new Date().toISOString()});
+                }
+            }
+
             if (error instanceof SessionVersionConflictError) {
                 return {status: "conflict", sessionId, reason: error.message};
             }
@@ -268,19 +401,26 @@ export class SpinCommandHandler implements SpinCommandHandling {
 
     // Best-effort, process-local compensating write, undoing this attempt's own
     // sessionRepository.save() when a later step (persisting the idempotency result) fails — see the
-    // class doc comment for the full risk discussion (process crash, compensation failure).
-    private async restoreSessionState(sessionId: string, state: PokieSessionState): Promise<void> {
+    // class doc comment for the full risk discussion (process crash, compensation failure). Returns
+    // whether it actually succeeded, so the caller can tell a fully-compensated attempt apart from one
+    // that isn't — see playAndSettle's own use of this.
+    private async restoreSessionState(sessionId: string, state: PokieSessionState): Promise<boolean> {
         try {
             await this.sessionRepository.save(sessionId, state);
+            return true;
         } catch {
             // The error that triggered this restore is what the caller of handle() sees; a failure
             // to restore shouldn't replace or hide it. SessionRepository is left holding the new
             // (post-spin) state instead of being rolled back — a real, observable divergence this
             // best-effort compensation could not prevent in that case.
+            return false;
         }
     }
 
-    private async reverseApplied(sessionId: string, transactionIds: string[]): Promise<void> {
+    // Returns whether every reversal actually succeeded — see restoreSessionState's own comment on why
+    // that matters to the caller.
+    private async reverseApplied(sessionId: string, transactionIds: string[]): Promise<boolean> {
+        let allSucceeded = true;
         for (const transactionId of transactionIds.reverse()) {
             try {
                 await this.wallet.reverse(sessionId, transactionId);
@@ -290,8 +430,10 @@ export class SpinCommandHandler implements SpinCommandHandling {
                 // compensate shouldn't replace or hide it. The wallet is left reflecting this
                 // attempt's partial application instead of being fully reversed — see the class doc
                 // comment.
+                allSucceeded = false;
             }
         }
+        return allSucceeded;
     }
 
     private resolveSession(sessionId: string, state: PokieSessionState): GameSessionHandling {

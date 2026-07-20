@@ -1,6 +1,8 @@
 import type {TransactionalWalletPort} from "./TransactionalWalletPort.js";
 import {WalletInsufficientFundsError} from "./WalletInsufficientFundsError.js";
 import type {WalletPort} from "./WalletPort.js";
+import type {WalletTransactionInspecting} from "./WalletTransactionInspecting.js";
+import type {WalletTransactionStatus} from "./WalletTransactionStatus.js";
 
 type TransactionRecord = {
     type: "debit" | "credit";
@@ -21,7 +23,7 @@ type TransactionRecord = {
 // ever saw plain setBalance() overwrites. A transactionId is idempotent only while its record is
 // still in effect: once reverse() marks it reversed, debit/credit is willing to apply that same id
 // again as a brand new transaction — see debit()'s own comment for why that matters.
-export class TransactionalWalletAdapter implements TransactionalWalletPort {
+export class TransactionalWalletAdapter implements TransactionalWalletPort, WalletTransactionInspecting {
     private readonly wallet: WalletPort;
     private readonly transactions = new Map<string, TransactionRecord>();
 
@@ -87,6 +89,19 @@ export class TransactionalWalletAdapter implements TransactionalWalletPort {
         await this.wallet.setBalance(sessionId, newBalance);
         record.reversed = true;
         return newBalance;
+    }
+
+    // Reads straight off the same ledger debit()/credit()/reverse() already maintain — never a second,
+    // separate tracking structure to keep in sync. "absent" covers both "never applied" and "this
+    // instance has no memory of it" (e.g. after a restart, since the ledger is in-memory-only) — the two
+    // are indistinguishable from here, which is exactly why SpinReconciliationService only ever treats
+    // "absent" as "safe to proceed as if nothing happened," never as proof a transaction was reversed.
+    public getTransactionStatus(sessionId: string, transactionId: string): Promise<WalletTransactionStatus> {
+        const record = this.transactions.get(this.keyFor(sessionId, transactionId));
+        if (!record) {
+            return Promise.resolve("absent");
+        }
+        return Promise.resolve(record.reversed ? "reversed" : "applied");
     }
 
     private keyFor(sessionId: string, transactionId: string): string {

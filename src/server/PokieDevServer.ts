@@ -132,6 +132,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             this.sessionRepository,
             transactionalWallet,
             options.idempotencyRepository ?? new InMemoryIdempotencyRepository(),
+            options.spinOperationLog,
         );
 
         if (options.preGeneratedOutcomeLibrary !== undefined) {
@@ -345,6 +346,16 @@ export class PokieDevServer implements PokieDevServerHandling {
             // attempt on another PokieDevServer instance sharing this repository committed first.
             // Every wallet transaction this attempt applied was already reversed by SpinCommandHandler
             // before returning this, so there's nothing to roll back here; the client should retry.
+            this.sendJson(res, 409, {error: result.reason});
+            return;
+        }
+
+        if (result.status === "recovery-required") {
+            // This requestId's own prior attempt was interrupted (a process crash, or an in-process
+            // compensation failure) in a way SpinReconciliationService couldn't safely resolve on its
+            // own — see SpinCommandHandler's own doc comment. Never retried automatically here, and
+            // never surfaced as this server's own fault: the caller/operator needs to resolve it by hand
+            // (see result.reason) before this requestId can be retried.
             this.sendJson(res, 409, {error: result.reason});
             return;
         }
