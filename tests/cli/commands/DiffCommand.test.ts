@@ -1,4 +1,4 @@
-import {SimulationReport} from "pokie";
+import {SimulationReport, SimulationReportSet} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -307,6 +307,133 @@ describe("DiffCommand", () => {
 
             logSpy.mockRestore();
         });
+    });
+});
+
+describe("DiffCommand (betMode -- CLI-level cross-mode comparison)", () => {
+    it("diffs two reports locked to the SAME bet mode without a cross-mode warning", async () => {
+        const leftAnte: SimulationReport = {...left, betMode: "ante"};
+        const rightAnte: SimulationReport = {...right, betMode: "ante"};
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(leftAnte), "right.json": JSON.stringify(rightAnte)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["left.json", "right.json", "--format", "json"]);
+
+        const diff = JSON.parse(logSpy.mock.calls[0][0]);
+        expect(diff.betMode).toEqual({left: "ante", right: "ante", changed: false});
+        expect(diff.warnings.some((warning: string) => warning.includes("Comparing different bet modes"))).toBe(false);
+
+        logSpy.mockRestore();
+    });
+
+    it("surfaces the cross-mode warning in the console summary when comparing two DIFFERENT bet modes", async () => {
+        const leftBase: SimulationReport = {...left, betMode: "base"};
+        const rightBuyBonus: SimulationReport = {...right, betMode: "buy-bonus"};
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(leftBase), "right.json": JSON.stringify(rightBuyBonus)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["left.json", "right.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain('Comparing different bet modes: "base" -> "buy-bonus"');
+
+        logSpy.mockRestore();
+    });
+});
+
+function buildSetReport(betMode: string, rtp: number): SimulationReport {
+    return {...left, betMode, rtp};
+}
+
+describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all` runs)", () => {
+    function buildSet(overrides: Partial<Record<string, SimulationReport>>, extraModeId?: string): SimulationReportSet {
+        return {
+            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            requestedRounds: 10000,
+            seed: "demo",
+            workers: 1,
+            modes: {
+                base: buildSetReport("base", 0.95),
+                ante: buildSetReport("ante", 0.965),
+                ...overrides,
+                ...(extraModeId ? {[extraModeId]: buildSetReport(extraModeId, 0.9)} : {}),
+            },
+        };
+    }
+
+    it("diffs each common mode independently, reusing the same per-mode diff logic as a plain single-report diff", async () => {
+        const leftSet = buildSet({});
+        const rightSet = buildSet({ante: buildSetReport("ante", 0.99)});
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(leftSet), "right.json": JSON.stringify(rightSet)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["left.json", "right.json", "--format", "json"]);
+
+        const setDiff = JSON.parse(logSpy.mock.calls[0][0]);
+        expect(Object.keys(setDiff.perMode)).toEqual(["base", "ante"]);
+        expect(setDiff.perMode.base.rtp.left).toBe(0.95);
+        expect(setDiff.perMode.base.rtp.right).toBe(0.95);
+        expect(setDiff.perMode.ante.rtp.left).toBe(0.965);
+        expect(setDiff.perMode.ante.rtp.right).toBe(0.99);
+        expect(setDiff.onlyInLeft).toEqual([]);
+        expect(setDiff.onlyInRight).toEqual([]);
+
+        logSpy.mockRestore();
+    });
+
+    it("reports modes present on only one side under onlyInLeft/onlyInRight, never silently dropping them", async () => {
+        const leftSet = buildSet({}, "buy-10");
+        const rightSet = buildSet({}, "buy-20");
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(leftSet), "right.json": JSON.stringify(rightSet)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["left.json", "right.json", "--format", "json"]);
+
+        const setDiff = JSON.parse(logSpy.mock.calls[0][0]);
+        expect(setDiff.onlyInLeft).toEqual(["buy-10"]);
+        expect(setDiff.onlyInRight).toEqual(["buy-20"]);
+        expect(setDiff.perMode["buy-10"]).toBeUndefined();
+        expect(setDiff.perMode["buy-20"]).toBeUndefined();
+
+        logSpy.mockRestore();
+    });
+
+    it("prints each mode's diff summary separately in the console, plus onlyInLeft/onlyInRight when present", async () => {
+        const leftSet = buildSet({}, "buy-10");
+        const rightSet = buildSet({});
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(leftSet), "right.json": JSON.stringify(rightSet)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["left.json", "right.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("=== Mode: base ===");
+        expect(printed).toContain("=== Mode: ante ===");
+        expect(printed).toContain("Modes only in the left report: buy-10");
+
+        logSpy.mockRestore();
+    });
+
+    it("never computes a blended/overall diff across modes -- only game/perMode/onlyInLeft/onlyInRight", async () => {
+        const leftSet = buildSet({});
+        const rightSet = buildSet({});
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(leftSet), "right.json": JSON.stringify(rightSet)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["left.json", "right.json", "--format", "json"]);
+
+        const setDiff = JSON.parse(logSpy.mock.calls[0][0]);
+        expect(Object.keys(setDiff).sort()).toEqual(["game", "onlyInLeft", "onlyInRight", "perMode"]);
+
+        logSpy.mockRestore();
+    });
+
+    it("fails clearly rather than guessing when diffing a single-mode report against a multi-mode report set", async () => {
+        const singleReport: SimulationReport = {...left};
+        const set = buildSet({});
+        const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(singleReport), "right.json": JSON.stringify(set)}));
+
+        await expect(command.run(["left.json", "right.json"])).rejects.toThrow(/Cannot diff a single-mode pokie sim report against a multi-mode report set/);
     });
 });
 

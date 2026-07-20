@@ -1,4 +1,4 @@
-import {SimulationReport} from "pokie";
+import {SimulationReport, SimulationReportRendering, SimulationReportSet} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -166,6 +166,108 @@ describe("ReportCommand", () => {
         expect(printed).toContain("<h1>Simulation Report: Crazy Fruits</h1>");
 
         logSpy.mockRestore();
+    });
+});
+
+function buildMode(id: string, rtp: number, targetRtp?: number): SimulationReport {
+    return {
+        ...report,
+        betMode: id,
+        rtp,
+        targetRtp,
+        rtpDeviation: targetRtp !== undefined ? rtp - targetRtp : undefined,
+        averageBet: 1,
+        averagePayout: rtp,
+    };
+}
+
+const reportSet: SimulationReportSet = {
+    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    requestedRounds: 10000,
+    seed: "demo",
+    workers: 1,
+    modes: {
+        base: buildMode("base", 0.94, 0.94),
+        ante: buildMode("ante", 0.965),
+        "buy-10": buildMode("buy-10", 0.9),
+    },
+};
+
+describe("ReportCommand (SimulationReportSet -- pokie sim --mode all output)", () => {
+    it("renders a side-by-side comparison table plus each mode's own section in Markdown", async () => {
+        const command = new ReportCommand(createStubReadFile({"set.json": JSON.stringify(reportSet)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["set.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("# Simulation Report Set: Crazy Fruits");
+        expect(printed).toContain("## Comparison");
+        expect(printed).toContain("| Metric | base | ante | buy-10 |");
+        expect(printed).toContain("## Mode: base");
+        expect(printed).toContain("## Mode: ante");
+        expect(printed).toContain("## Mode: buy-10");
+        // Each mode's own section is the demoted single-report render() output.
+        expect(printed).toContain("### Reproducibility");
+
+        logSpy.mockRestore();
+    });
+
+    it("renders the same comparison + per-mode sections in HTML", async () => {
+        const command = new ReportCommand(createStubReadFile({"set.json": JSON.stringify(reportSet)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["set.json", "--format", "html"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("<!DOCTYPE html>");
+        expect(printed).toContain("<h1>Simulation Report Set: Crazy Fruits</h1>");
+        expect(printed).toContain("<h2>Comparison</h2>");
+        expect(printed).toContain("<h2>Mode: base</h2>");
+        expect(printed).toContain("<h2>Mode: ante</h2>");
+        expect(printed).toContain("<h2>Mode: buy-10</h2>");
+
+        logSpy.mockRestore();
+    });
+
+    it("never renders a blended/overall RTP row -- only per-mode columns", async () => {
+        const command = new ReportCommand(createStubReadFile({"set.json": JSON.stringify(reportSet)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["set.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).not.toMatch(/overall/i);
+        expect(printed).not.toMatch(/blended/i);
+
+        logSpy.mockRestore();
+    });
+
+    it("shows RTP target/deviation only for modes that declared one", async () => {
+        const command = new ReportCommand(createStubReadFile({"set.json": JSON.stringify(reportSet)}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["set.json"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("RTP (target)");
+        expect(printed).toContain("RTP deviation");
+        // buy-10 declared no targetRtp -- its column in those rows must show the "no value" placeholder.
+        const targetRow = printed.split("\n").find((line) => line.startsWith("| RTP (target)"));
+        expect(targetRow).toBeDefined();
+        expect(targetRow!.split("|").map((cell) => cell.trim())).toContain("–");
+
+        logSpy.mockRestore();
+    });
+
+    it("fails clearly rather than guessing when the injected renderer doesn't support report sets", async () => {
+        const noSetRenderer: SimulationReportRendering = {render: () => "rendered"};
+        const command = new ReportCommand(createStubReadFile({"set.json": JSON.stringify(reportSet)}), undefined, {
+            markdown: noSetRenderer,
+            html: noSetRenderer,
+        });
+
+        await expect(command.run(["set.json"])).rejects.toThrow(/does not support multi-mode report sets/);
     });
 });
 

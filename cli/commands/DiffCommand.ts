@@ -1,4 +1,14 @@
-import {SimulationReport, SimulationReportDiff, SimulationReportDiffer, SimulationReportDiffing, SimulationReportMetricDiff} from "pokie";
+import {
+    isSimulationReportSet,
+    SimulationReport,
+    SimulationReportDiff,
+    SimulationReportDiffer,
+    SimulationReportDiffing,
+    SimulationReportMetricDiff,
+    SimulationReportSet,
+    SimulationReportSetDiff,
+    SimulationReportSetDiffer,
+} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 
@@ -17,15 +27,18 @@ export class DiffCommand implements CliCommandHandling {
     private readonly readFile: (file: string) => string;
     private readonly writeFile: (file: string, contents: string) => void;
     private readonly differ: SimulationReportDiffing;
+    private readonly setDiffer: SimulationReportSetDiffer;
 
     constructor(
         readFile: (file: string) => string = (file) => fs.readFileSync(file, "utf-8"),
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         differ: SimulationReportDiffing = new SimulationReportDiffer(),
+        setDiffer: SimulationReportSetDiffer = new SimulationReportSetDiffer(differ),
     ) {
         this.readFile = readFile;
         this.writeFile = writeFile;
         this.differ = differ;
+        this.setDiffer = setDiffer;
     }
 
     public getName(): string {
@@ -39,21 +52,25 @@ export class DiffCommand implements CliCommandHandling {
     public run(args: string[]): Promise<void> {
         try {
             const options = this.parseArgs(args);
-            const left = this.readReport(options.leftPath);
-            const right = this.readReport(options.rightPath);
+            const left = this.readReportJson(options.leftPath);
+            const right = this.readReportJson(options.rightPath);
 
-            const diff = this.differ.diff(left, right);
-            const json = JSON.stringify(diff, null, 4);
+            const leftIsSet = isSimulationReportSet(left);
+            const rightIsSet = isSimulationReportSet(right);
+            if (leftIsSet !== rightIsSet) {
+                throw new Error(
+                    "Cannot diff a single-mode pokie sim report against a multi-mode report set " +
+                        '(see "pokie sim --mode all") -- compare like with like.',
+                );
+            }
+
+            const json = leftIsSet
+                ? this.buildSetDiffJsonAndPrint(left as SimulationReportSet, right as SimulationReportSet, options)
+                : this.buildDiffJsonAndPrint(left as SimulationReport, right as SimulationReport, options);
 
             if (options.out) {
                 this.writeFile(options.out, json);
-            }
-
-            if (options.format === "json") {
-                console.log(json);
-            } else {
-                this.printSummary(diff);
-                if (options.out) {
+                if (options.format !== "json") {
                     console.log(`\nDiff written to "${options.out}".`);
                 }
             }
@@ -62,6 +79,30 @@ export class DiffCommand implements CliCommandHandling {
         } catch (error) {
             return Promise.reject(error);
         }
+    }
+
+    private buildDiffJsonAndPrint(left: SimulationReport, right: SimulationReport, options: DiffOptions): string {
+        const diff = this.differ.diff(left, right);
+        const json = JSON.stringify(diff, null, 4);
+
+        if (options.format === "json") {
+            console.log(json);
+        } else {
+            this.printSummary(diff);
+        }
+        return json;
+    }
+
+    private buildSetDiffJsonAndPrint(left: SimulationReportSet, right: SimulationReportSet, options: DiffOptions): string {
+        const setDiff = this.setDiffer.diff(left, right);
+        const json = JSON.stringify(setDiff, null, 4);
+
+        if (options.format === "json") {
+            console.log(json);
+        } else {
+            this.printSetSummary(setDiff);
+        }
+        return json;
     }
 
     private parseArgs(args: string[]): DiffOptions {
@@ -101,7 +142,7 @@ export class DiffCommand implements CliCommandHandling {
         return {leftPath, rightPath, format, out};
     }
 
-    private readReport(reportPath: string): SimulationReport {
+    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {
         let contents: string;
         try {
             contents = this.readFile(reportPath);
@@ -114,6 +155,10 @@ export class DiffCommand implements CliCommandHandling {
             parsed = JSON.parse(contents);
         } catch (error) {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        if (isSimulationReportSet(parsed)) {
+            return parsed;
         }
 
         if (!this.isSimulationReport(parsed)) {
@@ -151,6 +196,32 @@ export class DiffCommand implements CliCommandHandling {
             typeof candidate.durationMs === "number" &&
             typeof candidate.spinsPerSecond === "number"
         );
+    }
+
+    private printSetSummary(setDiff: SimulationReportSetDiff): void {
+        if (!setDiff.game.changed) {
+            console.log(`Diff (all modes): ${setDiff.game.right.name} (id: "${setDiff.game.right.id}")`);
+        } else {
+            console.log(
+                `Diff (all modes): ${setDiff.game.left.name} (id: "${setDiff.game.left.id}") -> ` +
+                    `${setDiff.game.right.name} (id: "${setDiff.game.right.id}")`,
+            );
+        }
+        if (setDiff.game.left.version !== setDiff.game.right.version) {
+            console.log(`  version         ${setDiff.game.left.version} -> ${setDiff.game.right.version}`);
+        }
+
+        Object.entries(setDiff.perMode).forEach(([modeId, diff]) => {
+            console.log(`\n=== Mode: ${modeId} ===`);
+            this.printSummary(diff);
+        });
+
+        if (setDiff.onlyInLeft.length > 0) {
+            console.log(`\nModes only in the left report: ${setDiff.onlyInLeft.join(", ")}`);
+        }
+        if (setDiff.onlyInRight.length > 0) {
+            console.log(`Modes only in the right report: ${setDiff.onlyInRight.join(", ")}`);
+        }
     }
 
     private printSummary(diff: SimulationReportDiff): void {

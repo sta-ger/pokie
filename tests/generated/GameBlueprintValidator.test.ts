@@ -754,6 +754,22 @@ describe("GameBlueprintValidator", () => {
             expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-invalid-costmultiplier");
         });
 
+        it("accepts a bet mode with a well-formed targetRtp", () => {
+            const blueprint = {...validBlueprint(), betModes: [{id: "base", targetRtp: 0.965}]};
+
+            expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+        });
+
+        it("flags a non-positive/non-finite targetRtp", () => {
+            const negative = {...validBlueprint(), betModes: [{id: "base", targetRtp: -0.5}]};
+            const zero = {...validBlueprint(), betModes: [{id: "base", targetRtp: 0}]};
+            const notFinite = {...validBlueprint(), betModes: [{id: "base", targetRtp: Infinity}]};
+
+            expect(codesOf(validator.validate(negative))).toContain("blueprint-betmode-invalid-targetrtp");
+            expect(codesOf(validator.validate(zero))).toContain("blueprint-betmode-invalid-targetrtp");
+            expect(codesOf(validator.validate(notFinite))).toContain("blueprint-betmode-invalid-targetrtp");
+        });
+
         // BetMode intentionally has no "forces free games entry" (or similar behavior-promising) field
         // -- see BetMode.ts's own doc comment for why. A stray "forcesFreeGames" key some older/hand-
         // written blueprint might still carry is just inert extra data on the entry, same as any other

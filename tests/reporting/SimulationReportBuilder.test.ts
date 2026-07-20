@@ -652,6 +652,93 @@ describe("SimulationReportBuilder", () => {
     });
 });
 
+describe("SimulationReportBuilder new metrics (volatility/distribution/averageBet/averagePayout/targetRtp)", () => {
+    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+    test("passes volatility and payoutHistogram straight through from statistics -- no new math, just surfaced", () => {
+        const accumulator = new SimulationAccumulator();
+        accumulator.addRound(1, 0);
+        accumulator.addRound(1, 5);
+        accumulator.addRound(1, 150);
+        const statistics = accumulator.getStatistics();
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({manifest, requestedRounds: 3, statistics, durationMs: 10});
+
+        expect(report.volatility).toBe(statistics.volatility);
+        expect(report.payoutHistogram).toEqual(statistics.payoutHistogram);
+    });
+
+    test("computes averageBet/averagePayout as totalBet/totalWin divided by rounds", () => {
+        const accumulator = new SimulationAccumulator();
+        accumulator.addRound(2, 0);
+        accumulator.addRound(2, 10);
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({manifest, requestedRounds: 2, statistics: accumulator.getStatistics(), durationMs: 10});
+
+        expect(report.averageBet).toBe(2);
+        expect(report.averagePayout).toBe(5);
+    });
+
+    test("averageBet/averagePayout are 0 rather than NaN when no rounds were played", () => {
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({manifest, requestedRounds: 10, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
+
+        expect(report.averageBet).toBe(0);
+        expect(report.averagePayout).toBe(0);
+    });
+
+    test("maxWinFrequency is the frequency of the highest payout bucket that actually has any rounds in it", () => {
+        const accumulator = new SimulationAccumulator();
+        for (let i = 0; i < 8; i++) {
+            accumulator.addRound(1, 0); // bucket "0"
+        }
+        accumulator.addRound(1, 5); // bucket "1-9"
+        accumulator.addRound(1, 150); // bucket "100+" -- the max win, and the only round in that bucket
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({manifest, requestedRounds: 10, statistics: accumulator.getStatistics(), durationMs: 10});
+
+        expect(report.maxWinFrequency).toBeCloseTo(1 / 10, 10);
+    });
+
+    test("maxWinFrequency is 0 when no rounds were played", () => {
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({manifest, requestedRounds: 10, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
+
+        expect(report.maxWinFrequency).toBe(0);
+    });
+
+    test("targetRtp/rtpDeviation are both absent when the caller doesn't supply a targetRtp", () => {
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({manifest, requestedRounds: 1, statistics: new SimulationAccumulator().getStatistics(), durationMs: 10});
+
+        expect(report.targetRtp).toBeUndefined();
+        expect(report.rtpDeviation).toBeUndefined();
+    });
+
+    test("rtpDeviation is rtp - targetRtp when the caller supplies a targetRtp", () => {
+        const accumulator = new SimulationAccumulator();
+        accumulator.addRound(1, 0.9);
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({
+            manifest,
+            requestedRounds: 1,
+            statistics: accumulator.getStatistics(),
+            durationMs: 10,
+            targetRtp: 0.96,
+        });
+
+        expect(report.targetRtp).toBe(0.96);
+        expect(report.rtpDeviation).toBeCloseTo(report.rtp - 0.96, 10);
+    });
+});
+
 describe("SimulationReportBuilder betMode", () => {
     const manifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
 

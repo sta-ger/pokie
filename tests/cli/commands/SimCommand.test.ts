@@ -7,6 +7,7 @@ import {
     PokieGame,
     PokieGameManifest,
     SimulationReport,
+    SimulationReportSet,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -468,6 +469,222 @@ describe("SimCommand --mode (integration, real generated package)", () => {
         // the same handler/cost regardless of which mode id was actually requested.
         expect(report10.totalBet).toBeCloseTo(50, 10);
         expect(report20.totalBet).toBeCloseTo(100, 10);
+    });
+});
+
+// End-to-end: "pokie sim --mode all" against a real generated package declaring base/ante/multiple
+// buyFeature modes -- one full simulation per mode, bundled into a SimulationReportSet, never a single
+// blended/"overall" number across modes.
+describe("SimCommand --mode all (integration, real generated package)", () => {
+    const manifest: PokieGameManifest = {id: "deterministic-game", name: "Deterministic Game", version: "0.1.0"};
+    let cwd: string;
+
+    beforeEach(() => {
+        cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-allmodes-test-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(cwd, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    function generateGameWithBaseAnteAndTwoBuyModes(manifestId: string): string {
+        const betModes: BetMode[] = [
+            {id: "base", runtimeType: "base", isDefault: true, targetRtp: 0.94},
+            {id: "ante", runtimeType: "ante", costMultiplier: 1.25, targetRtp: 0.965},
+            {id: "buy-10", runtimeType: "buyFeature", costMultiplier: 50, forcedFreeGames: 10},
+            {id: "buy-20", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 20, targetRtp: 0.97},
+        ];
+        const result = new GamePackageGenerator("1.3.0").generate(
+            {
+                manifest: {id: manifestId, name: "Generated All Modes Game", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B", "S"],
+                scatters: ["S"],
+                paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
+                // Explicit (not shuffled) reel strips -- VideoSlotConfig's own default reel-strip
+                // generation shuffles with an unseeded RNG at construction time, so without this, two
+                // separate createSession() calls (one per "pokie sim" invocation below) would get
+                // different reels every time regardless of --seed, breaking the determinism this test
+                // exists to check. Deliberately no "S" on the physical reels -- "S"/mechanics.freeGames
+                // still need to be declared for buyFeature's forced-entry requirement, but a NATURAL
+                // scatter retrigger consumes a variable, hard-to-pin-down number of extra RNG draws per
+                // round, which would make an exact reproducibility assertion fragile for reasons
+                // unrelated to what this test actually checks (the CLI/report plumbing, not the win
+                // engine's own RNG consumption). Forced entry (buy-10/buy-20) grants free games
+                // directly regardless of what's physically on the reels.
+                reelStrips: [
+                    ["A", "B", "A", "B", "A", "B"],
+                    ["B", "A", "B", "A", "B", "A"],
+                    ["A", "A", "B", "B", "A", "B"],
+                ],
+                betModes,
+            },
+            cwd,
+        );
+        return result.projectRoot;
+    }
+
+    it("runs a full simulation for every declared mode and bundles them into a SimulationReportSet keyed by mode id", async () => {
+        const packageRoot = generateGameWithBaseAnteAndTwoBuyModes("all-modes-bundle");
+        const command = new SimCommand(loadPokieGame);
+        const outFile = path.join(cwd, "report-set.json");
+
+        await command.run([packageRoot, "--rounds", "30", "--seed", "demo", "--mode", "all", "--out", outFile]);
+
+        const reportSet = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReportSet;
+
+        expect(Object.keys(reportSet.modes)).toEqual(["base", "ante", "buy-10", "buy-20"]);
+        expect(reportSet.modes.base.betMode).toBe("base");
+        expect(reportSet.modes.ante.betMode).toBe("ante");
+        expect(reportSet.modes["buy-10"].betMode).toBe("buy-10");
+        expect(reportSet.modes["buy-20"].betMode).toBe("buy-20");
+        // Each mode's own rounds were actually played in full -- never split/shared across modes.
+        Object.values(reportSet.modes).forEach((report) => expect(report.rounds).toBe(30));
+    });
+
+    it("never computes a blended/overall RTP or totals across modes -- only the per-mode reports", async () => {
+        const packageRoot = generateGameWithBaseAnteAndTwoBuyModes("all-modes-no-blend");
+        const command = new SimCommand(loadPokieGame);
+        const outFile = path.join(cwd, "report-set.json");
+
+        await command.run([packageRoot, "--rounds", "10", "--seed", "demo", "--mode", "all", "--out", outFile]);
+
+        const raw = JSON.parse(fs.readFileSync(outFile, "utf-8")) as Record<string, unknown>;
+
+        // The set itself carries no rtp/totalBet/totalWin/hitFrequency of its own -- those only exist
+        // per mode, inside reportSet.modes[id].
+        expect(raw.rtp).toBeUndefined();
+        expect(raw.totalBet).toBeUndefined();
+        expect(raw.totalWin).toBeUndefined();
+        expect(raw.hitFrequency).toBeUndefined();
+        expect(Object.keys(raw)).toEqual(expect.arrayContaining(["game", "requestedRounds", "seed", "modes"]));
+    });
+
+    it("carries each mode's declared targetRtp/rtpDeviation through to its own report, and omits it where none was declared", async () => {
+        const packageRoot = generateGameWithBaseAnteAndTwoBuyModes("all-modes-target-rtp");
+        const command = new SimCommand(loadPokieGame);
+        const outFile = path.join(cwd, "report-set.json");
+
+        await command.run([packageRoot, "--rounds", "10", "--seed", "demo", "--mode", "all", "--out", outFile]);
+
+        const reportSet = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReportSet;
+
+        expect(reportSet.modes.base.targetRtp).toBe(0.94);
+        expect(reportSet.modes.ante.targetRtp).toBe(0.965);
+        expect(reportSet.modes["buy-20"].targetRtp).toBe(0.97);
+        expect(reportSet.modes["buy-10"].targetRtp).toBeUndefined(); // never declared one
+        expect(reportSet.modes.base.rtpDeviation).toBeCloseTo(reportSet.modes.base.rtp - 0.94, 10);
+    });
+
+    // Uses a hand-rolled, fully deterministic fake session (round-indexed win pattern, no RNG at all)
+    // rather than a real "pokie build"-generated package: as docs/cli.md documents, --seed reproducing
+    // a real generated package's reel spins is "best-effort, not guaranteed" -- renderGeneratedGameModule.ts's
+    // createSession() never threads context.seed into a SeededRandomNumberGenerator, so a real
+    // generated package is NOT actually seed-reproducible today (a pre-existing, documented limitation,
+    // unrelated to bet modes). What this test needs to prove is that runAllModes()'s own orchestration
+    // (looping declared modes, building one SimulationReportSet, never blending) is itself
+    // deterministic given a deterministic session -- that's exactly what this isolates.
+    function createDeterministicMultiModeFakeGame(): PokieGame {
+        const declaredModes: BetMode[] = [
+            {id: "base", targetRtp: 0.94},
+            {id: "ante", costMultiplier: 1.25, targetRtp: 0.965},
+            {id: "buy-10", costMultiplier: 50},
+            {id: "buy-20", costMultiplier: 100, targetRtp: 0.97},
+        ];
+        const stakeMultipliers: Record<string, number> = {base: 1, ante: 1.25, "buy-10": 50, "buy-20": 100};
+
+        return {
+            getManifest: () => manifest,
+            getBetModes: () => declaredModes,
+            createSession() {
+                let credits = 1_000_000;
+                const bet = 1;
+                let round = 0;
+                let currentMode = "base";
+                let winAmount = 0;
+                return {
+                    getCreditsAmount: () => credits,
+                    setCreditsAmount: (value: number) => {
+                        credits = value;
+                    },
+                    getBet: () => bet,
+                    setBet: () => undefined,
+                    getAvailableBets: () => [1],
+                    canPlayNextGame: () => true,
+                    getBetModeId: () => currentMode,
+                    setBetMode: (modeId: string) => {
+                        if (!(modeId in stakeMultipliers)) {
+                            throw new Error(`Unknown bet mode "${modeId}". Available modes: ${Object.keys(stakeMultipliers).join(", ")}.`);
+                        }
+                        currentMode = modeId;
+                    },
+                    getStakeAmount: () => bet * stakeMultipliers[currentMode],
+                    play: () => {
+                        round++;
+                        // A pure function of (mode, round) -- no randomness anywhere, so two separate
+                        // command.run() invocations against a fresh instance of this fake always agree.
+                        winAmount = round % 5 === 0 ? bet * stakeMultipliers[currentMode] * 2 : 0;
+                        credits = credits - bet * stakeMultipliers[currentMode] + winAmount;
+                    },
+                    getWinAmount: () => winAmount,
+                } as unknown as GameSessionHandling;
+            },
+        };
+    }
+
+    it("produces byte-for-byte identical per-mode reports (minus timing) across two separate --mode all runs of a deterministic session", async () => {
+        const command = new SimCommand(() => Promise.resolve(createDeterministicMultiModeFakeGame()));
+        const outFileA = path.join(cwd, "report-set-a.json");
+        const outFileB = path.join(cwd, "report-set-b.json");
+
+        await command.run(["./deterministic-game", "--rounds", "25", "--seed", "reproducible", "--mode", "all", "--out", outFileA]);
+        await command.run(["./deterministic-game", "--rounds", "25", "--seed", "reproducible", "--mode", "all", "--out", outFileB]);
+
+        const setA = JSON.parse(fs.readFileSync(outFileA, "utf-8")) as SimulationReportSet;
+        const setB = JSON.parse(fs.readFileSync(outFileB, "utf-8")) as SimulationReportSet;
+
+        expect(Object.keys(setA.modes)).toEqual(["base", "ante", "buy-10", "buy-20"]);
+        Object.keys(setA.modes).forEach((modeId) => {
+            const {durationMs: _durationA, spinsPerSecond: _spinsA, ...restA} = setA.modes[modeId];
+            const {durationMs: _durationB, spinsPerSecond: _spinsB, ...restB} = setB.modes[modeId];
+            expect(restA).toEqual(restB);
+        });
+    });
+
+    it("fails clearly, rather than running only one mode, when the game doesn't declare any bet modes at all", async () => {
+        const generator = new GamePackageGenerator("1.3.0");
+        const result = generator.generate(
+            {
+                manifest: {id: "no-modes-all", name: "No Modes All", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}, B: {3: 2}},
+            },
+            cwd,
+        );
+        const command = new SimCommand(loadPokieGame);
+
+        await expect(command.run([result.projectRoot, "--rounds", "10", "--mode", "all"])).rejects.toThrow(
+            /--mode all requires the game package to declare its bet modes/,
+        );
+    });
+
+    it("prints each mode's summary separately in the console (never one blended summary)", async () => {
+        const packageRoot = generateGameWithBaseAnteAndTwoBuyModes("all-modes-console");
+        const command = new SimCommand(loadPokieGame);
+
+        await command.run([packageRoot, "--rounds", "10", "--seed", "demo", "--mode", "all"]);
+
+        const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("=== Mode: base ===");
+        expect(printed).toContain("=== Mode: ante ===");
+        expect(printed).toContain("=== Mode: buy-10 ===");
+        expect(printed).toContain("=== Mode: buy-20 ===");
     });
 });
 

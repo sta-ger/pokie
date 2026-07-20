@@ -1048,12 +1048,72 @@ false positives are worse than missing a real signal here:
   `SimulationReportBuilder.MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING` (20) rounds of its own — an all-zero streak
   shorter than that is common even for an intentional, working feature.
 
+### New metrics on every report (v1.3): `averageBet`/`averagePayout`/`volatility`/`payoutHistogram`/`maxWinFrequency`
+
+Also purely additive/optional, populated on every report `pokie sim` produces (not just bet-mode-locked ones) —
+surfaced straight from the same `SimulationStatistics` the run already computed, never recomputed:
+
+```ts
+{
+    // ...core fields above...
+    averageBet?: number;         // totalBet / rounds (uses THIS report's own totalBet, already
+                                  // bet-mode-adjusted when a mode is locked — see below)
+    averagePayout?: number;      // totalWin / rounds, same basis
+    volatility?: number;         // standard deviation of per-round payout amounts (unaffected by bet mode —
+                                  // it's the payouts themselves that vary, not which stake basis prices them)
+    payoutHistogram?: Record<string, number>; // round counts per fixed payout bucket ("0", "1-9", "10-99", "100+")
+    maxWinFrequency?: number;    // share of rounds whose payout landed in the same bucket as maxWin
+}
+```
+
+### Bet modes: `--mode <betModeId>` / `--mode all`
+
+- `--mode <betModeId>` — locks the run to one [bet mode](game-packages.md) (e.g. `"ante"`, `"buy-bonus"`) via the
+  session's optional `BetModeSelecting` contract (`setBetMode`/`getBetModeId`) — see
+  [`VideoSlotWithBetModesSession`](game-packages.md). The bet mode actually drives the runtime the whole time
+  (real stake multiplier, real forced-feature-entry cost), never just a label: `report.betMode` is set, and
+  `report.totalBet`/`totalWin`/`rtp`/`hitFrequency`/`maxWin` reflect the mode's real cost — a persistent `"ante"`
+  mode's `totalBet` is genuinely `rounds * bet * stakeMultiplier`, not the plain nominal bet. A game whose session
+  doesn't support `BetModeSelecting` at all makes `--mode` (any value) **fail clearly** rather than silently
+  simulating the plain base game and still labeling the report with the requested mode. An unknown mode id
+  surfaces the runtime's own `UnknownBetModeError`, listing the modes that ARE configured.
+- `--mode all` — runs a **full, independent `--rounds` simulation for every mode the game declares** (via
+  `PokieGame.getBetModes()` — see [Game Packages](game-packages.md)), one at a time, through the exact same
+  pipeline as `--mode <id>` (no math is duplicated between the two paths). Requires the game package to actually
+  declare its bet modes; a game with no `getBetModes()` (or an empty array) makes `--mode all` fail clearly rather
+  than running just the base game. The result is a **`SimulationReportSet`**, not a single `SimulationReport`:
+
+  ```ts
+  {
+      game: {id: string; name: string; version: string};
+      requestedRounds: number;
+      seed: string | null;
+      workers?: number;
+      modes: Record<string, SimulationReport>; // one full, independent report per bet mode id
+  }
+  ```
+
+  **There is deliberately no combined/blended RTP, totalBet, or any other "overall across modes" figure anywhere
+  on this shape.** Without knowing real traffic/player-selection weights (what share of players actually pick each
+  mode), any single blended number would be a made-up average, not a real statistic — compare modes side by side
+  instead (see [`pokie report`](#pokie-report-simulationreportjson) below), or compute a real weighted figure
+  yourself once you have real weights. The console summary for `--mode all` prints each mode's own summary block
+  separately, headed `=== Mode: <id> ===` — never one combined block.
+
+- `targetRtp`/`rtpDeviation` — when a locked mode's [`BetMode`](game-packages.md) declares a `targetRtp`, the
+  report carries it through unchanged (`pokie sim` reads it off `getBetModes()`, never guesses or derives it) plus
+  the trivial `rtpDeviation = rtp - targetRtp`. Absent for a mode that never declared a `targetRtp`, or when no
+  mode was locked at all.
+
 Failure modes:
 
 - Missing `<packageRoot>`, an unknown option, or a non-positive `--rounds` throw a `Usage: pokie sim ...` error.
 - An invalid `packageRoot` (no `package.json`, no `pokie.entry`, or an entry module that doesn't export a valid
   `PokieGame`) throws the same descriptive error `loadPokieGame` would throw directly — see
   [Game Packages](game-packages.md).
+- `--mode <id>` against a session that doesn't support `BetModeSelecting` at all, or `--mode all` against a game
+  that doesn't declare any bet modes, both fail with a clear, descriptive error — never a silent fallback to the
+  plain base game.
 
 ## `pokie report <simulationReportJson>`
 
@@ -1096,6 +1156,21 @@ const markdown = renderer.render(report); // report: SimulationReport, e.g. from
 (`render(report: SimulationReport): string`), so a custom renderer (e.g. plain text, a different HTML layout) can
 be swapped in without touching `ReportCommand`.
 
+### Rendering a `SimulationReportSet` (`pokie sim --mode all` output)
+
+`pokie report` auto-detects when `<simulationReportJson>` is a `SimulationReportSet` (has a `modes` map) instead of
+a plain `SimulationReport`, and renders a **side-by-side comparison** instead: one column per bet mode, with rows
+for RTP (observed), RTP (target/deviation, only shown when at least one mode declared a `targetRtp`), stake/average
+bet, hit/feature rate, average payout, max win, volatility, and max win frequency — followed by each mode's own
+full section (its complete single-report render, nested one heading level deeper so it doesn't collide with the
+comparison). Exactly like `SimulationReportSet` itself, **the comparison table never has an "overall"/blended
+column** — every value is per mode.
+
+`SimulationReportRendering` gained an optional `renderSet?(reportSet: SimulationReportSet): string` method for
+this — both built-in renderers implement it; a custom renderer that doesn't is still a valid, working renderer for
+plain `SimulationReport`s, it just can't render report sets (`pokie report` fails clearly, naming the limitation,
+rather than guessing or rendering only one mode).
+
 Failure modes:
 
 - Missing `<simulationReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw a
@@ -1103,8 +1178,10 @@ Failure modes:
 - A `<simulationReportJson>` that can't be read (missing file, permissions) throws
   `Could not read simulation report at "<path>": <reason>`.
 - A `<simulationReportJson>` that isn't valid JSON throws `"<path>" is not valid JSON: <reason>`.
-- Valid JSON that doesn't look like a `SimulationReport` (missing `game`/`rtp`/`rounds`/... fields) throws
-  `"<path>" does not look like a pokie sim report ...`.
+- Valid JSON that doesn't look like a `SimulationReport` or `SimulationReportSet` (missing `game`/`rtp`/`rounds`/...
+  or `game`/`modes`/... fields) throws `"<path>" does not look like a pokie sim report ...`.
+- A `SimulationReportSet` against a renderer without `renderSet()` throws
+  `This renderer does not support multi-mode report sets ...`.
 
 ## `pokie diff <leftReportJson> <rightReportJson>`
 
@@ -1223,12 +1300,55 @@ const diff = differ.diff(leftReport, rightReport); // leftReport/rightReport: Si
 `SimulationReportDiffer`'s constructor optionally takes the three warning thresholds (RTP delta, hit frequency
 delta, max win percent delta), in that order, if the defaults don't fit a particular game.
 
+### Diffing bet modes
+
+When either report was locked to a bet mode (see `--mode`/`--mode all` under [`pokie sim`](#pokie-sim-packageroot) above; `report.betMode` set), the
+diff carries a `betMode: {left, right, changed}` block. **Comparing two DIFFERENT bet modes is fully supported and
+intentional** — `pokie diff` never refuses or blocks it — but every other metric in the diff is meaningless without
+knowing the two sides aren't measuring the same thing, so a `Comparing different bet modes: "<left>" -> "<right>"`
+warning always fires first when `betMode.changed` is true. Diffing the SAME mode across two versions (the normal
+"did my math change" use case) carries no such warning. This is exactly the two things per-bet-mode diffing needs
+to support: comparing the same mode across versions, and comparing different modes against each other.
+
+### Diffing a `SimulationReportSet` (`pokie sim --mode all` output)
+
+`pokie diff` auto-detects when both `<leftReportJson>`/`<rightReportJson>` are `SimulationReportSet`s (see
+`pokie sim --mode all` under [`pokie sim`](#pokie-sim-packageroot) above) instead of plain `SimulationReport`s, and diffs
+them mode by mode instead — one `SimulationReportDiff` (see above) per bet mode id present on **both** sides,
+computed by the exact same `SimulationReportDiffing` (no diff math is duplicated for this):
+
+```ts
+{
+    game: {left: {...}; right: {...}; changed: boolean};
+    perMode: Record<string, SimulationReportDiff>; // only modes present on BOTH sides
+    onlyInLeft: string[];   // mode ids only the left set declared
+    onlyInRight: string[];  // mode ids only the right set declared
+}
+```
+
+A mode id present on only one side is never silently dropped — it's listed under `onlyInLeft`/`onlyInRight` instead
+of being diffed against nothing. **Deliberately no combined/blended diff across modes** — same reasoning as
+`SimulationReportSet` itself. The console summary prints each common mode's diff separately (`=== Mode: <id> ===`),
+followed by the added/removed mode lists when non-empty. Diffing a plain `SimulationReport` against a
+`SimulationReportSet` (mismatched shapes) fails clearly rather than guessing which side to treat as which.
+
+The reusable API:
+
+```ts
+import {SimulationReportSetDiffer} from "pokie";
+
+const setDiffer = new SimulationReportSetDiffer(); // wraps a SimulationReportDiffer by default
+const setDiff = setDiffer.diff(leftSet, rightSet); // leftSet/rightSet: SimulationReportSet
+```
+
 Failure modes:
 
 - Missing `<leftReportJson>`/`<rightReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw
   a `Usage: pokie diff ...` error.
 - Each report path is read/parsed/validated the same way as [`pokie report`](#pokie-report-simulationreportjson) —
   the same "could not read"/"not valid JSON"/"does not look like a pokie sim report" errors apply to either side.
+- Diffing a `SimulationReport` against a `SimulationReportSet` (one single-mode, one multi-mode) throws
+  `Cannot diff a single-mode pokie sim report against a multi-mode report set ...`.
 
 ## `pokie replay <packageRoot>`
 

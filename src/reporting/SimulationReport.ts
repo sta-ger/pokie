@@ -37,4 +37,29 @@ export type SimulationReport = {
     // The bet mode this run was locked to (see ParallelSimulationRunOptions.betModeId) — absent for a
     // run that never selected one, same as every other additive-optional field on this type.
     betMode?: string;
+    // This mode's declared RTP target (see gamepackage/BetMode.ts's own targetRtp field) — set by the
+    // caller (pokie sim reads it straight off the loaded game package's getBetModes(), never guesses
+    // or derives it), so absent whenever the game doesn't declare one for the locked mode, or no mode
+    // was locked at all. rtpDeviation (rtp - targetRtp) is only present alongside it.
+    targetRtp?: number;
+    rtpDeviation?: number;
+    // Passthroughs/trivial derivations from the same SimulationStatistics this report's core rtp/
+    // totalBet/totalWin already come from (see SimulationReportBuilder) — no simulation math is
+    // duplicated here, only surfaced. averageBet/averagePayout are totalBet/totalWin divided by
+    // rounds, using this report's OWN (possibly bet-mode-overridden) totalBet/totalWin — never
+    // SimulationStatistics.averageBet/averagePayout directly, since those stay nominal-bet-based even
+    // when a mode is locked (see SimulationReportBuilder's own comment on why).
+    averageBet?: number;
+    averagePayout?: number;
+    // Standard deviation of per-round payout amounts (SimulationStatistics.volatility) — a property of
+    // the payouts actually won, so unaffected by whether this run locked a bet mode (unlike
+    // totalBet/rtp, which depend on which stake basis is being charged).
+    volatility?: number;
+    // Raw round counts per payout bucket (SimulationStatistics.payoutHistogram, passed through
+    // unchanged) — see PayoutHistogramBucketOrder.ts for the fixed bucket keys/ordering this uses.
+    payoutHistogram?: Record<string, number>;
+    // Share of rounds whose payout fell in the same bucket as this run's own maxWin (see
+    // PayoutHistogramBucketOrder.ts) — a derived read of payoutHistogram, not a new statistic: how
+    // often a round produced a payout on the scale of the biggest one observed.
+    maxWinFrequency?: number;
 };

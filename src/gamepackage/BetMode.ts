@@ -25,10 +25,9 @@ export type BetMode = {
     //     multiplier; see VideoSlotWithBetModesSession/BetModeDefinition's stakeMultiplier).
     //   - "buyFeature": a one-shot, forced-feature-entry mode -- costMultiplier is REQUIRED (the buy
     //     price) and forcedFreeGames is REQUIRED (how many free games it forces entry into via
-    //     mechanics.freeGames; see FreeGamesForcedFeatureEntryHandler). At most one "buyFeature" mode
-    //     is supported by the generated-session wiring (see resolveBetModeCodegenWiring.ts) -- there's
-    //     no per-mode-id dispatch in the runtime's ForcedFeatureEntryHandling contract to route
-    //     multiple different buy-cost/grant pairs to the right purchase.
+    //     mechanics.freeGames; see FreeGamesForcedFeatureEntryHandler). Any number of "buyFeature"
+    //     modes is supported -- the generated-session wiring routes each to its own handler by mode id
+    //     (see PerModeForcedFeatureEntryHandler), never hard-coding a specific mode/cost/grant.
     runtimeType?: BetModeRuntimeType;
     // Exactly one mode in the array must set this true when runtimeType is used at all -- the mode
     // VideoSlotWithBetModesSession starts (and reverts to after a one-shot purchase) with. Must not be
@@ -39,4 +38,13 @@ export type BetMode = {
     // this mode forces entry into. Requires mechanics.freeGames to be configured on the same blueprint
     // -- there's no other feature this package's blueprint schema can force entry into yet.
     forcedFreeGames?: number;
+    // An RTP target this mode is designed around (e.g. a buy-feature mode commonly targets a
+    // different RTP than base) -- purely descriptive/comparative, same as costMultiplier historically
+    // was: never validated against actual simulated results by this package, only carried through so
+    // "pokie sim"/"pokie report" can show it alongside the observed RTP for that mode (see
+    // SimulationReportInput.targetRtp). Meaningful with or without the runtimeType opt-in above, and on
+    // any mode (including "base"). When runtimeType IS used, this value also flows into the generated
+    // session's own BetModeDefinition (see BetModeDescribing.getTargetRtp()), so the runtime and the
+    // declarative blueprint never disagree about it.
+    targetRtp?: number;
 };

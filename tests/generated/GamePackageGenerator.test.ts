@@ -597,6 +597,30 @@ describe("GamePackageGenerator", () => {
             expect(session20.getBetModeId()).toBe("base");
             expect(session20.getStakeAmount()).toBe(0);
         });
+
+        it("wires each mode's declared targetRtp into the generated session's own BetModeDefinition, never dropping or mixing it up between modes", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const betModes: BetMode[] = [
+                {id: "base", runtimeType: "base", isDefault: true, targetRtp: 0.94},
+                {id: "ante", runtimeType: "ante", costMultiplier: 1.25, targetRtp: 0.965},
+            ];
+            const result = generator.generate(
+                buildBlueprint({betModes, manifest: {id: "explicit-target-rtp", name: "Explicit Target RTP", version: "0.1.0"}}),
+                cwd,
+            );
+
+            // getBetModes() (declarative, always available) is the source pokie sim/report actually
+            // read targetRtp from -- confirm it round-trips unchanged.
+            const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+            expect(game.getBetModes?.()).toEqual(betModes);
+
+            // The generated index.js source itself must also wire each mode's own targetRtp into its
+            // BetModeDefinition -- see renderGeneratedGameModule.ts -- so a caller who bypasses pokie
+            // sim/report and constructs/uses VideoSlotWithBetModesSession directly still sees a
+            // BetModeDescribing.getTargetRtp() consistent with the declared blueprint, never a guess.
+            const indexJs = fs.readFileSync(path.join(result.projectRoot, "src", "generated", "index.js"), "utf-8");
+            expect(indexJs).toContain("targetRtp: mode.targetRtp");
+        });
     });
 
     it("createSession() behaves exactly as before -- no bet-mode wrapping at all -- when the blueprint has no betModes", () => {

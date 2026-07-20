@@ -353,6 +353,15 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     path: `${path}.costMultiplier`,
                 });
             }
+
+            if (e.targetRtp !== undefined && !(typeof e.targetRtp === "number" && Number.isFinite(e.targetRtp) && e.targetRtp > 0)) {
+                issues.push({
+                    code: "blueprint-betmode-invalid-targetrtp",
+                    severity: "error",
+                    message: `"${path}.targetRtp", if present, must be a positive, finite number.`,
+                    path: `${path}.targetRtp`,
+                });
+            }
         });
 
         this.validateBetModeRuntimeSemantics(entries, mechanics, issues);

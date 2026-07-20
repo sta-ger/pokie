@@ -1,4 +1,5 @@
 import {
+    BetMode,
     loadPokieGame,
     MAX_SIMULATION_WORKERS,
     ParallelSimulationRunner,
@@ -8,6 +9,7 @@ import {
     SimulationReport,
     SimulationReportBuilder,
     SimulationReportBuilding,
+    SimulationReportSet,
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -24,8 +26,15 @@ type SimOptions = {
     mode?: string;
 };
 
+// "--mode all" is a reserved mode id meaning "run every mode the game declares" (see runAllModes())
+// rather than an actual bet mode -- a real game is very unlikely to ever declare a mode literally
+// named "all", and this keeps the flag's grammar identical to --mode <betModeId> (one value, no new
+// flag to parse) rather than inventing a whole separate --all-modes switch.
+const ALL_MODES = "all";
+
 const USAGE =
-    "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>] [--out <file>] [--format json]";
+    "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] " +
+    `[--mode <betModeId>|${ALL_MODES}] [--out <file>] [--format json]`;
 
 export class SimCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
@@ -70,7 +79,40 @@ export class SimCommand implements CliCommandHandling {
 
     public async run(args: string[]): Promise<void> {
         const options = this.parseArgs(args);
+        // Loaded once up front regardless of path (single mode, no mode, or --mode all) purely to read
+        // the package's own declarative getBetModes() -- optional/feature-detected, exactly like every
+        // other PokieGame capability -- for mode discovery (--mode all) and each mode's targetRtp.
+        // ParallelSimulationRunner loads the package again itself (in-process or per worker thread) to
+        // actually run rounds; that's unrelated and unaffected by this extra, cheap metadata-only load.
+        const game = await this.loadGame(options.packageRoot);
+        const declaredModes = game.getBetModes?.();
 
+        if (options.mode === ALL_MODES) {
+            await this.runAllModes(options, declaredModes);
+            return;
+        }
+
+        const targetRtp = options.mode !== undefined ? declaredModes?.find((mode) => mode.id === options.mode)?.targetRtp : undefined;
+        const report = await this.runSingleMode(options, options.mode, targetRtp);
+
+        if (options.out) {
+            this.writeFile(options.out, JSON.stringify(report, null, 4));
+        }
+
+        if (options.format === "json") {
+            console.log(JSON.stringify(report, null, 4));
+        } else {
+            this.printSummary(report);
+            if (options.out) {
+                console.log(`\nReport written to "${options.out}".`);
+            }
+        }
+    }
+
+    // Extracted so runAllModes() can run the exact same pipeline once per declared mode, rather than
+    // reimplementing any part of it -- the only thing that differs between "--mode <id>" and
+    // "--mode all" is how many times, and with which ids, this gets called.
+    private async runSingleMode(options: SimOptions, modeId: string | undefined, targetRtp: number | undefined): Promise<SimulationReport> {
         const startedAt = Date.now();
         // workers===1 runs fully in-process (using this.loadGame, so an injected in-memory fake game
         // keeps working exactly as before --workers existed); workers>1 always (re)loads the package
@@ -80,12 +122,12 @@ export class SimCommand implements CliCommandHandling {
             workers: options.workers,
             loadGame: this.loadGame,
             workerEntryUrl: this.workerEntryUrl,
-            betModeId: options.mode,
+            betModeId: modeId,
         });
         const result = await runner.run();
         const durationMs = Date.now() - startedAt;
 
-        const report = this.reportBuilder.build({
+        return this.reportBuilder.build({
             manifest: result.manifest,
             requestedRounds: options.rounds,
             seed: options.seed,
@@ -96,16 +138,47 @@ export class SimCommand implements CliCommandHandling {
             workers: result.workers,
             workerSeedStrategy: result.workerSeedStrategy,
             betMode: result.betMode,
+            targetRtp,
         });
+    }
+
+    // Runs a full, independent simulation for EVERY mode the game declares (one full --rounds run
+    // each, exactly as if "--mode <id>" had been invoked separately per mode -- see runSingleMode())
+    // and bundles the results into a SimulationReportSet. Deliberately never computes any combined/
+    // blended RTP or totals across modes -- see SimulationReportSet's own doc comment on why that
+    // would be a made-up number without real traffic/player-selection weights.
+    private async runAllModes(options: SimOptions, declaredModes: BetMode[] | undefined): Promise<void> {
+        if (!declaredModes || declaredModes.length === 0) {
+            throw new Error(
+                `--mode ${ALL_MODES} requires the game package to declare its bet modes via getBetModes() -- ` +
+                    `"${options.packageRoot}" doesn't. ${USAGE}`,
+            );
+        }
+
+        const modes: Record<string, SimulationReport> = {};
+        for (const declared of declaredModes) {
+            modes[declared.id] = await this.runSingleMode(options, declared.id, declared.targetRtp);
+        }
+
+        const reportSet: SimulationReportSet = {
+            game: Object.values(modes)[0].game,
+            requestedRounds: options.rounds,
+            seed: options.seed ?? null,
+            workers: options.workers,
+            modes,
+        };
 
         if (options.out) {
-            this.writeFile(options.out, JSON.stringify(report, null, 4));
+            this.writeFile(options.out, JSON.stringify(reportSet, null, 4));
         }
 
         if (options.format === "json") {
-            console.log(JSON.stringify(report, null, 4));
+            console.log(JSON.stringify(reportSet, null, 4));
         } else {
-            this.printSummary(report);
+            Object.entries(modes).forEach(([modeId, report]) => {
+                console.log(`\n=== Mode: ${modeId} ===`);
+                this.printSummary(report);
+            });
             if (options.out) {
                 console.log(`\nReport written to "${options.out}".`);
             }
@@ -201,8 +274,19 @@ export class SimCommand implements CliCommandHandling {
         console.log(`  total bet       ${report.totalBet.toFixed(2)}`);
         console.log(`  total win       ${report.totalWin.toFixed(2)}`);
         console.log(`  rtp             ${(report.rtp * 100).toFixed(2)}%`);
+        if (report.targetRtp !== undefined) {
+            console.log(`  target rtp      ${(report.targetRtp * 100).toFixed(2)}%`);
+            console.log(`  rtp deviation   ${((report.rtpDeviation as number) * 100).toFixed(2)} pp`);
+        }
         console.log(`  hit frequency   ${(report.hitFrequency * 100).toFixed(2)}%`);
+        console.log(`  average payout  ${(report.averagePayout ?? 0).toFixed(2)}`);
         console.log(`  max win         ${report.maxWin.toFixed(2)}`);
+        if (report.volatility !== undefined) {
+            console.log(`  volatility      ${report.volatility.toFixed(2)}`);
+        }
+        if (report.maxWinFrequency !== undefined) {
+            console.log(`  max win freq.   ${(report.maxWinFrequency * 100).toFixed(4)}%`);
+        }
         console.log(`  duration        ${report.durationMs}ms (${report.spinsPerSecond} spins/s)`);
 
         if (report.breakdown) {

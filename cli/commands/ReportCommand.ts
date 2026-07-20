@@ -1,4 +1,11 @@
-import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReport, SimulationReportRendering} from "pokie";
+import {
+    HtmlSimulationReportRenderer,
+    isSimulationReportSet,
+    MarkdownSimulationReportRenderer,
+    SimulationReport,
+    SimulationReportRendering,
+    SimulationReportSet,
+} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 
@@ -41,9 +48,10 @@ export class ReportCommand implements CliCommandHandling {
     public run(args: string[]): Promise<void> {
         try {
             const options = this.parseArgs(args);
-            const report = this.readReport(options.reportPath);
+            const parsed = this.readReportJson(options.reportPath);
+            const renderer = this.renderers[options.format];
 
-            const rendered = this.renderers[options.format].render(report);
+            const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
             console.log(rendered);
 
             if (options.out) {
@@ -55,6 +63,17 @@ export class ReportCommand implements CliCommandHandling {
         } catch (error) {
             return Promise.reject(error);
         }
+    }
+
+    // A renderer that doesn't implement renderSet() (an optional, feature-detected capability -- see
+    // SimulationReportRendering's own doc comment) can't render a "pokie sim --mode all" bundle at
+    // all -- failing clearly here beats silently rendering only one mode or throwing a confusing
+    // TypeError deep inside the renderer.
+    private renderSet(renderer: SimulationReportRendering, reportSet: SimulationReportSet): string {
+        if (!renderer.renderSet) {
+            throw new Error("This renderer does not support multi-mode report sets (see \"pokie sim --mode all\").");
+        }
+        return renderer.renderSet(reportSet);
     }
 
     private parseArgs(args: string[]): ReportOptions {
@@ -94,7 +113,7 @@ export class ReportCommand implements CliCommandHandling {
         return {reportPath, format, out};
     }
 
-    private readReport(reportPath: string): SimulationReport {
+    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {
         let contents: string;
         try {
             contents = this.readFile(reportPath);
@@ -107,6 +126,10 @@ export class ReportCommand implements CliCommandHandling {
             parsed = JSON.parse(contents);
         } catch (error) {
             throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        if (isSimulationReportSet(parsed)) {
+            return parsed;
         }
 
         if (!this.isSimulationReport(parsed)) {

@@ -87,6 +87,7 @@ ${betModeWiring.buyFeatureModes
         const betModes = blueprint.betModes.map((mode) => new BetModeDefinition(mode.id, {
             stakeMultiplier: mode.costMultiplier,
             forcesFeatureEntry: mode.runtimeType === "buyFeature",
+            targetRtp: mode.targetRtp,
         }));
 ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
     betModeWiring.buyFeatureModes.length > 0 ? ", forcedFeatureEntryHandler" : ""

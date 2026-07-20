@@ -1,26 +1,10 @@
 import type {SimulationReport} from "./SimulationReport.js";
 import type {SimulationReportRendering} from "./SimulationReportRendering.js";
+import type {SimulationReportSet} from "./SimulationReportSet.js";
 
 export class HtmlSimulationReportRenderer implements SimulationReportRendering {
     public render(report: SimulationReport): string {
         const title = `Simulation Report: ${this.escapeHtml(report.game.name)}`;
-        const rows: Array<[string, string]> = [
-            ["Game id", this.escapeHtml(report.game.id)],
-            ["Game version", this.escapeHtml(report.game.version)],
-            ["Requested rounds", String(report.requestedRounds)],
-            ["Actual rounds", String(report.rounds)],
-            ["Seed", report.seed === null ? "none" : this.escapeHtml(report.seed)],
-            ...(report.betMode !== undefined ? ([["Bet mode", this.escapeHtml(report.betMode)]] as Array<[string, string]>) : []),
-            ["Total bet", report.totalBet.toFixed(2)],
-            ["Total win", report.totalWin.toFixed(2)],
-            ["RTP", `${(report.rtp * 100).toFixed(2)}%`],
-            ["Hit frequency", `${(report.hitFrequency * 100).toFixed(2)}%`],
-            ["Max win", report.maxWin.toFixed(2)],
-            ["Duration", `${report.durationMs}ms`],
-            ["Spins per second", String(report.spinsPerSecond)],
-            ["Workers", String(report.workers ?? 1)],
-        ];
-        const tableRows = rows.map(([label, value]) => `            <tr><th scope="row">${label}</th><td>${value}</td></tr>`).join("\n");
 
         return [
             "<!DOCTYPE html>",
@@ -32,6 +16,77 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             "<body>",
             "    <article>",
             `        <h1>${title}</h1>`,
+            ...this.renderReportBody(report),
+            "    </article>",
+            "</body>",
+            "</html>",
+        ].join("\n") + "\n";
+    }
+
+    // Side-by-side headline metrics across every mode in the set, followed by each mode's own full
+    // body (renderReportBody() -- the same rows/sections render() itself uses) nested under its own
+    // "Mode: id" section -- no metric here is computed freshly, every value is read straight off each
+    // mode's own already-built SimulationReport. Deliberately no "overall"/blended column -- see
+    // SimulationReportSet's own doc comment on why.
+    public renderSet(reportSet: SimulationReportSet): string {
+        const title = `Simulation Report Set: ${this.escapeHtml(reportSet.game.name)}`;
+        const modeEntries = Object.entries(reportSet.modes);
+
+        return [
+            "<!DOCTYPE html>",
+            '<html lang="en">',
+            "<head>",
+            '    <meta charset="utf-8">',
+            `    <title>${title}</title>`,
+            "</head>",
+            "<body>",
+            "    <article>",
+            `        <h1>${title}</h1>`,
+            ...this.renderSetSummary(reportSet, modeEntries),
+            ...this.renderComparisonSection(modeEntries),
+            ...modeEntries.flatMap(([modeId, report]) => [
+                "        <section>",
+                `            <h2>Mode: ${this.escapeHtml(modeId)}</h2>`,
+                ...this.renderReportBody(report),
+                "        </section>",
+            ]),
+            "    </article>",
+            "</body>",
+            "</html>",
+        ].join("\n") + "\n";
+    }
+
+    private renderReportBody(report: SimulationReport): string[] {
+        const rows: Array<[string, string]> = [
+            ["Game id", this.escapeHtml(report.game.id)],
+            ["Game version", this.escapeHtml(report.game.version)],
+            ["Requested rounds", String(report.requestedRounds)],
+            ["Actual rounds", String(report.rounds)],
+            ["Seed", report.seed === null ? "none" : this.escapeHtml(report.seed)],
+            ...(report.betMode !== undefined ? ([["Bet mode", this.escapeHtml(report.betMode)]] as Array<[string, string]>) : []),
+            ["Total bet", report.totalBet.toFixed(2)],
+            ["Total win", report.totalWin.toFixed(2)],
+            ["RTP", `${(report.rtp * 100).toFixed(2)}%`],
+            ...(report.targetRtp !== undefined
+                ? ([
+                    ["RTP target", `${(report.targetRtp * 100).toFixed(2)}%`],
+                    ["RTP deviation", `${((report.rtpDeviation as number) * 100).toFixed(2)} pp`],
+                ] as Array<[string, string]>)
+                : []),
+            ["Hit frequency", `${(report.hitFrequency * 100).toFixed(2)}%`],
+            ["Average payout", (report.averagePayout ?? 0).toFixed(2)],
+            ["Max win", report.maxWin.toFixed(2)],
+            ...(report.volatility !== undefined ? ([["Volatility", report.volatility.toFixed(2)]] as Array<[string, string]>) : []),
+            ...(report.maxWinFrequency !== undefined
+                ? ([["Max win frequency", `${(report.maxWinFrequency * 100).toFixed(4)}%`]] as Array<[string, string]>)
+                : []),
+            ["Duration", `${report.durationMs}ms`],
+            ["Spins per second", String(report.spinsPerSecond)],
+            ["Workers", String(report.workers ?? 1)],
+        ];
+        const tableRows = rows.map(([label, value]) => `            <tr><th scope="row">${label}</th><td>${value}</td></tr>`).join("\n");
+
+        return [
             "        <table>",
             "            <tbody>",
             tableRows,
@@ -41,10 +96,62 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             ...this.renderReproducibilitySection(report),
             ...this.renderListSection("Warnings", report.warnings),
             ...this.renderListSection("Recommendations", report.recommendations),
-            "    </article>",
-            "</body>",
-            "</html>",
-        ].join("\n") + "\n";
+        ];
+    }
+
+    private renderSetSummary(reportSet: SimulationReportSet, modeEntries: Array<[string, SimulationReport]>): string[] {
+        const rows: Array<[string, string]> = [
+            ["Game id", this.escapeHtml(reportSet.game.id)],
+            ["Game version", this.escapeHtml(reportSet.game.version)],
+            ["Requested rounds", String(reportSet.requestedRounds)],
+            ["Seed", reportSet.seed === null ? "none" : this.escapeHtml(reportSet.seed)],
+            ["Workers", String(reportSet.workers ?? 1)],
+            ["Modes compared", modeEntries.map(([modeId]) => this.escapeHtml(modeId)).join(", ")],
+        ];
+        const tableRows = rows.map(([label, value]) => `            <tr><th scope="row">${label}</th><td>${value}</td></tr>`).join("\n");
+
+        return ["        <table>", "            <tbody>", tableRows, "            </tbody>", "        </table>"];
+    }
+
+    private renderComparisonSection(modeEntries: Array<[string, SimulationReport]>): string[] {
+        const hasTargetRtp = modeEntries.some(([, report]) => report.targetRtp !== undefined);
+        const metricRows: Array<[string, (report: SimulationReport) => string]> = [
+            ["RTP (observed)", (report) => `${(report.rtp * 100).toFixed(2)}%`],
+        ];
+        if (hasTargetRtp) {
+            metricRows.push(
+                ["RTP (target)", (report) => (report.targetRtp !== undefined ? `${(report.targetRtp * 100).toFixed(2)}%` : "–")],
+                ["RTP deviation", (report) => (report.rtpDeviation !== undefined ? `${(report.rtpDeviation * 100).toFixed(2)} pp` : "–")],
+            );
+        }
+        metricRows.push(
+            ["Stake (avg bet)", (report) => (report.averageBet ?? 0).toFixed(2)],
+            ["Hit / feature rate", (report) => `${(report.hitFrequency * 100).toFixed(2)}%`],
+            ["Average payout", (report) => (report.averagePayout ?? 0).toFixed(2)],
+            ["Max win", (report) => report.maxWin.toFixed(2)],
+            ["Volatility", (report) => (report.volatility ?? 0).toFixed(2)],
+            ["Max win frequency", (report) => `${((report.maxWinFrequency ?? 0) * 100).toFixed(4)}%`],
+        );
+
+        const headerRow = `            <tr><th>Metric</th>${modeEntries.map(([modeId]) => `<th>${this.escapeHtml(modeId)}</th>`).join("")}</tr>`;
+        const bodyRows = metricRows.map(([label, format]) => {
+            const cells = modeEntries.map(([, report]) => `<td>${format(report)}</td>`).join("");
+            return `            <tr><th scope="row">${label}</th>${cells}</tr>`;
+        });
+
+        return [
+            "        <section>",
+            "            <h2>Comparison</h2>",
+            "            <table>",
+            "                <thead>",
+            headerRow,
+            "                </thead>",
+            "                <tbody>",
+            ...bodyRows,
+            "                </tbody>",
+            "            </table>",
+            "        </section>",
+        ];
     }
 
     private renderBreakdownSection(report: SimulationReport): string[] {
