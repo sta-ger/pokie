@@ -11,7 +11,10 @@ export type StakeEngineRoundProjectionContext = {
 // RoundArtifact -> Stake Engine "events" projection. Deliberately its own interface rather than reusing the
 // generic RoundArtifactProjector<T, TOutput> (see RoundArtifactProjector.ts): a Stake projection needs the
 // mode's own cost to convert amounts into Stake's integer unit convention, so "context" is an explicit, required
-// second argument here rather than something a projector would have to reach for out of band. May throw for any
+// second argument here rather than something a projector would have to reach for out of band. This required
+// context argument is also exactly why this isn't (and can't cleanly become) an ExternalRoundProjector<T> from
+// the External Adapter SDK, whose project(artifact) takes no context at all — see
+// docs/external-adapter-sdk.md#why-stake-engine-export-isnt-an-externaldeploymenttarget. May throw for any
 // reason a projection can legitimately fail (most commonly: an amount that isn't representable as a non-negative
 // safe integer once converted, see convertRatioToStakeUnits) — StakeEngineExporter treats any thrown error, from
 // this standard implementation or any custom one, as a validation failure that blocks the export, never as a

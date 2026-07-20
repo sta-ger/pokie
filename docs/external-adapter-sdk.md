@@ -348,3 +348,51 @@ throws rather than writing outside it.
 6. Deploy through `ExternalDeploymentService` rather than calling the individual collaborators by hand, so the
    ordering/short-circuiting guarantees above always hold. Pass an *extra* validator to the constructor for a
    further, project-specific check — never to replace a built-in one, since that isn't possible.
+
+## Why Stake Engine Export isn't an `ExternalDeploymentTarget`
+
+[Stake Engine Export](stake-engine-export.md) is conceptually the one thing this SDK generalizes — a
+target/format-specific "deploy canonical content to an external consumer" pipeline — and `GAP_AUDIT_v1.3.md`
+flagged the fact that it's wired around this SDK rather than through it as an open architectural question.
+Having read both contracts closely, the answer is that the split is **structural, not an oversight**, for
+two independent reasons:
+
+1. **`ExternalRoundProjector<T>` has no channel for a mode's own `cost`.** `project(artifact: RoundArtifact<T>): JsonObject`
+   takes only the artifact — nothing else reaches a projector, by design (see that interface's own doc
+   comment: `ExternalDeploymentService` is the only caller, once per outcome, and a generator downstream
+   never gets to reach for anything beyond the projector's return value). Stake's own event/payout
+   projection is not that simple: `StakeEngineRoundEventsProjecting.project(artifact, context: {cost})`
+   requires the *mode's own* `cost` to convert every amount into Stake's integer unit convention
+   (`ratio * cost * 100`, see [Stake unit conversion](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded)).
+   This isn't an accidental gap — `ExternalDeploymentModeInput`'s own doc comment already documents the
+   exclusion deliberately: it's "the same shape `StakeEngineExportModeInput` uses, minus Stake's own `cost`
+   field, which is specific to Stake's unit conversion and has no general meaning across arbitrary external
+   targets." Adding a `cost`-shaped context to the generic projector/mode-input contracts just to fit one
+   target would make every other target's implementation carry a field it can never use.
+2. **A real Stake export's atomicity spans modes with *different* costs.** A base game (`cost: 1`) and a
+   bonus-buy mode (`cost: 100`) are routinely published together as a single atomic directory swap (see
+   [Rebuild safety](stake-engine-export.md#rebuild-safety--the-whole-directory-is-replaced-atomically)).
+   `ExternalDeploymentTarget` is a fixed descriptor per `deploy()` call — there's no per-mode slot for a
+   varying `cost`, and even a target that closed over one fixed `cost` at construction time could only ever
+   support single-cost deployments. Splitting a real Stake export into one `deploy()` call per cost bucket
+   would fragment exactly the atomicity guarantee `StakeEngineExporter` exists to provide: a reader could
+   then observe a directory with the base mode already live and the bonus mode still missing, which never
+   happens today.
+
+Together, these rule out both "make Stake Engine implement `ExternalDeploymentTarget` as-is" (the projector
+signature can't carry what Stake needs) and "extend the SDK's contracts to fit Stake" (that would either
+leak a Stake-specific concept into a supposedly generic contract, or still not solve the multi-cost
+atomicity problem). A target that worked around this — say, by only ever handling one mode/cost at a time,
+or by silently reprojecting through a lossy generic path — would produce non-standard, possibly-wrong Stake
+output for any real multi-mode game while *appearing* to satisfy the `ExternalDeploymentTarget` contract.
+That's a worse outcome than not integrating at all.
+
+**The two subsystems are deliberately kept as separate, sibling exporters.** They share the same canonical
+upstream input (`WeightedOutcomeLibrary<T>`/`RoundArtifact<T>`) and the same cross-mode homogeneous-provenance
+check (`ExternalDeploymentRequirements.requiresHomogeneousProvenance`'s own doc comment already calls out
+that it mirrors `StakeEngineExportValidator`'s check), and both publish via the same atomic
+temp-directory-then-rename-swap strategy — but neither is built on top of the other, and that's expected to
+stay true. If Stake Engine's own math-sdk format ever changes to admit a single per-outcome cost embedded in
+the outcome data itself (rather than a per-mode value), this boundary would be worth revisiting; short of
+that, treat any future "just make Stake Engine a target" request as reopening a question that's already been
+answered here.

@@ -9,6 +9,13 @@ export target POKIE ships and, like every other exporter in the project (`ParShe
 it never introduces a second calculation path — every number it writes already exists on the library's own
 outcomes/artifacts, re-shaped, not recomputed.
 
+This is a deliberately separate, sibling pipeline to the [External Adapter SDK](external-adapter-sdk.md) — not
+built on top of it, and not the other way around. See
+[Why Stake Engine Export isn't an `ExternalDeploymentTarget`](external-adapter-sdk.md#why-stake-engine-export-isnt-an-externaldeploymenttarget)
+for exactly why (a mode's own `cost`, required here for unit conversion, has no channel through that SDK's
+generic projector contract, and a real Stake export's atomicity spans modes with different costs in a way the
+SDK's per-target-fixed-descriptor model can't represent).
+
 ## Output layout
 
 ```
