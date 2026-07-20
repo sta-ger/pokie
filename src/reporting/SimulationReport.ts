@@ -1,3 +1,5 @@
+import type {SimulationConvergenceOutcome} from "../simulation/SimulationConvergenceOutcome.js";
+import type {SimulationStopReason} from "../simulation/SimulationStopReason.js";
 import type {SimulationReportBreakdown} from "./SimulationReportBreakdown.js";
 
 export type SimulationReportReproducibility = {
@@ -62,4 +64,13 @@ export type SimulationReport = {
     // PayoutHistogramBucketOrder.ts) — a derived read of payoutHistogram, not a new statistic: how
     // often a round produced a payout on the scale of the biggest one observed.
     maxWinFrequency?: number;
+    // Why this run stopped at `rounds` rather than necessarily playing every `requestedRounds` — see
+    // SimulationStopReason. Optional only for backward compatibility with a SimulationReport JSON that
+    // predates this field (every current caller, pokie sim included, always sets it).
+    stopReason?: SimulationStopReason;
+    // Present only when this run opted into ParallelSimulationRunOptions.convergence (see `pokie sim`'s
+    // --min-rounds/--rtp-tolerance/--check-interval/--stable-checks flags) — absent for every run that
+    // used the plain fixed-round path, same as betMode/targetRtp being absent for a run that never
+    // locked a bet mode.
+    convergence?: SimulationConvergenceOutcome;
 };

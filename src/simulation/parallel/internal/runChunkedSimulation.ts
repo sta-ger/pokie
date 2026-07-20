@@ -3,6 +3,7 @@ import type {BetModeForNextSimulationRoundSetting} from "../../BetModeForNextSim
 import {SimulationAccumulator} from "../../SimulationAccumulator.js";
 import type {SimulationBreakdownComponent} from "../../SimulationBreakdownComponent.js";
 import {mergeSimulationBreakdowns} from "../../SimulationBreakdownMerging.js";
+import type {SimulationStopReason} from "../../SimulationStopReason.js";
 import type {GameSessionHandling} from "../../../session/GameSessionHandling.js";
 import {SimulationCancelledError} from "../SimulationCancelledError.js";
 
@@ -20,12 +21,20 @@ export type ChunkedSimulationCallbacks = {
     // Throws SimulationCancelledError to stop, same as ParallelSimulationRunner's worker-thread path.
     shouldStop?: () => boolean;
     onChunkComplete?: (info: ChunkedSimulationChunkInfo) => Promise<void> | void;
+    // Opt-in adaptive early stop (see SimulationConvergenceChecker) -- checked once per chunk, right
+    // after that chunk is merged into the running accumulator, but only when the session didn't already
+    // stop the chunk early on its own (see stopReason precedence below). Returning true ends the run at
+    // this chunk boundary, reported as stopReason "converged" rather than "maxRounds"/"sessionStopped".
+    // Absent by default, so a caller that never sets it is unaffected -- the loop always plays every
+    // requested round, exactly as before this existed.
+    checkConvergence?: (accumulator: SimulationAccumulator, roundsCompleted: number) => boolean;
 };
 
 export type ChunkedSimulationResult = {
     accumulator: SimulationAccumulator;
     breakdown?: Record<string, SimulationBreakdownComponent>;
     roundsCompleted: number;
+    stopReason: SimulationStopReason;
 };
 
 // Plays `rounds` rounds against `session` in bounded chunks (via the existing
@@ -54,6 +63,7 @@ export async function runChunkedSimulation(
     let breakdown: Record<string, SimulationBreakdownComponent> | undefined;
     let roundsCompleted = 0;
     let roundsRemaining = rounds;
+    let stopReason: SimulationStopReason = "maxRounds";
 
     while (roundsRemaining > 0) {
         if (callbacks.shouldStop?.()) {
@@ -73,15 +83,24 @@ export async function runChunkedSimulation(
         roundsCompleted += chunkRoundsPlayed;
         const stoppedEarly = chunkRoundsPlayed < chunkRounds;
         roundsRemaining -= chunkRounds;
+        // Never checked once the session has already stopped itself early this chunk — sessionStopped
+        // always takes precedence over converged, since there's no meaningful "converged" statistic to
+        // report on a run the session itself cut short.
+        const converged = !stoppedEarly && (callbacks.checkConvergence?.(accumulator, roundsCompleted) ?? false);
 
-        await callbacks.onChunkComplete?.({roundsCompleted, isFinished: stoppedEarly || roundsRemaining <= 0});
+        await callbacks.onChunkComplete?.({roundsCompleted, isFinished: stoppedEarly || converged || roundsRemaining <= 0});
 
         // The session stopped playing on its own before using every round in this chunk — no point
         // scheduling further chunks once that's happened.
         if (stoppedEarly) {
+            stopReason = "sessionStopped";
+            break;
+        }
+        if (converged) {
+            stopReason = "converged";
             break;
         }
     }
 
-    return {accumulator, breakdown, roundsCompleted};
+    return {accumulator, breakdown, roundsCompleted, stopReason};
 }

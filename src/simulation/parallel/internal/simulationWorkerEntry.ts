@@ -1,6 +1,7 @@
 import {loadPokieGame} from "../../../gamepackage/loadPokieGame.js";
 import {parentPort, workerData} from "worker_threads";
 import {FixedBetModeForNextSimulationRoundSetting} from "../../FixedBetModeForNextSimulationRoundSetting.js";
+import {SimulationConvergenceChecker} from "../../SimulationConvergenceChecker.js";
 import {runChunkedSimulation} from "./runChunkedSimulation.js";
 import type {SimulationWorkerMessage} from "./SimulationWorkerMessage.js";
 import type {SimulationWorkerRequest} from "../SimulationWorkerRequest.js";
@@ -28,8 +29,9 @@ async function main(): Promise<void> {
 
         const betModeSelector =
             request.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(request.betModeId) : undefined;
+        const convergenceChecker = request.convergence ? new SimulationConvergenceChecker(request.convergence) : undefined;
 
-        const {accumulator, breakdown, roundsCompleted} = await runChunkedSimulation(
+        const {accumulator, breakdown, roundsCompleted, stopReason} = await runChunkedSimulation(
             session,
             request.rounds,
             request.progressChunkSize,
@@ -38,6 +40,9 @@ async function main(): Promise<void> {
                     const progress: SimulationWorkerMessage = {type: "progress", workerIndex: request.workerIndex, roundsCompleted: completed};
                     port.postMessage(progress);
                 },
+                checkConvergence: convergenceChecker
+                    ? (acc, completed) => convergenceChecker.check(acc, completed).converged
+                    : undefined,
             },
             betModeSelector,
         );
@@ -49,6 +54,8 @@ async function main(): Promise<void> {
             accumulator: accumulator.toSnapshot(),
             breakdown,
             roundsCompleted,
+            stopReason,
+            convergence: convergenceChecker?.buildOutcome(),
         };
         port.postMessage(result);
     } catch (error) {

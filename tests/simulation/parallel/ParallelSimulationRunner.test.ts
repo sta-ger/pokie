@@ -4,6 +4,7 @@ import {
     PokieGame,
     PokieGameManifest,
     SimulationCancelledError,
+    SimulationConvergenceOptions,
     SimulationWorkerCoordinator,
     SimulationWorkerCoordinatorRunOptions,
     SimulationWorkerRequest,
@@ -440,5 +441,270 @@ describe("ParallelSimulationRunner betModeId (workers=1, in-process)", () => {
 
         await expect(runner.run()).rejects.toThrow(/does not support bet mode selection/);
         await expect(runner.run()).rejects.toThrow(/"ante"/);
+    });
+});
+
+describe("ParallelSimulationRunner convergence (workers=1, in-process)", () => {
+    // A session with a constant per-round payout has zero return-ratio variance, so its RTP confidence
+    // interval half-width is exactly 0 from round 1 onward — makes exactly when a convergence check
+    // starts (and keeps) satisfying rtpTolerance fully predictable (purely a function of minRounds/
+    // checkIntervalRounds/stableChecks), rather than depending on a real distribution's variance.
+    function createConstantPayoutFakeGame(): PokieGame {
+        return {
+            getManifest: () => manifest,
+            createSession: () => {
+                let credits = 1_000_000;
+                return {
+                    getCreditsAmount: () => credits,
+                    setCreditsAmount: (value: number) => {
+                        credits = value;
+                    },
+                    getBet: () => 1,
+                    setBet: () => undefined,
+                    getAvailableBets: () => [1],
+                    canPlayNextGame: () => true,
+                    play: () => {
+                        credits = credits - 1 + 1;
+                    },
+                    getWinAmount: () => 1, // RTP is always exactly 1.0 — zero variance
+                };
+            },
+        };
+    }
+
+    test("without options.convergence, the legacy fixed-round path is unaffected: stopReason 'maxRounds', convergence undefined", async () => {
+        const game = createFakeGame();
+        const runner = new ParallelSimulationRunner("/fake/root", 50, {loadGame: () => Promise.resolve(game)});
+
+        const result = await runner.run();
+
+        expect(result.stopReason).toBe("maxRounds");
+        expect(result.convergence).toBeUndefined();
+        expect(result.statistics.rounds).toBe(50);
+    });
+
+    test("stops early once convergence is achieved: stopReason 'converged', actual rounds < requested", async () => {
+        const game = createConstantPayoutFakeGame();
+        const runner = new ParallelSimulationRunner("/fake/root", 1000, {
+            loadGame: () => Promise.resolve(game),
+            convergence: {minRounds: 20, rtpTolerance: 0.01, checkIntervalRounds: 10}, // stableChecks defaults to 3
+        });
+
+        const result = await runner.run();
+
+        // Checks happen at 10 (below minRounds -> unsatisfying), then 20/30/40 (three consecutive
+        // satisfying checks, since halfWidth is always 0) -> converges exactly at round 40.
+        expect(result.stopReason).toBe("converged");
+        expect(result.statistics.rounds).toBe(40);
+        expect(result.convergence).toEqual({
+            minRounds: 20,
+            rtpTolerance: 0.01,
+            checkIntervalRounds: 10,
+            stableChecks: 3,
+            checksPerformed: 4,
+            consecutiveStableChecks: 3,
+            achievedRtpHalfWidth: 0,
+        });
+    });
+
+    test("falls back to playing every requested round when minRounds is never reached: stopReason 'maxRounds'", async () => {
+        const game = createConstantPayoutFakeGame();
+        const runner = new ParallelSimulationRunner("/fake/root", 100, {
+            loadGame: () => Promise.resolve(game),
+            convergence: {minRounds: 10_000, rtpTolerance: 0.01, checkIntervalRounds: 10},
+        });
+
+        const result = await runner.run();
+
+        expect(result.stopReason).toBe("maxRounds");
+        expect(result.statistics.rounds).toBe(100);
+        expect(result.convergence).toBeDefined();
+        expect(result.convergence!.consecutiveStableChecks).toBe(0);
+        expect(result.convergence!.checksPerformed).toBe(10);
+    });
+
+    test("two runs with the same seed and convergence options stop at the same round with identical results (deterministic)", async () => {
+        const runOnce = () => {
+            const game = createFakeGame();
+            const runner = new ParallelSimulationRunner("/fake/root", 2000, {
+                seed: "reproducible",
+                loadGame: () => Promise.resolve(game),
+                convergence: {minRounds: 50, rtpTolerance: 0.5, checkIntervalRounds: 25},
+            });
+            return runner.run();
+        };
+
+        const first = await runOnce();
+        const second = await runOnce();
+
+        expect(second.statistics).toEqual(first.statistics);
+        expect(second.stopReason).toBe(first.stopReason);
+        expect(second.convergence).toEqual(first.convergence);
+    });
+
+    test("rejects invalid convergence options with a clear validation error", async () => {
+        const game = createFakeGame();
+        const makeRunner = (overrides: Partial<SimulationConvergenceOptions>) =>
+            new ParallelSimulationRunner("/fake/root", 100, {
+                loadGame: () => Promise.resolve(game),
+                convergence: {minRounds: 10, rtpTolerance: 0.01, checkIntervalRounds: 10, ...overrides},
+            });
+
+        await expect(makeRunner({minRounds: -1}).run()).rejects.toThrow(/minRounds.*non-negative integer/);
+        await expect(makeRunner({rtpTolerance: 0}).run()).rejects.toThrow(/rtpTolerance.*positive number/);
+        await expect(makeRunner({checkIntervalRounds: 0}).run()).rejects.toThrow(/checkIntervalRounds.*positive integer/);
+        await expect(makeRunner({stableChecks: 0}).run()).rejects.toThrow(/stableChecks.*positive integer/);
+    });
+});
+
+describe("ParallelSimulationRunner convergence (workers>1, via injected coordinator)", () => {
+    function makeAccumulatorSnapshot(rounds: number) {
+        return {
+            rounds,
+            hitCount: 0,
+            totalBet: rounds,
+            totalPayout: 0,
+            maxWin: 0,
+            meanPayout: 0,
+            meanSquareDelta: 0,
+            meanReturnRatio: 0,
+            meanReturnRatioSquareDelta: 0,
+            payoutHistogram: {},
+        };
+    }
+
+    function makeFakeCoordinator(
+        handleRun: (requests: SimulationWorkerRequest[], options: SimulationWorkerCoordinatorRunOptions) => Promise<SimulationWorkerResult[]>,
+    ): SimulationWorkerCoordinator {
+        return {run: handleRun} as unknown as SimulationWorkerCoordinator;
+    }
+
+    test("threads convergence options into every worker's request, using checkIntervalRounds as progressChunkSize", async () => {
+        let capturedRequests: SimulationWorkerRequest[] = [];
+        const runner = new ParallelSimulationRunner("/fake/root", 100, {
+            workers: 4,
+            convergence: {minRounds: 5, rtpTolerance: 0.01, checkIntervalRounds: 7},
+            createWorkerCoordinator: () =>
+                makeFakeCoordinator((requests) => {
+                    capturedRequests = requests;
+                    return Promise.resolve(
+                        requests.map((request) => ({
+                            workerIndex: request.workerIndex,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(request.rounds),
+                            roundsCompleted: request.rounds,
+                            stopReason: "maxRounds" as const,
+                        })),
+                    );
+                }),
+        });
+
+        await runner.run();
+
+        expect(capturedRequests).toHaveLength(4);
+        capturedRequests.forEach((request) => {
+            expect(request.convergence).toEqual({minRounds: 5, rtpTolerance: 0.01, checkIntervalRounds: 7});
+            expect(request.progressChunkSize).toBe(7);
+        });
+    });
+
+    test("aggregates stopReason across workers: sessionStopped beats converged beats maxRounds", async () => {
+        const makeRunner = (stopReasons: Array<"maxRounds" | "sessionStopped" | "converged">) =>
+            new ParallelSimulationRunner("/fake/root", 10, {
+                workers: stopReasons.length,
+                createWorkerCoordinator: () =>
+                    makeFakeCoordinator((requests) =>
+                        Promise.resolve(
+                            requests.map((request, index) => ({
+                                workerIndex: request.workerIndex,
+                                manifest,
+                                accumulator: makeAccumulatorSnapshot(request.rounds),
+                                roundsCompleted: request.rounds,
+                                stopReason: stopReasons[index],
+                            })),
+                        ),
+                    ),
+            });
+
+        expect((await makeRunner(["maxRounds", "maxRounds"]).run()).stopReason).toBe("maxRounds");
+        expect((await makeRunner(["maxRounds", "converged"]).run()).stopReason).toBe("converged");
+        expect((await makeRunner(["converged", "sessionStopped", "maxRounds"]).run()).stopReason).toBe("sessionStopped");
+    });
+
+    test("treats a worker result without stopReason as 'maxRounds' (backward compatible with an older SimulationWorkerResult)", async () => {
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            workers: 2,
+            createWorkerCoordinator: () =>
+                makeFakeCoordinator((requests) =>
+                    Promise.resolve(
+                        requests.map((request) => ({
+                            workerIndex: request.workerIndex,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(request.rounds),
+                            roundsCompleted: request.rounds,
+                        })),
+                    ),
+                ),
+        });
+
+        const result = await runner.run();
+
+        expect(result.stopReason).toBe("maxRounds");
+    });
+
+    test("aggregates convergence outcomes: checksPerformed sums, consecutiveStableChecks takes the min, achievedRtpHalfWidth takes the max", async () => {
+        const runner = new ParallelSimulationRunner("/fake/root", 10, {
+            workers: 2,
+            convergence: {minRounds: 5, rtpTolerance: 0.01, checkIntervalRounds: 5},
+            createWorkerCoordinator: () =>
+                makeFakeCoordinator((requests) =>
+                    Promise.resolve([
+                        {
+                            workerIndex: 0,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(requests[0].rounds),
+                            roundsCompleted: requests[0].rounds,
+                            stopReason: "converged" as const,
+                            convergence: {
+                                minRounds: 5,
+                                rtpTolerance: 0.01,
+                                checkIntervalRounds: 5,
+                                stableChecks: 3,
+                                checksPerformed: 4,
+                                consecutiveStableChecks: 3,
+                                achievedRtpHalfWidth: 0.002,
+                            },
+                        },
+                        {
+                            workerIndex: 1,
+                            manifest,
+                            accumulator: makeAccumulatorSnapshot(requests[1].rounds),
+                            roundsCompleted: requests[1].rounds,
+                            stopReason: "maxRounds" as const,
+                            convergence: {
+                                minRounds: 5,
+                                rtpTolerance: 0.01,
+                                checkIntervalRounds: 5,
+                                stableChecks: 3,
+                                checksPerformed: 2,
+                                consecutiveStableChecks: 1,
+                                achievedRtpHalfWidth: 0.02,
+                            },
+                        },
+                    ]),
+                ),
+        });
+
+        const result = await runner.run();
+
+        expect(result.convergence).toEqual({
+            minRounds: 5,
+            rtpTolerance: 0.01,
+            checkIntervalRounds: 5,
+            stableChecks: 3,
+            checksPerformed: 6,
+            consecutiveStableChecks: 1,
+            achievedRtpHalfWidth: 0.02,
+        });
     });
 });

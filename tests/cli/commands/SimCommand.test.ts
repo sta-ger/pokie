@@ -99,6 +99,43 @@ describe("SimCommand", () => {
         );
     });
 
+    it("throws a descriptive error when only some of --min-rounds/--rtp-tolerance/--check-interval are given", async () => {
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
+
+        await expect(command.run(["./game", "--min-rounds", "1000"])).rejects.toThrow(
+            /--min-rounds, --rtp-tolerance and --check-interval must all be provided together/,
+        );
+        await expect(command.run(["./game", "--min-rounds", "1000", "--rtp-tolerance", "0.01"])).rejects.toThrow(
+            /--min-rounds, --rtp-tolerance and --check-interval must all be provided together/,
+        );
+    });
+
+    it("throws a descriptive error when --stable-checks is given without the other convergence flags", async () => {
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
+
+        await expect(command.run(["./game", "--stable-checks", "5"])).rejects.toThrow(
+            /--stable-checks requires --min-rounds, --rtp-tolerance and --check-interval/,
+        );
+    });
+
+    it("throws a descriptive error for a negative --min-rounds", async () => {
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
+
+        await expect(command.run(["./game", "--min-rounds", "-1"])).rejects.toThrow(/--min-rounds must be a non-negative integer/);
+    });
+
+    it("throws a descriptive error for a non-positive --rtp-tolerance", async () => {
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
+
+        await expect(command.run(["./game", "--rtp-tolerance", "0"])).rejects.toThrow(/--rtp-tolerance must be a positive number/);
+    });
+
+    it("throws a descriptive error for a non-positive --check-interval", async () => {
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
+
+        await expect(command.run(["./game", "--check-interval", "0"])).rejects.toThrow(/--check-interval must be a positive integer/);
+    });
+
     it("defaults to workers=1 and reports it in the JSON report, using the in-process path (no workerEntryUrl needed)", async () => {
         const writeFile = jest.fn();
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
@@ -123,6 +160,94 @@ describe("SimCommand", () => {
         expect(printed).toContain("workers         1");
 
         logSpy.mockRestore();
+    });
+
+    it("without convergence flags, the report has stopReason 'maxRounds' and no convergence field", async () => {
+        const writeFile = jest.fn();
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./crazy-fruits", "--rounds", "30", "--out", "report.json"]);
+
+        const [, contents] = writeFile.mock.calls[0];
+        const report = JSON.parse(contents) as SimulationReport;
+        expect(report.rounds).toBe(30);
+        expect(report.stopReason).toBe("maxRounds");
+        expect(report.convergence).toBeUndefined();
+
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("stops early once adaptive convergence criteria are satisfied, and reports it in JSON and the console summary", async () => {
+        const writeFile = jest.fn();
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([
+            "./crazy-fruits",
+            "--rounds",
+            "10000",
+            "--min-rounds",
+            "50",
+            "--rtp-tolerance",
+            "5",
+            "--check-interval",
+            "25",
+            "--out",
+            "report.json",
+        ]);
+
+        const [, contents] = writeFile.mock.calls[0];
+        const report = JSON.parse(contents) as SimulationReport;
+        // Checks at 25 (below minRounds), 50/75/100 (three consecutive satisfying checks, given the
+        // generous tolerance) -> converges at 100, well short of the 10000 requested.
+        expect(report.stopReason).toBe("converged");
+        expect(report.rounds).toBe(100);
+        expect(report.requestedRounds).toBe(10000);
+        expect(report.convergence).toEqual({
+            minRounds: 50,
+            rtpTolerance: 5,
+            checkIntervalRounds: 25,
+            stableChecks: 3,
+            checksPerformed: 4,
+            consecutiveStableChecks: 3,
+            achievedRtpHalfWidth: expect.any(Number),
+        });
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("stop reason     converged");
+        expect(printed).toContain("convergence     minRounds 50");
+
+        logSpy.mockRestore();
+    });
+
+    it("falls back to the full requested rounds when convergence criteria are never satisfied", async () => {
+        const writeFile = jest.fn();
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([
+            "./crazy-fruits",
+            "--rounds",
+            "60",
+            "--min-rounds",
+            "10000", // unreachable within --rounds
+            "--rtp-tolerance",
+            "0.01",
+            "--check-interval",
+            "20",
+            "--out",
+            "report.json",
+        ]);
+
+        const [, contents] = writeFile.mock.calls[0];
+        const report = JSON.parse(contents) as SimulationReport;
+        expect(report.stopReason).toBe("maxRounds");
+        expect(report.rounds).toBe(60);
+        expect(report.requestedRounds).toBe(60);
+        expect(report.convergence!.consecutiveStableChecks).toBe(0);
+
+        (console.log as jest.Mock).mockRestore();
     });
 
     // --workers > 1 with no configured workerEntryUrl falls back to ParallelSimulationRunner's own
@@ -739,6 +864,37 @@ describe("SimCommand (integration, real loadPokieGame + fixture game package)", 
         const command = new SimCommand(loadPokieGame);
 
         await expect(command.run([path.join(outDir, "does-not-exist")])).rejects.toThrow(/package\.json/);
+    });
+
+    it("stops a real game package's simulation early once adaptive convergence is satisfied", async () => {
+        const command = new SimCommand(loadPokieGame);
+        const outFile = path.join(outDir, "report.json");
+
+        await command.run([
+            fixtureRoot,
+            "--rounds",
+            "50000",
+            "--seed",
+            "demo",
+            // An effectively-infinite tolerance means the only real gate is minRounds/stableChecks --
+            // deterministic regardless of the fixture game's actual RTP variance, so this can't flake.
+            "--min-rounds",
+            "500",
+            "--rtp-tolerance",
+            "10",
+            "--check-interval",
+            "250",
+            "--out",
+            outFile,
+        ]);
+
+        const report = JSON.parse(fs.readFileSync(outFile, "utf-8")) as SimulationReport;
+        expect(report.stopReason).toBe("converged");
+        expect(report.rounds).toBeLessThan(report.requestedRounds);
+        expect(report.convergence!.minRounds).toBe(500);
+        expect(report.convergence!.checkIntervalRounds).toBe(250);
+        // No "stopped early" warning for a converged run -- this is the feature working as intended.
+        expect(report.warnings!.some((warning) => warning.includes("stopped early"))).toBe(false);
     });
 });
 

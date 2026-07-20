@@ -356,6 +356,23 @@ describe("SimulationReportBuilder", () => {
 
             expect(report.warnings!.some((warning) => warning.includes("Actual rounds (1) is less than requested rounds (100)"))).toBe(true);
         });
+
+        test("does not warn about stopping early when stopReason is 'converged'", () => {
+            const accumulator = new SimulationAccumulator();
+            accumulator.addRound(1, 5);
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 100,
+                seed: "demo",
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                stopReason: "converged",
+            });
+
+            expect(report.warnings!.some((warning) => warning.includes("stopped early"))).toBe(false);
+        });
     });
 
     describe("recommendations", () => {
@@ -843,5 +860,73 @@ describe("SimulationReportBuilder betMode", () => {
         });
 
         expect(report.reproducibility!.command).toBe("pokie sim ./game --rounds 100 --mode buy-bonus");
+    });
+});
+
+describe("SimulationReportBuilder convergence/stopReason", () => {
+    const manifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+
+    test("without stopReason/convergence in the input, the report doesn't have them either -- fully backward compatible", () => {
+        const statistics = new SimulationAccumulator().getStatistics();
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({manifest, requestedRounds: 100, statistics, durationMs: 10});
+
+        expect(report.stopReason).toBeUndefined();
+        expect(report.convergence).toBeUndefined();
+    });
+
+    test("passes stopReason through unchanged", () => {
+        const statistics = new SimulationAccumulator().getStatistics();
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({manifest, requestedRounds: 100, statistics, durationMs: 10, stopReason: "maxRounds"});
+
+        expect(report.stopReason).toBe("maxRounds");
+    });
+
+    test("passes the convergence outcome through unchanged", () => {
+        const statistics = new SimulationAccumulator().getStatistics();
+        const builder = new SimulationReportBuilder();
+        const convergence = {
+            minRounds: 1000,
+            rtpTolerance: 0.01,
+            checkIntervalRounds: 500,
+            stableChecks: 3,
+            checksPerformed: 4,
+            consecutiveStableChecks: 3,
+            achievedRtpHalfWidth: 0.004,
+        };
+
+        const report = builder.build({manifest, requestedRounds: 5000, statistics, durationMs: 10, stopReason: "converged", convergence});
+
+        expect(report.convergence).toEqual(convergence);
+    });
+
+    test("includes convergence flags in the reproducibility re-run command when convergence was set", () => {
+        const statistics = new SimulationAccumulator().getStatistics();
+        const builder = new SimulationReportBuilder();
+
+        const report = builder.build({
+            manifest,
+            requestedRounds: 100,
+            statistics,
+            durationMs: 10,
+            packageRoot: "./game",
+            stopReason: "maxRounds",
+            convergence: {
+                minRounds: 10,
+                rtpTolerance: 0.02,
+                checkIntervalRounds: 5,
+                stableChecks: 3,
+                checksPerformed: 20,
+                consecutiveStableChecks: 0,
+                achievedRtpHalfWidth: 0.5,
+            },
+        });
+
+        expect(report.reproducibility!.command).toBe(
+            "pokie sim ./game --rounds 100 --min-rounds 10 --rtp-tolerance 0.02 --check-interval 5 --stable-checks 3",
+        );
     });
 });

@@ -3,13 +3,18 @@ import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
 import {FixedBetModeForNextSimulationRoundSetting} from "../FixedBetModeForNextSimulationRoundSetting.js";
 import type {SimulationBreakdownComponent} from "../SimulationBreakdownComponent.js";
+import {SimulationConvergenceChecker} from "../SimulationConvergenceChecker.js";
+import type {SimulationConvergenceOptions} from "../SimulationConvergenceOptions.js";
+import type {SimulationConvergenceOutcome} from "../SimulationConvergenceOutcome.js";
 import type {SimulationStatistics} from "../SimulationStatistics.js";
 import {SimulationStatisticsMerger} from "../SimulationStatisticsMerger.js";
+import type {SimulationStopReason} from "../SimulationStopReason.js";
 import {runChunkedSimulation} from "./internal/runChunkedSimulation.js";
 import {MAX_SIMULATION_WORKERS} from "./ParallelSimulationLimits.js";
 import {SimulationCancelledError} from "./SimulationCancelledError.js";
 import {SimulationWorkerCoordinator} from "./SimulationWorkerCoordinator.js";
 import type {SimulationWorkerRequest} from "./SimulationWorkerRequest.js";
+import type {SimulationWorkerResult} from "./SimulationWorkerResult.js";
 import {splitRoundsAcrossWorkers} from "./splitRoundsAcrossWorkers.js";
 import {WorkerSeedStrategy} from "./WorkerSeedStrategy.js";
 
@@ -57,6 +62,13 @@ export type ParallelSimulationRunOptions = {
     // it receives, see SimulationWorkerRequest.betModeId). A session that doesn't support bet modes at
     // all is unaffected either way — fully backward compatible for games without configured betModes.
     betModeId?: string;
+    // Opt-in adaptive early stop (see SimulationConvergenceOptions) — absent by default, so an existing
+    // caller is completely unaffected: `rounds` is always played in full, exactly as before this
+    // existed. When set, evaluated independently per execution unit (the whole run for workers===1, or
+    // each worker's own share for workers>1 — see runAcrossWorkers()'s own doc comment for why),
+    // reusing the exact same SimulationAccumulator/ConfidenceIntervalCalculator every other simulation
+    // path already relies on — no simulation math is duplicated for this feature.
+    convergence?: SimulationConvergenceOptions;
 };
 
 export type ParallelSimulationResult = {
@@ -69,6 +81,12 @@ export type ParallelSimulationResult = {
     // SimulationReportBuilder) label the resulting report without threading its own copy of the option
     // through separately.
     betMode?: string;
+    // Why the run stopped — "maxRounds" whenever every requested round was played. Always populated
+    // (not only when options.convergence was set), since AggregateSimulationRunner/runChunkedSimulation
+    // already track this for the pre-existing "session stopped itself early" case.
+    stopReason: SimulationStopReason;
+    // Present only when options.convergence was set — see SimulationConvergenceOutcome.
+    convergence?: SimulationConvergenceOutcome;
 };
 
 // The public entry point for running a simulation, sequentially or in parallel, programmatically —
@@ -96,6 +114,7 @@ export class ParallelSimulationRunner {
     public run(): Promise<ParallelSimulationResult> {
         try {
             const workers = this.validateWorkers(this.options.workers ?? 1);
+            this.validateConvergence(this.options.convergence);
             if (this.options.signal?.aborted) {
                 return Promise.reject(new SimulationCancelledError());
             }
@@ -118,12 +137,16 @@ export class ParallelSimulationRunner {
         // Simulations measure RTP/volatility, not risk of ruin — same as every other simulation path.
         session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
 
-        const chunkSize = Math.max(1, this.options.chunkSize ?? this.rounds);
+        const convergence = this.options.convergence;
+        const convergenceChecker = convergence ? new SimulationConvergenceChecker(convergence) : undefined;
+        // A convergence check can only happen at a chunk boundary, so checkIntervalRounds — not a
+        // caller-supplied chunkSize — becomes the effective chunk size once convergence is enabled.
+        const chunkSize = Math.max(1, convergence?.checkIntervalRounds ?? this.options.chunkSize ?? this.rounds);
         const yieldToEventLoop = this.options.yieldToEventLoop ?? defaultYieldToEventLoop;
         const betModeSelector =
             this.options.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(this.options.betModeId) : undefined;
 
-        const {accumulator, breakdown} = await runChunkedSimulation(
+        const {accumulator, breakdown, stopReason} = await runChunkedSimulation(
             session,
             this.rounds,
             chunkSize,
@@ -135,6 +158,9 @@ export class ParallelSimulationRunner {
                         await yieldToEventLoop();
                     }
                 },
+                checkConvergence: convergenceChecker
+                    ? (acc, roundsCompleted) => convergenceChecker.check(acc, roundsCompleted).converged
+                    : undefined,
             },
             betModeSelector,
         );
@@ -146,9 +172,20 @@ export class ParallelSimulationRunner {
             workers: 1,
             workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, 1),
             betMode: this.options.betModeId,
+            stopReason,
+            convergence: convergenceChecker?.buildOutcome(),
         };
     }
 
+    // When options.convergence is set, each worker evaluates it independently against its own share's
+    // running accumulator (see SimulationWorkerRequest.convergence/simulationWorkerEntry.ts) — there is
+    // no live cross-worker coordination of a single global running RTP. This keeps the multi-worker
+    // path exactly as deterministic/reproducible as it already was (see WorkerSeedStrategy/
+    // docs/simulation.md's reproducibility guarantees): each worker's stop point depends only on its
+    // own derived seed and its own share of rounds, never on message-arrival timing across threads,
+    // which real coordination would make non-deterministic. The tradeoff — documented in
+    // docs/simulation.md — is that minRounds/checkIntervalRounds/rtpTolerance should be sized relative
+    // to each worker's share (roughly rounds/workers), not to the total requested rounds.
     private async runAcrossWorkers(workers: number): Promise<ParallelSimulationResult> {
         const requests = this.buildRequests(workers);
         const coordinator = this.options.createWorkerCoordinator
@@ -171,11 +208,14 @@ export class ParallelSimulationRunner {
             workers,
             workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, workers),
             betMode: this.options.betModeId,
+            stopReason: this.aggregateStopReason(results),
+            convergence: this.aggregateConvergence(results),
         };
     }
 
     private buildRequests(workers: number): SimulationWorkerRequest[] {
-        const progressChunkSize = this.options.chunkSize ?? DEFAULT_PROGRESS_CHUNK_SIZE;
+        const convergence = this.options.convergence;
+        const progressChunkSize = convergence?.checkIntervalRounds ?? this.options.chunkSize ?? DEFAULT_PROGRESS_CHUNK_SIZE;
         const requests: SimulationWorkerRequest[] = [];
         splitRoundsAcrossWorkers(this.rounds, workers).forEach((share, workerIndex) => {
             // A worker with a zero-round share (rounds < workers) is never spawned — there is nothing
@@ -192,9 +232,47 @@ export class ParallelSimulationRunner {
                 seed: WorkerSeedStrategy.deriveSeed(this.options.seed, workerIndex, workers),
                 progressChunkSize,
                 betModeId: this.options.betModeId,
+                convergence,
             });
         });
         return requests;
+    }
+
+    // sessionStopped takes precedence over converged (a session ending early is the more notable/
+    // surprising outcome of the two), which in turn takes precedence over maxRounds. A worker result
+    // without stopReason (an older hand-built SimulationWorkerResult) is treated as "maxRounds" — the
+    // same "absent means the pre-existing behavior" default used everywhere else in this file.
+    private aggregateStopReason(results: SimulationWorkerResult[]): SimulationStopReason {
+        const reasons = results.map((result) => result.stopReason ?? "maxRounds");
+        if (reasons.some((reason) => reason === "sessionStopped")) {
+            return "sessionStopped";
+        }
+        if (reasons.some((reason) => reason === "converged")) {
+            return "converged";
+        }
+        return "maxRounds";
+    }
+
+    // Summarizes every worker's independently-evaluated convergence outcome (see runAcrossWorkers()'s
+    // own doc comment on why there's one checker per worker, not one global checker) into a single
+    // report-level figure: checksPerformed sums (total work done across every worker),
+    // consecutiveStableChecks takes the minimum (the weakest-converged worker), achievedRtpHalfWidth
+    // takes the maximum (the least-precise worker's estimate) — a conservative summary, never a made-up
+    // "global" statistic recomputed from the merged accumulator.
+    private aggregateConvergence(results: SimulationWorkerResult[]): SimulationConvergenceOutcome | undefined {
+        const outcomes = results.map((result) => result.convergence).filter((outcome): outcome is SimulationConvergenceOutcome => Boolean(outcome));
+        if (outcomes.length === 0) {
+            return undefined;
+        }
+        return {
+            minRounds: outcomes[0].minRounds,
+            rtpTolerance: outcomes[0].rtpTolerance,
+            checkIntervalRounds: outcomes[0].checkIntervalRounds,
+            stableChecks: outcomes[0].stableChecks,
+            checksPerformed: outcomes.reduce((sum, outcome) => sum + outcome.checksPerformed, 0),
+            consecutiveStableChecks: Math.min(...outcomes.map((outcome) => outcome.consecutiveStableChecks)),
+            achievedRtpHalfWidth: Math.max(...outcomes.map((outcome) => outcome.achievedRtpHalfWidth)),
+        };
     }
 
     private reportProgress(progressByWorker: Map<number, number>, progress: {workerIndex: number; roundsCompleted: number}): void {
@@ -204,6 +282,24 @@ export class ParallelSimulationRunner {
             total += roundsCompleted;
         });
         this.options.onProgress?.(total);
+    }
+
+    private validateConvergence(convergence: SimulationConvergenceOptions | undefined): void {
+        if (!convergence) {
+            return;
+        }
+        if (!Number.isInteger(convergence.minRounds) || convergence.minRounds < 0) {
+            throw new Error(`"convergence.minRounds" must be a non-negative integer, got ${convergence.minRounds}.`);
+        }
+        if (!Number.isFinite(convergence.rtpTolerance) || convergence.rtpTolerance <= 0) {
+            throw new Error(`"convergence.rtpTolerance" must be a positive number, got ${convergence.rtpTolerance}.`);
+        }
+        if (!Number.isInteger(convergence.checkIntervalRounds) || convergence.checkIntervalRounds <= 0) {
+            throw new Error(`"convergence.checkIntervalRounds" must be a positive integer, got ${convergence.checkIntervalRounds}.`);
+        }
+        if (convergence.stableChecks !== undefined && (!Number.isInteger(convergence.stableChecks) || convergence.stableChecks <= 0)) {
+            throw new Error(`"convergence.stableChecks" must be a positive integer, got ${convergence.stableChecks}.`);
+        }
     }
 
     private validateWorkers(workers: number): number {

@@ -115,6 +115,63 @@ describe("simulationWorkerEntry (real worker_threads + real fixture package)", (
         expect(typeof errorMessage.message).toBe("string");
     });
 
+    test("without a convergence request, stopReason is 'maxRounds' and no convergence field is posted (legacy path unaffected)", async () => {
+        const {messages, worker} = await runWorker({
+            workerIndex: 0,
+            totalWorkers: 1,
+            packageRoot: fixtureRoot,
+            rounds: 50,
+            seed: "demo",
+            progressChunkSize: 1000,
+        });
+        await worker.terminate();
+
+        const result = messages.find((m) => m.type === "result");
+        if (result?.type !== "result") {
+            throw new Error("expected a result message");
+        }
+        expect(result.stopReason).toBe("maxRounds");
+        expect(result.convergence).toBeUndefined();
+        expect(result.roundsCompleted).toBe(50);
+    });
+
+    test("stops before playing every requested round once its own convergence check is satisfied", async () => {
+        const {messages, worker} = await runWorker({
+            workerIndex: 0,
+            totalWorkers: 1,
+            packageRoot: fixtureRoot,
+            rounds: 1000,
+            seed: "demo",
+            // A convergence check can only happen at a chunk boundary — the real ParallelSimulationRunner
+            // sets progressChunkSize to convergence.checkIntervalRounds automatically (see
+            // ParallelSimulationRunner.buildRequests()); this test drives the worker entry point
+            // directly, so it must do the same by hand.
+            progressChunkSize: 50,
+            // An effectively-infinite tolerance means the only real gate is minRounds/stableChecks —
+            // deterministic regardless of the fixture game's actual RTP variance, so this can't flake.
+            convergence: {minRounds: 100, rtpTolerance: 10, checkIntervalRounds: 50, stableChecks: 2},
+        });
+        await worker.terminate();
+
+        const result = messages.find((m) => m.type === "result");
+        if (result?.type !== "result") {
+            throw new Error("expected a result message");
+        }
+        // Checks at 50 (below minRounds), 100 (1st satisfying), 150 (2nd satisfying) -> converges at 150.
+        expect(result.stopReason).toBe("converged");
+        expect(result.roundsCompleted).toBe(150);
+        expect(result.accumulator.rounds).toBe(150);
+        expect(result.convergence).toEqual({
+            minRounds: 100,
+            rtpTolerance: 10,
+            checkIntervalRounds: 50,
+            stableChecks: 2,
+            checksPerformed: 3,
+            consecutiveStableChecks: 2,
+            achievedRtpHalfWidth: expect.any(Number),
+        });
+    });
+
     test("two workers with the same seed but different rounds/workerIndex play independent (different) streams", async () => {
         const [a, b] = await Promise.all([
             runWorker({workerIndex: 0, totalWorkers: 2, packageRoot: fixtureRoot, rounds: 300, seed: "demo::worker0/2", progressChunkSize: 1000}),

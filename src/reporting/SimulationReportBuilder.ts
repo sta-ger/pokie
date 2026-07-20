@@ -21,7 +21,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
     public static readonly MIN_FEATURE_ROUNDS_FOR_ZERO_WIN_WARNING: number = 20;
 
     public build(input: SimulationReportInput): SimulationReport {
-        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy, betMode, targetRtp} = input;
+        const {manifest, requestedRounds, seed, statistics, durationMs, packageRoot, workerSeedStrategy, betMode, targetRtp, stopReason, convergence} =
+            input;
         const workers = input.workers ?? 1;
         const spinsPerSecond = Math.round(statistics.rounds / (Math.max(durationMs, 1) / 1000));
 
@@ -65,6 +66,8 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             volatility: statistics.volatility,
             payoutHistogram: {...statistics.payoutHistogram},
             maxWinFrequency: this.computeMaxWinFrequency(statistics.payoutHistogram, rounds),
+            stopReason,
+            convergence,
         };
 
         const breakdown = this.buildBreakdown(input.breakdown, core.totalBet);
@@ -118,6 +121,18 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         if (core.betMode !== undefined) {
             parts.push("--mode", core.betMode);
         }
+        if (core.convergence) {
+            parts.push(
+                "--min-rounds",
+                String(core.convergence.minRounds),
+                "--rtp-tolerance",
+                String(core.convergence.rtpTolerance),
+                "--check-interval",
+                String(core.convergence.checkIntervalRounds),
+                "--stable-checks",
+                String(core.convergence.stableChecks),
+            );
+        }
 
         return {
             game: core.game,
@@ -154,7 +169,10 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
             warnings.push("Total bet is 0 — no rounds appear to have been played.");
         }
 
-        if (core.rounds < core.requestedRounds) {
+        // A "converged" stop is the adaptive-stop feature working as intended, not a problem — only the
+        // pre-existing "session stopped itself early" case (stopReason "sessionStopped", or absent on
+        // an older report that predates this field) is actually worth flagging here.
+        if (core.rounds < core.requestedRounds && core.stopReason !== "converged") {
             warnings.push(
                 `Actual rounds (${core.rounds}) is less than requested rounds (${core.requestedRounds}) — ` +
                     "the game stopped early (canPlayNextGame() returning false).",

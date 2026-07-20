@@ -960,6 +960,8 @@ Options:
 - `--out <file>` — write the JSON report to `<file>`.
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary. Independent of
   `--out`: combine both to see the report and save it in the same run.
+- `--min-rounds <number>`, `--rtp-tolerance <number>`, `--check-interval <number>`, `--stable-checks <number>` —
+  opt-in adaptive early stop. See [Adaptive early stop (convergence)](#adaptive-early-stop-convergence) below.
 
 The session's credit balance is set to `Number.MAX_SAFE_INTEGER` before the run starts — `pokie sim` measures
 RTP/volatility, not risk of ruin, so `--rounds` is never cut short by the session running out of credits.
@@ -1002,6 +1004,16 @@ The JSON report shape:
             hitFrequency: number;
             maxWin: number;
         }>;
+    };
+    stopReason?: "maxRounds" | "sessionStopped" | "converged"; // why `rounds` stopped where it did
+    convergence?: {               // present only when --min-rounds/--rtp-tolerance/--check-interval were given
+        minRounds: number;
+        rtpTolerance: number;
+        checkIntervalRounds: number;
+        stableChecks: number;
+        checksPerformed: number;
+        consecutiveStableChecks: number;
+        achievedRtpHalfWidth: number;
     };
 }
 ```
@@ -1120,6 +1132,62 @@ Failure modes:
 - `--mode <id>` against a session that doesn't support `BetModeSelecting` at all, or `--mode all` against a game
   that doesn't declare any bet modes, both fail with a clear, descriptive error — never a silent fallback to the
   plain base game.
+
+### Adaptive early stop (convergence)
+
+By default `pokie sim` plays exactly `--rounds` rounds — the pre-existing, unchanged fixed-round behavior. Passing
+`--min-rounds`, `--rtp-tolerance`, and `--check-interval` **together** opts a run into stopping early once the
+running RTP estimate has stabilized, instead of always playing every requested round:
+
+```
+pokie sim ./crazy-fruits --rounds 5000000 --seed demo \
+  --min-rounds 100000 --rtp-tolerance 0.002 --check-interval 25000 --out report.json
+```
+
+- `--min-rounds <number>` — no early stop can trigger before this many rounds have been played, even if the
+  estimate already looks stable by chance on a tiny sample.
+- `--rtp-tolerance <number>` — the run is considered converged once the running RTP's 95% confidence interval
+  half-width (the same figure already exposed as `SimulationStatistics.rtpConfidenceInterval95` — never
+  recomputed for this feature) is at or under this value, in RTP units (`0.002` = the true RTP is estimated to
+  within ±0.2 percentage points).
+- `--check-interval <number>` — how many rounds to play between convergence checks. With convergence enabled,
+  this also becomes the run's effective chunk size (any `--check-interval` you'd otherwise want as a separate
+  progress granularity doesn't apply here — a check can only happen at a chunk boundary).
+- `--stable-checks <number>` (optional, default `3`) — how many consecutive checks must satisfy `--rtp-tolerance`
+  back to back before the run actually stops. A failing check resets the streak to zero — this is what keeps a
+  single lucky/noisy interval from ending the run early.
+
+All three of `--min-rounds`/`--rtp-tolerance`/`--check-interval` must be given together — providing only one or
+two is a usage error, and `--stable-checks` on its own (without the other three) is also a usage error, so a
+mistyped flag name is never silently ignored. With `--rounds` capping the maximum, the report's existing
+`rounds`/`requestedRounds` fields already say everything about how many rounds were actually played vs. requested
+— convergence just adds *why*:
+
+- `stopReason` — `"maxRounds"` (every requested round was played — the only possibility without convergence
+  enabled, and still possible with it enabled if the criteria are never satisfied within `--rounds`),
+  `"sessionStopped"` (the pre-existing `canPlayNextGame()`/play-strategy early stop), or `"converged"` (the
+  adaptive stop criteria were satisfied). `pokie sim`'s usual "actual rounds is less than requested rounds"
+  warning is suppressed for a `"converged"` stop — that's the feature working as intended, not a problem.
+- `convergence` — echoes the options used plus what actually happened: `checksPerformed`, `consecutiveStableChecks`
+  at the point the run stopped, and `achievedRtpHalfWidth` at the last check. Absent whenever convergence wasn't
+  enabled for that run, same as `betMode`/`targetRtp` being absent for a run that never locked a bet mode.
+
+**`--workers > 1` and convergence**: each worker evaluates `--min-rounds`/`--rtp-tolerance`/`--check-interval`
+independently against its own share of the rounds — there's no live coordination of a single global running RTP
+across worker threads. This keeps a multi-worker converging run exactly as deterministic/reproducible as
+`--workers > 1` already was (see [Reproducibility guarantees](simulation.md#reproducibility-guarantees)): each
+worker's stop point depends only on its own derived seed and its own share, never on message-arrival timing
+between threads, which real cross-worker coordination would make non-deterministic. The practical consequence is
+that `--min-rounds`/`--check-interval` should be sized relative to each worker's share (roughly `--rounds /
+--workers`), not to the total `--rounds` — a `--min-rounds` picked for the whole run will rarely be reached by any
+individual worker's smaller share. The report's `stopReason` and `convergence` fields summarize across every
+worker (`"sessionStopped"` beats `"converged"` beats `"maxRounds"`; `checksPerformed` sums, `consecutiveStableChecks`
+takes the minimum, `achievedRtpHalfWidth` takes the maximum — the weakest-converged, least-precise worker, not a
+made-up global statistic).
+
+The legacy fixed-round `Simulation`/`SimulationConfig` class (see [Simulation](simulation.md)) is entirely
+unaffected by this feature — it has no concept of convergence and never will; adaptive early stop only exists on
+the `AggregateSimulationRunner`/`ParallelSimulationRunner`/`pokie sim` path.
 
 ## `pokie report <simulationReportJson>`
 

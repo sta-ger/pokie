@@ -1,6 +1,8 @@
 import type {PokieGameManifest} from "../gamepackage/PokieGameManifest.js";
 import type {SimulationBreakdownComponent} from "../simulation/SimulationBreakdownComponent.js";
+import type {SimulationConvergenceOutcome} from "../simulation/SimulationConvergenceOutcome.js";
 import type {SimulationStatistics} from "../simulation/SimulationStatistics.js";
+import type {SimulationStopReason} from "../simulation/SimulationStopReason.js";
 
 export type SimulationReportInput = {
     manifest: PokieGameManifest;
@@ -31,4 +33,8 @@ export type SimulationReportInput = {
     // report and computes the trivial rtp - targetRtp deviation. Meaningless without `betMode` also
     // being set, but not enforced here — an absent targetRtp simply means the game didn't declare one.
     targetRtp?: number;
+    // From ParallelSimulationResult.stopReason — see SimulationReport.stopReason's own doc comment.
+    stopReason?: SimulationStopReason;
+    // From ParallelSimulationResult.convergence — see SimulationReport.convergence's own doc comment.
+    convergence?: SimulationConvergenceOutcome;
 };

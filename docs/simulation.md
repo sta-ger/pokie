@@ -337,6 +337,60 @@ that wants to clamp/validate a user-supplied worker count itself before construc
 - Studio's simulation service behaves the same way: a project must be a real on-disk package (which every open
   Studio project already is) for its "Workers" field to be anything other than 1.
 
+## Adaptive early stop (`SimulationConvergenceOptions`)
+
+`ParallelSimulationRunner`/`pokie sim` support an **opt-in** adaptive early stop, on top of the pre-existing
+fixed-round behavior — absent by default, so an existing caller/CLI invocation is completely unaffected: `rounds`
+is always played in full unless `ParallelSimulationRunOptions.convergence` is explicitly set. The legacy
+`Simulation`/`SimulationConfig` class (see above) has no concept of this feature at all and never will.
+
+```ts
+import {ParallelSimulationRunner} from "pokie";
+
+const runner = new ParallelSimulationRunner("./crazy-fruits", 5_000_000, {
+    seed: "demo",
+    convergence: {
+        minRounds: 100_000, // no stop before this many rounds, however stable the estimate looks early
+        rtpTolerance: 0.002, // stop once the RTP's 95% CI half-width is within +/-0.2 percentage points
+        checkIntervalRounds: 25_000, // how often to check -- also becomes the run's effective chunk size
+        stableChecks: 3, // consecutive satisfying checks required before actually stopping (default 3)
+    },
+});
+
+const result = await runner.run();
+
+result.stopReason; // "maxRounds" | "sessionStopped" | "converged"
+result.convergence; // echoes the options + checksPerformed/consecutiveStableChecks/achievedRtpHalfWidth
+```
+
+`SimulationConvergenceChecker` is the class doing the actual evaluation — it reads
+`SimulationAccumulator.getStatistics().rtpConfidenceInterval95` (itself built on the existing
+`ConfidenceIntervalCalculator`) after every chunk and never recomputes RTP/variance/confidence intervals itself,
+so no simulation math is duplicated for this feature. It's stateful only in a "how many consecutive checks passed"
+counter, reset to zero by any check that doesn't satisfy `minRounds`/`rtpTolerance` — this is what makes the stop
+require *sustained* convergence rather than a single lucky/noisy interval.
+
+**Workers > 1**: convergence is evaluated **independently per worker**, against that worker's own share of the
+rounds — there is no live coordination of one global running RTP across worker threads. This is a deliberate
+choice, not a shortcut: real cross-worker coordination would mean workers reporting partial running totals back to
+a coordinator and being told to stop mid-run, which makes the exact stop point depend on message-arrival timing —
+breaking the [reproducibility guarantee](#reproducibility-guarantees) that a fixed `(packageRoot, rounds, seed,
+workers)` always produces the same result for a fixed `workers` count. Evaluating per-worker-share instead keeps
+every worker's stop point a pure function of its own derived seed and its own share, so a converging multi-worker
+run is exactly as deterministic as a non-converging one always was. The practical consequence: size
+`minRounds`/`checkIntervalRounds` relative to `rounds / workers`, not to the total `rounds` — a `minRounds` sized
+for the whole run will rarely be reached by any individual worker's smaller share.
+
+`ParallelSimulationResult.stopReason`/`.convergence` (and, from there, `SimulationReport.stopReason`/`.convergence`
+— see [`pokie sim`'s JSON report](cli.md#pokie-sim-packageroot)) summarize across every worker when `workers > 1`:
+`stopReason` precedence is `"sessionStopped"` (a session ending early is the most notable outcome) beats
+`"converged"` beats `"maxRounds"`; `convergence.checksPerformed` sums across workers, `consecutiveStableChecks`
+takes the minimum (the weakest-converged worker), `achievedRtpHalfWidth` takes the maximum (the least-precise
+worker's estimate) — a conservative summary, never a made-up statistic recomputed from the merged accumulator.
+
+See [`pokie sim`'s `--min-rounds`/`--rtp-tolerance`/`--check-interval`/`--stable-checks`
+flags](cli.md#adaptive-early-stop-convergence) for the CLI surface of this same feature.
+
 ## Feature-level breakdown (`SimulationRoundCategoryDetermining`)
 
 `AggregateSimulationRunner` can additionally attribute each round to a **category** (`"base"`, `"freeGames"`,
