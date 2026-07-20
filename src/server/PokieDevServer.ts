@@ -133,6 +133,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             transactionalWallet,
             options.idempotencyRepository ?? new InMemoryIdempotencyRepository(),
             options.spinOperationLog,
+            options.singleInstanceDeployment ?? false,
         );
 
         if (options.preGeneratedOutcomeLibrary !== undefined) {

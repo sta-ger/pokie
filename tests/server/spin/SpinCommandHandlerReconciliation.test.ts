@@ -234,6 +234,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
             wallet,
             idempotencyRepository,
             operationLog,
+            false, // singleInstanceDeployment: irrelevant — an explicit reconciliationService is supplied below
             reconciliationServiceWithZeroQuiescence(wallet, sessionRepository, idempotencyRepository, operationLog),
         );
         const retry = await handler2.handle("session-1", "request-1");
@@ -291,6 +292,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
             wallet,
             flakyIdempotencyRepository,
             operationLog,
+            false, // singleInstanceDeployment: irrelevant — an explicit reconciliationService is supplied below
             reconciliationServiceWithZeroQuiescence(wallet, flakyRepository, flakyIdempotencyRepository, operationLog),
         );
         const retry = await handler2.handle("session-1", "request-1");
@@ -346,6 +348,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
             wallet,
             idempotencyRepository,
             operationLog,
+            false, // singleInstanceDeployment: irrelevant — an explicit reconciliationService is supplied below
             reconciliationServiceWithZeroQuiescence(wallet, sessionRepository, idempotencyRepository, operationLog),
         );
         const retry = await handler2.handle("session-1", "request-1");
@@ -401,6 +404,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
             wallet,
             idempotencyRepository,
             operationLog,
+            false, // singleInstanceDeployment: irrelevant — an explicit reconciliationService is supplied below
             reconciliationServiceWithZeroQuiescence(wallet, flakyRepository, idempotencyRepository, operationLog),
         );
         const retry = await handler2.handle("session-1", "request-1");
@@ -458,6 +462,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
             wallet,
             idempotencyRepository,
             operationLog,
+            false, // singleInstanceDeployment: irrelevant — an explicit reconciliationService is supplied below
             reconciliationServiceWithZeroQuiescence(wallet, flakyRepository, idempotencyRepository, operationLog),
         );
         const retry = await handler2.handle("session-1", "request-1");
@@ -499,6 +504,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
             wallet,
             idempotencyRepository,
             operationLog,
+            false, // singleInstanceDeployment: irrelevant — an explicit reconciliationService is supplied below
             reconciliationServiceWithZeroQuiescence(wallet, sessionRepository, idempotencyRepository, operationLog),
         );
         const retry = await handler2.handle("session-1", "request-1");
@@ -580,7 +586,11 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
             updatedAt: longAgo,
         });
 
-        const handler = new SpinCommandHandler(game, sessionRepository, blockingWallet, idempotencyRepository, operationLog);
+        // singleInstanceDeployment: true — this test is specifically about same-instance queue
+        // serialization being sufficient authority on its own; see the class doc comment's own
+        // "Multi-instance safety" section and the dedicated cross-instance test below, which proves the
+        // opposite (plain default construction) is what a multi-instance deployment actually gets.
+        const handler = new SpinCommandHandler(game, sessionRepository, blockingWallet, idempotencyRepository, operationLog, true);
 
         // Both calls issued back-to-back, synchronously, with no await in between: enqueue()'s own
         // sessionQueues bookkeeping (reading/writing the queue for "session-1") runs synchronously, so
@@ -670,6 +680,74 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
 
         expect(liveResult).toMatchObject({status: "played"});
         expect(stats.playCalls).toBe(1); // exactly the one, genuine play — process B never touched anything
+        await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "committed"});
+    });
+
+    it("cross-instance: a slow live handler A is never mutated by a second handler B's own reconcileOne(), with both built from nothing but plain default construction", async () => {
+        const {game, stats} = createInstrumentedGame();
+        const sessionRepository = new InMemorySessionRepository();
+        const realWallet = new InMemoryWallet();
+        const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
+        const operationLog = new InMemorySpinOperationLog();
+
+        let releaseDebit: () => void = () => undefined;
+        const debitGate = new Promise<void>((resolve) => {
+            releaseDebit = resolve;
+        });
+        let notifyDebitStarted: () => void = () => undefined;
+        const debitStartedSignal = new Promise<void>((resolve) => {
+            notifyDebitStarted = resolve;
+        });
+        const blockingWallet: TransactionalWalletPort & WalletTransactionInspecting = {
+            getBalance: (sessionId) => realWallet.getBalance(sessionId),
+            setBalance: (sessionId, balance) => realWallet.setBalance(sessionId, balance),
+            debit: async (sessionId, transactionId, amount) => {
+                notifyDebitStarted();
+                await debitGate; // held open until the test explicitly releases it — a genuinely slow, still-live spin
+                return realWallet.debit(sessionId, transactionId, amount);
+            },
+            credit: (sessionId, transactionId, amount) => realWallet.credit(sessionId, transactionId, amount),
+            reverse: (sessionId, transactionId) => realWallet.reverse(sessionId, transactionId),
+            getTransactionStatus: (sessionId, transactionId) => realWallet.getTransactionStatus(sessionId, transactionId),
+        };
+        await seedSession(sessionRepository, blockingWallet, "session-1", 1000);
+
+        // Instance A: the live, slow handler — plain default construction, exactly what a normal
+        // deployment builds, no reconciliation-specific wiring at all, no singleInstanceDeployment opt-in.
+        const handlerA = new SpinCommandHandler(game, sessionRepository, blockingWallet, idempotencyRepository, operationLog);
+        const livePromise = handlerA.handle("session-1", "request-1");
+
+        await debitStartedSignal; // instance A has written "started" and is now genuinely mid-flight
+
+        // Age the checkpoint well past the default quiescence window while instance A is still genuinely
+        // live (e.g. an ordinarily slow spin, or clock drift between two processes) — isolating what's
+        // actually still protecting instance A's attempt down to the ownership gate itself, not quiescence.
+        const stillLive = await operationLog.load("session-1", "request-1");
+        expect(stillLive?.checkpoint).toBe("started");
+        if (stillLive !== undefined) {
+            await operationLog.record({...stillLive, updatedAt: new Date(Date.now() - 3600 * 1000).toISOString()});
+        }
+
+        // Instance B: a second, completely separate SpinCommandHandler — also plain default construction,
+        // sharing only the durable stores with instance A, nothing else (in particular, none of instance
+        // A's own in-memory enqueue() queue). Exactly the multi-instance deployment topology
+        // VersionedSessionRepository's own doc comment already anticipates. No singleInstanceDeployment
+        // opt-in here either — the point of this test is that the *default* refuses to mutate.
+        const handlerB = new SpinCommandHandler(game, sessionRepository, blockingWallet, idempotencyRepository, operationLog);
+        const outcomeB = await handlerB.reconcileOne("session-1", "request-1");
+
+        expect(outcomeB).toMatchObject({status: "manual-recovery-required"});
+        // Zero mutation from instance B's refused attempt: checkpoint, wallet, and idempotency store are
+        // all untouched — no reversed debit, no fabricated result for a spin that hasn't actually finished.
+        await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "started"});
+        await expect(idempotencyRepository.load("session-1", "request-1")).resolves.toBeUndefined();
+
+        // Instance A, completely undisturbed by instance B's refused reconciliation, finishes normally.
+        releaseDebit();
+        const liveResult = await livePromise;
+
+        expect(liveResult).toMatchObject({status: "played"});
+        expect(stats.playCalls).toBe(1); // exactly the one, genuine play — instance B never touched anything
         await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "committed"});
     });
 });

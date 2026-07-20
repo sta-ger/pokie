@@ -115,6 +115,23 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 // settlement is confirmed to have never applied, or returning a "recovery-required" SpinCommandResult
 // when neither can be established safely — so a repeated requestId can never re-debit the wallet or
 // re-play the round, whichever of those interruption windows it landed in.
+//
+// Multi-instance safety: none of the above — including this handler's own reconcileOne()/reconcileAll()
+// wrapper methods, and the inline retry-time check in handleSerialized() itself — is granted any
+// mutating authority by default (see singleInstanceDeployment below). It's tempting to assume this
+// handler's own per-session enqueue() queue is enough on its own ("structural ownership" — see
+// SpinReconciliationService's own doc comment), and it genuinely is *sufficient* against races with
+// itself — but sessionRepository/wallet/idempotencyRepository/operationLog can just as easily be shared
+// by a *second* SpinCommandHandler instance, in this same process or another one entirely (exactly the
+// deployment VersionedSessionRepository's own doc comment already describes — two PokieDevServer
+// processes sharing one FileSessionRepository directory). That second instance's own enqueue() queue is
+// a completely separate in-memory Map with zero visibility into this one's — so treating "my own queue
+// says I'm clear" as proof nothing else is live would let one instance reverse or resume a record a
+// *different* instance is still actively mid-flight on. Without an explicit opt-in, every one of this
+// handler's own reconciliation paths defers to SpinReconciliationService's own conservative default
+// (manual-recovery-required for anything it can't independently prove safe via
+// WalletTransactionInspecting/SpinOperationLeasing) rather than ever trusting its own queue as sufficient
+// authority on its own.
 export class SpinCommandHandler implements SpinCommandHandling {
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
@@ -132,16 +149,30 @@ export class SpinCommandHandler implements SpinCommandHandling {
         wallet: TransactionalWalletPort,
         idempotencyRepository: IdempotencyRepository<SpinCommandResult> = new InMemoryIdempotencyRepository(),
         operationLog: SpinOperationLog = new InMemorySpinOperationLog(),
+        // Additive, explicit opt-in — defaults to false, the safe posture for any deployment that can't
+        // rule out a second SpinCommandHandler instance sharing these same stores. Set this to true only
+        // when you can certify this is the *sole* SpinCommandHandler instance — in this process or any
+        // other — ever operating against sessionRepository/wallet/idempotencyRepository/operationLog; that
+        // certification is exactly what makes this instance's own enqueue() queue (see the class doc
+        // comment's own "Multi-instance safety" section) sufficient authority for its default
+        // reconciliationService below to auto-reverse/auto-resume rather than reporting
+        // manual-recovery-required. Irrelevant whenever a caller supplies its own reconciliationService
+        // directly (the next parameter) — it only shapes what this handler builds by default.
+        singleInstanceDeployment = false,
         // Additive: defaults to a SpinReconciliationService built from the four collaborators above,
-        // constructed with structurallyOwned = true — every call into this handler's own reconciliation
-        // (both the inline check in handleSerialized and the reconcileOne()/reconcileAll() wrapper methods
-        // below) is already serialized through enqueue(), the real, structural same-instance guarantee
-        // SpinReconciliationService's own doc comment describes, so it never needs to fall back to
-        // SpinOperationLeasing itself. Accepting an already-constructed instance directly, rather than
-        // individual config knobs for it, is what lets a caller (e.g. a test simulating a crash without a
-        // real wait) configure things like a shorter quiescence window or an injected clock without this
-        // class needing to know those knobs exist.
-        reconciliationService: SpinReconciliationServicing = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true),
+        // constructed with structurallyOwned = singleInstanceDeployment. Accepting an already-constructed
+        // instance directly, rather than individual config knobs for it, is what lets a caller (e.g. a
+        // test simulating a crash without a real wait, or a deployment wiring its own
+        // exclusiveStartupAuthority-based ops reconciliation) configure things like a shorter quiescence
+        // window, an injected clock, or a wholly different authority model without this class needing to
+        // know those knobs exist.
+        reconciliationService: SpinReconciliationServicing = new SpinReconciliationService(
+            wallet,
+            sessionRepository,
+            idempotencyRepository,
+            operationLog,
+            singleInstanceDeployment,
+        ),
     ) {
         this.game = game;
         this.sessionRepository = sessionRepository;
@@ -160,12 +191,13 @@ export class SpinCommandHandler implements SpinCommandHandling {
     // requestId retried through handle() would trigger internally (see reconcilePendingAttempt()) — but
     // callable directly, e.g. from an ops tool. Routed through the same per-session enqueue() queue
     // handle() itself uses, so this can never run concurrently with a handle() call for the same
-    // sessionId on this instance: either it runs before that call's own turn in the queue starts, or
-    // after it has already fully finished — never mid-flight. That's a real, same-instance guarantee, not
-    // just documentation — see reconciliationService's own doc comment for why racing a live attempt
-    // matters and what this does and doesn't protect against (a durable operationLog shared across
-    // multiple process/instances is not covered by this queue at all; that's what
-    // SpinReconciliationService's own quiescence window is for).
+    // sessionId *on this instance*: either it runs before that call's own turn in the queue starts, or
+    // after it has already fully finished — never mid-flight. That's a real guarantee, not just
+    // documentation — but it only ever covers this one instance's own queue. Whether that's actually
+    // *sufficient* authority to auto-reverse/auto-resume, as opposed to reporting
+    // manual-recovery-required, is entirely determined by whether this handler was constructed with
+    // singleInstanceDeployment: true (see the constructor's own doc comment and the class doc comment's
+    // "Multi-instance safety" section) — this method itself has no separate say in that.
     public reconcileOne(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {
         return this.enqueue(sessionId, () => this.reconciliationService.reconcileOne(sessionId, requestId));
     }
