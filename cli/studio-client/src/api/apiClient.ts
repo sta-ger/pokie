@@ -1,4 +1,5 @@
 import type {
+    FairnessCommitment,
     GamePackageInspectionReport,
     OutcomeLibrarySelector,
     PokieGameManifest,
@@ -10,10 +11,15 @@ import type {
     StudioBlueprintValidationView,
     StudioBuildPreviewView,
     StudioBuildResult,
+    StudioCertificationBuildView,
+    StudioCertificationSourceValidateView,
     StudioContext,
     StudioDeploymentModeInput,
     StudioDeploymentRunView,
     StudioDeploymentTargetSummary,
+    StudioFairnessConfigureView,
+    StudioFairnessGenerateView,
+    StudioFairnessVerifyView,
     StudioHomeRecentProjectView,
     StudioOutcomeLibraryCompareView,
     StudioOutcomeLibraryDeepValidateView,
@@ -743,4 +749,93 @@ export async function validateOutcomeLibraryDeep(fetchImpl: FetchLike, bundleDir
         throw new Error(await extractErrorMessage(response, "Failed to deep-validate the outcome library bundle"));
     }
     return (await response.json()) as StudioOutcomeLibraryDeepValidateView;
+}
+
+// The Certification tab's own preflight (see StudioCertificationSourceValidateView) — the exact same
+// deep bundle validation the Build step's own builder runs internally, exposed here so it can be run
+// (and inspected) before committing to a build.
+export async function validateCertificationSourceBundle(fetchImpl: FetchLike, bundleDir: string): Promise<StudioCertificationSourceValidateView> {
+    const response = await fetchImpl("/api/project/certification/validate-source", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({bundleDir}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to validate the source outcome-library bundle"));
+    }
+    return (await response.json()) as StudioCertificationSourceValidateView;
+}
+
+export type CertificationBuildModeInput = {modeName: string; seed: string; sampleCount: number};
+
+export async function buildCertificationEvidenceBundle(
+    fetchImpl: FetchLike,
+    bundleDir: string,
+    modes: CertificationBuildModeInput[],
+    outDir: string,
+): Promise<StudioCertificationBuildView> {
+    const response = await fetchImpl("/api/project/certification/build", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({bundleDir, modes, outDir}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to build the certification/evidence bundle"));
+    }
+    return (await response.json()) as StudioCertificationBuildView;
+}
+
+// The Provably Fair tab's "Configure" step (see StudioFairnessConfigureView) — computes both
+// commit-reveal artifacts a real round would publish in sequence, against the live bundle's own
+// libraryId/libraryHash for the requested mode.
+export async function configureFairnessRound(
+    fetchImpl: FetchLike,
+    request: {bundleDir: string; modeName: string; serverSeed: string; clientSeed: string; nonce: number},
+): Promise<StudioFairnessConfigureView> {
+    const response = await fetchImpl("/api/project/fairness/configure", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to configure the Provably Fair round"));
+    }
+    return (await response.json()) as StudioFairnessConfigureView;
+}
+
+export async function generateFairnessProof(
+    fetchImpl: FetchLike,
+    bundleDir: string,
+    commitment: FairnessCommitment,
+    serverSeed: string,
+): Promise<StudioFairnessGenerateView> {
+    const response = await fetchImpl("/api/project/fairness/generate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({bundleDir, commitment, serverSeed}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to generate the Provably Fair round proof"));
+    }
+    return (await response.json()) as StudioFairnessGenerateView;
+}
+
+// `proof`/`commitment` are `unknown` at the wire level (a pasted external proof/commitment is exactly
+// as valid an input as one generated in this same session) -- FairnessRoundProofVerifier itself
+// validates both structurally and never throws, so nothing here narrows their shape either.
+export async function verifyFairnessProof(
+    fetchImpl: FetchLike,
+    proof: unknown,
+    commitment: unknown,
+    sourceBundleDir: string | undefined,
+): Promise<StudioFairnessVerifyView> {
+    const response = await fetchImpl("/api/project/fairness/verify", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({proof, commitment, sourceBundleDir}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to verify the Provably Fair round proof"));
+    }
+    return (await response.json()) as StudioFairnessVerifyView;
 }

@@ -640,3 +640,106 @@ export type StudioOutcomeLibraryCompareView = {
 export type StudioOutcomeLibraryDeepValidateView =
     | {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "load-error"; error: string};
+
+// POST /api/project/certification/validate-source's own DTO — see
+// cli/studio/certification/StudioCertificationSourceValidateView.ts's own doc comment.
+export type StudioCertificationSourceValidateView = {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]} | {status: "load-error"; error: string};
+
+// Mirrors pokie's own CertificationEvidenceBundleModeEntry/CertificationEvidenceDeepValidation/
+// CertificationEvidenceBundleManifest (src/certification/CertificationEvidenceBundleManifest.ts) --
+// every hash/metric here is read verbatim off the source outcome-library bundle's own manifest, never
+// recomputed by Studio.
+export type CertificationEvidenceBundleModeEntry = {
+    modeName: string;
+    betMode: string;
+    stake: number;
+    libraryId: string;
+    libraryHash: string;
+    outcomeCount: number;
+    totalWeight: number;
+    analysis: WeightedOutcomeLibraryAnalysis;
+    sampleSeed: string;
+    sampleCount: number;
+    samplesFile: string;
+    samplesHash: string;
+};
+
+export type CertificationEvidenceDeepValidation = {ranAt: string; issues: ValidationIssue[]};
+
+export type CertificationEvidenceBundleManifest = {
+    schemaVersion: number;
+    generatedBy: string;
+    pokieVersion: string;
+    generatedAt: string;
+    game: PokieGameManifest;
+    configHash?: string;
+    artifactPokieVersion: string;
+    sourceBundleDir: string;
+    sourceBundleManifestHash: string;
+    modes: CertificationEvidenceBundleModeEntry[];
+    deepValidation: CertificationEvidenceDeepValidation;
+    files: string[];
+    evidenceContentHash: string;
+};
+
+// POST /api/project/certification/build's own DTO — see
+// cli/studio/certification/StudioCertificationBuildView.ts's own doc comment. Mirrors
+// CertificationEvidenceBundleBuilder's own "no partial bundle" contract: `manifest` is present iff
+// `status` is "ok".
+export type StudioCertificationBuildView =
+    | {status: "ok"; manifest: CertificationEvidenceBundleManifest; files: string[]; warnings: ValidationIssue[]}
+    | {status: "error"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
+    | {status: "load-error"; error: string};
+
+// Mirrors pokie's own FairnessServerSeedCommitment/FairnessCommitment/FairnessRoundProof
+// (src/fairness/). See docs/provably-fair.md for the full commit-reveal flow these three artifacts
+// form.
+export type FairnessServerSeedCommitment = {schemaVersion: number; algorithmVersion: string; serverSeedHash: string; issuedAt: string};
+
+export type FairnessCommitment = {
+    schemaVersion: number;
+    algorithmVersion: string;
+    serverSeedHash: string;
+    clientSeed: string;
+    nonce: number;
+    libraryId: string;
+    libraryHash: string;
+    modeName: string;
+    issuedAt: string;
+};
+
+export type FairnessRoundProof = {
+    schemaVersion: number;
+    algorithmVersion: string;
+    serverSeed: string;
+    serverSeedHash: string;
+    clientSeed: string;
+    nonce: number;
+    libraryId: string;
+    libraryHash: string;
+    modeName: string;
+    indexHash: string;
+    outcomeId: string;
+    weight: number;
+    recordHash: string;
+    commitmentHash: string;
+    revealedAt: string;
+};
+
+// POST /api/project/fairness/configure's own DTO — see
+// cli/studio/fairness/StudioFairnessConfigureView.ts's own doc comment.
+export type StudioFairnessConfigureView =
+    | {status: "ok"; serverSeedCommitment: FairnessServerSeedCommitment; commitment: FairnessCommitment}
+    | {status: "invalid"; message: string}
+    | {status: "load-error"; error: string};
+
+// POST /api/project/fairness/generate's own DTO — see
+// cli/studio/fairness/StudioFairnessGenerateView.ts's own doc comment.
+export type StudioFairnessGenerateView =
+    | {status: "ok"; proof: FairnessRoundProof}
+    | {status: "build-error"; code: string; message: string}
+    | {status: "load-error"; error: string};
+
+// POST /api/project/fairness/verify's own DTO — see
+// cli/studio/fairness/StudioFairnessVerifyView.ts's own doc comment.
+export type StudioFairnessVerifyView = {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]} | {status: "load-error"; error: string};

@@ -18,8 +18,18 @@ import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./bluepri
 import {validateParSheetExportRequest, ParSheetExportRequestInput} from "./blueprint/validateParSheetExportRequest.js";
 import {validateParSheetImportRequest, ParSheetImportRequestInput} from "./blueprint/validateParSheetImportRequest.js";
 import {validateSaveBlueprintRequest, SaveBlueprintRequestInput} from "./blueprint/validateSaveBlueprintRequest.js";
+import {StudioCertificationService} from "./certification/StudioCertificationService.js";
+import {validateCertificationBuildRequest, CertificationBuildRequestInput} from "./certification/validateCertificationBuildRequest.js";
+import {
+    validateCertificationSourceValidateRequest,
+    CertificationSourceValidateRequestInput,
+} from "./certification/validateCertificationSourceValidateRequest.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
+import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
+import {validateFairnessConfigureRequest, FairnessConfigureRequestInput} from "./fairness/validateFairnessConfigureRequest.js";
+import {validateFairnessGenerateRequest, FairnessGenerateRequestInput} from "./fairness/validateFairnessGenerateRequest.js";
+import {validateFairnessVerifyRequest, FairnessVerifyRequestInput} from "./fairness/validateFairnessVerifyRequest.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {validateOutcomeLibrarySelectRequest, OutcomeLibrarySelectRequestInput} from "./outcomeLibrary/validateOutcomeLibrarySelectRequest.js";
@@ -95,6 +105,8 @@ export class StudioServer implements StudioServerHandling {
     private readonly runtimeManager: StudioRuntimeManager;
     private readonly deploymentService: StudioDeploymentService;
     private readonly outcomeLibraryService: StudioOutcomeLibraryService;
+    private readonly certificationService: StudioCertificationService;
+    private readonly fairnessService: StudioFairnessService;
     private readonly toolHandlers: StudioToolHandling[];
     private currentContext: StudioContext;
     // undefined exactly when currentContext.mode === "home" — kept as a separate field (rather than
@@ -119,6 +131,8 @@ export class StudioServer implements StudioServerHandling {
         this.runtimeManager = options.runtimeManager ?? new StudioRuntimeManager(this.loadGame);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.outcomeLibraryService = options.outcomeLibraryService ?? new StudioOutcomeLibraryService();
+        this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
+        this.fairnessService = options.fairnessService ?? new StudioFairnessService();
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -465,6 +479,31 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/project/outcome-libraries/validate-deep") {
             await this.handleValidateOutcomeLibraryDeep(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/certification/validate-source") {
+            await this.handleValidateCertificationSourceBundle(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/certification/build") {
+            await this.handleBuildCertificationEvidenceBundle(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/fairness/configure") {
+            await this.handleConfigureFairnessRound(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/fairness/generate") {
+            await this.handleGenerateFairnessProof(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/fairness/verify") {
+            await this.handleVerifyFairnessProof(req, res);
             return;
         }
 
@@ -932,6 +971,100 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, await this.outcomeLibraryService.validateBundleDeep(this.currentContext.projectRoot, validated.bundleDir, validated.modeName));
+    }
+
+    private async handleValidateCertificationSourceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateCertificationSourceValidateRequest((body ?? {}) as CertificationSourceValidateRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.certificationService.validateSourceBundle(this.currentContext.projectRoot, validated.bundleDir));
+    }
+
+    private async handleBuildCertificationEvidenceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateCertificationBuildRequest((body ?? {}) as CertificationBuildRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(
+            res,
+            200,
+            await this.certificationService.build(this.currentContext.projectRoot, validated.bundleDir, validated.modes, validated.outDir),
+        );
+    }
+
+    private async handleConfigureFairnessRound(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateFairnessConfigureRequest((body ?? {}) as FairnessConfigureRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.fairnessService.configure(this.currentContext.projectRoot, validated));
+    }
+
+    private async handleGenerateFairnessProof(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateFairnessGenerateRequest((body ?? {}) as FairnessGenerateRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.fairnessService.generateProof(this.currentContext.projectRoot, validated));
+    }
+
+    private async handleVerifyFairnessProof(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateFairnessVerifyRequest((body ?? {}) as FairnessVerifyRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.fairnessService.verify(this.currentContext.projectRoot, validated));
     }
 
     // projectRoot/sourcePath are always resolved here, from the current project's own build-info.json

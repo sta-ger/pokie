@@ -1,6 +1,8 @@
 import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
+import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
+import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
@@ -61,5 +63,16 @@ export type StudioServerOptions = {
     // OutcomeLibraryBundle/StakeEngine services; no `loadGame`/`pokieVersion` needed, same reasoning as
     // deploymentService.
     outcomeLibraryService?: StudioOutcomeLibraryService;
+    // Drives the Project Dashboard's Certification tab (POST /api/project/certification/validate-source,
+    // /build) — built directly on top of pokie's own CertificationEvidenceBundleBuilder/
+    // OutcomeLibraryBundleValidator; no `loadGame` needed (same reasoning as deploymentService), but
+    // does need `pokieVersion` (embedded in the built manifest's own `generatedBy`/`pokieVersion`
+    // fields), same reasoning as homeService/blueprintService.
+    certificationService?: StudioCertificationService;
+    // Drives the Project Dashboard's Provably Fair tab (POST /api/project/fairness/configure, /generate,
+    // /verify) — built directly on top of pokie's own commit-reveal services (FairnessRoundProofBuilder/
+    // FairnessRoundProofVerifier/computeFairnessCommitment); no `loadGame`/`pokieVersion` needed, same
+    // reasoning as outcomeLibraryService.
+    fairnessService?: StudioFairnessService;
     toolHandlers?: StudioToolHandling[];
 };

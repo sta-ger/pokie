@@ -40,21 +40,33 @@ import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
+import {CertificationTab} from "./CertificationTab";
 import {DeploymentTab} from "./DeploymentTab";
 import {MechanicsEditorTab} from "./MechanicsEditorTab";
 import {OutcomeLibrariesTab} from "./OutcomeLibrariesTab";
 import {OverviewTab} from "./OverviewTab";
+import {ProvablyFairTab} from "./ProvablyFairTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
 import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 import {ValidationTab} from "./ValidationTab";
 
-export type ProjectTab = "overview" | "validation" | "simulation" | "replay" | "runtime" | "deployment" | "outcomeLibraries" | "mechanicsEditor";
+export type ProjectTab =
+    | "overview"
+    | "validation"
+    | "simulation"
+    | "replay"
+    | "runtime"
+    | "deployment"
+    | "outcomeLibraries"
+    | "mechanicsEditor"
+    | "certification"
+    | "provablyFair";
 
 // Primary happy-path tabs (Overview -> Validate -> Simulate, which now also owns Reports) come first,
-// unlabeled/implicit; Replay/Runtime/Deployment/Outcome Libraries/Mechanics Editor are tagged
-// `section: "Advanced"` so NavTabs visually separates them -- everything's still one click away, just
-// no longer presented as equal-weight to the main flow.
+// unlabeled/implicit; Replay/Runtime/Deployment/Outcome Libraries/Mechanics Editor/Certification/
+// Provably Fair are tagged `section: "Advanced"` so NavTabs visually separates them -- everything's
+// still one click away, just no longer presented as equal-weight to the main flow.
 const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "overview", label: "Overview"},
     {value: "validation", label: "Validate"},
@@ -64,6 +76,8 @@ const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "deployment", label: "Deployment", section: "Advanced"},
     {value: "outcomeLibraries", label: "Outcome Libraries", section: "Advanced"},
     {value: "mechanicsEditor", label: "Mechanics Editor", section: "Advanced"},
+    {value: "certification", label: "Certification", section: "Advanced"},
+    {value: "provablyFair", label: "Provably Fair", section: "Advanced"},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
@@ -890,6 +904,16 @@ export function ProjectDashboardPage() {
                         // all of its own draft state locally (via useBlueprintEditor), so a genuine project
                         // switch is handled by a full remount rather than page-level cleanup.
                         <MechanicsEditorTab key={projectKey ?? "no-project"} onDirtyChange={handleMechanicsEditorDirtyChange} />
+                    )}
+                    {activeTab === "certification" && (
+                        // Same reasoning as OutcomeLibrariesTab's own key above -- CertificationTab owns
+                        // all of its own stepper state locally (no page-level hook).
+                        <CertificationTab key={projectKey ?? "no-project"} />
+                    )}
+                    {activeTab === "provablyFair" && (
+                        // Same reasoning as OutcomeLibrariesTab's own key above -- ProvablyFairTab owns
+                        // all of its own stepper state locally (no page-level hook).
+                        <ProvablyFairTab key={projectKey ?? "no-project"} />
                     )}
                 </div>
             )}

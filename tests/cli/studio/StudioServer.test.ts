@@ -35,6 +35,8 @@ import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioRep
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
+import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../fairness/FairnessRoundProofTestFixtures.js";
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url);
@@ -3315,6 +3317,273 @@ describe("StudioServer", () => {
             expect(view.generation).toBeUndefined();
             expect(view.delivery).toBeUndefined();
             expect(fs.existsSync(path.join(deploymentProjectRoot, "deployment"))).toBe(false);
+        });
+    });
+
+    describe("Project Dashboard: Certification (POST /api/project/certification/validate-source, /build)", () => {
+        let certStudioRoot: string;
+        let certProjectRoot: string;
+        let certServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            certStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-cert-studio-test-"));
+            writeStudioAssets(certStudioRoot);
+            certProjectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-cert-project-test-"));
+        });
+
+        afterEach(async () => {
+            await certServer?.stop();
+            fs.rmSync(certStudioRoot, {recursive: true, force: true});
+            fs.rmSync(certProjectRoot, {recursive: true, force: true});
+        });
+
+        async function startServerForProject(projectRoot: string | undefined): Promise<string> {
+            const homeService = new StudioHomeService("1.3.0");
+            certServer = new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: certStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", certStudioRoot, homeService),
+                initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
+            });
+            const address = await certServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("returns 409 for both routes when there is no active project", async () => {
+            const homeBaseUrl = await startServerForProject(undefined);
+
+            const validateResponse = await post(`${homeBaseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"});
+            expect(validateResponse.status).toBe(409);
+
+            const buildResponse = await post(`${homeBaseUrl}/api/project/certification/build`, {
+                bundleDir: "bundle",
+                outDir: "certification",
+                modes: [{modeName: "base", seed: "s", sampleCount: 1}],
+            });
+            expect(buildResponse.status).toBe(409);
+        });
+
+        it("rejects malformed request bodies with 400 for both routes", async () => {
+            const projectBaseUrl = await startServerForProject(certProjectRoot);
+
+            const missingBundleDir = await post(`${projectBaseUrl}/api/project/certification/validate-source`, {});
+            expect(missingBundleDir.status).toBe(400);
+            expect((missingBundleDir.body as {error: string}).error).toMatch(/bundleDir/);
+
+            const missingModes = await post(`${projectBaseUrl}/api/project/certification/build`, {bundleDir: "bundle", outDir: "certification"});
+            expect(missingModes.status).toBe(400);
+            expect((missingModes.body as {error: string}).error).toMatch(/modes/);
+        });
+
+        it("validates a real source bundle deeply, then builds a certification bundle from it", async () => {
+            await buildSourceOutcomeLibraryBundle(path.join(certProjectRoot, "bundle"), ["base"]);
+            const projectBaseUrl = await startServerForProject(certProjectRoot);
+
+            const validateResponse = await post(`${projectBaseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"});
+            expect(validateResponse.status).toBe(200);
+            expect(validateResponse.body).toEqual({status: "ok", errors: [], warnings: []});
+
+            const buildResponse = await post(`${projectBaseUrl}/api/project/certification/build`, {
+                bundleDir: "bundle",
+                outDir: "certification",
+                modes: [{modeName: "base", seed: "cert-seed-1", sampleCount: 5}],
+            });
+            expect(buildResponse.status).toBe(200);
+            const view = buildResponse.body as {status: string; manifest?: {modes: {modeName: string}[]}; files?: string[]};
+            expect(view.status).toBe("ok");
+            expect(view.manifest?.modes.map((mode) => mode.modeName)).toEqual(["base"]);
+            expect(fs.existsSync(path.join(certProjectRoot, "certification", "manifest.json"))).toBe(true);
+        });
+
+        it("returns an error view (no manifest) when a requested mode isn't in the source bundle", async () => {
+            await buildSourceOutcomeLibraryBundle(path.join(certProjectRoot, "bundle"), ["base"]);
+            const projectBaseUrl = await startServerForProject(certProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/certification/build`, {
+                bundleDir: "bundle",
+                outDir: "certification",
+                modes: [{modeName: "bonus", seed: "cert-seed-1", sampleCount: 5}],
+            });
+
+            expect(status).toBe(200);
+            const view = body as {status: string; errors: unknown[]; manifest?: unknown};
+            expect(view.status).toBe("error");
+            expect(view.errors.length).toBeGreaterThan(0);
+            expect(view.manifest).toBeUndefined();
+        });
+
+        it("returns a load-error view (never a 400) for a bundleDir that resolves outside the project root", async () => {
+            const projectBaseUrl = await startServerForProject(certProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/certification/validate-source`, {bundleDir: "../outside"});
+
+            expect(status).toBe(200);
+            const view = body as {status: string; error?: string};
+            expect(view.status).toBe("load-error");
+            expect(view.error).toContain("outside the project root");
+        });
+    });
+
+    describe("Project Dashboard: Provably Fair (POST /api/project/fairness/configure, /generate, /verify)", () => {
+        let fairnessStudioRoot: string;
+        let fairnessProjectRoot: string;
+        let fairnessServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            fairnessStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-fairness-studio-test-"));
+            writeStudioAssets(fairnessStudioRoot);
+            fairnessProjectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-fairness-project-test-"));
+        });
+
+        afterEach(async () => {
+            await fairnessServer?.stop();
+            fs.rmSync(fairnessStudioRoot, {recursive: true, force: true});
+            fs.rmSync(fairnessProjectRoot, {recursive: true, force: true});
+        });
+
+        async function startServerForProject(projectRoot: string | undefined): Promise<string> {
+            const homeService = new StudioHomeService("1.3.0");
+            fairnessServer = new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: fairnessStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", fairnessStudioRoot, homeService),
+                initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
+            });
+            const address = await fairnessServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("returns 409 for all three routes when there is no active project", async () => {
+            const homeBaseUrl = await startServerForProject(undefined);
+
+            const configureResponse = await post(`${homeBaseUrl}/api/project/fairness/configure`, {
+                bundleDir: "bundle",
+                modeName: "base",
+                serverSeed: "s",
+                clientSeed: "c",
+                nonce: 0,
+            });
+            expect(configureResponse.status).toBe(409);
+
+            const generateResponse = await post(`${homeBaseUrl}/api/project/fairness/generate`, {bundleDir: "bundle", commitment: {}, serverSeed: "s"});
+            expect(generateResponse.status).toBe(409);
+
+            const verifyResponse = await post(`${homeBaseUrl}/api/project/fairness/verify`, {proof: {}});
+            expect(verifyResponse.status).toBe(409);
+        });
+
+        it("rejects malformed request bodies with 400 for all three routes", async () => {
+            const projectBaseUrl = await startServerForProject(fairnessProjectRoot);
+
+            const badConfigure = await post(`${projectBaseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base"});
+            expect(badConfigure.status).toBe(400);
+
+            const badGenerate = await post(`${projectBaseUrl}/api/project/fairness/generate`, {bundleDir: "bundle"});
+            expect(badGenerate.status).toBe(400);
+
+            const badVerify = await post(`${projectBaseUrl}/api/project/fairness/verify`, {});
+            expect(badVerify.status).toBe(400);
+        });
+
+        it("runs the full configure -> generate -> verify flow against a real bundle", async () => {
+            await buildFairnessSourceBundle(path.join(fairnessProjectRoot, "bundle"), ["base"]);
+            const projectBaseUrl = await startServerForProject(fairnessProjectRoot);
+
+            const configureResponse = await post(`${projectBaseUrl}/api/project/fairness/configure`, {
+                bundleDir: "bundle",
+                modeName: "base",
+                serverSeed: "operator-server-seed",
+                clientSeed: "player-client-seed",
+                nonce: 0,
+            });
+            expect(configureResponse.status).toBe(200);
+            const configureView = configureResponse.body as {status: string; commitment?: unknown};
+            expect(configureView.status).toBe("ok");
+
+            const generateResponse = await post(`${projectBaseUrl}/api/project/fairness/generate`, {
+                bundleDir: "bundle",
+                commitment: configureView.commitment,
+                serverSeed: "operator-server-seed",
+            });
+            expect(generateResponse.status).toBe(200);
+            const generateView = generateResponse.body as {status: string; proof?: {outcomeId: string}};
+            expect(generateView.status).toBe("ok");
+
+            const verifyResponse = await post(`${projectBaseUrl}/api/project/fairness/verify`, {
+                proof: generateView.proof,
+                commitment: configureView.commitment,
+                sourceBundleDir: "bundle",
+            });
+            expect(verifyResponse.status).toBe(200);
+            const verifyView = verifyResponse.body as {status: string; errors: unknown[]};
+            expect(verifyView.status).toBe("ok");
+            expect(verifyView.errors).toEqual([]);
+        });
+
+        it("reports a mismatch error for a tampered proof, never a thrown error", async () => {
+            await buildFairnessSourceBundle(path.join(fairnessProjectRoot, "bundle"), ["base"]);
+            const commitment = await issueFairnessCommitmentFor(path.join(fairnessProjectRoot, "bundle"), "base", {serverSeed: "operator-server-seed"});
+            const projectBaseUrl = await startServerForProject(fairnessProjectRoot);
+
+            const generateResponse = await post(`${projectBaseUrl}/api/project/fairness/generate`, {
+                bundleDir: "bundle",
+                commitment,
+                serverSeed: "operator-server-seed",
+            });
+            const generateView = generateResponse.body as {status: string; proof: {outcomeId: string}};
+            expect(generateView.status).toBe("ok");
+            const tamperedProof = {...generateView.proof, outcomeId: `not-${generateView.proof.outcomeId}`};
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/fairness/verify`, {
+                proof: tamperedProof,
+                commitment,
+                sourceBundleDir: "bundle",
+            });
+
+            expect(status).toBe(200);
+            const view = body as {status: string; errors: {code: string}[]};
+            expect(view.status).toBe("ok");
+            expect(view.errors.length).toBeGreaterThan(0);
+        });
+
+        it("reports a build-error (never a 500) when the revealed serverSeed doesn't match the commitment", async () => {
+            await buildFairnessSourceBundle(path.join(fairnessProjectRoot, "bundle"), ["base"]);
+            const commitment = await issueFairnessCommitmentFor(path.join(fairnessProjectRoot, "bundle"), "base", {serverSeed: "operator-server-seed"});
+            const projectBaseUrl = await startServerForProject(fairnessProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/fairness/generate`, {
+                bundleDir: "bundle",
+                commitment,
+                serverSeed: "a-different-seed",
+            });
+
+            expect(status).toBe(200);
+            const view = body as {status: string; code?: string};
+            expect(view.status).toBe("build-error");
+            expect(view.code).toBeDefined();
+        });
+
+        it("returns a load-error view (never a 400) for a bundleDir that resolves outside the project root", async () => {
+            const projectBaseUrl = await startServerForProject(fairnessProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/fairness/configure`, {
+                bundleDir: "../outside",
+                modeName: "base",
+                serverSeed: "s",
+                clientSeed: "c",
+                nonce: 0,
+            });
+
+            expect(status).toBe(200);
+            const view = body as {status: string; error?: string};
+            expect(view.status).toBe("load-error");
+            expect(view.error).toContain("outside the project root");
         });
     });
 });
