@@ -59,6 +59,12 @@ import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import type {StudioSimulationReportDetail} from "./simulation/StudioSimulationJobView.js";
 import type {StudioSimulationStatus} from "./simulation/StudioSimulationStatus.js";
 import {validateSimulationRequest, SimulationRequestInput} from "./simulation/validateSimulationRequest.js";
+import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
+import {validateStakeEngineExportRequest, StakeEngineExportRequestInput} from "./stakeengine/validateStakeEngineExportRequest.js";
+import {
+    validateStakeEngineExportValidateRequest,
+    StakeEngineExportValidateRequestInput,
+} from "./stakeengine/validateStakeEngineExportValidateRequest.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
 import type {StudioServerOptions} from "./StudioServerOptions.js";
@@ -107,6 +113,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly outcomeLibraryService: StudioOutcomeLibraryService;
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
+    private readonly stakeEngineExportService: StudioStakeEngineExportService;
     private readonly toolHandlers: StudioToolHandling[];
     private currentContext: StudioContext;
     // undefined exactly when currentContext.mode === "home" — kept as a separate field (rather than
@@ -133,6 +140,7 @@ export class StudioServer implements StudioServerHandling {
         this.outcomeLibraryService = options.outcomeLibraryService ?? new StudioOutcomeLibraryService();
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
+        this.stakeEngineExportService = options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion);
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -504,6 +512,16 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/project/fairness/verify") {
             await this.handleVerifyFairnessProof(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/stakeengine/validate") {
+            await this.handleValidateStakeEngineExport(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/stakeengine/export") {
+            await this.handleExportStakeEngine(req, res);
             return;
         }
 
@@ -1065,6 +1083,53 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, await this.fairnessService.verify(this.currentContext.projectRoot, validated));
+    }
+
+    private async handleValidateStakeEngineExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateStakeEngineExportValidateRequest((body ?? {}) as StakeEngineExportValidateRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.stakeEngineExportService.validate(this.currentContext.projectRoot, validated.modes));
+    }
+
+    // A well-formed request that fails at the domain level (an unreadable/malformed library, a
+    // pre-existing outDir needing confirmation) still gets its own precise status here — see
+    // statusForStakeEngineExport — same convention as handleBlueprintSave/handleBlueprintParExport.
+    private async handleExportStakeEngine(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateStakeEngineExportRequest((body ?? {}) as StakeEngineExportRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.stakeEngineExportService.export(this.currentContext.projectRoot, validated.modes, validated.outDir, validated.overwrite);
+        this.sendJson(res, this.statusForStakeEngineExport(result.status), result);
+    }
+
+    private statusForStakeEngineExport(status: "ok" | "conflict" | "invalid" | "load-error"): number {
+        if (status === "ok") {
+            return 201;
+        }
+        return status === "conflict" ? 409 : 200;
     }
 
     // projectRoot/sourcePath are always resolved here, from the current project's own build-info.json

@@ -37,6 +37,7 @@ import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimu
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../fairness/FairnessRoundProofTestFixtures.js";
+import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url);
@@ -3578,6 +3579,171 @@ describe("StudioServer", () => {
                 serverSeed: "s",
                 clientSeed: "c",
                 nonce: 0,
+            });
+
+            expect(status).toBe(200);
+            const view = body as {status: string; error?: string};
+            expect(view.status).toBe("load-error");
+            expect(view.error).toContain("outside the project root");
+        });
+    });
+
+    describe("Project Dashboard: Stake Engine Export (POST /api/project/stakeengine/validate, /export)", () => {
+        let stakeStudioRoot: string;
+        let stakeProjectRoot: string;
+        let stakeServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            stakeStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-stakeengine-studio-test-"));
+            writeStudioAssets(stakeStudioRoot);
+            stakeProjectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-stakeengine-project-test-"));
+        });
+
+        afterEach(async () => {
+            await stakeServer?.stop();
+            fs.rmSync(stakeStudioRoot, {recursive: true, force: true});
+            fs.rmSync(stakeProjectRoot, {recursive: true, force: true});
+        });
+
+        async function startServerForProject(projectRoot: string | undefined): Promise<string> {
+            const homeService = new StudioHomeService("1.3.0");
+            stakeServer = new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: stakeStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", stakeStudioRoot, homeService),
+                initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
+            });
+            const address = await stakeServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        function writeLibrary(relativePath: string, options: {libraryId: string; betMode: string; stake: number}): void {
+            const library = buildStakeEngineTestLibrary(options);
+            fs.writeFileSync(path.join(stakeProjectRoot, relativePath), JSON.stringify(library));
+        }
+
+        it("returns 409 for both routes when there is no active project", async () => {
+            const homeBaseUrl = await startServerForProject(undefined);
+
+            const validateResponse = await post(`${homeBaseUrl}/api/project/stakeengine/validate`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+            });
+            expect(validateResponse.status).toBe(409);
+
+            const exportResponse = await post(`${homeBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                outDir: "stakeengine",
+            });
+            expect(exportResponse.status).toBe(409);
+        });
+
+        it("rejects malformed request bodies with 400 for both routes", async () => {
+            const projectBaseUrl = await startServerForProject(stakeProjectRoot);
+
+            const missingModes = await post(`${projectBaseUrl}/api/project/stakeengine/validate`, {});
+            expect(missingModes.status).toBe(400);
+            expect((missingModes.body as {error: string}).error).toMatch(/modes/);
+
+            const missingOutDir = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+            });
+            expect(missingOutDir.status).toBe(400);
+            expect((missingOutDir.body as {error: string}).error).toMatch(/outDir/);
+        });
+
+        it("validates a real library deeply, then exports it and returns its manifest/files", async () => {
+            writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
+            const projectBaseUrl = await startServerForProject(stakeProjectRoot);
+
+            const validateResponse = await post(`${projectBaseUrl}/api/project/stakeengine/validate`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+            });
+            expect(validateResponse.status).toBe(200);
+            const validateView = validateResponse.body as {status: string; errors: unknown[]; modes: {modeName: string}[]};
+            expect(validateView.status).toBe("ok");
+            expect(validateView.errors).toEqual([]);
+            expect(validateView.modes.map((mode) => mode.modeName)).toEqual(["base"]);
+
+            const exportResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                outDir: "stakeengine",
+            });
+            expect(exportResponse.status).toBe(201);
+            const exportView = exportResponse.body as {status: string; manifest?: {modes: {name: string}[]}; files?: string[]};
+            expect(exportView.status).toBe("ok");
+            expect(exportView.manifest?.modes.map((mode) => mode.name)).toEqual(["base"]);
+            expect(fs.existsSync(path.join(stakeProjectRoot, "stakeengine", "index.json"))).toBe(true);
+        });
+
+        it("returns a conflict (409) for a pre-existing non-empty outDir belonging to something else, and never writes to it", async () => {
+            writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
+            fs.mkdirSync(path.join(stakeProjectRoot, "stakeengine"));
+            fs.writeFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "pre-existing");
+            const projectBaseUrl = await startServerForProject(stakeProjectRoot);
+
+            const conflictResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                outDir: "stakeengine",
+            });
+            expect(conflictResponse.status).toBe(409);
+            expect((conflictResponse.body as {status: string}).status).toBe("conflict");
+            expect(fs.readFileSync(path.join(stakeProjectRoot, "stakeengine", "unrelated.txt"), "utf-8")).toBe("pre-existing");
+        });
+
+        // "overwrite: true" only ever unlocks replacing a directory a *prior* "pokie stakeengine export"
+        // run itself produced (recognized via that run's own pokie-manifest.json) -- never an arbitrary
+        // unrelated directory, which the previous test confirms stays refused regardless of `overwrite`.
+        it("resubmitting with overwrite:true replaces a directory recognized as a prior export's own output", async () => {
+            writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
+            const projectBaseUrl = await startServerForProject(stakeProjectRoot);
+
+            const firstExport = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                outDir: "stakeengine",
+            });
+            expect(firstExport.status).toBe(201);
+
+            writeLibrary("bonus.json", {libraryId: "bonus-lib", betMode: "bonus", stake: 1});
+            const conflictResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "bonus", libraryPath: "bonus.json", cost: 1}],
+                outDir: "stakeengine",
+            });
+            expect(conflictResponse.status).toBe(409);
+
+            const overwriteResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "bonus", libraryPath: "bonus.json", cost: 1}],
+                outDir: "stakeengine",
+                overwrite: true,
+            });
+            expect(overwriteResponse.status).toBe(201);
+            const overwriteView = overwriteResponse.body as {status: string; manifest?: {modes: {name: string}[]}};
+            expect(overwriteView.status).toBe("ok");
+            expect(overwriteView.manifest?.modes.map((mode) => mode.name)).toEqual(["bonus"]);
+        });
+
+        it("returns an invalid view (never a 500) for an unsupported cost/outcome combination", async () => {
+            writeLibrary("base.json", {libraryId: "base-lib", betMode: "base", stake: 1});
+            const projectBaseUrl = await startServerForProject(stakeProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", libraryPath: "base.json", cost: 1 / 3}],
+                outDir: "stakeengine",
+            });
+
+            expect(status).toBe(200);
+            const view = body as {status: string; errors: unknown[]};
+            expect(view.status).toBe("invalid");
+            expect(view.errors.length).toBeGreaterThan(0);
+        });
+
+        it("returns a load-error view (never a 400) for a libraryPath that resolves outside the project root", async () => {
+            const projectBaseUrl = await startServerForProject(stakeProjectRoot);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/stakeengine/validate`, {
+                modes: [{modeName: "base", libraryPath: "../outside.json", cost: 1}],
             });
 
             expect(status).toBe(200);

@@ -743,3 +743,63 @@ export type StudioFairnessGenerateView =
 // POST /api/project/fairness/verify's own DTO — see
 // cli/studio/fairness/StudioFairnessVerifyView.ts's own doc comment.
 export type StudioFairnessVerifyView = {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]} | {status: "load-error"; error: string};
+
+// One mode row of a POST /api/project/stakeengine/{validate,export} request body — see
+// cli/studio/stakeengine/StudioStakeEngineExportModeInput.ts's own doc comment.
+export type StudioStakeEngineExportModeInput = {
+    modeName: string;
+    libraryPath: string;
+    cost: number;
+};
+
+// A per-mode provenance summary read straight off each loaded library — see
+// cli/studio/stakeengine/StudioStakeEngineExportValidateView.ts's own doc comment. Never recomputed here.
+export type StudioStakeEngineExportModeSummary = {
+    modeName: string;
+    cost: number;
+    outcomeCount: number;
+    libraryId: string;
+    libraryHash: string;
+};
+
+// POST /api/project/stakeengine/validate's own DTO — see
+// cli/studio/stakeengine/StudioStakeEngineExportValidateView.ts's own doc comment.
+export type StudioStakeEngineExportValidateView =
+    | {status: "ok"; modes: StudioStakeEngineExportModeSummary[]; errors: ValidationIssue[]; warnings: ValidationIssue[]}
+    | {status: "load-error"; error: string};
+
+// Mirrors pokie's own StakeEngineManifest/StakeEngineManifestModeEntry
+// (src/stakeengine/StakeEngineManifest.ts) — every hash/metric here is read verbatim off the export
+// result's own manifest, never recomputed by Studio.
+export type StakeEngineManifestModeEntry = {
+    name: string;
+    betMode: string;
+    stake: number;
+    cost: number;
+    outcomeCount: number;
+    libraryId: string;
+    libraryHash: string;
+    events: string;
+    weights: string;
+};
+
+export type StakeEngineManifest = {
+    schemaVersion: number;
+    generatedBy: string;
+    pokieVersion: string;
+    generatedAt: string;
+    game: PokieGameManifest;
+    configHash?: string;
+    modes: StakeEngineManifestModeEntry[];
+    files: string[];
+};
+
+// POST /api/project/stakeengine/export's own DTO — see
+// cli/studio/stakeengine/StudioStakeEngineExportView.ts's own doc comment. Mirrors StakeEngineExporter's
+// own "no partial export" contract: `manifest` is present iff `status` is "ok". "conflict" mirrors
+// StudioParSheetExportView's own overwrite-confirmation contract — never a write.
+export type StudioStakeEngineExportView =
+    | {status: "ok"; outDir: string; files: string[]; manifest: StakeEngineManifest; warnings: ValidationIssue[]}
+    | {status: "conflict"; outDir: string; error: string}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
+    | {status: "load-error"; error: string};

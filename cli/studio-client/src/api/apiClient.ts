@@ -35,6 +35,9 @@ import type {
     StudioSimulationJobView,
     StudioSimulationReportDetail,
     StudioSimulationReportListEntry,
+    StudioStakeEngineExportModeInput,
+    StudioStakeEngineExportValidateView,
+    StudioStakeEngineExportView,
 } from "./types";
 
 // Same minimal Fetch subset as cli/client/apiClient.ts's FetchLike — kept structurally compatible
@@ -838,4 +841,45 @@ export async function verifyFairnessProof(
         throw new Error(await extractErrorMessage(response, "Failed to verify the Provably Fair round proof"));
     }
     return (await response.json()) as StudioFairnessVerifyView;
+}
+
+// The Stake Engine Export tab's "Validate diagnostics" step -- the exact same structural/representability
+// validation StakeEngineExporter itself runs (and aborts the whole export on) before writing a single
+// file, exposed here so it can be run (and inspected) before committing to Export.
+export async function validateStakeEngineExport(
+    fetchImpl: FetchLike,
+    modes: StudioStakeEngineExportModeInput[],
+): Promise<StudioStakeEngineExportValidateView> {
+    const response = await fetchImpl("/api/project/stakeengine/validate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({modes}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to validate the Stake Engine export"));
+    }
+    return (await response.json()) as StudioStakeEngineExportValidateView;
+}
+
+// "conflict" (409, a pre-existing non-empty outDir) is a normal parsed result, not a thrown error -- same
+// convention as saveBlueprint/exportParSheet above, since it's something the caller can resolve by
+// resubmitting with `overwrite: true`, not a failed request.
+export async function exportStakeEngine(
+    fetchImpl: FetchLike,
+    modes: StudioStakeEngineExportModeInput[],
+    outDir: string,
+    overwrite: boolean,
+): Promise<StudioStakeEngineExportView> {
+    const response = await fetchImpl("/api/project/stakeengine/export", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({modes, outDir, overwrite}),
+    });
+    if (response.status === 409) {
+        return (await response.json()) as StudioStakeEngineExportView;
+    }
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to export to Stake Engine"));
+    }
+    return (await response.json()) as StudioStakeEngineExportView;
 }

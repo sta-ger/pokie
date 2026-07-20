@@ -49,6 +49,7 @@ import {ProvablyFairTab} from "./ProvablyFairTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
 import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
+import {StakeEngineExportTab} from "./StakeEngineExportTab";
 import {ValidationTab} from "./ValidationTab";
 
 export type ProjectTab =
@@ -61,12 +62,13 @@ export type ProjectTab =
     | "outcomeLibraries"
     | "mechanicsEditor"
     | "certification"
-    | "provablyFair";
+    | "provablyFair"
+    | "stakeEngineExport";
 
 // Primary happy-path tabs (Overview -> Validate -> Simulate, which now also owns Reports) come first,
 // unlabeled/implicit; Replay/Runtime/Deployment/Outcome Libraries/Mechanics Editor/Certification/
-// Provably Fair are tagged `section: "Advanced"` so NavTabs visually separates them -- everything's
-// still one click away, just no longer presented as equal-weight to the main flow.
+// Provably Fair/Stake Engine Export are tagged `section: "Advanced"` so NavTabs visually separates them --
+// everything's still one click away, just no longer presented as equal-weight to the main flow.
 const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "overview", label: "Overview"},
     {value: "validation", label: "Validate"},
@@ -78,6 +80,7 @@ const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "mechanicsEditor", label: "Mechanics Editor", section: "Advanced"},
     {value: "certification", label: "Certification", section: "Advanced"},
     {value: "provablyFair", label: "Provably Fair", section: "Advanced"},
+    {value: "stakeEngineExport", label: "Stake Engine Export", section: "Advanced"},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
@@ -914,6 +917,11 @@ export function ProjectDashboardPage() {
                         // Same reasoning as OutcomeLibrariesTab's own key above -- ProvablyFairTab owns
                         // all of its own stepper state locally (no page-level hook).
                         <ProvablyFairTab key={projectKey ?? "no-project"} />
+                    )}
+                    {activeTab === "stakeEngineExport" && (
+                        // Same reasoning as OutcomeLibrariesTab's own key above -- StakeEngineExportTab
+                        // owns all of its own stepper state locally (no page-level hook).
+                        <StakeEngineExportTab key={projectKey ?? "no-project"} />
                     )}
                 </div>
             )}

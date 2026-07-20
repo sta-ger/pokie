@@ -8,6 +8,7 @@ import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibrary
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
+import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioToolHandling} from "./StudioToolHandling.js";
 
@@ -74,5 +75,10 @@ export type StudioServerOptions = {
     // FairnessRoundProofVerifier/computeFairnessCommitment); no `loadGame`/`pokieVersion` needed, same
     // reasoning as outcomeLibraryService.
     fairnessService?: StudioFairnessService;
+    // Drives the Project Dashboard's Stake Engine Export tab (POST /api/project/stakeengine/validate,
+    // /export) — built directly on top of pokie's own StakeEngineExporter/StakeEngineExportValidator; no
+    // `loadGame` needed (same reasoning as deploymentService), but does need `pokieVersion` (embedded in
+    // the exported manifest's own `pokieVersion` field), same reasoning as certificationService.
+    stakeEngineExportService?: StudioStakeEngineExportService;
     toolHandlers?: StudioToolHandling[];
 };
