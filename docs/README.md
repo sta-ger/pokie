@@ -111,7 +111,8 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `FairnessCommitment` (the round commitment, pinning `clientSeed`/`nonce`/library/mode before selection),
     `FairnessRoundProof` (the revealed round, deterministically drawn via a pinned-snapshot HMAC-SHA256 byte
     stream and bound to its commitment via `commitmentHash`), and `FairnessCommitmentValidator`/
-    `FairnessRoundProofValidator`/`Verifier` for independently checking one, with `pokie fairness verify`.
+    `FairnessRoundProofValidator`/`Verifier` for independently checking one, with the full CLI workflow
+    `pokie fairness seed-commit`/`commit`/`reveal`/`verify`.
 23. **[External Adapter SDK](external-adapter-sdk.md)** — a generic set of contracts (`ExternalDeploymentTarget`,
     `ExternalRoundProjector`, `ExternalArtifactGenerator`, `ExternalArtifactValidator`,
     `ExternalDeploymentDiagnostic`, an optional `ExternalDeploymentRuntimeAdapter` transport contract) for
@@ -158,7 +159,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Importing a `WeightedOutcomeLibrary` back from a Stake Engine export directory | `pokie stakeengine import <stakeDir>`, `StakeEngineImporter` |
 | Streaming, canonical on-disk persistence for a `WeightedOutcomeLibrary` (no full-library-in-memory load) | `pokie outcomelibrary build <config.json>`, `OutcomeLibraryBundleWriter`/`OutcomeLibraryBundleReader` |
 | Deterministic evidence package (metrics, diagnostics, sampled rounds) on top of an Outcome Library Bundle | `pokie certification build <bundleDir> <config.json>`, `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` |
-| Commit-reveal Provably Fair proof for a single round, independently verifiable against its commitment and a live Outcome Library Bundle | `pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>`, `computeFairnessServerSeedCommitment`, `computeFairnessCommitment`, `FairnessRoundProofBuilder`/`Validator`/`Verifier` |
+| Commit-reveal Provably Fair proof for a single round, independently verifiable against its commitment and a live Outcome Library Bundle | `pokie fairness seed-commit`/`commit`/`reveal`/`verify`, `computeFairnessServerSeedCommitment`, `computeFairnessCommitment`, `FairnessRoundProofBuilder`/`Validator`/`Verifier` |
 | Deploying a `WeightedOutcomeLibrary` to a pluggable external format/RGS-style target | `ExternalDeploymentService`, `ExternalDeploymentTargetRegistry`, `ExternalDeploymentCompatibilityValidator`, `createLocalJsonExternalDeploymentTarget` |
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/

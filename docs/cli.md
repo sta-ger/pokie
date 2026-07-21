@@ -853,6 +853,80 @@ Options:
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
+## `pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]`
+
+The first step of the [Provably Fair](provably-fair.md) commit-reveal flow: reads a secret `serverSeed` from a
+plain text file (trailing whitespace/newline is trimmed), and calls `computeFairnessServerSeedCommitment` to
+build the `FairnessServerSeedCommitment` that gets published to the player immediately, before `clientSeed`/
+`nonce` are even solicited. The written/printed artifact is structurally incapable of carrying the raw
+`serverSeed` — `FairnessServerSeedCommitment` only ever has `serverSeedHash` — so nothing about this command's
+own output ever needs to be redacted.
+
+```
+pokie fairness seed-commit serverSeed.txt --out seed-commitment.json
+```
+
+Options:
+
+- `--out <file>` — where to write the commitment JSON. Optional; the commitment is always printed to stdout
+  either way. If `<file>` already exists, the command fails with a usage error unless `--overwrite` is also given
+  (the same explicit-override convention `--overwrite` uses on `commit`/`reveal` below).
+- `--overwrite` — allow `--out` to replace an existing file.
+
+Exit code is non-zero (and nothing is written) if `serverSeed.txt` is empty/unreadable or a custom `issuedAt`
+would be invalid.
+
+## `pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]`
+
+The second step: once the player's `clientSeed`/`nonce` are known, builds the `FairnessCommitment` (the "round
+commitment") published before the round is played. `libraryId`/`libraryHash` are never taken from a CLI flag —
+they're always read straight off the live source bundle's own mode index (`OutcomeLibraryBundleReading.readModeIndex`,
+the same reader `FairnessRoundProofBuilder`/`Verifier` themselves use), so a commitment can only ever pin the
+`libraryId`/`libraryHash` a real bundle actually has, never one a caller merely claims.
+
+```
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode base --out commitment.json
+```
+
+Options:
+
+- `--client-seed <seed>` — **required.** The player-supplied client seed.
+- `--nonce <n>` — **required.** A non-negative integer.
+- `--source <bundleDir>` — **required.** The live Outcome Library Bundle `--mode` is read from.
+- `--mode <modeName>` — **required.** Which mode's own index to pin `libraryId`/`libraryHash` from.
+- `--out <file>` — where to write the commitment JSON. Optional; always printed to stdout either way. Same
+  `--overwrite` convention as `seed-commit` above.
+- `--overwrite` — allow `--out` to replace an existing file.
+
+Exit code is non-zero (and nothing is written) if `<serverSeedCommitment.json>` doesn't parse or doesn't itself
+validate, `--mode <modeName>` isn't present in `--source <bundleDir>`, or any of `--client-seed`/`--nonce` is
+invalid.
+
+## `pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]`
+
+The reveal step: once the round settles, reads the revealed `serverSeed` from a plain text file and calls
+`FairnessRoundProofBuilder.build(commitment, serverSeed, sourceBundleDir)` to draw the one outcome this
+commitment's own `clientSeed`/`nonce`/(now-revealed) `serverSeed` deterministically select, producing the
+`FairnessRoundProof` published to the player after the round. Unlike the two commitments above, the proof *does*
+carry the revealed `serverSeed` — that's the point of a reveal — so redacting it would defeat the command.
+
+```
+pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../bundle --out proof.json
+```
+
+Options:
+
+- `--server-seed <file>` — **required.** Plain text file holding the revealed `serverSeed`.
+- `--source <bundleDir>` — **required.** The live Outcome Library Bundle the round is drawn from.
+- `--out <file>` — where to write the proof JSON. Optional; always printed to stdout either way. Same
+  `--overwrite` convention as `seed-commit`/`commit` above.
+- `--overwrite` — allow `--out` to replace an existing file.
+
+Exit code is non-zero (and nothing is written) if `<commitment.json>` doesn't parse or doesn't itself validate,
+the revealed `serverSeed` doesn't hash to the commitment's own `serverSeedHash`, or the live mode index no longer
+matches the commitment's own pinned `libraryId`/`libraryHash` (see `FairnessRoundProofBuildError` in
+[Provably Fair](provably-fair.md#building-a-proof)).
+
 ## `pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>`
 
 Verifies a [Provably Fair](provably-fair.md) round proof: first its own self-consistency (does the shape match,

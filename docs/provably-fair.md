@@ -311,16 +311,30 @@ integrity the pinned draw already verifies on its own single read.
 
 ## CLI usage
 
+The full commit-reveal-verify flow, end to end:
+
 ```
-pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>
+pokie fairness seed-commit serverSeed.txt --out seed-commitment.json
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode base --out commitment.json
+pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../bundle --out proof.json
+pokie fairness verify proof.json --commitment commitment.json --source ../bundle
 ```
 
-Both `--commitment <commitment.json>` and `--source <bundleDir>` are required — the CLI never falls back to a
-value embedded in the proof itself (a `FairnessRoundProof` carries no bundle location or original commitment of
-its own, by design).
+`seed-commit`/`commit`/`reveal` call straight through to `computeFairnessServerSeedCommitment`/
+`computeFairnessCommitment`/`FairnessRoundProofBuilder.build` — no second calculation path lives in the CLI
+itself. `commit` never accepts a `--library-hash`/`--library-id` flag as an alternative source of truth: both are
+always read off `--source <bundleDir>`'s own live mode index via the same `OutcomeLibraryBundleReading` reader
+`FairnessRoundProofBuilder`/`Verifier` use internally. Every artifact-writing subcommand shares one
+overwrite-safety convention: `--out <file>` refuses to replace an existing file unless `--overwrite` is also
+given (the same explicit-override discipline `StudioBlueprintService.save()`'s own `overwrite` flag already
+enforces), and always prints the JSON to stdout regardless of whether `--out` was given.
 
-See [CLI](cli.md#pokie-fairness-verify-proofjson---commitment-commitmentjson---source-bundledir) for full option
-details.
+`--commitment <commitment.json>` and `--source <bundleDir>` are both required for `verify` — the CLI never falls
+back to a value embedded in the proof itself (a `FairnessRoundProof` carries no bundle location or original
+commitment of its own, by design).
+
+See [CLI](cli.md#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite) for full option details on
+every subcommand.
 
 ## Programmatic usage
 
