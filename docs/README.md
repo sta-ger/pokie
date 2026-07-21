@@ -92,13 +92,15 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     paylines, available bets, win model, mechanics, and bet modes) into a `GameBlueprint` JSON file; `pokie par
     export <config.json>`, which exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie stakeengine
     export <config.json>`, which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine
-    math-sdk static file format; `pokie stakeengine import <stakeDir>`, which imports one back; `pokie
+    math-sdk static file format; `pokie stakeengine import <stakeDir>`, which imports one back; `pokie stakeengine
+    analyze <stakeDir>`, which validates and computes exact weighted statistics over any Stake Engine outcome
+    directory with no `pokie-manifest.json` required; `pokie
     outcomelibrary build <config.json>`, which builds a canonical Outcome Library Bundle from one or more
     `WeightedOutcomeLibrary` JSON files; `pokie outcomelibrary validate <bundleDir>`, which validates one; `pokie
     certification build <bundleDir> <config.json>`, which builds a certification/evidence bundle on top of an
     Outcome Library Bundle; `pokie certification verify <certDir>`, which verifies one against its live source
     bundle; `pokie fairness seed-commit <serverSeed.txt>`/`commit`/`reveal`/`verify`, the full Provably Fair
-    commit-reveal CLI workflow (see item 25 below); and `pokie`/`pokie studio` (experimental), a local GUI
+    commit-reveal CLI workflow (see item 26 below); and `pokie`/`pokie studio` (experimental), a local GUI
     covering most of the commands above (Create/Init, the Mechanics Editor, Outcome Libraries, PAR Sheet,
     Certification, Provably Fair, Stake Engine export, Deployment, Runtime, Replay, Simulation) — see
     [`studio-frontend.md`](studio-frontend.md) for its own React + Mantine frontend stack and dev workflow.
@@ -123,18 +125,25 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     lossy-vs-lossless boundary (`roundId`/win breakdown/`provenance.pokieVersion` are substituted, everything
     else round-trips exactly), and the real round-trip property: import then re-export reproduces byte-identical
     Stake output.
-23. **[Outcome Library Bundle](outcome-library-bundle.md)** — the canonical, streaming-friendly on-disk
+23. **[Stake Engine Standalone](stake-engine-standalone.md)** — reading, validating, and computing exact weighted
+    statistics over **any** Stake Engine outcome directory, with no `pokie-manifest.json` involved at any point:
+    `StakeEngineOutcomeSourceReader` normalizes `index.json`/CSV/books into canonical `StakeEngineOutcomeRecord`
+    DTOs (deliberately not a `RoundArtifact`/`WeightedOutcomeLibrary`), `StakeEngineStandaloneValidator` checks
+    structure/cross-file consistency, and `StakeEngineStandaloneAnalyzer` computes `rtp`/`hitFrequency`/variance/
+    payout-distribution plus a pluggable-classifier-driven event breakdown (`StakeEngineEventClassifying`) — see
+    `pokie stakeengine analyze <stakeDir>`.
+24. **[Outcome Library Bundle](outcome-library-bundle.md)** — the canonical, streaming-friendly on-disk
     persistence format for a `WeightedOutcomeLibrary` (a small manifest, a small per-mode index, one streaming
     JSONL outcomes file per mode), with a writer that never buffers a whole mode's outcomes as one string, a
     reader with full-streaming/single-outcome-random-access/weighted-draw/whole-library modes, and the one
     shared `loadWeightedOutcomeLibraryFromBundle` loader both the pre-generated runtime and the Stake Engine
     exporter use.
-24. **[Certification/Evidence Bundle](certification-evidence-bundle.md)** — building a deterministic evidence
+25. **[Certification/Evidence Bundle](certification-evidence-bundle.md)** — building a deterministic evidence
     package on top of an Outcome Library Bundle (game/library hashes, provenance, exact weighted metrics, the
     source bundle's own deep-validation diagnostics, and deterministically sampled/individually verifiable
     `RoundArtifact` records), with `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` and
     `pokie certification build`/`pokie certification verify`.
-25. **[Provably Fair](provably-fair.md)** — a commit-reveal proof for a single round drawn from an Outcome
+26. **[Provably Fair](provably-fair.md)** — a commit-reveal proof for a single round drawn from an Outcome
     Library Bundle: `FairnessServerSeedCommitment` (published before `clientSeed`/`nonce` are known),
     `FairnessCommitment` (the round commitment, pinning `clientSeed`/`nonce`/library/mode before selection),
     `FairnessRoundProof` (the revealed round, deterministically drawn via a pinned-snapshot HMAC-SHA256 byte
@@ -143,7 +152,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie fairness seed-commit`/`commit`/`reveal`/`verify`. POKIE provides these deterministic/verifiable
     primitives only — it is not an RGS, wallet, compliance platform, key-management service, or timestamping
     authority (see this file's own "Scope" note above).
-26. **[External Adapter SDK](external-adapter-sdk.md)** — a generic set of contracts (`ExternalDeploymentTarget`,
+27. **[External Adapter SDK](external-adapter-sdk.md)** — a generic set of contracts (`ExternalDeploymentTarget`,
     `ExternalRoundProjector`, `ExternalArtifactGenerator`, `ExternalArtifactValidator`,
     `ExternalDeploymentDiagnostic`, an optional `ExternalDeploymentRuntimeAdapter` transport contract) for
     deploying a `WeightedOutcomeLibrary` to an external format/RGS-style target, orchestrated end to end by
@@ -191,6 +200,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Exact (no Monte Carlo) RTP/volatility/payout-distribution over every possible outcome | `WeightedOutcomeLibrary`, `buildWeightedOutcomeLibrary`, `WeightedOutcomeLibraryAnalyzer` |
 | Exporting a `WeightedOutcomeLibrary` to the Stake Engine math-sdk static file format | `pokie stakeengine export <config.json>`, `StakeEngineExporter` |
 | Importing a `WeightedOutcomeLibrary` back from a Stake Engine export directory | `pokie stakeengine import <stakeDir>`, `StakeEngineImporter` |
+| Validating/analyzing any Stake Engine outcome directory with no `pokie-manifest.json` required | `pokie stakeengine analyze <stakeDir>`, `StakeEngineOutcomeSourceReader`, `StakeEngineStandaloneAnalyzer` |
 | Streaming, canonical on-disk persistence for a `WeightedOutcomeLibrary` (no full-library-in-memory load) | `pokie outcomelibrary build <config.json>`, `OutcomeLibraryBundleWriter`/`OutcomeLibraryBundleReader` |
 | Deterministic evidence package (metrics, diagnostics, sampled rounds) on top of an Outcome Library Bundle | `pokie certification build <bundleDir> <config.json>`, `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` |
 | Commit-reveal Provably Fair proof for a single round, independently verifiable against its commitment and a live Outcome Library Bundle | `pokie fairness seed-commit`/`commit`/`reveal`/`verify`, `computeFairnessServerSeedCommitment`, `computeFairnessCommitment`, `FairnessRoundProofBuilder`/`Validator`/`Verifier` |

@@ -11,14 +11,22 @@ import {
     StakeEngineImporting,
     StakeEngineImportWriter,
     StakeEngineImportWriting,
+    StakeEngineOutcomeSourceReader,
+    StakeEngineOutcomeSourceReading,
+    StakeEngineStandaloneAnalysis,
+    StakeEngineStandaloneAnalyzer,
     ValidationIssue,
     WeightedOutcomeLibrary,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 
-const USAGE = "Usage: pokie stakeengine export <config.json> [--out <dir>]\n   or: pokie stakeengine import <stakeDir> [--out <dir>]";
+const USAGE =
+    "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
+    "   or: pokie stakeengine import <stakeDir> [--out <dir>]\n" +
+    "   or: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]";
 const EXPORT_USAGE = "Usage: pokie stakeengine export <config.json> [--out <dir>]";
 const IMPORT_USAGE = "Usage: pokie stakeengine import <stakeDir> [--out <dir>]";
+const ANALYZE_USAGE = "Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]";
 const CONFIG_HINT =
     '<config.json> lists one WeightedOutcomeLibrary source per Stake mode, either a plain JSON file — ' +
     '{"modes": [{"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a canonical ' +
@@ -28,9 +36,16 @@ const CONFIG_HINT =
 const STAKE_DIR_HINT =
     '<stakeDir> is a directory previously produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
     "CSV/books, and its own pokie-manifest.json) — see docs/stake-engine-import.md for details.";
+const ANALYZE_STAKE_DIR_HINT =
+    "<stakeDir> is any Stake Engine outcome directory (index.json, per-mode lookup CSV, per-mode zstd-compressed " +
+    'JSONL books) — POKIE\'s own export or a third party\'s, with or without a pokie-manifest.json — see ' +
+    "docs/stake-engine-standalone.md for details.";
 
 type ExportOptions = {configPath: string; outDir: string};
 type ImportOptions = {stakeDir: string; outDir: string};
+type AnalyzeFormat = "summary" | "json";
+type AnalyzeOptions = {stakeDir: string; format: AnalyzeFormat; out?: string};
+type AnalyzeReport = {stakeDir: string; issues: ValidationIssue[]; analysis: StakeEngineStandaloneAnalysis | undefined};
 
 type ExportDescriptorModeEntry = {
     modeName: string;
@@ -51,6 +66,9 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly importWriter: StakeEngineImportWriting;
     private readonly loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary>;
     private readonly bundleStreamingExporter: StakeEngineBundleStreamingExporting;
+    private readonly outcomeSourceReader: StakeEngineOutcomeSourceReading;
+    private readonly standaloneAnalyzer: StakeEngineStandaloneAnalyzer;
+    private readonly writeFile: (file: string, contents: string) => void;
 
     constructor(
         pokieVersion: string,
@@ -61,6 +79,9 @@ export class StakeEngineCommand implements CliCommandHandling {
         loadLibraryFromBundle: (bundleDir: string, modeName: string) => Promise<WeightedOutcomeLibrary> = (bundleDir, modeName) =>
             loadWeightedOutcomeLibraryFromBundle(bundleDir, modeName),
         bundleStreamingExporter: StakeEngineBundleStreamingExporting = new StakeEngineBundleStreamingExporter(pokieVersion),
+        outcomeSourceReader: StakeEngineOutcomeSourceReading = new StakeEngineOutcomeSourceReader(),
+        standaloneAnalyzer: StakeEngineStandaloneAnalyzer = new StakeEngineStandaloneAnalyzer(),
+        writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
     ) {
         this.exporter = exporter;
         this.importer = importer;
@@ -68,6 +89,9 @@ export class StakeEngineCommand implements CliCommandHandling {
         this.importWriter = importWriter;
         this.loadLibraryFromBundle = loadLibraryFromBundle;
         this.bundleStreamingExporter = bundleStreamingExporter;
+        this.outcomeSourceReader = outcomeSourceReader;
+        this.standaloneAnalyzer = standaloneAnalyzer;
+        this.writeFile = writeFile;
     }
 
     public getName(): string {
@@ -76,8 +100,9 @@ export class StakeEngineCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, or import one back " +
-            '("pokie stakeengine export <config.json>" / "pokie stakeengine import <stakeDir>").'
+            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, import one back, or " +
+            "standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required " +
+            '("pokie stakeengine export <config.json>" / "pokie stakeengine import <stakeDir>" / "pokie stakeengine analyze <stakeDir>").'
         );
     }
 
@@ -88,6 +113,8 @@ export class StakeEngineCommand implements CliCommandHandling {
                 return this.runExport(rest);
             case "import":
                 return this.runImport(rest);
+            case "analyze":
+                return this.runAnalyze(rest);
             default:
                 return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
         }
@@ -184,6 +211,103 @@ export class StakeEngineCommand implements CliCommandHandling {
         }
 
         return 0;
+    }
+
+    // Standalone counterpart to runImport: never requires a pokie-manifest.json, and never round-trips against a
+    // known WeightedOutcomeLibrary source -- it reads+normalizes (StakeEngineOutcomeSourceReader), validates, and
+    // computes exact weighted statistics (StakeEngineStandaloneAnalyzer) over whatever the directory actually
+    // contains, printing/writing the same machine-readable JSON shape ValidateCommand/SimCommand already use
+    // ("--format json"/"--out <file>").
+    private async runAnalyze(args: string[]): Promise<number> {
+        const options = this.parseAnalyzeArgs(args);
+        const readResult = await this.outcomeSourceReader.readFromDirectory(options.stakeDir);
+        const errors = readResult.issues.filter((issue) => issue.severity === "error");
+        const analysis = errors.length === 0 ? this.standaloneAnalyzer.analyze(readResult) : undefined;
+        const report: AnalyzeReport = {stakeDir: options.stakeDir, issues: [...readResult.issues], analysis};
+
+        if (options.out) {
+            this.writeFile(options.out, JSON.stringify(report, null, 4));
+        }
+
+        if (options.format === "json") {
+            console.log(JSON.stringify(report, null, 4));
+        } else {
+            this.printAnalyzeSummary(report);
+            if (options.out) {
+                console.log(`\nReport written to "${options.out}".`);
+            }
+        }
+
+        return errors.length === 0 ? 0 : 1;
+    }
+
+    private printAnalyzeSummary(report: AnalyzeReport): void {
+        console.log(`Analyzing "${report.stakeDir}"`);
+
+        const errors = report.issues.filter((issue) => issue.severity === "error");
+        const nonErrors = report.issues.filter((issue) => issue.severity !== "error");
+
+        if (errors.length > 0) {
+            console.log(`\nErrors (${errors.length}):`);
+            this.printIssues(errors);
+        }
+
+        for (const mode of report.analysis?.modes ?? []) {
+            console.log(`\nMode "${mode.modeName}" (cost ${mode.cost}, ${mode.outcomeCount} outcome(s), total weight ${mode.totalWeight}):`);
+            console.log(`  rtp                 ${mode.rtp}`);
+            console.log(`  hitFrequency        ${mode.hitFrequency}`);
+            console.log(`  standardDeviation   ${mode.standardDeviation}`);
+            console.log(`  maxRatio            ${mode.maxRatio} (probability ${mode.maxWinProbability})`);
+            if (mode.nonInvertibleRatioCount > 0) {
+                console.log(`  nonInvertibleRatioCount   ${mode.nonInvertibleRatioCount}`);
+            }
+            for (const category of mode.eventClassificationBreakdown) {
+                console.log(`  event "${category.category}"   occurrenceFrequency ${category.occurrenceFrequency}, avgPerOutcome ${category.averageOccurrencesPerOutcome}`);
+            }
+        }
+
+        if (nonErrors.length > 0) {
+            console.log(`\nWarnings/info (${nonErrors.length}):`);
+            for (const issue of nonErrors) {
+                console.log(`  - ${issue.code}: ${issue.message}`);
+            }
+        }
+    }
+
+    private parseAnalyzeArgs(args: string[]): AnalyzeOptions {
+        const [stakeDir, ...rest] = args;
+        if (!stakeDir) {
+            throw new Error(`${ANALYZE_USAGE}\n${ANALYZE_STAKE_DIR_HINT}`);
+        }
+
+        let format: AnalyzeFormat = "summary";
+        let out: string | undefined;
+        for (let i = 0; i < rest.length; i++) {
+            const flag = rest[i];
+            const value = rest[i + 1];
+            switch (flag) {
+                case "--format": {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${ANALYZE_USAGE}`);
+                    }
+                    format = "json";
+                    i++;
+                    break;
+                }
+                case "--out": {
+                    if (value === undefined) {
+                        throw new Error(`--out requires a file path. ${ANALYZE_USAGE}`);
+                    }
+                    out = value;
+                    i++;
+                    break;
+                }
+                default:
+                    throw new Error(`Unknown option "${flag}". ${ANALYZE_USAGE}`);
+            }
+        }
+
+        return {stakeDir, format, out};
     }
 
     private printIssues(issues: ValidationIssue[]): void {

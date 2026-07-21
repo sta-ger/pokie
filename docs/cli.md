@@ -827,6 +827,25 @@ byte-identical `index.json`/CSVs/books (see
 reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the original pre-export library (see
 [Lossy vs. lossless](stake-engine-import.md#lossy-vs-lossless--read-this-before-anything-else)).
 
+## `pokie stakeengine analyze <stakeDir>`
+
+Validates and computes exact weighted statistics over **any** Stake Engine outcome directory (`index.json`,
+per-mode lookup CSV, per-mode zstd-compressed JSONL books) — no `pokie-manifest.json` required, unlike
+`pokie stakeengine import`. See [Stake Engine Standalone](stake-engine-standalone.md) for the full data shapes,
+validation-code table, and pluggable event classification.
+
+```
+pokie stakeengine analyze stakeengine --format json
+```
+
+Options:
+
+- `--format json` — print the machine-readable `{stakeDir, issues, analysis}` shape instead of a text summary.
+- `--out <file>` — also write that same JSON shape to a file.
+
+`analysis` is `undefined` whenever any issue is error-severity — the same "nothing built on error" contract as
+`pokie stakeengine import`. Exit code is non-zero on any error-level issue.
+
 ## `pokie outcomelibrary build <config.json>`
 
 Builds a canonical [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
