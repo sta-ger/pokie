@@ -1,6 +1,7 @@
 import {loadPokieGame} from "../../gamepackage/loadPokieGame.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import type {JackpotStatisticsSnapshot} from "../../session/JackpotStatisticsSnapshot.js";
 import {FixedBetModeForNextSimulationRoundSetting} from "../FixedBetModeForNextSimulationRoundSetting.js";
 import type {SimulationBreakdownComponent} from "../SimulationBreakdownComponent.js";
 import {SimulationConvergenceChecker} from "../SimulationConvergenceChecker.js";
@@ -75,6 +76,9 @@ export type ParallelSimulationResult = {
     manifest: PokieGameManifest;
     statistics: SimulationStatistics;
     breakdown?: Record<string, SimulationBreakdownComponent>;
+    // Present only when the session exposed JackpotStatisticsProviding — see that interface's own doc
+    // comment. Already merged across every worker when workers > 1 (see mergeJackpotStatisticsSnapshots).
+    jackpot?: JackpotStatisticsSnapshot;
     workers: number;
     workerSeedStrategy: string;
     // Echoes back options.betModeId, when the run was locked to one — lets a caller (e.g.
@@ -146,7 +150,7 @@ export class ParallelSimulationRunner {
         const betModeSelector =
             this.options.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(this.options.betModeId) : undefined;
 
-        const {accumulator, breakdown, stopReason} = await runChunkedSimulation(
+        const {accumulator, breakdown, jackpot, stopReason} = await runChunkedSimulation(
             session,
             this.rounds,
             chunkSize,
@@ -169,6 +173,7 @@ export class ParallelSimulationRunner {
             manifest: game.getManifest(),
             statistics: accumulator.getStatistics(),
             breakdown,
+            jackpot,
             workers: 1,
             workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, 1),
             betMode: this.options.betModeId,
@@ -199,12 +204,15 @@ export class ParallelSimulationRunner {
         });
 
         const merger = new SimulationStatisticsMerger();
-        const merged = merger.merge(results.map((result) => ({accumulator: result.accumulator, breakdown: result.breakdown})));
+        const merged = merger.merge(
+            results.map((result) => ({accumulator: result.accumulator, breakdown: result.breakdown, jackpot: result.jackpot})),
+        );
 
         return {
             manifest: results[0].manifest,
             statistics: merged.statistics,
             breakdown: merged.breakdown,
+            jackpot: merged.jackpot,
             workers,
             workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, workers),
             betMode: this.options.betModeId,

@@ -156,6 +156,33 @@ describe("HtmlSimulationReportRenderer", () => {
         );
     });
 
+    it("omits the Jackpot section when the report has no jackpot field", () => {
+        const html = new HtmlSimulationReportRenderer().render(report);
+
+        expect(html).not.toContain("Jackpot");
+    });
+
+    it("renders a Jackpot section with overall figures and one table row per pool, escaped", () => {
+        const html = new HtmlSimulationReportRenderer().render({
+            ...report,
+            jackpot: {
+                awardCount: 3,
+                totalAwarded: 620.5,
+                totalContributed: 98,
+                contribution: 0.0633,
+                pools: {
+                    "<mini>": {awardCount: 2, totalAwarded: 120.5, totalContributed: 60, contribution: 0.0123},
+                },
+            },
+        });
+
+        expect(html).toContain("<h2>Jackpot</h2>");
+        expect(html).toContain("Award count: 3");
+        expect(html).toContain("Total awarded: 620.50");
+        expect(html).toContain("Contribution to RTP: 6.3300 pp");
+        expect(html).toContain("<td>&lt;mini&gt;</td><td>2</td><td>120.50</td><td>60.00</td><td>1.2300 pp</td>");
+    });
+
     it("omits the Convergence section and Stop reason row when the report never enabled convergence (old/legacy report)", () => {
         const html = new HtmlSimulationReportRenderer().render(report);
 

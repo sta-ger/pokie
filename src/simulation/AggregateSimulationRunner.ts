@@ -1,3 +1,5 @@
+import type {JackpotStatisticsProviding} from "../session/JackpotStatisticsProviding.js";
+import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapshot.js";
 import type {StakeAmountDetermining} from "../session/StakeAmountDetermining.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {BetModeForNextSimulationRoundSetting} from "./BetModeForNextSimulationRoundSetting.js";
@@ -37,6 +39,7 @@ export class AggregateSimulationRunner {
     private readonly betModeSelector?: BetModeForNextSimulationRoundSetting;
 
     private lastBreakdown: Record<string, SimulationBreakdownComponent> | undefined;
+    private lastJackpotStatistics: JackpotStatisticsSnapshot | undefined;
 
     constructor(
         session: GameSessionHandling,
@@ -103,6 +106,12 @@ export class AggregateSimulationRunner {
         }
 
         this.lastBreakdown = categorizationSupported ? this.toBreakdownComponents(categoryTotals) : undefined;
+        // A single read, after the loop, never per-round/per-category — see JackpotStatisticsProviding's own
+        // doc comment on why this must never be routed through SimulationCategoryDetermining/categoryTotals
+        // above (a per-round category read happens *before* play(), a jackpot trigger is only known *after*
+        // it). The snapshot itself is already cumulative for this session, so one read is always correct
+        // regardless of how many rounds this run() call actually played.
+        this.lastJackpotStatistics = this.supportsJackpotStatistics(this.session) ? this.session.getJackpotStatisticsSnapshot() : undefined;
         return accumulator;
     }
 
@@ -111,6 +120,13 @@ export class AggregateSimulationRunner {
     // happened to have zero rounds.
     public getBreakdownStatistics(): Record<string, SimulationBreakdownComponent> | undefined {
         return this.lastBreakdown;
+    }
+
+    // Populated by the most recent run(); undefined when the session never exposed
+    // JackpotStatisticsProviding. See that interface's own doc comment for why this, not
+    // SimulationCategoryDetermining, is the correct way to observe jackpot-specific simulation statistics.
+    public getJackpotStatistics(): JackpotStatisticsSnapshot | undefined {
+        return this.lastJackpotStatistics;
     }
 
     private addToCategoryTotals(categoryTotals: Map<string, CategoryTotals>, category: string, bet: number, payout: number): void {
@@ -133,6 +149,10 @@ export class AggregateSimulationRunner {
 
     private supportsStakeAmount(session: GameSessionHandling): session is GameSessionHandling & StakeAmountDetermining {
         return typeof (session as Partial<StakeAmountDetermining>).getStakeAmount === "function";
+    }
+
+    private supportsJackpotStatistics(session: GameSessionHandling): session is GameSessionHandling & JackpotStatisticsProviding {
+        return typeof (session as Partial<JackpotStatisticsProviding>).getJackpotStatisticsSnapshot === "function";
     }
 
     private toBreakdownComponents(categoryTotals: Map<string, CategoryTotals>): Record<string, SimulationBreakdownComponent> {

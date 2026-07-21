@@ -94,6 +94,7 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             "            </tbody>",
             "        </table>",
             ...this.renderBreakdownSection(report),
+            ...this.renderJackpotSection(report),
             ...this.renderConvergenceSection(report),
             ...this.renderReproducibilitySection(report),
             ...this.renderListSection("Warnings", report.warnings),
@@ -176,6 +177,45 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
         return [
             "        <section>",
             "            <h2>Breakdown</h2>",
+            "            <table>",
+            "                <thead>",
+            headerRow,
+            "                </thead>",
+            "                <tbody>",
+            ...rows,
+            "                </tbody>",
+            "            </table>",
+            "        </section>",
+        ];
+    }
+
+    private renderJackpotSection(report: SimulationReport): string[] {
+        if (!report.jackpot) {
+            return [];
+        }
+
+        const jackpot = report.jackpot;
+        const summary = [
+            `Award count: ${jackpot.awardCount}`,
+            `Total awarded: ${jackpot.totalAwarded.toFixed(2)}`,
+            `Total contributed: ${jackpot.totalContributed.toFixed(2)}`,
+            `Contribution to RTP: ${(jackpot.contribution * 100).toFixed(4)} pp`,
+        ];
+
+        const headerRow = "            <tr><th>Pool</th><th>Award count</th><th>Total awarded</th><th>Total contributed</th><th>Contribution</th></tr>";
+        const rows = Object.entries(jackpot.pools).map(([poolId, pool]) => {
+            return (
+                `            <tr><td>${this.escapeHtml(poolId)}</td><td>${pool.awardCount}</td><td>${pool.totalAwarded.toFixed(2)}</td>` +
+                `<td>${pool.totalContributed.toFixed(2)}</td><td>${(pool.contribution * 100).toFixed(4)} pp</td></tr>`
+            );
+        });
+
+        return [
+            "        <section>",
+            "            <h2>Jackpot</h2>",
+            "            <ul>",
+            ...summary.map((item) => `                <li>${item}</li>`),
+            "            </ul>",
             "            <table>",
             "                <thead>",
             headerRow,

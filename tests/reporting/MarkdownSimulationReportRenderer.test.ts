@@ -133,6 +133,36 @@ describe("MarkdownSimulationReportRenderer", () => {
         expect(markdown).toContain("| freeGames | 980 | 980.00 | 1393.40 | 142.18% | 14.22 pp | 60.00% | 120.50 |");
     });
 
+    it("omits the Jackpot section when the report has no jackpot field", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render(report);
+
+        expect(markdown).not.toContain("## Jackpot");
+    });
+
+    it("renders a Jackpot section with overall figures and one row per pool", () => {
+        const markdown = new MarkdownSimulationReportRenderer().render({
+            ...report,
+            jackpot: {
+                awardCount: 3,
+                totalAwarded: 620.5,
+                totalContributed: 98,
+                contribution: 0.0633,
+                pools: {
+                    mini: {awardCount: 2, totalAwarded: 120.5, totalContributed: 60, contribution: 0.0123},
+                    grand: {awardCount: 1, totalAwarded: 500, totalContributed: 38, contribution: 0.051},
+                },
+            },
+        });
+
+        expect(markdown).toContain("## Jackpot");
+        expect(markdown).toContain("**Award count**: 3");
+        expect(markdown).toContain("**Total awarded**: 620.50");
+        expect(markdown).toContain("**Total contributed**: 98.00");
+        expect(markdown).toContain("**Contribution to RTP**: 6.3300 pp");
+        expect(markdown).toContain("| mini | 2 | 120.50 | 60.00 | 1.2300 pp |");
+        expect(markdown).toContain("| grand | 1 | 500.00 | 38.00 | 5.1000 pp |");
+    });
+
     it("omits the Stop reason line and Convergence section when the report never enabled convergence (old/legacy report)", () => {
         const markdown = new MarkdownSimulationReportRenderer().render(report);
 

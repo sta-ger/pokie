@@ -10,6 +10,7 @@ import {
     WinEvaluationResult,
     WinningValue,
     type JackpotPoolRepresenting,
+    type JackpotPoolStatisticsSnapshot,
     type JackpotRoundOutcome,
     type VideoSlotWithJackpotSessionHandling,
 } from "pokie";
@@ -24,8 +25,7 @@ class FakeJackpotSession implements VideoSlotWithJackpotSessionHandling<string> 
     private readonly bet: number;
     private readonly pools: readonly JackpotPoolRepresenting[];
     private lastRoundOutcome: JackpotRoundOutcome<string> = {kind: "ordinary"};
-    private awardCount = 0;
-    private totalAwarded = 0;
+    private poolStatistics: Readonly<Record<string, JackpotPoolStatisticsSnapshot>> = {};
 
     constructor(grid: string[][], pools: readonly JackpotPoolRepresenting[], options: {credits?: number; bet?: number} = {}) {
         this.grid = grid;
@@ -50,20 +50,24 @@ class FakeJackpotSession implements VideoSlotWithJackpotSessionHandling<string> 
         this.lastRoundOutcome = value;
     }
 
-    public getJackpotAwardCount(): number {
-        return this.awardCount;
+    public getJackpotPoolStatistics(): Readonly<Record<string, JackpotPoolStatisticsSnapshot>> {
+        return this.poolStatistics;
     }
 
-    public setJackpotAwardCount(value: number): void {
-        this.awardCount = value;
+    public setJackpotPoolStatistics(value: Readonly<Record<string, JackpotPoolStatisticsSnapshot>>): void {
+        this.poolStatistics = value;
+    }
+
+    public getJackpotAwardCount(): number {
+        return Object.values(this.poolStatistics).reduce((sum, stats) => sum + stats.awardCount, 0);
     }
 
     public getJackpotTotalAwarded(): number {
-        return this.totalAwarded;
+        return Object.values(this.poolStatistics).reduce((sum, stats) => sum + stats.totalAwarded, 0);
     }
 
-    public setJackpotTotalAwarded(value: number): void {
-        this.totalAwarded = value;
+    public getJackpotTotalContributed(): number {
+        return Object.values(this.poolStatistics).reduce((sum, stats) => sum + stats.totalContributed, 0);
     }
 
     public getCreditsAmount(): number {

@@ -13,6 +13,9 @@ export class SymbolCountJackpotTrigger<T extends string | number | symbol = stri
     private readonly minimumCount: number;
 
     constructor(symbolId: T, minimumCount: number) {
+        if (!Number.isSafeInteger(minimumCount) || minimumCount <= 0) {
+            throw new Error(`SymbolCountJackpotTrigger requires minimumCount to be a positive safe integer, got ${String(minimumCount)}.`);
+        }
         this.symbolId = symbolId;
         this.minimumCount = minimumCount;
     }

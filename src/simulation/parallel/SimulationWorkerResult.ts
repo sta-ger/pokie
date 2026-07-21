@@ -1,4 +1,5 @@
 import type {PokieGameManifest} from "../../gamepackage/PokieGameManifest.js";
+import type {JackpotStatisticsSnapshot} from "../../session/JackpotStatisticsSnapshot.js";
 import type {SimulationAccumulatorSnapshot} from "../SimulationAccumulatorSnapshot.js";
 import type {SimulationBreakdownComponent} from "../SimulationBreakdownComponent.js";
 import type {SimulationConvergenceOutcome} from "../SimulationConvergenceOutcome.js";
@@ -13,6 +14,10 @@ export type SimulationWorkerResult = {
     manifest: PokieGameManifest;
     accumulator: SimulationAccumulatorSnapshot;
     breakdown?: Record<string, SimulationBreakdownComponent>;
+    // Present only when this worker's own session exposed JackpotStatisticsProviding — see that
+    // interface's own doc comment. Already cumulative for this one worker's own share of rounds; combined
+    // across workers via mergeJackpotStatisticsSnapshots, never summed a second time within a worker.
+    jackpot?: JackpotStatisticsSnapshot;
     // The rounds this worker actually played — may be less than its requested share if the session
     // stopped itself early (canPlayNextGame() returning false), same "actual can be less than
     // requested" behavior `pokie sim` already has for the single-threaded path.

@@ -142,6 +142,7 @@ export class SimCommand implements CliCommandHandling {
             durationMs,
             packageRoot: options.packageRoot,
             breakdown: result.breakdown,
+            jackpot: result.jackpot,
             workers: result.workers,
             workerSeedStrategy: result.workerSeedStrategy,
             betMode: result.betMode,
@@ -393,6 +394,19 @@ export class SimCommand implements CliCommandHandling {
                     `  ${category.padEnd(14)}rounds ${component.rounds}, rtp ${(component.rtp * 100).toFixed(2)}%, ` +
                         `contribution ${(component.contribution * 100).toFixed(2)} pp, ` +
                         `hit frequency ${(component.hitFrequency * 100).toFixed(2)}%, max win ${component.maxWin.toFixed(2)}`,
+                );
+            });
+        }
+
+        if (report.jackpot) {
+            console.log(
+                `\nJackpot: awards ${report.jackpot.awardCount}, total awarded ${report.jackpot.totalAwarded.toFixed(2)}, ` +
+                    `total contributed ${report.jackpot.totalContributed.toFixed(2)}, contribution ${(report.jackpot.contribution * 100).toFixed(4)}pp`,
+            );
+            Object.entries(report.jackpot.pools).forEach(([poolId, pool]) => {
+                console.log(
+                    `  ${poolId.padEnd(14)}awards ${pool.awardCount}, total awarded ${pool.totalAwarded.toFixed(2)}, ` +
+                        `contribution ${(pool.contribution * 100).toFixed(4)}pp`,
                 );
             });
         }

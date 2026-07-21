@@ -1,5 +1,7 @@
 import type {BuildableFromSessionState} from "../../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../../ConvertableToSessionState.js";
+import type {JackpotPoolStatisticsSnapshot, JackpotStatisticsSnapshot} from "../../JackpotStatisticsSnapshot.js";
+import type {JackpotStatisticsProviding} from "../../JackpotStatisticsProviding.js";
 import type {SimulationCategoryDetermining} from "../../SimulationCategoryDetermining.js";
 import type {StakeAmountDetermining} from "../../StakeAmountDetermining.js";
 import {AbstractVideoSlotSessionDecorator} from "../AbstractVideoSlotSessionDecorator.js";
@@ -14,6 +16,7 @@ import type {JackpotRoundHandling} from "./JackpotRoundHandling.js";
 import type {JackpotRoundOutcome} from "./JackpotRoundOutcome.js";
 import type {JackpotPoolRepresenting} from "./JackpotPoolRepresenting.js";
 import type {JackpotTriggering} from "./JackpotTriggering.js";
+import {JackpotWinComponent} from "./JackpotWinComponent.js";
 import {NoJackpotTrigger} from "./NoJackpotTrigger.js";
 import {PercentageOfBetJackpotContributor} from "./PercentageOfBetJackpotContributor.js";
 import {SingleTierJackpotAwarding} from "./SingleTierJackpotAwarding.js";
@@ -48,12 +51,12 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         ConvertableToSessionState<VideoSlotWithJackpotSessionState>,
         BuildableFromSessionState<VideoSlotWithJackpotSessionState>,
         StakeAmountDetermining,
-        SimulationCategoryDetermining {
+        SimulationCategoryDetermining,
+        JackpotStatisticsProviding {
     private readonly pools: readonly JackpotPoolRepresenting[];
     private readonly roundHandler: JackpotRoundHandling<T>;
     private lastRoundOutcome: JackpotRoundOutcome<T> = {kind: "ordinary"};
-    private awardCount = 0;
-    private totalAwarded = 0;
+    private poolStatistics: Readonly<Record<string, JackpotPoolStatisticsSnapshot>> = {};
 
     constructor(
         baseSession: VideoSlotSessionHandling<T>,
@@ -64,8 +67,23 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         roundHandler: JackpotRoundHandling<T> = new JackpotRoundHandler<T>(contributor, trigger, awarding),
     ) {
         super(baseSession);
+        VideoSlotWithJackpotSession.validatePools(pools);
         this.pools = pools;
         this.roundHandler = roundHandler;
+    }
+
+    private static validatePools(pools: readonly JackpotPoolRepresenting[]): void {
+        const seenIds = new Set<string>();
+        for (const pool of pools) {
+            const id = pool.getId();
+            if (id.length === 0) {
+                throw new Error("VideoSlotWithJackpotSession requires every configured pool to have a non-empty id.");
+            }
+            if (seenIds.has(id)) {
+                throw new Error(`VideoSlotWithJackpotSession requires unique pool ids, got a duplicate: "${id}".`);
+            }
+            seenIds.add(id);
+        }
     }
 
     public getJackpotPools(): readonly JackpotPoolRepresenting[] {
@@ -80,24 +98,42 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         this.lastRoundOutcome = value;
     }
 
-    public getJackpotAwardCount(): number {
-        return this.awardCount;
+    public getJackpotPoolStatistics(): Readonly<Record<string, JackpotPoolStatisticsSnapshot>> {
+        return this.poolStatistics;
     }
 
-    public setJackpotAwardCount(value: number): void {
-        this.awardCount = value;
+    public setJackpotPoolStatistics(value: Readonly<Record<string, JackpotPoolStatisticsSnapshot>>): void {
+        this.poolStatistics = value;
+    }
+
+    // Convenience sums over getJackpotPoolStatistics() — see that method's own doc comment on why the
+    // per-pool map, not a separately-settable counter, is the single source of truth.
+    public getJackpotAwardCount(): number {
+        return Object.values(this.poolStatistics).reduce((sum, stats) => sum + stats.awardCount, 0);
     }
 
     public getJackpotTotalAwarded(): number {
-        return this.totalAwarded;
+        return Object.values(this.poolStatistics).reduce((sum, stats) => sum + stats.totalAwarded, 0);
     }
 
-    public setJackpotTotalAwarded(value: number): void {
-        this.totalAwarded = value;
+    public getJackpotTotalContributed(): number {
+        return Object.values(this.poolStatistics).reduce((sum, stats) => sum + stats.totalContributed, 0);
+    }
+
+    // JackpotStatisticsProviding: the additive, mergeable simulation-statistics snapshot (see that
+    // interface's own doc comment on why this, not SimulationCategoryDetermining, is what
+    // AggregateSimulationRunner/ParallelSimulationRunner consult for jackpot-specific reporting).
+    public getJackpotStatisticsSnapshot(): JackpotStatisticsSnapshot {
+        return {
+            awardCount: this.getJackpotAwardCount(),
+            totalAwarded: this.getJackpotTotalAwarded(),
+            totalContributed: this.getJackpotTotalContributed(),
+            pools: this.poolStatistics,
+        };
     }
 
     public toSessionState(): VideoSlotWithJackpotSessionState {
-        const state: VideoSlotWithJackpotSessionState = {awardCount: this.awardCount, totalAwarded: this.totalAwarded};
+        const state: VideoSlotWithJackpotSessionState = {poolStatistics: this.poolStatistics};
         const poolStates: Record<string, unknown> = {};
         let anyPoolCapturable = false;
         for (const pool of this.pools) {
@@ -116,8 +152,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     }
 
     public fromSessionState(value: VideoSlotWithJackpotSessionState): this {
-        this.awardCount = value.awardCount;
-        this.totalAwarded = value.totalAwarded;
+        this.poolStatistics = value.poolStatistics;
         if (value.pools !== undefined) {
             for (const pool of this.pools) {
                 const poolState = value.pools[pool.getId()];
@@ -169,20 +204,24 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     // Same stabilization for the unified win-breakdown surface. Unlike Hold & Win's own reconstruction (which
     // has to proportionally split one payout across several locked symbols, and therefore worry about
     // floating-point residual — see VideoSlotWithHoldAndWinSession's own doc comment), a jackpot award is
-    // always exactly one amount attributed to at most one symbol, so there is no splitting and no residual to
-    // manage: the reconstruction is exact by construction. getWinningLines()/getWinningScatters()/
-    // getLinesWinning()/getScattersWinning() are deliberately *not* overridden — unlike a Hold & Win respin, a
-    // jackpot round never discards or suppresses the wrapped session's own line/scatter result, so the
-    // inherited pass-through (see AbstractVideoSlotSessionDecorator) is already correct.
+    // always exactly one amount, so there is no splitting and no residual to manage: the reconstruction is
+    // exact by construction, *with or without* a symbolId — a ValueWinComponent when the award carries one,
+    // a JackpotWinComponent (see its own doc comment) when it doesn't, so getTotalWin() always equals
+    // getWinAmount() above regardless. getWinningLines()/getWinningScatters()/getLinesWinning()/
+    // getScattersWinning() are deliberately *not* overridden — unlike a Hold & Win respin, a jackpot round
+    // never discards or suppresses the wrapped session's own line/scatter result, so the inherited
+    // pass-through (see AbstractVideoSlotSessionDecorator) is already correct.
     public override getWinEvaluationResult(): WinEvaluationResult<T> {
         const outcome = this.lastRoundOutcome;
         if (outcome.kind === "ordinary") {
             return this.baseSession.getWinEvaluationResult();
         }
         const jackpotComponent =
-            outcome.symbolId !== undefined ? [new ValueWinComponent<T>(new WinningValue<T>(outcome.symbolId, [], outcome.amount))] : [];
+            outcome.symbolId !== undefined
+                ? new ValueWinComponent<T>(new WinningValue<T>(outcome.symbolId, [], outcome.amount))
+                : new JackpotWinComponent<T>(outcome.poolId, outcome.amount);
         return new WinEvaluationResult<T>({
-            winComponents: [...outcome.baseWinEvaluationResult.getWinComponents(), ...jackpotComponent],
+            winComponents: [...outcome.baseWinEvaluationResult.getWinComponents(), jackpotComponent],
             metadata: {jackpot: {poolId: outcome.poolId, amount: outcome.amount}},
         });
     }

@@ -5,6 +5,8 @@ import type {SimulationBreakdownComponent} from "../../SimulationBreakdownCompon
 import {mergeSimulationBreakdowns} from "../../SimulationBreakdownMerging.js";
 import type {SimulationStopReason} from "../../SimulationStopReason.js";
 import type {GameSessionHandling} from "../../../session/GameSessionHandling.js";
+import type {JackpotStatisticsProviding} from "../../../session/JackpotStatisticsProviding.js";
+import type {JackpotStatisticsSnapshot} from "../../../session/JackpotStatisticsSnapshot.js";
 import {SimulationCancelledError} from "../SimulationCancelledError.js";
 
 export type ChunkedSimulationChunkInfo = {
@@ -33,6 +35,7 @@ export type ChunkedSimulationCallbacks = {
 export type ChunkedSimulationResult = {
     accumulator: SimulationAccumulator;
     breakdown?: Record<string, SimulationBreakdownComponent>;
+    jackpot?: JackpotStatisticsSnapshot;
     roundsCompleted: number;
     stopReason: SimulationStopReason;
 };
@@ -102,5 +105,15 @@ export async function runChunkedSimulation(
         }
     }
 
-    return {accumulator, breakdown, roundsCompleted, stopReason};
+    // A single read, after every chunk has finished, directly off "session" — never per-chunk, never merged
+    // (see mergeJackpotStatisticsSnapshots' own doc comment on why merging would double-count: the snapshot
+    // is already cumulative for this one session across every chunk played above, so reading it once here is
+    // always correct regardless of how many chunks that took).
+    const jackpot = supportsJackpotStatistics(session) ? session.getJackpotStatisticsSnapshot() : undefined;
+
+    return {accumulator, breakdown, jackpot, roundsCompleted, stopReason};
+}
+
+function supportsJackpotStatistics(session: GameSessionHandling): session is GameSessionHandling & JackpotStatisticsProviding {
+    return typeof (session as Partial<JackpotStatisticsProviding>).getJackpotStatisticsSnapshot === "function";
 }

@@ -256,3 +256,45 @@ describe("AggregateSimulationRunner breakdown", () => {
         });
     });
 });
+
+describe("AggregateSimulationRunner jackpot statistics", () => {
+    function createJackpotAwareSession(rounds: number, snapshot: object): GameSessionHandling {
+        let round = 0;
+        return {
+            getCreditsAmount: () => Number.MAX_SAFE_INTEGER,
+            setCreditsAmount: () => undefined,
+            getBet: () => 1,
+            setBet: () => undefined,
+            getAvailableBets: () => [1],
+            canPlayNextGame: () => round < rounds,
+            play: () => {
+                round++;
+            },
+            getWinAmount: () => 0,
+            getJackpotStatisticsSnapshot: () => snapshot,
+        } as unknown as GameSessionHandling;
+    }
+
+    test("getJackpotStatistics() is undefined before run() is called", () => {
+        const runner = new AggregateSimulationRunner(createJackpotAwareSession(5, {awardCount: 0, totalAwarded: 0, totalContributed: 0, pools: {}}), 5);
+
+        expect(runner.getJackpotStatistics()).toBeUndefined();
+    });
+
+    test("getJackpotStatistics() is undefined when the session doesn't expose JackpotStatisticsProviding", () => {
+        const runner = new AggregateSimulationRunner(createBaseOnlySession(5), 5);
+
+        runner.run();
+
+        expect(runner.getJackpotStatistics()).toBeUndefined();
+    });
+
+    test("getJackpotStatistics() reads the session's own snapshot once, after run() finishes", () => {
+        const snapshot = {awardCount: 2, totalAwarded: 900, totalContributed: 45, pools: {mini: {awardCount: 2, totalAwarded: 900, totalContributed: 45}}};
+        const runner = new AggregateSimulationRunner(createJackpotAwareSession(10, snapshot), 10);
+
+        runner.run();
+
+        expect(runner.getJackpotStatistics()).toEqual(snapshot);
+    });
+});

@@ -340,4 +340,87 @@ describe("VideoSlotWithJackpotSession", () => {
         session.play(); // zero-stake round — must not contribute
         expect(pool.getValue()).toBe(1001);
     });
+
+    describe("mystery/default award without a symbolId", () => {
+        it("credits delta, getWinAmount(), and getWinEvaluationResult().getTotalWin() all agree, exactly, with no symbolId attributed", () => {
+            const winningGrid = [
+                ["J", "X"],
+                ["J", "X"],
+                ["J", "X"],
+            ];
+            const pool = new FixedJackpotPool("mystery", 750);
+            const base = new ScriptedFakeVideoSlotSession([winningGrid], {credits: 1000, bet: 10});
+            const session = new VideoSlotWithJackpotSession<string>(
+                base,
+                [pool],
+                new PercentageOfBetJackpotContributor(0),
+                new SymbolCountJackpotTrigger<string>("J", 3),
+                new SingleTierJackpotAwarding<string>(), // no symbolId supplied — the mystery/default case
+            );
+            const creditsBefore = session.getCreditsAmount();
+
+            session.play();
+
+            const outcome = session.getJackpotLastRoundOutcome();
+            expect(outcome).toMatchObject({kind: "awarded", poolId: "mystery", amount: 750, symbolId: undefined});
+
+            const creditsDelta = session.getCreditsAmount() - (creditsBefore - session.getBet());
+            expect(session.getWinAmount()).toBe(750);
+            expect(session.getWinEvaluationResult().getTotalWin()).toBe(750);
+            expect(creditsDelta).toBe(750);
+            // All three must agree exactly, not just be close.
+            expect(session.getWinAmount()).toBe(session.getWinEvaluationResult().getTotalWin());
+            expect(creditsDelta).toBe(session.getWinAmount());
+        });
+
+        it("still produces a real win component (JackpotWinComponent) even without a symbolId, so the breakdown isn't silently empty", () => {
+            const winningGrid = [
+                ["J", "X"],
+                ["J", "X"],
+                ["J", "X"],
+            ];
+            const pool = new FixedJackpotPool("mystery", 750);
+            const base = new ScriptedFakeVideoSlotSession([winningGrid], {credits: 1000, bet: 10});
+            const session = new VideoSlotWithJackpotSession<string>(
+                base,
+                [pool],
+                new PercentageOfBetJackpotContributor(0),
+                new SymbolCountJackpotTrigger<string>("J", 3),
+                new SingleTierJackpotAwarding<string>(),
+            );
+
+            session.play();
+
+            const components = session.getWinEvaluationResult().getWinComponents();
+            expect(components).toHaveLength(1);
+            expect(components[0].getType()).toBe("jackpot");
+            expect(components[0].getWinAmount()).toBe(750);
+        });
+    });
+
+    describe("configuration validation", () => {
+        it("rejects a pool with an empty id", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank()]);
+            expect(() => new VideoSlotWithJackpotSession<string>(base, [new FixedJackpotPool("", 100)])).toThrow(/non-empty id/);
+        });
+
+        it("rejects duplicate pool ids", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank()]);
+            expect(
+                () => new VideoSlotWithJackpotSession<string>(base, [new FixedJackpotPool("mini", 100), new FixedJackpotPool("mini", 200)]),
+            ).toThrow(/unique pool ids.*"mini"/);
+        });
+
+        it("accepts distinct, non-empty pool ids", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank()]);
+            expect(
+                () => new VideoSlotWithJackpotSession<string>(base, [new FixedJackpotPool("mini", 100), new FixedJackpotPool("grand", 200)]),
+            ).not.toThrow();
+        });
+
+        it("accepts an empty pools list (the safe default)", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank()]);
+            expect(() => new VideoSlotWithJackpotSession<string>(base)).not.toThrow();
+        });
+    });
 });

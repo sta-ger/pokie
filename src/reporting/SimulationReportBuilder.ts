@@ -1,3 +1,4 @@
+import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapshot.js";
 import {BASE_SIMULATION_CATEGORY} from "../simulation/SimulationCategoryNames.js";
 import {SimulationCategoryOrdering} from "../simulation/SimulationCategoryOrdering.js";
 import type {SimulationBreakdownComponent} from "../simulation/SimulationBreakdownComponent.js";
@@ -7,8 +8,9 @@ import type {SimulationReport, SimulationReportReproducibility} from "./Simulati
 import type {SimulationReportBreakdown, SimulationReportBreakdownComponent} from "./SimulationReportBreakdown.js";
 import type {SimulationReportBuilding} from "./SimulationReportBuilding.js";
 import type {SimulationReportInput} from "./SimulationReportInput.js";
+import type {SimulationReportJackpot, SimulationReportJackpotPool} from "./SimulationReportJackpot.js";
 
-type CoreMetrics = Omit<SimulationReport, "reproducibility" | "warnings" | "recommendations" | "breakdown">;
+type CoreMetrics = Omit<SimulationReport, "reproducibility" | "warnings" | "recommendations" | "breakdown" | "jackpot">;
 
 export class SimulationReportBuilder implements SimulationReportBuilding {
     public static readonly LOW_ROUNDS_WARNING_THRESHOLD: number = 10000;
@@ -71,6 +73,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         };
 
         const breakdown = this.buildBreakdown(input.breakdown, core.totalBet);
+        const jackpot = this.buildJackpot(input.jackpot, core.totalBet);
         const warnings = this.buildWarnings(core, breakdown);
         if (betModeSummaryMissing) {
             warnings.push(
@@ -82,6 +85,7 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         return {
             ...core,
             breakdown,
+            jackpot,
             reproducibility: this.buildReproducibility(core, packageRoot, workerSeedStrategy),
             warnings,
             recommendations: this.buildRecommendations(core),
@@ -257,5 +261,33 @@ export class SimulationReportBuilder implements SimulationReportBuilding {
         });
 
         return {components: withContribution};
+    }
+
+    // Mirrors buildBreakdown()'s own shape exactly: sorted (alphabetically — there's no "base" tier to
+    // prioritize the way category breakdowns do) so JSON key order is deterministic run to run, and each
+    // pool's own "contribution" is that pool's totalAwarded against the report's OVERALL totalBet, the
+    // same convention SimulationReportBreakdownComponent's own "contribution" already establishes.
+    // undefined for a session that never exposed JackpotStatisticsProviding, or one with zero configured
+    // pools — same "absent means not applicable" convention as an absent breakdown.
+    private buildJackpot(snapshot: JackpotStatisticsSnapshot | undefined, overallTotalBet: number): SimulationReportJackpot | undefined {
+        if (!snapshot || Object.keys(snapshot.pools).length === 0) {
+            return undefined;
+        }
+
+        const pools: Record<string, SimulationReportJackpotPool> = {};
+        Object.keys(snapshot.pools)
+            .sort()
+            .forEach((poolId) => {
+                const stats = snapshot.pools[poolId];
+                pools[poolId] = {...stats, contribution: overallTotalBet > 0 ? stats.totalAwarded / overallTotalBet : 0};
+            });
+
+        return {
+            awardCount: snapshot.awardCount,
+            totalAwarded: snapshot.totalAwarded,
+            totalContributed: snapshot.totalContributed,
+            contribution: overallTotalBet > 0 ? snapshot.totalAwarded / overallTotalBet : 0,
+            pools,
+        };
     }
 }

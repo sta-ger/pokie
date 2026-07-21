@@ -1,7 +1,9 @@
+import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapshot.js";
 import {SimulationAccumulator} from "./SimulationAccumulator.js";
 import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapshot.js";
 import type {SimulationBreakdownComponent} from "./SimulationBreakdownComponent.js";
 import {mergeSimulationBreakdowns} from "./SimulationBreakdownMerging.js";
+import {mergeJackpotStatisticsSnapshots} from "./JackpotStatisticsMerging.js";
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export type SimulationStatisticsMergeEntry = {
@@ -9,11 +11,16 @@ export type SimulationStatisticsMergeEntry = {
     // From AggregateSimulationRunner.getBreakdownStatistics() (per chunk/worker); undefined when that
     // particular chunk/worker never saw the optional categorization contract.
     breakdown?: Record<string, SimulationBreakdownComponent>;
+    // From AggregateSimulationRunner.getJackpotStatistics() (per worker — see that method's own doc
+    // comment on why this is a single cumulative read, never per-chunk); undefined when that particular
+    // worker's session never exposed JackpotStatisticsProviding.
+    jackpot?: JackpotStatisticsSnapshot;
 };
 
 export type SimulationStatisticsMergeResult = {
     statistics: SimulationStatistics;
     breakdown?: Record<string, SimulationBreakdownComponent>;
+    jackpot?: JackpotStatisticsSnapshot;
 };
 
 // Combines any number of SimulationAccumulator snapshots (one per worker thread, or one per internal
@@ -31,14 +38,18 @@ export class SimulationStatisticsMerger {
     public merge(entries: SimulationStatisticsMergeEntry[]): SimulationStatisticsMergeResult {
         const accumulator = new SimulationAccumulator();
         let breakdown: Record<string, SimulationBreakdownComponent> | undefined;
+        let jackpot: JackpotStatisticsSnapshot | undefined;
 
         for (const entry of entries) {
             accumulator.merge(SimulationAccumulator.fromSnapshot(entry.accumulator));
             if (entry.breakdown) {
                 breakdown = mergeSimulationBreakdowns(breakdown, entry.breakdown);
             }
+            if (entry.jackpot) {
+                jackpot = mergeJackpotStatisticsSnapshots(jackpot, entry.jackpot);
+            }
         }
 
-        return {statistics: accumulator.getStatistics(), breakdown};
+        return {statistics: accumulator.getStatistics(), breakdown, jackpot};
     }
 }

@@ -1,4 +1,4 @@
-import {SimulationAccumulator, SimulationStatisticsMerger} from "pokie";
+import {SimulationAccumulator, SimulationStatisticsMerger, type JackpotStatisticsSnapshot} from "pokie";
 
 describe("SimulationStatisticsMerger", () => {
     test("merging a single entry reproduces that entry's own statistics exactly", () => {
@@ -139,5 +139,59 @@ describe("SimulationStatisticsMerger", () => {
         ]);
         expect(mixed.breakdown).toBeDefined();
         expect(mixed.breakdown!.base.rounds).toBe(1);
+    });
+
+    test("merges jackpot statistics across workers (per-worker cross-worker merge, via mergeJackpotStatisticsSnapshots)", () => {
+        const a = new SimulationAccumulator();
+        a.addRound(1, 0);
+        const b = new SimulationAccumulator();
+        b.addRound(1, 0);
+        const jackpotA: JackpotStatisticsSnapshot = {
+            awardCount: 1,
+            totalAwarded: 500,
+            totalContributed: 100,
+            pools: {mini: {awardCount: 1, totalAwarded: 500, totalContributed: 100}},
+        };
+        const jackpotB: JackpotStatisticsSnapshot = {
+            awardCount: 2,
+            totalAwarded: 900,
+            totalContributed: 50,
+            pools: {mini: {awardCount: 2, totalAwarded: 900, totalContributed: 50}},
+        };
+
+        const merger = new SimulationStatisticsMerger();
+        const result = merger.merge([
+            {accumulator: a.toSnapshot(), jackpot: jackpotA},
+            {accumulator: b.toSnapshot(), jackpot: jackpotB},
+        ]);
+
+        expect(result.jackpot).toEqual({
+            awardCount: 3,
+            totalAwarded: 1400,
+            totalContributed: 150,
+            pools: {mini: {awardCount: 3, totalAwarded: 1400, totalContributed: 150}},
+        });
+    });
+
+    test("leaves jackpot undefined when no entry has one, and folds in only the entries that do", () => {
+        const noJackpot = new SimulationAccumulator();
+        noJackpot.addRound(1, 0);
+        const withJackpot = new SimulationAccumulator();
+        withJackpot.addRound(1, 0);
+
+        const merger = new SimulationStatisticsMerger();
+
+        const allMissing = merger.merge([{accumulator: noJackpot.toSnapshot()}, {accumulator: noJackpot.toSnapshot()}]);
+        expect(allMissing.jackpot).toBeUndefined();
+
+        const mixed = merger.merge([
+            {accumulator: noJackpot.toSnapshot()},
+            {
+                accumulator: withJackpot.toSnapshot(),
+                jackpot: {awardCount: 1, totalAwarded: 500, totalContributed: 100, pools: {mini: {awardCount: 1, totalAwarded: 500, totalContributed: 100}}},
+            },
+        ]);
+        expect(mixed.jackpot).toBeDefined();
+        expect(mixed.jackpot!.awardCount).toBe(1);
     });
 });

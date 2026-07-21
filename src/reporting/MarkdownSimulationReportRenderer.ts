@@ -50,6 +50,27 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             });
         }
 
+        if (report.jackpot) {
+            lines.push(
+                "",
+                "## Jackpot",
+                "",
+                `- **Award count**: ${report.jackpot.awardCount}`,
+                `- **Total awarded**: ${report.jackpot.totalAwarded.toFixed(2)}`,
+                `- **Total contributed**: ${report.jackpot.totalContributed.toFixed(2)}`,
+                `- **Contribution to RTP**: ${(report.jackpot.contribution * 100).toFixed(4)} pp`,
+                "",
+                "| Pool | Award count | Total awarded | Total contributed | Contribution |",
+                "| --- | --- | --- | --- | --- |",
+            );
+            Object.entries(report.jackpot.pools).forEach(([poolId, pool]) => {
+                lines.push(
+                    `| ${poolId} | ${pool.awardCount} | ${pool.totalAwarded.toFixed(2)} | ${pool.totalContributed.toFixed(2)} | ` +
+                        `${(pool.contribution * 100).toFixed(4)} pp |`,
+                );
+            });
+        }
+
         if (report.convergence) {
             const convergence = report.convergence;
             lines.push(

@@ -31,7 +31,7 @@ async function main(): Promise<void> {
             request.betModeId !== undefined ? new FixedBetModeForNextSimulationRoundSetting(request.betModeId) : undefined;
         const convergenceChecker = request.convergence ? new SimulationConvergenceChecker(request.convergence) : undefined;
 
-        const {accumulator, breakdown, roundsCompleted, stopReason} = await runChunkedSimulation(
+        const {accumulator, breakdown, jackpot, roundsCompleted, stopReason} = await runChunkedSimulation(
             session,
             request.rounds,
             request.progressChunkSize,
@@ -53,6 +53,7 @@ async function main(): Promise<void> {
             manifest: game.getManifest(),
             accumulator: accumulator.toSnapshot(),
             breakdown,
+            jackpot,
             roundsCompleted,
             stopReason,
             convergence: convergenceChecker?.buildOutcome(),

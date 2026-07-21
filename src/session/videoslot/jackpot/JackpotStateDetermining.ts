@@ -1,3 +1,4 @@
+import type {JackpotPoolStatisticsSnapshot} from "../../JackpotStatisticsSnapshot.js";
 import type {JackpotPoolRepresenting} from "./JackpotPoolRepresenting.js";
 import type {JackpotRoundOutcome} from "./JackpotRoundOutcome.js";
 
@@ -13,16 +14,24 @@ export interface JackpotStateDetermining<T extends string | number | symbol = st
 
     getJackpotLastRoundOutcome(): JackpotRoundOutcome<T>;
 
-    // Cumulative, always-correct jackpot statistics — deliberately *not* routed through
+    // Cumulative, always-correct jackpot statistics, keyed by each configured pool's own getId() — the
+    // single source of truth for every other jackpot statistic below, and for
+    // getJackpotStatisticsSnapshot() (see JackpotStatisticsProviding). Deliberately *not* routed through
     // SimulationCategoryDetermining/AggregateSimulationRunner's own per-round breakdown, which reads a
     // session's category *before* play() but its payout *after* play() (see
     // VideoSlotWithJackpotSession's own getSimulationCategory() doc comment for why that ordering makes any
     // outcome-dependent category — "was the round that just played a jackpot win" — impossible to attribute
-    // to the correct round through that mechanism). These two counters instead accumulate directly inside
-    // JackpotRoundHandler itself, in real time, every single award — correct regardless of when or how
-    // anything else happens to read them (mid-simulation, after it, or during live play), and persisted
-    // through toSessionState()/fromSessionState() like any other durable session state.
+    // to the correct round through that mechanism). Updated directly inside JackpotRoundHandler itself, in
+    // real time, on every contribution and every award — correct regardless of when or how anything else
+    // happens to read it (mid-simulation, after it, or during live play) — and persisted through
+    // toSessionState()/fromSessionState() like any other durable session state.
+    getJackpotPoolStatistics(): Readonly<Record<string, JackpotPoolStatisticsSnapshot>>;
+
+    // Convenience sums across every entry of getJackpotPoolStatistics() — never independently settable,
+    // never a second source of truth that could drift from the per-pool map.
     getJackpotAwardCount(): number;
 
     getJackpotTotalAwarded(): number;
+
+    getJackpotTotalContributed(): number;
 }

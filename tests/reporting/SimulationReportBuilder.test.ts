@@ -667,6 +667,89 @@ describe("SimulationReportBuilder", () => {
             });
         });
     });
+
+    describe("jackpot", () => {
+        test("old-shape compatibility: report.jackpot is undefined when no jackpot input is given", () => {
+            const report = buildHealthyReport();
+
+            expect(report.jackpot).toBeUndefined();
+        });
+
+        test("treats a jackpot snapshot with zero configured pools the same as no jackpot at all", () => {
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 1,
+                statistics: new SimulationAccumulator().getStatistics(),
+                durationMs: 10,
+                jackpot: {awardCount: 0, totalAwarded: 0, totalContributed: 0, pools: {}},
+            });
+
+            expect(report.jackpot).toBeUndefined();
+        });
+
+        test("wraps a jackpot snapshot into report.jackpot, adding a computed contribution per pool and overall", () => {
+            const accumulator = new SimulationAccumulator();
+            for (let i = 0; i < 10; i++) {
+                accumulator.addRound(1, 0);
+            }
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 10,
+                statistics: accumulator.getStatistics(),
+                durationMs: 10,
+                jackpot: {
+                    awardCount: 2,
+                    totalAwarded: 4,
+                    totalContributed: 1,
+                    pools: {
+                        mini: {awardCount: 1, totalAwarded: 1, totalContributed: 0.5},
+                        grand: {awardCount: 1, totalAwarded: 3, totalContributed: 0.5},
+                    },
+                },
+            });
+
+            // core.totalBet is 10 (10 rounds at bet 1) — contribution is totalAwarded divided by that
+            // OVERALL totalBet, both per pool and overall, mirroring breakdown's own "contribution"
+            // convention exactly.
+            expect(report.jackpot).toEqual({
+                awardCount: 2,
+                totalAwarded: 4,
+                totalContributed: 1,
+                contribution: 0.4,
+                pools: {
+                    mini: {awardCount: 1, totalAwarded: 1, totalContributed: 0.5, contribution: 0.1},
+                    grand: {awardCount: 1, totalAwarded: 3, totalContributed: 0.5, contribution: 0.3},
+                },
+            });
+        });
+
+        test("orders report.jackpot.pools alphabetically, regardless of input order", () => {
+            const builder = new SimulationReportBuilder();
+
+            const report = builder.build({
+                manifest,
+                requestedRounds: 1,
+                statistics: new SimulationAccumulator().getStatistics(),
+                durationMs: 10,
+                jackpot: {
+                    awardCount: 0,
+                    totalAwarded: 0,
+                    totalContributed: 0,
+                    pools: {
+                        grand: {awardCount: 0, totalAwarded: 0, totalContributed: 0},
+                        mini: {awardCount: 0, totalAwarded: 0, totalContributed: 0},
+                        major: {awardCount: 0, totalAwarded: 0, totalContributed: 0},
+                    },
+                },
+            });
+
+            expect(Object.keys(report.jackpot!.pools)).toEqual(["grand", "major", "mini"]);
+        });
+    });
 });
 
 describe("SimulationReportBuilder new metrics (volatility/distribution/averageBet/averagePayout/targetRtp)", () => {

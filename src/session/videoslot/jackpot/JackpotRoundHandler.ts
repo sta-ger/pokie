@@ -1,4 +1,5 @@
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
+import {applyJackpotPoolStatisticsDelta} from "./applyJackpotPoolStatisticsDelta.js";
 import type {JackpotAwarding} from "./JackpotAwarding.js";
 import type {JackpotContributing} from "./JackpotContributing.js";
 import type {JackpotRoundHandling} from "./JackpotRoundHandling.js";
@@ -22,9 +23,12 @@ import type {VideoSlotWithJackpotSessionHandling} from "./VideoSlotWithJackpotSe
 // - **Payout attribution**: the awarded amount is added directly to credits, on top of whatever the wrapped
 //   session's own round already paid (never discarded/suppressed, unlike a Hold & Win respin) — see
 //   JackpotRoundOutcome's own doc comment on why this outcome model is simpler than Hold & Win's.
-// - **Statistics**: getJackpotAwardCount()/getJackpotTotalAwarded() accumulate on every award — see
-//   JackpotStateDetermining's own doc comment on why these, not SimulationCategoryDetermining, are the
-//   correct way to observe jackpot-specific simulation statistics.
+// - **Statistics**: session.getJackpotPoolStatistics() (keyed by poolId, updated via
+//   applyJackpotPoolStatisticsDelta()) is the single source of truth for contribution/award-count/
+//   total-awarded, per pool — every contribution and every award updates it, whether or not this round
+//   went on to trigger anything. getJackpotAwardCount()/getJackpotTotalAwarded()/getJackpotTotalContributed()
+//   are just sums over it — see JackpotStateDetermining's own doc comment on why this, not
+//   SimulationCategoryDetermining, is the correct way to observe jackpot-specific simulation statistics.
 export class JackpotRoundHandler<T extends string | number | symbol = string> implements JackpotRoundHandling<T> {
     private readonly contributor: JackpotContributing;
     private readonly trigger: JackpotTriggering<T>;
@@ -42,15 +46,18 @@ export class JackpotRoundHandler<T extends string | number | symbol = string> im
         baseWinEvaluationResult: WinEvaluationResult<T> = new WinEvaluationResult<T>(),
     ): void {
         const pools = session.getJackpotPools();
+        let poolStatistics = session.getJackpotPoolStatistics();
 
         if (stake > 0) {
             for (const pool of pools) {
                 const contribution = this.contributor.computeContribution(pool.getId(), stake);
                 if (contribution > 0) {
                     pool.contribute(contribution);
+                    poolStatistics = applyJackpotPoolStatisticsDelta(poolStatistics, pool.getId(), {totalContributed: contribution});
                 }
             }
         }
+        session.setJackpotPoolStatistics(poolStatistics);
 
         if (pools.length === 0) {
             session.setJackpotLastRoundOutcome({kind: "ordinary"});
@@ -69,8 +76,7 @@ export class JackpotRoundHandler<T extends string | number | symbol = string> im
 
         const award = this.awarding.resolveAward(pools, context);
         session.setCreditsAmount(session.getCreditsAmount() + award.amount);
-        session.setJackpotAwardCount(session.getJackpotAwardCount() + 1);
-        session.setJackpotTotalAwarded(session.getJackpotTotalAwarded() + award.amount);
+        session.setJackpotPoolStatistics(applyJackpotPoolStatisticsDelta(poolStatistics, award.poolId, {awardCount: 1, totalAwarded: award.amount}));
         session.setJackpotLastRoundOutcome({
             kind: "awarded",
             poolId: award.poolId,

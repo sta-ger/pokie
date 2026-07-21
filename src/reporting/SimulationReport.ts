@@ -1,6 +1,7 @@
 import type {SimulationConvergenceOutcome} from "../simulation/SimulationConvergenceOutcome.js";
 import type {SimulationStopReason} from "../simulation/SimulationStopReason.js";
 import type {SimulationReportBreakdown} from "./SimulationReportBreakdown.js";
+import type {SimulationReportJackpot} from "./SimulationReportJackpot.js";
 
 export type SimulationReportReproducibility = {
     game: {id: string; name: string; version: string};
@@ -36,6 +37,10 @@ export type SimulationReport = {
     warnings?: string[];
     recommendations?: string[];
     breakdown?: SimulationReportBreakdown;
+    // Present only when the session exposed JackpotStatisticsProviding (see that interface's own doc
+    // comment) — absent for every game without a configured jackpot, same additive-optional pattern as
+    // breakdown/convergence/betMode.
+    jackpot?: SimulationReportJackpot;
     // The bet mode this run was locked to (see ParallelSimulationRunOptions.betModeId) — absent for a
     // run that never selected one, same as every other additive-optional field on this type.
     betMode?: string;
