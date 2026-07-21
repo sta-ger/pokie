@@ -7,10 +7,12 @@ For installation and a quick taste of the API, see the [main README](../README.m
 see [pokie-examples](https://github.com/sta-ger/pokie-examples).
 
 **Scope:** POKIE is a game-logic library, not a casino backend — it doesn't ship an RGS, a real wallet/ledger
-system, or any compliance/audit guarantee. It computes what a round's outcome and win are; wiring that into an
-account, currency, or compliance system is left to the integrating backend. The one exception is `pokie serve`/
-`pokie dev` (see [CLI](cli.md), item 13 below): an explicitly **experimental, dev/reference-only** HTTP transport
-with a replaceable, in-memory-by-default `SessionRepository` and `WalletPort` — useful for local development and
+system, a compliance/audit platform, a key-management service, or a timestamping authority. It computes what a
+round's outcome and win are, and provides deterministic, independently verifiable tooling on top of that (replay,
+weighted-outcome analysis, provably-fair commit-reveal proofs); wiring any of it into an account, currency, or
+compliance system is left to the integrating backend. The one exception is `pokie serve`/`pokie dev` (see
+[CLI](cli.md), item 18 below): an explicitly **experimental, dev/reference-only** HTTP transport with a
+replaceable, in-memory-by-default `SessionRepository` and `WalletPort` — useful for local development and
 previewing a game, but neither a substitute for a real backend nor RGS-grade in any sense.
 
 ## Contents
@@ -29,27 +31,50 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
    games (bonus) round is tracked and paid out.
 7. **[Resizable Grid](resizable-grid.md)** — `VideoSlotWithResizableGridSession` and per-reel height changes between
    rounds, for features that grow or shrink the grid.
-8. **[Simulation](simulation.md)** — `Simulation`/`SimulationConfig`, RTP/volatility/hit-frequency statistics, play
-   strategies for driving targeted or bulk simulation runs, the pluggable base/freeGames/custom-category
-   feature-level breakdown behind `pokie sim`'s `breakdown` field, and worker-thread parallelism via
-   `pokie sim --workers`.
-9. **[Network Serialization](serialization.md)** — turning a session's state into plain-data payloads for a game
-   client.
-10. **[Round Artifacts](round-artifacts.md)** — `RoundArtifact`/`RoundStepArtifact`, the canonical hashable record
+8. **Bet Modes** (`src/session/videoslot/betmode/`) — `BetMode.runtimeType` (`"base"`/`"ante"`/`"buyFeature"`) is an
+   opt-in, all-or-nothing runtime-semantics contract on top of the otherwise purely-declarative `BetMode`
+   metadata: an `"ante"` mode's `costMultiplier` is an always-applied extra stake, a `"buyFeature"` mode forces
+   entry into `mechanics.freeGames` for its own configured `forcedFreeGames` count. `VideoSlotWithBetModesSession`
+   composes this over any existing session (via `ForcedFeatureEntryHandling`/`PerModeForcedFeatureEntryHandler`),
+   `GameBlueprintValidator` enforces "opt in completely, never half-specified," and a mode's own `targetRtp` flows
+   through to `pokie sim --mode`/`SimulationReportBuilder` for per-mode RTP-deviation reporting (see
+   [Simulation](simulation.md) below) and round-trips through [PAR Sheet](cli.md#workbook-format) import/export.
+9. **Hold & Win / Lock & Spin** (`src/session/videoslot/holdandwin/`) — `VideoSlotWithHoldAndWinSession` composes a
+   respin-until-board-full-or-exhausted collect-and-lock feature onto any existing session, the same
+   decoration-not-inheritance shape [Free Games](free-games.md) already uses, rendering locked positions back
+   onto each respin's grid via the generic `SymbolOverlayTransformer` primitive and folding the final locked set
+   into one payout via `HoldAndWinPayoutAggregating`.
+10. **Jackpots** (`src/session/videoslot/jackpot/`) — `VideoSlotWithJackpotSession` composes fixed/local/progressive
+    jackpot pools (`JackpotPoolRepresenting` — `FixedJackpotPool`/`AccumulatingJackpotPool`, "local" vs.
+    "progressive" is purely a matter of whether a pool instance is shared across sessions, never a different
+    class) onto any existing session via pluggable `JackpotContributing`/`JackpotTriggering`/`JackpotAwarding`
+    strategies, transparently forwards the wrapped session's own stake/simulation-category signals, and reports
+    per-pool award/contribution statistics (`getJackpotPoolStatistics()`) merged correctly across parallel
+    simulation workers and chunked runs.
+11. **[Simulation](simulation.md)** — `Simulation`/`SimulationConfig`, RTP/volatility/hit-frequency statistics, play
+    strategies for driving targeted or bulk simulation runs, the pluggable base/freeGames/custom-category
+    feature-level breakdown behind `pokie sim`'s `breakdown` field, worker-thread parallelism via
+    `pokie sim --workers`, opt-in convergence/adaptive early stop (`ParallelSimulationRunOptions.convergence`,
+    evaluated independently per worker for determinism — see `pokie sim`'s
+    [adaptive early stop flags](cli.md#adaptive-early-stop-convergence)), and per-`--mode`
+    breakdown/comparison reporting for a multi-bet-mode game.
+12. **[Network Serialization](serialization.md)** — turning a session's state into plain-data payloads for a game
+    client.
+13. **[Round Artifacts](round-artifacts.md)** — `RoundArtifact`/`RoundStepArtifact`, the canonical hashable record
     of a completed round built from already-computed runtime state (no second calculation path), the standard
     `PokieJsonRoundArtifactProjector` JSON projection with a stable content hash, and `RoundArtifactValidator`.
-11. **[Weighted Outcome Library](weighted-outcome-library.md)** — `WeightedOutcomeLibrary`, a canonical, hashable
+14. **[Weighted Outcome Library](weighted-outcome-library.md)** — `WeightedOutcomeLibrary`, a canonical, hashable
     enumeration of every possible round outcome (each a `RoundArtifact` plus its exact weight), and
     `WeightedOutcomeLibraryAnalyzer`'s exact — no Monte Carlo — RTP/hit-frequency/variance/payout-distribution
     statistics.
-12. **[Extension Points](extension-points.md)** — every injectable collaborator in the library, in one table, plus
+15. **[Extension Points](extension-points.md)** — every injectable collaborator in the library, in one table, plus
     `AbstractVideoSlotSessionDecorator` for writing a session wrapper without re-implementing every passthrough
     method.
-13. **[Modeling Slot Math with POKIE](math-modeling.md)** — a worked walkthrough of using POKIE to balance RTP,
+16. **[Modeling Slot Math with POKIE](math-modeling.md)** — a worked walkthrough of using POKIE to balance RTP,
     hit frequency, and volatility.
-14. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
+17. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
     `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
-15. **[CLI](cli.md)** — `pokie build <config.json>`, which generates a working game package straight from a JSON
+18. **[CLI](cli.md)** — `pokie build <config.json>`, which generates a working game package straight from a JSON
     `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated
     via `reelStripGeneration` and `ReelStripGenerator`), no compile step required; `pokie
     create <name>` (new directory) and `pokie init` (existing project), which scaffold
@@ -64,56 +89,61 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     casino backend or RGS; `pokie client <packageRoot>` (experimental), a universal browser preview UI talking to
     a running `pokie serve`; `pokie dev <packageRoot>` (experimental), which runs both together; `pokie par
     import <input.xlsx>`, which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable,
-    paylines, available bets) into a `GameBlueprint` JSON file; `pokie par export <config.json>`, which
-    exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie stakeengine export <config.json>`,
-    which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine math-sdk static file format;
-    `pokie stakeengine import <stakeDir>`, which imports one back; `pokie outcomelibrary build <config.json>`,
-    which builds a canonical Outcome Library Bundle from one or more `WeightedOutcomeLibrary` JSON files;
-    `pokie outcomelibrary validate <bundleDir>`, which validates one; `pokie certification build <bundleDir>
-    <config.json>`, which builds a certification/evidence bundle on top of an Outcome Library Bundle;
-    `pokie certification verify <certDir>`, which verifies one against its live source bundle; and `pokie`/
-    `pokie studio` (experimental), a local GUI covering the commands above — see
+    paylines, available bets, win model, mechanics, and bet modes) into a `GameBlueprint` JSON file; `pokie par
+    export <config.json>`, which exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie stakeengine
+    export <config.json>`, which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine
+    math-sdk static file format; `pokie stakeengine import <stakeDir>`, which imports one back; `pokie
+    outcomelibrary build <config.json>`, which builds a canonical Outcome Library Bundle from one or more
+    `WeightedOutcomeLibrary` JSON files; `pokie outcomelibrary validate <bundleDir>`, which validates one; `pokie
+    certification build <bundleDir> <config.json>`, which builds a certification/evidence bundle on top of an
+    Outcome Library Bundle; `pokie certification verify <certDir>`, which verifies one against its live source
+    bundle; `pokie fairness seed-commit <serverSeed.txt>`/`commit`/`reveal`/`verify`, the full Provably Fair
+    commit-reveal CLI workflow (see item 25 below); and `pokie`/`pokie studio` (experimental), a local GUI
+    covering most of the commands above (Create/Init, the Mechanics Editor, Outcome Libraries, PAR Sheet,
+    Certification, Provably Fair, Stake Engine export, Deployment, Runtime, Replay, Simulation) — see
     [`studio-frontend.md`](studio-frontend.md) for its own React + Mantine frontend stack and dev workflow.
-16. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
+19. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
     either from exact counts or from proportional `symbolWeights` (via
     `LargestRemainderReelStripSymbolWeightsConverter`), and `ReelStripAnalyzer` for inspecting any strip. A
     design-time tool, separate from the runtime spin path.
-17. **[Pre-Generated Runtime](pregenerated-runtime.md)** — `WeightedOutcomeSelector`, drawing a single round
+20. **[Pre-Generated Runtime](pregenerated-runtime.md)** — `WeightedOutcomeSelector`, drawing a single round
     deterministically from a `WeightedOutcomeLibrary` (seed/RNG-injected, no game calculation path involved),
     `buildPreGeneratedRoundResult`/`PreGeneratedRoundResultValidator` for the runtime result this produces,
     `PreGeneratedRoundResultProjector` for its public/internal response split, `PreGeneratedRoundReplayer` for
     exact (not best-effort) reconstruction of a past round, and `PreGeneratedSpinCommandHandler`/
     `PokieDevServer`'s additive `/pregenerated-sessions` routes for serving it over HTTP with idempotency.
-18. **[Stake Engine Export](stake-engine-export.md)** — exporting a canonical `WeightedOutcomeLibrary` (one per
+21. **[Stake Engine Export](stake-engine-export.md)** — exporting a canonical `WeightedOutcomeLibrary` (one per
     bet mode) to the real Stake Engine math-sdk static file format (`index.json`, per-mode lookup CSV, zstd-
     compressed JSONL books), `StakeEngineRoundEventsProjector`'s generic `RoundArtifact` → Stake "events"
     mapping, and `StakeEngineExporter`/`StakeEngineExportValidator`.
-19. **[Stake Engine Import](stake-engine-import.md)** — reconstructing a `WeightedOutcomeLibrary` back from a
+22. **[Stake Engine Import](stake-engine-import.md)** — reconstructing a `WeightedOutcomeLibrary` back from a
     Stake Engine export directory via `StakeEngineImporter`/`StakeEngineRoundEventsImporter`, the disclosed
     lossy-vs-lossless boundary (`roundId`/win breakdown/`provenance.pokieVersion` are substituted, everything
     else round-trips exactly), and the real round-trip property: import then re-export reproduces byte-identical
     Stake output.
-20. **[Outcome Library Bundle](outcome-library-bundle.md)** — the canonical, streaming-friendly on-disk
+23. **[Outcome Library Bundle](outcome-library-bundle.md)** — the canonical, streaming-friendly on-disk
     persistence format for a `WeightedOutcomeLibrary` (a small manifest, a small per-mode index, one streaming
     JSONL outcomes file per mode), with a writer that never buffers a whole mode's outcomes as one string, a
     reader with full-streaming/single-outcome-random-access/weighted-draw/whole-library modes, and the one
     shared `loadWeightedOutcomeLibraryFromBundle` loader both the pre-generated runtime and the Stake Engine
     exporter use.
-21. **[Certification/Evidence Bundle](certification-evidence-bundle.md)** — building a deterministic evidence
+24. **[Certification/Evidence Bundle](certification-evidence-bundle.md)** — building a deterministic evidence
     package on top of an Outcome Library Bundle (game/library hashes, provenance, exact weighted metrics, the
     source bundle's own deep-validation diagnostics, and deterministically sampled/individually verifiable
     `RoundArtifact` records), with `CertificationEvidenceBundleBuilder`/`Validator`/`Verifier` and
     `pokie certification build`/`pokie certification verify`.
-22. **[Provably Fair](provably-fair.md)** — a commit-reveal proof for a single round drawn from an Outcome
+25. **[Provably Fair](provably-fair.md)** — a commit-reveal proof for a single round drawn from an Outcome
     Library Bundle: `FairnessServerSeedCommitment` (published before `clientSeed`/`nonce` are known),
     `FairnessCommitment` (the round commitment, pinning `clientSeed`/`nonce`/library/mode before selection),
     `FairnessRoundProof` (the revealed round, deterministically drawn via a pinned-snapshot HMAC-SHA256 byte
     stream and bound to its commitment via `commitmentHash`), and `FairnessCommitmentValidator`/
     `FairnessRoundProofValidator`/`Verifier` for independently checking one, with the full CLI workflow
-    `pokie fairness seed-commit`/`commit`/`reveal`/`verify`.
-23. **[External Adapter SDK](external-adapter-sdk.md)** — a generic set of contracts (`ExternalDeploymentTarget`,
+    `pokie fairness seed-commit`/`commit`/`reveal`/`verify`. POKIE provides these deterministic/verifiable
+    primitives only — it is not an RGS, wallet, compliance platform, key-management service, or timestamping
+    authority (see this file's own "Scope" note above).
+26. **[External Adapter SDK](external-adapter-sdk.md)** — a generic set of contracts (`ExternalDeploymentTarget`,
     `ExternalRoundProjector`, `ExternalArtifactGenerator`, `ExternalArtifactValidator`,
     `ExternalDeploymentDiagnostic`, an optional `ExternalDeploymentRuntimeAdapter` transport contract) for
     deploying a `WeightedOutcomeLibrary` to an external format/RGS-style target, orchestrated end to end by
@@ -137,7 +167,11 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Payouts and what actually won | `Paytable`, `VideoSlotWinCalculator` |
 | Free spins / bonus rounds | `VideoSlotWithFreeGamesSession`, `VideoSlotWithFreeGamesConfig` |
 | Grids that grow/shrink between rounds | `VideoSlotWithResizableGridSession`, `GridResizeHandling` |
+| Ante bet / buy-the-feature runtime semantics, per-mode target RTP | `BetMode.runtimeType`, `VideoSlotWithBetModesSession` |
+| Respin-and-collect features (Hold & Win / Lock & Spin) | `VideoSlotWithHoldAndWinSession`, `SymbolOverlayTransformer` |
+| Fixed/local/progressive jackpot pools | `VideoSlotWithJackpotSession`, `JackpotPoolRepresenting` |
 | Bulk RTP testing, targeted scenario capture | `Simulation`, play strategies |
+| Opt-in adaptive early stop once RTP estimation has converged | `ParallelSimulationRunOptions.convergence`, `pokie sim --rtp-tolerance` |
 | Sending round results to a client | `net/` serializers, wired into `pokie serve` via `PokieGame.getSessionSerializer()` |
 | A sequence of stages within one round (cascades, multi-pick bonuses, ...) | `MultiStageRoundSessionSerializer`, `CascadeSessionSerializer` |
 | Loading an external game package by convention | `PokieGame`, `loadPokieGame` |

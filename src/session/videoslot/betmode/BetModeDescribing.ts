@@ -18,7 +18,7 @@ export interface BetModeDescribing {
     getMetadata(): Record<string, unknown> | undefined;
 
     // An RTP target this mode is designed around (e.g. a buy-feature mode commonly targets a
-    // different RTP than base). Purely descriptive here -- wiring it into simulation/reporting is a
-    // later step (see GAP_AUDIT_v1.3.md), not this one.
+    // different RTP than base). Purely descriptive here -- SimulationReportBuilder is what actually
+    // compares a mode's simulated RTP against it (see SimulationReport's own "targetRtp"/"rtpDeviation").
     getTargetRtp(): number | undefined;
 }

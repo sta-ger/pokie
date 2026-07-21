@@ -37,8 +37,8 @@ function isValueLocked<T extends string | number | symbol>(
 
 // A first-class Hold & Win/Lock & Spin mechanic, composed onto any existing VideoSlotSessionHandling
 // exactly the way VideoSlotWithFreeGamesSession composes free games — via decoration, not by changing
-// VideoSlotSession itself (see GAP_AUDIT_v1.3.md's own note that this is "composable from existing
-// primitives" — SymbolOverlayTransformer for rendering locked positions, the same
+// VideoSlotSession itself: composed from existing primitives (SymbolOverlayTransformer for rendering locked
+// positions, the same
 // ConvertableToSessionState/BuildableFromSessionState/StakeAmountDetermining/SimulationCategoryDetermining
 // optional contracts every other feature decorator already uses). Stackable both ways: wraps any
 // VideoSlotSessionHandling (including an already-decorated one), and — since it implements
@@ -281,9 +281,9 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     }
 
     // Renders the feature's own accumulated locked positions back onto whatever grid the wrapped session
-    // most recently generated, via SymbolOverlayTransformer — exactly the primitive GAP_AUDIT_v1.3.md names
-    // as the intended composable building block. Without this, a respin's own getSymbolsCombination() would
-    // only ever show that respin's fresh random landing, losing every symbol locked on earlier respins.
+    // most recently generated, via SymbolOverlayTransformer — the composable building block this whole
+    // decorator is built on. Without this, a respin's own getSymbolsCombination() would only ever show that
+    // respin's fresh random landing, losing every symbol locked on earlier respins.
     public override getSymbolsCombination(): SymbolsCombinationDescribing<T> {
         if (this.lockedSymbols.length === 0) {
             return this.baseSession.getSymbolsCombination();

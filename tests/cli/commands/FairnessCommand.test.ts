@@ -252,6 +252,39 @@ describe("FairnessCommand", () => {
             expect(printed).not.toContain("my-secret-seed");
         });
 
+        it("strips a single terminal CRLF but preserves a leading space", async () => {
+            const fs = createFileSystemStub({[SEED_PATH]: " leading-space-seed\r\n"});
+            let seedGivenToCompute: string | undefined;
+            const command = createCommand(fs, (input: FairnessServerSeedCommitmentInput) => {
+                seedGivenToCompute = input.serverSeed;
+                return serverSeedCommitment;
+            });
+
+            await command.run(["seed-commit", SEED_PATH]);
+
+            expect(seedGivenToCompute).toBe(" leading-space-seed");
+        });
+
+        it("preserves intentional trailing spaces before the final newline", async () => {
+            const fs = createFileSystemStub({[SEED_PATH]: "trailing-spaces-seed   \n"});
+            let seedGivenToCompute: string | undefined;
+            const command = createCommand(fs, (input: FairnessServerSeedCommitmentInput) => {
+                seedGivenToCompute = input.serverSeed;
+                return serverSeedCommitment;
+            });
+
+            await command.run(["seed-commit", SEED_PATH]);
+
+            expect(seedGivenToCompute).toBe("trailing-spaces-seed   ");
+        });
+
+        it("rejects an empty/newline-only seed file", async () => {
+            const fs = createFileSystemStub({[SEED_PATH]: "\n"});
+            const command = createCommand(fs);
+
+            await expect(command.run(["seed-commit", SEED_PATH])).rejects.toThrow(/must contain at least one character/);
+        });
+
         it("writes the commitment to --out and confirms it, without leaking the raw seed into the file", async () => {
             const fs = createFileSystemStub({[SEED_PATH]: "my-secret-seed"});
             const command = createCommand(fs);
@@ -385,16 +418,70 @@ describe("FairnessCommand", () => {
 
             await expect(
                 command.run(["commit", SERVER_SEED_COMMITMENT_PATH, "--client-seed", "seed", "--nonce", "not-a-number", "--source", "/bundle", "--mode", "base"]),
-            ).rejects.toThrow(/--nonce must be a non-negative integer/);
+            ).rejects.toThrow(/--nonce must be a canonical non-negative decimal integer/);
         });
 
-        it("throws a usage error for a negative --nonce", async () => {
+        it.each([
+            ["-1", "negative"],
+            ["1.5", "decimal"],
+            ["1e3", "scientific notation"],
+            ["0x10", "hexadecimal"],
+            ["", "empty string"],
+            [" ", "whitespace"],
+            ["01", "leading zero"],
+            ["+1", "leading plus sign"],
+            ["NaN", "the literal string NaN"],
+            ["Infinity", "the literal string Infinity"],
+            [String(Number.MAX_SAFE_INTEGER + 1), "one past Number.MAX_SAFE_INTEGER"],
+        ])("rejects a --nonce of %j (%s)", async (nonceValue) => {
             const fs = createFileSystemStub();
-            const command = createCommand(fs);
+            const reader = createStubReader(STUB_MODE_INDEX);
+            const command = createCommand(fs, reader);
 
             await expect(
-                command.run(["commit", SERVER_SEED_COMMITMENT_PATH, "--client-seed", "seed", "--nonce", "-1", "--source", "/bundle", "--mode", "base"]),
-            ).rejects.toThrow(/--nonce must be a non-negative integer/);
+                command.run(["commit", SERVER_SEED_COMMITMENT_PATH, "--client-seed", "seed", "--nonce", nonceValue, "--source", "/bundle", "--mode", "base"]),
+            ).rejects.toThrow(/--nonce must be a canonical non-negative decimal integer/);
+            // Validated during argument parsing, before any bundle read is ever attempted.
+            expect(reader.calledWith).toBeUndefined();
+        });
+
+        it("accepts a --nonce of exactly Number.MAX_SAFE_INTEGER", async () => {
+            const fs = createFileSystemStub();
+            let computeInput: FairnessCommitmentInput | undefined;
+            const command = createCommand(fs, createStubReader(STUB_MODE_INDEX), (input) => {
+                computeInput = input;
+                return roundCommitment;
+            });
+
+            const exitCode = await command.run([
+                "commit",
+                SERVER_SEED_COMMITMENT_PATH,
+                "--client-seed",
+                "seed",
+                "--nonce",
+                String(Number.MAX_SAFE_INTEGER),
+                "--source",
+                "/bundle",
+                "--mode",
+                "base",
+            ]);
+
+            expect(exitCode).toBe(0);
+            expect(computeInput?.nonce).toBe(Number.MAX_SAFE_INTEGER);
+        });
+
+        it("accepts a --nonce of 0", async () => {
+            const fs = createFileSystemStub();
+            let computeInput: FairnessCommitmentInput | undefined;
+            const command = createCommand(fs, createStubReader(STUB_MODE_INDEX), (input) => {
+                computeInput = input;
+                return roundCommitment;
+            });
+
+            const exitCode = await command.run(["commit", SERVER_SEED_COMMITMENT_PATH, "--client-seed", "seed", "--nonce", "0", "--source", "/bundle", "--mode", "base"]);
+
+            expect(exitCode).toBe(0);
+            expect(computeInput?.nonce).toBe(0);
         });
 
         it("throws a descriptive error when --mode is omitted", async () => {
@@ -492,6 +579,28 @@ describe("FairnessCommand", () => {
             expect(exitCode).toBe(0);
             expect(buildArgs).toEqual([commitmentDoc, "revealed-seed", "/project/bundle"]);
             expect(logSpy.mock.calls.flat().join("\n")).toContain(roundProof.outcomeId);
+        });
+
+        it("normalizes a CRLF-terminated server-seed file the same way seed-commit does", async () => {
+            const fs = createFileSystemStub({[SERVER_SEED_PATH]: "revealed-seed\r\n"});
+            let buildArgs: unknown[] = [];
+            const command = createCommand(fs, (commitment, serverSeed, sourceBundleDir) => {
+                buildArgs = [commitment, serverSeed, sourceBundleDir];
+                return Promise.resolve(roundProof);
+            });
+
+            await command.run(["reveal", COMMITMENT_JSON_PATH, "--server-seed", SERVER_SEED_PATH, "--source", "/project/bundle"]);
+
+            expect(buildArgs[1]).toBe("revealed-seed");
+        });
+
+        it("rejects an empty/newline-only server-seed file", async () => {
+            const fs = createFileSystemStub({[SERVER_SEED_PATH]: "\n"});
+            const command = createCommand(fs);
+
+            await expect(
+                command.run(["reveal", COMMITMENT_JSON_PATH, "--server-seed", SERVER_SEED_PATH, "--source", "/project/bundle"]),
+            ).rejects.toThrow(/must contain at least one character/);
         });
 
         it("propagates a wrong revealed server seed as a build error", async () => {

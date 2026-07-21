@@ -90,11 +90,12 @@ tabs never loses in-progress work):
   model), initializing an existing directory (`pokie init`), building from an existing blueprint file
   directly (skips the guided editor), and the raw (non-`guided`) Blueprint Editor.
 
-**Project Dashboard (`/project/:tab`)** — the same 7 tabs, reordered and grouped instead of flat:
-**Overview, Validate, Simulate, Reports** (the primary flow, in that order), then a visually separated
-**Advanced** group — Replay, Runtime, Deployment (`NavTabItem`'s optional `section` field drives the
-grouping in `NavTabs`). "Validation"/"Simulation" were renamed to "Validate"/"Simulate" for consistent
-task-verb naming.
+**Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Validate, Simulation & Reports**
+(the primary flow, in that order), then a visually separated **Advanced** group — Replay, Runtime, Deployment,
+Outcome Libraries, Mechanics Editor, Certification, Provably Fair, Stake Engine Export (`NavTabItem`'s optional
+`section` field drives the grouping in `NavTabs`; see `PROJECT_TABS` in `ProjectDashboardPage.tsx` for the exact,
+current tab list). "Validation" was renamed to "Validate" for consistent task-verb naming; Simulation and
+Reports were later merged into one "Simulation & Reports" tab.
 
 - **Validate** runs `POST /api/project/validate` through an explicit `idle|loading|error|success` state
   (`ProjectValidationView`) rather than a bare result + a separate loading flag — a failed re-validation

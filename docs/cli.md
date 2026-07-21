@@ -856,11 +856,18 @@ Exit code is non-zero if any issue is `error`-severity; warnings/info are printe
 ## `pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]`
 
 The first step of the [Provably Fair](provably-fair.md) commit-reveal flow: reads a secret `serverSeed` from a
-plain text file (trailing whitespace/newline is trimmed), and calls `computeFairnessServerSeedCommitment` to
-build the `FairnessServerSeedCommitment` that gets published to the player immediately, before `clientSeed`/
-`nonce` are even solicited. The written/printed artifact is structurally incapable of carrying the raw
-`serverSeed` — `FairnessServerSeedCommitment` only ever has `serverSeedHash` — so nothing about this command's
-own output ever needs to be redacted.
+plain text file and calls `computeFairnessServerSeedCommitment` to build the `FairnessServerSeedCommitment` that
+gets published to the player immediately, before `clientSeed`/`nonce` are even solicited. The written/printed
+artifact is structurally incapable of carrying the raw `serverSeed` — `FairnessServerSeedCommitment` only ever
+has `serverSeedHash` — so nothing about this command's own output ever needs to be redacted.
+
+**Seed file normalization** (shared byte-for-byte with `reveal` below, via one internal
+`normalizeServerSeedFileContents` helper): at most one terminal line ending (`\n` or `\r\n` — whichever a text
+editor appended when the file was saved) is stripped, and nothing else. A leading space, intentional trailing
+spaces before that final line ending, or a second/earlier line ending elsewhere in the file are all preserved
+exactly as typed, since any of it could be a deliberate part of the secret — this is deliberately not a plain
+`.trim()`, which would silently strip all of that too. An empty result (the file held nothing but its own
+trailing line ending, or was empty outright) is rejected.
 
 ```
 pokie fairness seed-commit serverSeed.txt --out seed-commitment.json
@@ -891,7 +898,10 @@ pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 -
 Options:
 
 - `--client-seed <seed>` — **required.** The player-supplied client seed.
-- `--nonce <n>` — **required.** A non-negative integer.
+- `--nonce <n>` — **required.** A canonical non-negative decimal integer string (`"0"`, `"1"`, `"2"`, ... — the
+  same `"0"|[1-9]\d*"` rule `docs/stake-engine-export.md`'s own outcome-id parsing already uses), no larger than
+  `Number.MAX_SAFE_INTEGER`. Rejects a leading zero/sign, a decimal point, scientific notation (`"1e3"`), and
+  hexadecimal notation (`"0x10"`) — all of which `Number(...)` alone would otherwise silently accept.
 - `--source <bundleDir>` — **required.** The live Outcome Library Bundle `--mode` is read from.
 - `--mode <modeName>` — **required.** Which mode's own index to pin `libraryId`/`libraryHash` from.
 - `--out <file>` — where to write the commitment JSON. Optional; always printed to stdout either way. Same
@@ -916,7 +926,9 @@ pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../b
 
 Options:
 
-- `--server-seed <file>` — **required.** Plain text file holding the revealed `serverSeed`.
+- `--server-seed <file>` — **required.** Plain text file holding the revealed `serverSeed`, normalized the
+  exact same way `seed-commit`'s own `<serverSeed.txt>` is (see that section's own "Seed file normalization"
+  above) — the same file used for both commands round-trips correctly by construction.
 - `--source <bundleDir>` — **required.** The live Outcome Library Bundle the round is drawn from.
 - `--out <file>` — where to write the proof JSON. Optional; always printed to stdout either way. Same
   `--overwrite` convention as `seed-commit`/`commit` above.
@@ -2189,6 +2201,19 @@ subset of them sharing state) over one transactional store and committing the re
 layer. `SpinCommandHandler`'s own compensation is a correctness improvement over doing nothing on failure; it is
 not a substitute for that.
 
+**`SpinReconciliationServicing`** (`reconcileOne(sessionId, requestId)`/`reconcileAll()`) is the shipped,
+v1.3-compatible palliative for exactly the "process crash" gap above — not a substitute for real cross-store
+atomicity, but real recovery logic, not a no-op. `reconcileOne` is called inline by
+`SpinCommandHandler.handleSerialized()` whenever a retried `requestId`'s own idempotency result is missing but
+its operation record isn't terminal; `reconcileAll()` sweeps every currently-incomplete operation record (e.g. at
+startup, against whatever a durable `SpinOperationLog` carried across a restart). Every outcome — `"no-action-needed"`,
+`"already-committed"`, a safe automatic `"reversed"`/`"resumed"`, `"deferred"` (a lease is contested, or the
+record is too recent to safely act on), or an honest `"manual-recovery-required"` — carries a human-readable
+reason; nothing is ever inferred from a checkpoint alone when the wallet supports transaction inspection (see
+`isWalletTransactionInspecting`), and no branch ever re-invokes `session.play()` for an attempt being recovered —
+only already-computed data is ever replayed. True cross-store atomicity (one transactional store spanning wallet
++ session + idempotency) remains a v2-scale architectural change, not something this palliative attempts.
+
 #### Idempotency and concurrency
 
 Idempotency is a separate, additive `IdempotencyRepository`, keyed by `(sessionId, requestId)`:
@@ -2449,15 +2474,16 @@ Options:
 
 Opening or creating a project — or launching Studio directly with `pokie .`/`pokie <path>`/`pokie studio <path>`
 — switches Studio into the **Project** mode/route, identified by that project's `projectRoot`, and shows the
-**Project Dashboard**: the first real Project-mode feature (everything else beyond it — GUIs for
-`build`/`sim`/`report`/`diff`/`replay`/`serve` — is still to come, via the `StudioToolHandling` extension point).
+**Project Dashboard**.
 
-The Dashboard has seven tabs, switched client-side with no full page reload — **Overview**, **Validate**,
-**Simulate**, and **Reports** first (the primary flow, in that order), then **Replay**, **Runtime**, and
-**Deployment** grouped as "Advanced" in the navigation (still one click away, just visually secondary — see
-[`studio-frontend.md`](studio-frontend.md#ux--information-architecture)). Overview also shows a status summary
-recommending the next action (validate → fix issues → simulate → view report) and, when the package was built
-from a known blueprint path, a **Configure Game Model** button back to Home's Design & Build tab:
+The Dashboard has eleven tabs today, switched client-side with no full page reload — **Overview**, **Validate**,
+and **Simulation & Reports** first (the primary flow, in that order), then **Replay**, **Runtime**,
+**Deployment**, **Outcome Libraries**, **Mechanics Editor**, **Certification**, **Provably Fair**, and **Stake
+Engine Export** grouped as "Advanced" in the navigation (still one click away, just visually secondary — see
+[`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the exact, current tab list).
+Overview also shows a status summary recommending the next action (validate → fix issues → simulate → view
+report) and, when the package was built from a known blueprint path, a **Configure Game Model** button back to
+Home's Design & Build tab:
 
 - **Overview** shows the game's name/id/version, the absolute `projectRoot`, and a **provenance** panel — if the
   package was generated by [`pokie build`](#pokie-build-configjson), its blueprint hash, source path, `pokie`
@@ -2466,11 +2492,20 @@ from a known blueprint path, a **Configure Game Model** button back to Home's De
   rebuilding without restarting Studio).
 - **Validate** shows the result of its own "Run Validate" button: valid/invalid, errors, warnings, and
   suggestions — the exact same report [`pokie validate`](#pokie-validate-packageroot) produces.
-- **Simulate** — see its own section below.
-- **Reports** — see its own section below.
+- **Simulation & Reports** — see its own section below (still named "Simulation"/"Reports" there).
 - **Replay** — see its own section below.
 - **Runtime** — see its own section below.
 - **Deployment** — see its own section below.
+- **Outcome Libraries**, **Mechanics Editor**, **Certification**, **Provably Fair**, and **Stake Engine
+  Export** are thin GUI wrappers over the exact same backend building blocks their CLI counterparts use —
+  [`pokie outcomelibrary`](#pokie-outcomelibrary-build-configjson), the `GameBlueprint` mechanics editor,
+  [`pokie certification`](#pokie-certification-build-bundledir-configjson),
+  [`pokie fairness`](#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite), and
+  [`pokie stakeengine export`](#pokie-stakeengine-export-configjson) respectively — with no dedicated
+  walkthrough of their own in this file yet; see each linked CLI section (or
+  [`outcome-library-bundle.md`](outcome-library-bundle.md)/[`certification-evidence-bundle.md`](certification-evidence-bundle.md)/
+  [`provably-fair.md`](provably-fair.md)/[`stake-engine-export.md`](stake-engine-export.md)) for the underlying
+  workflow each tab drives through the Studio API.
 
 Every quick action calls `GamePackageInspecting`/`PokieGamePackageValidating`/the simulation services directly (the
 same services `pokie inspect`/`pokie validate`/`pokie sim` use) — Studio never spawns a CLI command as a
@@ -2941,8 +2976,20 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-`pokie build`, `pokie create`, `pokie init`, `pokie inspect`, `pokie sim`, `pokie validate`, `pokie report`,
-`pokie diff`, `pokie replay`, `pokie serve`, `pokie client`, and `pokie dev` are the first of a planned set of
-subcommands built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
-`PokieGameContractValidationRule`). [POKIE Studio](#pokie--pokie-studio-experimental) is where GUIs for each of
-them will eventually live, built on the exact same primitives via `StudioToolHandling`.
+All 18 top-level commands this file documents (`build`/`create`/`init`/`inspect`/`validate`/`sim`/`report`/
+`diff`/`replay`/`serve`/`client`/`dev`/`par import|export`/`stakeengine export|import`/`outcomelibrary
+build|validate`/`certification build|verify`/`fairness seed-commit|commit|reveal|verify`/`studio`) are shipped
+today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
+`PokieGameContractValidationRule`). [POKIE Studio](#pokie--pokie-studio-experimental) already covers most of
+these workflows with a real GUI, not just the CLI: Create/Init, the Mechanics Editor (build/validate),
+Outcome Libraries, PAR Sheet import/export, Certification/Evidence Bundle, Provably Fair, Stake Engine
+export/import, Deployment, Runtime, Replay, and Simulation all have a working Studio surface — see each tab
+under [`ProjectDashboardPage`](studio-frontend.md). The generic `StudioToolHandling` extension seam
+(`cli/studio/StudioToolHandling.ts`) is unused dead code today — every Studio surface above is wired as its own
+bespoke route on `StudioServer`, not through that seam — kept only as a documented possible future refactor, not
+a gap in coverage.
+
+Genuinely not yet covered, tracked as post-v1.3 candidates rather than gaps in this CLI: a named
+expanding/sticky-wilds session decorator (the generic `SymbolOverlayTransformer` primitive already supports
+building one), benchmarks, property-based/golden-snapshot testing, a docs site/playground, and any FromStan
+org/npm migration work.

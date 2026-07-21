@@ -352,10 +352,9 @@ throws rather than writing outside it.
 ## Why Stake Engine Export isn't an `ExternalDeploymentTarget`
 
 [Stake Engine Export](stake-engine-export.md) is conceptually the one thing this SDK generalizes — a
-target/format-specific "deploy canonical content to an external consumer" pipeline — and `GAP_AUDIT_v1.3.md`
-flagged the fact that it's wired around this SDK rather than through it as an open architectural question.
-Having read both contracts closely, the answer is that the split is **structural, not an oversight**, for
-two independent reasons:
+target/format-specific "deploy canonical content to an external consumer" pipeline — yet it's wired around this
+SDK rather than through it. Having read both contracts closely, the answer is that the split is **structural,
+not an oversight**, for two independent reasons:
 
 1. **`ExternalRoundProjector<T>` has no channel for a mode's own `cost`.** `project(artifact: RoundArtifact<T>): JsonObject`
    takes only the artifact — nothing else reaches a projector, by design (see that interface's own doc

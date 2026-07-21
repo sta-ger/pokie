@@ -16,6 +16,8 @@ import {
     ValidationIssue,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {normalizeServerSeedFileContents} from "./internal/normalizeServerSeedFileContents.js";
+import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
 
 const VERIFY_USAGE = "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>";
 const SEED_COMMIT_USAGE = "Usage: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]";
@@ -129,7 +131,7 @@ export class FairnessCommand implements CliCommandHandling {
 
     private runSeedCommit(args: string[]): number {
         const options = this.parseSeedCommitArgs(args);
-        const serverSeed = this.readTextFile(options.serverSeedPath).trim();
+        const serverSeed = this.readServerSeedFile(options.serverSeedPath);
 
         const commitment = this.computeServerSeedCommitment({serverSeed});
 
@@ -169,7 +171,7 @@ export class FairnessCommand implements CliCommandHandling {
     private async runReveal(args: string[]): Promise<number> {
         const options = this.parseRevealArgs(args);
         const commitment = this.loadJson(options.commitmentPath) as FairnessCommitment;
-        const serverSeed = this.readTextFile(options.serverSeedPath).trim();
+        const serverSeed = this.readServerSeedFile(options.serverSeedPath);
 
         const proof = await this.proofBuilder.build(commitment, serverSeed, options.sourceBundleDir);
 
@@ -221,6 +223,20 @@ export class FairnessCommand implements CliCommandHandling {
         }
 
         return 0;
+    }
+
+    // Shared by seed-commit/reveal: reads the raw file via the injected readTextFile, then applies the one
+    // normalization rule normalizeServerSeedFileContents defines (strip at most one terminal line ending,
+    // preserve everything else) — never a plain `.trim()`, which would also silently strip a leading space or
+    // intentional trailing spaces the caller meant as part of the secret. Wraps normalizeServerSeedFileContents'
+    // own error with this file's own path, the same "prefix the path in quotes" convention every other file-
+    // reading error in this class already follows (e.g. the "could not read mode" wrap in runCommit).
+    private readServerSeedFile(filePath: string): string {
+        try {
+            return normalizeServerSeedFileContents(this.readTextFile(filePath));
+        } catch (error) {
+            throw new Error(`"${filePath}": ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 
     private printIssues(issues: ValidationIssue[]): void {
@@ -287,9 +303,13 @@ export class FairnessCommand implements CliCommandHandling {
                     break;
                 }
                 case "--nonce": {
-                    const parsed = Number(value);
-                    if (value === undefined || !Number.isInteger(parsed) || parsed < 0) {
-                        throw new Error(`--nonce must be a non-negative integer. ${COMMIT_USAGE}`);
+                    const parsed = value === undefined ? undefined : parseCanonicalNonNegativeInteger(value);
+                    if (parsed === undefined) {
+                        throw new Error(
+                            `--nonce must be a canonical non-negative decimal integer (e.g. "0", "42" — no sign, decimal point, ` +
+                                `leading zero, or scientific/hex notation, and no larger than Number.MAX_SAFE_INTEGER), got ` +
+                                `${value === undefined ? "nothing" : JSON.stringify(value)}. ${COMMIT_USAGE}`,
+                        );
                     }
                     nonce = parsed;
                     i++;

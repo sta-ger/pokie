@@ -23,10 +23,17 @@ POKIE goes well beyond classic paylines:
   pays, individually or [mixed](docs/paytable-and-wins.md) under an explicit aggregation policy.
 - **Cascading wins** — a deterministic win/remove/collapse/refill resolver (`CascadingSpinResolver`) with a
   max-step guard, for tumble/cascade mechanics.
-- **Free games / free spins** and **resizable/growing grids** as first-class session types.
+- **Free games / free spins**, **resizable/growing grids**, **Hold & Win / Lock & Spin** (respin-and-collect),
+  and **fixed/local/progressive jackpot pools** as first-class, composable session decorators.
+- **Ante bet / buy-the-feature** — an opt-in `BetMode.runtimeType` contract (always-applied extra stake, or a
+  one-shot forced entry into a free-games feature), with per-mode target-RTP simulation/reporting and PAR sheet
+  round-tripping.
 - **Simulation** — full per-round `Simulation` plus aggregate-only primitives (`AggregateSimulationRunner`,
   `SimulationAccumulator`) with RTP, hit frequency, volatility, and 95% confidence intervals, for runs too large
-  to keep every round in memory.
+  to keep every round in memory, plus opt-in convergence-based adaptive early stop.
+- **[Provably Fair](docs/provably-fair.md)** — an HMAC-SHA256 commit-reveal proof for a single round, drawn from
+  a canonical [Outcome Library Bundle](docs/outcome-library-bundle.md) and independently verifiable by anyone
+  holding the source bundle and the original commitment — `pokie fairness seed-commit`/`commit`/`reveal`/`verify`.
 - **Deterministic/seeded RNG** (`SeededRandomNumberGenerator`) for reproducible simulation, replay, and
   regression tests, alongside the default and cryptographically-secure RNG options.
 - **Network serialization** — `net/` serializers turning session state into plain-data DTOs for a game client.

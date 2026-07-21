@@ -257,7 +257,7 @@ describe("CLI workflow (integration): pokie fairness seed-commit -> commit -> re
 
         await expect(
             command.run(["commit", seedCommitmentPath, "--client-seed", "player-client-seed", "--nonce", "not-a-number", "--source", bundleDir, "--mode", "base"]),
-        ).rejects.toThrow(/--nonce must be a non-negative integer/);
+        ).rejects.toThrow(/--nonce must be a canonical non-negative decimal integer/);
     });
 
     it("rejects committing against a malformed (non-JSON) server-seed commitment file", async () => {
