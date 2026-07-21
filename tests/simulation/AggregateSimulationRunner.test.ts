@@ -258,25 +258,58 @@ describe("AggregateSimulationRunner breakdown", () => {
 });
 
 describe("AggregateSimulationRunner jackpot statistics", () => {
-    function createJackpotAwareSession(rounds: number, snapshot: object): GameSessionHandling {
+    // Unlike the old fixture (a static snapshot returned regardless of rounds played), this one tracks
+    // real, monotonically growing per-pool state as play() is actually called — required to test
+    // run-scoping (subtractJackpotStatisticsSnapshots), which is only meaningfully exercised against a
+    // session whose snapshot genuinely accumulates across calls. "sessionRoundLimit" is independent of
+    // the AggregateSimulationRunner's own `rounds` constructor argument, so a session can be reused across
+    // more rounds than any single run() call plays -- exactly the "same session, multiple run() calls"
+    // scenario under test below.
+    function createJackpotAwareSession(
+        sessionRoundLimit: number,
+        options: {
+            poolId?: string;
+            contributionPerRound?: number;
+            awardEveryNth?: number;
+            awardAmount?: number;
+            initialSnapshot?: {awardCount: number; totalAwarded: number; totalContributed: number};
+        } = {},
+    ): GameSessionHandling {
+        const poolId = options.poolId ?? "mini";
+        const contributionPerRound = options.contributionPerRound ?? 1;
+        const awardEveryNth = options.awardEveryNth ?? 0;
+        const awardAmount = options.awardAmount ?? 0;
         let round = 0;
+        let awardCount = options.initialSnapshot?.awardCount ?? 0;
+        let totalAwarded = options.initialSnapshot?.totalAwarded ?? 0;
+        let totalContributed = options.initialSnapshot?.totalContributed ?? 0;
         return {
             getCreditsAmount: () => Number.MAX_SAFE_INTEGER,
             setCreditsAmount: () => undefined,
             getBet: () => 1,
             setBet: () => undefined,
             getAvailableBets: () => [1],
-            canPlayNextGame: () => round < rounds,
+            canPlayNextGame: () => round < sessionRoundLimit,
             play: () => {
                 round++;
+                totalContributed += contributionPerRound;
+                if (awardEveryNth > 0 && round % awardEveryNth === 0) {
+                    awardCount++;
+                    totalAwarded += awardAmount;
+                }
             },
             getWinAmount: () => 0,
-            getJackpotStatisticsSnapshot: () => snapshot,
+            getJackpotStatisticsSnapshot: () => ({
+                awardCount,
+                totalAwarded,
+                totalContributed,
+                pools: {[poolId]: {awardCount, totalAwarded, totalContributed}},
+            }),
         } as unknown as GameSessionHandling;
     }
 
     test("getJackpotStatistics() is undefined before run() is called", () => {
-        const runner = new AggregateSimulationRunner(createJackpotAwareSession(5, {awardCount: 0, totalAwarded: 0, totalContributed: 0, pools: {}}), 5);
+        const runner = new AggregateSimulationRunner(createJackpotAwareSession(5), 5);
 
         expect(runner.getJackpotStatistics()).toBeUndefined();
     });
@@ -290,11 +323,71 @@ describe("AggregateSimulationRunner jackpot statistics", () => {
     });
 
     test("getJackpotStatistics() reads the session's own snapshot once, after run() finishes", () => {
-        const snapshot = {awardCount: 2, totalAwarded: 900, totalContributed: 45, pools: {mini: {awardCount: 2, totalAwarded: 900, totalContributed: 45}}};
-        const runner = new AggregateSimulationRunner(createJackpotAwareSession(10, snapshot), 10);
+        const session = createJackpotAwareSession(10, {contributionPerRound: 5, awardEveryNth: 5, awardAmount: 900});
+        const runner = new AggregateSimulationRunner(session, 10);
 
         runner.run();
 
-        expect(runner.getJackpotStatistics()).toEqual(snapshot);
+        expect(runner.getJackpotStatistics()).toEqual({
+            awardCount: 2,
+            totalAwarded: 1800,
+            totalContributed: 50,
+            pools: {mini: {awardCount: 2, totalAwarded: 1800, totalContributed: 50}},
+        });
+    });
+
+    test("run() scopes jackpot statistics to only its own rounds, excluding history the session already had", () => {
+        const session = createJackpotAwareSession(10, {
+            contributionPerRound: 1,
+            awardEveryNth: 5,
+            awardAmount: 100,
+            initialSnapshot: {awardCount: 5, totalAwarded: 999, totalContributed: 500},
+        });
+        const runner = new AggregateSimulationRunner(session, 10);
+
+        runner.run();
+
+        expect(runner.getJackpotStatistics()).toEqual({
+            awardCount: 2,
+            totalAwarded: 200,
+            totalContributed: 10,
+            pools: {mini: {awardCount: 2, totalAwarded: 200, totalContributed: 10}},
+        });
+    });
+
+    test("calling run() twice on the same session reports only the second run's own jackpot activity", () => {
+        const session = createJackpotAwareSession(1000, {contributionPerRound: 1, awardEveryNth: 5, awardAmount: 100});
+        const runner = new AggregateSimulationRunner(session, 10);
+
+        runner.run();
+        const first = runner.getJackpotStatistics();
+        runner.run();
+        const second = runner.getJackpotStatistics();
+
+        expect(first).toEqual({
+            awardCount: 2,
+            totalAwarded: 200,
+            totalContributed: 10,
+            pools: {mini: {awardCount: 2, totalAwarded: 200, totalContributed: 10}},
+        });
+        expect(second).toEqual(first);
+    });
+
+    test("restored/pre-populated session state does not leak old awards/contributions into a fresh run's report", () => {
+        const session = createJackpotAwareSession(3, {
+            contributionPerRound: 10,
+            awardEveryNth: 0,
+            initialSnapshot: {awardCount: 7, totalAwarded: 12345, totalContributed: 6789},
+        });
+        const runner = new AggregateSimulationRunner(session, 3);
+
+        runner.run();
+
+        expect(runner.getJackpotStatistics()).toEqual({
+            awardCount: 0,
+            totalAwarded: 0,
+            totalContributed: 30,
+            pools: {mini: {awardCount: 0, totalAwarded: 0, totalContributed: 30}},
+        });
     });
 });

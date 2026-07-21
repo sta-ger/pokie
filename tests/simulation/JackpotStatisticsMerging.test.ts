@@ -1,4 +1,4 @@
-import {mergeJackpotStatisticsSnapshots, type JackpotStatisticsSnapshot} from "pokie";
+import {mergeJackpotStatisticsSnapshots, subtractJackpotStatisticsSnapshots, type JackpotStatisticsSnapshot} from "pokie";
 
 describe("mergeJackpotStatisticsSnapshots", () => {
     test("merging into undefined returns the addition unchanged", () => {
@@ -110,5 +110,124 @@ describe("mergeJackpotStatisticsSnapshots", () => {
             totalContributed: 100,
             pools: {mini: {awardCount: 3, totalAwarded: 800, totalContributed: 100}},
         });
+    });
+});
+
+describe("subtractJackpotStatisticsSnapshots", () => {
+    test("subtracting undefined 'before' returns 'after' unchanged", () => {
+        const after: JackpotStatisticsSnapshot = {
+            awardCount: 2,
+            totalAwarded: 900,
+            totalContributed: 1000,
+            pools: {mini: {awardCount: 2, totalAwarded: 900, totalContributed: 1000}},
+        };
+
+        expect(subtractJackpotStatisticsSnapshots(after, undefined)).toEqual(after);
+    });
+
+    test("subtracts matching pool ids independently", () => {
+        const before: JackpotStatisticsSnapshot = {
+            awardCount: 3,
+            totalAwarded: 1000,
+            totalContributed: 2000,
+            pools: {
+                mini: {awardCount: 1, totalAwarded: 500, totalContributed: 700},
+                grand: {awardCount: 2, totalAwarded: 500, totalContributed: 1300},
+            },
+        };
+        const after: JackpotStatisticsSnapshot = {
+            awardCount: 5,
+            totalAwarded: 6000,
+            totalContributed: 2900,
+            pools: {
+                mini: {awardCount: 1, totalAwarded: 500, totalContributed: 900},
+                grand: {awardCount: 4, totalAwarded: 5500, totalContributed: 2000},
+            },
+        };
+
+        const delta = subtractJackpotStatisticsSnapshots(after, before);
+
+        expect(delta.pools.mini).toEqual({awardCount: 0, totalAwarded: 0, totalContributed: 200});
+        expect(delta.pools.grand).toEqual({awardCount: 2, totalAwarded: 5000, totalContributed: 700});
+    });
+
+    test("a pool present only in 'after' is treated as a full delta (before = zero)", () => {
+        const before: JackpotStatisticsSnapshot = {
+            awardCount: 1,
+            totalAwarded: 500,
+            totalContributed: 700,
+            pools: {mini: {awardCount: 1, totalAwarded: 500, totalContributed: 700}},
+        };
+        const after: JackpotStatisticsSnapshot = {
+            awardCount: 2,
+            totalAwarded: 5500,
+            totalContributed: 1700,
+            pools: {
+                mini: {awardCount: 1, totalAwarded: 500, totalContributed: 700},
+                grand: {awardCount: 1, totalAwarded: 5000, totalContributed: 1000},
+            },
+        };
+
+        const delta = subtractJackpotStatisticsSnapshots(after, before);
+
+        expect(delta.pools.grand).toEqual({awardCount: 1, totalAwarded: 5000, totalContributed: 1000});
+    });
+
+    test("top-level awardCount/totalAwarded/totalContributed always equal the sum of the resulting pool entries", () => {
+        const before: JackpotStatisticsSnapshot = {
+            awardCount: 1,
+            totalAwarded: 500,
+            totalContributed: 700,
+            pools: {mini: {awardCount: 1, totalAwarded: 500, totalContributed: 700}},
+        };
+        const after: JackpotStatisticsSnapshot = {
+            awardCount: 999,
+            totalAwarded: 999,
+            totalContributed: 999,
+            pools: {mini: {awardCount: 3, totalAwarded: 1500, totalContributed: 900}},
+        };
+
+        const delta = subtractJackpotStatisticsSnapshots(after, before);
+
+        expect(delta).toEqual({
+            awardCount: 2,
+            totalAwarded: 1000,
+            totalContributed: 200,
+            pools: {mini: {awardCount: 2, totalAwarded: 1000, totalContributed: 200}},
+        });
+    });
+
+    test("throws when a pool's computed delta would be negative", () => {
+        const before: JackpotStatisticsSnapshot = {
+            awardCount: 5,
+            totalAwarded: 5000,
+            totalContributed: 5000,
+            pools: {mini: {awardCount: 5, totalAwarded: 5000, totalContributed: 5000}},
+        };
+        const after: JackpotStatisticsSnapshot = {
+            awardCount: 1,
+            totalAwarded: 100,
+            totalContributed: 100,
+            pools: {mini: {awardCount: 1, totalAwarded: 100, totalContributed: 100}},
+        };
+
+        expect(() => subtractJackpotStatisticsSnapshots(after, before)).toThrow(/negative delta/);
+    });
+
+    test("throws when 'before' names a pool that 'after' doesn't have at all", () => {
+        const before: JackpotStatisticsSnapshot = {
+            awardCount: 1,
+            totalAwarded: 100,
+            totalContributed: 100,
+            pools: {grand: {awardCount: 1, totalAwarded: 100, totalContributed: 100}},
+        };
+        const after: JackpotStatisticsSnapshot = {
+            awardCount: 1,
+            totalAwarded: 100,
+            totalContributed: 100,
+            pools: {mini: {awardCount: 1, totalAwarded: 100, totalContributed: 100}},
+        };
+
+        expect(() => subtractJackpotStatisticsSnapshots(after, before)).toThrow(/not a valid before\/after pair/);
     });
 });

@@ -5,6 +5,7 @@ import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {BetModeForNextSimulationRoundSetting} from "./BetModeForNextSimulationRoundSetting.js";
 import {ExplicitSimulationRoundCategoryDeterminer} from "./ExplicitSimulationRoundCategoryDeterminer.js";
 import {FallbackSimulationRoundCategoryDeterminer} from "./FallbackSimulationRoundCategoryDeterminer.js";
+import {subtractJackpotStatisticsSnapshots} from "./JackpotStatisticsMerging.js";
 import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
 import type {SimulationBreakdownComponent} from "./SimulationBreakdownComponent.js";
 import {SimulationCategoryNameNormalizer} from "./SimulationCategoryNameNormalizer.js";
@@ -66,6 +67,11 @@ export class AggregateSimulationRunner {
         const accumulator = new SimulationAccumulator();
         const categoryTotals = new Map<string, CategoryTotals>();
         let categorizationSupported = false;
+        // Captured *before* a single round of this run plays — see subtractJackpotStatisticsSnapshots' own
+        // doc comment on why the raw cumulative-since-session-start snapshot alone would leak any jackpot
+        // history the session already had (pre-populated/restored state, or an earlier run() call on this
+        // same session/runner) into a report that's supposed to describe only this run's own rounds.
+        const jackpotBefore = this.supportsJackpotStatistics(this.session) ? this.session.getJackpotStatisticsSnapshot() : undefined;
 
         for (let round = 0; round < this.rounds; round++) {
             if (!this.session.canPlayNextGame()) {
@@ -109,9 +115,11 @@ export class AggregateSimulationRunner {
         // A single read, after the loop, never per-round/per-category — see JackpotStatisticsProviding's own
         // doc comment on why this must never be routed through SimulationCategoryDetermining/categoryTotals
         // above (a per-round category read happens *before* play(), a jackpot trigger is only known *after*
-        // it). The snapshot itself is already cumulative for this session, so one read is always correct
-        // regardless of how many rounds this run() call actually played.
-        this.lastJackpotStatistics = this.supportsJackpotStatistics(this.session) ? this.session.getJackpotStatisticsSnapshot() : undefined;
+        // it). Subtracted against jackpotBefore (captured above, before this run's first round) so the
+        // result is scoped to exactly this run() call's own rounds — never the session's full lifetime.
+        this.lastJackpotStatistics = this.supportsJackpotStatistics(this.session)
+            ? subtractJackpotStatisticsSnapshots(this.session.getJackpotStatisticsSnapshot(), jackpotBefore)
+            : undefined;
         return accumulator;
     }
 
@@ -122,9 +130,12 @@ export class AggregateSimulationRunner {
         return this.lastBreakdown;
     }
 
-    // Populated by the most recent run(); undefined when the session never exposed
-    // JackpotStatisticsProviding. See that interface's own doc comment for why this, not
-    // SimulationCategoryDetermining, is the correct way to observe jackpot-specific simulation statistics.
+    // Scoped to exactly the rounds the most recent run() call itself played — never the session's full
+    // lifetime (see subtractJackpotStatisticsSnapshots), so this stays correct even when the session
+    // already had jackpot history before this run(), or when run() is called more than once on the same
+    // session/runner. undefined when the session never exposed JackpotStatisticsProviding. See that
+    // interface's own doc comment for why this, not SimulationCategoryDetermining, is the correct way to
+    // observe jackpot-specific simulation statistics.
     public getJackpotStatistics(): JackpotStatisticsSnapshot | undefined {
         return this.lastJackpotStatistics;
     }

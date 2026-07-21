@@ -398,10 +398,74 @@ describe("VideoSlotWithJackpotSession", () => {
         });
     });
 
+    describe("legacy state migration (pre-poolStatistics shape)", () => {
+        it("restores the previous single-pool {awardCount, totalAwarded} shape, attributing it to the one configured pool with totalContributed=0", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank()]);
+            const session = createDecorator(base, [new FixedJackpotPool("mini", 500)]);
+            const legacyState = {awardCount: 3, totalAwarded: 1500} as unknown as VideoSlotWithJackpotSessionState;
+
+            session.fromSessionState(legacyState);
+
+            expect(session.getJackpotPoolStatistics()).toEqual({mini: {awardCount: 3, totalAwarded: 1500, totalContributed: 0}});
+            expect(session.getJackpotAwardCount()).toBe(3);
+            expect(session.getJackpotTotalAwarded()).toBe(1500);
+        });
+
+        it("restores legacy zero state safely regardless of configured pool count", () => {
+            const zeroLegacy = {awardCount: 0, totalAwarded: 0} as unknown as VideoSlotWithJackpotSessionState;
+
+            const zeroPools = createDecorator(new ScriptedFakeVideoSlotSession([allBlank()]), []);
+            zeroPools.fromSessionState(zeroLegacy);
+            expect(zeroPools.getJackpotPoolStatistics()).toEqual({});
+
+            const twoPools = createDecorator(new ScriptedFakeVideoSlotSession([allBlank()]), [new FixedJackpotPool("mini", 500), new FixedJackpotPool("grand", 5000)]);
+            twoPools.fromSessionState(zeroLegacy);
+            expect(twoPools.getJackpotPoolStatistics()).toEqual({});
+        });
+
+        it("throws a clear migration error for ambiguous multi-pool legacy state with nonzero totals", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank()]);
+            const session = createDecorator(base, [new FixedJackpotPool("mini", 500), new FixedJackpotPool("grand", 5000)]);
+            const legacyState = {awardCount: 1, totalAwarded: 500} as unknown as VideoSlotWithJackpotSessionState;
+
+            expect(() => session.fromSessionState(legacyState)).toThrow(/migration/);
+        });
+
+        it("throws a clear migration error for zero-pool legacy state with nonzero totals", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank()]);
+            const session = createDecorator(base, []);
+            const legacyState = {awardCount: 1, totalAwarded: 500} as unknown as VideoSlotWithJackpotSessionState;
+
+            expect(() => session.fromSessionState(legacyState)).toThrow(/migration/);
+        });
+
+        it("current-shape state (poolStatistics) round-trips unchanged, unaffected by the legacy migration path", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank(), allBlank()], {credits: 1000, bet: 10});
+            const pool = new AccumulatingJackpotPool("grand", 1000);
+            const session = createDecorator(base, [pool]);
+            session.setJackpotPoolStatistics({grand: {awardCount: 2, totalAwarded: 900, totalContributed: 45}});
+
+            const captured = session.toSessionState();
+            expect(captured.poolStatistics).toEqual({grand: {awardCount: 2, totalAwarded: 900, totalContributed: 45}});
+            expect(captured).not.toHaveProperty("awardCount");
+            expect(captured).not.toHaveProperty("totalAwarded");
+
+            const restored = createDecorator(new ScriptedFakeVideoSlotSession([allBlank(), allBlank()], {credits: 1000, bet: 10}), [new AccumulatingJackpotPool("grand", 1000)]);
+            restored.fromSessionState(captured);
+
+            expect(restored.getJackpotPoolStatistics()).toEqual({grand: {awardCount: 2, totalAwarded: 900, totalContributed: 45}});
+        });
+    });
+
     describe("configuration validation", () => {
         it("rejects a pool with an empty id", () => {
             const base = new ScriptedFakeVideoSlotSession([allBlank()]);
             expect(() => new VideoSlotWithJackpotSession<string>(base, [new FixedJackpotPool("", 100)])).toThrow(/non-empty id/);
+        });
+
+        it("rejects a pool with a whitespace-only id", () => {
+            const base = new ScriptedFakeVideoSlotSession([allBlank()]);
+            expect(() => new VideoSlotWithJackpotSession<string>(base, [new FixedJackpotPool("   ", 100)])).toThrow(/non-empty id/);
         });
 
         it("rejects duplicate pool ids", () => {

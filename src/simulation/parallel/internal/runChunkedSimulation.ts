@@ -3,9 +3,9 @@ import type {BetModeForNextSimulationRoundSetting} from "../../BetModeForNextSim
 import {SimulationAccumulator} from "../../SimulationAccumulator.js";
 import type {SimulationBreakdownComponent} from "../../SimulationBreakdownComponent.js";
 import {mergeSimulationBreakdowns} from "../../SimulationBreakdownMerging.js";
+import {mergeJackpotStatisticsSnapshots} from "../../JackpotStatisticsMerging.js";
 import type {SimulationStopReason} from "../../SimulationStopReason.js";
 import type {GameSessionHandling} from "../../../session/GameSessionHandling.js";
-import type {JackpotStatisticsProviding} from "../../../session/JackpotStatisticsProviding.js";
 import type {JackpotStatisticsSnapshot} from "../../../session/JackpotStatisticsSnapshot.js";
 import {SimulationCancelledError} from "../SimulationCancelledError.js";
 
@@ -42,17 +42,20 @@ export type ChunkedSimulationResult = {
 
 // Plays `rounds` rounds against `session` in bounded chunks (via the existing
 // AggregateSimulationRunner, merged via the existing SimulationAccumulator.merge()/
-// mergeSimulationBreakdowns — never a reimplementation of either), reporting progress after each
-// chunk. This is the one place that chunking logic lives: both simulationWorkerEntry.ts (reporting
-// progress via postMessage) and ParallelSimulationRunner's in-process workers=1 path (reporting via a
-// plain callback and yielding to the event loop between chunks) call this same function rather than
-// each maintaining their own copy of it.
+// mergeSimulationBreakdowns/mergeJackpotStatisticsSnapshots — never a reimplementation of any of them),
+// reporting progress after each chunk. This is the one place that chunking logic lives: both
+// simulationWorkerEntry.ts (reporting progress via postMessage) and ParallelSimulationRunner's in-process
+// workers=1 path (reporting via a plain callback and yielding to the event loop between chunks) call this
+// same function rather than each maintaining their own copy of it.
 //
 // `chunkSize >= rounds` (the default for a caller that doesn't need incremental progress/cancellation,
 // e.g. `pokie sim`'s workers=1 path) makes this run in a single chunk — mathematically and
 // numerically identical to one direct `new AggregateSimulationRunner(session, rounds).run()` call,
 // since chunking never changes the sequence of session.play() calls, only how the (already correct,
-// already merge-capable) running totals are batched.
+// already merge-capable) running totals are batched. This holds for jackpot statistics too: each chunk's
+// own AggregateSimulationRunner.getJackpotStatistics() is already scoped to that chunk's own rounds (see
+// its own doc comment), so merging N chunks' worth produces the exact same total regardless of how many
+// chunks the same round count was split into.
 export async function runChunkedSimulation(
     session: GameSessionHandling,
     rounds: number,
@@ -64,6 +67,7 @@ export async function runChunkedSimulation(
 ): Promise<ChunkedSimulationResult> {
     const accumulator = new SimulationAccumulator();
     let breakdown: Record<string, SimulationBreakdownComponent> | undefined;
+    let jackpot: JackpotStatisticsSnapshot | undefined;
     let roundsCompleted = 0;
     let roundsRemaining = rounds;
     let stopReason: SimulationStopReason = "maxRounds";
@@ -80,6 +84,14 @@ export async function runChunkedSimulation(
         const chunkBreakdown = runner.getBreakdownStatistics();
         if (chunkBreakdown) {
             breakdown = mergeSimulationBreakdowns(breakdown, chunkBreakdown);
+        }
+        // Each chunk's own AggregateSimulationRunner.getJackpotStatistics() is already scoped to just that
+        // chunk's own rounds (see that method's own doc comment), so merging them here — the same additive
+        // combination cross-worker merging already uses — is correct and chunk-count-independent: splitting
+        // the same total rounds into more/fewer chunks never changes the final merged totals.
+        const chunkJackpot = runner.getJackpotStatistics();
+        if (chunkJackpot) {
+            jackpot = mergeJackpotStatisticsSnapshots(jackpot, chunkJackpot);
         }
 
         const chunkRoundsPlayed = chunkAccumulator.getStatistics().rounds;
@@ -105,15 +117,5 @@ export async function runChunkedSimulation(
         }
     }
 
-    // A single read, after every chunk has finished, directly off "session" — never per-chunk, never merged
-    // (see mergeJackpotStatisticsSnapshots' own doc comment on why merging would double-count: the snapshot
-    // is already cumulative for this one session across every chunk played above, so reading it once here is
-    // always correct regardless of how many chunks that took).
-    const jackpot = supportsJackpotStatistics(session) ? session.getJackpotStatisticsSnapshot() : undefined;
-
     return {accumulator, breakdown, jackpot, roundsCompleted, stopReason};
-}
-
-function supportsJackpotStatistics(session: GameSessionHandling): session is GameSessionHandling & JackpotStatisticsProviding {
-    return typeof (session as Partial<JackpotStatisticsProviding>).getJackpotStatisticsSnapshot === "function";
 }

@@ -76,7 +76,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         const seenIds = new Set<string>();
         for (const pool of pools) {
             const id = pool.getId();
-            if (id.length === 0) {
+            if (id.trim().length === 0) {
                 throw new Error("VideoSlotWithJackpotSession requires every configured pool to have a non-empty id.");
             }
             if (seenIds.has(id)) {
@@ -152,7 +152,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     }
 
     public fromSessionState(value: VideoSlotWithJackpotSessionState): this {
-        this.poolStatistics = value.poolStatistics;
+        this.poolStatistics = this.resolvePoolStatistics(value);
         if (value.pools !== undefined) {
             for (const pool of this.pools) {
                 const poolState = value.pools[pool.getId()];
@@ -252,6 +252,40 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
 
     private supportsSimulationCategory(session: VideoSlotSessionHandling<T>): session is VideoSlotSessionHandling<T> & SimulationCategoryDetermining {
         return typeof (session as Partial<SimulationCategoryDetermining>).getSimulationCategory === "function";
+    }
+
+    // Restoration migration for VideoSlotWithJackpotSessionState: poolStatistics, when present, is always
+    // authoritative and used as-is — this is the only path a state captured by the *current*
+    // toSessionState() ever takes. Absent poolStatistics means a state captured by this decorator's
+    // previous, pre-poolStatistics flat shape ({awardCount, totalAwarded}) is being restored instead; that
+    // shape had no per-pool breakdown at all, so migrating it correctly is only unambiguous when there is
+    // exactly one configured pool to attribute the totals to (totalContributed is unknowable from the legacy
+    // shape, so it migrates as 0 — strictly less than the true historical figure, never fabricated). Legacy
+    // all-zero statistics carry no attribution ambiguity regardless of pool count (there's nothing to
+    // attribute), so they always restore safely as an empty map. Any other legacy/pool-count combination
+    // (zero or multiple configured pools with nonzero legacy totals) has no safe automatic attribution — this
+    // throws a clear migration error rather than guessing which pool the historical activity belongs to, or
+    // silently dropping it.
+    private resolvePoolStatistics(value: VideoSlotWithJackpotSessionState): Readonly<Record<string, JackpotPoolStatisticsSnapshot>> {
+        if (value.poolStatistics !== undefined) {
+            return value.poolStatistics;
+        }
+        const legacyAwardCount = value.awardCount ?? 0;
+        const legacyTotalAwarded = value.totalAwarded ?? 0;
+        if (legacyAwardCount === 0 && legacyTotalAwarded === 0) {
+            return {};
+        }
+        if (this.pools.length !== 1) {
+            throw new Error(
+                "VideoSlotWithJackpotSession.fromSessionState: legacy state carries nonzero jackpot totals " +
+                    `(awardCount=${legacyAwardCount}, totalAwarded=${legacyTotalAwarded}) but this session has ` +
+                    `${this.pools.length} configured pools — migration requires exactly one pool to unambiguously ` +
+                    "attribute the historical totals to. Resolve this by migrating the state manually before restoring it.",
+            );
+        }
+        return {
+            [this.pools[0].getId()]: {awardCount: legacyAwardCount, totalAwarded: legacyTotalAwarded, totalContributed: 0},
+        };
     }
 
     private supportsSessionStateCapture(session: VideoSlotSessionHandling<T>): session is VideoSlotSessionHandling<T> & ConvertableToSessionState {
