@@ -45,20 +45,42 @@ From here, replace the generated `src/<GameName>Session.ts`/`src/<GameName>Game.
 paytable, and session wiring — see [Getting Started](getting-started.md) and
 [Game Session & Configuration](game-session.md).
 
+### `pokie create [name] --random`
+
+An entirely different, data-driven output for when you want a playable game immediately rather than a
+hand-editable scaffold: generates a random, always-valid `GameBlueprint` (see [Random generation
+(`pokie build random`)](#random-generation-pokie-build-random) below — same generator, same guarantees) and builds
+it with `GamePackageGenerator`, the same engine `pokie build` uses — not the plain-scaffold path above, since
+there's no random content to fill an empty `VideoSlotConfig` with otherwise.
+
+```
+pokie create --random                # name and directory picked for you
+pokie create my-random-game --random # named (and scaffolded into) ./my-random-game instead
+pokie create --random --seed 42      # reproduce a specific earlier random game
+```
+
+`<name>`, when given, is used verbatim both as the manifest name and as the output directory (matching plain
+`pokie create <name>`'s own directory-equals-name convention); omitted, a generated name/id is used for both
+instead. Either way the result is validated, generated, and smoke-simulated exactly as `pokie build random` does
+(see below) — a validation error or a failed smoke simulation exits non-zero with a printed explanation instead of
+silently leaving a broken package on disk.
+
 ## `pokie build [config.json]`
 
 Generates a working [game package](game-packages.md) from a `GameBlueprint` — reels/rows, symbols, paylines,
 paytable, and reel strips/weights for a standard line-pay video slot. Unlike `pokie create`/`pokie init`, the
 output is plain JavaScript with no compile step: it's immediately loadable by every other command below.
 
-There are three ways to provide the blueprint:
+There are four ways to provide the blueprint:
 
 - **config-driven** — `pokie build <config.json>` reads it from a JSON file (this section);
 - **interactive** — `pokie build` with no arguments launches a wizard that asks for the same fields on the
   terminal (see [Interactive mode](#interactive-mode-pokie-build-with-no-arguments) below);
 - **starter template** — `pokie build --init-blueprint <file>` writes a small, hand-editable example
   `GameBlueprint` to `<file>` instead of building anything, for editing by hand and feeding back into the
-  config-driven path above (see [Starter template](#starter-template-pokie-build---init-blueprint-file) below).
+  config-driven path above (see [Starter template](#starter-template-pokie-build---init-blueprint-file) below);
+- **random** — `pokie build random` generates an always-valid `GameBlueprint` on the fly (no file, no wizard) and
+  builds it immediately (see [Random generation](#random-generation-pokie-build-random) below).
 
 Both produce the exact same `GameBlueprint` shape, go through the exact same validation
 ([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
@@ -156,6 +178,77 @@ would print, before anything is generated.
 needed to write the template, or call `GamePackageGenerator` — no package is generated, and nothing else on disk is
 touched. If `<file>` already exists, it's left untouched and the command exits with an error instead of silently
 overwriting it — remove or rename the existing file first, or pick a different `<file>`.
+
+### Random generation (`pokie build random`)
+
+For a game with no config to write and no wizard prompts to answer at all:
+
+```
+pokie build random
+```
+
+```
+Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 1845220913.
+Reproduce this exact game with: pokie build random --seed 1845220913
+Build summary:
+  ...
+Running a short smoke simulation...
+Smoke simulation OK: 200 rounds, RTP 96.14%, hit frequency 31.00%.
+
+Game package "Blazing Riches" (id: "blazing-riches-4821") built in ".../blazing-riches-4821".
+```
+
+`random` (or the equivalent `--random` flag — `pokie build --random` behaves identically) generates a complete
+`GameBlueprint` in memory using two public, standalone services also available programmatically:
+
+- [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — picks a themed `{id, name}` pair
+  (e.g. `{id: "blazing-riches-4821", name: "Blazing Riches"}`) from small curated word lists;
+- [`RandomGameBlueprintGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — fills in reels (3-6),
+  rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the manifest.
+
+Both take an optional integer `seed`: the same seed always produces the exact same name/blueprint, and every
+blueprint `RandomGameBlueprintGenerator` produces is guaranteed to pass [`GameBlueprintValidator`](#validation)
+with zero errors *and* zero warnings, by construction — not by chance (see the class's own doc comment for the
+reel-weight/paytable-tiering math this relies on). No file is ever written for the blueprint itself; it goes
+straight into the same validate → generate pipeline `pokie build <config.json>` uses.
+
+Options (only `--seed` is new; `--out`/`--dry-run` behave exactly as for a config-driven build):
+
+- `--seed <integer>` — reproduce a specific earlier random game. Omit it to mint a fresh one — the seed actually
+  used is always echoed back on the first line, together with the exact command to reproduce it.
+- `--out <dir>` — same as [`pokie build <config.json> --out <dir>`](#pokie-build-configjson): write to `<dir>`
+  instead of `./<manifest.id>`.
+- `--dry-run` — validate and preview only; skips both the real build and the smoke simulation below.
+
+Unlike a config-driven or wizard build, a successful (non-`--dry-run`) random build doesn't stop at validation: it
+also runs a short (200-round) in-process simulation against the freshly built package — the same
+`ParallelSimulationRunner` [`pokie sim`](#pokie-sim-packageroot) itself uses — as a sanity check that the randomly
+generated content actually loads and plays, not just that its shape passed validation. A failure here (the package
+fails to load, or a round throws) is reported as an error and the command exits non-zero, even though the files
+were already written; a pass prints the round count, RTP, and hit frequency achieved.
+
+`pokie create <name?> --random` (see [`pokie create <name>`](#pokie-create-name) above) is the same generation +
+build + smoke-simulation pipeline, just named after (and scaffolded into) `<name>` instead of the generated id, for
+when you want a random game specifically as your project's `create` output rather than a `build` output.
+
+#### `SlotGameNameGenerator` / `RandomGameBlueprintGenerator`
+
+Both are ordinary, standalone exports from `"pokie"` — useful outside the CLI too (tooling, tests, generating
+several candidate games to pick from):
+
+```ts
+import {RandomGameBlueprintGenerator, SlotGameNameGenerator} from "pokie";
+
+const {id, name} = new SlotGameNameGenerator().generate();        // fresh every call
+const {id: id2, name: name2} = new SlotGameNameGenerator().generate(42); // deterministic for seed 42
+
+const {blueprint, seed} = new RandomGameBlueprintGenerator().generate(); // seed is minted and echoed back
+const reproduced = new RandomGameBlueprintGenerator().generate(seed);   // reproduced.blueprint deep-equals blueprint
+```
+
+`RandomGameBlueprintGenerator.generate(seed?, overrides?)` accepts an optional `{id?, name?}` override (what
+`pokie create <name> --random` uses to pin the manifest to the given `<name>` instead of a generated one) — pass a
+`name` to use it verbatim with an id slugified from it, or both `id`/`name` to pin both explicitly.
 
 ### The `GameBlueprint` format
 

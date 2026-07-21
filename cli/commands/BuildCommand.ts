@@ -7,9 +7,12 @@ import {
     GamePackageGenerating,
     GamePackageGenerator,
     loadGameBlueprint,
+    RandomGameBlueprintGenerating,
+    RandomGameBlueprintGenerator,
     resolveReelStripGeneration,
 } from "pokie";
 import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
+import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
 import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
@@ -22,10 +25,17 @@ type BuildOptions = {
     dryRun: boolean;
 };
 
+type RandomBuildOptions = {
+    seed?: number;
+    outDir?: string;
+    dryRun: boolean;
+};
+
 const USAGE = "Usage: pokie build <config.json> [--out <dir>] [--dry-run]";
 const BLUEPRINT_HINT =
     "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.";
 const INIT_BLUEPRINT_USAGE = "Usage: pokie build --init-blueprint <file>";
+const RANDOM_USAGE = "Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run]";
 
 export class BuildCommand implements CliCommandHandling {
     private readonly pokieVersion: string;
@@ -37,6 +47,8 @@ export class BuildCommand implements CliCommandHandling {
     private readonly createStarterBlueprint: () => GameBlueprint;
     private readonly fileExists: (filePath: string) => boolean;
     private readonly writeFile: (filePath: string, contents: string) => void;
+    private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
+    private readonly runSmokeSimulation: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome>;
 
     constructor(
         pokieVersion: string,
@@ -48,6 +60,8 @@ export class BuildCommand implements CliCommandHandling {
         createStarterBlueprint: () => GameBlueprint = createStarterGameBlueprint,
         fileExists: (filePath: string) => boolean = (filePath) => fs.existsSync(filePath),
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
+        randomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(),
+        runSmoke: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome> = runSmokeSimulation,
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
@@ -58,6 +72,8 @@ export class BuildCommand implements CliCommandHandling {
         this.createStarterBlueprint = createStarterBlueprint;
         this.fileExists = fileExists;
         this.writeFile = writeFile;
+        this.randomBlueprintGenerator = randomBlueprintGenerator;
+        this.runSmokeSimulation = runSmoke;
     }
 
     public getName(): string {
@@ -80,6 +96,10 @@ export class BuildCommand implements CliCommandHandling {
         try {
             if (args[0] === "--init-blueprint") {
                 return Promise.resolve(this.runInitBlueprint(args.slice(1)));
+            }
+
+            if (args[0] === "random" || args[0] === "--random") {
+                return this.runRandom(args.slice(1));
             }
 
             const options = this.parseArgs(args);
@@ -131,7 +151,65 @@ export class BuildCommand implements CliCommandHandling {
         }
     }
 
-    private buildFromBlueprint(blueprint: unknown, outDir: string | undefined, sourcePath: string | undefined, dryRun: boolean): number {
+    // "random"/"--random": generates a fresh, always-valid GameBlueprint (see
+    // RandomGameBlueprintGenerator's own doc comment for why it's guaranteed to pass validation) and
+    // runs it through the exact same validate/resolve/generate pipeline as a real <config.json> --
+    // "randomSeed" passed to buildFromBlueprint below is what additionally triggers the post-build
+    // smoke simulation, which a hand-authored blueprint build never runs.
+    private runRandom(args: string[]): Promise<number> {
+        const options = this.parseRandomArgs(args);
+        const {blueprint, seed} = this.randomBlueprintGenerator.generate(options.seed);
+
+        console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${seed}.`);
+        console.log(`Reproduce this exact game with: pokie build random --seed ${seed}`);
+
+        return this.buildFromBlueprint(blueprint, options.outDir, undefined, options.dryRun, seed);
+    }
+
+    private parseRandomArgs(args: string[]): RandomBuildOptions {
+        let seed: number | undefined;
+        let outDir: string | undefined;
+        let dryRun = false;
+
+        for (let i = 0; i < args.length; i++) {
+            const flag = args[i];
+            const value = args[i + 1];
+            switch (flag) {
+                case "--seed": {
+                    if (value === undefined || !Number.isInteger(Number(value))) {
+                        throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
+                    }
+                    seed = Number(value);
+                    i++;
+                    break;
+                }
+                case "--out": {
+                    if (value === undefined) {
+                        throw new Error(`--out requires a directory path. ${RANDOM_USAGE}`);
+                    }
+                    outDir = value;
+                    i++;
+                    break;
+                }
+                case "--dry-run": {
+                    dryRun = true;
+                    break;
+                }
+                default:
+                    throw new Error(`Unknown option "${flag}". ${RANDOM_USAGE}`);
+            }
+        }
+
+        return {seed, outDir, dryRun};
+    }
+
+    private async buildFromBlueprint(
+        blueprint: unknown,
+        outDir: string | undefined,
+        sourcePath: string | undefined,
+        dryRun: boolean,
+        randomSeed?: number,
+    ): Promise<number> {
         const issues = this.validator.validate(blueprint);
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
@@ -190,6 +268,18 @@ export class BuildCommand implements CliCommandHandling {
                     : "generated"
             }`,
         );
+
+        if (randomSeed !== undefined) {
+            console.log("\nRunning a short smoke simulation...");
+            const smoke = await this.runSmokeSimulation(result.projectRoot, randomSeed);
+            if (!smoke.ok) {
+                console.error(`Smoke simulation failed: ${smoke.error}`);
+                return 1;
+            }
+            console.log(
+                `Smoke simulation OK: ${smoke.rounds} rounds, RTP ${(smoke.rtp * 100).toFixed(2)}%, hit frequency ${(smoke.hitFrequency * 100).toFixed(2)}%.`,
+            );
+        }
 
         console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") built in "${result.projectRoot}".`);
         console.log(`\nNext:`);

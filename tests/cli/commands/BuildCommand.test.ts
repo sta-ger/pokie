@@ -1,8 +1,29 @@
-import {GameBlueprint, GameBlueprintValidating, GameBuildInfoReelStripGeneration, GamePackageGenerating, GeneratedGamePackage, ValidationIssue} from "pokie";
+import {
+    GameBlueprint,
+    GameBlueprintValidating,
+    GameBuildInfoReelStripGeneration,
+    GamePackageGenerating,
+    GeneratedGamePackage,
+    RandomGameBlueprint,
+    RandomGameBlueprintGenerating,
+    ValidationIssue,
+} from "pokie";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
+import {SmokeSimulationOutcome} from "../../../cli/build/runSmokeSimulation.js";
 import {GameBlueprintWizarding} from "../../../cli/wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";
 import {WizardResult} from "../../../cli/wizard/WizardResult.js";
+
+function createStubRandomBlueprintGenerator(
+    result: RandomGameBlueprint,
+): RandomGameBlueprintGenerating & {calledWith?: {seed?: number}} {
+    return {
+        generate(seed?: number) {
+            this.calledWith = {seed};
+            return result;
+        },
+    };
+}
 
 function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating & {calledWith?: unknown} {
     return {
@@ -531,6 +552,105 @@ describe("BuildCommand", () => {
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("reel 1"));
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("maximum-circular-distance"));
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("docs/cli.md#pokie-build-configjson"));
+        });
+    });
+
+    describe("random", () => {
+        const randomBlueprint: GameBlueprint = {
+            manifest: {id: "blazing-riches-4821", name: "Blazing Riches", version: "0.1.0"},
+            reels: 5,
+            rows: 3,
+            symbols: ["A", "K", "Q", "J", "10"],
+            paytable: {A: {3: 5, 4: 10, 5: 15}, K: {3: 4, 4: 8, 5: 12}, Q: {3: 3, 4: 6, 5: 9}, J: {3: 2, 4: 4, 5: 6}, "10": {3: 1, 4: 2, 5: 3}},
+            symbolWeights: {A: 1, K: 2, Q: 3, J: 4, "10": 5},
+            availableBets: [1, 2, 5, 10],
+        };
+        const randomResult: RandomGameBlueprint = {blueprint: randomBlueprint, seed: 20260721};
+        const okSmoke: SmokeSimulationOutcome = {ok: true, rounds: 200, rtp: 0.965, hitFrequency: 0.31};
+
+        function createCommand(
+            randomGenerator = createStubRandomBlueprintGenerator(randomResult),
+            runSmoke: jest.Mock = jest.fn().mockResolvedValue(okSmoke),
+            generator = createStubGenerator(generatedResult),
+        ) {
+            const command = new BuildCommand(
+                "1.3.0",
+                () => rawBlueprint,
+                createStubValidator([]),
+                generator,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                randomGenerator,
+                runSmoke,
+            );
+            return {command, randomGenerator, runSmoke, generator};
+        }
+
+        it.each([["random"], ["--random"]])('generates, builds, and smoke-simulates a random game via "pokie build %s"', async (flag) => {
+            const {command, randomGenerator, generator, runSmoke} = createCommand();
+
+            const exitCode = await command.run([flag]);
+
+            expect(exitCode).toBe(0);
+            expect(randomGenerator.calledWith).toEqual({seed: undefined});
+            expect(generator.calledWith?.blueprint).toBe(randomBlueprint);
+            expect(runSmoke).toHaveBeenCalledWith(generatedResult.projectRoot, 20260721);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain('Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 20260721');
+            expect(printed).toContain("Reproduce this exact game with: pokie build random --seed 20260721");
+            expect(printed).toContain("Smoke simulation OK: 200 rounds, RTP 96.50%, hit frequency 31.00%.");
+        });
+
+        it("forwards --seed to the random blueprint generator", async () => {
+            const {command, randomGenerator} = createCommand();
+
+            await command.run(["random", "--seed", "42"]);
+
+            expect(randomGenerator.calledWith).toEqual({seed: 42});
+        });
+
+        it("throws a descriptive error for a non-integer --seed", async () => {
+            const {command} = createCommand();
+
+            await expect(command.run(["random", "--seed", "abc"])).rejects.toThrow(/--seed requires an integer value/);
+        });
+
+        it("forwards --out to the package generator", async () => {
+            const {command, generator} = createCommand();
+
+            await command.run(["random", "--out", "somewhere"]);
+
+            expect(generator.calledWith).toMatchObject({outDir: "somewhere"});
+        });
+
+        it("--dry-run skips both the package generator and the smoke simulation", async () => {
+            const {command, generator, runSmoke} = createCommand();
+
+            const exitCode = await command.run(["random", "--dry-run"]);
+
+            expect(exitCode).toBe(0);
+            expect(generator.calledWith).toBeUndefined();
+            expect(runSmoke).not.toHaveBeenCalled();
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("Dry run");
+        });
+
+        it("returns 1 and reports the error when the smoke simulation fails", async () => {
+            const {command} = createCommand(undefined, jest.fn().mockResolvedValue({ok: false, error: "boom"}));
+
+            const exitCode = await command.run(["random"]);
+
+            expect(exitCode).toBe(1);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Smoke simulation failed: boom"));
+        });
+
+        it("throws a descriptive error for an unknown option", async () => {
+            const {command} = createCommand();
+
+            await expect(command.run(["random", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
         });
     });
 });
