@@ -30,7 +30,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - run: npm ci
-      - run: npm test
+      - run: npm run check:release
       - run: npm run build
 
       - name: Configure release commit identity

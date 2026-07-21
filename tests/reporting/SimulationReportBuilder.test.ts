@@ -1,4 +1,6 @@
-import {PokieGameManifest, SimulationAccumulator, SimulationReportBuilder} from "pokie";
+import {PokieGameManifest} from "../../src/gamepackage/PokieGameManifest.js";
+import {SimulationReportBuilder} from "../../src/reporting/SimulationReportBuilder.js";
+import {SimulationAccumulator} from "../../src/simulation/SimulationAccumulator.js";
 
 describe("SimulationReportBuilder", () => {
     const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};

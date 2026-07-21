@@ -1,4 +1,4 @@
-import {PlayUntilAnyLosingCombinationStrategy} from "pokie";
+import {PlayUntilAnyLosingCombinationStrategy} from "../../../src/simulation/playstrategy/PlayUntilAnyLosingCombinationStrategy.js";
 import {GameSessionReturnSpecifiedWinMock} from "./GameSessionReturnSpecifiedWinMock.js";
 
 describe("PlayUntilAnyLosingCombinationStrategy", () => {

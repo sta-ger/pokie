@@ -1,0 +1,5 @@
+{
+    "extends": "./tsconfig.prod.json",
+    "include": ["src", "tests", "cli"],
+    "exclude": ["cli/studio-client", "tests/cli/studio-client"]
+}

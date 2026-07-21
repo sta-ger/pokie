@@ -1,19 +1,17 @@
-import {
-    GameSessionHandling,
-    IdempotencyRepository,
-    InMemoryIdempotencyRepository,
-    InMemorySessionRepository,
-    InMemoryWallet,
-    PokieGame,
-    PokieGameManifest,
-    PokieSessionState,
-    SessionRepository,
-    SpinCommandHandler,
-    SpinCommandResult,
-    StakeAmountDetermining,
-    TransactionalWalletPort,
-    VersionedSessionRepository,
-} from "pokie";
+import {PokieGame} from "../../../src/gamepackage/PokieGame.js";
+import {PokieGameManifest} from "../../../src/gamepackage/PokieGameManifest.js";
+import {IdempotencyRepository} from "../../../src/server/idempotency/IdempotencyRepository.js";
+import {InMemoryIdempotencyRepository} from "../../../src/server/idempotency/InMemoryIdempotencyRepository.js";
+import {InMemorySessionRepository} from "../../../src/server/session/InMemorySessionRepository.js";
+import {PokieSessionState} from "../../../src/server/session/PokieSessionState.js";
+import {SessionRepository} from "../../../src/server/session/SessionRepository.js";
+import {VersionedSessionRepository} from "../../../src/server/session/VersionedSessionRepository.js";
+import {SpinCommandHandler} from "../../../src/server/spin/SpinCommandHandler.js";
+import {SpinCommandResult} from "../../../src/server/spin/SpinCommandResult.js";
+import {InMemoryWallet} from "../../../src/server/wallet/InMemoryWallet.js";
+import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalWalletPort.js";
+import {GameSessionHandling} from "../../../src/session/GameSessionHandling.js";
+import {StakeAmountDetermining} from "../../../src/session/StakeAmountDetermining.js";
 
 const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
 

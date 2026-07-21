@@ -1,4 +1,4 @@
-import {MinimumCountHoldAndWinTrigger} from "pokie";
+import {MinimumCountHoldAndWinTrigger} from "../../../../src/session/videoslot/holdandwin/MinimumCountHoldAndWinTrigger.js";
 
 describe("MinimumCountHoldAndWinTrigger", () => {
     const value = {kind: "value" as const, amount: 10};

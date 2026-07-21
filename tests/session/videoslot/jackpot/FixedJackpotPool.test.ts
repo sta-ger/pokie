@@ -1,4 +1,4 @@
-import {FixedJackpotPool} from "pokie";
+import {FixedJackpotPool} from "../../../../src/session/videoslot/jackpot/FixedJackpotPool.js";
 
 describe("FixedJackpotPool", () => {
     it("reports the configured amount as both its current value and its award", () => {

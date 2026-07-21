@@ -1,4 +1,5 @@
-import {GameBlueprint, GameBlueprintValidator} from "pokie";
+import {GameBlueprint} from "../../src/generated/GameBlueprint.js";
+import {GameBlueprintValidator} from "../../src/generated/GameBlueprintValidator.js";
 
 function validBlueprint(): GameBlueprint {
     return {

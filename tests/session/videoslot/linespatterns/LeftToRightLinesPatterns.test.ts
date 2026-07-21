@@ -1,4 +1,4 @@
-import {LeftToRightLinesPatterns} from "pokie";
+import {LeftToRightLinesPatterns} from "../../../../src/session/videoslot/linespatterns/LeftToRightLinesPatterns.js";
 
 describe("LeftToRightLinesPatterns", () => {
     it("contains lines patterns that describe winning symbols from left to right", () => {

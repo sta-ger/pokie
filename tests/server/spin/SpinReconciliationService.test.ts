@@ -1,20 +1,18 @@
-import {
-    IdempotencyRepository,
-    InMemoryIdempotencyRepository,
-    InMemorySpinOperationLog,
-    PokieSessionState,
-    SessionRepository,
-    SessionVersionConflictError,
-    SpinCommandResult,
-    SpinOperationLeasing,
-    SpinOperationLog,
-    SpinOperationRecord,
-    SpinReconciliationService,
-    TransactionalWalletPort,
-    VersionedSessionRepository,
-    WalletTransactionInspecting,
-    WalletTransactionStatus,
-} from "pokie";
+import {IdempotencyRepository} from "../../../src/server/idempotency/IdempotencyRepository.js";
+import {InMemoryIdempotencyRepository} from "../../../src/server/idempotency/InMemoryIdempotencyRepository.js";
+import {PokieSessionState} from "../../../src/server/session/PokieSessionState.js";
+import {SessionRepository} from "../../../src/server/session/SessionRepository.js";
+import {SessionVersionConflictError} from "../../../src/server/session/SessionVersionConflictError.js";
+import {VersionedSessionRepository} from "../../../src/server/session/VersionedSessionRepository.js";
+import {InMemorySpinOperationLog} from "../../../src/server/spin/InMemorySpinOperationLog.js";
+import {SpinCommandResult} from "../../../src/server/spin/SpinCommandResult.js";
+import {SpinOperationLeasing} from "../../../src/server/spin/SpinOperationLeasing.js";
+import {SpinOperationLog} from "../../../src/server/spin/SpinOperationLog.js";
+import {SpinOperationRecord} from "../../../src/server/spin/SpinOperationRecord.js";
+import {SpinReconciliationService} from "../../../src/server/spin/SpinReconciliationService.js";
+import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalWalletPort.js";
+import {WalletTransactionInspecting} from "../../../src/server/wallet/WalletTransactionInspecting.js";
+import {WalletTransactionStatus} from "../../../src/server/wallet/WalletTransactionStatus.js";
 
 // A minimal TransactionalWalletPort with no WalletTransactionInspecting at all — the "reconciliation
 // can't ask the wallet directly" baseline every no-inspection manual-recovery test needs.

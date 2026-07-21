@@ -1,4 +1,5 @@
-import {FixedPositionsConstraint, ReelStrip} from "pokie";
+import {FixedPositionsConstraint} from "../../../src/reels/constraints/FixedPositionsConstraint.js";
+import {ReelStrip} from "../../../src/reels/ReelStrip.js";
 
 describe("FixedPositionsConstraint", () => {
     test("is silent when every locked position holds its required symbol", () => {

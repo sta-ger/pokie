@@ -1,13 +1,11 @@
-import {
-    CustomLinesDefinitions,
-    LeftToRightLinesPatterns,
-    SymbolsCombination,
-    SymbolsCombinationsAnalyzer,
-    SymbolsSequence,
-    VideoSlotConfig,
-    VideoSlotWinCalculator,
-    WinningLineDescribing,
-} from "pokie";
+import {CustomLinesDefinitions} from "../../../../src/session/videoslot/linesdefinitions/CustomLinesDefinitions.js";
+import {LeftToRightLinesPatterns} from "../../../../src/session/videoslot/linespatterns/LeftToRightLinesPatterns.js";
+import {SymbolsCombination} from "../../../../src/session/videoslot/combinations/SymbolsCombination.js";
+import {SymbolsCombinationsAnalyzer} from "../../../../src/session/videoslot/combinations/SymbolsCombinationsAnalyzer.js";
+import {SymbolsSequence} from "../../../../src/session/videoslot/combinations/SymbolsSequence.js";
+import {VideoSlotConfig} from "../../../../src/session/videoslot/VideoSlotConfig.js";
+import {VideoSlotWinCalculator} from "../../../../src/session/videoslot/wincalculator/VideoSlotWinCalculator.js";
+import {WinningLineDescribing} from "../../../../src/session/videoslot/WinningLineDescribing.js";
 
 describe("DefaultVideoSlotSessionWinCalculator", () => {
     const config = new VideoSlotConfig();

@@ -1,4 +1,5 @@
-import {PseudorandomNumberGenerator, SecureRandomNumberGenerator} from "pokie";
+import {PseudorandomNumberGenerator} from "../../../../src/session/videoslot/combinations/PseudorandomNumberGenerator.js";
+import {SecureRandomNumberGenerator} from "../../../../src/session/videoslot/combinations/SecureRandomNumberGenerator.js";
 
 describe("PseudorandomNumberGenerator", () => {
     test("getRandomNumber should return a number between 0 and 1", () => {

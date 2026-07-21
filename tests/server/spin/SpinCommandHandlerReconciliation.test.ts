@@ -1,25 +1,23 @@
-import {
-    GameSessionHandling,
-    IdempotencyRepository,
-    InMemoryIdempotencyRepository,
-    InMemorySessionRepository,
-    InMemorySpinOperationLog,
-    InMemoryWallet,
-    PokieGame,
-    PokieGameManifest,
-    PokieSessionState,
-    SessionRepository,
-    SpinCommandHandler,
-    SpinCommandResult,
-    SpinOperationCheckpoint,
-    SpinOperationLog,
-    SpinOperationRecord,
-    SpinReconciliationOutcome,
-    SpinReconciliationService,
-    TransactionalWalletPort,
-    WalletTransactionInspecting,
-    WalletTransactionStatus,
-} from "pokie";
+import {PokieGame} from "../../../src/gamepackage/PokieGame.js";
+import {PokieGameManifest} from "../../../src/gamepackage/PokieGameManifest.js";
+import {IdempotencyRepository} from "../../../src/server/idempotency/IdempotencyRepository.js";
+import {InMemoryIdempotencyRepository} from "../../../src/server/idempotency/InMemoryIdempotencyRepository.js";
+import {InMemorySessionRepository} from "../../../src/server/session/InMemorySessionRepository.js";
+import {PokieSessionState} from "../../../src/server/session/PokieSessionState.js";
+import {SessionRepository} from "../../../src/server/session/SessionRepository.js";
+import {InMemorySpinOperationLog} from "../../../src/server/spin/InMemorySpinOperationLog.js";
+import {SpinCommandHandler} from "../../../src/server/spin/SpinCommandHandler.js";
+import {SpinCommandResult} from "../../../src/server/spin/SpinCommandResult.js";
+import {SpinOperationCheckpoint} from "../../../src/server/spin/SpinOperationCheckpoint.js";
+import {SpinOperationLog} from "../../../src/server/spin/SpinOperationLog.js";
+import {SpinOperationRecord} from "../../../src/server/spin/SpinOperationRecord.js";
+import {SpinReconciliationOutcome} from "../../../src/server/spin/SpinReconciliationOutcome.js";
+import {SpinReconciliationService} from "../../../src/server/spin/SpinReconciliationService.js";
+import {InMemoryWallet} from "../../../src/server/wallet/InMemoryWallet.js";
+import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalWalletPort.js";
+import {WalletTransactionInspecting} from "../../../src/server/wallet/WalletTransactionInspecting.js";
+import {WalletTransactionStatus} from "../../../src/server/wallet/WalletTransactionStatus.js";
+import {GameSessionHandling} from "../../../src/session/GameSessionHandling.js";
 
 // Every "retry" handler below is constructed with a zero-quiescence, structurally-owned
 // SpinReconciliationService — standing in for exactly what SpinCommandHandler's own default construction

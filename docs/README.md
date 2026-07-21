@@ -208,3 +208,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 
 Every class implements one or more of `*Describing`/`*Determining` (read), `*Setting` (write), and `*Representing`/
 `*Handling` (both) interfaces. Depend on the narrowest one your code actually needs.
+
+## Contributing to POKIE itself
+
+The rest of this folder is the API reference for using the published `pokie` package. If you're working on POKIE's
+own source instead, see [`testing.md`](testing.md) for how the test suite is organized (fast/integration/packaging/
+release lanes) and how to run it.

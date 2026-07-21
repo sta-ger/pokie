@@ -1,4 +1,4 @@
-import {PercentageOfBetJackpotContributor} from "pokie";
+import {PercentageOfBetJackpotContributor} from "../../../../src/session/videoslot/jackpot/PercentageOfBetJackpotContributor.js";
 
 describe("PercentageOfBetJackpotContributor", () => {
     it("contributes the configured percentage of the stake, regardless of poolId", () => {
