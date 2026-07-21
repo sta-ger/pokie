@@ -9,7 +9,10 @@ import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinat
 import type {VideoSlotSessionHandling} from "../VideoSlotSessionHandling.js";
 import {ValueWinComponent} from "../winevaluation/ValueWinComponent.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
+import type {WinningLineDescribing} from "../WinningLineDescribing.js";
+import type {WinningScatterDescribing} from "../WinningScatterDescribing.js";
 import {WinningValue} from "../WinningValue.js";
+import type {HoldAndWinBaseRoundResult} from "./HoldAndWinBaseRoundResult.js";
 import type {HoldAndWinCollecting} from "./HoldAndWinCollecting.js";
 import type {HoldAndWinPayoutAggregating} from "./HoldAndWinPayoutAggregating.js";
 import {HoldAndWinRoundHandler} from "./HoldAndWinRoundHandler.js";
@@ -161,10 +164,17 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
             this.baseSession.setCreditsAmount(this.baseSession.getBet());
         }
         this.baseSession.play();
-        // Read directly off baseSession, never via this.getWinEvaluationResult() — that method is
-        // overridden below to answer from lastRoundOutcome, which roundHandler.afterRoundPlayed() is about
-        // to update for *this* round; reading through it here would see the *previous* round's answer.
-        this.roundHandler.afterRoundPlayed(this, creditsBeforePlay, this.baseSession.getWinEvaluationResult());
+        // Read directly off baseSession, never via this getters overridden below — those answer from
+        // lastRoundOutcome, which roundHandler.afterRoundPlayed() is about to update for *this* round;
+        // reading through them here would see the *previous* round's answer.
+        const baseRoundResult: HoldAndWinBaseRoundResult<T> = {
+            winEvaluationResult: this.baseSession.getWinEvaluationResult(),
+            winningLines: this.baseSession.getWinningLines(),
+            winningScatters: this.baseSession.getWinningScatters(),
+            linesWinning: this.baseSession.getLinesWinning(),
+            scattersWinning: this.baseSession.getScattersWinning(),
+        };
+        this.roundHandler.afterRoundPlayed(this, creditsBeforePlay, baseRoundResult);
     }
 
     // StakeAmountDetermining: a respin never charges a real stake — see HoldAndWinRoundHandler, which
@@ -208,6 +218,57 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
         return this.buildCompletedWinEvaluationResult(outcome);
     }
 
+    // Legacy result surfaces, made outcome-aware for the same reason getWinAmount()/getWinEvaluationResult()
+    // are: "ordinary" delegates unchanged; "suppressed" and a respin-completed round hide the wrapped
+    // session's own discarded lines/scatters entirely (they were never actually paid, see
+    // HoldAndWinRoundHandler); an immediate trigger-time board-full completion preserves exactly the real
+    // base win's own lines/scatters (captured in outcome.baseRoundResult — the Hold & Win payout itself was
+    // never a "line" or "scatter" win to begin with, it only ever surfaces via getWinningValues()-style
+    // value-win vocabulary, i.e. through getWinEvaluationResult() above, not through these).
+    public override getWinningLines(): Record<string, WinningLineDescribing<T>> {
+        const outcome = this.lastRoundOutcome;
+        if (outcome.kind === "ordinary") {
+            return this.baseSession.getWinningLines();
+        }
+        if (outcome.kind === "suppressed") {
+            return {};
+        }
+        return outcome.baseRoundResult.winningLines;
+    }
+
+    public override getWinningScatters(): Record<T, WinningScatterDescribing<T>> {
+        const outcome = this.lastRoundOutcome;
+        if (outcome.kind === "ordinary") {
+            return this.baseSession.getWinningScatters();
+        }
+        if (outcome.kind === "suppressed") {
+            return {} as Record<T, WinningScatterDescribing<T>>;
+        }
+        return outcome.baseRoundResult.winningScatters;
+    }
+
+    public override getLinesWinning(): number {
+        const outcome = this.lastRoundOutcome;
+        if (outcome.kind === "ordinary") {
+            return this.baseSession.getLinesWinning();
+        }
+        if (outcome.kind === "suppressed") {
+            return 0;
+        }
+        return outcome.baseRoundResult.linesWinning;
+    }
+
+    public override getScattersWinning(): number {
+        const outcome = this.lastRoundOutcome;
+        if (outcome.kind === "ordinary") {
+            return this.baseSession.getScattersWinning();
+        }
+        if (outcome.kind === "suppressed") {
+            return 0;
+        }
+        return outcome.baseRoundResult.scattersWinning;
+    }
+
     // SimulationCategoryDetermining: the triggering spin itself is a genuine base-game round (it charges a
     // real stake — getStakeAmount() only reports 0 once "active" flips true, which happens after this
     // spin's own outcome is already decided), so it's reported as "base", the same fallback name
@@ -244,19 +305,31 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // themselves pay) — noted in metadata instead. A payout with no locked "value" symbols at all (e.g. an
     // aggregator paying purely off multiplier symbols, or a zero-locked-value edge case) falls back to one
     // component spanning every locked position, so the total is still never silently dropped.
-    // "baseWinAmount"/"baseWinEvaluationResult" only ever contribute real components (rather than 0) for the
+    // "baseWinAmount"/"baseRoundResult" only ever contribute real components (rather than nothing) for the
     // rare immediate-trigger-board-full case — see HoldAndWinRoundHandler.afterRoundPlayed's own comment on
-    // why a respin's own win is always the empty WinEvaluationResult by the time it reaches here.
+    // why a respin's own result is always the empty fallback by the time it reaches here.
+    //
+    // Floating-point exactness: proportional shares (amount / rawSum * payout) don't generally sum back to
+    // exactly "payout" — IEEE754 division/multiplication rounding accumulates across N-1 independently
+    // computed shares. Every component except the *last* uses the proportional formula; the last is instead
+    // assigned whatever payout still isn't accounted for (payout - sum of the others, in the same left-to-
+    // right order getTotalWin() itself reduces in) — this is what guarantees featureValueWins' own total is
+    // exactly "payout", not merely close to it, regardless of how unevenly "payout" divides among the locked
+    // value symbols. The residual always lands on the *last* locked symbol in collection order — the same
+    // order every time for the same locked set, never randomized or dependent on iteration/hash order.
     private buildCompletedWinEvaluationResult(outcome: Extract<HoldAndWinRoundOutcome<T>, {kind: "completed"}>): WinEvaluationResult<T> {
         const valueLocked = outcome.lockedSymbols.filter(isValueLocked<T>);
         const rawSum = valueLocked.reduce((sum, locked) => sum + locked.effect.amount, 0);
         const featureValueWins: ValueWinComponent<T>[] = [];
 
         if (outcome.payout > 0 && valueLocked.length > 0 && rawSum > 0) {
-            for (const locked of valueLocked) {
-                const share = (locked.effect.amount / rawSum) * outcome.payout;
+            let allocated = 0;
+            valueLocked.forEach((locked, index) => {
+                const isLast = index === valueLocked.length - 1;
+                const share = isLast ? outcome.payout - allocated : (locked.effect.amount / rawSum) * outcome.payout;
+                allocated += share;
                 featureValueWins.push(new ValueWinComponent<T>(new WinningValue<T>(locked.symbolId, [[...locked.position]], share)));
-            }
+            });
         } else if (outcome.payout > 0 && outcome.lockedSymbols.length > 0) {
             const attributedTo = outcome.lockedSymbols[outcome.lockedSymbols.length - 1];
             featureValueWins.push(
@@ -271,7 +344,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
         }
 
         return new WinEvaluationResult<T>({
-            winComponents: [...outcome.baseWinEvaluationResult.getWinComponents(), ...featureValueWins],
+            winComponents: [...outcome.baseRoundResult.winEvaluationResult.getWinComponents(), ...featureValueWins],
             metadata: {
                 holdAndWin: {
                     baseWinAmount: outcome.baseWinAmount,

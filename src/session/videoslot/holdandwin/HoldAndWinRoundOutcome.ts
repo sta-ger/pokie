@@ -1,4 +1,4 @@
-import type {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
+import type {HoldAndWinBaseRoundResult} from "./HoldAndWinBaseRoundResult.js";
 import type {LockedHoldAndWinSymbol} from "./LockedHoldAndWinSymbol.js";
 
 // What the *most recently played* round's own definitive result actually was — set explicitly by
@@ -21,10 +21,14 @@ import type {LockedHoldAndWinSymbol} from "./LockedHoldAndWinSymbol.js";
 //   report 0 here, not whatever number the wrapped session's own reel strip happened to compute — that
 //   number was never actually paid out.
 // - "completed": the round that ended the feature — either a respin whose own (always-suppressed, hence
-//   baseWinAmount always 0 here) win doesn't matter, or the rare case of the *triggering* spin alone filling
-//   the entire board (baseWinAmount is that spin's own real, already-paid wrapped win). getWinAmount() must
-//   report baseWinAmount + payout — both components actually apply to credits this round, see
-//   HoldAndWinRoundHandler's own complete().
+//   baseWinAmount always 0 here, and baseRoundResult always the empty fallback) win doesn't matter, or the
+//   rare case of the *triggering* spin alone filling the entire board (baseWinAmount/baseRoundResult are
+//   that spin's own real, already-paid wrapped result). getWinAmount() must report baseWinAmount + payout —
+//   both components actually apply to credits this round, see HoldAndWinRoundHandler's own complete().
+//   "baseRoundResult" carries the full snapshot (win evaluation result, legacy lines/scatters maps) so the
+//   legacy result APIs (getWinningLines()/getWinningScatters()/etc. on VideoSlotWithHoldAndWinSession) can
+//   also be outcome-aware, not just getWinAmount()/getWinEvaluationResult() — "baseWinAmount" is kept
+//   alongside it purely as a convenience (it's always exactly baseRoundResult.winEvaluationResult.getTotalWin()).
 export type HoldAndWinRoundOutcome<T extends string | number | symbol = string> =
     | {readonly kind: "ordinary"}
     | {readonly kind: "suppressed"}
@@ -33,5 +37,5 @@ export type HoldAndWinRoundOutcome<T extends string | number | symbol = string> 
           readonly baseWinAmount: number;
           readonly payout: number;
           readonly lockedSymbols: readonly LockedHoldAndWinSymbol<T>[];
-          readonly baseWinEvaluationResult: WinEvaluationResult<T>;
+          readonly baseRoundResult: HoldAndWinBaseRoundResult<T>;
       };

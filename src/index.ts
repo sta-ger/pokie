@@ -414,6 +414,7 @@ export * from "./session/videoslot/combinations/SymbolsSequenceModifying.js";
 export * from "./session/videoslot/combinations/SymbolsSequenceRepresenting.js";
 export * from "./session/videoslot/combinations/VariableHeightSymbolsCombinationsGenerator.js";
 export * from "./session/videoslot/combinations/WaysAnalyzer.js";
+export * from "./session/videoslot/holdandwin/HoldAndWinBaseRoundResult.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinCollecting.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinPayoutAggregating.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinRoundHandler.js";

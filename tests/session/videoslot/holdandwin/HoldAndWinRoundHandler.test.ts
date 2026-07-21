@@ -1,4 +1,5 @@
 import {
+    emptyHoldAndWinBaseRoundResult,
     HoldAndWinRoundHandler,
     MinimumCountHoldAndWinTrigger,
     SumWithMultiplierHoldAndWinPayoutAggregator,
@@ -7,6 +8,7 @@ import {
     ValueWinComponent,
     WinEvaluationResult,
     WinningValue,
+    type HoldAndWinBaseRoundResult,
     type HoldAndWinRoundOutcome,
     type LockedHoldAndWinSymbol,
     type VideoSlotWithHoldAndWinSessionHandling,
@@ -190,12 +192,18 @@ const allBlank = (): string[][] => [
     ["X", "X"],
 ];
 
-const noWin = (): WinEvaluationResult<string> => new WinEvaluationResult<string>();
+const noWin = (): HoldAndWinBaseRoundResult<string> => emptyHoldAndWinBaseRoundResult<string>();
 
-function winOf(amount: number): WinEvaluationResult<string> {
-    return new WinEvaluationResult<string>({
-        valueWins: [new ValueWinComponent<string>(new WinningValue<string>("K", [[0, 0]], amount))],
-    });
+function winOf(amount: number): HoldAndWinBaseRoundResult<string> {
+    return {
+        winEvaluationResult: new WinEvaluationResult<string>({
+            valueWins: [new ValueWinComponent<string>(new WinningValue<string>("K", [[0, 0]], amount))],
+        }),
+        winningLines: {},
+        winningScatters: {},
+        linesWinning: 0,
+        scattersWinning: amount,
+    };
 }
 
 describe("HoldAndWinRoundHandler", () => {
@@ -480,6 +488,49 @@ describe("HoldAndWinRoundHandler", () => {
         it("accepts a positive safe integer", () => {
             expect(build(1)).not.toThrow();
             expect(build(3)).not.toThrow();
+        });
+    });
+
+    describe("backward compatibility: the original 2-argument afterRoundPlayed(session, creditsBeforePlay) call shape", () => {
+        it("still drives a full trigger -> respin (reset/decrement) -> respin-completion sequence correctly, with no degradation at all", () => {
+            const handler = createHandler(2);
+            const triggerGrid = allBlank();
+            triggerGrid[0][0] = "C";
+            triggerGrid[1][0] = "C";
+            triggerGrid[2][0] = "C";
+            const session = new FakeHoldAndWinSession(triggerGrid);
+            const creditsBefore = session.getCreditsAmount();
+
+            handler.afterRoundPlayed(session, creditsBefore); // no 3rd argument at all
+
+            expect(session.isHoldAndWinActive()).toBe(true);
+            expect(session.getHoldAndWinRespinsRemaining()).toBe(2);
+            expect(session.getHoldAndWinLastRoundOutcome()).toEqual({kind: "ordinary"});
+
+            session.setGrid(allBlank());
+            handler.afterRoundPlayed(session, session.getCreditsAmount());
+            expect(session.getHoldAndWinRespinsRemaining()).toBe(1);
+
+            handler.afterRoundPlayed(session, session.getCreditsAmount());
+
+            expect(session.isHoldAndWinActive()).toBe(false);
+            expect(session.getHoldAndWinPayout()).toBe(30); // 3 locked C's * 10 each — identical to the 3-argument call shape
+            expect(session.getCreditsAmount()).toBe(creditsBefore + 30);
+        });
+
+        it("degrades safely (never throws, never fabricates a win) for the rare immediate board-full-at-trigger case: baseWinAmount is 0 instead of the real (unknowable, since it was never supplied) base win", () => {
+            const handler = createHandler(5);
+            const fullGrid: string[][] = [
+                ["C", "C"],
+                ["C", "C"],
+                ["C", "C"],
+            ];
+            const session = new FakeHoldAndWinSession(fullGrid);
+
+            handler.afterRoundPlayed(session, session.getCreditsAmount()); // no 3rd argument — the real base win, if any, is unknowable here
+
+            const outcome = session.getHoldAndWinLastRoundOutcome();
+            expect(outcome).toMatchObject({kind: "completed", baseWinAmount: 0, payout: 60});
         });
     });
 });

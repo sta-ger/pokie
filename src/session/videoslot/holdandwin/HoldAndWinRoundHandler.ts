@@ -1,4 +1,4 @@
-import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
+import {emptyHoldAndWinBaseRoundResult, type HoldAndWinBaseRoundResult} from "./HoldAndWinBaseRoundResult.js";
 import type {HoldAndWinCollecting} from "./HoldAndWinCollecting.js";
 import type {HoldAndWinPayoutAggregating} from "./HoldAndWinPayoutAggregating.js";
 import type {HoldAndWinRoundHandling} from "./HoldAndWinRoundHandling.js";
@@ -37,6 +37,14 @@ import type {VideoSlotWithHoldAndWinSessionHandling} from "./VideoSlotWithHoldAn
 //   own handling of its own zero-stake rounds) — whatever the wrapped session's own ordinary paytable
 //   evaluation produced for that respin's reel strip is deliberately never paid out directly; only this
 //   handler's own payoutAggregator result is, and only once, at completion.
+// - **Backward compatibility**: afterRoundPlayed()'s "baseRoundResult" parameter is optional (see
+//   HoldAndWinRoundHandling's own doc comment) — a caller still using the original 2-argument shape gets
+//   emptyHoldAndWinBaseRoundResult() substituted in automatically. The only observable difference for such a
+//   caller: a triggering spin that doesn't immediately complete is unaffected either way (its outcome is
+//   still "ordinary", answered from the wrapped session directly, never from this parameter at all), but a
+//   triggering spin that *does* immediately complete (the rare board-full-at-trigger case) will report
+//   baseWinAmount 0 instead of that spin's real win — a conservative degradation, never a wrong-direction one
+//   (it undercounts a rare edge case rather than ever fabricating or double-counting a win).
 export class HoldAndWinRoundHandler<T extends string | number | symbol = string> implements HoldAndWinRoundHandling<T> {
     private readonly initialRespins: number;
     private readonly collector: HoldAndWinCollecting<T>;
@@ -66,7 +74,11 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
         }
     }
 
-    public afterRoundPlayed(session: VideoSlotWithHoldAndWinSessionHandling<T>, creditsBeforePlay: number, baseWinEvaluationResult: WinEvaluationResult<T>): void {
+    public afterRoundPlayed(
+        session: VideoSlotWithHoldAndWinSessionHandling<T>,
+        creditsBeforePlay: number,
+        baseRoundResult: HoldAndWinBaseRoundResult<T> = emptyHoldAndWinBaseRoundResult<T>(),
+    ): void {
         const grid = session.getSymbolsCombination().toMatrix();
 
         if (!session.isHoldAndWinActive()) {
@@ -79,9 +91,9 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
             session.setLockedHoldAndWinSymbols(candidates);
             session.setHoldAndWinRespinsRemaining(this.initialRespins);
             if (this.isBoardFull(session, candidates)) {
-                // The triggering spin alone filled the board — its own win was never touched (a normal
+                // The triggering spin alone filled the board — its own result was never touched (a normal
                 // paid spin, not a respin), so it genuinely contributes alongside the feature payout.
-                this.complete(session, baseWinEvaluationResult);
+                this.complete(session, baseRoundResult);
             } else {
                 session.setHoldAndWinLastRoundOutcome({kind: "ordinary"});
             }
@@ -90,9 +102,9 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
 
         // A live respin never charges (see VideoSlotWithHoldAndWinSession.getStakeAmount()) — restore
         // whatever the wrapped session's own paytable evaluation of this respin's reel strip added before
-        // this handler's own collect/lock/respin logic runs. That discarded win never contributes to this
-        // round's own outcome either way, completion or not — hence the empty WinEvaluationResult passed to
-        // complete() below, ignoring "baseWinEvaluationResult" entirely for this branch.
+        // this handler's own collect/lock/respin logic runs. That discarded result never contributes to this
+        // round's own outcome either way, completion or not — hence the empty base round result passed to
+        // complete() below, ignoring "baseRoundResult" entirely for this branch.
         session.setCreditsAmount(creditsBeforePlay);
 
         const alreadyLocked = session.getLockedHoldAndWinSymbols();
@@ -107,13 +119,13 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
         }
 
         if (this.isBoardFull(session, locked) || session.getHoldAndWinRespinsRemaining() <= 0) {
-            this.complete(session, new WinEvaluationResult<T>());
+            this.complete(session, emptyHoldAndWinBaseRoundResult<T>());
         } else {
             session.setHoldAndWinLastRoundOutcome({kind: "suppressed"});
         }
     }
 
-    private complete(session: VideoSlotWithHoldAndWinSessionHandling<T>, baseWinEvaluationResult: WinEvaluationResult<T>): void {
+    private complete(session: VideoSlotWithHoldAndWinSessionHandling<T>, baseRoundResult: HoldAndWinBaseRoundResult<T>): void {
         const lockedSymbols = session.getLockedHoldAndWinSymbols();
         const payout = this.payoutAggregator.aggregate(lockedSymbols, session.getBet());
         session.setHoldAndWinPayout(payout);
@@ -122,10 +134,10 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
         session.setHoldAndWinRespinsRemaining(0);
         session.setHoldAndWinLastRoundOutcome({
             kind: "completed",
-            baseWinAmount: baseWinEvaluationResult.getTotalWin(),
+            baseWinAmount: baseRoundResult.winEvaluationResult.getTotalWin(),
             payout,
             lockedSymbols,
-            baseWinEvaluationResult,
+            baseRoundResult,
         });
     }
 

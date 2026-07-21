@@ -10,8 +10,10 @@ import {
     WinningValue,
     type BuildableFromSessionState,
     type ConvertableToSessionState,
+    type HoldAndWinPayoutAggregating,
     type VideoSlotSessionHandling,
     type VideoSlotWithHoldAndWinSessionState,
+    type WinningLineDescribing,
 } from "pokie";
 
 // A scripted, fully-controllable VideoSlotSessionHandling double: play() advances through a fixed sequence
@@ -81,8 +83,25 @@ class ScriptedFakeVideoSlotSession implements VideoSlotSessionHandling<string>, 
         return this.getWinEvaluationResult().getTotalWin();
     }
 
-    public getWinningLines(): Record<string, never> {
-        return {};
+    // Mirrors the scripted "wins" array (see getWinEvaluationResult() below) so tests can also observe
+    // suppression/preservation on the *legacy* line-win surface specifically, not just the modern
+    // WinEvaluationResult one — a fake single line "L1" carrying exactly this spin's own scripted amount.
+    public getWinningLines(): Record<string, WinningLineDescribing<string>> {
+        const win = this.wins[Math.max(this.cursor, 0)] ?? 0;
+        if (win === 0) {
+            return {};
+        }
+        return {
+            L1: {
+                getDefinition: () => [0, 0, 0],
+                getPattern: () => [0, 0, 0],
+                getSymbolId: () => "K",
+                getLineId: () => "L1",
+                getSymbolsPositions: () => [0, 0, 0],
+                getWildSymbolsPositions: () => [],
+                getWinAmount: () => win,
+            },
+        };
     }
 
     public getWinningScatters(): Record<string, never> {
@@ -90,7 +109,7 @@ class ScriptedFakeVideoSlotSession implements VideoSlotSessionHandling<string>, 
     }
 
     public getLinesWinning(): number {
-        return 0;
+        return this.wins[Math.max(this.cursor, 0)] ?? 0;
     }
 
     public getScattersWinning(): number {
@@ -394,6 +413,93 @@ describe("VideoSlotWithHoldAndWinSession", () => {
             expect(session.getWinEvaluationResult().getTotalWin()).toBe(25 + 60);
             expect(session.getCreditsAmount()).toBe(creditsBefore - session.getBet() + 85);
         });
+    });
+
+    describe("legacy result APIs (getWinningLines/getWinningScatters/getLinesWinning/getScattersWinning) are outcome-aware too", () => {
+        it("ordinary: delegates straight to the wrapped session, unchanged", () => {
+            const base = new ScriptedFakeVideoSlotSession(fiveSpinScript(), {credits: 1000, bet: 1, wins: [7, 0, 0, 0, 0]});
+            const session = createDecorator(base);
+
+            session.play(); // triggers, but doesn't immediately complete -> "ordinary"
+
+            expect(session.getLinesWinning()).toBe(7);
+            expect(Object.keys(session.getWinningLines())).toEqual(["L1"]);
+        });
+
+        it("suppressed: hides the wrapped session's own discarded lines, even though the wrapped session itself still reports them", () => {
+            const base = new ScriptedFakeVideoSlotSession(fiveSpinScript(), {credits: 1000, bet: 1, wins: [0, 500, 0, 0, 0]});
+            const session = createDecorator(base);
+            session.play(); // trigger
+            session.play(); // respin #2 — its own scripted line win of 500 must be hidden
+
+            expect(session.getWinningLines()).toEqual({});
+            expect(session.getLinesWinning()).toBe(0);
+            // Proves this is the decorator suppressing it, not the fake failing to report it in the first place.
+            expect(base.getLinesWinning()).toBe(500);
+        });
+
+        it("a completing respin also hides lines (the feature payout is a value win, never a line win)", () => {
+            const base = new ScriptedFakeVideoSlotSession(fiveSpinScript(), {credits: 1000, bet: 1, wins: [0, 0, 0, 0, 900]});
+            const session = createDecorator(base);
+            for (let i = 0; i < 5; i++) {
+                session.play();
+            }
+
+            expect(session.isHoldAndWinActive()).toBe(false);
+            expect(session.getHoldAndWinPayout()).toBe(40);
+            expect(session.getWinningLines()).toEqual({});
+            expect(session.getLinesWinning()).toBe(0);
+        });
+
+        it("an immediate board-full trigger preserves exactly the real base win's own lines", () => {
+            const fullGrid: string[][] = [
+                ["C", "C"],
+                ["C", "C"],
+                ["C", "C"],
+            ];
+            const base = new ScriptedFakeVideoSlotSession([fullGrid], {credits: 1000, bet: 1, wins: [12]});
+            const session = createDecorator(base);
+
+            session.play();
+
+            expect(session.isHoldAndWinActive()).toBe(false);
+            expect(session.getLinesWinning()).toBe(12);
+            expect(Object.keys(session.getWinningLines())).toEqual(["L1"]);
+        });
+    });
+
+    it("floating-point residual: the feature win breakdown's own components sum to exactly the authoritative payout, even when it doesn't divide evenly among the locked value symbols", () => {
+        const triggerGrid = allBlank();
+        triggerGrid[0][0] = "C";
+        triggerGrid[1][0] = "C";
+        triggerGrid[2][0] = "C"; // 3 equally-valued (10 each) locked symbols, rawSum 30
+        const base = new ScriptedFakeVideoSlotSession([triggerGrid, allBlank()], {credits: 1000, bet: 1});
+        // A payout deliberately unrelated to rawSum/3 — forces genuinely uneven proportional shares
+        // (10/30 * 100 = 33.333... repeating) rather than a suspiciously round number.
+        const fixedPayoutAggregator: HoldAndWinPayoutAggregating<string> = {aggregate: () => 100};
+        const session = new VideoSlotWithHoldAndWinSession<string>(
+            base,
+            1,
+            new SymbolSetHoldAndWinCollector<string>({C: valueEffect}),
+            new MinimumCountHoldAndWinTrigger<string>(3),
+            fixedPayoutAggregator,
+        );
+
+        session.play(); // trigger, 1 respin granted
+        session.play(); // blank respin -> respins exhausted -> completes, payout 100
+
+        expect(session.getHoldAndWinPayout()).toBe(100);
+        const components = session.getWinEvaluationResult().getWinComponents();
+        expect(components).toHaveLength(3);
+        const total = components.reduce((sum, component) => sum + component.getWinAmount(), 0);
+        expect(total).toBe(100); // exact, not merely close
+        expect(session.getWinEvaluationResult().getTotalWin()).toBe(100);
+        expect(session.getWinAmount()).toBe(100);
+        // Deterministic residual placement: the first two (symmetric) components share the same proportional
+        // amount; the third (last, in locked-collection order) silently absorbs whatever residual is left —
+        // same every time for the same locked set/order, never randomized.
+        expect(components[0].getWinAmount()).toBe(components[1].getWinAmount());
+        expect(components[2].getWinAmount()).not.toBe(components[0].getWinAmount());
     });
 
     it("completion payout is attributed to the AggregateSimulationRunner breakdown's 'holdAndWin' category and counted in overall RTP, exactly once, at the round it actually completed", () => {
