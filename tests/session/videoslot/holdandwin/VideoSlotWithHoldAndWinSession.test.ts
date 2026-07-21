@@ -1,10 +1,13 @@
 import {
+    AggregateSimulationRunner,
     MinimumCountHoldAndWinTrigger,
     SumWithMultiplierHoldAndWinPayoutAggregator,
     SymbolsCombination,
     SymbolSetHoldAndWinCollector,
+    ValueWinComponent,
     VideoSlotWithHoldAndWinSession,
     WinEvaluationResult,
+    WinningValue,
     type BuildableFromSessionState,
     type ConvertableToSessionState,
     type VideoSlotSessionHandling,
@@ -12,21 +15,24 @@ import {
 } from "pokie";
 
 // A scripted, fully-controllable VideoSlotSessionHandling double: play() advances through a fixed sequence
-// of grids (repeating the last one if the script runs out), decrementing credits by the bet each time —
-// mirroring real GameSessionHandling accounting closely enough for these tests without needing a full
-// VideoSlotSession/random combinations generator stack. Also implements ConvertableToSessionState/
+// of grids (repeating the last one if the script runs out), decrementing credits by the bet and crediting
+// back whatever this spin's own scripted win is (parallel "wins" array, defaulting to all-0) — mirroring
+// real VideoSlotSession accounting (debit bet, credit winAmount) closely enough for these tests without
+// needing a full random combinations generator stack. Also implements ConvertableToSessionState/
 // BuildableFromSessionState (capturing just {credits}) so the decorator's own "base?: unknown" nesting
 // convention (see VideoSlotWithHoldAndWinSessionState) has something real to exercise.
 class ScriptedFakeVideoSlotSession implements VideoSlotSessionHandling<string>, ConvertableToSessionState<{credits: number}>, BuildableFromSessionState<{credits: number}> {
     private readonly grids: string[][][];
+    private readonly wins: number[];
     private cursor = -1;
     private credits: number;
     private readonly bet: number;
     private readonly reelsNumber: number;
     private readonly reelsSymbolsNumber: number;
 
-    constructor(grids: string[][][], options: {credits?: number; bet?: number} = {}) {
+    constructor(grids: string[][][], options: {credits?: number; bet?: number; wins?: number[]} = {}) {
         this.grids = grids;
+        this.wins = options.wins ?? grids.map(() => 0);
         this.credits = options.credits ?? 1000;
         this.bet = options.bet ?? 1;
         this.reelsNumber = grids[0].length;
@@ -68,10 +74,11 @@ class ScriptedFakeVideoSlotSession implements VideoSlotSessionHandling<string>, 
         }
         this.credits -= this.bet;
         this.cursor = Math.min(this.cursor + 1, this.grids.length - 1);
+        this.credits += this.getWinAmount();
     }
 
     public getWinAmount(): number {
-        return 0;
+        return this.getWinEvaluationResult().getTotalWin();
     }
 
     public getWinningLines(): Record<string, never> {
@@ -91,7 +98,11 @@ class ScriptedFakeVideoSlotSession implements VideoSlotSessionHandling<string>, 
     }
 
     public getWinEvaluationResult(): WinEvaluationResult<string> {
-        return new WinEvaluationResult<string>();
+        const win = this.wins[Math.max(this.cursor, 0)] ?? 0;
+        if (win === 0) {
+            return new WinEvaluationResult<string>();
+        }
+        return new WinEvaluationResult<string>({valueWins: [new ValueWinComponent<string>(new WinningValue<string>("K", [[0, 0]], win))]});
     }
 
     public getAvailableBets(): number[] {
@@ -321,5 +332,83 @@ describe("VideoSlotWithHoldAndWinSession", () => {
         expect(session.isHoldAndWinActive()).toBe(false);
         expect(session.getLockedHoldAndWinSymbols()).toHaveLength(6);
         expect(session.getHoldAndWinPayout()).toBe(60);
+    });
+
+    describe("outcome stabilization: getWinAmount()/getWinEvaluationResult() reflect what was actually paid", () => {
+        it("triggering paid spin preserves the ordinary base win, unchanged, even though the feature just started", () => {
+            const base = new ScriptedFakeVideoSlotSession(fiveSpinScript(), {credits: 1000, bet: 1, wins: [15, 0, 0, 0, 0]});
+            const session = createDecorator(base);
+            const creditsBefore = session.getCreditsAmount();
+
+            session.play();
+
+            expect(session.isHoldAndWinActive()).toBe(true); // feature started, but didn't complete this round
+            expect(session.getWinAmount()).toBe(15);
+            expect(session.getCreditsAmount()).toBe(creditsBefore - session.getBet() + 15);
+        });
+
+        it("a respin's own wrapped-paytable win never surfaces through getWinAmount()/getWinEvaluationResult(), and never moves credits", () => {
+            const base = new ScriptedFakeVideoSlotSession(fiveSpinScript(), {credits: 1000, bet: 1, wins: [0, 500, 0, 0, 0]});
+            const session = createDecorator(base);
+            session.play(); // trigger
+            const creditsAfterTrigger = session.getCreditsAmount();
+
+            session.play(); // respin #2 — its own scripted win of 500 must never be paid or reported
+
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(0);
+            expect(session.getCreditsAmount()).toBe(creditsAfterTrigger); // zero-stake round, credits delta === getWinAmount() === 0
+        });
+
+        it("the completing respin returns the aggregated Hold & Win payout via getWinAmount(), with a coherent win breakdown whose own total matches", () => {
+            const base = new ScriptedFakeVideoSlotSession(fiveSpinScript(), {credits: 1000, bet: 1});
+            const session = createDecorator(base);
+            for (let i = 0; i < 4; i++) {
+                session.play();
+            }
+            const creditsBeforeFinalRespin = session.getCreditsAmount();
+
+            session.play(); // 5th spin: respins exhausted, completes with payout 40
+
+            expect(session.isHoldAndWinActive()).toBe(false);
+            expect(session.getWinAmount()).toBe(40);
+            expect(session.getWinEvaluationResult().getTotalWin()).toBe(40);
+            expect(session.getCreditsAmount()).toBe(creditsBeforeFinalRespin + 40); // zero-stake round: credits delta === getWinAmount()
+        });
+
+        it("an immediate board-full trigger reflects both the real base win and the feature payout, in getWinAmount() and in a merged win breakdown", () => {
+            const fullGrid: string[][] = [
+                ["C", "C"],
+                ["C", "C"],
+                ["C", "C"],
+            ]; // all 6 cells collectible on the very first (triggering) spin
+            const base = new ScriptedFakeVideoSlotSession([fullGrid], {credits: 1000, bet: 1, wins: [25]});
+            const session = createDecorator(base);
+            const creditsBefore = session.getCreditsAmount();
+
+            session.play();
+
+            expect(session.isHoldAndWinActive()).toBe(false); // completed within the same, single triggering spin
+            expect(session.getHoldAndWinPayout()).toBe(60); // 6 locked C's * 10 each
+            expect(session.getWinAmount()).toBe(25 + 60);
+            expect(session.getWinEvaluationResult().getTotalWin()).toBe(25 + 60);
+            expect(session.getCreditsAmount()).toBe(creditsBefore - session.getBet() + 85);
+        });
+    });
+
+    it("completion payout is attributed to the AggregateSimulationRunner breakdown's 'holdAndWin' category and counted in overall RTP, exactly once, at the round it actually completed", () => {
+        const base = new ScriptedFakeVideoSlotSession(fiveSpinScript(), {credits: 1000, bet: 1, wins: [15, 0, 0, 0, 0]});
+        const session = createDecorator(base);
+
+        const runner = new AggregateSimulationRunner(session, 5);
+        const accumulator = runner.run();
+
+        expect(accumulator.getStatistics().totalPayout).toBe(15 + 40); // trigger's own win + the completion payout, nothing double-counted
+
+        const breakdown = runner.getBreakdownStatistics();
+        expect(breakdown).toBeDefined();
+        expect(breakdown?.base).toMatchObject({rounds: 1, totalWin: 15});
+        // 4 respins total: 3 pay nothing (suppressed), the 4th (round 5) pays the aggregated 40.
+        expect(breakdown?.holdAndWin).toMatchObject({rounds: 4, totalWin: 40, hitFrequency: 0.25});
     });
 });

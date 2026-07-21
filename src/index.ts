@@ -418,6 +418,7 @@ export * from "./session/videoslot/holdandwin/HoldAndWinCollecting.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinPayoutAggregating.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinRoundHandler.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinRoundHandling.js";
+export * from "./session/videoslot/holdandwin/HoldAndWinRoundOutcome.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinStateDetermining.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinStateSetting.js";
 export * from "./session/videoslot/holdandwin/HoldAndWinSymbolEffect.js";

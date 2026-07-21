@@ -7,10 +7,14 @@ import {SymbolOverlayTransformer} from "../combinations/SymbolOverlayTransformer
 import {SymbolsCombination} from "../combinations/SymbolsCombination.js";
 import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
 import type {VideoSlotSessionHandling} from "../VideoSlotSessionHandling.js";
+import {ValueWinComponent} from "../winevaluation/ValueWinComponent.js";
+import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
+import {WinningValue} from "../WinningValue.js";
 import type {HoldAndWinCollecting} from "./HoldAndWinCollecting.js";
 import type {HoldAndWinPayoutAggregating} from "./HoldAndWinPayoutAggregating.js";
 import {HoldAndWinRoundHandler} from "./HoldAndWinRoundHandler.js";
 import type {HoldAndWinRoundHandling} from "./HoldAndWinRoundHandling.js";
+import type {HoldAndWinRoundOutcome} from "./HoldAndWinRoundOutcome.js";
 import type {HoldAndWinTriggering} from "./HoldAndWinTriggering.js";
 import type {LockedHoldAndWinSymbol} from "./LockedHoldAndWinSymbol.js";
 import {MinimumCountHoldAndWinTrigger} from "./MinimumCountHoldAndWinTrigger.js";
@@ -18,6 +22,15 @@ import {SumWithMultiplierHoldAndWinPayoutAggregator} from "./SumWithMultiplierHo
 import {SymbolSetHoldAndWinCollector} from "./SymbolSetHoldAndWinCollector.js";
 import type {VideoSlotWithHoldAndWinSessionHandling} from "./VideoSlotWithHoldAndWinSessionHandling.js";
 import type {VideoSlotWithHoldAndWinSessionState} from "./VideoSlotWithHoldAndWinSessionState.js";
+
+// A locked symbol whose own effect is specifically a flat "value" contribution (as opposed to a
+// "multiplier") — narrowed once here so buildCompletedWinEvaluationResult() below doesn't need an inline
+// cast at every use.
+function isValueLocked<T extends string | number | symbol>(
+    locked: LockedHoldAndWinSymbol<T>,
+): locked is LockedHoldAndWinSymbol<T> & {effect: {kind: "value"; amount: number}} {
+    return locked.effect.kind === "value";
+}
 
 // A first-class Hold & Win/Lock & Spin mechanic, composed onto any existing VideoSlotSessionHandling
 // exactly the way VideoSlotWithFreeGamesSession composes free games — via decoration, not by changing
@@ -50,6 +63,7 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     private lockedSymbols: readonly LockedHoldAndWinSymbol<T>[] = [];
     private respinsRemaining = 0;
     private payout = 0;
+    private lastRoundOutcome: HoldAndWinRoundOutcome<T> = {kind: "ordinary"};
 
     constructor(
         baseSession: VideoSlotSessionHandling<T>,
@@ -93,6 +107,14 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
 
     public setHoldAndWinPayout(value: number): void {
         this.payout = value;
+    }
+
+    public getHoldAndWinLastRoundOutcome(): HoldAndWinRoundOutcome<T> {
+        return this.lastRoundOutcome;
+    }
+
+    public setHoldAndWinLastRoundOutcome(value: HoldAndWinRoundOutcome<T>): void {
+        this.lastRoundOutcome = value;
     }
 
     public toSessionState(): VideoSlotWithHoldAndWinSessionState<T> {
@@ -139,7 +161,10 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
             this.baseSession.setCreditsAmount(this.baseSession.getBet());
         }
         this.baseSession.play();
-        this.roundHandler.afterRoundPlayed(this, creditsBeforePlay);
+        // Read directly off baseSession, never via this.getWinEvaluationResult() — that method is
+        // overridden below to answer from lastRoundOutcome, which roundHandler.afterRoundPlayed() is about
+        // to update for *this* round; reading through it here would see the *previous* round's answer.
+        this.roundHandler.afterRoundPlayed(this, creditsBeforePlay, this.baseSession.getWinEvaluationResult());
     }
 
     // StakeAmountDetermining: a respin never charges a real stake — see HoldAndWinRoundHandler, which
@@ -147,6 +172,40 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
     // to let such a spin through regardless of balance, kept as one source of truth.
     public getStakeAmount(): number {
         return this.active ? 0 : this.getBet();
+    }
+
+    // Standard result API stabilization: reports what the *last played round* actually paid out, per
+    // getHoldAndWinLastRoundOutcome() — never re-derived from isHoldAndWinActive() here (see
+    // HoldAndWinRoundOutcome's own doc comment on why that would be wrong for both the triggering spin and
+    // the completing respin). "ordinary" forwards straight to the wrapped session (a plain spin, or the
+    // common case of a triggering spin that didn't also immediately complete the feature); "suppressed"
+    // reports 0 (a respin's own wrapped-paytable win was collected then discarded, never actually paid);
+    // "completed" reports baseWinAmount + payout — both components genuinely applied to credits this round
+    // (see HoldAndWinRoundHandler.complete()).
+    public override getWinAmount(): number {
+        const outcome = this.lastRoundOutcome;
+        if (outcome.kind === "ordinary") {
+            return this.baseSession.getWinAmount();
+        }
+        if (outcome.kind === "suppressed") {
+            return 0;
+        }
+        return outcome.baseWinAmount + outcome.payout;
+    }
+
+    // Same stabilization for the unified win-breakdown surface (see WinEvaluationResult): "ordinary"
+    // forwards to the wrapped session unchanged; "suppressed" is a genuinely empty result (no wins to show
+    // for a discarded respin); "completed" is built by buildCompletedWinEvaluationResult() below, coherent
+    // with getWinAmount() above by construction (its own getTotalWin() always equals baseWinAmount + payout).
+    public override getWinEvaluationResult(): WinEvaluationResult<T> {
+        const outcome = this.lastRoundOutcome;
+        if (outcome.kind === "ordinary") {
+            return this.baseSession.getWinEvaluationResult();
+        }
+        if (outcome.kind === "suppressed") {
+            return new WinEvaluationResult<T>();
+        }
+        return this.buildCompletedWinEvaluationResult(outcome);
     }
 
     // SimulationCategoryDetermining: the triggering spin itself is a genuine base-game round (it charges a
@@ -173,6 +232,54 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
             this.lockedSymbols.map((locked) => ({position: [...locked.position], symbolId: locked.symbolId})),
         );
         return new SymbolsCombination<T>().fromMatrix(overlaid);
+    }
+
+    // Reconstructs a coherent win-component breakdown for a "completed" outcome: every locked "value"
+    // symbol becomes its own ValueWinComponent, attributed a proportional share of "payout" (amount /
+    // sum-of-raw-amounts) — this is what keeps the reconstruction's own getTotalWin() equal to "payout"
+    // exactly by construction, regardless of what formula the injected HoldAndWinPayoutAggregating actually
+    // used internally (this class has no visibility into that; proportional attribution is honest about
+    // being an attribution of the authoritative total, not a claim of reproducing the aggregator's own
+    // arithmetic). Locked "multiplier" symbols contribute no component of their own (they scale, they don't
+    // themselves pay) — noted in metadata instead. A payout with no locked "value" symbols at all (e.g. an
+    // aggregator paying purely off multiplier symbols, or a zero-locked-value edge case) falls back to one
+    // component spanning every locked position, so the total is still never silently dropped.
+    // "baseWinAmount"/"baseWinEvaluationResult" only ever contribute real components (rather than 0) for the
+    // rare immediate-trigger-board-full case — see HoldAndWinRoundHandler.afterRoundPlayed's own comment on
+    // why a respin's own win is always the empty WinEvaluationResult by the time it reaches here.
+    private buildCompletedWinEvaluationResult(outcome: Extract<HoldAndWinRoundOutcome<T>, {kind: "completed"}>): WinEvaluationResult<T> {
+        const valueLocked = outcome.lockedSymbols.filter(isValueLocked<T>);
+        const rawSum = valueLocked.reduce((sum, locked) => sum + locked.effect.amount, 0);
+        const featureValueWins: ValueWinComponent<T>[] = [];
+
+        if (outcome.payout > 0 && valueLocked.length > 0 && rawSum > 0) {
+            for (const locked of valueLocked) {
+                const share = (locked.effect.amount / rawSum) * outcome.payout;
+                featureValueWins.push(new ValueWinComponent<T>(new WinningValue<T>(locked.symbolId, [[...locked.position]], share)));
+            }
+        } else if (outcome.payout > 0 && outcome.lockedSymbols.length > 0) {
+            const attributedTo = outcome.lockedSymbols[outcome.lockedSymbols.length - 1];
+            featureValueWins.push(
+                new ValueWinComponent<T>(
+                    new WinningValue<T>(
+                        attributedTo.symbolId,
+                        outcome.lockedSymbols.map((locked) => [...locked.position]),
+                        outcome.payout,
+                    ),
+                ),
+            );
+        }
+
+        return new WinEvaluationResult<T>({
+            winComponents: [...outcome.baseWinEvaluationResult.getWinComponents(), ...featureValueWins],
+            metadata: {
+                holdAndWin: {
+                    baseWinAmount: outcome.baseWinAmount,
+                    payout: outcome.payout,
+                    lockedSymbols: outcome.lockedSymbols,
+                },
+            },
+        });
     }
 
     private supportsSessionStateCapture(session: VideoSlotSessionHandling<T>): session is VideoSlotSessionHandling<T> & ConvertableToSessionState {
