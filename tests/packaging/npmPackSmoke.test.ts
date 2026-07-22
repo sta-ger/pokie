@@ -2,6 +2,7 @@ import {ChildProcessWithoutNullStreams, execFileSync, spawn} from "child_process
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {ensureFixturesCanRequirePokie} from "../cli/fixtures/ensureFixturesCanRequirePokie.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
@@ -57,7 +58,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     let pokieBinPath: string;
 
     beforeAll(() => {
-        const packOutput = execFileSync("npm", ["pack", "--json"], {cwd: REPO_ROOT, encoding: "utf-8"});
+        // `npm pack --json`'s own JSON array and a lifecycle script's output share the same stdout
+        // stream. Running the real build explicitly first, then packing with --ignore-scripts (build
+        // is already fresh, so skipping prepack/postpack loses nothing), keeps npm pack's stdout as
+        // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+        // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+        execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+        const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
         tarballPath = path.join(REPO_ROOT, filename);
         expect(fs.existsSync(tarballPath)).toBe(true);
@@ -71,6 +78,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
         pokieBinPath = path.join(installDir, "node_modules", ".bin", "pokie");
         expect(fs.existsSync(pokieBinPath)).toBe(true);
+
+        // The third test below runs a real worker-thread simulation against
+        // tests/cli/fixtures/playable-game via the *installed* package's own default worker
+        // resolution -- that fixture does a bare require("pokie") of its own, which needs the same
+        // resolvable node_modules/pokie as the real-worker unit tests (see
+        // ensureFixturesCanRequirePokie.ts).
+        ensureFixturesCanRequirePokie();
     });
 
     afterAll(() => {
@@ -100,16 +114,24 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expect((await diagnostics.json()) as {mode: string}).toMatchObject({mode: "home"});
 
             // Proves the tarball's compiled/copied studio-client assets are actually served from the
-            // installed location, not just present on disk in this dev repo.
+            // installed location, not just present on disk in this dev repo. The Studio frontend is a
+            // real Vite build with content-hashed asset filenames (no fixed /main.js or /style.css) —
+            // discover the real paths from the served index.html itself rather than hardcoding them.
             const index = await fetch(`${baseUrl}/`);
             expect(index.status).toBe(200);
             expect(index.headers.get("content-type")).toContain("text/html");
+            const indexHtml = await index.text();
 
-            const mainJs = await fetch(`${baseUrl}/main.js`);
+            const scriptSrc = (/<script[^>]+src="([^"]+)"/).exec(indexHtml)?.[1];
+            const stylesheetHref = (/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/).exec(indexHtml)?.[1];
+            expect(scriptSrc).toBeDefined();
+            expect(stylesheetHref).toBeDefined();
+
+            const mainJs = await fetch(`${baseUrl}${scriptSrc}`);
             expect(mainJs.status).toBe(200);
             expect(mainJs.headers.get("content-type")).toContain("javascript");
 
-            const styleCss = await fetch(`${baseUrl}/style.css`);
+            const styleCss = await fetch(`${baseUrl}${stylesheetHref}`);
             expect(styleCss.status).toBe(200);
             expect(styleCss.headers.get("content-type")).toContain("css");
         } finally {

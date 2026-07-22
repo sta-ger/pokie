@@ -32,6 +32,75 @@ const integrationTestPathIgnorePatterns = [
 // test, 5-minute budget. Never mixed into the same jest invocation as everything else.
 const packagingTestMatch = ["<rootDir>/tests/packaging/npmPackSmoke.test.ts"];
 
+// studio-client-components' own dominant cost isn't the small explicit setTimeout delays visible in
+// most of these files -- it's real per-file wall time from exercising production real-timer polling
+// (useSimulationPoll/useReplayPoll's 500ms recursive setTimeout loop) and/or heavy real-timer-driven
+// RTL interaction sequences (navigation-guard confirm modals, the Reel Strip Modeler's stale-response
+// guards). This list is not a guess -- it's every file measured (via `npm run test:report`) at
+// roughly 15s or more of real per-suite runtime, moved out verbatim (no behavior change) so the
+// everyday fast lane isn't dominated by them; anything left in studio-client-components measured
+// under ~11s. Deliberately not converted to jest.useFakeTimers(): several of these specifically test
+// real cleanup/cancellation semantics (a timer actually cancelled on unmount, a stale response
+// actually discarded) that fake timers can't verify the same way, since they execute callbacks
+// synchronously instead of racing real async work.
+const studioClientWorkflowsTestMatch = [
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.runtimeWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.mechanicsEditorWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/hooks/useSimulationPoll.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/hooks/useReplayPoll.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/integration/happyPath.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/openProjectGuard.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/designNavigationGuard.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.validation.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/navigationGuardModal.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/home/HomePage.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.certificationWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeLibrariesWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/routing.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.parSheetImportExport.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.deploymentWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.provablyFairWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.stakeEngineExportWorkflow.test.tsx",
+    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx",
+];
+
+const studioClientWorkflowsTestPathIgnorePatterns = [
+    "/components/project/ProjectDashboardPage\\.simulationWorkflow\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.replayWorkflow\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.runtimeWorkflow\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.mechanicsEditorWorkflow\\.test\\.tsx$",
+    "/hooks/useSimulationPoll\\.test\\.tsx$",
+    "/hooks/useReplayPoll\\.test\\.tsx$",
+    "/integration/happyPath\\.test\\.tsx$",
+    "/components/blueprintEditor/BlueprintEditorPage\\.reelStripModeler\\.test\\.tsx$",
+    "/src/openProjectGuard\\.test\\.tsx$",
+    "/src/designNavigationGuard\\.test\\.tsx$",
+    "/components/blueprintEditor/BlueprintEditorPage\\.validation\\.test\\.tsx$",
+    "/src/navigationGuardModal\\.test\\.tsx$",
+    "/components/home/HomePage\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.certificationWorkflow\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.outcomeLibrariesWorkflow\\.test\\.tsx$",
+    "/src/routing\\.test\\.tsx$",
+    "/components/blueprintEditor/BlueprintEditorPage\\.parSheetImportExport\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.deploymentWorkflow\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.provablyFairWorkflow\\.test\\.tsx$",
+    "/components/blueprintEditor/BlueprintEditorPage\\.sections\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.stakeEngineExportWorkflow\\.test\\.tsx$",
+    "/components/project/ProjectDashboardPage\\.test\\.tsx$",
+];
+
+const studioClientComponentsTransform = {
+    "^.+\\.tsx?$": ["ts-jest", {tsconfig: "cli/studio-client/tsconfig.json"}],
+};
+
+const studioClientComponentsModuleNameMapper = {
+    "\\.css$": "<rootDir>/tests/cli/studio-client/src/styleMock.js",
+};
+
 // Transpile-only (isolatedModules) transform: the flag lives in tsconfig.test.json's
 // compilerOptions, not in ts-jest's own transform options -- setting it at the ts-jest-config level
 // is what's deprecated (and what used to print the ts-jest isolatedModules advisory); tsconfig is
@@ -77,13 +146,10 @@ export default {
             testEnvironment: "jsdom",
             moduleFileExtensions: ["tsx", "ts", "js"],
             testMatch: ["<rootDir>/tests/cli/studio-client/src/**/*.test.tsx"],
+            testPathIgnorePatterns: studioClientWorkflowsTestPathIgnorePatterns,
             setupFiles: ["<rootDir>/tests/cli/studio-client/src/jestPolyfills.ts"],
-            transform: {
-                "^.+\\.tsx?$": ["ts-jest", {tsconfig: "cli/studio-client/tsconfig.json"}],
-            },
-            moduleNameMapper: {
-                "\\.css$": "<rootDir>/tests/cli/studio-client/src/styleMock.js",
-            },
+            transform: studioClientComponentsTransform,
+            moduleNameMapper: studioClientComponentsModuleNameMapper,
             setupFilesAfterEnv: ["<rootDir>/tests/cli/studio-client/src/setupTests.ts"],
         },
         {
@@ -99,6 +165,16 @@ export default {
             transform: sourceTestTransform,
             moduleNameMapper: sourceTestModuleNameMapper,
             testMatch: packagingTestMatch,
+        },
+        {
+            displayName: "studio-client-workflows",
+            testEnvironment: "jsdom",
+            moduleFileExtensions: ["tsx", "ts", "js"],
+            testMatch: studioClientWorkflowsTestMatch,
+            setupFiles: ["<rootDir>/tests/cli/studio-client/src/jestPolyfills.ts"],
+            transform: studioClientComponentsTransform,
+            moduleNameMapper: studioClientComponentsModuleNameMapper,
+            setupFilesAfterEnv: ["<rootDir>/tests/cli/studio-client/src/setupTests.ts"],
         },
     ],
 };

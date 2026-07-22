@@ -2,6 +2,7 @@ import {execFileSync} from "child_process";
 import fs from "fs";
 import path from "path";
 import {pathToFileURL} from "url";
+import {ensureFixturesCanRequirePokie} from "../../cli/fixtures/ensureFixturesCanRequirePokie.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 const COMPILED_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
@@ -31,5 +32,10 @@ function resolveCompiledWorkerEntryUrl(): URL {
     }
     return pathToFileURL(COMPILED_WORKER_ENTRY);
 }
+
+// The fixture game packages these real-worker tests load each do a bare `require("pokie")` of their
+// own — see ensureFixturesCanRequirePokie.ts for why that otherwise can't resolve inside a real
+// worker_thread.
+ensureFixturesCanRequirePokie();
 
 export const TEST_WORKER_ENTRY_URL = resolveCompiledWorkerEntryUrl();

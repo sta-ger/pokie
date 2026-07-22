@@ -232,6 +232,7 @@ describe("describeValidationSummary", () => {
             warnings: [],
             suggestions: [],
             hasIssues: false,
+            blocking: false,
         });
     });
 
