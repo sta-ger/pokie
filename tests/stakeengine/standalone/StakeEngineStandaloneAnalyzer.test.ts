@@ -84,7 +84,7 @@ describe("StakeEngineStandaloneAnalyzer", () => {
             {payoutMultiplier: 200, ratio: 2, probability: 0.025},
             {payoutMultiplier: 500, ratio: 5, probability: 0.005},
         ]);
-        const totalProbability = mode.payoutDistribution.reduce((sum, bucket) => sum + bucket.probability, 0);
+        const totalProbability = mode.payoutDistribution.reduce((sum, bucket) => sum + Number(bucket.probability), 0);
         expect(totalProbability).toBeCloseTo(1, 10);
     });
 
@@ -148,5 +148,29 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         expect(analysis.modes.map((mode) => mode.modeName)).toEqual(["base", "bonus"]);
         expect(analysis.modes[1].rtp).toBeCloseTo(5, 10);
         expect(analysis.modes[1].hitFrequency).toBeCloseTo(0.5, 10);
+    });
+
+    it("keeps uint64 weights exact and emits canonical decimal probabilities when the total exceeds Number.MAX_SAFE_INTEGER", () => {
+        const analysis = new StakeEngineStandaloneAnalyzer().analyze({
+            stakeDir: "/fake/stake-dir",
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    cost: 1,
+                    outcomes: [
+                        {id: 0, weight: 9_007_199_254_740_993n, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
+                        {id: 1, weight: 1n, payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
+                    ],
+                },
+            ],
+        });
+
+        const [mode] = analysis.modes;
+        expect(mode.totalWeight).toBe("9007199254740994");
+        expect(mode.payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
+        expect(mode.eventClassificationBreakdown.every((category) => typeof category.occurrenceFrequency === "string")).toBe(true);
+        expect(Number.isFinite(mode.rtp)).toBe(true);
+        expect(Number.isFinite(mode.hitFrequency)).toBe(true);
     });
 });

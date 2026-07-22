@@ -9,7 +9,7 @@ function writeIndexJson(dir: string, modes: readonly {name: string; cost: number
     fs.writeFileSync(path.join(dir, "index.json"), JSON.stringify({modes}));
 }
 
-function writeCsv(dir: string, fileName: string, rows: readonly {id: number; weight: number; payoutMultiplier: number}[]): void {
+function writeCsv(dir: string, fileName: string, rows: readonly {id: number; weight: bigint | number; payoutMultiplier: number}[]): void {
     const content = rows.map((row) => `${row.id},${row.weight},${row.payoutMultiplier}`).join("\n") + "\n";
     fs.writeFileSync(path.join(dir, fileName), content);
 }
@@ -57,9 +57,9 @@ describe("StakeEngineOutcomeSourceReader", () => {
         expect(mode.outcomes.length).toBe(3);
 
         const byId = new Map(mode.outcomes.map((outcome) => [outcome.id, outcome]));
-        expect(byId.get(0)).toMatchObject({weight: 970, payoutMultiplier: 0, ratio: 0});
-        expect(byId.get(1)).toMatchObject({weight: 25, payoutMultiplier: 200, ratio: 2});
-        expect(byId.get(2)).toMatchObject({weight: 5, payoutMultiplier: 500, ratio: 5});
+        expect(byId.get(0)).toMatchObject({weight: 970n, payoutMultiplier: 0, ratio: 0});
+        expect(byId.get(1)).toMatchObject({weight: 25n, payoutMultiplier: 200, ratio: 2});
+        expect(byId.get(2)).toMatchObject({weight: 5n, payoutMultiplier: 500, ratio: 5});
 
         // events are normalized verbatim -- no attempt to reconstruct a RoundArtifact-shaped step model.
         const multiStepOutcome = byId.get(2);
@@ -106,9 +106,26 @@ describe("StakeEngineOutcomeSourceReader", () => {
         const [mode] = result.modes;
         expect(mode.outcomes.length).toBe(2);
         const byId = new Map(mode.outcomes.map((outcome) => [outcome.id, outcome]));
-        expect(byId.get(0)).toMatchObject({weight: 900, payoutMultiplier: 0, ratio: 0});
-        expect(byId.get(1)).toMatchObject({weight: 100, payoutMultiplier: 150, ratio: 1.5});
+        expect(byId.get(0)).toMatchObject({weight: 900n, payoutMultiplier: 0, ratio: 0});
+        expect(byId.get(1)).toMatchObject({weight: 100n, payoutMultiplier: 150, ratio: 1.5});
         expect(byId.get(1)?.events.map((event) => event.type)).toEqual(["anticipation", "multiplierApplied"]);
+    });
+
+    it("accepts uint64 CSV weights above Number.MAX_SAFE_INTEGER without truncating them", async () => {
+        writeIndexJson(dir, [{name: "base", cost: 1, events: "books.jsonl.zst", weights: "lookup.csv"}]);
+        writeCsv(dir, "lookup.csv", [
+            {id: 0, weight: 9_007_199_254_740_993n, payoutMultiplier: 0},
+            {id: 1, weight: 1n, payoutMultiplier: 100},
+        ]);
+        writeBooks(dir, "books.jsonl.zst", [
+            {id: 0, payoutMultiplier: 0, events: []},
+            {id: 1, payoutMultiplier: 100, events: []},
+        ]);
+
+        const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+
+        expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
+        expect(result.modes[0].outcomes.map((outcome) => outcome.weight)).toEqual([9_007_199_254_740_993n, 1n]);
     });
 
     it("reports stakeengine-standalone-outcome-ratio-not-representable (a warning, not blocking) when a payoutMultiplier can't be reversed without hidden rounding, and still returns the mode", async () => {

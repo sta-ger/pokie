@@ -14,7 +14,9 @@ import type {StakeEngineEvent} from "../StakeEngineEvent.js";
 // Stake integer.
 export type StakeEngineOutcomeRecord = {
     readonly id: number;
-    readonly weight: number;
+    // CSV weights are uint64 values.  `number` remains accepted for callers that construct the DTO themselves,
+    // but the standalone reader always supplies bigint and the analyzer rejects unsafe legacy numbers.
+    readonly weight: bigint | number;
     readonly payoutMultiplier: number;
     readonly ratio: number | undefined;
     readonly events: readonly StakeEngineEvent[];
