@@ -1,3 +1,7 @@
+// Small values remain numbers for source compatibility. Values derived from a uint64 total are emitted as a
+// canonical fixed-point decimal string when converting their denominator to number would lose precision.
+export type StakeEngineStandaloneExactDecimal = number | string;
+
 // One event category's own exact weighted frequency across a mode's outcomes -- "occurrenceFrequency" is the
 // weighted probability of drawing an outcome that carries at least one event of this category;
 // "averageOccurrencesPerOutcome" is the weighted mean count of that category's events per outcome (so a category
@@ -5,8 +9,8 @@
 // that can fire multiple times per outcome has the latter >= the former).
 export type StakeEngineStandaloneEventCategoryBreakdown = {
     readonly category: string;
-    readonly occurrenceFrequency: number;
-    readonly averageOccurrencesPerOutcome: number;
+    readonly occurrenceFrequency: StakeEngineStandaloneExactDecimal;
+    readonly averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal;
 };
 
 // One point of the exact payout distribution, keyed by Stake's own raw integer "payoutMultiplier" (never binned,
@@ -16,7 +20,7 @@ export type StakeEngineStandaloneEventCategoryBreakdown = {
 export type StakeEngineOutcomePayoutBucket = {
     readonly payoutMultiplier: number;
     readonly ratio: number | undefined;
-    readonly probability: number;
+    readonly probability: StakeEngineStandaloneExactDecimal;
 };
 
 // The exact -- not sampled -- statistics StakeEngineStandaloneAnalyzer computes over one mode's own normalized
@@ -28,7 +32,7 @@ export type StakeEngineStandaloneModeAnalysis = {
     readonly modeName: string;
     readonly cost: number;
     readonly outcomeCount: number;
-    readonly totalWeight: number;
+    readonly totalWeight: StakeEngineStandaloneExactDecimal;
     readonly rtp: number;
     readonly hitFrequency: number;
     readonly zeroWinFrequency: number;

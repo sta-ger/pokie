@@ -1,5 +1,6 @@
 import type {
     StakeEngineStandaloneAnalysis,
+    StakeEngineStandaloneExactDecimal,
     StakeEngineStandaloneModeAnalysis,
 } from "./StakeEngineStandaloneAnalysis.js";
 import type {
@@ -115,8 +116,8 @@ export class StakeEngineStandaloneAnalysisDiffer implements StakeEngineStandalon
     }
 
     private eventCategoryMetrics(entry: StakeEngineStandaloneModeAnalysis["eventClassificationBreakdown"][number]): {
-        occurrenceFrequency: number;
-        averageOccurrencesPerOutcome: number;
+        occurrenceFrequency: StakeEngineStandaloneExactDecimal;
+        averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal;
     } {
         return {
             occurrenceFrequency: entry.occurrenceFrequency,

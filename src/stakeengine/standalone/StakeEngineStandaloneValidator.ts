@@ -5,7 +5,7 @@ import type {StakeEngineStandaloneBookLineResult, StakeEngineStandaloneBundle, S
 import type {StakeEngineStandaloneValidating} from "./StakeEngineStandaloneValidating.js";
 
 type ParsedIndexMode = {readonly name: string; readonly cost: number; readonly events: string; readonly weights: string};
-type ParsedCsvRow = {readonly id: number; readonly weight: number; readonly payoutMultiplier: number};
+type ParsedCsvRow = {readonly id: number; readonly weight: bigint; readonly payoutMultiplier: number};
 type ParsedBookLine = {readonly id: number; readonly payoutMultiplier: number};
 
 const MODE_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -129,16 +129,6 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
             });
         }
 
-        const totalWeight = csvRows.reduce((sum, row) => sum + row.weight, 0);
-        if (!Number.isSafeInteger(totalWeight)) {
-            issues.push({
-                code: "stakeengine-standalone-total-weight-overflow",
-                severity: "error",
-                message: `mode "${modeName}": the sum of all outcome weights (${totalWeight}) overflows a safe integer.`,
-                details: {modeName},
-            });
-        }
-
         const csvById = new Map(csvRows.map((row) => [row.id, row]));
         const booksById = new Map(bookLines.map((line) => [line.id, line]));
 
@@ -216,12 +206,12 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
             }
             seenIds.add(id);
 
-            const weight = Number(weightField);
-            if (!isSafeNonNegativeInteger(weight) || weight <= 0) {
+            const weight = BigInt(weightField);
+            if (weight <= BigInt(0) || weight > BigInt("18446744073709551615")) {
                 issues.push({
                     code: "stakeengine-standalone-outcome-weight-not-positive-integer",
                     severity: "error",
-                    message: `mode "${modeName}": outcome ${id}'s weight (${weightField}) is not a positive safe integer.`,
+                    message: `mode "${modeName}": outcome ${id}'s weight (${weightField}) is not a positive uint64 integer.`,
                     details: {modeName, id},
                 });
                 sawError = true;

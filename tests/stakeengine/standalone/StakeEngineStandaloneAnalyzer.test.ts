@@ -84,7 +84,7 @@ describe("StakeEngineStandaloneAnalyzer", () => {
             {payoutMultiplier: 200, ratio: 2, probability: 0.025},
             {payoutMultiplier: 500, ratio: 5, probability: 0.005},
         ]);
-        const totalProbability = mode.payoutDistribution.reduce((sum, bucket) => sum + bucket.probability, 0);
+        const totalProbability = mode.payoutDistribution.reduce((sum, bucket) => sum + Number(bucket.probability), 0);
         expect(totalProbability).toBeCloseTo(1, 10);
     });
 
@@ -148,5 +148,32 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         expect(analysis.modes.map((mode) => mode.modeName)).toEqual(["base", "bonus"]);
         expect(analysis.modes[1].rtp).toBeCloseTo(5, 10);
         expect(analysis.modes[1].hitFrequency).toBeCloseTo(0.5, 10);
+    });
+
+    it("keeps uint64 weights exact and emits canonical decimal probabilities when the total exceeds Number.MAX_SAFE_INTEGER", () => {
+        const winWeight = BigInt("9007199254740993");
+        const analysis = new StakeEngineStandaloneAnalyzer().analyze({
+            stakeDir: "/fake/stake-dir",
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    cost: 1,
+                    outcomes: [
+                        {id: 0, weight: BigInt(9) * winWeight, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
+                        {id: 1, weight: winWeight, payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
+                    ],
+                },
+            ],
+        });
+
+        const [mode] = analysis.modes;
+        expect(mode.totalWeight).toBe("90071992547409930");
+        expect(mode.payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
+        expect(mode.eventClassificationBreakdown.every((category) => typeof category.occurrenceFrequency === "string")).toBe(true);
+        // Number(winWeight) / Number(totalWeight) is 0.09999999999999998 because each bigint is rounded
+        // independently. The fixed-point normalization preserves this exactly representable one-tenth result.
+        expect(mode.rtp).toBe(0.1);
+        expect(mode.hitFrequency).toBe(0.1);
     });
 });

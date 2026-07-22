@@ -5,6 +5,7 @@ import type {StakeEngineEventClassifying} from "./StakeEngineEventClassifying.js
 import type {
     StakeEngineOutcomePayoutBucket,
     StakeEngineStandaloneAnalysis,
+    StakeEngineStandaloneExactDecimal,
     StakeEngineStandaloneEventCategoryBreakdown,
     StakeEngineStandaloneModeAnalysis,
 } from "./StakeEngineStandaloneAnalysis.js";
@@ -22,6 +23,12 @@ import type {StakeEngineStandaloneMode} from "./StakeEngineStandaloneMode.js";
 // the end -- the same overflow-avoidance discipline WeightedOutcomeLibraryAnalyzer itself uses, and for the same
 // reason (see that class's own doc comment).
 export class StakeEngineStandaloneAnalyzer {
+    private static readonly ZERO = BigInt(0);
+    private static readonly UINT64_MAX = BigInt("18446744073709551615");
+    private static readonly TEN = BigInt(10);
+    private static readonly WEIGHTED_AVERAGE_SCALE = BigInt("1000000000000000000");
+    private static readonly WEIGHTED_AVERAGE_SCALE_AS_NUMBER = 1e18;
+
     private readonly classifier: StakeEngineEventClassifying;
 
     constructor(classifier: StakeEngineEventClassifying = new StakeEngineStandardEventClassifier()) {
@@ -34,7 +41,7 @@ export class StakeEngineStandaloneAnalyzer {
 
     private analyzeMode(mode: StakeEngineStandaloneMode): StakeEngineStandaloneModeAnalysis {
         const outcomes = mode.outcomes;
-        const totalWeight = outcomes.reduce((sum, outcome) => sum + outcome.weight, 0);
+        const totalWeight = outcomes.reduce((sum, outcome) => sum + this.weightAsBigInt(outcome.weight), StakeEngineStandaloneAnalyzer.ZERO);
         const nonInvertibleRatioCount = outcomes.filter((outcome) => outcome.ratio === undefined).length;
 
         const effectiveRatio = (outcome: StakeEngineOutcomeRecord): number => outcome.ratio ?? outcome.payoutMultiplier / mode.cost / 100;
@@ -53,7 +60,7 @@ export class StakeEngineStandaloneAnalyzer {
             modeName: mode.modeName,
             cost: mode.cost,
             outcomeCount: outcomes.length,
-            totalWeight,
+            totalWeight: this.displayExactInteger(totalWeight),
             rtp,
             hitFrequency,
             zeroWinFrequency,
@@ -68,25 +75,27 @@ export class StakeEngineStandaloneAnalyzer {
         };
     }
 
-    // sum((weight / totalWeight) * select(outcome)) -- see this class's own doc comment for why the division
-    // happens per-term instead of once at the end.
-    private weightedAverage(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: number, select: (outcome: StakeEngineOutcomeRecord) => number): number {
-        return outcomes.reduce((sum, outcome) => sum + (outcome.weight / totalWeight) * select(outcome), 0);
+    // Sum each normalized term without ever accumulating weight in a JS number. `select` is necessarily a number
+    // (ratios originate in the Stake JSON format), so conversion happens only after the exact bigint fraction has
+    // been formed. uint64 values are far below Number's finite range.
+    private weightedAverage(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: bigint, select: (outcome: StakeEngineOutcomeRecord) => number): number {
+        const average = outcomes.reduce((sum, outcome) => sum + this.scaledProbabilityAsNumber(this.weightAsBigInt(outcome.weight), totalWeight) * select(outcome), 0);
+        return Number.isFinite(average) ? average : 0;
     }
 
     // An exact probability mass function: one entry per exactly distinct payoutMultiplier value actually present
     // (grouped by strict numeric equality on Stake's own raw integer -- never on the reversed "ratio", so no
     // float-comparison ambiguity can ever merge or split a bucket), sorted ascending, probabilities summing to 1.
-    private buildPayoutDistribution(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: number, cost: number): StakeEngineOutcomePayoutBucket[] {
-        const bucketsByMultiplier = new Map<number, {probability: number; ratio: number | undefined; ratioAgrees: boolean}>();
+    private buildPayoutDistribution(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: bigint, cost: number): StakeEngineOutcomePayoutBucket[] {
+        const bucketsByMultiplier = new Map<number, {weight: bigint; ratio: number | undefined; ratioAgrees: boolean}>();
         for (const outcome of outcomes) {
-            const probability = outcome.weight / totalWeight;
+            const weight = this.weightAsBigInt(outcome.weight);
             const existing = bucketsByMultiplier.get(outcome.payoutMultiplier);
             if (existing === undefined) {
-                bucketsByMultiplier.set(outcome.payoutMultiplier, {probability, ratio: outcome.ratio, ratioAgrees: true});
+                bucketsByMultiplier.set(outcome.payoutMultiplier, {weight, ratio: outcome.ratio, ratioAgrees: true});
             } else {
                 bucketsByMultiplier.set(outcome.payoutMultiplier, {
-                    probability: existing.probability + probability,
+                    weight: existing.weight + weight,
                     ratio: existing.ratio,
                     ratioAgrees: existing.ratioAgrees && existing.ratio === outcome.ratio,
                 });
@@ -102,35 +111,81 @@ export class StakeEngineStandaloneAnalyzer {
                 // to reverse cleanly (all undefined, which already agrees) or disagreed some other way; guarded
                 // defensively rather than assumed.
                 ratio: bucket.ratioAgrees ? bucket.ratio : payoutMultiplier / cost / 100,
-                probability: bucket.probability,
+                probability: this.displayFraction(bucket.weight, totalWeight),
             }));
     }
 
     // Exact weighted frequency/average-count per classified event category -- see
     // StakeEngineStandaloneEventCategoryBreakdown's own doc comment for exactly what each field means.
-    private buildEventClassificationBreakdown(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: number): StakeEngineStandaloneEventCategoryBreakdown[] {
-        const occurrenceFrequencyByCategory = new Map<string, number>();
-        const averageCountByCategory = new Map<string, number>();
+    private buildEventClassificationBreakdown(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: bigint): StakeEngineStandaloneEventCategoryBreakdown[] {
+        const occurrenceWeightByCategory = new Map<string, bigint>();
+        const occurrenceCountWeightByCategory = new Map<string, bigint>();
 
         for (const outcome of outcomes) {
-            const probability = outcome.weight / totalWeight;
+            const weight = this.weightAsBigInt(outcome.weight);
             const countByCategory = new Map<string, number>();
             for (const event of outcome.events) {
                 const category = this.classifier.classify(event).category;
                 countByCategory.set(category, (countByCategory.get(category) ?? 0) + 1);
             }
             for (const [category, count] of countByCategory) {
-                occurrenceFrequencyByCategory.set(category, (occurrenceFrequencyByCategory.get(category) ?? 0) + probability);
-                averageCountByCategory.set(category, (averageCountByCategory.get(category) ?? 0) + probability * count);
+                occurrenceWeightByCategory.set(category, (occurrenceWeightByCategory.get(category) ?? StakeEngineStandaloneAnalyzer.ZERO) + weight);
+                occurrenceCountWeightByCategory.set(category, (occurrenceCountWeightByCategory.get(category) ?? StakeEngineStandaloneAnalyzer.ZERO) + weight * BigInt(count));
             }
         }
 
-        return Array.from(occurrenceFrequencyByCategory.keys())
+        return Array.from(occurrenceWeightByCategory.keys())
             .sort()
             .map((category) => ({
                 category,
-                occurrenceFrequency: occurrenceFrequencyByCategory.get(category) as number,
-                averageOccurrencesPerOutcome: averageCountByCategory.get(category) as number,
+                occurrenceFrequency: this.displayFraction(occurrenceWeightByCategory.get(category) as bigint, totalWeight),
+                averageOccurrencesPerOutcome: this.displayFraction(occurrenceCountWeightByCategory.get(category) as bigint, totalWeight),
             }));
+    }
+
+    private weightAsBigInt(weight: StakeEngineOutcomeRecord["weight"]): bigint {
+        if (typeof weight === "bigint") {
+            if (weight > StakeEngineStandaloneAnalyzer.ZERO && weight <= StakeEngineStandaloneAnalyzer.UINT64_MAX) {
+                return weight;
+            }
+            throw new Error(`Standalone outcome weight must be a positive uint64 bigint; got ${weight}.`);
+        }
+        if (!Number.isSafeInteger(weight) || weight <= 0) {
+            throw new Error(`Standalone outcome weight must be a positive uint64 bigint or safe integer; got ${weight}.`);
+        }
+        return BigInt(weight);
+    }
+
+    private displayExactInteger(value: bigint): StakeEngineStandaloneExactDecimal {
+        return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString();
+    }
+
+    private probabilityAsNumber(numerator: bigint, denominator: bigint): number {
+        return Number(numerator) / Number(denominator);
+    }
+
+    private scaledProbabilityAsNumber(numerator: bigint, denominator: bigint): number {
+        const scaledProbability = numerator * StakeEngineStandaloneAnalyzer.WEIGHTED_AVERAGE_SCALE / denominator;
+        return Number(scaledProbability) / StakeEngineStandaloneAnalyzer.WEIGHTED_AVERAGE_SCALE_AS_NUMBER;
+    }
+
+    // A decimal result can be represented exactly only when its reduced denominator factors into 2s and 5s. For
+    // other fractions, expose a deterministic 40-place decimal rather than silently losing precision in a number.
+    private displayFraction(numerator: bigint, denominator: bigint): StakeEngineStandaloneExactDecimal {
+        if (numerator <= BigInt(Number.MAX_SAFE_INTEGER) && denominator <= BigInt(Number.MAX_SAFE_INTEGER)) {
+            return this.probabilityAsNumber(numerator, denominator);
+        }
+        const whole = numerator / denominator;
+        let remainder = numerator % denominator;
+        if (remainder === StakeEngineStandaloneAnalyzer.ZERO) {
+            return whole.toString();
+        }
+        let decimals = "";
+        for (let index = 0; index < 40 && remainder !== StakeEngineStandaloneAnalyzer.ZERO; index += 1) {
+            remainder *= StakeEngineStandaloneAnalyzer.TEN;
+            decimals += (remainder / denominator).toString();
+            remainder %= denominator;
+        }
+        return `${whole}.${decimals}`;
     }
 }

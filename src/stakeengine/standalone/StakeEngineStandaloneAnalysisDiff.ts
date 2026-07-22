@@ -1,3 +1,5 @@
+import type {StakeEngineStandaloneExactDecimal} from "./StakeEngineStandaloneAnalysis.js";
+
 export type StakeEngineStandaloneAnalysisMetricDiff = {
     left: number;
     right: number;
@@ -7,14 +9,14 @@ export type StakeEngineStandaloneAnalysisMetricDiff = {
 
 export type StakeEngineStandaloneAnalysisPayoutBucketDiff = {
     payoutMultiplier: number;
-    left: number | null;
-    right: number | null;
+    left: StakeEngineStandaloneExactDecimal | null;
+    right: StakeEngineStandaloneExactDecimal | null;
 };
 
 export type StakeEngineStandaloneAnalysisEventCategoryBreakdownDiff = {
     category: string;
-    left: {occurrenceFrequency: number; averageOccurrencesPerOutcome: number} | null;
-    right: {occurrenceFrequency: number; averageOccurrencesPerOutcome: number} | null;
+    left: {occurrenceFrequency: StakeEngineStandaloneExactDecimal; averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal} | null;
+    right: {occurrenceFrequency: StakeEngineStandaloneExactDecimal; averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal} | null;
 };
 
 export type StakeEngineStandaloneModeAnalysisDiff = {

@@ -83,12 +83,12 @@ export class StakeEngineOutcomeSourceReader implements StakeEngineOutcomeSourceR
         const csvLines = (modeFiles.csv as {status: "ok"; value: readonly string[]}).value;
         const bookLineResults = (modeFiles.books as {status: "ok"; value: readonly StakeEngineStandaloneBookLineResult[]}).value;
 
-        const weightById = new Map<number, number>();
+        const weightById = new Map<number, bigint>();
         for (const line of csvLines) {
             const [idField, weightField] = line.split(",");
             const id = parseStakeEngineOutcomeId(idField);
             if (id !== undefined) {
-                weightById.set(id, Number(weightField));
+                weightById.set(id, BigInt(weightField));
             }
         }
 
