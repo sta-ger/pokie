@@ -151,7 +151,7 @@ describe("StakeEngineStandaloneAnalyzer", () => {
     });
 
     it("keeps uint64 weights exact and emits canonical decimal probabilities when the total exceeds Number.MAX_SAFE_INTEGER", () => {
-        const winWeight = 9_007_199_254_740_993n;
+        const winWeight = BigInt("9007199254740993");
         const analysis = new StakeEngineStandaloneAnalyzer().analyze({
             stakeDir: "/fake/stake-dir",
             issues: [],
@@ -160,7 +160,7 @@ describe("StakeEngineStandaloneAnalyzer", () => {
                     modeName: "base",
                     cost: 1,
                     outcomes: [
-                        {id: 0, weight: 9n * winWeight, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
+                        {id: 0, weight: BigInt(9) * winWeight, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
                         {id: 1, weight: winWeight, payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
                     ],
                 },

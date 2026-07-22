@@ -207,7 +207,7 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
             seenIds.add(id);
 
             const weight = BigInt(weightField);
-            if (weight <= 0n || weight > 0xffff_ffff_ffff_ffffn) {
+            if (weight <= BigInt(0) || weight > BigInt("18446744073709551615")) {
                 issues.push({
                     code: "stakeengine-standalone-outcome-weight-not-positive-integer",
                     severity: "error",

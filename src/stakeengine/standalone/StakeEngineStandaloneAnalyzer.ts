@@ -23,7 +23,10 @@ import type {StakeEngineStandaloneMode} from "./StakeEngineStandaloneMode.js";
 // the end -- the same overflow-avoidance discipline WeightedOutcomeLibraryAnalyzer itself uses, and for the same
 // reason (see that class's own doc comment).
 export class StakeEngineStandaloneAnalyzer {
-    private static readonly WEIGHTED_AVERAGE_SCALE = 1_000_000_000_000_000_000n;
+    private static readonly ZERO = BigInt(0);
+    private static readonly UINT64_MAX = BigInt("18446744073709551615");
+    private static readonly TEN = BigInt(10);
+    private static readonly WEIGHTED_AVERAGE_SCALE = BigInt("1000000000000000000");
     private static readonly WEIGHTED_AVERAGE_SCALE_AS_NUMBER = 1e18;
 
     private readonly classifier: StakeEngineEventClassifying;
@@ -38,7 +41,7 @@ export class StakeEngineStandaloneAnalyzer {
 
     private analyzeMode(mode: StakeEngineStandaloneMode): StakeEngineStandaloneModeAnalysis {
         const outcomes = mode.outcomes;
-        const totalWeight = outcomes.reduce((sum, outcome) => sum + this.weightAsBigInt(outcome.weight), 0n);
+        const totalWeight = outcomes.reduce((sum, outcome) => sum + this.weightAsBigInt(outcome.weight), StakeEngineStandaloneAnalyzer.ZERO);
         const nonInvertibleRatioCount = outcomes.filter((outcome) => outcome.ratio === undefined).length;
 
         const effectiveRatio = (outcome: StakeEngineOutcomeRecord): number => outcome.ratio ?? outcome.payoutMultiplier / mode.cost / 100;
@@ -126,8 +129,8 @@ export class StakeEngineStandaloneAnalyzer {
                 countByCategory.set(category, (countByCategory.get(category) ?? 0) + 1);
             }
             for (const [category, count] of countByCategory) {
-                occurrenceWeightByCategory.set(category, (occurrenceWeightByCategory.get(category) ?? 0n) + weight);
-                occurrenceCountWeightByCategory.set(category, (occurrenceCountWeightByCategory.get(category) ?? 0n) + weight * BigInt(count));
+                occurrenceWeightByCategory.set(category, (occurrenceWeightByCategory.get(category) ?? StakeEngineStandaloneAnalyzer.ZERO) + weight);
+                occurrenceCountWeightByCategory.set(category, (occurrenceCountWeightByCategory.get(category) ?? StakeEngineStandaloneAnalyzer.ZERO) + weight * BigInt(count));
             }
         }
 
@@ -142,7 +145,7 @@ export class StakeEngineStandaloneAnalyzer {
 
     private weightAsBigInt(weight: StakeEngineOutcomeRecord["weight"]): bigint {
         if (typeof weight === "bigint") {
-            if (weight > 0n && weight <= 0xffff_ffff_ffff_ffffn) {
+            if (weight > StakeEngineStandaloneAnalyzer.ZERO && weight <= StakeEngineStandaloneAnalyzer.UINT64_MAX) {
                 return weight;
             }
             throw new Error(`Standalone outcome weight must be a positive uint64 bigint; got ${weight}.`);
@@ -174,12 +177,12 @@ export class StakeEngineStandaloneAnalyzer {
         }
         const whole = numerator / denominator;
         let remainder = numerator % denominator;
-        if (remainder === 0n) {
+        if (remainder === StakeEngineStandaloneAnalyzer.ZERO) {
             return whole.toString();
         }
         let decimals = "";
-        for (let index = 0; index < 40 && remainder !== 0n; index += 1) {
-            remainder *= 10n;
+        for (let index = 0; index < 40 && remainder !== StakeEngineStandaloneAnalyzer.ZERO; index += 1) {
+            remainder *= StakeEngineStandaloneAnalyzer.TEN;
             decimals += (remainder / denominator).toString();
             remainder %= denominator;
         }
