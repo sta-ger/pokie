@@ -151,6 +151,7 @@ describe("StakeEngineStandaloneAnalyzer", () => {
     });
 
     it("keeps uint64 weights exact and emits canonical decimal probabilities when the total exceeds Number.MAX_SAFE_INTEGER", () => {
+        const winWeight = 9_007_199_254_740_993n;
         const analysis = new StakeEngineStandaloneAnalyzer().analyze({
             stakeDir: "/fake/stake-dir",
             issues: [],
@@ -159,18 +160,20 @@ describe("StakeEngineStandaloneAnalyzer", () => {
                     modeName: "base",
                     cost: 1,
                     outcomes: [
-                        {id: 0, weight: 9_007_199_254_740_993n, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
-                        {id: 1, weight: 1n, payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
+                        {id: 0, weight: 9n * winWeight, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
+                        {id: 1, weight: winWeight, payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
                     ],
                 },
             ],
         });
 
         const [mode] = analysis.modes;
-        expect(mode.totalWeight).toBe("9007199254740994");
+        expect(mode.totalWeight).toBe("90071992547409930");
         expect(mode.payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
         expect(mode.eventClassificationBreakdown.every((category) => typeof category.occurrenceFrequency === "string")).toBe(true);
-        expect(Number.isFinite(mode.rtp)).toBe(true);
-        expect(Number.isFinite(mode.hitFrequency)).toBe(true);
+        // Number(winWeight) / Number(totalWeight) is 0.09999999999999998 because each bigint is rounded
+        // independently. The fixed-point normalization preserves this exactly representable one-tenth result.
+        expect(mode.rtp).toBe(0.1);
+        expect(mode.hitFrequency).toBe(0.1);
     });
 });

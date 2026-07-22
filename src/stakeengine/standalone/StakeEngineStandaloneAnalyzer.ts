@@ -23,6 +23,9 @@ import type {StakeEngineStandaloneMode} from "./StakeEngineStandaloneMode.js";
 // the end -- the same overflow-avoidance discipline WeightedOutcomeLibraryAnalyzer itself uses, and for the same
 // reason (see that class's own doc comment).
 export class StakeEngineStandaloneAnalyzer {
+    private static readonly WEIGHTED_AVERAGE_SCALE = 1_000_000_000_000_000_000n;
+    private static readonly WEIGHTED_AVERAGE_SCALE_AS_NUMBER = 1e18;
+
     private readonly classifier: StakeEngineEventClassifying;
 
     constructor(classifier: StakeEngineEventClassifying = new StakeEngineStandardEventClassifier()) {
@@ -73,7 +76,7 @@ export class StakeEngineStandaloneAnalyzer {
     // (ratios originate in the Stake JSON format), so conversion happens only after the exact bigint fraction has
     // been formed. uint64 values are far below Number's finite range.
     private weightedAverage(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: bigint, select: (outcome: StakeEngineOutcomeRecord) => number): number {
-        const average = outcomes.reduce((sum, outcome) => sum + this.probabilityAsNumber(this.weightAsBigInt(outcome.weight), totalWeight) * select(outcome), 0);
+        const average = outcomes.reduce((sum, outcome) => sum + this.scaledProbabilityAsNumber(this.weightAsBigInt(outcome.weight), totalWeight) * select(outcome), 0);
         return Number.isFinite(average) ? average : 0;
     }
 
@@ -156,6 +159,11 @@ export class StakeEngineStandaloneAnalyzer {
 
     private probabilityAsNumber(numerator: bigint, denominator: bigint): number {
         return Number(numerator) / Number(denominator);
+    }
+
+    private scaledProbabilityAsNumber(numerator: bigint, denominator: bigint): number {
+        const scaledProbability = numerator * StakeEngineStandaloneAnalyzer.WEIGHTED_AVERAGE_SCALE / denominator;
+        return Number(scaledProbability) / StakeEngineStandaloneAnalyzer.WEIGHTED_AVERAGE_SCALE_AS_NUMBER;
     }
 
     // A decimal result can be represented exactly only when its reduced denominator factors into 2s and 5s. For
