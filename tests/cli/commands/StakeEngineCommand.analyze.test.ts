@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import zlib from "zlib";
 import {
     StakeEngineExportModeInput,
     StakeEngineExporter,
@@ -12,6 +13,14 @@ import {
 } from "pokie";
 import {StakeEngineCommand} from "../../../cli/commands/StakeEngineCommand.js";
 import {buildSingleOutcomeStakeEngineLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
+
+function writeUint64FixtureDirectory(dir: string, weights: readonly bigint[]): void {
+    fs.writeFileSync(path.join(dir, "index.json"), JSON.stringify({modes: [{name: "base", cost: 1, events: "books.jsonl.zst", weights: "lookup.csv"}]}));
+    const csv = weights.map((weight, id) => `${id},${weight},${id === 0 ? 0 : 100}`).join("\n") + "\n";
+    fs.writeFileSync(path.join(dir, "lookup.csv"), csv);
+    const jsonl = weights.map((_, id) => JSON.stringify({id, payoutMultiplier: id === 0 ? 0 : 100, events: []})).join("\n") + "\n";
+    fs.writeFileSync(path.join(dir, "books.jsonl.zst"), zlib.zstdCompressSync(Buffer.from(jsonl, "utf-8")));
+}
 
 function createStubReader(result: StakeEngineOutcomeSourceReadResult): StakeEngineOutcomeSourceReading & {calledWith?: string} {
     return {
@@ -128,4 +137,53 @@ describe("StakeEngineCommand analyze", () => {
             fs.rmSync(dir, {recursive: true, force: true});
         }
     });
+
+    it("end to end: serializes uint64 weights above Number.MAX_SAFE_INTEGER as canonical decimal strings, never as a bigint, in both --format json and the default summary", async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-uint64-test-"));
+        try {
+            const uint64Max = BigInt("18446744073709551615");
+            writeUint64FixtureDirectory(dir, [uint64Max, BigInt(1)]);
+            const expectedTotalWeight = (uint64Max + BigInt(1)).toString();
+
+            const jsonCommand = new StakeEngineCommand("1.3.0");
+            const jsonExitCode = await jsonCommand.run(["analyze", dir, "--format", "json"]);
+            expect(jsonExitCode).toBe(0);
+
+            const printedJson = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(() => JSON.parse(printedJson)).not.toThrow();
+            const parsed = JSON.parse(printedJson) as {analysis: StakeEngineStandaloneAnalysis};
+            const [mode] = parsed.analysis.modes;
+
+            expect(typeof mode.totalWeight).toBe("string");
+            expect(mode.totalWeight).toBe(expectedTotalWeight);
+            expect(mode.payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
+            expect(collectUnsafeNumbers(parsed)).toEqual([]);
+
+            logSpy.mockClear();
+            const summaryCommand = new StakeEngineCommand("1.3.0");
+            const summaryExitCode = await summaryCommand.run(["analyze", dir]);
+            expect(summaryExitCode).toBe(0);
+            const printedSummary = logSpy.mock.calls.map((call) => call[0]).join("\n");
+
+            expect(printedSummary).toContain(`total weight ${expectedTotalWeight}`);
+        } finally {
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
+    });
 });
+
+// Walks a parsed JSON value looking for any plain `number` above Number.MAX_SAFE_INTEGER -- valid JSON.parse output
+// can never contain a bigint (JSON has no bigint literal), so the only way an unsafe integer could have been
+// silently emitted is as a `number` that already lost precision on the way out.
+function collectUnsafeNumbers(value: unknown, path = "<root>"): string[] {
+    if (typeof value === "number") {
+        return Number.isFinite(value) && Math.abs(value) > Number.MAX_SAFE_INTEGER ? [path] : [];
+    }
+    if (Array.isArray(value)) {
+        return value.flatMap((element, index) => collectUnsafeNumbers(element, `${path}[${index}]`));
+    }
+    if (typeof value === "object" && value !== null) {
+        return Object.entries(value).flatMap(([key, entry]) => collectUnsafeNumbers(entry, `${path}.${key}`));
+    }
+    return [];
+}
