@@ -132,10 +132,12 @@ export default {
     // when the full multi-project gate runs them alongside everything else at --maxWorkers=2 -- these
     // real-timer tests are wall-clock-bound, so a sibling heavy suite competing for CPU stretches them
     // 2-4x even though they pass comfortably in isolation. This is contention headroom, not a per-test
-    // budget for real work. 45000ms clears the observed timeouts with margin; the three single heaviest
-    // tests (happyPath, HomePage's confirm-before-leaving, routing's back/forward) still carry their own
-    // even-longer per-test overrides on top of this.
-    testTimeout: 45000,
+    // budget for real work. 60000ms clears the observed timeouts with margin and leaves room for a test
+    // that chains several sequential findBy*/waitFor assertions to each get setupTests.ts's raised
+    // 15000ms asyncUtilTimeout without the whole test running out of budget first; the three single
+    // heaviest tests (happyPath, HomePage's confirm-before-leaving, routing's back/forward) still carry
+    // their own even-longer per-test overrides on top of this.
+    testTimeout: 60000,
     projects: [
         {
             displayName: "pokie",
