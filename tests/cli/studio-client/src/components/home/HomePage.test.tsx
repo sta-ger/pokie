@@ -76,16 +76,17 @@ describe("HomePage", () => {
         // unmounts, only its display toggles, same as every other Home tab body) -- Symbols is still the
         // active section here, no need to click it again.
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
-        // Even though the guided editor never unmounts, toggling the outer tab's display back on still
-        // re-renders it, and React can flush that restored value a tick after user.click settles -- a
-        // synchronous getAllByLabelText(...).toHaveValue can win that race and read the pre-restore value
-        // under concurrent Jest workers. waitFor retries until the preserved "wild-draft" input value
-        // re-appears. This draft-restore assertion is the one most starved when the full check:full gate
-        // runs the heaviest real-timer workflow suites side by side, so it carries an explicit 30000ms
-        // timeout -- double setupTests.ts's 15000ms asyncUtilTimeout default -- for extra contention
-        // headroom, still well inside this test's budget, and matching the confirm-before-leaving test's
-        // findAllByDisplayValue restore assertion below.
-        await waitFor(() => expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft"), {timeout: 30000});
+        // There is genuinely no restore race to wait out here: the guided editor's tab body is permanently
+        // mounted (HomePage renders all three tab bodies and only toggles CSS `display`, never unmounting --
+        // see HomePage.tsx), so the "wild-draft" value the controlled input holds is never cleared while we
+        // switch away and back. `await user.click` above already flushed React's act() work queue, so the
+        // preserved value is present in the DOM the instant this line runs, on any CPU. A synchronous
+        // assertion is therefore both correct and strictly more robust than a timed waitFor -- there is no
+        // timeout left for a contended gate host to blow. (An earlier version wrapped this in a 30000ms
+        // waitFor to paper over CPU-starvation flakes, but the flake was never this assertion; it was the
+        // whole real-timer-heavy lane running side by side, which package.json's `--runInBand` workflow lane
+        // now serializes.)
+        expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft");
     });
 
     // This is by far the heaviest HomePage test: it chains the most sequential real userEvent
@@ -144,13 +145,12 @@ describe("HomePage", () => {
         );
         expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
-        // Switching back to Design & Build re-mounts the section editor, so the preserved draft's input
-        // re-renders asynchronously -- a synchronous getAllByDisplayValue can win the race and find nothing
-        // under concurrent Jest workers. findAllByDisplayValue retries until the restored "wild-draft"
-        // symbol input actually re-appears; like the first draft-restore assertion above it carries an
-        // explicit 30000ms timeout (double setupTests.ts's 15000ms asyncUtilTimeout default) so the
-        // heaviest side-by-side check:full run can't starve it past the retry window.
-        expect((await screen.findAllByDisplayValue("wild-draft", undefined, {timeout: 30000}))[0]).toBeInTheDocument();
+        // Same as the first draft-restore assertion above: Design & Build's tab body was never unmounted
+        // (only CSS-hidden), so the "wild-draft" symbol input the editor holds was preserved verbatim, and
+        // the `await user.click` that re-showed the tab already flushed React. The restored input is in the
+        // DOM synchronously, so assert it directly rather than retrying a findAllByDisplayValue against a
+        // race that can't happen.
+        expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
 
         // Confirming ("Leave") this time actually opens the project.
         await user.click(screen.getByRole("button", {name: "Open Project"}));
