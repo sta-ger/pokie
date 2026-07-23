@@ -271,7 +271,11 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
                 return;
             }
 
-            const {id, payoutMultiplier} = rawLine as {id: number; payoutMultiplier: number};
+            const {id, payoutMultiplier, events} = rawLine as {id: number; payoutMultiplier: number; events: readonly unknown[]};
+            if (!this.validateEvents(modeName, position, events, issues)) {
+                sawError = true;
+                return;
+            }
             if (!isSafeNonNegativeInteger(id)) {
                 issues.push({
                     code: "stakeengine-standalone-outcome-id-not-integer",
@@ -309,6 +313,33 @@ export class StakeEngineStandaloneValidator implements StakeEngineStandaloneVali
         });
 
         return sawError ? undefined : lines;
+    }
+
+    // Every element of a books line's "events" array must be a StakeEngineEvent-shaped object -- a non-null,
+    // non-array object carrying a string "type" and a numeric "index" -- since StakeEngineStandaloneAnalyzer feeds
+    // each one straight into a StakeEngineEventClassifying (the default classifier reads event.type unconditionally
+    // and would throw on null/primitive/array). Rejecting these here, with the offending events[position] pinned in
+    // the diagnostic, is what lets the reader trust its own {status:"ok"} events cast and keeps classification safe.
+    private validateEvents(modeName: string, position: number, events: readonly unknown[], issues: ValidationIssue[]): boolean {
+        let sawError = false;
+        events.forEach((event, eventIndex) => {
+            if (
+                typeof event !== "object" ||
+                event === null ||
+                Array.isArray(event) ||
+                typeof (event as {type?: unknown}).type !== "string" ||
+                typeof (event as {index?: unknown}).index !== "number"
+            ) {
+                issues.push({
+                    code: "stakeengine-standalone-books-malformed-event",
+                    severity: "error",
+                    message: `mode "${modeName}": books line ${position}'s events[${eventIndex}] (${JSON.stringify(event)}) is not a valid event object {"index": number, "type": string}.`,
+                    details: {modeName, position, eventIndex},
+                });
+                sawError = true;
+            }
+        });
+        return !sawError;
     }
 
     private validateModeName(modeName: unknown, position: number, seenNames: Map<string, string>, issues: ValidationIssue[]): boolean {
