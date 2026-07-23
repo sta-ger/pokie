@@ -76,7 +76,13 @@ describe("HomePage", () => {
         // unmounts, only its display toggles, same as every other Home tab body) -- Symbols is still the
         // active section here, no need to click it again.
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
-        expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft");
+        // Even though the guided editor never unmounts, toggling the outer tab's display back on still
+        // re-renders it, and React can flush that restored value a tick after user.click settles -- a
+        // synchronous getAllByLabelText(...).toHaveValue can win that race and read the pre-restore value
+        // under concurrent Jest workers. waitFor retries (up to setupTests.ts's 8000ms asyncUtilTimeout)
+        // until the preserved "wild-draft" input value re-appears, matching the confirm-before-leaving
+        // test's findAllByDisplayValue restore assertion below.
+        await waitFor(() => expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft"));
     });
 
     // Many sequential real userEvent interactions -- under Jest's parallel workers this can exceed even
