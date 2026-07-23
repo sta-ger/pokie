@@ -14,6 +14,11 @@ import {configure} from "@testing-library/dom";
 // budget left. When the full multi-project gate runs the heaviest real-timer suites side by side at
 // --maxWorkers=2, a single such assertion can be starved well past 8000ms even though the same test
 // passes in seconds in isolation. 15000ms restores headroom for one contended assertion while
-// staying comfortably below every per-test testTimeout (the tightest workflow override is 30000ms),
-// so raising it can't turn a slow assertion into an overall-test-budget timeout instead.
+// staying below every per-test testTimeout (the tightest workflow override is now the Reel Strip
+// Modeler's 30000ms), so raising it can't turn a slow assertion into an overall-test-budget timeout
+// instead -- the per-assertion cap expires first, so the failure names the assertion that was
+// actually starved. That ordering is a real invariant this value depends on, not a nicety: any test
+// whose own budget drops near 15000ms silently inverts it, which is why ProjectDashboardPage.test.tsx's
+// simulation-poll test was moved off its old 20000ms budget (its explicit 3000ms + 15000ms waits plus
+// an inherited 15000ms findByRole could outlast it) to the 45000ms this lane uses everywhere else.
 configure({asyncUtilTimeout: 15000});
