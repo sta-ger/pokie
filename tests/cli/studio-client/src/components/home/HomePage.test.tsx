@@ -88,9 +88,15 @@ describe("HomePage", () => {
         await waitFor(() => expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft"), {timeout: 30000});
     });
 
-    // Many sequential real userEvent interactions -- under Jest's parallel workers this can exceed even
-    // the project's raised 45000ms testTimeout, same reasoning as happyPath.test.tsx's own explicit
-    // timeout.
+    // This is by far the heaviest HomePage test: it chains the most sequential real userEvent
+    // interactions (dirty the draft, open the modal, Stay, restore, re-open, Leave, land on the project)
+    // and so sits closest to its own per-test budget. Under the full check:full gate the workflow lane
+    // runs its heaviest real-timer suites side by side at --maxWorkers=2, and these wall-clock-bound
+    // tests stretch 2-4x purely from CPU starvation (measured: this suite alone runs ~24s here in
+    // isolation but the whole workflow lane's per-suite times balloon under contention). 90000ms could
+    // still be starved on a slower/more-contended gate host; 120000ms restores headroom for the
+    // worst-case side-by-side run without changing any assertion, matching the contention-headroom
+    // reasoning already applied to this file's draft-restore assertions and to happyPath.test.tsx.
     it("asks for confirmation before leaving a dirty Design & Build draft to open a project, and Cancel preserves it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -154,5 +160,5 @@ describe("HomePage", () => {
 
         await waitFor(() => expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeDefined());
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
-    }, 90000);
+    }, 120000);
 });
