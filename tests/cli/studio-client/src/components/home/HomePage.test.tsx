@@ -76,17 +76,14 @@ describe("HomePage", () => {
         // unmounts, only its display toggles, same as every other Home tab body) -- Symbols is still the
         // active section here, no need to click it again.
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
-        // There is genuinely no restore race to wait out here: the guided editor's tab body is permanently
-        // mounted (HomePage renders all three tab bodies and only toggles CSS `display`, never unmounting --
-        // see HomePage.tsx), so the "wild-draft" value the controlled input holds is never cleared while we
-        // switch away and back. `await user.click` above already flushed React's act() work queue, so the
-        // preserved value is present in the DOM the instant this line runs, on any CPU. A synchronous
-        // assertion is therefore both correct and strictly more robust than a timed waitFor -- there is no
-        // timeout left for a contended gate host to blow. (An earlier version wrapped this in a 30000ms
-        // waitFor to paper over CPU-starvation flakes, but the flake was never this assertion; it was the
-        // whole real-timer-heavy lane running side by side, which package.json's `--runInBand` workflow lane
-        // now serializes.)
-        expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft");
+        // HomePage keeps all three tab bodies permanently mounted and only toggles CSS `display` (see
+        // HomePage.tsx), so the "wild-draft" value the controlled input holds is preserved across the
+        // switch away and back -- but re-showing the design tab still re-renders it, and React 19 can flush
+        // that restored render (plus HomePage's activeTab focus() effect) in a microtask after user.click's
+        // act() settles. Observe the restored value with an awaited waitFor rather than a bare synchronous
+        // read so a contended gate host can't lose that microtask race; it inherits setupTests.ts's
+        // asyncUtilTimeout (no bespoke padding) and returns on the first tick once the value is present.
+        await waitFor(() => expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft"));
     });
 
     // This is by far the heaviest HomePage test: it chains the most sequential real userEvent
@@ -146,11 +143,11 @@ describe("HomePage", () => {
         expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
         // Same as the first draft-restore assertion above: Design & Build's tab body was never unmounted
-        // (only CSS-hidden), so the "wild-draft" symbol input the editor holds was preserved verbatim, and
-        // the `await user.click` that re-showed the tab already flushed React. The restored input is in the
-        // DOM synchronously, so assert it directly rather than retrying a findAllByDisplayValue against a
-        // race that can't happen.
-        expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
+        // (only CSS-hidden), so the committed "wild-draft" symbol input was preserved verbatim -- but
+        // re-showing the tab re-renders it, so observe the restored input with an awaited findAllByDisplayValue
+        // (inheriting setupTests.ts's asyncUtilTimeout, no bespoke padding) instead of a bare synchronous
+        // read that a contended gate host could win before React flushes the restored render.
+        expect((await screen.findAllByDisplayValue("wild-draft"))[0]).toBeInTheDocument();
 
         // Confirming ("Leave") this time actually opens the project.
         await user.click(screen.getByRole("button", {name: "Open Project"}));
