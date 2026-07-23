@@ -79,8 +79,9 @@ describe("HomePage", () => {
         expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("wild-draft");
     });
 
-    // Many sequential real userEvent interactions -- under Jest's parallel workers this can exceed the
-    // project's default testTimeout, same reasoning as happyPath.test.tsx's own explicit timeout.
+    // Many sequential real userEvent interactions -- under Jest's parallel workers this can exceed even
+    // the project's raised 45000ms testTimeout, same reasoning as happyPath.test.tsx's own explicit
+    // timeout.
     it("asks for confirmation before leaving a dirty Design & Build draft to open a project, and Cancel preserves it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -128,7 +129,11 @@ describe("HomePage", () => {
         );
         expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
-        expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
+        // Switching back to Design & Build re-mounts the section editor, so the preserved draft's input
+        // re-renders asynchronously -- a synchronous getAllByDisplayValue can win the race and find nothing
+        // under concurrent Jest workers. findAllByDisplayValue retries (up to setupTests.ts's 8000ms
+        // asyncUtilTimeout) until the restored "wild-draft" symbol input actually re-appears.
+        expect((await screen.findAllByDisplayValue("wild-draft"))[0]).toBeInTheDocument();
 
         // Confirming ("Leave") this time actually opens the project.
         await user.click(screen.getByRole("button", {name: "Open Project"}));
@@ -138,5 +143,5 @@ describe("HomePage", () => {
 
         await waitFor(() => expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeDefined());
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
-    }, 45000);
+    }, 90000);
 });

@@ -126,8 +126,16 @@ export default {
     // Several studio-client-components tests exercise the app's own real (unmocked) setTimeout-based
     // polling; under concurrent Jest workers a slow-but-correct assertion needs more room than the
     // 5000ms default, matching setupTests.ts's asyncUtilTimeout. testTimeout is only valid at the top
-    // level of a multi-project config, not inside an individual project entry.
-    testTimeout: 15000,
+    // level of a multi-project config, not inside an individual project entry. The heaviest
+    // studio-client-workflows suites (the Mechanics Editor and Reel Strip Modeler workflows chain many
+    // real-timer-driven userEvent interactions per test) can exceed 15000ms purely from CPU starvation
+    // when the full multi-project gate runs them alongside everything else at --maxWorkers=2 -- these
+    // real-timer tests are wall-clock-bound, so a sibling heavy suite competing for CPU stretches them
+    // 2-4x even though they pass comfortably in isolation. This is contention headroom, not a per-test
+    // budget for real work. 45000ms clears the observed timeouts with margin; the three single heaviest
+    // tests (happyPath, HomePage's confirm-before-leaving, routing's back/forward) still carry their own
+    // even-longer per-test overrides on top of this.
+    testTimeout: 45000,
     projects: [
         {
             displayName: "pokie",

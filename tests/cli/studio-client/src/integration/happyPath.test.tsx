@@ -10,9 +10,11 @@ import {renderRoutedApp} from "../testUtils/renderRoutedApp";
 // this test only wires a fake fetch across the whole scenario, it doesn't re-implement any of it.
 describe("Studio happy path: create/open -> configure -> validate -> build -> simulate -> report", () => {
     // This is the longest test in the suite (many sequential steps plus two real-timer simulation-poll
-    // waits) -- the project's global 15000ms testTimeout leaves too little headroom under concurrent
-    // Jest workers, matching the same parallel-worker contention documented for the other real-timer
-    // tests here (see setupTests.ts's asyncUtilTimeout) -- so this test gets its own longer timeout.
+    // waits) -- even the project's raised 45000ms global testTimeout leaves too little headroom under
+    // concurrent Jest workers (these real-timer tests are wall-clock-bound, so CPU starvation from a
+    // sibling heavy suite stretches them 2-4x), matching the same parallel-worker contention documented
+    // for the other real-timer tests here (see setupTests.ts's asyncUtilTimeout) -- so this test gets
+    // its own much longer timeout.
     it("walks the full guided flow end to end", async () => {
         const user = userEvent.setup();
         let simulationPollCount = 0;
@@ -238,5 +240,5 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         // 10. The report renders on the Reports tab.
         await waitFor(() => expect(screen.getByText("RTP")).toBeInTheDocument());
         expect(screen.getByText("95.00%")).toBeInTheDocument();
-    }, 45000);
+    }, 90000);
 });
