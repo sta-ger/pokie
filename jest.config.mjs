@@ -128,11 +128,14 @@ export default {
     // 5000ms default, matching setupTests.ts's asyncUtilTimeout. testTimeout is only valid at the top
     // level of a multi-project config, not inside an individual project entry. The heaviest
     // studio-client-workflows suites (the Mechanics Editor and Reel Strip Modeler workflows chain many
-    // real-timer-driven userEvent interactions per test) can exceed 15000ms purely from CPU starvation
-    // when the full multi-project gate runs them alongside everything else at --maxWorkers=2 -- these
-    // real-timer tests are wall-clock-bound, so a sibling heavy suite competing for CPU stretches them
-    // 2-4x even though they pass comfortably in isolation. This is contention headroom, not a per-test
-    // budget for real work. 60000ms clears the observed timeouts with margin and leaves room for a test
+    // real-timer-driven userEvent interactions per test) are wall-clock-bound, so a sibling heavy suite
+    // competing for CPU stretches them 2-4x even though they pass comfortably in isolation -- and no
+    // finite per-test timeout survives enough contention. The real fix for that is upstream: the
+    // studio-client-workflows lane now runs `--runInBand` (see package.json's test:workflows), so its
+    // heavy real-timer suites execute one at a time at isolation speed instead of side by side, which is
+    // what was blowing these budgets under the full gate. These timeouts stay as defense-in-depth
+    // headroom for an externally-loaded gate host, not as the primary mechanism. This is contention
+    // headroom, not a per-test budget for real work. 60000ms clears the observed timeouts with margin and leaves room for a test
     // that chains several sequential findBy*/waitFor assertions to each get setupTests.ts's raised
     // 15000ms asyncUtilTimeout without the whole test running out of budget first; the three single
     // heaviest tests (happyPath, HomePage's confirm-before-leaving, routing's back/forward) still carry
