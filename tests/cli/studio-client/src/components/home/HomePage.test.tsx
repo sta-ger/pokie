@@ -88,13 +88,14 @@ describe("HomePage", () => {
 
     // This is by far the heaviest HomePage test: it chains the most sequential real userEvent
     // interactions (dirty the draft, open the modal, Stay, restore, re-open, Leave, land on the project)
-    // and so sits closest to its own per-test budget. Under the full check:full gate the workflow lane
-    // runs its heaviest real-timer suites side by side at --maxWorkers=2, and these wall-clock-bound
-    // tests stretch 2-4x purely from CPU starvation (measured: this suite alone runs ~24s here in
-    // isolation but the whole workflow lane's per-suite times balloon under contention). 90000ms could
-    // still be starved on a slower/more-contended gate host; 120000ms restores headroom for the
-    // worst-case side-by-side run without changing any assertion, matching the contention-headroom
-    // reasoning already applied to this file's draft-restore assertions and to happyPath.test.tsx.
+    // and so sits closest to its own per-test budget. It is wall-clock-bound, not work-bound, so CPU
+    // starvation stretches it 2-4x even though it passes in seconds in isolation. check:full itself no
+    // longer creates that starvation -- test:workflows runs this lane `--runInBand` (see package.json),
+    // one heavy real-timer suite at a time -- so under check:full this budget is pure headroom. It stays
+    // at 120000ms rather than dropping to the 90000ms the lane's other two heaviest tests use because
+    // test:coverage (via check:release) still runs this lane at --maxWorkers=2 alongside every other
+    // project *and* under coverage instrumentation, which is the worst contention this test ever sees.
+    // Headroom only: no assertion is relaxed or removed by this number.
     it("asks for confirmation before leaving a dirty Design & Build draft to open a project, and Cancel preserves it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
