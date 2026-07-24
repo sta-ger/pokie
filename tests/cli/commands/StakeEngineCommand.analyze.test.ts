@@ -170,7 +170,52 @@ describe("StakeEngineCommand analyze", () => {
             fs.rmSync(dir, {recursive: true, force: true});
         }
     });
+
+    it("end to end: computes exact weighted results over a uint64-scale directory with distinct payout buckets, with no precision loss anywhere in the JSON report", async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-exact-test-"));
+        try {
+            // The 970/25/5 hand-computable distribution scaled by 1e16: total 1e19 sits above Number.MAX_SAFE_INTEGER,
+            // every weight stays inside uint64, and cost 1 makes ratio === payoutMultiplier / 100. rtp/probabilities
+            // must match the small-integer distribution exactly through the real read -> analyze -> JSON path.
+            writeExactWeightFixtureDirectory(dir, [
+                {id: 0, weight: BigInt("9700000000000000000"), payoutMultiplier: 0},
+                {id: 1, weight: BigInt("250000000000000000"), payoutMultiplier: 200},
+                {id: 2, weight: BigInt("50000000000000000"), payoutMultiplier: 500},
+            ]);
+
+            const command = new StakeEngineCommand("1.3.0");
+            const exitCode = await command.run(["analyze", dir, "--format", "json"]);
+            expect(exitCode).toBe(0);
+
+            const printedJson = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            const parsed = JSON.parse(printedJson) as {analysis: StakeEngineStandaloneAnalysis};
+            const [mode] = parsed.analysis.modes;
+
+            expect(mode.totalWeight).toBe("10000000000000000000");
+            expect(mode.rtp).toBeCloseTo(0.075, 10);
+            expect(mode.hitFrequency).toBeCloseTo(0.03, 10);
+            expect(mode.maxPayoutMultiplier).toBe(500);
+            expect(mode.maxRatio).toBe(5);
+            expect(mode.payoutDistribution).toEqual([
+                {payoutMultiplier: 0, ratio: 0, probability: "0.97"},
+                {payoutMultiplier: 200, ratio: 2, probability: "0.025"},
+                {payoutMultiplier: 500, ratio: 5, probability: "0.005"},
+            ]);
+            expect(collectUnsafeNumbers(parsed)).toEqual([]);
+        } finally {
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
+    });
 });
+
+// Writes a standalone Stake Engine directory whose per-row weight and payoutMultiplier are given verbatim, so a test
+// can exercise distinct payout buckets and uint64-scale weights the shared uint64 fixture writer doesn't cover.
+function writeExactWeightFixtureDirectory(dir: string, rows: readonly {id: number; weight: bigint; payoutMultiplier: number}[]): void {
+    fs.writeFileSync(path.join(dir, "index.json"), JSON.stringify({modes: [{name: "base", cost: 1, events: "books.jsonl.zst", weights: "lookup.csv"}]}));
+    fs.writeFileSync(path.join(dir, "lookup.csv"), rows.map((row) => `${row.id},${row.weight},${row.payoutMultiplier}`).join("\n") + "\n");
+    const jsonl = rows.map((row) => JSON.stringify({id: row.id, payoutMultiplier: row.payoutMultiplier, events: row.payoutMultiplier > 0 ? [{index: 0, type: "win", amount: row.payoutMultiplier}] : [{index: 0, type: "reveal"}]})).join("\n") + "\n";
+    fs.writeFileSync(path.join(dir, "books.jsonl.zst"), zlib.zstdCompressSync(Buffer.from(jsonl, "utf-8")));
+}
 
 // Walks a parsed JSON value looking for any plain `number` above Number.MAX_SAFE_INTEGER -- valid JSON.parse output
 // can never contain a bigint (JSON has no bigint literal), so the only way an unsafe integer could have been

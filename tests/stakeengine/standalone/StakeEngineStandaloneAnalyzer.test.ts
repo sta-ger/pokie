@@ -150,6 +150,118 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         expect(analysis.modes[1].hitFrequency).toBeCloseTo(0.5, 10);
     });
 
+    it("reproduces the hand-computable statistics exactly when every weight is scaled to uint64 magnitude and the total exceeds Number.MAX_SAFE_INTEGER", () => {
+        // The same 970/25/5 loss/win/win distribution as handComputableReadResult, but each weight scaled by 1e16
+        // so the total (1e19) sits well above Number.MAX_SAFE_INTEGER and every weight stays inside uint64. Because
+        // the ratios are identical, every exact statistic must be byte-for-byte the same as the small-integer case
+        // -- proving the bigint fixed-point path never drops precision on genuine uint64-scale inputs.
+        const analysis = new StakeEngineStandaloneAnalyzer().analyze({
+            stakeDir: "/fake/stake-dir",
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    cost: 1,
+                    outcomes: [
+                        {id: 0, weight: BigInt("9700000000000000000"), payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}, {index: 1, type: "finalWin", amount: 0, payoutMultiplier: 0}]},
+                        {id: 1, weight: BigInt("250000000000000000"), payoutMultiplier: 200, ratio: 2, events: [{index: 0, type: "reveal"}, {index: 1, type: "win", amount: 200}, {index: 2, type: "finalWin", amount: 200, payoutMultiplier: 200}]},
+                        {id: 2, weight: BigInt("50000000000000000"), payoutMultiplier: 500, ratio: 5, events: [{index: 0, type: "reveal"}, {index: 1, type: "freeGamesTriggered", count: 10}, {index: 2, type: "win", amount: 500}, {index: 3, type: "finalWin", amount: 500, payoutMultiplier: 500}]},
+                    ],
+                },
+            ],
+        });
+
+        const [mode] = analysis.modes;
+        expect(mode.totalWeight).toBe("10000000000000000000");
+        expect(mode.rtp).toBeCloseTo(0.075, 10);
+        expect(mode.hitFrequency).toBeCloseTo(0.03, 10);
+        expect(mode.zeroWinFrequency).toBeCloseTo(0.97, 10);
+        expect(mode.variance).toBeCloseTo(0.219375, 10);
+        expect(mode.standardDeviation).toBeCloseTo(Math.sqrt(0.219375), 10);
+        expect(mode.maxPayoutMultiplier).toBe(500);
+        expect(mode.maxRatio).toBe(5);
+        // Canonical terminating decimals: 9.7e18/1e19, 2.5e17/1e19, 5e16/1e19 -- emitted as exact strings, not floats.
+        expect(mode.payoutDistribution).toEqual([
+            {payoutMultiplier: 0, ratio: 0, probability: "0.97"},
+            {payoutMultiplier: 200, ratio: 2, probability: "0.025"},
+            {payoutMultiplier: 500, ratio: 5, probability: "0.005"},
+        ]);
+        const byCategory = new Map(mode.eventClassificationBreakdown.map((entry) => [entry.category, entry]));
+        expect(byCategory.get("reveal")).toEqual({category: "reveal", occurrenceFrequency: "1", averageOccurrencesPerOutcome: "1"});
+        expect(byCategory.get("win")?.occurrenceFrequency).toBe("0.03");
+        expect(byCategory.get("feature")?.occurrenceFrequency).toBe("0.005");
+    });
+
+    it("emits a deterministic 40-place decimal for a non-terminating fraction rather than silently rounding it into a number", () => {
+        // Three equal uint64-scale weights: each probability is exactly 1/3, which no float and no finite terminating
+        // decimal can represent. The analyzer must expose the canonical 40-place repeating decimal.
+        const oneThirdWeight = BigInt("1000000000000000000");
+        const analysis = new StakeEngineStandaloneAnalyzer().analyze({
+            stakeDir: "/fake/stake-dir",
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    cost: 1,
+                    outcomes: [
+                        {id: 0, weight: oneThirdWeight, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
+                        {id: 1, weight: oneThirdWeight, payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
+                        {id: 2, weight: oneThirdWeight, payoutMultiplier: 300, ratio: 3, events: [{index: 0, type: "win", amount: 300}]},
+                    ],
+                },
+            ],
+        });
+
+        const [mode] = analysis.modes;
+        expect(mode.totalWeight).toBe("3000000000000000000");
+        const expectedThird = "0." + "3".repeat(40);
+        expect(mode.payoutDistribution.map((bucket) => bucket.probability)).toEqual([expectedThird, expectedThird, expectedThird]);
+    });
+
+    it.each([
+        ["a bigint above uint64 max", BigInt("18446744073709551616")],
+        ["a zero bigint", BigInt(0)],
+        ["a negative bigint", BigInt(-1)],
+        ["an unsafe-integer number", Number.MAX_SAFE_INTEGER + 2],
+        ["a non-positive number", 0],
+    ])("rejects %s weight instead of silently truncating it to a lossy value", (_label, badWeight) => {
+        const readResult: StakeEngineOutcomeSourceReadResult = {
+            stakeDir: "/fake/stake-dir",
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    cost: 1,
+                    outcomes: [{id: 0, weight: badWeight, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]}],
+                },
+            ],
+        };
+
+        expect(() => new StakeEngineStandaloneAnalyzer().analyze(readResult)).toThrow(/uint64/);
+    });
+
+    it("accepts a weight at exactly uint64 max as a valid, exact total", () => {
+        const uint64Max = BigInt("18446744073709551615");
+        const analysis = new StakeEngineStandaloneAnalyzer().analyze({
+            stakeDir: "/fake/stake-dir",
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    cost: 1,
+                    outcomes: [
+                        {id: 0, weight: uint64Max, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
+                        {id: 1, weight: BigInt(5), payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
+                    ],
+                },
+            ],
+        });
+
+        const [mode] = analysis.modes;
+        expect(mode.totalWeight).toBe((uint64Max + BigInt(5)).toString());
+        expect(mode.outcomeCount).toBe(2);
+    });
+
     it("keeps uint64 weights exact and emits canonical decimal probabilities when the total exceeds Number.MAX_SAFE_INTEGER", () => {
         const winWeight = BigInt("9007199254740993");
         const analysis = new StakeEngineStandaloneAnalyzer().analyze({

@@ -139,6 +139,49 @@ describe("StakeEngineStandaloneAnalysisDiffer", () => {
         ]);
     });
 
+    it("passes uint64-scale exact-decimal strings through a sequential diff without ever coercing them to a lossy number", () => {
+        // Two sequential analyses whose totals exceed Number.MAX_SAFE_INTEGER, so probabilities/frequencies arrive as
+        // canonical decimal strings (including a 40-place non-terminating one). The differ aligns them but must never
+        // reparse a string into a float -- doing so would silently truncate the exact value it was built to preserve.
+        const nonTerminating = "0." + "3".repeat(40);
+        const left = buildAnalysis([buildMode("base", {
+            totalWeight: "10000000000000000000",
+            payoutDistribution: [
+                {payoutMultiplier: 0, ratio: 0, probability: "0.97"},
+                {payoutMultiplier: 100, ratio: 1, probability: nonTerminating},
+            ],
+            eventClassificationBreakdown: [
+                {category: "reveal", occurrenceFrequency: "1", averageOccurrencesPerOutcome: "1"},
+                {category: "win", occurrenceFrequency: "0.03", averageOccurrencesPerOutcome: nonTerminating},
+            ],
+        })]);
+        const right = buildAnalysis([buildMode("base", {
+            totalWeight: "20000000000000000000",
+            payoutDistribution: [
+                {payoutMultiplier: 0, ratio: 0, probability: "0.995"},
+                {payoutMultiplier: 100, ratio: 1, probability: "0.005"},
+            ],
+            eventClassificationBreakdown: [
+                {category: "reveal", occurrenceFrequency: "1", averageOccurrencesPerOutcome: "1"},
+                {category: "win", occurrenceFrequency: "0.005", averageOccurrencesPerOutcome: "0.005"},
+            ],
+        })]);
+
+        const diff = new StakeEngineStandaloneAnalysisDiffer().diff(left, right);
+
+        expect(diff.perMode.base.payoutDistribution).toEqual([
+            {payoutMultiplier: 0, left: "0.97", right: "0.995"},
+            {payoutMultiplier: 100, left: nonTerminating, right: "0.005"},
+        ]);
+        expect(diff.perMode.base.eventClassificationBreakdown).toEqual([
+            {category: "reveal", left: {occurrenceFrequency: "1", averageOccurrencesPerOutcome: "1"}, right: {occurrenceFrequency: "1", averageOccurrencesPerOutcome: "1"}},
+            {category: "win", left: {occurrenceFrequency: "0.03", averageOccurrencesPerOutcome: nonTerminating}, right: {occurrenceFrequency: "0.005", averageOccurrencesPerOutcome: "0.005"}},
+        ]);
+        // Every carried-through exact decimal stays a string; the 40-place value is preserved digit-for-digit.
+        expect(diff.perMode.base.payoutDistribution[1].left).toBe(nonTerminating);
+        expect(typeof diff.perMode.base.payoutDistribution[0].right).toBe("string");
+    });
+
     it("aligns event classification categories with null for added and removed categories", () => {
         const left = buildAnalysis([buildMode("base", {
             eventClassificationBreakdown: [
