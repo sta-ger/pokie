@@ -36,21 +36,21 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         throw new Error("Timed out waiting for the simulation to reach a terminal state.");
     }
 
-    function workerStartBarrier(expectedWorkers: number): {onWorkerStarted: (jobId: string, workerIndex: number) => void; wait: () => Promise<void>} {
-        const started = new Set<number>();
-        let resolve!: () => void;
-        const ready = new Promise<void>((done) => {
-            resolve = done;
-        });
-        return {
-            onWorkerStarted: (_jobId, workerIndex) => {
-                started.add(workerIndex);
-                if (started.size === expectedWorkers) {
-                    resolve();
-                }
-            },
-            wait: () => ready,
-        };
+    // Same real-delay polling as waitForTerminalRealTime, but stops at the first sign of progress
+    // instead of a terminal status — the production onProgress callback (StudioSimulationService's own
+    // job.roundsCompleted bookkeeping) already proves the workers are live and computing, with no
+    // test-only lifecycle hook needed.
+    async function waitForProgressRealTime(service: StudioSimulationService, id: string): Promise<StudioSimulationJobView> {
+        for (let i = 0; i < 1000; i++) {
+            const job = service.getStatus(id);
+            if (job && job.roundsCompleted > 0) {
+                return job;
+            }
+            await new Promise((resolve) => {
+                setTimeout(resolve, 20);
+            });
+        }
+        throw new Error("Timed out waiting for the simulation to report progress.");
     }
 
     it("runs a workers=2 simulation across real worker threads and reports workers on the job/report", async () => {
@@ -137,7 +137,6 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         // bet — to a size that's cheap but still comfortably larger than what one chunk can finish
         // before cancel() takes effect, so this still genuinely exercises real-worker-thread
         // cancellation rather than a job that raced to completion first.
-        const started = workerStartBarrier(2);
         const service = new StudioSimulationService(
             new InMemoryStudioSimulationRepository(),
             loadPokieGame,
@@ -148,17 +147,18 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             TEST_WORKER_ENTRY_URL,
         );
-        service.setWorkerStartedObserver(started.onWorkerStarted);
 
         const result = service.start(fixtureRoot, {rounds: 200_000, workers: 2});
         if (result.status !== "created") {
             throw new Error("expected job to be created");
         }
 
-        // `online` is a worker_threads lifecycle signal, not a timing guess
-        // or a compute-progress side effect.  Cancel only after both real
-        // workers are live, so this exercises their cancellation path.
-        await started.wait();
+        // The job's own roundsCompleted (the same production onProgress bookkeeping StudioServer's
+        // polling clients observe) is a real signal that the workers are live and computing, not a
+        // timing guess. Cancel only once it's non-zero, so this exercises real worker-thread
+        // cancellation rather than a job that raced to completion — or was cancelled before either
+        // worker even started — first.
+        await waitForProgressRealTime(service, result.job.id);
         service.cancel(result.job.id);
 
         const job = await waitForTerminalRealTime(service, result.job.id);

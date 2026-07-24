@@ -11,7 +11,6 @@ export type SimulationWorkerProgress = {workerIndex: number; roundsCompleted: nu
 export type SimulationWorkerCoordinatorRunOptions = {
     signal?: AbortSignal;
     onProgress?: (progress: SimulationWorkerProgress) => void;
-    onWorkerStarted?: (workerIndex: number) => void;
 };
 
 // Owns the actual worker_threads lifecycle for one simulation run: spawns one real Worker per
@@ -39,7 +38,7 @@ export class SimulationWorkerCoordinator {
         requests: SimulationWorkerRequest[],
         options: SimulationWorkerCoordinatorRunOptions = {},
     ): Promise<SimulationWorkerResult[]> {
-        const {signal, onProgress, onWorkerStarted} = options;
+        const {signal, onProgress} = options;
         if (signal?.aborted) {
             throw new SimulationCancelledError();
         }
@@ -80,8 +79,6 @@ export class SimulationWorkerCoordinator {
 
             workers.forEach((worker, index) => {
                 const request = requests[index];
-
-                worker.once("online", () => onWorkerStarted?.(request.workerIndex));
 
                 worker.on("message", (raw: unknown) => {
                     if (settled) {
