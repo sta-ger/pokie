@@ -39,7 +39,8 @@ known-red gate; see "Fixed in this pass" below for what previously was.
   their own lane rather than rewritten. Runs with `--maxWorkers=2` like everything else — `--runInBand`
   was tried first and rejected: serializing all 22 files pushed the run past 20+ minutes for no
   correctness benefit; `--maxWorkers=2` finished in ~445s across three consecutive runs, all green.
-  It additionally pins `--workerIdleMemoryLimit=192MB` (see below), which the other lanes don't need.
+  It additionally pins `--workerIdleMemoryLimit=192MB` and runs Jest under
+  `node --max-old-space-size=512` (see below), which the other lanes don't need.
 - **`pokie-integration`** — anything that spins up a real HTTP server (`PokieDevServer`,
   `PokieClientServer`, `StudioServer`), real `worker_threads` (`simulationWorkerEntry`, and the
   extracted `*.realWorkers.test.ts` files below), or does heavy real filesystem I/O
@@ -171,6 +172,35 @@ worker, so this is not `--runInBand` in disguise — `--maxWorkers=2`'s parallel
 only cost is a worker respawn after the heavy files. Note this flag also forces worker processes to
 be used at all — `@jest/core`'s `shouldRunInBand` runs in the main process whenever
 `maxWorkers <= 1`, where the limit could not be enforced.
+
+### Why `test:workflows` also runs Jest under `node --max-old-space-size=512`
+
+`--workerIdleMemoryLimit` is only checked *after* a file finishes, so it keeps the lane's footprint
+flat between files but cannot bound growth within one, and it does nothing about the deeper problem:
+**V8 sizes a process's old-space from `os.totalmem()`, which reports the host's RAM, not the cgroup
+the gate actually caps the run at.** Measured in the gate container:
+
+| | value |
+|---|---|
+| `os.totalmem()` | 7848 MiB (the host) |
+| cgroup `memory.max` | 2048 MiB (what the run really gets) |
+| worker `heap_size_limit`, default | **1120 MiB** |
+| worker `heap_size_limit`, under `--max-old-space-size=512` | **608 MiB** |
+
+At the default, `--maxWorkers=2` means one main process plus two workers each entitled to grow to
+1120 MiB — a ~3.3GB heap ceiling inside a 2GiB container. Every one of them is still far from the
+point where V8 collects hard when the container has already run out, so the kernel resolves it first
+and the file whose worker was killed is reported failed with no assertion named. That is precisely
+the signature this lane produced under `check:full` and never on its own (one file alone peaks at
+~620-735 MiB), and it is why five rounds of raising `testTimeout`/`asyncUtilTimeout` changed nothing:
+no per-test budget can outlive its own worker.
+
+Running Jest itself under `node --max-old-space-size=512` fixes it for the whole lane in one place:
+`jest-worker` forwards the parent's `execArgv` to each forked worker, so the bound reaches the
+processes that actually run the tests (verified above — the worker reports 608 MiB, not 1120 MiB).
+That puts the lane's worst-case ceiling comfortably inside the container while still leaving ~3x the
+~190-215MB a heavy suite of this lane retains, and it costs nothing measurable in wall clock
+(`HomePage.test.tsx`: 18.7s bounded vs 18.5s unbounded, same 4/4 green, same retained heap).
 
 ## Baseline (before this stabilization pass)
 

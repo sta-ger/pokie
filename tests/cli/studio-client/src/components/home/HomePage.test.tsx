@@ -11,27 +11,15 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 // `getByRole("navigation", {name})`. Real, but an order of magnitude too small to be what this suite's
 // gate failures were about.
 //
-// Heap is not it either, but *only because package.json's --workerIdleMemoryLimit=192MB is there*. An
-// earlier revision of this comment read the lane's ~1.0-1.2GB peak as evidence that the accumulating-
-// worker-memory story behind that flag and jest.config.mjs's rationale was imaginary. That reading was
-// circular: the number was measured with the flag active, i.e. with the accumulation it exists to
-// suppress already suppressed. Re-measured both ways in this container (cgroup memory.current sampled
-// over the whole `--selectProjects studio-client-workflows --maxWorkers=2` lane, against memory.max =
-// 2GiB):
+// Two things were, and neither is a timeout:
 //
-//   | lane config                  | wall clock | peak memory.current | this file's worker heap |
-//   |------------------------------|-----------:|--------------------:|------------------------:|
-//   | --workerIdleMemoryLimit=192MB|      508s  |  1.216GiB (60.8%)   |                  249MB  |
-//   | flag removed                 |      476s  |  1.896GiB (94.8%)   |                  462MB  |
-//
-// Without it the workers' heaps climb monotonically across the lane (215MB on the first file to 608MB
-// on the last) and the container ends up 111MB from an OOM kill, for ~30s of wall clock. So the flag is
-// load-bearing: do not delete it on the strength of a peak measured while it was switched on.
-//
-// What this file actually had wrong was that its tab-switch assertions could not fail for the reason
-// they were written to catch (see expectActiveSection below), which no amount of timeout or memory
-// tuning could have fixed. With that fixed, what is left is the plain per-test budget -- see the
-// measurements above jest.setTimeout below.
+//   1. This file's tab-switch assertions could not fail for the reason they were written to catch (see
+//      expectActiveSection below).
+//   2. The lane ran every process with a V8 old-space ceiling larger than the whole container. That is
+//      a lane-level property, fixed in package.json/jest.config.mjs, not here -- but it is why this
+//      file kept coming back red under check:full while passing on its own, and why five successive
+//      rounds of raising the budget below changed nothing. Do not read a failure here as a budget
+//      problem again without first checking the worker's actual heap_size_limit.
 //
 // The scoping below is therefore kept for precision, not speed: every query targets the smallest
 // container that still identifies it -- the "Sections" nav for HomePage's own tab buttons, the guided
@@ -76,54 +64,30 @@ async function expectActiveSection(name: string): Promise<void> {
 // and a heavy one: each renders the entire routed app (renderRoutedApp -> HomePage with all three tab bodies
 // permanently mounted, two whole BlueprintEditorPage instances among them) and then drives a chain of real
 // userEvent interactions across that ~880-element tree with real timers. Measured in this container at idle:
-// 3.4s / 3.8s / 2.5s / 7.1s -- a 4.5x spread, not a difference in kind.
+// 3.5s / 3.6s / 2.5s / 7.0s -- a 2.8x spread, not a difference in kind. The rest of this lane likewise pins an
+// explicit per-test budget on every test of every such suite (45000ms in the ProjectDashboardPage/
+// navigation-guard/validation suites, 90000ms for happyPath and routing's back/forward).
 //
-// The rest of this lane already pins an explicit per-test budget on every test of every such suite (45000ms
-// in the ProjectDashboardPage/navigation-guard/validation suites, 90000ms for happyPath and routing's
-// back/forward) instead of riding jest.config.mjs's lane-wide 60000ms default. That default is not sized for
-// the gate container: the numbers behind it in docs/testing.md come from the 4-CPU reference box, whereas the
-// gate's cgroup quota is 2 CPUs -- which os.cpus() does not report, it says 4 -- so --maxWorkers=2 runs two
-// jsdom workers plus the Jest main process against two cores, before any external load on the gate host.
+// The number has to satisfy one ordering invariant, the one setupTests.ts's asyncUtilTimeout is chosen for:
+// the per-assertion cap must expire *before* the whole-test budget, or a starved assertion is reported as an
+// anonymous "Exceeded timeout of N ms for a test" instead of naming itself. Note what that actually requires,
+// because an earlier revision of this comment got it wrong and four commits were built on the error: the
+// budget must exceed this test's real work plus *one* 15000ms cap, not the sum of all eight
+// asyncUtilTimeout-governed awaits it chains. A test fails at the first await that exhausts its cap, so no
+// passing run can ever absorb eight of them; "8 x 15000ms = 120000ms of cap alone" was arithmetic for a
+// scenario that cannot occur, and doubling the budget to clear it was not a fix for anything.
 //
-// The size of the budget is not a guess, and not "the previous number, raised": it is fixed by the ordering
-// invariant setupTests.ts's asyncUtilTimeout is chosen for -- the per-assertion cap must expire *before* the
-// whole-test budget, or a starved assertion is reported as an anonymous "Exceeded timeout of N ms for a test"
-// instead of naming itself. That requires the budget to exceed the sum of every asyncUtilTimeout-governed
-// await one test can sit through, *plus* that test's own real work. The heaviest test below chains eight of
-// them (expectActiveSection x3, findByText x2, waitFor x2, findByRole x1) at setupTests.ts's 15000ms each,
-// i.e. 120000ms of cap alone -- which is precisely the 120000ms this file used to carry, leaving exactly
-// nothing for the ~7s of real work it does at idle. So the invariant was inverted for that test at every
-// value this file has ever had (60000, 90000 and 120000 are all <= 8 x 15000), which is why its gate
-// failures keep coming back nameless and why raising the number in fractions never held.
+// So: 7.0s of real work at idle. Oversubscribing the container's 2-CPU quota with spinner processes stretches
+// that to 49.4s (four spinners, i.e. roughly 3x the demand the gate itself puts on the lane, where
+// --maxWorkers=2 means two jsdom workers plus a mostly-idle Jest main process against two cores). 120000ms is
+// ~2.4x that worst reproduced figure with a full 15000ms assertion cap on top, and it holds the invariant.
 //
-// Reproduced here by oversubscribing that same 2-CPU quota with spinner processes. The scaling is
-// superlinear, and -- the part that matters -- noisy: the two 6-spinner rows are the same four tests under
-// the same load, minutes apart.
-//
-//   | spinners alongside the run | test 1 | test 2 | test 3 | test 4 |
-//   |---|---|---|---|---|
-//   | none                       |  3.4s  |  3.8s  |  2.5s  |  7.1s  |
-//   | 2                          |  8.6s  | 10.3s  |  6.8s  | 18.5s  |
-//   | 6, run A                   | 32.2s  |  >60s  | 28.4s  | 83.6s  |
-//   | 6, run B                   | 31.5s  | 26.8s  | 24.8s  | 65.4s  |
-//   | 10                         | 29.0s  | 45.2s  | 21.7s  | 87.3s  |
-//   | 16                         | 45.8s  | 61.2s  | 46.3s  | 119.9s |
-//
-// In the 6-spinner run A, test 2 is killed by the 60000ms lane default -- by the whole-test budget, not by
-// any assertion, which is why nothing ever named itself unsatisfied -- while its three siblings, doing the
-// same work in the same run, finish green at 28-84s; in run B that same test finishes in 26.8s. At 10
-// spinners all four pass, but the heaviest spends 87.3s, i.e. 73% of a 120000ms budget, on 7.1s of
-// idle-equivalent work. At 16 it lands at 119.9s -- 0.1s inside that budget, on a run where every assertion
-// in it settled and nothing was wrong. A gate host only has to be marginally busier than this to push it
-// over, and it goes over as an anonymous whole-test timeout rather than as a named assertion.
-//
-// 240000ms is that arithmetic: the 120000ms of per-assertion cap one test can legitimately absorb, plus as
-// much again for its real work (7.1s at idle, 87.3s at the worst load reproduced here). It relaxes, weakens
-// and removes nothing -- no assertion, wait or query below is touched -- and it restores the ordering
-// setupTests.ts documents, so a genuinely stuck assertion fails first and by name. Its only cost is paid on a
-// run that is already red: a hang somewhere userEvent's own awaits cannot cap takes 4 minutes to report
-// itself instead of 2.
-jest.setTimeout(240000);
+// It is deliberately not larger. The lane's gate failures were never this budget running out -- they were
+// worker processes dying against a container limit V8 could not see (see the note at the top of this file and
+// jest.config.mjs), which is why the previous 15000 -> 60000 -> 90000 -> 120000 -> 240000 escalation moved
+// nothing. Padding past the point where the number is derived from a measurement only delays the report on a
+// run that is already red.
+jest.setTimeout(120000);
 
 describe("HomePage", () => {
     it("defaults to Design & Build and switches between tabs, keeping aria-current on the active one", async () => {

@@ -126,37 +126,32 @@ export default {
     // Several studio-client-components tests exercise the app's own real (unmocked) setTimeout-based
     // polling; under concurrent Jest workers a slow-but-correct assertion needs more room than the
     // 5000ms default, matching setupTests.ts's asyncUtilTimeout. testTimeout is only valid at the top
-    // level of a multi-project config, not inside an individual project entry. The heaviest
-    // studio-client-workflows suites (the Mechanics Editor and Reel Strip Modeler workflows chain many
-    // real-timer-driven userEvent interactions per test) are wall-clock-bound, so a sibling heavy suite
-    // competing for CPU stretches them 2-4x even though they pass comfortably in isolation -- and no
-    // finite per-test timeout survives enough contention. But CPU was never the binding constraint under
-    // the full gate: memory was. The gate container caps the whole run at 2GiB, and one of these jsdom
-    // suites retains ~220MB of heap on its own (measured with `--logHeapUsage`). Jest reuses a worker
-    // across every file it is handed, so 22 of them spread over two long-lived workers grows both heaps
-    // for the entire lane until the container is thrashing -- and a process losing its time to GC misses
-    // deadlines no matter how generous they are, which is exactly why raising the numbers below
-    // repeatedly never fixed it. `--runInBand` (tried, see docs/testing.md) is strictly worse here: it
-    // funnels all 22 files through the *main* process, whose V8 old-space limit the 2GiB cap pins at
-    // ~1120MB, on top of pushing the lane past 20 minutes. So test:workflows keeps the measured-good
-    // `--maxWorkers=2` and pairs it with `--workerIdleMemoryLimit`, which makes Jest re-measure a
-    // worker's heapUsed after each file and restart it past the threshold. The threshold has to sit
-    // *below* what one heavy suite of this lane retains, or the check can never trip on the files that
-    // actually cost anything: HomePage.test.tsx alone finishes at 205-277MB heapUsed across runs
-    // (`--logHeapUsage`), so the 512MB this used to carry only tripped after a worker had already
-    // swallowed two or three such suites -- by which point its RSS had roughly doubled (measured: main
-    // process plus one worker peaks at ~654MB on that single file), which is how two workers still
-    // reached the ~1.92GB peak that the 2GiB cap turns into GC thrash. 192MB is under even the lowest
-    // of those retained-heap readings, so any suite that heavy hands back a recycled worker and the
-    // lane's footprint stays flat at one file's peak instead of accumulating; cheap suites still share
-    // a worker, so this is not `--runInBand` in disguise.
-    // These timeouts stay as defense-in-depth
-    // headroom for an externally-loaded gate host, not as the primary mechanism. This is contention
-    // headroom, not a per-test budget for real work. 60000ms clears the observed timeouts with margin and leaves room for a test
-    // that chains several sequential findBy*/waitFor assertions to each get setupTests.ts's raised
-    // 15000ms asyncUtilTimeout without the whole test running out of budget first; the three single
-    // heaviest tests (happyPath, HomePage's confirm-before-leaving, routing's back/forward) still carry
-    // their own even-longer per-test overrides on top of this.
+    // level of a multi-project config, not inside an individual project entry.
+    //
+    // These numbers are contention headroom only -- they are NOT what fixed the studio-client-workflows
+    // lane's gate failures, and raising them repeatedly (15000 -> 60000 -> 90000 -> 120000) never did.
+    // The lane's actual failure was memory, and specifically that V8 sizes a process's old-space from
+    // os.totalmem() -- the *host's* RAM -- while the gate container is capped by a cgroup the runtime
+    // cannot see. Measured here: os.totalmem() reports 7848MiB, memory.max is 2GiB, and a worker's
+    // heap_size_limit comes out at 1120MiB. With --maxWorkers=2 that is one main process plus two
+    // workers, i.e. up to ~3.3GiB of heap ceiling inside a 2GiB container: every process is still well
+    // short of the point where V8 would collect hard when the container has already run out. The file
+    // whose worker is killed for that is reported failed with no assertion named, which is exactly the
+    // signature this lane kept producing under check:full and never when run on its own (one file alone
+    // peaks at ~620-735MiB, comfortably inside the cap). package.json's test:workflows therefore runs
+    // Jest under `node --max-old-space-size=512`, which jest-worker forwards to the workers via
+    // execArgv (see ChildProcessWorker's fork options) -- verified: the worker's heap_size_limit drops
+    // from 1120MiB to 608MiB, so the whole lane's ceiling fits the container with room to spare, at no
+    // measurable wall-clock cost. --workerIdleMemoryLimit=192MB complements it by keeping the *between
+    // files* footprint flat (Jest re-measures a worker's heapUsed after each file and recycles it past
+    // the threshold; one heavy suite of this lane retains ~190-215MB, so it trips on every file that
+    // costs anything) -- but it is only checked once a file has finished, so on its own it can neither
+    // bound growth within a file nor stop V8 from deferring collection until past the cgroup limit.
+    //
+    // With that in place 60000ms is ordinary headroom: enough for a test that chains several sequential
+    // findBy*/waitFor assertions to each get setupTests.ts's 15000ms asyncUtilTimeout without the whole
+    // test running out of budget first; the three single heaviest tests (happyPath, HomePage's
+    // confirm-before-leaving, routing's back/forward) still carry their own longer per-test overrides.
     testTimeout: 60000,
     projects: [
         {
