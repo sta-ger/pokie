@@ -127,7 +127,32 @@ export default {
     // polling; under concurrent Jest workers a slow-but-correct assertion needs more room than the
     // 5000ms default, matching setupTests.ts's asyncUtilTimeout. testTimeout is only valid at the top
     // level of a multi-project config, not inside an individual project entry.
-    testTimeout: 15000,
+    //
+    // These numbers are contention headroom only -- they are NOT what fixed the studio-client-workflows
+    // lane's gate failures, and raising them repeatedly (15000 -> 60000 -> 90000 -> 120000) never did.
+    // The lane's actual failure was memory, and specifically that V8 sizes a process's old-space from
+    // os.totalmem() -- the *host's* RAM -- while the gate container is capped by a cgroup the runtime
+    // cannot see. Measured here: os.totalmem() reports 7848MiB, memory.max is 2GiB, and a worker's
+    // heap_size_limit comes out at 1120MiB. With --maxWorkers=2 that is one main process plus two
+    // workers, i.e. up to ~3.3GiB of heap ceiling inside a 2GiB container: every process is still well
+    // short of the point where V8 would collect hard when the container has already run out. The file
+    // whose worker is killed for that is reported failed with no assertion named, which is exactly the
+    // signature this lane kept producing under check:full and never when run on its own (one file alone
+    // peaks at ~620-735MiB, comfortably inside the cap). package.json's test:workflows therefore runs
+    // Jest under `node --max-old-space-size=512`, which jest-worker forwards to the workers via
+    // execArgv (see ChildProcessWorker's fork options) -- verified: the worker's heap_size_limit drops
+    // from 1120MiB to 608MiB, so the whole lane's ceiling fits the container with room to spare, at no
+    // measurable wall-clock cost. --workerIdleMemoryLimit=192MB complements it by keeping the *between
+    // files* footprint flat (Jest re-measures a worker's heapUsed after each file and recycles it past
+    // the threshold; one heavy suite of this lane retains ~190-215MB, so it trips on every file that
+    // costs anything) -- but it is only checked once a file has finished, so on its own it can neither
+    // bound growth within a file nor stop V8 from deferring collection until past the cgroup limit.
+    //
+    // With that in place 60000ms is ordinary headroom: enough for a test that chains several sequential
+    // findBy*/waitFor assertions to each get setupTests.ts's 15000ms asyncUtilTimeout without the whole
+    // test running out of budget first; the three single heaviest tests (happyPath, HomePage's
+    // confirm-before-leaving, routing's back/forward) still carry their own longer per-test overrides.
+    testTimeout: 60000,
     projects: [
         {
             displayName: "pokie",

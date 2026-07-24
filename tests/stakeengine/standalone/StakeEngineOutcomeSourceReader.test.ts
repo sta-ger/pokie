@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import zlib from "zlib";
-import {StakeEngineExportModeInput, StakeEngineExporter, StakeEngineOutcomeSourceReader} from "pokie";
+import {StakeEngineExportModeInput, StakeEngineExporter, StakeEngineOutcomeSourceReader, StakeEngineStandaloneAnalyzer} from "pokie";
 import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary} from "../StakeEngineTestFixtures.js";
 
 function writeIndexJson(dir: string, modes: readonly {name: string; cost: number; events: string; weights: string}[]): void {
@@ -201,6 +201,59 @@ describe("StakeEngineOutcomeSourceReader", () => {
 
             expect(result.issues.some((issue) => issue.code === "stakeengine-standalone-books-invalid-zstd")).toBe(true);
             expect(result.modes).toEqual([]);
+        });
+
+        it.each([
+            ["null", null],
+            ["a primitive number", 7],
+            ["a primitive string", "reveal"],
+            ["an array", [{index: 0, type: "reveal"}]],
+            ["an object missing a string type", {index: 0}],
+            ["an object missing a numeric index", {type: "reveal"}],
+            ["an object whose type is not a string", {index: 0, type: 5}],
+        ])("reports stakeengine-standalone-books-malformed-event when an events element is %s", async (_label, badEvent) => {
+            writeIndexJson(dir, [{name: "base", cost: 1, events: "books.jsonl.zst", weights: "lookup.csv"}]);
+            writeCsv(dir, "lookup.csv", [{id: 0, weight: 100, payoutMultiplier: 0}]);
+            writeBooks(dir, "books.jsonl.zst", [{id: 0, payoutMultiplier: 0, events: [badEvent]}]);
+
+            const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+
+            const malformed = result.issues.find((issue) => issue.code === "stakeengine-standalone-books-malformed-event");
+            expect(malformed).toBeDefined();
+            expect(malformed?.details).toMatchObject({modeName: "base", position: 0, eventIndex: 0});
+            expect(result.modes).toEqual([]);
+        });
+
+        it("pins the exact events[position] of a malformed event so the diagnostic identifies its location", async () => {
+            writeIndexJson(dir, [{name: "base", cost: 1, events: "books.jsonl.zst", weights: "lookup.csv"}]);
+            writeCsv(dir, "lookup.csv", [{id: 0, weight: 100, payoutMultiplier: 0}]);
+            writeBooks(dir, "books.jsonl.zst", [{id: 0, payoutMultiplier: 0, events: [{index: 0, type: "reveal"}, null, {index: 2, type: "win"}]}]);
+
+            const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+
+            const malformed = result.issues.filter((issue) => issue.code === "stakeengine-standalone-books-malformed-event");
+            expect(malformed.length).toBe(1);
+            expect(malformed[0].details).toMatchObject({modeName: "base", position: 0, eventIndex: 1});
+        });
+
+        it("lets the analyzer classify every event without crashing once validation succeeds", async () => {
+            writeIndexJson(dir, [{name: "base", cost: 1, events: "books.jsonl.zst", weights: "lookup.csv"}]);
+            writeCsv(dir, "lookup.csv", [
+                {id: 0, weight: 900, payoutMultiplier: 0},
+                {id: 1, weight: 100, payoutMultiplier: 100},
+            ]);
+            writeBooks(dir, "books.jsonl.zst", [
+                {id: 0, payoutMultiplier: 0, events: [{index: 0, type: "reveal"}]},
+                {id: 1, payoutMultiplier: 100, events: [{index: 0, type: "reveal"}, {index: 1, type: "win", amount: 100}]},
+            ]);
+
+            const result = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+            expect(result.issues.some((issue) => issue.severity === "error")).toBe(false);
+
+            const analysis = new StakeEngineStandaloneAnalyzer().analyze(result);
+            const categories = analysis.modes[0].eventClassificationBreakdown.map((entry) => entry.category);
+            expect(categories).toContain("reveal");
+            expect(categories).toContain("win");
         });
 
         it("reports stakeengine-standalone-mode-outcomes-empty when a mode's lookup CSV has no rows", async () => {

@@ -142,7 +142,15 @@ describe("ProjectDashboardPage", () => {
             },
             {timeout: 15000},
         );
-    }, 20000);
+        // 20000ms was too tight to be a safe budget once setupTests.ts raised asyncUtilTimeout to
+        // 15000ms: this test's own waits alone can claim 15000ms here plus 3000ms above, and the
+        // unqualified findByRole that opens it now inherits that same 15000ms cap -- 33000ms of
+        // worst-case waiting inside a 20000ms budget. That inverts the intended failure mode, turning a
+        // single slow-but-correct assertion into an overall-test timeout whose message points at the
+        // test rather than at the assertion that was actually starved. 45000ms is the value every other
+        // multi-interaction suite in this lane already uses, and it restores the invariant setupTests.ts
+        // documents: the per-assertion cap always expires first, so the diagnostic names the real culprit.
+    }, 45000);
 
     it("does not block the happy path on warnings-only validation -- Overview still recommends simulating", async () => {
         const user = userEvent.setup();

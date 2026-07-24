@@ -77,6 +77,7 @@ describe("Routable Home sections: browser back/forward", () => {
         router.navigate(1);
         await waitFor(() => expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page"));
         // Many sequential real userEvent interactions -- under Jest's parallel workers this can exceed
-        // the project's default testTimeout, same reasoning as happyPath.test.tsx's own explicit timeout.
-    }, 45000);
+        // even the project's raised 60000ms testTimeout, same reasoning as happyPath.test.tsx's own
+        // explicit timeout.
+    }, 90000);
 });
