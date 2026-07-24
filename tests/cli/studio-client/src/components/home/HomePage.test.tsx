@@ -76,15 +76,25 @@ async function expectActiveSection(name: string): Promise<void> {
 // and a heavy one: each renders the entire routed app (renderRoutedApp -> HomePage with all three tab bodies
 // permanently mounted, two whole BlueprintEditorPage instances among them) and then drives a chain of real
 // userEvent interactions across that ~880-element tree with real timers. Measured in this container at idle:
-// 3.7s / 3.9s / 2.4s / 7.0s -- a 4.5x spread, not a difference in kind.
+// 3.4s / 3.8s / 2.5s / 7.1s -- a 4.5x spread, not a difference in kind.
 //
 // The rest of this lane already pins an explicit per-test budget on every test of every such suite (45000ms
 // in the ProjectDashboardPage/navigation-guard/validation suites, 90000ms for happyPath and routing's
-// back/forward) instead of riding jest.config.mjs's lane-wide 60000ms default. This file was the exception,
-// and it is the file whose gate timeouts keep coming back. That default is not sized for the gate container:
-// the numbers behind it in docs/testing.md come from the 4-CPU reference box, whereas the gate's cgroup quota
-// is 2 CPUs -- which os.cpus() does not report, it says 4 -- so --maxWorkers=2 runs two jsdom workers plus the
-// Jest main process against two cores, before any external load on the gate host.
+// back/forward) instead of riding jest.config.mjs's lane-wide 60000ms default. That default is not sized for
+// the gate container: the numbers behind it in docs/testing.md come from the 4-CPU reference box, whereas the
+// gate's cgroup quota is 2 CPUs -- which os.cpus() does not report, it says 4 -- so --maxWorkers=2 runs two
+// jsdom workers plus the Jest main process against two cores, before any external load on the gate host.
+//
+// The size of the budget is not a guess, and not "the previous number, raised": it is fixed by the ordering
+// invariant setupTests.ts's asyncUtilTimeout is chosen for -- the per-assertion cap must expire *before* the
+// whole-test budget, or a starved assertion is reported as an anonymous "Exceeded timeout of N ms for a test"
+// instead of naming itself. That requires the budget to exceed the sum of every asyncUtilTimeout-governed
+// await one test can sit through, *plus* that test's own real work. The heaviest test below chains eight of
+// them (expectActiveSection x3, findByText x2, waitFor x2, findByRole x1) at setupTests.ts's 15000ms each,
+// i.e. 120000ms of cap alone -- which is precisely the 120000ms this file used to carry, leaving exactly
+// nothing for the ~7s of real work it does at idle. So the invariant was inverted for that test at every
+// value this file has ever had (60000, 90000 and 120000 are all <= 8 x 15000), which is why its gate
+// failures keep coming back nameless and why raising the number in fractions never held.
 //
 // Reproduced here by oversubscribing that same 2-CPU quota with spinner processes. The scaling is
 // superlinear, and -- the part that matters -- noisy: the two 6-spinner rows are the same four tests under
@@ -92,24 +102,28 @@ async function expectActiveSection(name: string): Promise<void> {
 //
 //   | spinners alongside the run | test 1 | test 2 | test 3 | test 4 |
 //   |---|---|---|---|---|
-//   | none                       |  3.7s  |  3.9s  |  2.4s  |  7.0s  |
+//   | none                       |  3.4s  |  3.8s  |  2.5s  |  7.1s  |
 //   | 2                          |  8.6s  | 10.3s  |  6.8s  | 18.5s  |
 //   | 6, run A                   | 32.2s  |  >60s  | 28.4s  | 83.6s  |
 //   | 6, run B                   | 31.5s  | 26.8s  | 24.8s  | 65.4s  |
+//   | 10                         | 29.0s  | 45.2s  | 21.7s  | 87.3s  |
+//   | 16                         | 45.8s  | 61.2s  | 46.3s  | 119.9s |
 //
-// In run A test 2 is killed by the 60000ms default -- by the whole-test budget, not by any assertion, which
-// is why nothing ever named itself unsatisfied -- while its three siblings, doing the same work in the same
-// run, finish green at 28-84s. In run B that same test finishes in 26.8s. So this is a budget too small for
-// the machine's worst minute, not an assertion that cannot settle (that class of bug in this file was the
-// expectActiveSection one above, and it is fixed, which is precisely why the budget is what surfaces now).
+// In the 6-spinner run A, test 2 is killed by the 60000ms lane default -- by the whole-test budget, not by
+// any assertion, which is why nothing ever named itself unsatisfied -- while its three siblings, doing the
+// same work in the same run, finish green at 28-84s; in run B that same test finishes in 26.8s. At 10
+// spinners all four pass, but the heaviest spends 87.3s, i.e. 73% of a 120000ms budget, on 7.1s of
+// idle-equivalent work. At 16 it lands at 119.9s -- 0.1s inside that budget, on a run where every assertion
+// in it settled and nothing was wrong. A gate host only has to be marginally busier than this to push it
+// over, and it goes over as an anonymous whole-test timeout rather than as a named assertion.
 //
-// 120000ms is the number test 4 already carried, measured the same way; extending it to the other three
-// covers both 6-spinner runs with margin, and it stays above the 90000ms happyPath/routing use because
-// test:coverage (via check:release) runs this lane alongside every other project *and* under coverage
-// instrumentation, which check:full does not. It relaxes, weakens, and removes nothing: setupTests.ts's
-// 15000ms per-assertion asyncUtilTimeout stays far below it, so a genuinely stuck assertion still fails by
-// naming itself rather than as an anonymous whole-test timeout.
-jest.setTimeout(120000);
+// 240000ms is that arithmetic: the 120000ms of per-assertion cap one test can legitimately absorb, plus as
+// much again for its real work (7.1s at idle, 87.3s at the worst load reproduced here). It relaxes, weakens
+// and removes nothing -- no assertion, wait or query below is touched -- and it restores the ordering
+// setupTests.ts documents, so a genuinely stuck assertion fails first and by name. Its only cost is paid on a
+// run that is already red: a hang somewhere userEvent's own awaits cannot cap takes 4 minutes to report
+// itself instead of 2.
+jest.setTimeout(240000);
 
 describe("HomePage", () => {
     it("defaults to Design & Build and switches between tabs, keeping aria-current on the active one", async () => {
