@@ -207,6 +207,39 @@ describe("StakeEngineCommand analyze", () => {
         }
     });
 
+    it("end to end: emits a non-terminating canonical 40-place decimal probability through the real CLI JSON path with no precision loss", async () => {
+        // Every other end-to-end uint64 test uses splits whose probabilities terminate (0.97/0.025/0.005), so the
+        // analyzer's 40-place repeating-decimal branch is only ever exercised by unit tests, never through the real
+        // read -> analyze -> JSON CLI path. Three equal uint64-scale weights (total 3e18, above Number.MAX_SAFE_INTEGER)
+        // give each distinct bucket probability exactly 1/3, which no float or finite decimal can hold: the CLI must
+        // serialize the canonical 40-place "0.333..." string, digit-for-digit, with nothing coerced back to a number.
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-third-test-"));
+        try {
+            const oneThird = BigInt("1000000000000000000");
+            writeExactWeightFixtureDirectory(dir, [
+                {id: 0, weight: oneThird, payoutMultiplier: 0},
+                {id: 1, weight: oneThird, payoutMultiplier: 100},
+                {id: 2, weight: oneThird, payoutMultiplier: 200},
+            ]);
+
+            const command = new StakeEngineCommand("1.3.0");
+            const exitCode = await command.run(["analyze", dir, "--format", "json"]);
+            expect(exitCode).toBe(0);
+
+            const printedJson = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            const parsed = JSON.parse(printedJson) as {analysis: StakeEngineStandaloneAnalysis};
+            const [mode] = parsed.analysis.modes;
+
+            const expectedThird = "0." + "3".repeat(40);
+            expect(mode.totalWeight).toBe("3000000000000000000");
+            expect(mode.payoutDistribution.map((bucket) => bucket.probability)).toEqual([expectedThird, expectedThird, expectedThird]);
+            expect(mode.payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
+            expect(collectUnsafeNumbers(parsed)).toEqual([]);
+        } finally {
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
+    });
+
     it("end to end: rejects a malformed event in a uint64-scale directory with exit 1, surfacing the error in the JSON report and never running the analyzer", async () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-malformed-test-"));
         try {
