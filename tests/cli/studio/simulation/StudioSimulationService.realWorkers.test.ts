@@ -10,7 +10,13 @@ import {TEST_WORKER_ENTRY_URL} from "../../../simulation/parallel/testWorkerEntr
 // (the controlled-yield-driven, in-process describe above it in the original file stays fast) --
 // see jest.config.mjs.
 describe("StudioSimulationService (integration, real worker threads via --workers)", () => {
-    jest.setTimeout(30000);
+    // Real worker threads share the machine with every other integration suite running under the same
+    // --maxWorkers Jest invocation, so first-chunk spin-up/compute can take far longer under a loaded
+    // full gate than it does when this file runs on its own. Both the polling helpers below return the
+    // moment the awaited state appears, so this ceiling is pure contention headroom (see jest.config.mjs
+    // for the same reasoning applied to other lanes) -- it only ever bites a job that genuinely never
+    // makes progress, which still fails well inside it.
+    jest.setTimeout(120000);
     const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game");
 
     // waitForTerminal (in StudioSimulationService.test.ts) polls via a bare setImmediate — fine for
@@ -28,6 +34,24 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             });
         }
         throw new Error("Timed out waiting for the simulation to reach a terminal state.");
+    }
+
+    // Poll (with real delays, for the same reason waitForTerminalRealTime does) for the first sign the
+    // workers have actually started producing rounds, returning as soon as any progress -- or a
+    // completed job -- is observed. The bound is generous because real worker-thread spin-up competes
+    // for CPU with the rest of the integration lane under a full gate; a run that never advances still
+    // resolves false here (and the caller's assertion fails) comfortably inside the suite timeout.
+    async function waitForFirstProgressRealTime(service: StudioSimulationService, id: string): Promise<boolean> {
+        for (let i = 0; i < 2000; i++) {
+            const status = service.getStatus(id);
+            if (status && (status.roundsCompleted > 0 || status.status === "completed")) {
+                return status.roundsCompleted > 0;
+            }
+            await new Promise((resolve) => {
+                setTimeout(resolve, 20);
+            });
+        }
+        return false;
     }
 
     it("runs a workers=2 simulation across real worker threads and reports workers on the job/report", async () => {
@@ -97,19 +121,10 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             throw new Error("expected job to be created");
         }
 
-        // Poll for some non-zero progress before the run finishes — generous enough to not be flaky
-        // on a slow/contended CI machine, but bounded so a genuine regression still fails promptly.
-        let sawProgress = false;
-        for (let i = 0; i < 500; i++) {
-            const status = service.getStatus(result.job.id);
-            if (status && (status.roundsCompleted > 0 || status.status === "completed")) {
-                sawProgress = status.roundsCompleted > 0;
-                break;
-            }
-            await new Promise((resolve) => {
-                setTimeout(resolve, 20);
-            });
-        }
+        // Poll for some non-zero progress before the run finishes — bounded so a genuine regression
+        // (workers that never advance) still fails, but generous enough not to be flaky on a
+        // slow/contended CI machine sharing the box with the rest of the integration lane.
+        const sawProgress = await waitForFirstProgressRealTime(service, result.job.id);
         expect(sawProgress).toBe(true);
 
         await waitForTerminalRealTime(service, result.job.id);
@@ -139,17 +154,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             throw new Error("expected job to be created");
         }
 
-        let sawProgress = false;
-        for (let i = 0; i < 500; i++) {
-            const status = service.getStatus(result.job.id);
-            if (status && (status.roundsCompleted > 0 || status.status === "completed")) {
-                sawProgress = status.roundsCompleted > 0;
-                break;
-            }
-            await new Promise((resolve) => {
-                setTimeout(resolve, 20);
-            });
-        }
+        const sawProgress = await waitForFirstProgressRealTime(service, result.job.id);
         expect(sawProgress).toBe(true);
         service.cancel(result.job.id);
 
