@@ -287,6 +287,40 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         expect(mode.outcomeCount).toBe(2);
     });
 
+    it("accumulates totalWeight exactly when each individual weight is a safe-integer number but their sum crosses above Number.MAX_SAFE_INTEGER", () => {
+        // Every other uint64 test hands the analyzer already-large *bigint* weights; here each weight is a plain
+        // safe-integer *number* on its own, and only their sum overflows Number.MAX_SAFE_INTEGER. Summed in a JS
+        // number the running total would stick at 2^53 (9007199254740991 + 1 + 1 === 9007199254740992), losing the
+        // final unit. The bigint accumulation must instead land on the exact 9007199254740993 and emit it as a
+        // canonical string, proving the total is accrued in bigint rather than in a lossy number.
+        const maxSafe = Number.MAX_SAFE_INTEGER;
+        const analysis = new StakeEngineStandaloneAnalyzer().analyze({
+            stakeDir: "/fake/stake-dir",
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    cost: 1,
+                    outcomes: [
+                        {id: 0, weight: maxSafe, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
+                        {id: 1, weight: 1, payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
+                        {id: 2, weight: 1, payoutMultiplier: 200, ratio: 2, events: [{index: 0, type: "win", amount: 200}]},
+                    ],
+                },
+            ],
+        });
+
+        const [mode] = analysis.modes;
+        expect(mode.totalWeight).toBe("9007199254740993");
+        expect(typeof mode.totalWeight).toBe("string");
+        expect(mode.outcomeCount).toBe(3);
+        // The two unit-weight winning outcomes are 1/9007199254740993 each -- an exact fraction whose denominator
+        // is above Number.MAX_SAFE_INTEGER, so the analyzer must expose it as a canonical decimal string, not a float.
+        const oneOverTotal = mode.payoutDistribution.find((bucket) => bucket.payoutMultiplier === 100)?.probability;
+        expect(typeof oneOverTotal).toBe("string");
+        expect(mode.payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
+    });
+
     it("keeps uint64 weights exact and emits canonical decimal probabilities when the total exceeds Number.MAX_SAFE_INTEGER", () => {
         const winWeight = BigInt("9007199254740993");
         const analysis = new StakeEngineStandaloneAnalyzer().analyze({
