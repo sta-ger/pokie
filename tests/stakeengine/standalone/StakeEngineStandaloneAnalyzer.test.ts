@@ -192,6 +192,31 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         expect(byCategory.get("feature")?.occurrenceFrequency).toBe("0.005");
     });
 
+    it("produces numerically identical -- not merely close -- weighted metrics whether the weights are small integers or scaled to uint64 magnitude", () => {
+        // The uint64-scale test above asserts each metric with toBeCloseTo, which would still pass if the bigint
+        // fixed-point path drifted by an ulp. This proves the stronger claim its comment makes: scaling every weight
+        // by 1e16 (total 1e19, above Number.MAX_SAFE_INTEGER, every weight inside uint64) reproduces the small-integer
+        // doubles *exactly*, so there is provably zero precision loss on the uint64 path -- not just an acceptable one.
+        const smallInteger = handComputableReadResult();
+        const [smallMode] = smallInteger.modes;
+        const scaled: StakeEngineOutcomeSourceReadResult = {
+            ...smallInteger,
+            modes: [{...smallMode, outcomes: smallMode.outcomes.map((outcome) => ({...outcome, weight: BigInt(outcome.weight as number) * BigInt("10000000000000000")}))}],
+        };
+
+        const [smallAnalysis] = new StakeEngineStandaloneAnalyzer().analyze(smallInteger).modes;
+        const [scaledAnalysis] = new StakeEngineStandaloneAnalyzer().analyze(scaled).modes;
+
+        expect(scaledAnalysis.totalWeight).toBe("10000000000000000000");
+        // Byte-for-byte identical doubles, asserted with strict === via toBe, for every weighted metric.
+        expect(scaledAnalysis.rtp).toBe(smallAnalysis.rtp);
+        expect(scaledAnalysis.hitFrequency).toBe(smallAnalysis.hitFrequency);
+        expect(scaledAnalysis.zeroWinFrequency).toBe(smallAnalysis.zeroWinFrequency);
+        expect(scaledAnalysis.variance).toBe(smallAnalysis.variance);
+        expect(scaledAnalysis.standardDeviation).toBe(smallAnalysis.standardDeviation);
+        expect(scaledAnalysis.maxWinProbability).toBe(smallAnalysis.maxWinProbability);
+    });
+
     it("emits a deterministic 40-place decimal for a non-terminating fraction rather than silently rounding it into a number", () => {
         // Three equal uint64-scale weights: each probability is exactly 1/3, which no float and no finite terminating
         // decimal can represent. The analyzer must expose the canonical 40-place repeating decimal.
