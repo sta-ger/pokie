@@ -230,6 +230,36 @@ describe("StakeEngineCommand analyze", () => {
             fs.rmSync(dir, {recursive: true, force: true});
         }
     });
+
+    it("end to end: --out writes a uint64-scale report file whose canonical string weights survive round-tripping through disk with no precision loss", async () => {
+        // The other uint64 CLI tests only exercise the stdout/summary paths; the --out file-write path is a distinct
+        // representative CLI output and is elsewhere only covered with a stubbed reader and small-integer data. Drive the
+        // real read -> analyze -> fs.writeFileSync path over uint64-scale weights whose total exceeds Number.MAX_SAFE_INTEGER,
+        // then read the file back off disk and prove the canonical decimal strings survived rather than re-floating.
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-out-uint64-test-"));
+        const outFile = path.join(dir, "report.json");
+        try {
+            const uint64Max = BigInt("18446744073709551615");
+            writeUint64FixtureDirectory(dir, [uint64Max, BigInt(1)]);
+            const expectedTotalWeight = (uint64Max + BigInt(1)).toString();
+
+            const command = new StakeEngineCommand("1.3.0");
+            const exitCode = await command.run(["analyze", dir, "--out", outFile]);
+            expect(exitCode).toBe(0);
+
+            const contents = fs.readFileSync(outFile, "utf-8");
+            expect(() => JSON.parse(contents)).not.toThrow();
+            const parsed = JSON.parse(contents) as {analysis: StakeEngineStandaloneAnalysis};
+            const [mode] = parsed.analysis.modes;
+
+            expect(typeof mode.totalWeight).toBe("string");
+            expect(mode.totalWeight).toBe(expectedTotalWeight);
+            expect(mode.payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
+            expect(collectUnsafeNumbers(parsed)).toEqual([]);
+        } finally {
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
+    });
 });
 
 // Writes a uint64-scale standalone directory whose second outcome carries a malformed event (an object with no string
