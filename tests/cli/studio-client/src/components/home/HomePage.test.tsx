@@ -11,13 +11,27 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 // `getByRole("navigation", {name})`. Real, but an order of magnitude too small to be what this suite's
 // gate failures were about.
 //
-// Nor was heap: measured over the whole lane, its peak is ~1.0GB RSS against the container's 2GiB cap,
-// and this file's own retained heap tops out near 200-270MB -- so the accumulating-worker-memory story
-// that package.json's --workerIdleMemoryLimit and the rationale in jest.config.mjs were written for is
-// not what fails here. What this file actually had wrong was that its tab-switch assertions could not
-// fail for the reason they were written to catch (see expectActiveSection below), which no amount of
-// timeout or memory tuning could have fixed. With that fixed, what is left is the plain per-test budget
-// -- see the measurements above jest.setTimeout below.
+// Heap is not it either, but *only because package.json's --workerIdleMemoryLimit=192MB is there*. An
+// earlier revision of this comment read the lane's ~1.0-1.2GB peak as evidence that the accumulating-
+// worker-memory story behind that flag and jest.config.mjs's rationale was imaginary. That reading was
+// circular: the number was measured with the flag active, i.e. with the accumulation it exists to
+// suppress already suppressed. Re-measured both ways in this container (cgroup memory.current sampled
+// over the whole `--selectProjects studio-client-workflows --maxWorkers=2` lane, against memory.max =
+// 2GiB):
+//
+//   | lane config                  | wall clock | peak memory.current | this file's worker heap |
+//   |------------------------------|-----------:|--------------------:|------------------------:|
+//   | --workerIdleMemoryLimit=192MB|      508s  |  1.216GiB (60.8%)   |                  249MB  |
+//   | flag removed                 |      476s  |  1.896GiB (94.8%)   |                  462MB  |
+//
+// Without it the workers' heaps climb monotonically across the lane (215MB on the first file to 608MB
+// on the last) and the container ends up 111MB from an OOM kill, for ~30s of wall clock. So the flag is
+// load-bearing: do not delete it on the strength of a peak measured while it was switched on.
+//
+// What this file actually had wrong was that its tab-switch assertions could not fail for the reason
+// they were written to catch (see expectActiveSection below), which no amount of timeout or memory
+// tuning could have fixed. With that fixed, what is left is the plain per-test budget -- see the
+// measurements above jest.setTimeout below.
 //
 // The scoping below is therefore kept for precision, not speed: every query targets the smallest
 // container that still identifies it -- the "Sections" nav for HomePage's own tab buttons, the guided
