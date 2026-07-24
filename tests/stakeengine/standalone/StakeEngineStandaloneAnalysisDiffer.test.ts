@@ -1,5 +1,7 @@
 import type {StakeEngineStandaloneAnalysis, StakeEngineStandaloneModeAnalysis} from "../../../src/stakeengine/standalone/StakeEngineStandaloneAnalysis.js";
 import {StakeEngineStandaloneAnalysisDiffer} from "../../../src/stakeengine/standalone/StakeEngineStandaloneAnalysisDiffer.js";
+import {StakeEngineStandaloneAnalyzer} from "../../../src/stakeengine/standalone/StakeEngineStandaloneAnalyzer.js";
+import type {StakeEngineOutcomeSourceReadResult} from "../../../src/stakeengine/standalone/StakeEngineOutcomeSourceReadResult.js";
 
 function buildMode(modeName: string, overrides: Partial<StakeEngineStandaloneModeAnalysis> = {}): StakeEngineStandaloneModeAnalysis {
     return {
@@ -180,6 +182,52 @@ describe("StakeEngineStandaloneAnalysisDiffer", () => {
         // Every carried-through exact decimal stays a string; the 40-place value is preserved digit-for-digit.
         expect(diff.perMode.base.payoutDistribution[1].left).toBe(nonTerminating);
         expect(typeof diff.perMode.base.payoutDistribution[0].right).toBe("string");
+    });
+
+    it("diffs two real uint64-scale analyzer outputs -- not hand-built mode analyses -- carrying exact string probabilities through the sequential path untouched", () => {
+        // Build the left/right analyses through the genuine StakeEngineStandaloneAnalyzer over uint64-scale weights whose
+        // totals exceed Number.MAX_SAFE_INTEGER, so the analyzer itself emits canonical decimal strings. This closes the
+        // gap the other sequential test leaves: it hand-builds mode analyses, whereas here the strings the differ aligns
+        // are produced by the real analyze() path, proving a two-analysis (sequential) comparison never re-floats them.
+        const buildReadResult = (lossWeight: bigint, winWeight: bigint): StakeEngineOutcomeSourceReadResult => ({
+            stakeDir: "/fake/stake-dir",
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    cost: 1,
+                    outcomes: [
+                        {id: 0, weight: lossWeight, payoutMultiplier: 0, ratio: 0, events: [{index: 0, type: "reveal"}]},
+                        {id: 1, weight: winWeight, payoutMultiplier: 100, ratio: 1, events: [{index: 0, type: "win", amount: 100}]},
+                    ],
+                },
+            ],
+        });
+        const analyzer = new StakeEngineStandaloneAnalyzer();
+        // Both totals are 1e19 -- above Number.MAX_SAFE_INTEGER yet inside uint64 -- with different splits: left is
+        // 0.97 / 0.03, right is 0.995 / 0.005.
+        const left = analyzer.analyze(buildReadResult(BigInt("9700000000000000000"), BigInt("300000000000000000")));
+        const right = analyzer.analyze(buildReadResult(BigInt("9950000000000000000"), BigInt("50000000000000000")));
+
+        // The analyzer must have emitted string probabilities/totalWeight in the first place, or this test would be
+        // asserting against numbers and silently miss a re-float regression.
+        expect(left.modes[0].totalWeight).toBe("10000000000000000000");
+        expect(right.modes[0].totalWeight).toBe("10000000000000000000");
+        expect(left.modes[0].payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
+
+        const diff = new StakeEngineStandaloneAnalysisDiffer().diff(left, right);
+
+        expect(diff.perMode.base.payoutDistribution).toEqual([
+            {payoutMultiplier: 0, left: "0.97", right: "0.995"},
+            {payoutMultiplier: 100, left: "0.03", right: "0.005"},
+        ]);
+        expect(diff.perMode.base.payoutDistribution.every((bucket) => typeof bucket.left === "string" && typeof bucket.right === "string")).toBe(true);
+        // The numeric metrics (rtp/hitFrequency), which never leave Number range, still diff: 0.005 - 0.03.
+        expect(diff.perMode.base.rtp.left).toBeCloseTo(0.03, 10);
+        expect(diff.perMode.base.rtp.right).toBeCloseTo(0.005, 10);
+        expect(diff.perMode.base.rtp.delta).toBeCloseTo(-0.025, 10);
+        expect(diff.perMode.base.rtp.percentDelta).toBeCloseTo(-83.333, 2);
+        expect(diff.perMode.base.hitFrequency.delta).toBeCloseTo(-0.025, 10);
     });
 
     it("aligns event classification categories with null for added and removed categories", () => {
