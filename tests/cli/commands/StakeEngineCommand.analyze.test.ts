@@ -194,6 +194,11 @@ describe("StakeEngineCommand analyze", () => {
             expect(mode.totalWeight).toBe("10000000000000000000");
             expect(mode.rtp).toBeCloseTo(0.075, 10);
             expect(mode.hitFrequency).toBeCloseTo(0.03, 10);
+            // variance/standardDeviation are the other two headline weighted metrics: E[ratio^2] - E[ratio]^2 =
+            // (0.025*2^2 + 0.005*5^2) - 0.075^2 = 0.225 - 0.005625 = 0.219375 -- proven exact through the real CLI path,
+            // not just the unit-level analyzer, so the representative JSON output carries every weighted metric losslessly.
+            expect(mode.variance).toBeCloseTo(0.219375, 10);
+            expect(mode.standardDeviation).toBeCloseTo(Math.sqrt(0.219375), 10);
             expect(mode.maxPayoutMultiplier).toBe(500);
             expect(mode.maxRatio).toBe(5);
             expect(mode.payoutDistribution).toEqual([
