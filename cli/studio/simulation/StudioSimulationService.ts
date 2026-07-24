@@ -55,6 +55,7 @@ export class StudioSimulationService {
         rounds: number,
         options: ParallelSimulationRunOptions,
     ) => ParallelSimulationRunner;
+    private onWorkerStarted: ((jobId: string, workerIndex: number) => void) | undefined;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -83,6 +84,12 @@ export class StudioSimulationService {
         this.createId = createId;
         this.workerEntryUrl = workerEntryUrl;
         this.createParallelSimulationRunner = createParallelSimulationRunner;
+    }
+
+    // Integration harness hook.  It has no effect unless explicitly set and
+    // exposes worker-thread boot separately from simulation progress.
+    public setWorkerStartedObserver(observer: ((jobId: string, workerIndex: number) => void) | undefined): void {
+        this.onWorkerStarted = observer;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
@@ -239,6 +246,9 @@ export class StudioSimulationService {
             yieldToEventLoop: this.yieldToEventLoop,
             signal: record.abortController.signal,
             workerEntryUrl: this.workerEntryUrl,
+            onWorkerStarted: this.onWorkerStarted
+                ? (workerIndex) => this.onWorkerStarted?.(record.id, workerIndex)
+                : undefined,
             onProgress: (roundsCompleted) => {
                 record.roundsCompleted = roundsCompleted;
                 record.durationMs = this.now() - record.startedAt;

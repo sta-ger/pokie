@@ -52,6 +52,9 @@ export type ParallelSimulationRunOptions = {
     yieldToEventLoop?: () => Promise<void>;
     // Aggregate rounds completed across every worker.
     onProgress?: (roundsCompleted: number) => void;
+    // Fires when a real worker thread reaches `online`; independent of
+    // progress and therefore suitable for deterministic lifecycle tests.
+    onWorkerStarted?: (workerIndex: number) => void;
     // Where the compiled worker entry point lives — optional. When omitted (the common case), workers
     // > 1 uses this package's own bundled worker entry automatically; only supply this to point at a
     // different build (e.g. a test pointing at source, or an embedder shipping its own copy).
@@ -201,6 +204,7 @@ export class ParallelSimulationRunner {
         const results = await coordinator.run(requests, {
             signal: this.options.signal,
             onProgress: this.options.onProgress ? (progress) => this.reportProgress(progressByWorker, progress) : undefined,
+            onWorkerStarted: this.options.onWorkerStarted,
         });
 
         const merger = new SimulationStatisticsMerger();

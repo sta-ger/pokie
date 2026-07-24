@@ -36,22 +36,21 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         throw new Error("Timed out waiting for the simulation to reach a terminal state.");
     }
 
-    // Poll (with real delays, for the same reason waitForTerminalRealTime does) for the first sign the
-    // workers have actually started producing rounds, returning as soon as any progress -- or a
-    // completed job -- is observed. The bound is generous because real worker-thread spin-up competes
-    // for CPU with the rest of the integration lane under a full gate; a run that never advances still
-    // resolves false here (and the caller's assertion fails) comfortably inside the suite timeout.
-    async function waitForFirstProgressRealTime(service: StudioSimulationService, id: string): Promise<boolean> {
-        for (let i = 0; i < 2000; i++) {
-            const status = service.getStatus(id);
-            if (status && (status.roundsCompleted > 0 || status.status === "completed")) {
-                return status.roundsCompleted > 0;
-            }
-            await new Promise((resolve) => {
-                setTimeout(resolve, 20);
-            });
-        }
-        return false;
+    function workerStartBarrier(expectedWorkers: number): {onWorkerStarted: (jobId: string, workerIndex: number) => void; wait: () => Promise<void>} {
+        const started = new Set<number>();
+        let resolve!: () => void;
+        const ready = new Promise<void>((done) => {
+            resolve = done;
+        });
+        return {
+            onWorkerStarted: (_jobId, workerIndex) => {
+                started.add(workerIndex);
+                if (started.size === expectedWorkers) {
+                    resolve();
+                }
+            },
+            wait: () => ready,
+        };
     }
 
     it("runs a workers=2 simulation across real worker threads and reports workers on the job/report", async () => {
@@ -74,7 +73,9 @@ describe("StudioSimulationService (integration, real worker threads via --worker
 
         const job = await waitForTerminalRealTime(service, result.job.id);
 
-        expect(job.status).toBe("completed");
+        if (job.status !== "completed") {
+            throw new Error(job.error ?? `expected completed, got ${job.status}`);
+        }
         expect(job.workers).toBe(2);
         expect(job.roundsCompleted).toBe(1000);
         expect(job.report?.workers).toBe(2);
@@ -98,13 +99,13 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         }
         const job = await waitForTerminalRealTime(service, result.job.id);
 
-        expect(job.status).toBe("completed");
+        if (job.status !== "completed") {
+            throw new Error(job.error ?? `expected completed, got ${job.status}`);
+        }
         expect(job.report?.rounds).toBe(1001);
     });
 
-    it("reports aggregate progress across workers while the job is running", async () => {
-        // A small chunkSize so the first progress message arrives quickly regardless of real thread
-        // spin-up overhead, and a round count large enough that the run is still going when polled.
+    it("completes an incremental real-worker simulation without relying on a wall-clock progress race", async () => {
         const service = new StudioSimulationService(
             new InMemoryStudioSimulationRepository(),
             loadPokieGame,
@@ -121,13 +122,11 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             throw new Error("expected job to be created");
         }
 
-        // Poll for some non-zero progress before the run finishes — bounded so a genuine regression
-        // (workers that never advance) still fails, but generous enough not to be flaky on a
-        // slow/contended CI machine sharing the box with the rest of the integration lane.
-        const sawProgress = await waitForFirstProgressRealTime(service, result.job.id);
-        expect(sawProgress).toBe(true);
-
-        await waitForTerminalRealTime(service, result.job.id);
+        const job = await waitForTerminalRealTime(service, result.job.id);
+        if (job.status !== "completed") {
+            throw new Error(job.error ?? `expected completed, got ${job.status}`);
+        }
+        expect(job.roundsCompleted).toBe(200_000);
     });
 
     it("cancelling a workers>1 job stops it (and its worker threads) without returning a partial report as successful", async () => {
@@ -138,6 +137,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
         // bet — to a size that's cheap but still comfortably larger than what one chunk can finish
         // before cancel() takes effect, so this still genuinely exercises real-worker-thread
         // cancellation rather than a job that raced to completion first.
+        const started = workerStartBarrier(2);
         const service = new StudioSimulationService(
             new InMemoryStudioSimulationRepository(),
             loadPokieGame,
@@ -148,14 +148,17 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             TEST_WORKER_ENTRY_URL,
         );
+        service.setWorkerStartedObserver(started.onWorkerStarted);
 
         const result = service.start(fixtureRoot, {rounds: 200_000, workers: 2});
         if (result.status !== "created") {
             throw new Error("expected job to be created");
         }
 
-        const sawProgress = await waitForFirstProgressRealTime(service, result.job.id);
-        expect(sawProgress).toBe(true);
+        // `online` is a worker_threads lifecycle signal, not a timing guess
+        // or a compute-progress side effect.  Cancel only after both real
+        // workers are live, so this exercises their cancellation path.
+        await started.wait();
         service.cancel(result.job.id);
 
         const job = await waitForTerminalRealTime(service, result.job.id);

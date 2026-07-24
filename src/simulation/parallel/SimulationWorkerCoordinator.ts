@@ -11,6 +11,7 @@ export type SimulationWorkerProgress = {workerIndex: number; roundsCompleted: nu
 export type SimulationWorkerCoordinatorRunOptions = {
     signal?: AbortSignal;
     onProgress?: (progress: SimulationWorkerProgress) => void;
+    onWorkerStarted?: (workerIndex: number) => void;
 };
 
 // Owns the actual worker_threads lifecycle for one simulation run: spawns one real Worker per
@@ -38,7 +39,7 @@ export class SimulationWorkerCoordinator {
         requests: SimulationWorkerRequest[],
         options: SimulationWorkerCoordinatorRunOptions = {},
     ): Promise<SimulationWorkerResult[]> {
-        const {signal, onProgress} = options;
+        const {signal, onProgress, onWorkerStarted} = options;
         if (signal?.aborted) {
             throw new SimulationCancelledError();
         }
@@ -57,23 +58,21 @@ export class SimulationWorkerCoordinator {
             const results = new Array<SimulationWorkerResult | undefined>(requests.length).fill(undefined);
             let settled = false;
 
-            const terminateAll = (): void => {
-                for (const worker of workers) {
-                    // Best-effort: a worker that already exited/errored rejects terminate() too — never
-                    // let that mask the real reason this run is ending.
-                    worker.terminate().catch(() => undefined);
-                }
+            const terminateAll = async (): Promise<void> => {
+                await Promise.allSettled(workers.map((worker) => worker.terminate()));
             };
 
-            const onAbort = (): void => finish(() => reject(new SimulationCancelledError()));
+            const onAbort = (): void => {
+                finish(() => reject(new SimulationCancelledError()));
+            };
 
-            function finish(action: () => void): void {
+            async function finish(action: () => void): Promise<void> {
                 if (settled) {
                     return;
                 }
                 settled = true;
                 signal?.removeEventListener("abort", onAbort);
-                terminateAll();
+                await terminateAll();
                 action();
             }
 
@@ -81,6 +80,8 @@ export class SimulationWorkerCoordinator {
 
             workers.forEach((worker, index) => {
                 const request = requests[index];
+
+                worker.once("online", () => onWorkerStarted?.(request.workerIndex));
 
                 worker.on("message", (raw: unknown) => {
                     if (settled) {
