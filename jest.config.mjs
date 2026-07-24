@@ -139,8 +139,17 @@ export default {
     // repeatedly never fixed it. `--runInBand` (tried, see docs/testing.md) is strictly worse here: it
     // funnels all 22 files through the *main* process, whose V8 old-space limit the 2GiB cap pins at
     // ~1120MB, on top of pushing the lane past 20 minutes. So test:workflows keeps the measured-good
-    // `--maxWorkers=2` and adds `--workerIdleMemoryLimit=512MB`, which makes Jest recycle a worker once
-    // its heapUsed passes 512MB -- bounding the lane's footprint instead of letting it accumulate.
+    // `--maxWorkers=2` and pairs it with `--workerIdleMemoryLimit`, which makes Jest re-measure a
+    // worker's heapUsed after each file and restart it past the threshold. The threshold has to sit
+    // *below* what one heavy suite of this lane retains, or the check can never trip on the files that
+    // actually cost anything: HomePage.test.tsx alone finishes at 205-277MB heapUsed across runs
+    // (`--logHeapUsage`), so the 512MB this used to carry only tripped after a worker had already
+    // swallowed two or three such suites -- by which point its RSS had roughly doubled (measured: main
+    // process plus one worker peaks at ~654MB on that single file), which is how two workers still
+    // reached the ~1.92GB peak that the 2GiB cap turns into GC thrash. 192MB is under even the lowest
+    // of those retained-heap readings, so any suite that heavy hands back a recycled worker and the
+    // lane's footprint stays flat at one file's peak instead of accumulating; cheap suites still share
+    // a worker, so this is not `--runInBand` in disguise.
     // These timeouts stay as defense-in-depth
     // headroom for an externally-loaded gate host, not as the primary mechanism. This is contention
     // headroom, not a per-test budget for real work. 60000ms clears the observed timeouts with margin and leaves room for a test

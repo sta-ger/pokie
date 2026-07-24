@@ -114,9 +114,11 @@ describe("HomePage", () => {
     // This is by far the heaviest HomePage test: it chains the most sequential real userEvent
     // interactions (dirty the draft, open the modal, Stay, restore, re-open, Leave, land on the project)
     // and so sits closest to its own per-test budget. check:full itself no longer starves it --
-    // test:workflows now recycles its workers on a heap-size limit (`--maxWorkers=2
-    // --workerIdleMemoryLimit=512MB`, see package.json and the rationale in jest.config.mjs), so this
-    // suite no longer inherits a worker already thrashing the gate container's 2GiB cap -- and under
+    // test:workflows now recycles its workers on a heap-size limit set below what one heavy suite of
+    // this lane retains (`--maxWorkers=2 --workerIdleMemoryLimit=192MB`, see package.json and the
+    // rationale in jest.config.mjs; this very file measures 205-277MB of retained heap, which is what
+    // that threshold is calibrated against), so this suite no longer inherits a worker that has already
+    // accumulated two or three suites' heap against the gate container's 2GiB cap -- and under
     // check:full this budget is pure headroom. It stays at 120000ms rather than dropping
     // to the 90000ms the lane's other two heaviest tests use because test:coverage (via check:release)
     // still runs this lane alongside every other project *and* under coverage
