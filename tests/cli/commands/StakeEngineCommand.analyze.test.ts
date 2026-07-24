@@ -206,7 +206,44 @@ describe("StakeEngineCommand analyze", () => {
             fs.rmSync(dir, {recursive: true, force: true});
         }
     });
+
+    it("end to end: rejects a malformed event in a uint64-scale directory with exit 1, surfacing the error in the JSON report and never running the analyzer", async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-malformed-test-"));
+        try {
+            // A directory whose weights are genuine uint64-scale values (total above Number.MAX_SAFE_INTEGER), but whose
+            // second outcome carries a malformed event (an object with no string "type"). The reader must raise an
+            // error-severity stakeengine-standalone-books-malformed-event, which makes the CLI exit 1, omit the analysis
+            // entirely, and still serialize the weights it did read as canonical strings -- no precision loss on the way out.
+            writeMalformedEventUint64Directory(dir, BigInt("18446744073709551615"), BigInt("9700000000000000000"));
+
+            const command = new StakeEngineCommand("1.3.0");
+            const exitCode = await command.run(["analyze", dir, "--format", "json"]);
+            expect(exitCode).toBe(1);
+
+            const printedJson = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            const parsed = JSON.parse(printedJson) as {issues: ValidationIssue[]; analysis?: StakeEngineStandaloneAnalysis};
+            const malformed = parsed.issues.find((issue) => issue.code === "stakeengine-standalone-books-malformed-event");
+            expect(malformed?.severity).toBe("error");
+            expect(parsed.analysis).toBeUndefined();
+            expect(collectUnsafeNumbers(parsed)).toEqual([]);
+        } finally {
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
+    });
 });
+
+// Writes a uint64-scale standalone directory whose second outcome carries a malformed event (an object with no string
+// "type"), so a test can drive the reader's error-severity malformed-event rejection through the real CLI path while the
+// weights themselves stay genuine uint64 values above Number.MAX_SAFE_INTEGER.
+function writeMalformedEventUint64Directory(dir: string, lossWeight: bigint, winWeight: bigint): void {
+    fs.writeFileSync(path.join(dir, "index.json"), JSON.stringify({modes: [{name: "base", cost: 1, events: "books.jsonl.zst", weights: "lookup.csv"}]}));
+    fs.writeFileSync(path.join(dir, "lookup.csv"), `0,${lossWeight},0\n1,${winWeight},100\n`);
+    const jsonl = [
+        JSON.stringify({id: 0, payoutMultiplier: 0, events: [{index: 0, type: "reveal"}]}),
+        JSON.stringify({id: 1, payoutMultiplier: 100, events: [{index: 0}]}),
+    ].join("\n") + "\n";
+    fs.writeFileSync(path.join(dir, "books.jsonl.zst"), zlib.zstdCompressSync(Buffer.from(jsonl, "utf-8")));
+}
 
 // Writes a standalone Stake Engine directory whose per-row weight and payoutMultiplier are given verbatim, so a test
 // can exercise distinct payout buckets and uint64-scale weights the shared uint64 fixture writer doesn't cover.
