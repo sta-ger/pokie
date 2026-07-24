@@ -16,7 +16,8 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 // that package.json's --workerIdleMemoryLimit and the rationale in jest.config.mjs were written for is
 // not what fails here. What this file actually had wrong was that its tab-switch assertions could not
 // fail for the reason they were written to catch (see expectActiveSection below), which no amount of
-// timeout or memory tuning could have fixed.
+// timeout or memory tuning could have fixed. With that fixed, what is left is the plain per-test budget
+// -- see the measurements above jest.setTimeout below.
 //
 // The scoping below is therefore kept for precision, not speed: every query targets the smallest
 // container that still identifies it -- the "Sections" nav for HomePage's own tab buttons, the guided
@@ -56,6 +57,45 @@ function guidedSection() {
 async function expectActiveSection(name: string): Promise<void> {
     await waitFor(() => expect(sectionsNav().getByRole("button", {name})).toHaveAttribute("aria-current", "page"));
 }
+
+// One budget for the whole file, because all four tests are in one cost class rather than three cheap ones
+// and a heavy one: each renders the entire routed app (renderRoutedApp -> HomePage with all three tab bodies
+// permanently mounted, two whole BlueprintEditorPage instances among them) and then drives a chain of real
+// userEvent interactions across that ~880-element tree with real timers. Measured in this container at idle:
+// 3.7s / 3.9s / 2.4s / 7.0s -- a 4.5x spread, not a difference in kind.
+//
+// The rest of this lane already pins an explicit per-test budget on every test of every such suite (45000ms
+// in the ProjectDashboardPage/navigation-guard/validation suites, 90000ms for happyPath and routing's
+// back/forward) instead of riding jest.config.mjs's lane-wide 60000ms default. This file was the exception,
+// and it is the file whose gate timeouts keep coming back. That default is not sized for the gate container:
+// the numbers behind it in docs/testing.md come from the 4-CPU reference box, whereas the gate's cgroup quota
+// is 2 CPUs -- which os.cpus() does not report, it says 4 -- so --maxWorkers=2 runs two jsdom workers plus the
+// Jest main process against two cores, before any external load on the gate host.
+//
+// Reproduced here by oversubscribing that same 2-CPU quota with spinner processes. The scaling is
+// superlinear, and -- the part that matters -- noisy: the two 6-spinner rows are the same four tests under
+// the same load, minutes apart.
+//
+//   | spinners alongside the run | test 1 | test 2 | test 3 | test 4 |
+//   |---|---|---|---|---|
+//   | none                       |  3.7s  |  3.9s  |  2.4s  |  7.0s  |
+//   | 2                          |  8.6s  | 10.3s  |  6.8s  | 18.5s  |
+//   | 6, run A                   | 32.2s  |  >60s  | 28.4s  | 83.6s  |
+//   | 6, run B                   | 31.5s  | 26.8s  | 24.8s  | 65.4s  |
+//
+// In run A test 2 is killed by the 60000ms default -- by the whole-test budget, not by any assertion, which
+// is why nothing ever named itself unsatisfied -- while its three siblings, doing the same work in the same
+// run, finish green at 28-84s. In run B that same test finishes in 26.8s. So this is a budget too small for
+// the machine's worst minute, not an assertion that cannot settle (that class of bug in this file was the
+// expectActiveSection one above, and it is fixed, which is precisely why the budget is what surfaces now).
+//
+// 120000ms is the number test 4 already carried, measured the same way; extending it to the other three
+// covers both 6-spinner runs with margin, and it stays above the 90000ms happyPath/routing use because
+// test:coverage (via check:release) runs this lane alongside every other project *and* under coverage
+// instrumentation, which check:full does not. It relaxes, weakens, and removes nothing: setupTests.ts's
+// 15000ms per-assertion asyncUtilTimeout stays far below it, so a genuinely stuck assertion still fails by
+// naming itself rather than as an anonymous whole-test timeout.
+jest.setTimeout(120000);
 
 describe("HomePage", () => {
     it("defaults to Design & Build and switches between tabs, keeping aria-current on the active one", async () => {
@@ -140,15 +180,9 @@ describe("HomePage", () => {
         expect(guidedSection().getByLabelText("New symbol id")).toHaveValue("wild-draft");
     });
 
-    // This is by far the heaviest HomePage test: it chains the most sequential real userEvent
-    // interactions (dirty the draft, open the modal, Stay, restore, re-open, Leave, land on the project)
-    // and so sits closest to its own per-test budget. Measured: ~7s in the full lane, and ~57s with the
-    // box deliberately oversubscribed well past anything check:full produces (the container's cgroup
-    // quota is 2 CPUs, which `os.cpus()` does not report -- it says 4). The 120000ms is sized for that
-    // worst case rather than the 90000ms the lane's other two heaviest tests use, because test:coverage
-    // (via check:release) still runs this lane alongside every other project *and* under coverage
-    // instrumentation. Headroom only: no assertion is relaxed or removed by this number, and the
-    // budget was never what made this test fail -- see the expectActiveSection note at the top.
+    // The heaviest test in the file: it chains the most sequential real userEvent interactions (dirty the
+    // draft, open the modal, Stay, restore, re-open, Leave, land on the project), which is why it sets the
+    // upper end of the measurements behind the file-wide budget above.
     it("asks for confirmation before leaving a dirty Design & Build draft to open a project, and Cancel preserves it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -219,5 +253,5 @@ describe("HomePage", () => {
 
         await waitFor(() => expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeDefined());
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
-    }, 120000);
+    });
 });
