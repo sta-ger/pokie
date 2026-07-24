@@ -269,6 +269,36 @@ describe("StakeEngineCommand analyze", () => {
         }
     });
 
+    it("end to end: rejects a lookup weight above uint64 max with exit 1, surfacing the error in the JSON report and never running the analyzer", async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-weight-overflow-test-"));
+        try {
+            // The weight-side counterpart to the malformed-event test: one lookup weight is uint64 max + 1, above both
+            // Number.MAX_SAFE_INTEGER and the uint64 ceiling the analyzer's exact fixed-point path is built around. The
+            // validator must raise an error-severity stakeengine-standalone-outcome-weight-not-positive-integer, making
+            // the CLI exit 1, omit the analysis entirely, and emit no unsafe number anywhere in the JSON report -- the
+            // out-of-range weight is reported as a string in the message, never silently truncated to a lossy number.
+            const aboveUint64Max = BigInt("18446744073709551615") + BigInt(1);
+            writeExactWeightFixtureDirectory(dir, [
+                {id: 0, weight: BigInt("9700000000000000000"), payoutMultiplier: 0},
+                {id: 1, weight: aboveUint64Max, payoutMultiplier: 100},
+            ]);
+
+            const command = new StakeEngineCommand("1.3.0");
+            const exitCode = await command.run(["analyze", dir, "--format", "json"]);
+            expect(exitCode).toBe(1);
+
+            const printedJson = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            const parsed = JSON.parse(printedJson) as {issues: ValidationIssue[]; analysis?: StakeEngineStandaloneAnalysis};
+            const overflow = parsed.issues.find((issue) => issue.code === "stakeengine-standalone-outcome-weight-not-positive-integer");
+            expect(overflow?.severity).toBe("error");
+            expect(overflow?.message).toContain(aboveUint64Max.toString());
+            expect(parsed.analysis).toBeUndefined();
+            expect(collectUnsafeNumbers(parsed)).toEqual([]);
+        } finally {
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
+    });
+
     it("end to end: --out writes a uint64-scale report file whose canonical string weights survive round-tripping through disk with no precision loss", async () => {
         // The other uint64 CLI tests only exercise the stdout/summary paths; the --out file-write path is a distinct
         // representative CLI output and is elsewhere only covered with a stubbed reader and small-integer data. Drive the
