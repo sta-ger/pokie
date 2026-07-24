@@ -5,21 +5,19 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 // HomePage keeps all three tab bodies permanently mounted (see HomePage.tsx) -- including two whole
 // BlueprintEditorPage instances -- so a `screen`-wide *ByRole/*ByLabelText query has to walk the entire
-// ~900-element document and run jsdom's getComputedStyle over it to decide what's in the accessibility
-// tree. Measured on an idle machine: ~800-1100ms for a single `screen.getByRole("button", {name})` or
-// `screen.getByLabelText(...)`, against ~30ms for `getByRole("navigation")`, ~13ms for
-// `getByRole("dialog")` and ~1ms for the same query scoped to a small container. That per-query cost --
-// not the interactions themselves -- is what made this suite heavy, and it is what makes it starvation-
-// prone under the full gate: a `waitFor` whose own query costs a second gets only a handful of polls
-// inside setupTests.ts's asyncUtilTimeout, so a contended host can expire the wait before React has had
-// a fair chance to flush the render being waited on.
+// ~880-element document and run jsdom's getComputedStyle over it to decide what's in the accessibility
+// tree. Measured in the gate container: tens of milliseconds per screen-wide accessibility-tree query
+// (~40ms for `getByRole("heading", {name})`, ~100ms for `getByRole("tab", {name})`) against ~10ms for
+// `getByRole("navigation", {name})`. Real, but an order of magnitude too small to be what starves this
+// suite under the full gate -- that was the whole lane sharing one Jest process's heap, and is fixed in
+// package.json's test:workflows (see the rationale in jest.config.mjs), not here.
 //
-// So every query below is scoped to the smallest container that still identifies its target: the
-// "Sections" nav for HomePage's own tab buttons, the guided editor's active section panel for its own
-// fields, the open confirm dialog for its buttons. That is strictly *more* precise than the screen-wide
-// query plus a `[0]` index it replaces (the raw Blueprint Editor mounted under Advanced Tools has its
-// own "New symbol id" field, which is exactly why that index was needed before), and no assertion is
-// weakened or removed by it.
+// The scoping below is therefore kept for precision, not speed: every query targets the smallest
+// container that still identifies it -- the "Sections" nav for HomePage's own tab buttons, the guided
+// editor's active section panel for its own fields, the open confirm dialog for its buttons. That is
+// strictly *more* precise than the screen-wide query plus a `[0]` index it replaces (the raw Blueprint
+// Editor mounted under Advanced Tools has its own "New symbol id" field, which is exactly why that index
+// was needed before), and no assertion is weakened or removed by it.
 function sectionsNav() {
     return within(screen.getByRole("navigation", {name: "Sections"}));
 }
@@ -116,10 +114,12 @@ describe("HomePage", () => {
     // This is by far the heaviest HomePage test: it chains the most sequential real userEvent
     // interactions (dirty the draft, open the modal, Stay, restore, re-open, Leave, land on the project)
     // and so sits closest to its own per-test budget. check:full itself no longer starves it --
-    // test:workflows runs this lane `--runInBand` (see package.json), one heavy real-timer suite at a
-    // time -- so under check:full this budget is pure headroom. It stays at 120000ms rather than dropping
+    // test:workflows now recycles its workers on a heap-size limit (`--maxWorkers=2
+    // --workerIdleMemoryLimit=512MB`, see package.json and the rationale in jest.config.mjs), so this
+    // suite no longer inherits a worker already thrashing the gate container's 2GiB cap -- and under
+    // check:full this budget is pure headroom. It stays at 120000ms rather than dropping
     // to the 90000ms the lane's other two heaviest tests use because test:coverage (via check:release)
-    // still runs this lane at --maxWorkers=2 alongside every other project *and* under coverage
+    // still runs this lane alongside every other project *and* under coverage
     // instrumentation, which is the worst contention this test ever sees. Headroom only: no assertion is
     // relaxed or removed by this number.
     it("asks for confirmation before leaving a dirty Design & Build draft to open a project, and Cancel preserves it", async () => {

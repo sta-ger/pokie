@@ -130,10 +130,18 @@ export default {
     // studio-client-workflows suites (the Mechanics Editor and Reel Strip Modeler workflows chain many
     // real-timer-driven userEvent interactions per test) are wall-clock-bound, so a sibling heavy suite
     // competing for CPU stretches them 2-4x even though they pass comfortably in isolation -- and no
-    // finite per-test timeout survives enough contention. The real fix for that is upstream: the
-    // studio-client-workflows lane now runs `--runInBand` (see package.json's test:workflows), so its
-    // heavy real-timer suites execute one at a time at isolation speed instead of side by side, which is
-    // what was blowing these budgets under the full gate. These timeouts stay as defense-in-depth
+    // finite per-test timeout survives enough contention. But CPU was never the binding constraint under
+    // the full gate: memory was. The gate container caps the whole run at 2GiB, and one of these jsdom
+    // suites retains ~220MB of heap on its own (measured with `--logHeapUsage`). Jest reuses a worker
+    // across every file it is handed, so 22 of them spread over two long-lived workers grows both heaps
+    // for the entire lane until the container is thrashing -- and a process losing its time to GC misses
+    // deadlines no matter how generous they are, which is exactly why raising the numbers below
+    // repeatedly never fixed it. `--runInBand` (tried, see docs/testing.md) is strictly worse here: it
+    // funnels all 22 files through the *main* process, whose V8 old-space limit the 2GiB cap pins at
+    // ~1120MB, on top of pushing the lane past 20 minutes. So test:workflows keeps the measured-good
+    // `--maxWorkers=2` and adds `--workerIdleMemoryLimit=512MB`, which makes Jest recycle a worker once
+    // its heapUsed passes 512MB -- bounding the lane's footprint instead of letting it accumulate.
+    // These timeouts stay as defense-in-depth
     // headroom for an externally-loaded gate host, not as the primary mechanism. This is contention
     // headroom, not a per-test budget for real work. 60000ms clears the observed timeouts with margin and leaves room for a test
     // that chains several sequential findBy*/waitFor assertions to each get setupTests.ts's raised

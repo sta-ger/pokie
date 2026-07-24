@@ -39,6 +39,7 @@ known-red gate; see "Fixed in this pass" below for what previously was.
   their own lane rather than rewritten. Runs with `--maxWorkers=2` like everything else — `--runInBand`
   was tried first and rejected: serializing all 22 files pushed the run past 20+ minutes for no
   correctness benefit; `--maxWorkers=2` finished in ~445s across three consecutive runs, all green.
+  It additionally pins `--workerIdleMemoryLimit=512MB` (see below), which the other lanes don't need.
 - **`pokie-integration`** — anything that spins up a real HTTP server (`PokieDevServer`,
   `PokieClientServer`, `StudioServer`), real `worker_threads` (`simulationWorkerEntry`, and the
   extracted `*.realWorkers.test.ts` files below), or does heavy real filesystem I/O
@@ -141,6 +142,22 @@ than leaving it to Jest's auto-scaling default — which is also what produced t
 spurious timeouts below. `test:workflows` specifically was also tried with `--runInBand` (fully
 serial, no worker contention at all) — rejected because it pushed the full 22-file lane past 20+
 minutes; `--maxWorkers=2` finished in ~445s across three consecutive green runs instead.
+
+### Why `test:workflows` also pins `--workerIdleMemoryLimit=512MB`
+
+Worker count bounds CPU contention; it does not bound memory. A Jest worker is reused for every file
+it is handed, and a single `studio-client-workflows` suite retains ~220MB of heap on its own
+(`--logHeapUsage`), so two workers chewing through 22 jsdom/React files grow monotonically for the
+whole lane — which is how the baseline run below reached a ~1.92GB peak RSS. On the 8GB reference
+box that was merely untidy; in a CI container capped at 2GiB it is the failure, because a process
+spending its time in GC misses real-timer deadlines regardless of how large `testTimeout` or
+`asyncUtilTimeout` are. That is the signature the workflow lane kept producing under `check:full`:
+timeouts that never reproduced when the same file ran alone, on assertions with 10x headroom at idle.
+
+`--workerIdleMemoryLimit=512MB` makes Jest check a worker's `heapUsed` after each file and restart it
+past that threshold, so the lane's footprint stays flat instead of accumulating. Note this flag also
+forces worker processes to be used at all — `@jest/core`'s `shouldRunInBand` runs in the main process
+whenever `maxWorkers <= 1`, where the limit could not be enforced.
 
 ## Baseline (before this stabilization pass)
 
