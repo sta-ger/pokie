@@ -24,7 +24,16 @@ export function ensureFixturesCanRequirePokie(): void {
         execFileSync("npm", ["run", "build-cjs"], {cwd: REPO_ROOT, stdio: "inherit"});
     }
     fs.mkdirSync(FIXTURES_NODE_MODULES, {recursive: true});
+    // Parallel jest workers (--maxWorkers=2) can each pass the existsSync check before either has
+    // created the link, so guard the creation itself: whoever loses the race sees EEXIST for the
+    // link the winner already made, which is exactly the state we wanted, so treat it as success.
     if (!fs.existsSync(POKIE_SYMLINK)) {
-        fs.symlinkSync(REPO_ROOT, POKIE_SYMLINK, "dir");
+        try {
+            fs.symlinkSync(REPO_ROOT, POKIE_SYMLINK, "dir");
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+                throw error;
+            }
+        }
     }
 }
