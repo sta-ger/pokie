@@ -88,11 +88,13 @@ describe("StakeEngineStandaloneAnalyzer bounded property invariants", () => {
                 expect(Number(bucket.probability)).toBeGreaterThanOrEqual(0);
             }
 
-            // component totals: independently group the same raw outcome weights used above (the analysis
-            // distribution's own raw-weight field) by payoutMultiplier -- the same key the analyzer's own
-            // payoutDistribution buckets by -- and sum them in bigint. This proves the payout distribution's
-            // buckets exactly partition every unit of weight with none lost or double-counted, entirely without
-            // ever routing a uint64-scale value through a JS number.
+            // component totals: independently group the same raw outcome weights by payoutMultiplier -- the same
+            // key the analyzer's own payoutDistribution buckets by -- and compare each group's bigint sum against
+            // the analyzer's own output-side "weight" field for that bucket (never the input weights themselves).
+            // This proves the analyzer's payoutDistribution buckets were assigned the correct raw weight, not
+            // merely that some independently-recomputed total happens to match; the bigint sum of those *output*
+            // weight fields is then checked against mode.totalWeight, entirely without ever routing a uint64-scale
+            // value through a JS number.
             const rawWeightByMultiplier = new Map<number, bigint>();
             for (const outcome of readResult.modes[0].outcomes) {
                 const weight = outcome.weight as bigint;
@@ -101,7 +103,11 @@ describe("StakeEngineStandaloneAnalyzer bounded property invariants", () => {
             expect(mode.payoutDistribution.map((bucket) => bucket.payoutMultiplier).sort((a, b) => a - b)).toEqual(
                 Array.from(rawWeightByMultiplier.keys()).sort((a, b) => a - b),
             );
-            const componentTotal = Array.from(rawWeightByMultiplier.values()).reduce((sum, weight) => sum + weight, BigInt(0));
+            for (const bucket of mode.payoutDistribution) {
+                const outputWeight = BigInt(bucket.weight);
+                expect(outputWeight).toBe(rawWeightByMultiplier.get(bucket.payoutMultiplier));
+            }
+            const componentTotal = mode.payoutDistribution.reduce((sum, bucket) => sum + BigInt(bucket.weight), BigInt(0));
             expect(componentTotal).toBe(BigInt(mode.totalWeight));
 
             // serialization round-trip: no bigint (or other non-JSON-safe value) ever leaks out of the analysis,

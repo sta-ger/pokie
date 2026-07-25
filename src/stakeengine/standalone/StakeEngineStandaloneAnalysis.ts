@@ -16,9 +16,12 @@ export type StakeEngineStandaloneEventCategoryBreakdown = {
 // One point of the exact payout distribution, keyed by Stake's own raw integer "payoutMultiplier" (never binned,
 // never rounded) -- "ratio" is the same value reversed to a stake-normalized return ratio (see
 // StakeEngineOutcomeRecord), undefined only for the rare bucket where that reversal isn't exact for every outcome
-// sharing this payoutMultiplier.
+// sharing this payoutMultiplier. "weight" is the exact bigint sum of every outcome's raw weight sharing this
+// payoutMultiplier, the same canonical-decimal encoding as totalWeight -- "probability" is that same weight
+// divided by the mode's totalWeight, so weight is the exact component "probability" was itself derived from.
 export type StakeEngineOutcomePayoutBucket = {
     readonly payoutMultiplier: number;
+    readonly weight: StakeEngineStandaloneExactDecimal;
     readonly ratio: number | undefined;
     readonly probability: StakeEngineStandaloneExactDecimal;
 };

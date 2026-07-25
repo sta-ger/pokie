@@ -106,6 +106,7 @@ export class StakeEngineStandaloneAnalyzer {
             .sort(([a], [b]) => a - b)
             .map(([payoutMultiplier, bucket]) => ({
                 payoutMultiplier,
+                weight: this.displayExactInteger(bucket.weight),
                 // The same raw payoutMultiplier always reverses to the same ratio at a fixed cost, so
                 // "ratioAgrees" only ever turns false if every outcome sharing this bucket independently failed
                 // to reverse cleanly (all undefined, which already agrees) or disagreed some other way; guarded

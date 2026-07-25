@@ -22,8 +22,8 @@ function buildMode(modeName: string, overrides: Partial<StakeEngineStandaloneMod
         maxWinProbability: 0.001,
         nonInvertibleRatioCount: 0,
         payoutDistribution: [
-            {payoutMultiplier: 0, ratio: 0, probability: 0.75},
-            {payoutMultiplier: 500, ratio: 500, probability: 0.001},
+            {payoutMultiplier: 0, weight: 750, ratio: 0, probability: 0.75},
+            {payoutMultiplier: 500, weight: 1, ratio: 500, probability: 0.001},
         ],
         eventClassificationBreakdown: [
             {category: "reveal", occurrenceFrequency: 1, averageOccurrencesPerOutcome: 1},
@@ -124,14 +124,14 @@ describe("StakeEngineStandaloneAnalysisDiffer", () => {
     it("aligns payout distribution buckets by payoutMultiplier with null for added and removed buckets", () => {
         const left = buildAnalysis([buildMode("base", {
             payoutDistribution: [
-                {payoutMultiplier: 0, ratio: 0, probability: 0.75},
-                {payoutMultiplier: 100, ratio: 100, probability: 0.1},
+                {payoutMultiplier: 0, weight: 750, ratio: 0, probability: 0.75},
+                {payoutMultiplier: 100, weight: 100, ratio: 100, probability: 0.1},
             ],
         })]);
         const right = buildAnalysis([buildMode("base", {
             payoutDistribution: [
-                {payoutMultiplier: 0, ratio: 0, probability: 0.7},
-                {payoutMultiplier: 200, ratio: 200, probability: 0.2},
+                {payoutMultiplier: 0, weight: 700, ratio: 0, probability: 0.7},
+                {payoutMultiplier: 200, weight: 200, ratio: 200, probability: 0.2},
             ],
         })]);
 
@@ -152,8 +152,8 @@ describe("StakeEngineStandaloneAnalysisDiffer", () => {
         const left = buildAnalysis([buildMode("base", {
             totalWeight: "10000000000000000000",
             payoutDistribution: [
-                {payoutMultiplier: 0, ratio: 0, probability: "0.97"},
-                {payoutMultiplier: 100, ratio: 1, probability: nonTerminating},
+                {payoutMultiplier: 0, weight: "9700000000000000000", ratio: 0, probability: "0.97"},
+                {payoutMultiplier: 100, weight: "300000000000000000", ratio: 1, probability: nonTerminating},
             ],
             eventClassificationBreakdown: [
                 {category: "reveal", occurrenceFrequency: "1", averageOccurrencesPerOutcome: "1"},
@@ -163,8 +163,8 @@ describe("StakeEngineStandaloneAnalysisDiffer", () => {
         const right = buildAnalysis([buildMode("base", {
             totalWeight: "20000000000000000000",
             payoutDistribution: [
-                {payoutMultiplier: 0, ratio: 0, probability: "0.995"},
-                {payoutMultiplier: 100, ratio: 1, probability: "0.005"},
+                {payoutMultiplier: 0, weight: "19900000000000000000", ratio: 0, probability: "0.995"},
+                {payoutMultiplier: 100, weight: "100000000000000000", ratio: 1, probability: "0.005"},
             ],
             eventClassificationBreakdown: [
                 {category: "reveal", occurrenceFrequency: "1", averageOccurrencesPerOutcome: "1"},

@@ -202,9 +202,9 @@ describe("StakeEngineCommand analyze", () => {
             expect(mode.maxPayoutMultiplier).toBe(500);
             expect(mode.maxRatio).toBe(5);
             expect(mode.payoutDistribution).toEqual([
-                {payoutMultiplier: 0, ratio: 0, probability: "0.97"},
-                {payoutMultiplier: 200, ratio: 2, probability: "0.025"},
-                {payoutMultiplier: 500, ratio: 5, probability: "0.005"},
+                {payoutMultiplier: 0, weight: "9700000000000000000", ratio: 0, probability: "0.97"},
+                {payoutMultiplier: 200, weight: "250000000000000000", ratio: 2, probability: "0.025"},
+                {payoutMultiplier: 500, weight: "50000000000000000", ratio: 5, probability: "0.005"},
             ]);
             expect(collectUnsafeNumbers(parsed)).toEqual([]);
         } finally {
