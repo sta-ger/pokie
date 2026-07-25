@@ -12,6 +12,7 @@ import {DiffCommand} from "./commands/DiffCommand.js";
 import {FairnessCommand} from "./commands/FairnessCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
+import {NameCommand} from "./commands/NameCommand.js";
 import {OutcomeLibraryCommand} from "./commands/OutcomeLibraryCommand.js";
 import {ParCommand} from "./commands/ParCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
@@ -64,6 +65,7 @@ async function run(): Promise<number> {
         new FairnessCommand(),
         new InitCommand(readOwnVersion()),
         new InspectCommand(),
+        new NameCommand(),
         new OutcomeLibraryCommand(readOwnVersion()),
         new ParCommand(readOwnVersion()),
         new ReplayCommand(),

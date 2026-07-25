@@ -1819,6 +1819,41 @@ or not) — it's only `1` when `<packageRoot>` itself doesn't exist/isn't a dire
 missing or fails to parse; the error is printed to stderr in that case. Only usage mistakes (missing
 `<packageRoot>`, an unexpected extra argument) throw the usual `Usage: pokie inspect ...` error.
 
+## `pokie name`
+
+Generates deterministic, offline slot game name(s) from the command line, using the
+[`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) directly — no AI, no network.
+
+```
+pokie name
+pokie name --seed 42
+pokie name --count 5 --theme cosmic --words 3
+pokie name --seed 42 --json
+```
+
+```
+Blazing Riches  (slug: blazing-riches-4821, package: blazing-riches)
+
+Reproduce with: pokie name --seed 1845220913
+```
+
+Options:
+
+- `--count <n>` — how many distinct names to generate (default `1`). Always goes through
+  `SlotGameNameGenerator.generateUnique`, so every name in the batch is pairwise-distinct and all of them share one
+  reproducible batch seed.
+- `--theme <theme>` — one of `adventure`, `mystic`, `fortune`, `mythic`, `cosmic`, `wild` (see
+  [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) below). Omit it for a themed pick.
+- `--words <2|3>` — force a two- or three-word title. Omit it for a random 2-3 word title.
+- `--seed <integer>` — reproduce a specific earlier name/batch. Omit it to mint a fresh one — the seed actually
+  used is always echoed back in the human output's "Reproduce with" line (and on each result's own `seed` field in
+  `--json` output).
+- `--json` — print the raw `SlotGameNameResult[]` array (`title`/`slug`/`packageName`/`seed` per entry) instead of
+  the human-readable listing, for scripting.
+
+Throws `SlotGameNameExhaustedError` (via the usual rejected-command-promise/non-zero-exit path) if `--count` asks
+for more distinct titles than the resolved theme's word pool can produce.
+
 ## `pokie serve <packageRoot>` (experimental)
 
 **Experimental.** Starts a local HTTP server over a single loaded [game package](game-packages.md), so you can
