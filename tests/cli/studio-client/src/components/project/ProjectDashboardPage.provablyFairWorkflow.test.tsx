@@ -131,6 +131,36 @@ describe("ProjectDashboardPage - Provably Fair workflow", () => {
         expect(JSON.parse(verifyCall?.init?.body ?? "{}")).toEqual({proof: PROOF, commitment: COMMITMENT, sourceBundleDir: "./bundle"});
     });
 
+    it("sends the exact same serverSeed to Configure and Generate, untrimmed, for a seed with meaningful whitespace", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/fairness/configure": () => ({ok: true, status: 200, body: {status: "ok", serverSeedCommitment: SERVER_SEED_COMMITMENT, commitment: COMMITMENT}}),
+            "/api/project/fairness/generate": () => ({ok: true, status: 200, body: {status: "ok", proof: PROOF}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToProvablyFairTab(user);
+        await user.type(screen.getByLabelText("Source outcome-library bundle directory"), "./bundle");
+        await user.type(screen.getByLabelText("Mode name"), "base");
+        await user.type(screen.getByLabelText("Server seed"), " operator-server-seed ");
+        await user.type(screen.getByLabelText("Client seed"), "player-client-seed");
+        await user.click(screen.getByRole("button", {name: "Compute commitments"}));
+        await screen.findByText("Server seed commitment (publish first)");
+
+        await user.click(screen.getByRole("button", {name: "Continue to Generate/inspect proof"}));
+        await user.click(screen.getByRole("button", {name: "Generate round proof"}));
+        await screen.findByText("0007");
+
+        const configureCall = calls.find((call) => call.url === "/api/project/fairness/configure");
+        const generateCall = calls.find((call) => call.url === "/api/project/fairness/generate");
+        const configureSeed = JSON.parse(configureCall?.init?.body ?? "{}").serverSeed;
+        const generateSeed = JSON.parse(generateCall?.init?.body ?? "{}").serverSeed;
+
+        expect(configureSeed).toBe(" operator-server-seed ");
+        expect(generateSeed).toBe(configureSeed);
+    });
+
     it("reports an invalid configuration for a domain-level rejection (e.g. an invalid seed/mode combination)", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
