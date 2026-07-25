@@ -201,8 +201,8 @@ Game package "Blazing Riches" (id: "blazing-riches-4821") built in ".../blazing-
 `random` (or the equivalent `--random` flag — `pokie build --random` behaves identically) generates a complete
 `GameBlueprint` in memory using two public, standalone services also available programmatically:
 
-- [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — picks a themed `{id, name}` pair
-  (e.g. `{id: "blazing-riches-4821", name: "Blazing Riches"}`) from small curated word lists;
+- [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — picks a themed name (e.g.
+  `title: "Blazing Riches"`) from small curated word lists, projected as a `title`/`slug`/`packageName` triple;
 - [`RandomGameBlueprintGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — fills in reels (3-6),
   rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the manifest.
 
@@ -239,12 +239,22 @@ several candidate games to pick from):
 ```ts
 import {RandomGameBlueprintGenerator, SlotGameNameGenerator} from "pokie";
 
-const {id, name} = new SlotGameNameGenerator().generate();        // fresh every call
-const {id: id2, name: name2} = new SlotGameNameGenerator().generate(42); // deterministic for seed 42
+const {title, slug, packageName} = new SlotGameNameGenerator().generate();          // fresh every call
+const reproduced = new SlotGameNameGenerator().generate({seed: 42});                // deterministic for seed 42
+const themed = new SlotGameNameGenerator().generate({theme: "cosmic", style: "bold", wordCount: 3});
+const batch = new SlotGameNameGenerator().generateUnique(5, {seed: 42});            // 5 distinct titles, one seed
 
 const {blueprint, seed} = new RandomGameBlueprintGenerator().generate(); // seed is minted and echoed back
-const reproduced = new RandomGameBlueprintGenerator().generate(seed);   // reproduced.blueprint deep-equals blueprint
+const reproducedBlueprint = new RandomGameBlueprintGenerator().generate(seed); // .blueprint deep-equals blueprint
 ```
+
+`SlotGameNameGenerator.generate(request?)` accepts an optional `seed`, `theme`, `style`, `wordCount` (`2 | 3`),
+`exclusions` (titles to never produce), and a custom `vocabulary` (`{adjectives, nouns}`) that fully replaces the
+built-in theme/style word pools. `generateUnique(count, request?)` returns `count` results sharing one batch seed,
+with pairwise-distinct titles; either method throws `SlotGameNameExhaustedError` if the vocabulary/exclusions are
+too tight to satisfy within its attempt budget. `title` is the display name, `slug` is a directory/manifest-id-safe
+form with a numeric suffix (e.g. `"blazing-riches-4821"`), and `packageName` is an npm-package-name-safe form with
+no suffix (e.g. `"blazing-riches"`) — the same title always yields the same `packageName`, unlike `slug`.
 
 `RandomGameBlueprintGenerator.generate(seed?, overrides?)` accepts an optional `{id?, name?}` override (what
 `pokie create <name> --random` uses to pin the manifest to the given `<name>` instead of a generated one) — pass a

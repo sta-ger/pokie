@@ -107,7 +107,8 @@ export class RandomGameBlueprintGenerator implements RandomGameBlueprintGenerati
     private resolveName(seed: number, overrides?: RandomGameBlueprintOverrides): {id: string; name: string} {
         const overrideName = overrides?.name?.trim();
         if (overrideName === undefined || overrideName.length === 0) {
-            return this.nameGenerator.generate(seed);
+            const {title, slug} = this.nameGenerator.generate({seed});
+            return {id: slug, name: title};
         }
         return {id: overrides?.id ?? RandomGameBlueprintGenerator.slugify(overrideName), name: overrideName};
     }
