@@ -1,5 +1,34 @@
+import {SlotGameNameGenerating, SlotGameNameResult} from "pokie";
 import {GameBlueprintWizard} from "../../../cli/wizard/GameBlueprintWizard.js";
 import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";
+
+// A canned-answer test double for SlotGameNameGenerating: always returns the same suggestion (a
+// stand-in for the seed-driven determinism SlotGameNameGenerator itself provides), and counts calls
+// so a test can assert the wizard mints the suggestion at most once per run.
+class FakeSlotGameNameGenerating implements SlotGameNameGenerating {
+    public generateCalls = 0;
+    private readonly result: SlotGameNameResult;
+
+    constructor(result: SlotGameNameResult) {
+        this.result = result;
+    }
+
+    public generate(): SlotGameNameResult {
+        this.generateCalls++;
+        return this.result;
+    }
+
+    public generateUnique(): SlotGameNameResult[] {
+        throw new Error("FakeSlotGameNameGenerating.generateUnique is not used by GameBlueprintWizard.");
+    }
+}
+
+const SUGGESTION: SlotGameNameResult = {
+    title: "Blazing Riches",
+    slug: "blazing-riches-4821",
+    packageName: "blazing-riches",
+    seed: 1,
+};
 
 // A canned-answer test double for PromptAdapting: each ask() call consumes the next queued answer
 // (or, if it's null, simulates Ctrl+C / EOF cancellation) — the "dedicated prompt adapter" seam the
@@ -91,6 +120,78 @@ describe("GameBlueprintWizard", () => {
 
         expect(result?.blueprint.manifest.id).toBe("crazy-fruits");
         expect(prompt.questions.filter((q) => q.startsWith("Game id")).length).toBe(2);
+    });
+
+    it("suggests a per-run id/name pair (slug -> id, title -> name) that Enter accepts", async () => {
+        const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
+        const prompt = new FakePromptAdapting([
+            "", // id -> accept the suggested slug
+            "", // name -> accept the suggested title
+            "", // version -> default
+            "", // reels -> default
+            "", // rows -> default
+            "A",
+            "-",
+            "",
+            "",
+            "",
+            "",
+        ]);
+
+        const result = await new GameBlueprintWizard(nameGenerator).run(prompt);
+
+        expect(result?.blueprint.manifest.id).toBe("blazing-riches-4821");
+        expect(result?.blueprint.manifest.name).toBe("Blazing Riches");
+        expect(prompt.questions[0]).toContain("[blazing-riches-4821]");
+        expect(prompt.questions[1]).toContain("[Blazing Riches]");
+    });
+
+    it("lets a manually typed id override the suggestion, falling back to title-casing that id for the name default", async () => {
+        const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
+        const prompt = new FakePromptAdapting([
+            "custom-game", // id -> manual, overrides the suggestion
+            "", // name -> falls back to titleCaseFromId("custom-game"), not the suggestion's title
+            "",
+            "",
+            "",
+            "A",
+            "-",
+            "",
+            "",
+            "",
+            "",
+        ]);
+
+        const result = await new GameBlueprintWizard(nameGenerator).run(prompt);
+
+        expect(result?.blueprint.manifest.id).toBe("custom-game");
+        expect(result?.blueprint.manifest.name).toBe("Custom Game");
+    });
+
+    it("keeps the suggested id stable across an invalid-id retry, minting it only once per run", async () => {
+        const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
+        const prompt = new FakePromptAdapting([
+            "has/slash", // invalid -> reprompt, same suggestion must still be on offer
+            "", // now accept the (unchanged) suggested slug
+            "", // name
+            "", // version
+            "", // reels
+            "", // rows
+            "A", // symbols
+            "-", // availableBets
+            "", // paylines
+            "", // paytable A
+            "", // reel weighting
+            "", // outDir
+        ]);
+
+        const result = await new GameBlueprintWizard(nameGenerator).run(prompt);
+
+        expect(result?.blueprint.manifest.id).toBe("blazing-riches-4821");
+        expect(prompt.questions.filter((q) => q.startsWith("Game id")).every((q) => q.includes("[blazing-riches-4821]"))).toBe(
+            true,
+        );
+        expect(nameGenerator.generateCalls).toBe(1);
     });
 
     it("reprompts on a non-numeric reels answer", async () => {

@@ -260,6 +260,11 @@ no suffix (e.g. `"blazing-riches"`) — the same title always yields the same `p
 `pokie create <name> --random` uses to pin the manifest to the given `<name>` instead of a generated one) — pass a
 `name` to use it verbatim with an id slugified from it, or both `id`/`name` to pin both explicitly.
 
+`SlotGameNameGenerator` is the one implementation behind every name the CLI ever suggests or generates — `pokie
+name` (see below), `pokie build random`/`pokie create --random` (via `RandomGameBlueprintGenerator`, above), and
+the [interactive build wizard](#interactive-mode-pokie-build-with-no-arguments)'s game-id suggestion all call
+through it; none of them re-implement naming, slugging, or theming on their own.
+
 ### The `GameBlueprint` format
 
 ```ts
@@ -523,6 +528,16 @@ can be left blank to accept it — the prompt shows the default in `[brackets]`.
 it asks for the same fields `pokie build <config.json>` needs for a line-pay video slot and nothing more (no
 wilds/scatters yet) — add those by hand-editing the generated blueprint's config-driven equivalent, or wait for a
 future wizard pass.
+
+The game id question offers a ready-made suggestion rather than requiring one to be typed: the wizard mints a
+single [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) result once at the start of
+the run — the same generator `pokie build random`/`pokie create --random`/`pokie name` use, never a second naming
+implementation — and offers its `slug` (e.g. `[blazing-riches-4821]`) as the id default. Pressing Enter accepts it;
+typing anything else always wins and is used verbatim as the id instead. That one suggestion is minted before the
+id question's own reprompt loop, so it stays exactly the same across however many invalid attempts that question
+takes — it is never re-rolled mid-run. The name question's own default follows suit: accepting the suggested id
+defaults the name to the suggestion's `title` (e.g. `Blazing Riches`); typing a different id instead falls back to
+title-casing that typed id, the same as before this generator integration existed.
 
 The wizard assembles a plain `GameBlueprint` object — the same shape a `<config.json>` file has — and hands it to
 the exact same [`GameBlueprintValidator`](#validation)/[`GamePackageGenerator`](#pokie-build-configjson) the
