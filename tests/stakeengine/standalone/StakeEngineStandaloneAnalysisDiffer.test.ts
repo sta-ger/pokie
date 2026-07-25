@@ -230,6 +230,27 @@ describe("StakeEngineStandaloneAnalysisDiffer", () => {
         expect(diff.perMode.base.hitFrequency.delta).toBeCloseTo(-0.025, 10);
     });
 
+    it("diffs a mode literally named \"__proto__\" as a real own entry instead of reassigning perMode's prototype", () => {
+        const protoName = "__proto__";
+        const left = buildAnalysis([buildMode(protoName)]);
+        const right = buildAnalysis([buildMode(protoName, {rtp: 0.5})]);
+
+        const diff = new StakeEngineStandaloneAnalysisDiffer().diff(left, right);
+
+        // Own-property lookup (not a prototype fall-through) must find the entry, and it must show up in the
+        // enumerable key set -- a plain `{}` accumulator would silently drop it via the "__proto__" setter instead.
+        expect(Reflect.apply(Object.prototype.hasOwnProperty, diff.perMode, [protoName])).toBe(true);
+        expect(Object.keys(diff.perMode)).toEqual([protoName]);
+        expect(diff.perMode[protoName].rtp.left).toBe(0.95);
+        expect(diff.perMode[protoName].rtp.right).toBe(0.5);
+        expect(diff.perMode[protoName].rtp.delta).toBeCloseTo(-0.45, 10);
+
+        // No prototype was actually reassigned, and no other (nonexistent) mode key leaks the "__proto__" mode's
+        // own fields back out through the prototype chain.
+        expect(Reflect.getPrototypeOf(diff.perMode)).toBeNull();
+        expect(diff.perMode["some-other-mode"]).toBeUndefined();
+    });
+
     it("aligns event classification categories with null for added and removed categories", () => {
         const left = buildAnalysis([buildMode("base", {
             eventClassificationBreakdown: [

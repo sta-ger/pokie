@@ -37,7 +37,13 @@ export class StakeEngineStandaloneAnalysisDiffer implements StakeEngineStandalon
         const leftModeNames = left.modes.map((mode) => mode.modeName);
         const rightModeNames = right.modes.map((mode) => mode.modeName);
 
-        const perMode: Record<string, StakeEngineStandaloneModeAnalysisDiff> = {};
+        // Object.create(null) rather than `{}`: a plain `{}` inherits Object.prototype's "__proto__" accessor, so
+        // `perMode["__proto__"] = ...` for a mode literally named "__proto__" (a real mode name, since it came
+        // from Stake's own JSON) would silently reassign perMode's own prototype instead of creating an own data
+        // property -- losing that mode's diff entirely and leaking its fields through property lookups on every
+        // other (nonexistent) key. A null-prototype object has no such accessor to intercept the assignment, so
+        // every mode name -- including "__proto__" -- becomes a real own property.
+        const perMode: Record<string, StakeEngineStandaloneModeAnalysisDiff> = Object.create(null) as Record<string, StakeEngineStandaloneModeAnalysisDiff>;
         leftModeNames.forEach((modeName) => {
             const leftMode = leftByModeName.get(modeName);
             const rightMode = rightByModeName.get(modeName);
