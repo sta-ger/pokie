@@ -78,7 +78,7 @@ export class CreateCommand implements CliCommandHandling {
     // directory-equals-name convention); omitted, a generated name/directory is picked instead.
     private async runRandom(args: string[]): Promise<number> {
         const {name, seed} = this.parseRandomArgs(args);
-        const {blueprint, seed: usedSeed} = this.randomBlueprintGenerator.generate(seed, name ? {name} : undefined);
+        const {blueprint, seed: usedSeed} = this.randomBlueprintGenerator.generate({seed, overrides: name ? {name} : undefined});
 
         console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${usedSeed}.`);
         console.log(`Reproduce this exact game with: pokie create ${name ?? ""}${name ? " " : ""}--random --seed ${usedSeed}`);
