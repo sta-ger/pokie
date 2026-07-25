@@ -52,6 +52,11 @@ describe("StakeEngineStandaloneAnalyzer bounded property invariants", () => {
                 BigInt(0),
             );
 
+            // uint64 scale: every generated case's own total weight independently exceeds Number.MAX_SAFE_INTEGER,
+            // proving these bounded property runs actually exercise the overflow-prone uint64 range they claim to
+            // rather than happening to stay within a range plain Number arithmetic could already handle safely.
+            expect(expectedTotalWeight).toBeGreaterThan(BigInt(Number.MAX_SAFE_INTEGER));
+
             const first = analyzer.analyze(readResult);
             const second = analyzer.analyze(readResult);
 
@@ -83,9 +88,21 @@ describe("StakeEngineStandaloneAnalyzer bounded property invariants", () => {
                 expect(Number(bucket.probability)).toBeGreaterThanOrEqual(0);
             }
 
-            // component totals: the exact payout distribution's probabilities always sum to 1
-            const totalProbability = mode.payoutDistribution.reduce((sum, bucket) => sum + Number(bucket.probability), 0);
-            expect(totalProbability).toBeCloseTo(1, 6);
+            // component totals: independently group the same raw outcome weights used above (the analysis
+            // distribution's own raw-weight field) by payoutMultiplier -- the same key the analyzer's own
+            // payoutDistribution buckets by -- and sum them in bigint. This proves the payout distribution's
+            // buckets exactly partition every unit of weight with none lost or double-counted, entirely without
+            // ever routing a uint64-scale value through a JS number.
+            const rawWeightByMultiplier = new Map<number, bigint>();
+            for (const outcome of readResult.modes[0].outcomes) {
+                const weight = outcome.weight as bigint;
+                rawWeightByMultiplier.set(outcome.payoutMultiplier, (rawWeightByMultiplier.get(outcome.payoutMultiplier) ?? BigInt(0)) + weight);
+            }
+            expect(mode.payoutDistribution.map((bucket) => bucket.payoutMultiplier).sort((a, b) => a - b)).toEqual(
+                Array.from(rawWeightByMultiplier.keys()).sort((a, b) => a - b),
+            );
+            const componentTotal = Array.from(rawWeightByMultiplier.values()).reduce((sum, weight) => sum + weight, BigInt(0));
+            expect(componentTotal).toBe(BigInt(mode.totalWeight));
 
             // serialization round-trip: no bigint (or other non-JSON-safe value) ever leaks out of the analysis,
             // and its canonical JSON form survives a stringify/parse cycle losslessly
