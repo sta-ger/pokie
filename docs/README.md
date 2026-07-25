@@ -131,7 +131,8 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     DTOs (deliberately not a `RoundArtifact`/`WeightedOutcomeLibrary`), `StakeEngineStandaloneValidator` checks
     structure/cross-file consistency, and `StakeEngineStandaloneAnalyzer` computes `rtp`/`hitFrequency`/variance/
     payout-distribution plus a pluggable-classifier-driven event breakdown (`StakeEngineEventClassifying`) — see
-    `pokie stakeengine analyze <stakeDir>`.
+    `pokie stakeengine analyze <stakeDir>`. `StakeEngineStandaloneAnalysisDiffer` compares two such analyses
+    mode-by-mode (programmatic only, no CLI subcommand yet).
 24. **[Outcome Library Bundle](outcome-library-bundle.md)** — the canonical, streaming-friendly on-disk
     persistence format for a `WeightedOutcomeLibrary` (a small manifest, a small per-mode index, one streaming
     JSONL outcomes file per mode), with a writer that never buffers a whole mode's outcomes as one string, a
