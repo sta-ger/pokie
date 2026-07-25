@@ -57,23 +57,21 @@ export class SimulationWorkerCoordinator {
             const results = new Array<SimulationWorkerResult | undefined>(requests.length).fill(undefined);
             let settled = false;
 
-            const terminateAll = (): void => {
-                for (const worker of workers) {
-                    // Best-effort: a worker that already exited/errored rejects terminate() too — never
-                    // let that mask the real reason this run is ending.
-                    worker.terminate().catch(() => undefined);
-                }
+            const terminateAll = async (): Promise<void> => {
+                await Promise.allSettled(workers.map((worker) => worker.terminate()));
             };
 
-            const onAbort = (): void => finish(() => reject(new SimulationCancelledError()));
+            const onAbort = (): void => {
+                finish(() => reject(new SimulationCancelledError()));
+            };
 
-            function finish(action: () => void): void {
+            async function finish(action: () => void): Promise<void> {
                 if (settled) {
                     return;
                 }
                 settled = true;
                 signal?.removeEventListener("abort", onAbort);
-                terminateAll();
+                await terminateAll();
                 action();
             }
 

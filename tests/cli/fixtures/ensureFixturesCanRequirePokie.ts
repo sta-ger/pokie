@@ -24,7 +24,28 @@ export function ensureFixturesCanRequirePokie(): void {
         execFileSync("npm", ["run", "build-cjs"], {cwd: REPO_ROOT, stdio: "inherit"});
     }
     fs.mkdirSync(FIXTURES_NODE_MODULES, {recursive: true});
-    if (!fs.existsSync(POKIE_SYMLINK)) {
-        fs.symlinkSync(REPO_ROOT, POKIE_SYMLINK, "dir");
+    // Parallel jest workers (--maxWorkers=2) can each pass the existsSync check before either has
+    // created the link, so guard the creation itself: whoever loses the race sees EEXIST for the
+    // link the winner already made, which is exactly the state we wanted, so treat it as success.
+    // A task clone may inherit a fixture symlink created inside a disposable
+    // container (`/workspace`).  Treat that stale target as absent: otherwise
+    // real worker tests fail only after a clone/container boundary.
+    let needsLink = !fs.existsSync(POKIE_SYMLINK);
+    if (!needsLink) {
+        try {
+            needsLink = fs.realpathSync(POKIE_SYMLINK) !== fs.realpathSync(REPO_ROOT);
+        } catch {
+            needsLink = true;
+        }
+    }
+    if (needsLink) {
+        fs.rmSync(POKIE_SYMLINK, {force: true, recursive: true});
+        try {
+            fs.symlinkSync(REPO_ROOT, POKIE_SYMLINK, "dir");
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+                throw error;
+            }
+        }
     }
 }
