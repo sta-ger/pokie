@@ -25,7 +25,7 @@ directly over it — no `RoundArtifact`/`WeightedOutcomeLibrary` is ever built.
 ```ts
 type StakeEngineOutcomeRecord = {
     readonly id: number;
-    readonly weight: number;
+    readonly weight: bigint | number; // CSV weights are uint64; the reader always supplies bigint (see below)
     readonly payoutMultiplier: number; // Stake's own raw integer unit
     readonly ratio: number | undefined; // payoutMultiplier reversed to a stake-normalized ratio, at this mode's cost
     readonly events: readonly StakeEngineEvent[]; // normalized verbatim, no POKIE step model reconstructed
@@ -37,6 +37,12 @@ type StakeEngineStandaloneMode = {
     readonly outcomes: readonly StakeEngineOutcomeRecord[];
 };
 ```
+
+`weight` is `bigint | number` because Stake's own lookup CSV weight column is a uint64 — values that routinely
+exceed `Number.MAX_SAFE_INTEGER`. `StakeEngineOutcomeSourceReader` always supplies `bigint`; the `number` arm
+exists only for callers constructing the DTO themselves (e.g. hand-built test fixtures). `StakeEngineStandaloneAnalyzer`
+accepts a `bigint` anywhere in the positive uint64 range or a `number` that's a safe positive integer, and throws
+otherwise — it never silently truncates an out-of-range weight.
 
 `ratio` is `payoutMultiplier` reversed via `convertStakeUnitsToRatio` (`ratio = payoutMultiplier / cost / 100`,
 self-checked against the exact forward computation the same way [Stake Engine Import](stake-engine-import.md#stake-unit-reversal--explicit-never-rounded)
@@ -76,11 +82,13 @@ supports it (`rtp`/`hitFrequency`/`variance`/`standardDeviation` are defined ove
 stake-normalized `ratio`, the same normalize-before-multiply overflow-avoidance discipline that class uses):
 
 ```ts
+type StakeEngineStandaloneExactDecimal = number | string;
+
 type StakeEngineStandaloneModeAnalysis = {
     readonly modeName: string;
     readonly cost: number;
     readonly outcomeCount: number;
-    readonly totalWeight: number;
+    readonly totalWeight: StakeEngineStandaloneExactDecimal;
     readonly rtp: number;
     readonly hitFrequency: number;
     readonly zeroWinFrequency: number;
@@ -90,10 +98,31 @@ type StakeEngineStandaloneModeAnalysis = {
     readonly maxRatio: number;
     readonly maxWinProbability: number;
     readonly nonInvertibleRatioCount: number;
-    readonly payoutDistribution: readonly {payoutMultiplier: number; ratio: number | undefined; probability: number}[];
-    readonly eventClassificationBreakdown: readonly {category: string; occurrenceFrequency: number; averageOccurrencesPerOutcome: number}[];
+    readonly payoutDistribution: readonly {payoutMultiplier: number; ratio: number | undefined; probability: StakeEngineStandaloneExactDecimal}[];
+    readonly eventClassificationBreakdown: readonly {category: string; occurrenceFrequency: StakeEngineStandaloneExactDecimal; averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal}[];
 };
 ```
+
+### Canonical decimal-string semantics (`StakeEngineStandaloneExactDecimal`)
+
+`totalWeight`, `payoutDistribution[].probability`, and both `eventClassificationBreakdown[]` fields are computed
+from a uint64 weight total that can exceed what a JS `number` represents exactly. Every one of these is typed
+`StakeEngineStandaloneExactDecimal = number | string`, and the analyzer chooses between the two arms itself, never
+leaving it to the caller:
+
+- **`number`** whenever the exact value is representable without loss (small totals, and fractions whose numerator
+  and denominator both fit under `Number.MAX_SAFE_INTEGER`).
+- **canonical fixed-point decimal `string`** otherwise — a plain base-10 string (`"12345678901234567890"`,
+  `"0.1234..."` up to 40 fractional digits), never scientific notation, never rounded, never a `bigint` (JSON has
+  no `bigint`, so a value that must cross a JSON boundary — CLI `--format json`, `--out <file>` — is a string, not
+  a type that would fail to serialize).
+
+A caller that only needs an approximate value can `Number(...)` either arm directly; a caller that needs the exact
+value must branch on `typeof` and parse the string arm as an arbitrary-precision decimal itself (POKIE deliberately
+never gives you back a `bigint` here — see above). This mirrors, at the standalone DTO layer, the same
+never-silently-lossy discipline `convertRatioToStakeUnits` uses on the export side (see
+[Stake Engine Export](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded)): a value that can't be
+trusted at `number` precision is never returned as one.
 
 `hitFrequency` is computed straight off the raw integer `payoutMultiplier > 0` (always exact, no reversal
 involved). `rtp`/`variance` fall back to an unchecked `payoutMultiplier / cost / 100` for the rare outcome whose
@@ -159,8 +188,47 @@ if (readResult.issues.some((issue) => issue.severity === "error")) {
 }
 ```
 
+## Diffing two analyses
+
+`StakeEngineStandaloneAnalysisDiffer` (implementing `StakeEngineStandaloneAnalysisDiffing`) is the standalone
+counterpart to `pokie diff` — it compares two already-computed `StakeEngineStandaloneAnalysis` results (e.g. before
+vs. after a math-model change) mode-by-mode, matched by `modeName`:
+
+```ts
+type StakeEngineStandaloneAnalysisMetricDiff = {left: number; right: number; delta: number; percentDelta: number | null};
+
+type StakeEngineStandaloneAnalysisDiff = {
+    stakeDir: {left: string; right: string};
+    perMode: Record<string, StakeEngineStandaloneModeAnalysisDiff>; // one entry per mode name present in *both* inputs
+    onlyInLeft: string[]; // mode names present only in the left analysis
+    onlyInRight: string[]; // mode names present only in the right analysis
+};
+```
+
+Every scalar metric (`rtp`, `hitFrequency`, `zeroWinFrequency`, `variance`, `standardDeviation`,
+`maxPayoutMultiplier`, `maxRatio`, `maxWinProbability`, `nonInvertibleRatioCount`) diffs to a
+`StakeEngineStandaloneAnalysisMetricDiff` — `percentDelta` is `null` when `left` is `0` (nothing to take a percent
+of). `payoutDistribution`/`eventClassificationBreakdown` diff to `{left, right}` pairs (each `null` when a bucket
+or category is missing from that side) rather than a computed `delta` — both can carry a canonical decimal
+`string` (see above), and a delta over an arbitrary-precision decimal string is intentionally left to the caller
+rather than reimplemented as float subtraction here. `warnings` flags material `rtp`/`hitFrequency`/`maxRatio`
+swings past a constructor-configurable threshold (`DEFAULT_RTP_DELTA_WARNING_THRESHOLD` and friends), the same
+"flag it, don't fail on it" contract `pokie diff` itself uses.
+
+```ts
+import {StakeEngineStandaloneAnalysisDiffer} from "pokie";
+
+const diff = new StakeEngineStandaloneAnalysisDiffer().diff(beforeAnalysis, afterAnalysis);
+console.log(diff.perMode.base.warnings);
+```
+
+There's no `pokie stakeengine diff` CLI subcommand yet — `StakeEngineStandaloneAnalysisDiffer` is programmatic-only
+for now, the same "CLI wiring is a later increment" boundary the custom event classifier already draws (see
+above).
+
 ## What this vertical slice deliberately leaves for later
 
-This is the first standalone increment: read, normalize, validate, and analyze one directory in isolation. Diffing
-two standalone-analyzed directories against each other (the standalone counterpart to `pokie diff`) is left for a
-following, small, separate step — nothing here is built assuming it in advance.
+This is the first standalone increment: read, normalize, validate, analyze, and diff one directory (or a pair of
+already-analyzed directories) in isolation. A dedicated `pokie stakeengine diff` CLI subcommand and CLI-level
+custom event classifier wiring are both left for a following, small, separate step — nothing here is built
+assuming either in advance.
