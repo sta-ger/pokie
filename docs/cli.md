@@ -1821,9 +1821,8 @@ missing or fails to parse; the error is printed to stderr in that case. Only usa
 
 ## `pokie name`
 
-Generates deterministic, offline slot game name(s) from the command line, using the same
-[`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) that `pokie build random`/`pokie
-create --random` use for their manifest name — no AI, no network.
+Generates deterministic, offline slot game name(s) from the command line, using the
+[`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) directly — no AI, no network.
 
 ```
 pokie name
