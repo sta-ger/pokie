@@ -1,7 +1,10 @@
-import type {StakeEngineStandaloneAnalysis, StakeEngineStandaloneModeAnalysis} from "../../../src/stakeengine/standalone/StakeEngineStandaloneAnalysis.js";
-import {StakeEngineStandaloneAnalysisDiffer} from "../../../src/stakeengine/standalone/StakeEngineStandaloneAnalysisDiffer.js";
-import {StakeEngineStandaloneAnalyzer} from "../../../src/stakeengine/standalone/StakeEngineStandaloneAnalyzer.js";
-import type {StakeEngineOutcomeSourceReadResult} from "../../../src/stakeengine/standalone/StakeEngineOutcomeSourceReadResult.js";
+import {
+    StakeEngineStandaloneAnalysisDiffer,
+    StakeEngineStandaloneAnalyzer,
+    type StakeEngineOutcomeSourceReadResult,
+    type StakeEngineStandaloneAnalysis,
+    type StakeEngineStandaloneModeAnalysis,
+} from "pokie";
 
 function buildMode(modeName: string, overrides: Partial<StakeEngineStandaloneModeAnalysis> = {}): StakeEngineStandaloneModeAnalysis {
     return {
