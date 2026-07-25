@@ -25,7 +25,7 @@ directly over it — no `RoundArtifact`/`WeightedOutcomeLibrary` is ever built.
 ```ts
 type StakeEngineOutcomeRecord = {
     readonly id: number;
-    readonly weight: number;
+    readonly weight: bigint | number; // CSV weights are uint64; the reader always supplies bigint (see below)
     readonly payoutMultiplier: number; // Stake's own raw integer unit
     readonly ratio: number | undefined; // payoutMultiplier reversed to a stake-normalized ratio, at this mode's cost
     readonly events: readonly StakeEngineEvent[]; // normalized verbatim, no POKIE step model reconstructed
@@ -37,6 +37,12 @@ type StakeEngineStandaloneMode = {
     readonly outcomes: readonly StakeEngineOutcomeRecord[];
 };
 ```
+
+`weight` is `bigint | number` because Stake's own lookup CSV weight column is a uint64 — values that routinely
+exceed `Number.MAX_SAFE_INTEGER`. `StakeEngineOutcomeSourceReader` always supplies `bigint`; the `number` arm
+exists only for callers constructing the DTO themselves (e.g. hand-built test fixtures). `StakeEngineStandaloneAnalyzer`
+accepts a `bigint` anywhere in the positive uint64 range or a `number` that's a safe positive integer, and throws
+otherwise — it never silently truncates an out-of-range weight.
 
 `ratio` is `payoutMultiplier` reversed via `convertStakeUnitsToRatio` (`ratio = payoutMultiplier / cost / 100`,
 self-checked against the exact forward computation the same way [Stake Engine Import](stake-engine-import.md#stake-unit-reversal--explicit-never-rounded)
@@ -76,11 +82,13 @@ supports it (`rtp`/`hitFrequency`/`variance`/`standardDeviation` are defined ove
 stake-normalized `ratio`, the same normalize-before-multiply overflow-avoidance discipline that class uses):
 
 ```ts
+type StakeEngineStandaloneExactDecimal = number | string;
+
 type StakeEngineStandaloneModeAnalysis = {
     readonly modeName: string;
     readonly cost: number;
     readonly outcomeCount: number;
-    readonly totalWeight: number;
+    readonly totalWeight: StakeEngineStandaloneExactDecimal;
     readonly rtp: number;
     readonly hitFrequency: number;
     readonly zeroWinFrequency: number;
@@ -90,10 +98,31 @@ type StakeEngineStandaloneModeAnalysis = {
     readonly maxRatio: number;
     readonly maxWinProbability: number;
     readonly nonInvertibleRatioCount: number;
-    readonly payoutDistribution: readonly {payoutMultiplier: number; ratio: number | undefined; probability: number}[];
-    readonly eventClassificationBreakdown: readonly {category: string; occurrenceFrequency: number; averageOccurrencesPerOutcome: number}[];
+    readonly payoutDistribution: readonly {payoutMultiplier: number; ratio: number | undefined; probability: StakeEngineStandaloneExactDecimal}[];
+    readonly eventClassificationBreakdown: readonly {category: string; occurrenceFrequency: StakeEngineStandaloneExactDecimal; averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal}[];
 };
 ```
+
+### Canonical decimal-string semantics (`StakeEngineStandaloneExactDecimal`)
+
+`totalWeight`, `payoutDistribution[].probability`, and both `eventClassificationBreakdown[]` fields are computed
+from a uint64 weight total that can exceed what a JS `number` represents exactly. Every one of these is typed
+`StakeEngineStandaloneExactDecimal = number | string`, and the analyzer chooses between the two arms itself, never
+leaving it to the caller:
+
+- **`number`** whenever the exact value is representable without loss (small totals, and fractions whose numerator
+  and denominator both fit under `Number.MAX_SAFE_INTEGER`).
+- **canonical fixed-point decimal `string`** otherwise — a plain base-10 string (`"12345678901234567890"`,
+  `"0.1234..."` up to 40 fractional digits), never scientific notation, never rounded, never a `bigint` (JSON has
+  no `bigint`, so a value that must cross a JSON boundary — CLI `--format json`, `--out <file>` — is a string, not
+  a type that would fail to serialize).
+
+A caller that only needs an approximate value can `Number(...)` either arm directly; a caller that needs the exact
+value must branch on `typeof` and parse the string arm as an arbitrary-precision decimal itself (POKIE deliberately
+never gives you back a `bigint` here — see above). This mirrors, at the standalone DTO layer, the same
+never-silently-lossy discipline `convertRatioToStakeUnits` uses on the export side (see
+[Stake Engine Export](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded)): a value that can't be
+trusted at `number` precision is never returned as one.
 
 `hitFrequency` is computed straight off the raw integer `payoutMultiplier > 0` (always exact, no reversal
 involved). `rtp`/`variance` fall back to an unchecked `payoutMultiplier / cost / 100` for the rare outcome whose

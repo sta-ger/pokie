@@ -844,7 +844,12 @@ Options:
 - `--out <file>` — also write that same JSON shape to a file.
 
 `analysis` is `undefined` whenever any issue is error-severity — the same "nothing built on error" contract as
-`pokie stakeengine import`. Exit code is non-zero on any error-level issue.
+`pokie stakeengine import`. Exit code is non-zero on any error-level issue. A handful of `analysis` fields
+(`totalWeight`, `payoutDistribution[].probability`, `eventClassificationBreakdown[]`'s two frequency fields) are
+computed from a uint64 weight total and therefore serialize as either a plain JSON number or a canonical
+fixed-point decimal string when a `number` would lose precision — see
+[Stake Engine Standalone](stake-engine-standalone.md#canonical-decimal-string-semantics-stakeenginestandaloneexactdecimal)
+for the exact rule a consumer of `--format json`/`--out` needs to parse either arm correctly.
 
 ## `pokie outcomelibrary build <config.json>`
 
