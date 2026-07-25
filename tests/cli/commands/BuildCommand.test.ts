@@ -571,7 +571,15 @@ describe("BuildCommand", () => {
             seed: 20260721,
             provenance: {generatorVersion: "1.0.0", strategy: "default-line-pay", seed: 20260721},
         };
-        const okSmoke: SmokeSimulationOutcome = {ok: true, rounds: 200, rtp: 0.965, hitFrequency: 0.31};
+        const okSmoke: SmokeSimulationOutcome = {
+            ok: true,
+            rounds: 200,
+            roundsRequested: 200,
+            rtp: 0.965,
+            hitFrequency: 0.31,
+            maxWin: 50,
+            averageBet: 5,
+        };
 
         function createCommand(
             randomGenerator = createStubRandomBlueprintGenerator(randomResult),
@@ -611,7 +619,45 @@ describe("BuildCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 20260721');
             expect(printed).toContain("Reproduce this exact game with: pokie build random --seed 20260721");
+            expect(printed).toContain('Provenance: generator 1.0.0, strategy "default-line-pay".');
             expect(printed).toContain("Smoke simulation OK: 200 rounds, RTP 96.50%, hit frequency 31.00%.");
+        });
+
+        it("prints the variant strategy's provenance when --preset variant is used", async () => {
+            const {command} = createCommand();
+
+            await command.run(["random", "--preset", "variant"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain('Provenance: generator 1.0.0, strategy "random-variant".');
+        });
+
+        it("prints a feature-termination warning when the smoke simulation stops before its requested round budget", async () => {
+            const {command} = createCommand(undefined, jest.fn().mockResolvedValue({...okSmoke, rounds: 150}));
+
+            await command.run(["random"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("warning  feature termination: only 150/200 smoke-simulation rounds completed");
+        });
+
+        it("prints a max-win sanity warning when the observed max win isn't a finite, non-negative amount", async () => {
+            const {command} = createCommand(undefined, jest.fn().mockResolvedValue({...okSmoke, maxWin: NaN}));
+
+            await command.run(["random"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("warning  max-win sanity: observed max win (NaN) is not a finite, non-negative amount.");
+        });
+
+        it("prints no quality-gate warnings for a clean smoke simulation", async () => {
+            const {command} = createCommand();
+
+            await command.run(["random"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).not.toContain("warning  feature termination");
+            expect(printed).not.toContain("warning  max-win sanity");
         });
 
         it("forwards --seed to the random blueprint generator", async () => {

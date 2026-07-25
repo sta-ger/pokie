@@ -117,7 +117,15 @@ describe("CreateCommand", () => {
             },
             unchanged: false,
         };
-        const okSmoke: SmokeSimulationOutcome = {ok: true, rounds: 200, rtp: 0.965, hitFrequency: 0.31};
+        const okSmoke: SmokeSimulationOutcome = {
+            ok: true,
+            rounds: 200,
+            roundsRequested: 200,
+            rtp: 0.965,
+            hitFrequency: 0.31,
+            maxWin: 50,
+            averageBet: 5,
+        };
 
         function createCommand(
             randomGenerator = createStubRandomBlueprintGenerator(randomResult),
@@ -165,8 +173,28 @@ describe("CreateCommand", () => {
             expect(runSmoke).toHaveBeenCalledWith(generatedResult.projectRoot, 20260721);
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 20260721');
+            expect(printed).toContain('Provenance: generator 1.0.0, strategy "default-line-pay".');
+            expect(printed).toContain("blueprint hash   sha256:abc123");
             expect(printed).toContain("Smoke simulation OK: 200 rounds, RTP 96.50%, hit frequency 31.00%.");
             expect(printed).toContain('created in "/tmp/blazing-riches-4821"');
+        });
+
+        it("prints a feature-termination warning when the smoke simulation stops before its requested round budget", async () => {
+            const {command} = createCommand(undefined, undefined, undefined, jest.fn().mockResolvedValue({...okSmoke, rounds: 150}));
+
+            await command.run(["--random"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("warning  feature termination: only 150/200 smoke-simulation rounds completed");
+        });
+
+        it("prints a max-win sanity warning when the observed max win isn't a finite, non-negative amount", async () => {
+            const {command} = createCommand(undefined, undefined, undefined, jest.fn().mockResolvedValue({...okSmoke, maxWin: -1}));
+
+            await command.run(["--random"]);
+
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("warning  max-win sanity: observed max win (-1) is not a finite, non-negative amount.");
         });
 
         it("forwards a given name as both the manifest name override and the output directory", async () => {
