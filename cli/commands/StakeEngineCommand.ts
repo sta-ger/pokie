@@ -13,8 +13,14 @@ import {
     StakeEngineImportWriting,
     StakeEngineOutcomeSourceReader,
     StakeEngineOutcomeSourceReading,
+    StakeEngineOutcomeSourceReadResult,
     StakeEngineStandaloneAnalysis,
+    StakeEngineStandaloneAnalysisDiff,
+    StakeEngineStandaloneAnalysisDiffer,
+    StakeEngineStandaloneAnalysisDiffing,
+    StakeEngineStandaloneAnalysisMetricDiff,
     StakeEngineStandaloneAnalyzer,
+    StakeEngineStandaloneExactDecimal,
     ValidationIssue,
     WeightedOutcomeLibrary,
 } from "pokie";
@@ -23,10 +29,12 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 const USAGE =
     "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
     "   or: pokie stakeengine import <stakeDir> [--out <dir>]\n" +
-    "   or: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]";
+    "   or: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]\n" +
+    "   or: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]";
 const EXPORT_USAGE = "Usage: pokie stakeengine export <config.json> [--out <dir>]";
 const IMPORT_USAGE = "Usage: pokie stakeengine import <stakeDir> [--out <dir>]";
 const ANALYZE_USAGE = "Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]";
+const DIFF_USAGE = "Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]";
 const CONFIG_HINT =
     '<config.json> lists one WeightedOutcomeLibrary source per Stake mode, either a plain JSON file — ' +
     '{"modes": [{"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a canonical ' +
@@ -40,12 +48,29 @@ const ANALYZE_STAKE_DIR_HINT =
     "<stakeDir> is any Stake Engine outcome directory (index.json, per-mode lookup CSV, per-mode zstd-compressed " +
     'JSONL books) — POKIE\'s own export or a third party\'s, with or without a pokie-manifest.json — see ' +
     "docs/stake-engine-standalone.md for details.";
+const DIFF_STAKE_DIR_HINT =
+    "<leftStakeDir> and <rightStakeDir> are each any Stake Engine outcome directory (index.json, per-mode lookup " +
+    'CSV, per-mode zstd-compressed JSONL books) — POKIE\'s own export or a third party\'s, with or without a ' +
+    "pokie-manifest.json — see docs/stake-engine-standalone.md for details.";
+
+// Exit codes for "pokie stakeengine diff", deliberately distinct from every other stakeengine subcommand's plain
+// 0/1: modeled on the Unix diff(1) convention (0 identical, 1 differs, 2 trouble) so a caller can tell "the two
+// directories genuinely differ" apart from "one of them couldn't even be read" without parsing stdout/stderr.
+const DIFF_EXIT_NO_MATERIAL_DIFFERENCE = 0;
+const DIFF_EXIT_MATERIAL_DIFFERENCE = 1;
+const DIFF_EXIT_INVALID_INPUT = 2;
 
 type ExportOptions = {configPath: string; outDir: string};
 type ImportOptions = {stakeDir: string; outDir: string};
 type AnalyzeFormat = "summary" | "json";
 type AnalyzeOptions = {stakeDir: string; format: AnalyzeFormat; out?: string};
 type AnalyzeReport = {stakeDir: string; issues: ValidationIssue[]; analysis: StakeEngineStandaloneAnalysis | undefined};
+type DiffOptions = {leftStakeDir: string; rightStakeDir: string; format: AnalyzeFormat; out?: string};
+type DiffReport = {
+    stakeDir: {left: string; right: string};
+    issues: {left: ValidationIssue[]; right: ValidationIssue[]};
+    diff: StakeEngineStandaloneAnalysisDiff | undefined;
+};
 
 type ExportDescriptorModeEntry = {
     modeName: string;
@@ -68,6 +93,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     private readonly bundleStreamingExporter: StakeEngineBundleStreamingExporting;
     private readonly outcomeSourceReader: StakeEngineOutcomeSourceReading;
     private readonly standaloneAnalyzer: StakeEngineStandaloneAnalyzer;
+    private readonly standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing;
     private readonly writeFile: (file: string, contents: string) => void;
 
     constructor(
@@ -82,6 +108,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         outcomeSourceReader: StakeEngineOutcomeSourceReading = new StakeEngineOutcomeSourceReader(),
         standaloneAnalyzer: StakeEngineStandaloneAnalyzer = new StakeEngineStandaloneAnalyzer(),
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
+        standaloneAnalysisDiffer: StakeEngineStandaloneAnalysisDiffing = new StakeEngineStandaloneAnalysisDiffer(),
     ) {
         this.exporter = exporter;
         this.importer = importer;
@@ -92,6 +119,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         this.outcomeSourceReader = outcomeSourceReader;
         this.standaloneAnalyzer = standaloneAnalyzer;
         this.writeFile = writeFile;
+        this.standaloneAnalysisDiffer = standaloneAnalysisDiffer;
     }
 
     public getName(): string {
@@ -100,9 +128,11 @@ export class StakeEngineCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, import one back, or " +
-            "standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required " +
-            '("pokie stakeengine export <config.json>" / "pokie stakeengine import <stakeDir>" / "pokie stakeengine analyze <stakeDir>").'
+            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, import one back, " +
+            "standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required, or diff " +
+            "two such directories/analyses " +
+            '("pokie stakeengine export <config.json>" / "pokie stakeengine import <stakeDir>" / ' +
+            '"pokie stakeengine analyze <stakeDir>" / "pokie stakeengine diff <leftStakeDir> <rightStakeDir>").'
         );
     }
 
@@ -115,6 +145,8 @@ export class StakeEngineCommand implements CliCommandHandling {
                 return this.runImport(rest);
             case "analyze":
                 return this.runAnalyze(rest);
+            case "diff":
+                return this.runDiff(rest);
             default:
                 return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
         }
@@ -241,6 +273,141 @@ export class StakeEngineCommand implements CliCommandHandling {
         return errors.length === 0 ? 0 : 1;
     }
 
+    // Standalone counterpart to DiffCommand's "pokie diff", for a pair of Stake Engine outcome directories rather
+    // than a pair of pokie sim reports: reads+analyzes each side (the same read -> analyze pipeline runAnalyze
+    // uses) and hands both StakeEngineStandaloneAnalysis results to StakeEngineStandaloneAnalysisDiffer. Never
+    // attempts an event-level (per-outcome) diff -- an outcome's own "id" is just its row position in that
+    // directory's own lookup CSV, not a canonical identity stable across two independently generated directories,
+    // so aligning outcomes 1:1 across left/right would silently compare unrelated outcomes that merely share a
+    // row number. Diffing stays at the mode/aggregate-metric/classification-category level the differ already
+    // computes, where "same modeName"/"same category" *is* a stable, meaningful identity.
+    private async runDiff(args: string[]): Promise<number> {
+        const options = this.parseDiffArgs(args);
+        const [leftRead, rightRead]: [StakeEngineOutcomeSourceReadResult, StakeEngineOutcomeSourceReadResult] = await Promise.all([
+            this.outcomeSourceReader.readFromDirectory(options.leftStakeDir),
+            this.outcomeSourceReader.readFromDirectory(options.rightStakeDir),
+        ]);
+        const leftErrors = leftRead.issues.filter((issue) => issue.severity === "error");
+        const rightErrors = rightRead.issues.filter((issue) => issue.severity === "error");
+        const diff =
+            leftErrors.length === 0 && rightErrors.length === 0
+                ? this.standaloneAnalysisDiffer.diff(this.standaloneAnalyzer.analyze(leftRead), this.standaloneAnalyzer.analyze(rightRead))
+                : undefined;
+
+        const report: DiffReport = {
+            stakeDir: {left: options.leftStakeDir, right: options.rightStakeDir},
+            issues: {left: [...leftRead.issues], right: [...rightRead.issues]},
+            diff,
+        };
+
+        if (options.out) {
+            this.writeFile(options.out, JSON.stringify(report, null, 4));
+        }
+
+        if (options.format === "json") {
+            console.log(JSON.stringify(report, null, 4));
+        } else {
+            this.printDiffSummary(report);
+            if (options.out) {
+                console.log(`\nDiff written to "${options.out}".`);
+            }
+        }
+
+        if (report.diff === undefined) {
+            return DIFF_EXIT_INVALID_INPUT;
+        }
+        return this.diffHasMaterialDifference(report.diff) ? DIFF_EXIT_MATERIAL_DIFFERENCE : DIFF_EXIT_NO_MATERIAL_DIFFERENCE;
+    }
+
+    // "Material" deliberately reuses the differ's own threshold-gated warnings (see
+    // StakeEngineStandaloneAnalysisDiffer's constructor) rather than "any nonzero delta" -- two independently
+    // regenerated directories almost always carry float noise in every metric, which would make the exit code
+    // fire on effectively every diff and give it no signal value. Added/removed modes are always material: there
+    // is no threshold that makes a whole missing mode a rounding error.
+    private diffHasMaterialDifference(diff: StakeEngineStandaloneAnalysisDiff): boolean {
+        if (diff.onlyInLeft.length > 0 || diff.onlyInRight.length > 0) {
+            return true;
+        }
+        return Object.values(diff.perMode).some((modeDiff) => modeDiff.warnings.length > 0);
+    }
+
+    private printDiffSummary(report: DiffReport): void {
+        console.log(`Diffing "${report.stakeDir.left}" -> "${report.stakeDir.right}"`);
+
+        const leftErrors = report.issues.left.filter((issue) => issue.severity === "error");
+        const rightErrors = report.issues.right.filter((issue) => issue.severity === "error");
+        if (leftErrors.length > 0) {
+            console.log(`\nErrors reading "${report.stakeDir.left}" (${leftErrors.length}):`);
+            this.printIssues(leftErrors);
+        }
+        if (rightErrors.length > 0) {
+            console.log(`\nErrors reading "${report.stakeDir.right}" (${rightErrors.length}):`);
+            this.printIssues(rightErrors);
+        }
+
+        if (report.diff === undefined) {
+            return;
+        }
+
+        if (report.diff.onlyInLeft.length > 0) {
+            console.log(`\nRemoved modes (only in "${report.stakeDir.left}"): ${report.diff.onlyInLeft.join(", ")}`);
+        }
+        if (report.diff.onlyInRight.length > 0) {
+            console.log(`\nAdded modes (only in "${report.stakeDir.right}"): ${report.diff.onlyInRight.join(", ")}`);
+        }
+
+        for (const [modeName, modeDiff] of Object.entries(report.diff.perMode)) {
+            console.log(`\nMode "${modeName}":`);
+            console.log(`  rtp                   ${this.formatDiffMetric(modeDiff.rtp)}`);
+            console.log(`  hitFrequency          ${this.formatDiffMetric(modeDiff.hitFrequency)}`);
+            console.log(`  zeroWinFrequency      ${this.formatDiffMetric(modeDiff.zeroWinFrequency)}`);
+            console.log(`  variance              ${this.formatDiffMetric(modeDiff.variance)}`);
+            console.log(`  standardDeviation     ${this.formatDiffMetric(modeDiff.standardDeviation)}`);
+            console.log(`  maxPayoutMultiplier   ${this.formatDiffMetric(modeDiff.maxPayoutMultiplier)}`);
+            console.log(`  maxRatio              ${this.formatDiffMetric(modeDiff.maxRatio)}`);
+            console.log(`  maxWinProbability     ${this.formatDiffMetric(modeDiff.maxWinProbability)}`);
+            if (modeDiff.nonInvertibleRatioCount.delta !== 0) {
+                console.log(`  nonInvertibleRatioCount   ${this.formatDiffMetric(modeDiff.nonInvertibleRatioCount)}`);
+            }
+
+            for (const category of modeDiff.eventClassificationBreakdown) {
+                console.log(`  event "${category.category}"   ${this.formatCategorySide(category.left)} -> ${this.formatCategorySide(category.right)}`);
+            }
+
+            const changedBuckets = modeDiff.payoutDistribution.filter((bucket) => bucket.left !== bucket.right);
+            if (changedBuckets.length > 0) {
+                console.log(`  payout distribution buckets changed   ${changedBuckets.length} of ${modeDiff.payoutDistribution.length}`);
+            }
+
+            if (modeDiff.warnings.length > 0) {
+                console.log(`  warnings:`);
+                for (const warning of modeDiff.warnings) {
+                    console.log(`    - ${warning}`);
+                }
+            }
+        }
+
+        console.log(this.diffHasMaterialDifference(report.diff) ? "\nMaterial differences detected." : "\nNo material differences detected.");
+    }
+
+    private formatDiffMetric(metric: StakeEngineStandaloneAnalysisMetricDiff): string {
+        const percent = metric.percentDelta === null ? "n/a" : `${this.formatSigned(metric.percentDelta, 2)}%`;
+        return `${metric.left} -> ${metric.right} (${this.formatSigned(metric.delta, 6)}, ${percent})`;
+    }
+
+    // Exact-decimal category metrics (see StakeEngineStandaloneExactDecimal) are printed verbatim -- never
+    // subtracted -- because a uint64-scale value can arrive as a canonical decimal string specifically to avoid
+    // float precision loss; computing "left -> right" here, rather than "delta", keeps that precision intact for
+    // a human reader the same way the JSON report already does for a machine one.
+    private formatCategorySide(side: {occurrenceFrequency: StakeEngineStandaloneExactDecimal; averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal} | null): string {
+        return side === null ? "absent" : `occurrenceFrequency ${side.occurrenceFrequency}`;
+    }
+
+    private formatSigned(value: number, decimals: number): string {
+        const rounded = value.toFixed(decimals);
+        return value > 0 ? `+${rounded}` : rounded;
+    }
+
     private printAnalyzeSummary(report: AnalyzeReport): void {
         console.log(`Analyzing "${report.stakeDir}"`);
 
@@ -308,6 +475,42 @@ export class StakeEngineCommand implements CliCommandHandling {
         }
 
         return {stakeDir, format, out};
+    }
+
+    private parseDiffArgs(args: string[]): DiffOptions {
+        const [leftStakeDir, rightStakeDir, ...rest] = args;
+        if (!leftStakeDir || !rightStakeDir) {
+            throw new Error(`${DIFF_USAGE}\n${DIFF_STAKE_DIR_HINT}`);
+        }
+
+        let format: AnalyzeFormat = "summary";
+        let out: string | undefined;
+        for (let i = 0; i < rest.length; i++) {
+            const flag = rest[i];
+            const value = rest[i + 1];
+            switch (flag) {
+                case "--format": {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${DIFF_USAGE}`);
+                    }
+                    format = "json";
+                    i++;
+                    break;
+                }
+                case "--out": {
+                    if (value === undefined) {
+                        throw new Error(`--out requires a file path. ${DIFF_USAGE}`);
+                    }
+                    out = value;
+                    i++;
+                    break;
+                }
+                default:
+                    throw new Error(`Unknown option "${flag}". ${DIFF_USAGE}`);
+            }
+        }
+
+        return {leftStakeDir, rightStakeDir, format, out};
     }
 
     private printIssues(issues: ValidationIssue[]): void {

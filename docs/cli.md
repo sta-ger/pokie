@@ -851,6 +851,34 @@ fixed-point decimal string when a `number` would lose precision — see
 [Stake Engine Standalone](stake-engine-standalone.md#canonical-decimal-string-semantics-stakeenginestandaloneexactdecimal)
 for the exact rule a consumer of `--format json`/`--out` needs to parse either arm correctly.
 
+## `pokie stakeengine diff <leftStakeDir> <rightStakeDir>`
+
+Reads and analyzes two Stake Engine outcome directories with the same pipeline `pokie stakeengine analyze` uses,
+then diffs the two resulting analyses mode-by-mode: added/removed modes, every scalar metric (`rtp`,
+`hitFrequency`, `variance`, ...), event classification categories, and the payout distribution. See
+[Diffing two analyses](stake-engine-standalone.md#diffing-two-analyses) for the full shape and why it never
+attempts an event-level (per-outcome) diff.
+
+```
+pokie stakeengine diff stakeengine-before stakeengine-after --format json
+```
+
+Options:
+
+- `--format json` — print the machine-readable `{stakeDir: {left, right}, issues: {left, right}, diff}` shape
+  instead of a text summary.
+- `--out <file>` — also write that same JSON shape to a file.
+
+`diff` is `undefined` whenever either side reports an error-level issue — the same "nothing built on error"
+contract every other stakeengine subcommand uses. Exit code follows the Unix `diff(1)` convention rather than this
+command family's usual plain 0/1:
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Both sides read cleanly and no material difference was found. |
+| `1` | Both sides read cleanly but a material difference was found (an added/removed mode, or a per-mode metric drift past the differ's own warning threshold). |
+| `2` | Either directory reported an error-level issue while reading, so no diff was computed. |
+
 ## `pokie outcomelibrary build <config.json>`
 
 Builds a canonical [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
@@ -3094,7 +3122,7 @@ Each step builds on the same `<packageRoot>`:
 ## What's next
 
 All 18 top-level commands this file documents (`build`/`create`/`init`/`inspect`/`validate`/`sim`/`report`/
-`diff`/`replay`/`serve`/`client`/`dev`/`par import|export`/`stakeengine export|import`/`outcomelibrary
+`diff`/`replay`/`serve`/`client`/`dev`/`par import|export`/`stakeengine export|import|analyze|diff`/`outcomelibrary
 build|validate`/`certification build|verify`/`fairness seed-commit|commit|reveal|verify`/`studio`) are shipped
 today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
 `PokieGameContractValidationRule`). [POKIE Studio](#pokie--pokie-studio-experimental) already covers most of

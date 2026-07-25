@@ -222,13 +222,46 @@ const diff = new StakeEngineStandaloneAnalysisDiffer().diff(beforeAnalysis, afte
 console.log(diff.perMode.base.warnings);
 ```
 
-There's no `pokie stakeengine diff` CLI subcommand yet — `StakeEngineStandaloneAnalysisDiffer` is programmatic-only
-for now, the same "CLI wiring is a later increment" boundary the custom event classifier already draws (see
-above).
+### `pokie stakeengine diff` CLI
+
+```
+pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]
+```
+
+Reads and analyzes both directories with the same pipeline `pokie stakeengine analyze` uses (default
+`StakeEngineStandardEventClassifier`, no `pokie-manifest.json` required on either side), then diffs the two
+resulting `StakeEngineStandaloneAnalysis` results with `StakeEngineStandaloneAnalysisDiffer`. It never attempts an
+event-level (per-outcome) diff — an outcome's own `id` is just its row position in that directory's own lookup
+CSV, not a canonical identity stable across two independently generated directories, so aligning outcomes 1:1
+across left/right would silently compare unrelated outcomes that merely share a row number. Diffing stays at the
+mode/aggregate-metric/classification-category level, where "same `modeName`"/"same category" *is* a stable,
+meaningful identity.
+
+Prints a per-mode human summary by default (added/removed modes, every scalar metric, event classification
+categories, a payout-distribution-buckets-changed count, and the differ's own warnings); `--format json` prints
+(and `--out <file>` writes) the machine-readable `{stakeDir: {left, right}, issues: {left, right}, diff}` shape —
+`diff` is `undefined` whenever either side reports an error-level issue, the same "nothing built on error"
+contract every other stakeengine subcommand uses.
+
+Exit code follows the Unix `diff(1)` convention, distinct from every other stakeengine subcommand's plain 0/1, so
+scripts can tell "the directories genuinely differ" apart from "one of them couldn't even be read":
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Both sides read cleanly and no *material* difference was found. |
+| `1` | Both sides read cleanly but a material difference was found — an added/removed mode, or any per-mode metric drift past the differ's own warning threshold (see `DEFAULT_RTP_DELTA_WARNING_THRESHOLD` and friends above). |
+| `2` | Invalid input — either directory reported an error-level issue while reading, so no diff was computed at all. |
+
+"Material" deliberately reuses the differ's own threshold-gated warnings rather than "any nonzero delta": two
+independently regenerated directories almost always carry float noise in every metric, which would make the exit
+code fire on effectively every diff and give it no signal value. An added/removed mode is always material — there
+is no threshold that makes a whole missing mode a rounding error.
+
+The CLI always uses the default `StakeEngineStandardEventClassifier`; CLI-level custom classifier wiring is left
+for a later increment, the same boundary `pokie stakeengine analyze` already draws (see above).
 
 ## What this vertical slice deliberately leaves for later
 
 This is the first standalone increment: read, normalize, validate, analyze, and diff one directory (or a pair of
-already-analyzed directories) in isolation. A dedicated `pokie stakeengine diff` CLI subcommand and CLI-level
-custom event classifier wiring are both left for a following, small, separate step — nothing here is built
-assuming either in advance.
+already-analyzed directories) in isolation. CLI-level custom event classifier wiring is left for a following,
+small, separate step — nothing here is built assuming it in advance.
