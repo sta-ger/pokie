@@ -14,6 +14,7 @@ import {
     SlotGameNameGenerator,
 } from "pokie";
 import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
+import {evaluateRandomBuildQualityGates} from "../build/evaluateRandomBuildQualityGates.js";
 import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
@@ -176,10 +177,11 @@ export class BuildCommand implements CliCommandHandling {
     private runRandom(args: string[]): Promise<number> {
         const options = this.parseRandomArgs(args);
         const generator = options.preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
-        const {blueprint, seed} = generator.generate({seed: options.seed});
+        const {blueprint, seed, provenance} = generator.generate({seed: options.seed});
 
         console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${seed}.`);
         console.log(`Reproduce this exact game with: pokie build random --seed ${seed} --preset ${options.preset}`);
+        console.log(`Provenance: generator ${provenance.generatorVersion}, strategy "${provenance.strategy}".`);
 
         return this.buildFromBlueprint(blueprint, options.outDir, undefined, options.dryRun, seed);
     }
@@ -306,6 +308,9 @@ export class BuildCommand implements CliCommandHandling {
             console.log(
                 `Smoke simulation OK: ${smoke.rounds} rounds, RTP ${(smoke.rtp * 100).toFixed(2)}%, hit frequency ${(smoke.hitFrequency * 100).toFixed(2)}%.`,
             );
+            for (const warning of evaluateRandomBuildQualityGates(smoke)) {
+                console.log(`  warning  ${warning}`);
+            }
         }
 
         console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") built in "${result.projectRoot}".`);

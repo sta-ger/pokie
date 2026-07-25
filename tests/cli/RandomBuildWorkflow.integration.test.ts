@@ -37,7 +37,14 @@ describe("CLI workflow (integration): first-class random game generation", () =>
 
         const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("from seed 20260721");
+        expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "default-line-pay"\./);
+        expect(printed).toContain("blueprint hash   sha256:");
         expect(printed).toMatch(/Smoke simulation OK: \d+ rounds, RTP [\d.]+%, hit frequency [\d.]+%\./);
+        // The default strategy's math is structurally valid by construction (see
+        // DefaultRandomGameBlueprintStrategy's own doc comment) -- a real smoke run against it should
+        // never trip evaluateRandomBuildQualityGates's warnings.
+        expect(printed).not.toContain("warning  feature termination");
+        expect(printed).not.toContain("warning  max-win sanity");
     });
 
     it('"pokie build random --seed <n> --preset variant" builds a real package with the richer strategy, deterministically for the same seed', async () => {
@@ -54,6 +61,11 @@ describe("CLI workflow (integration): first-class random game generation", () =>
         const buildInfoA = JSON.parse(fs.readFileSync(path.join(outDirA, "src", "generated", "build-info.json"), "utf-8"));
         const buildInfoB = JSON.parse(fs.readFileSync(path.join(outDirB, "src", "generated", "build-info.json"), "utf-8"));
         expect(buildInfoA.blueprintHash).toBe(buildInfoB.blueprintHash);
+
+        const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "random-variant"\./);
+        expect(printed).not.toContain("warning  feature termination");
+        expect(printed).not.toContain("warning  max-win sanity");
     });
 
     it('"pokie build random" is deterministic for a fixed seed: rebuilding produces the same generated blueprint hash', async () => {
@@ -104,6 +116,10 @@ describe("CLI workflow (integration): first-class random game generation", () =>
 
             const validateExitCode = await new ValidateCommand().run([projectRoot]);
             expect(validateExitCode).toBe(0);
+
+            const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "default-line-pay"\./);
+            expect(printed).toContain(`blueprint hash   ${buildInfo.blueprintHash}`);
         } finally {
             process.chdir(originalCwd);
         }

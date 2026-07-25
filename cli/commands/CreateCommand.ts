@@ -8,6 +8,7 @@ import {
     RandomGameBlueprintVariantStrategy,
     SlotGameNameGenerator,
 } from "pokie";
+import {evaluateRandomBuildQualityGates} from "../build/evaluateRandomBuildQualityGates.js";
 import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
@@ -95,12 +96,13 @@ export class CreateCommand implements CliCommandHandling {
     private async runRandom(args: string[]): Promise<number> {
         const {name, seed, preset} = this.parseRandomArgs(args);
         const generator = preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
-        const {blueprint, seed: usedSeed} = generator.generate({seed, overrides: name ? {name} : undefined});
+        const {blueprint, seed: usedSeed, provenance} = generator.generate({seed, overrides: name ? {name} : undefined});
 
         console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${usedSeed}.`);
         console.log(
             `Reproduce this exact game with: pokie create ${name ?? ""}${name ? " " : ""}--random --seed ${usedSeed} --preset ${preset}`,
         );
+        console.log(`Provenance: generator ${provenance.generatorVersion}, strategy "${provenance.strategy}".`);
 
         const issues = this.validator.validate(blueprint);
         const errors = issues.filter((issue) => issue.severity === "error");
@@ -120,6 +122,7 @@ export class CreateCommand implements CliCommandHandling {
         for (const file of result.createdFiles) {
             console.log(`  created  ${file}`);
         }
+        console.log(`  blueprint hash   ${result.buildInfo.blueprintHash}`);
 
         console.log("\nRunning a short smoke simulation...");
         const smoke = await this.runSmokeSimulation(result.projectRoot, usedSeed);
@@ -130,6 +133,9 @@ export class CreateCommand implements CliCommandHandling {
         console.log(
             `Smoke simulation OK: ${smoke.rounds} rounds, RTP ${(smoke.rtp * 100).toFixed(2)}%, hit frequency ${(smoke.hitFrequency * 100).toFixed(2)}%.`,
         );
+        for (const warning of evaluateRandomBuildQualityGates(smoke)) {
+            console.log(`  warning  ${warning}`);
+        }
 
         console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") created in "${result.projectRoot}".`);
         console.log(`Next: pokie sim ${result.projectRoot} --rounds 10000 --seed demo --out sim.json`);

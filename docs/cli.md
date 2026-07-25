@@ -54,9 +54,10 @@ it with `GamePackageGenerator`, the same engine `pokie build` uses — not the p
 there's no random content to fill an empty `VideoSlotConfig` with otherwise.
 
 ```
-pokie create --random                # name and directory picked for you
-pokie create my-random-game --random # named (and scaffolded into) ./my-random-game instead
-pokie create --random --seed 42      # reproduce a specific earlier random game
+pokie create --random                          # name and directory picked for you
+pokie create my-random-game --random           # named (and scaffolded into) ./my-random-game instead
+pokie create --random --seed 42                # reproduce a specific earlier random game
+pokie create --random --seed 42 --preset variant # same seed, richer strategy -- a different game
 ```
 
 `<name>`, when given, is used verbatim both as the manifest name and as the output directory (matching plain
@@ -189,7 +190,8 @@ pokie build random
 
 ```
 Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 1845220913.
-Reproduce this exact game with: pokie build random --seed 1845220913
+Reproduce this exact game with: pokie build random --seed 1845220913 --preset default
+Provenance: generator 1.0.0, strategy "default-line-pay".
 Build summary:
   ...
 Running a short smoke simulation...
@@ -198,27 +200,52 @@ Smoke simulation OK: 200 rounds, RTP 96.14%, hit frequency 31.00%.
 Game package "Blazing Riches" (id: "blazing-riches-4821") built in ".../blazing-riches-4821".
 ```
 
+> **No target-RTP promise.** `RandomGameBlueprintGenerator`'s math is *structurally* valid — every blueprint it
+> produces is guaranteed to pass [`GameBlueprintValidator`](#validation) with zero errors and zero warnings, by
+> construction — but it is not production-tuned math: it makes no promise about what RTP, volatility, or win-size
+> distribution a specific generated game will settle at. Run a real [`pokie sim`](#pokie-sim-packageroot) (thousands
+> of rounds, not the 200-round smoke check below) before treating a randomly generated game as anything more than a
+> structurally sound starting point.
+
 `random` (or the equivalent `--random` flag — `pokie build --random` behaves identically) generates a complete
 `GameBlueprint` in memory using two public, standalone services also available programmatically:
 
 - [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — picks a themed name (e.g.
   `title: "Blazing Riches"`) from small curated word lists, projected as a `title`/`slug`/`packageName` triple;
 - [`RandomGameBlueprintGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — fills in reels (3-6),
-  rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the manifest.
+  rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the manifest, and one
+  of two `RandomGameBlueprintStrategy` implementations (see `--preset` below) for the mechanic-bearing fields.
 
-Both take an optional integer `seed`: the same seed always produces the exact same name/blueprint, and every
-blueprint `RandomGameBlueprintGenerator` produces is guaranteed to pass [`GameBlueprintValidator`](#validation)
-with zero errors *and* zero warnings, by construction — not by chance (see the class's own doc comment for the
-reel-weight/paytable-tiering math this relies on). No file is ever written for the blueprint itself; it goes
-straight into the same validate → generate pipeline `pokie build <config.json>` uses.
+Both take an optional integer `seed`: the same seed (and, for the blueprint, the same `--preset`) always produces
+the exact same name/blueprint. No file is ever written for the blueprint itself; it goes straight into the same
+validate → generate pipeline `pokie build <config.json>` uses.
 
-Options (only `--seed` is new; `--out`/`--dry-run` behave exactly as for a config-driven build):
+Options (`--out`/`--dry-run` behave exactly as for a config-driven build):
 
 - `--seed <integer>` — reproduce a specific earlier random game. Omit it to mint a fresh one — the seed actually
   used is always echoed back on the first line, together with the exact command to reproduce it.
+- `--preset default|variant` — which `RandomGameBlueprintStrategy` fills in the mechanic-bearing fields. Defaults
+  to `default`:
+  - `default` (`DefaultRandomGameBlueprintStrategy`, `provenance.strategy` `"default-line-pay"`) — the minimal
+    line-pay shape (reels/rows/symbols/paytable/`symbolWeights`, default paylines, no wilds/scatters/`winModel`);
+  - `variant` (`RandomGameBlueprintVariantStrategy`, `provenance.strategy` `"random-variant"`) — a richer shape
+    drawn from the same guaranteed-valid space: custom paylines, "ways"/"clusters" `winModel`, and literal
+    `reelStrips` in place of `symbolWeights`, picked per build (never combining `paylines` with a `winModel`, since
+    `GameBlueprintValidator` warns on that combination).
+  Same seed *and* same `--preset` always reproduces the same blueprint — switching `--preset` with the same seed
+  produces a different game, since it selects an entirely different strategy.
 - `--out <dir>` — same as [`pokie build <config.json> --out <dir>`](#pokie-build-configjson): write to `<dir>`
   instead of `./<manifest.id>`.
 - `--dry-run` — validate and preview only; skips both the real build and the smoke simulation below.
+
+The line right after the reproduce-command hint — `Provenance: generator <generatorVersion>, strategy
+"<strategy>".` — echoes `RandomGameBlueprintResult.provenance` (also available programmatically, see below):
+`generatorVersion` identifies `RandomGameBlueprintGenerator`'s own algorithm version (bumped only when a change
+would make the same seed produce a different blueprint) and `strategy` identifies which `RandomGameBlueprintStrategy`
+actually built the mechanics (`"default-line-pay"` or `"random-variant"`) — together with the seed, enough to know
+*exactly* what produced a given generated package without re-deriving it from the blueprint's own content. The
+build summary's `blueprint hash` line (shared with every other `pokie build` path) is the complementary piece: a
+`sha256` digest of the blueprint's exact content, for detecting whether a rebuild actually changed anything.
 
 Unlike a config-driven or wizard build, a successful (non-`--dry-run`) random build doesn't stop at validation: it
 also runs a short (200-round) in-process simulation against the freshly built package — the same
@@ -227,9 +254,20 @@ generated content actually loads and plays, not just that its shape passed valid
 fails to load, or a round throws) is reported as an error and the command exits non-zero, even though the files
 were already written; a pass prints the round count, RTP, and hit frequency achieved.
 
+Two additional, bounded quality gates run against that same smoke simulation's result and print as `warning` lines
+underneath it — neither ever fails the build on its own (see the no-target-RTP note above for why):
+
+- **feature termination** — warns if the session stopped before playing every one of the 200 requested rounds
+  (`canPlayNextGame()` turned false early), which usually means some mechanic isn't letting play continue;
+- **max-win sanity** — warns if the largest single payout observed isn't a finite, non-negative number (the
+  signature of broken paytable/`winModel` math, e.g. an overflowed multiplier), or is wildly out of proportion to
+  the average bet placed (beyond a deliberately generous 100,000x sanity multiplier — this is a backstop against a
+  broken generator, not a volatility limit).
+
 `pokie create <name?> --random` (see [`pokie create <name>`](#pokie-create-name) above) is the same generation +
-build + smoke-simulation pipeline, just named after (and scaffolded into) `<name>` instead of the generated id, for
-when you want a random game specifically as your project's `create` output rather than a `build` output.
+build + smoke-simulation pipeline (provenance line, blueprint hash, and quality-gate warnings included), just named
+after (and scaffolded into) `<name>` instead of the generated id, for when you want a random game specifically as
+your project's `create` output rather than a `build` output.
 
 #### `SlotGameNameGenerator` / `RandomGameBlueprintGenerator`
 
@@ -237,15 +275,16 @@ Both are ordinary, standalone exports from `"pokie"` — useful outside the CLI 
 several candidate games to pick from):
 
 ```ts
-import {RandomGameBlueprintGenerator, SlotGameNameGenerator} from "pokie";
+import {RandomGameBlueprintGenerator, RandomGameBlueprintVariantStrategy, SlotGameNameGenerator} from "pokie";
 
 const {title, slug, packageName} = new SlotGameNameGenerator().generate();          // fresh every call
 const reproduced = new SlotGameNameGenerator().generate({seed: 42});                // deterministic for seed 42
 const themed = new SlotGameNameGenerator().generate({theme: "cosmic", style: "bold", wordCount: 3});
 const batch = new SlotGameNameGenerator().generateUnique(5, {seed: 42});            // 5 distinct titles, one seed
 
-const {blueprint, seed} = new RandomGameBlueprintGenerator().generate(); // seed is minted and echoed back
-const reproducedBlueprint = new RandomGameBlueprintGenerator().generate(seed); // .blueprint deep-equals blueprint
+const {blueprint, seed, provenance} = new RandomGameBlueprintGenerator().generate(); // seed is minted and echoed back
+const reproduced = new RandomGameBlueprintGenerator().generate({seed}); // .blueprint deep-equals blueprint above
+const variant = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
 ```
 
 `SlotGameNameGenerator.generate(request?)` accepts an optional `seed`, `theme`, `style`, `wordCount` (`2 | 3`),
@@ -256,9 +295,14 @@ too tight to satisfy within its attempt budget. `title` is the display name, `sl
 form with a numeric suffix (e.g. `"blazing-riches-4821"`), and `packageName` is an npm-package-name-safe form with
 no suffix (e.g. `"blazing-riches"`) — the same title always yields the same `packageName`, unlike `slug`.
 
-`RandomGameBlueprintGenerator.generate(seed?, overrides?)` accepts an optional `{id?, name?}` override (what
-`pokie create <name> --random` uses to pin the manifest to the given `<name>` instead of a generated one) — pass a
-`name` to use it verbatim with an id slugified from it, or both `id`/`name` to pin both explicitly.
+`RandomGameBlueprintGenerator.generate(request?)` accepts an optional `{seed?, overrides?}` — `overrides` is an
+`{id?, name?}` override (what `pokie create <name> --random` uses to pin the manifest to the given `<name>` instead
+of a generated one) — pass a `name` to use it verbatim with an id slugified from it, or both `id`/`name` to pin both
+explicitly. Its constructor optionally takes a name generator, a `RandomGameBlueprintStrategy` (defaults to
+`DefaultRandomGameBlueprintStrategy`; pass `RandomGameBlueprintVariantStrategy` for the same richer mechanics
+`--preset variant` selects), and a `GameMechanicCompatibilityPolicy` that rejects an incompatible strategy at
+construction time rather than at `generate()` time. The result's `provenance` (`{generatorVersion, strategy, seed}`)
+is what the CLI's `Provenance: ...` output line above echoes.
 
 `SlotGameNameGenerator` is also the implementation behind every name the CLI itself suggests — `pokie name` (see
 below) and the [interactive build wizard](#interactive-mode-pokie-build-with-no-arguments)'s game-id suggestion
