@@ -577,6 +577,10 @@ describe("BuildCommand", () => {
             randomGenerator = createStubRandomBlueprintGenerator(randomResult),
             runSmoke: jest.Mock = jest.fn().mockResolvedValue(okSmoke),
             generator = createStubGenerator(generatedResult),
+            variantRandomGenerator = createStubRandomBlueprintGenerator({
+                ...randomResult,
+                provenance: {...randomResult.provenance, strategy: "random-variant"},
+            }),
         ) {
             const command = new BuildCommand(
                 "1.3.0",
@@ -590,8 +594,9 @@ describe("BuildCommand", () => {
                 undefined,
                 randomGenerator,
                 runSmoke,
+                variantRandomGenerator,
             );
-            return {command, randomGenerator, runSmoke, generator};
+            return {command, randomGenerator, runSmoke, generator, variantRandomGenerator};
         }
 
         it.each([["random"], ["--random"]])('generates, builds, and smoke-simulates a random game via "pokie build %s"', async (flag) => {
@@ -656,6 +661,47 @@ describe("BuildCommand", () => {
             const {command} = createCommand();
 
             await expect(command.run(["random", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
+        });
+
+        it('uses the default random blueprint generator, not the variant one, when --preset is omitted', async () => {
+            const {command, randomGenerator, variantRandomGenerator} = createCommand();
+
+            await command.run(["random"]);
+
+            expect(randomGenerator.calledWith).toEqual({seed: undefined});
+            expect(variantRandomGenerator.calledWith).toBeUndefined();
+        });
+
+        it('forwards "--preset variant" to the variant random blueprint generator instead of the default one', async () => {
+            const {command, randomGenerator, variantRandomGenerator, generator} = createCommand();
+
+            const exitCode = await command.run(["random", "--seed", "42", "--preset", "variant"]);
+
+            expect(exitCode).toBe(0);
+            expect(variantRandomGenerator.calledWith).toEqual({seed: 42});
+            expect(randomGenerator.calledWith).toBeUndefined();
+            expect(generator.calledWith?.blueprint).toBe(randomBlueprint);
+        });
+
+        it('accepts "--preset default" explicitly', async () => {
+            const {command, randomGenerator, variantRandomGenerator} = createCommand();
+
+            await command.run(["random", "--preset", "default"]);
+
+            expect(randomGenerator.calledWith).toEqual({seed: undefined});
+            expect(variantRandomGenerator.calledWith).toBeUndefined();
+        });
+
+        it("throws a descriptive error for an invalid --preset value", async () => {
+            const {command} = createCommand();
+
+            await expect(command.run(["random", "--preset", "bogus"])).rejects.toThrow(/--preset must be one of: default, variant/);
+        });
+
+        it("throws a descriptive error when --preset is given no value", async () => {
+            const {command} = createCommand();
+
+            await expect(command.run(["random", "--preset"])).rejects.toThrow(/--preset must be one of: default, variant/);
         });
     });
 });
