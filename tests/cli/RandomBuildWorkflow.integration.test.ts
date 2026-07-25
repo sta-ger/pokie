@@ -40,6 +40,22 @@ describe("CLI workflow (integration): first-class random game generation", () =>
         expect(printed).toMatch(/Smoke simulation OK: \d+ rounds, RTP [\d.]+%, hit frequency [\d.]+%\./);
     });
 
+    it('"pokie build random --seed <n> --preset variant" builds a real package with the richer strategy, deterministically for the same seed', async () => {
+        const outDirA = path.join(workDir, "built-variant-a");
+        const outDirB = path.join(workDir, "built-variant-b");
+
+        const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "99", "--preset", "variant", "--out", outDirA]);
+        expect(exitCode).toBe(0);
+        await new BuildCommand("1.3.0").run(["random", "--seed", "99", "--preset", "variant", "--out", outDirB]);
+
+        const validateExitCode = await new ValidateCommand().run([outDirA]);
+        expect(validateExitCode).toBe(0);
+
+        const buildInfoA = JSON.parse(fs.readFileSync(path.join(outDirA, "src", "generated", "build-info.json"), "utf-8"));
+        const buildInfoB = JSON.parse(fs.readFileSync(path.join(outDirB, "src", "generated", "build-info.json"), "utf-8"));
+        expect(buildInfoA.blueprintHash).toBe(buildInfoB.blueprintHash);
+    });
+
     it('"pokie build random" is deterministic for a fixed seed: rebuilding produces the same generated blueprint hash', async () => {
         const outDirA = path.join(workDir, "built-game-a");
         const outDirB = path.join(workDir, "built-game-b");

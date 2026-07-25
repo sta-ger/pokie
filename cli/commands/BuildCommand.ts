@@ -9,7 +9,9 @@ import {
     loadGameBlueprint,
     RandomGameBlueprintGenerating,
     RandomGameBlueprintGenerator,
+    RandomGameBlueprintVariantStrategy,
     resolveReelStripGeneration,
+    SlotGameNameGenerator,
 } from "pokie";
 import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
 import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
@@ -25,17 +27,21 @@ type BuildOptions = {
     dryRun: boolean;
 };
 
+type RandomPreset = "default" | "variant";
+
 type RandomBuildOptions = {
     seed?: number;
     outDir?: string;
     dryRun: boolean;
+    preset: RandomPreset;
 };
 
 const USAGE = "Usage: pokie build <config.json> [--out <dir>] [--dry-run]";
 const BLUEPRINT_HINT =
     "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.";
 const INIT_BLUEPRINT_USAGE = "Usage: pokie build --init-blueprint <file>";
-const RANDOM_USAGE = "Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run]";
+const RANDOM_USAGE = "Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]";
+const RANDOM_PRESETS: readonly RandomPreset[] = ["default", "variant"];
 
 export class BuildCommand implements CliCommandHandling {
     private readonly pokieVersion: string;
@@ -48,6 +54,7 @@ export class BuildCommand implements CliCommandHandling {
     private readonly fileExists: (filePath: string) => boolean;
     private readonly writeFile: (filePath: string, contents: string) => void;
     private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
+    private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly runSmokeSimulation: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome>;
 
     constructor(
@@ -62,6 +69,10 @@ export class BuildCommand implements CliCommandHandling {
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         randomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(),
         runSmoke: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome> = runSmokeSimulation,
+        variantRandomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(
+            new SlotGameNameGenerator(),
+            new RandomGameBlueprintVariantStrategy(),
+        ),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
@@ -74,6 +85,7 @@ export class BuildCommand implements CliCommandHandling {
         this.writeFile = writeFile;
         this.randomBlueprintGenerator = randomBlueprintGenerator;
         this.runSmokeSimulation = runSmoke;
+        this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
     }
 
     public getName(): string {
@@ -84,7 +96,9 @@ export class BuildCommand implements CliCommandHandling {
         return (
             "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
             "interactively via a wizard when run with no config path, or write an editable starter blueprint via " +
-            "--init-blueprint <file>. --dry-run validates and previews without writing anything."
+            "--init-blueprint <file>. \"random\"/--random generates a first-class random game instead (--seed to " +
+            "reproduce it, --preset default|variant to pick the generation strategy). --dry-run validates and " +
+            "previews without writing anything."
         );
     }
 
@@ -155,13 +169,17 @@ export class BuildCommand implements CliCommandHandling {
     // RandomGameBlueprintGenerator's own doc comment for why it's guaranteed to pass validation) and
     // runs it through the exact same validate/resolve/generate pipeline as a real <config.json> --
     // "randomSeed" passed to buildFromBlueprint below is what additionally triggers the post-build
-    // smoke simulation, which a hand-authored blueprint build never runs.
+    // smoke simulation, which a hand-authored blueprint build never runs. "--preset" only selects which
+    // already-registered RandomGameBlueprintStrategy generates the mechanics (default-line-pay vs the
+    // richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset always
+    // reproduces the same blueprint (see RandomGameBlueprintGenerator.generate).
     private runRandom(args: string[]): Promise<number> {
         const options = this.parseRandomArgs(args);
-        const {blueprint, seed} = this.randomBlueprintGenerator.generate({seed: options.seed});
+        const generator = options.preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
+        const {blueprint, seed} = generator.generate({seed: options.seed});
 
         console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${seed}.`);
-        console.log(`Reproduce this exact game with: pokie build random --seed ${seed}`);
+        console.log(`Reproduce this exact game with: pokie build random --seed ${seed} --preset ${options.preset}`);
 
         return this.buildFromBlueprint(blueprint, options.outDir, undefined, options.dryRun, seed);
     }
@@ -170,6 +188,7 @@ export class BuildCommand implements CliCommandHandling {
         let seed: number | undefined;
         let outDir: string | undefined;
         let dryRun = false;
+        let preset: RandomPreset = "default";
 
         for (let i = 0; i < args.length; i++) {
             const flag = args[i];
@@ -195,12 +214,20 @@ export class BuildCommand implements CliCommandHandling {
                     dryRun = true;
                     break;
                 }
+                case "--preset": {
+                    if (value === undefined || !RANDOM_PRESETS.includes(value as RandomPreset)) {
+                        throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
+                    }
+                    preset = value as RandomPreset;
+                    i++;
+                    break;
+                }
                 default:
                     throw new Error(`Unknown option "${flag}". ${RANDOM_USAGE}`);
             }
         }
 
-        return {seed, outDir, dryRun};
+        return {seed, outDir, dryRun, preset};
     }
 
     private async buildFromBlueprint(
