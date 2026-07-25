@@ -188,47 +188,8 @@ if (readResult.issues.some((issue) => issue.severity === "error")) {
 }
 ```
 
-## Diffing two analyses
-
-`StakeEngineStandaloneAnalysisDiffer` (implementing `StakeEngineStandaloneAnalysisDiffing`) is the standalone
-counterpart to `pokie diff` — it compares two already-computed `StakeEngineStandaloneAnalysis` results (e.g. before
-vs. after a math-model change) mode-by-mode, matched by `modeName`:
-
-```ts
-type StakeEngineStandaloneAnalysisMetricDiff = {left: number; right: number; delta: number; percentDelta: number | null};
-
-type StakeEngineStandaloneAnalysisDiff = {
-    stakeDir: {left: string; right: string};
-    perMode: Record<string, StakeEngineStandaloneModeAnalysisDiff>; // one entry per mode name present in *both* inputs
-    onlyInLeft: string[]; // mode names present only in the left analysis
-    onlyInRight: string[]; // mode names present only in the right analysis
-};
-```
-
-Every scalar metric (`rtp`, `hitFrequency`, `zeroWinFrequency`, `variance`, `standardDeviation`,
-`maxPayoutMultiplier`, `maxRatio`, `maxWinProbability`, `nonInvertibleRatioCount`) diffs to a
-`StakeEngineStandaloneAnalysisMetricDiff` — `percentDelta` is `null` when `left` is `0` (nothing to take a percent
-of). `payoutDistribution`/`eventClassificationBreakdown` diff to `{left, right}` pairs (each `null` when a bucket
-or category is missing from that side) rather than a computed `delta` — both can carry a canonical decimal
-`string` (see above), and a delta over an arbitrary-precision decimal string is intentionally left to the caller
-rather than reimplemented as float subtraction here. `warnings` flags material `rtp`/`hitFrequency`/`maxRatio`
-swings past a constructor-configurable threshold (`DEFAULT_RTP_DELTA_WARNING_THRESHOLD` and friends), the same
-"flag it, don't fail on it" contract `pokie diff` itself uses.
-
-```ts
-import {StakeEngineStandaloneAnalysisDiffer} from "pokie";
-
-const diff = new StakeEngineStandaloneAnalysisDiffer().diff(beforeAnalysis, afterAnalysis);
-console.log(diff.perMode.base.warnings);
-```
-
-There's no `pokie stakeengine diff` CLI subcommand yet — `StakeEngineStandaloneAnalysisDiffer` is programmatic-only
-for now, the same "CLI wiring is a later increment" boundary the custom event classifier already draws (see
-above).
-
 ## What this vertical slice deliberately leaves for later
 
-This is the first standalone increment: read, normalize, validate, analyze, and diff one directory (or a pair of
-already-analyzed directories) in isolation. A dedicated `pokie stakeengine diff` CLI subcommand and CLI-level
-custom event classifier wiring are both left for a following, small, separate step — nothing here is built
-assuming either in advance.
+This is the first standalone increment: read, normalize, validate, and analyze one directory in isolation. Diffing
+two standalone-analyzed directories against each other (the standalone counterpart to `pokie diff`) is left for a
+following, small, separate step — nothing here is built assuming it in advance.
