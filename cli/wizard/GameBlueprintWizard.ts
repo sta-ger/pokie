@@ -1,4 +1,4 @@
-import type {GameBlueprint, GameBlueprintManifest} from "pokie";
+import {SlotGameNameGenerator, type GameBlueprint, type GameBlueprintManifest, type SlotGameNameGenerating} from "pokie";
 import type {GameBlueprintWizarding} from "./GameBlueprintWizarding.js";
 import type {PromptAdapting} from "./PromptAdapting.js";
 import type {WizardResult} from "./WizardResult.js";
@@ -32,6 +32,12 @@ class WizardCancelled extends Error {}
 // everything it produces still goes through the same GameBlueprintValidator/GamePackageGenerator as
 // the config-driven path, so it's the only place that shape's validation/generation rules live.
 export class GameBlueprintWizard implements GameBlueprintWizarding {
+    private readonly nameGenerator: SlotGameNameGenerating;
+
+    constructor(nameGenerator: SlotGameNameGenerating = new SlotGameNameGenerator()) {
+        this.nameGenerator = nameGenerator;
+    }
+
     public async run(prompt: PromptAdapting): Promise<WizardResult | null> {
         try {
             console.log("Building a GameBlueprint interactively. Press Ctrl+C at any time to cancel.\n");
@@ -67,10 +73,16 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         }
     }
 
+    // Minted once per wizard run (before the id question's own retry loop below), so it stays the
+    // same suggestion across however many invalid attempts the id question takes -- SlotGameNameGenerator
+    // itself would mint a fresh random name on every call, which would otherwise make the offered
+    // default drift on each reprompt.
     private async askManifest(prompt: PromptAdapting): Promise<GameBlueprintManifest> {
-        const id = await this.askUntilValid(prompt, "Game id (e.g. crazy-fruits): ", (raw) => {
+        const suggestion = this.nameGenerator.generate();
+
+        const id = await this.askUntilValid(prompt, `Game id (e.g. crazy-fruits) [${suggestion.slug}]: `, (raw) => {
             if (raw.length === 0) {
-                return new WizardParseError("Game id is required.");
+                return suggestion.slug;
             }
             if (raw.includes("/") || raw.includes("\\") || raw === "." || raw === "..") {
                 return new WizardParseError('Game id must be a plain name (no slashes), e.g. "crazy-fruits".');
@@ -78,7 +90,11 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             return raw;
         });
 
-        const defaultName = this.titleCaseFromId(id);
+        // Only the accepted-suggestion id gets the generator's own title as its name default -- a
+        // manually typed id falls back to title-casing that id instead, since title-casing the
+        // suggestion's slug verbatim would surface its numeric uniqueness suffix (e.g. "Blazing Riches
+        // 4821") in a name default.
+        const defaultName = id === suggestion.slug ? suggestion.title : this.titleCaseFromId(id);
         const name = await this.askWithDefault(prompt, `Game name [${defaultName}]: `, defaultName);
         const version = await this.askWithDefault(prompt, `Version [${DEFAULT_VERSION}]: `, DEFAULT_VERSION);
 
