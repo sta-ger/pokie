@@ -98,14 +98,14 @@ type StakeEngineStandaloneModeAnalysis = {
     readonly maxRatio: number;
     readonly maxWinProbability: number;
     readonly nonInvertibleRatioCount: number;
-    readonly payoutDistribution: readonly {payoutMultiplier: number; ratio: number | undefined; probability: StakeEngineStandaloneExactDecimal}[];
+    readonly payoutDistribution: readonly {payoutMultiplier: number; weight: StakeEngineStandaloneExactDecimal; ratio: number | undefined; probability: StakeEngineStandaloneExactDecimal}[];
     readonly eventClassificationBreakdown: readonly {category: string; occurrenceFrequency: StakeEngineStandaloneExactDecimal; averageOccurrencesPerOutcome: StakeEngineStandaloneExactDecimal}[];
 };
 ```
 
 ### Canonical decimal-string semantics (`StakeEngineStandaloneExactDecimal`)
 
-`totalWeight`, `payoutDistribution[].probability`, and both `eventClassificationBreakdown[]` fields are computed
+`totalWeight`, `payoutDistribution[].weight`, `payoutDistribution[].probability`, and both `eventClassificationBreakdown[]` fields are computed
 from a uint64 weight total that can exceed what a JS `number` represents exactly. Every one of these is typed
 `StakeEngineStandaloneExactDecimal = number | string`, and the analyzer chooses between the two arms itself, never
 leaving it to the caller:

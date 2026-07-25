@@ -80,9 +80,9 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         const [mode] = analysis.modes;
 
         expect(mode.payoutDistribution).toEqual([
-            {payoutMultiplier: 0, ratio: 0, probability: 0.97},
-            {payoutMultiplier: 200, ratio: 2, probability: 0.025},
-            {payoutMultiplier: 500, ratio: 5, probability: 0.005},
+            {payoutMultiplier: 0, weight: 970, ratio: 0, probability: 0.97},
+            {payoutMultiplier: 200, weight: 25, ratio: 2, probability: 0.025},
+            {payoutMultiplier: 500, weight: 5, ratio: 5, probability: 0.005},
         ]);
         const totalProbability = mode.payoutDistribution.reduce((sum, bucket) => sum + Number(bucket.probability), 0);
         expect(totalProbability).toBeCloseTo(1, 10);
@@ -182,9 +182,9 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         expect(mode.maxRatio).toBe(5);
         // Canonical terminating decimals: 9.7e18/1e19, 2.5e17/1e19, 5e16/1e19 -- emitted as exact strings, not floats.
         expect(mode.payoutDistribution).toEqual([
-            {payoutMultiplier: 0, ratio: 0, probability: "0.97"},
-            {payoutMultiplier: 200, ratio: 2, probability: "0.025"},
-            {payoutMultiplier: 500, ratio: 5, probability: "0.005"},
+            {payoutMultiplier: 0, weight: "9700000000000000000", ratio: 0, probability: "0.97"},
+            {payoutMultiplier: 200, weight: "250000000000000000", ratio: 2, probability: "0.025"},
+            {payoutMultiplier: 500, weight: "50000000000000000", ratio: 5, probability: "0.005"},
         ]);
         const byCategory = new Map(mode.eventClassificationBreakdown.map((entry) => [entry.category, entry]));
         expect(byCategory.get("reveal")).toEqual({category: "reveal", occurrenceFrequency: "1", averageOccurrencesPerOutcome: "1"});
