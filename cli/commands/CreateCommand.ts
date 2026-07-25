@@ -5,17 +5,23 @@ import {
     GamePackageGenerator,
     RandomGameBlueprintGenerating,
     RandomGameBlueprintGenerator,
+    RandomGameBlueprintVariantStrategy,
+    SlotGameNameGenerator,
 } from "pokie";
 import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
 import {GamePackageCreator} from "../scaffold/GamePackageCreator.js";
 
-const RANDOM_USAGE = "Usage: pokie create [name] --random [--seed <integer>]";
+type RandomPreset = "default" | "variant";
+
+const RANDOM_USAGE = "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]";
+const RANDOM_PRESETS: readonly RandomPreset[] = ["default", "variant"];
 
 export class CreateCommand implements CliCommandHandling {
     private readonly creator: GamePackageCreating;
     private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
+    private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly validator: GameBlueprintValidating;
     private readonly packageGenerator: GamePackageGenerating;
     private readonly runSmokeSimulation: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome>;
@@ -27,12 +33,17 @@ export class CreateCommand implements CliCommandHandling {
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         packageGenerator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
         runSmoke: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome> = runSmokeSimulation,
+        variantRandomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(
+            new SlotGameNameGenerator(),
+            new RandomGameBlueprintVariantStrategy(),
+        ),
     ) {
         this.creator = creator;
         this.randomBlueprintGenerator = randomBlueprintGenerator;
         this.validator = validator;
         this.packageGenerator = packageGenerator;
         this.runSmokeSimulation = runSmoke;
+        this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
     }
 
     public getName(): string {
@@ -42,7 +53,8 @@ export class CreateCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             "Create a new POKIE-compatible game package in a new directory, or a random-but-valid " +
-            "one (reels, symbols, paytable already filled in) via --random."
+            "one (reels, symbols, paytable already filled in) via --random (--seed to reproduce it, " +
+            "--preset default|variant to pick the generation strategy)."
         );
     }
 
@@ -75,13 +87,20 @@ export class CreateCommand implements CliCommandHandling {
     // random content to fill into that scaffold's empty VideoSlotConfig, so a data-driven GameBlueprint
     // build is what actually produces a playable random game here. "name", if given, is used verbatim
     // as both the output directory and the manifest name (matching "pokie create <name>"'s own
-    // directory-equals-name convention); omitted, a generated name/directory is picked instead.
+    // directory-equals-name convention) and always overrides the generator's own generated name;
+    // omitted, a generated name/directory is picked instead. "--preset" selects the same
+    // already-registered RandomGameBlueprintStrategy "pokie build random --preset" does (default-line-pay
+    // vs the richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset,
+    // same name override always reproduces the same blueprint.
     private async runRandom(args: string[]): Promise<number> {
-        const {name, seed} = this.parseRandomArgs(args);
-        const {blueprint, seed: usedSeed} = this.randomBlueprintGenerator.generate({seed, overrides: name ? {name} : undefined});
+        const {name, seed, preset} = this.parseRandomArgs(args);
+        const generator = preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
+        const {blueprint, seed: usedSeed} = generator.generate({seed, overrides: name ? {name} : undefined});
 
         console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${usedSeed}.`);
-        console.log(`Reproduce this exact game with: pokie create ${name ?? ""}${name ? " " : ""}--random --seed ${usedSeed}`);
+        console.log(
+            `Reproduce this exact game with: pokie create ${name ?? ""}${name ? " " : ""}--random --seed ${usedSeed} --preset ${preset}`,
+        );
 
         const issues = this.validator.validate(blueprint);
         const errors = issues.filter((issue) => issue.severity === "error");
@@ -118,9 +137,10 @@ export class CreateCommand implements CliCommandHandling {
         return 0;
     }
 
-    private parseRandomArgs(args: string[]): {name?: string; seed?: number} {
+    private parseRandomArgs(args: string[]): {name?: string; seed?: number; preset: RandomPreset} {
         let name: string | undefined;
         let seed: number | undefined;
+        let preset: RandomPreset = "default";
 
         for (let i = 0; i < args.length; i++) {
             const arg = args[i];
@@ -136,6 +156,15 @@ export class CreateCommand implements CliCommandHandling {
                 i++;
                 continue;
             }
+            if (arg === "--preset") {
+                const value = args[i + 1];
+                if (value === undefined || !RANDOM_PRESETS.includes(value as RandomPreset)) {
+                    throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
+                }
+                preset = value as RandomPreset;
+                i++;
+                continue;
+            }
             if (arg.startsWith("--")) {
                 throw new Error(`Unknown option "${arg}". ${RANDOM_USAGE}`);
             }
@@ -145,6 +174,6 @@ export class CreateCommand implements CliCommandHandling {
             name = arg;
         }
 
-        return {name, seed};
+        return {name, seed, preset};
     }
 }

@@ -109,6 +109,26 @@ describe("CLI workflow (integration): first-class random game generation", () =>
         }
     });
 
+    it('"pokie create <name> --random --preset variant" creates a real, playable package using the richer strategy', async () => {
+        const originalCwd = process.cwd();
+        process.chdir(workDir);
+        try {
+            const exitCode = await new CreateCommand("1.3.0").run(["my-variant-game", "--random", "--seed", "99", "--preset", "variant"]);
+
+            expect(exitCode).toBe(0);
+            const projectRoot = path.join(workDir, "my-variant-game");
+            expect(fs.existsSync(path.join(projectRoot, "src", "generated", "index.js"))).toBe(true);
+
+            const buildInfo = JSON.parse(fs.readFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+            expect(buildInfo.game.name).toBe("my-variant-game");
+
+            const validateExitCode = await new ValidateCommand().run([projectRoot]);
+            expect(validateExitCode).toBe(0);
+        } finally {
+            process.chdir(originalCwd);
+        }
+    });
+
     it("the randomly generated blueprint always passes GameBlueprintValidator with zero errors across many seeds", async () => {
         const {GameBlueprintValidator, RandomGameBlueprintGenerator} = await import("pokie");
         const generator = new RandomGameBlueprintGenerator();
