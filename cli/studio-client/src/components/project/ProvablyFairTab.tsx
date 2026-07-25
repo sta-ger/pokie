@@ -150,7 +150,13 @@ export function ProvablyFairTab() {
         const commitment = configureView.commitment;
         const requestId = ++generateRequestIdRef.current;
         setGenerateView({status: "loading"});
-        generateFairnessProof(fetchImpl, fields.bundleDir.trim(), commitment, fields.serverSeed.trim())
+        // serverSeed is sent exactly as typed, never trimmed -- Configure already hashed this same
+        // fields.serverSeed untrimmed (see runConfigure/configureFairnessRound above) to compute
+        // serverSeedCommitment.serverSeedHash, so trimming it here would hash a different string than
+        // the one already committed to, surfacing as a spurious serverSeed-hash mismatch on reveal for
+        // any seed with meaningful leading/trailing whitespace (the same "never silently reshape a
+        // secret" discipline normalizeServerSeedFileContents.ts documents for the CLI's own seed files).
+        generateFairnessProof(fetchImpl, fields.bundleDir.trim(), commitment, fields.serverSeed)
             .then((result) => {
                 if (requestId !== generateRequestIdRef.current) {
                     return;
