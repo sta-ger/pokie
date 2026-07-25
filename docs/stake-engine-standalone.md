@@ -257,6 +257,12 @@ independently regenerated directories almost always carry float noise in every m
 code fire on effectively every diff and give it no signal value. An added/removed mode is always material — there
 is no threshold that makes a whole missing mode a rounding error.
 
+Both the read (`StakeEngineOutcomeSourceReader`) and analyze (`StakeEngineStandaloneAnalyzer`) steps are pure,
+exact-arithmetic computations over the two directories' own bytes — no sampling, no wall-clock/random input
+anywhere in the pipeline — so re-running `pokie stakeengine diff` against the same unchanged pair of directories
+always reproduces byte-identical `--format json`/`--out` output. That makes it safe to diff a report file into
+version control or a CI artifact and expect a no-op re-run to produce an empty diff of its own.
+
 The CLI always uses the default `StakeEngineStandardEventClassifier`; CLI-level custom classifier wiring is left
 for a later increment, the same boundary `pokie stakeengine analyze` already draws (see above).
 

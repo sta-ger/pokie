@@ -253,4 +253,30 @@ describe("StakeEngineCommand diff", () => {
             fs.rmSync(rightDir, {recursive: true, force: true});
         }
     });
+
+    it("end to end: diffing the same pair of real Stake Engine directories twice produces byte-identical --format json output", async () => {
+        const leftDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-determinism-left-"));
+        const rightDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-determinism-right-"));
+        try {
+            const leftModes: StakeEngineExportModeInput[] = [
+                {modeName: "base", cost: 1, library: buildSingleOutcomeStakeEngineLibrary({libraryId: "left-lib", betMode: "base", stake: 1, totalWin: 5})},
+            ];
+            const rightModes: StakeEngineExportModeInput[] = [
+                {modeName: "base", cost: 1, library: buildSingleOutcomeStakeEngineLibrary({libraryId: "right-lib", betMode: "base", stake: 1, totalWin: 25})},
+            ];
+            await new StakeEngineExporter("1.3.0").exportToDirectory(leftModes, leftDir);
+            await new StakeEngineExporter("1.3.0").exportToDirectory(rightModes, rightDir);
+
+            const firstRun = await new StakeEngineCommand("1.3.0").run(["diff", leftDir, rightDir, "--format", "json"]);
+            const secondRun = await new StakeEngineCommand("1.3.0").run(["diff", leftDir, rightDir, "--format", "json"]);
+
+            expect(firstRun).toBe(1);
+            expect(secondRun).toBe(1);
+            const [firstPrinted, secondPrinted] = logSpy.mock.calls.map((call) => call[0] as string);
+            expect(secondPrinted).toBe(firstPrinted);
+        } finally {
+            fs.rmSync(leftDir, {recursive: true, force: true});
+            fs.rmSync(rightDir, {recursive: true, force: true});
+        }
+    });
 });
