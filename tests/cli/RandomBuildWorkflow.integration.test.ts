@@ -99,7 +99,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
         const validator = new GameBlueprintValidator();
 
         for (let seed = 1; seed <= 25; seed++) {
-            const {blueprint} = generator.generate(seed);
+            const {blueprint} = generator.generate({seed});
             const issues: ValidationIssue[] = validator.validate(blueprint);
             expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
         }

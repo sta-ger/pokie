@@ -4,8 +4,9 @@ import {
     GamePackageGenerating,
     GeneratedGamePackage,
     PokieGameManifest,
-    RandomGameBlueprint,
     RandomGameBlueprintGenerating,
+    RandomGameBlueprintRequest,
+    RandomGameBlueprintResult,
     ValidationIssue,
 } from "pokie";
 import {SmokeSimulationOutcome} from "../../../cli/build/runSmokeSimulation.js";
@@ -23,11 +24,11 @@ function createStubCreator(result: ScaffoldResult): GamePackageCreating & {calle
 }
 
 function createStubRandomBlueprintGenerator(
-    result: RandomGameBlueprint,
-): RandomGameBlueprintGenerating & {calledWith?: {seed?: number; overrides?: {name?: string}}} {
+    result: RandomGameBlueprintResult,
+): RandomGameBlueprintGenerating & {calledWith?: RandomGameBlueprintRequest} {
     return {
-        generate(seed?: number, overrides?: {name?: string}) {
-            this.calledWith = {seed, overrides};
+        generate(request: RandomGameBlueprintRequest = {}) {
+            this.calledWith = request;
             return result;
         },
     };
@@ -97,7 +98,11 @@ describe("CreateCommand", () => {
             symbolWeights: {A: 1, K: 2, Q: 3, J: 4, "10": 5},
             availableBets: [1, 2, 5, 10],
         };
-        const randomResult: RandomGameBlueprint = {blueprint: randomBlueprint, seed: 20260721};
+        const randomResult: RandomGameBlueprintResult = {
+            blueprint: randomBlueprint,
+            seed: 20260721,
+            provenance: {generatorVersion: "1.0.0", strategy: "default-line-pay", seed: 20260721},
+        };
         const generatedResult = {
             projectRoot: "/tmp/blazing-riches-4821",
             manifest: randomBlueprint.manifest,

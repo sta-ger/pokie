@@ -4,8 +4,9 @@ import {
     GameBuildInfoReelStripGeneration,
     GamePackageGenerating,
     GeneratedGamePackage,
-    RandomGameBlueprint,
     RandomGameBlueprintGenerating,
+    RandomGameBlueprintRequest,
+    RandomGameBlueprintResult,
     ValidationIssue,
 } from "pokie";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
@@ -15,11 +16,11 @@ import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";
 import {WizardResult} from "../../../cli/wizard/WizardResult.js";
 
 function createStubRandomBlueprintGenerator(
-    result: RandomGameBlueprint,
-): RandomGameBlueprintGenerating & {calledWith?: {seed?: number}} {
+    result: RandomGameBlueprintResult,
+): RandomGameBlueprintGenerating & {calledWith?: RandomGameBlueprintRequest} {
     return {
-        generate(seed?: number) {
-            this.calledWith = {seed};
+        generate(request: RandomGameBlueprintRequest = {}) {
+            this.calledWith = request;
             return result;
         },
     };
@@ -565,7 +566,11 @@ describe("BuildCommand", () => {
             symbolWeights: {A: 1, K: 2, Q: 3, J: 4, "10": 5},
             availableBets: [1, 2, 5, 10],
         };
-        const randomResult: RandomGameBlueprint = {blueprint: randomBlueprint, seed: 20260721};
+        const randomResult: RandomGameBlueprintResult = {
+            blueprint: randomBlueprint,
+            seed: 20260721,
+            provenance: {generatorVersion: "1.0.0", strategy: "default-line-pay", seed: 20260721},
+        };
         const okSmoke: SmokeSimulationOutcome = {ok: true, rounds: 200, rtp: 0.965, hitFrequency: 0.31};
 
         function createCommand(

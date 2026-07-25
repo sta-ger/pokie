@@ -158,7 +158,7 @@ export class BuildCommand implements CliCommandHandling {
     // smoke simulation, which a hand-authored blueprint build never runs.
     private runRandom(args: string[]): Promise<number> {
         const options = this.parseRandomArgs(args);
-        const {blueprint, seed} = this.randomBlueprintGenerator.generate(options.seed);
+        const {blueprint, seed} = this.randomBlueprintGenerator.generate({seed: options.seed});
 
         console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${seed}.`);
         console.log(`Reproduce this exact game with: pokie build random --seed ${seed}`);
