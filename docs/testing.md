@@ -15,6 +15,7 @@ npm package — see [`docs/README.md`](README.md) for the library's own API refe
 | `npm run test:coverage` | `pokie` + `studio-client-components` + `pokie-integration` + `studio-client-workflows`, with `--coverage` | on | Checking coverage without also paying for the packaging smoke test |
 | `npm run test:packaging` | Just `tests/packaging/npmPackSmoke.test.ts` (real `npm pack` → install → spawn) | n/a | Verifying the published package boundary in isolation |
 | `npm run test:report -- --lane <fast\|full\|release>` | Runs that lane through `jest --json` and prints the slowest suites + lane wall time | n/a | Diagnosing a performance regression |
+| `npm run bench` | The `pokie-benchmarks` lane (`benchmarks/**/*.bench.ts`) — prints throughput/memory/timing baselines | n/a | Comparing before/after a perf-sensitive change (see [`benchmarks/README.md`](../benchmarks/README.md)) |
 
 `npm test` no longer collects coverage or runs the packaging smoke test by default — both still
 exist, just behind their own commands (`test:coverage`, `test:packaging`, both folded into
@@ -54,6 +55,10 @@ known-red gate; see "Fixed in this pass" below for what previously was.
   design — this is the one test that's intentionally kept real, end-to-end, and slow, because it's
   the only thing that actually proves the published dual CJS/ESM package + CLI works. It never runs
   as part of `check:fast`/`check:full`.
+- **`pokie-benchmarks`** — `benchmarks/**/*.bench.ts`, run only via `npm run bench`. Informational
+  performance baselines (throughput, memory, worker-count comparison, analysis/diff/report-generation
+  timing), never selected by `test`/`check:full`/`check:release`/`test:integration` — see
+  [Benchmarks](#benchmarks) below.
 
 Every heavy-file lane assignment above was decided from real measurement (`npm run test:report`),
 not guessed from file size or naming — see "Fixed in this pass" for the specific numbers that drove
@@ -77,6 +82,16 @@ nothing about what the test verifies got weaker.
 
 These tests (plus `simulationWorkerEntry.test.ts`) also needed a fixture-resolution fix — see
 "Fixed in this pass" below.
+
+## Benchmarks
+
+`npm run bench` runs `benchmarks/**/*.bench.ts`: representative baselines for simulation
+throughput/memory (`AggregateSimulationRunner`), `workers=1` vs `workers=4` real-worker-thread
+comparison (`ParallelSimulationRunner`), Stake Engine standalone analysis/diff timing, random game
+blueprint generation timing, and simulation report build/render timing. Each prints a `[bench] ...`
+line with its numbers; none of them assert a hard wall-clock or memory threshold — see
+[`benchmarks/README.md`](../benchmarks/README.md) for why a fixed threshold here would be a flaky
+gate rather than a useful one, and why this lane deliberately sits outside every other lane above.
 
 ## TypeScript in tests: transpile-only, checked once
 
