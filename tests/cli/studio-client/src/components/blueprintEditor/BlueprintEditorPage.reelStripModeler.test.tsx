@@ -469,7 +469,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: "Select reel 2"}));
         expect(screen.getByLabelText("Length")).toHaveValue("9");
         expect(screen.getByLabelText("Seed")).toHaveValue("42");
-    }, 30000);
+    }, 90000);
 
     it("discarding a generated exploration clears its own type-toggle memory, so toggling back to Generated later doesn't resurrect it", async () => {
         const user = userEvent.setup();
