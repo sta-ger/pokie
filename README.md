@@ -55,7 +55,10 @@ POKIE goes well beyond classic paylines:
   wizard that asks for the same fields on the terminal instead; `npx pokie build --init-blueprint <file>` writes a
   small, hand-editable example `GameBlueprint` to `<file>` instead of building anything, ready for the
   `--init-blueprint -> edit -> --dry-run -> --out` loop (`--dry-run` validates and previews a blueprint without
-  writing anything); `npx pokie inspect
+  writing anything); `npx pokie build random` (or `npx pokie create [name] --random`) generates and builds a
+  structurally-valid `GameBlueprint` with no config file at all — seeded/reproducible, smoke-simulated before it's
+  reported done; `npx pokie name` prints deterministic, offline-generated slot game name(s) without building
+  anything; `npx pokie inspect
   <packageRoot>` prints a package's provenance (game, blueprint hash, source, `pokie` version) without running it;
   `npx pokie create <name>` scaffolds a brand-new game package,
   `npx pokie init` scaffolds an existing npm project in place, both minimal, buildable, and loadable; `npx pokie
