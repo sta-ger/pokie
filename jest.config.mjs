@@ -192,6 +192,17 @@ export default {
             testMatch: packagingTestMatch,
         },
         {
+            // Informational performance baselines (benchmarks/*.bench.ts), never selected by
+            // test/check:full/check:release/test:integration -- see benchmarks/README.md for why
+            // these deliberately don't gate anything. Its own lane (like pokie-packaging) so
+            // `npm run bench` never accidentally runs alongside the correctness suites.
+            displayName: "pokie-benchmarks",
+            moduleFileExtensions: ["ts", "js"],
+            transform: sourceTestTransform,
+            moduleNameMapper: sourceTestModuleNameMapper,
+            testMatch: ["<rootDir>/benchmarks/**/*.bench.ts"],
+        },
+        {
             displayName: "studio-client-workflows",
             testEnvironment: "jsdom",
             moduleFileExtensions: ["tsx", "ts", "js"],

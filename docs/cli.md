@@ -3239,5 +3239,6 @@ a gap in coverage.
 
 Genuinely not yet covered, tracked as post-v1.3 candidates rather than gaps in this CLI: a named
 expanding/sticky-wilds session decorator (the generic `SymbolOverlayTransformer` primitive already supports
-building one), benchmarks, property-based/golden-snapshot testing, a docs site/playground, and any FromStan
-org/npm migration work.
+building one), property-based/golden-snapshot testing, a docs site/playground, and any FromStan org/npm
+migration work. Performance benchmarks are covered (`npm run bench` — see
+[`docs/testing.md`](testing.md#benchmarks)), not part of this CLI's own surface.
