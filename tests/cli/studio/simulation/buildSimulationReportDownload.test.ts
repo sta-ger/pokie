@@ -6,7 +6,7 @@ import {
 
 function createReport(overrides: Partial<SimulationReport> = {}): SimulationReport {
     return {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         requestedRounds: 1000,
         rounds: 1000,
         seed: "demo",
@@ -43,7 +43,7 @@ describe("buildSimulationReportDownload", () => {
         const download = buildSimulationReportDownload(report, "job-1", "json");
 
         expect(download.contentType).toBe("application/json; charset=utf-8");
-        expect(download.filename).toBe("crazy-fruits-0.1.0-job-1.json");
+        expect(download.filename).toBe("sample-slot-0.1.0-job-1.json");
         expect(JSON.parse(download.body)).toEqual(report);
         expect(download.body).toContain("\n"); // pretty-printed, not a single line
     });
@@ -54,8 +54,8 @@ describe("buildSimulationReportDownload", () => {
         const download = buildSimulationReportDownload(report, "job-1", "markdown");
 
         expect(download.contentType).toBe("text/markdown; charset=utf-8");
-        expect(download.filename).toBe("crazy-fruits-0.1.0-job-1.md");
-        expect(download.body).toContain("# Simulation Report: Crazy Fruits");
+        expect(download.filename).toBe("sample-slot-0.1.0-job-1.md");
+        expect(download.body).toContain("# Simulation Report: Sample Slot");
         expect(download.body).toContain("RTP");
         expect(download.body).toContain("95.00%");
     });
@@ -66,19 +66,19 @@ describe("buildSimulationReportDownload", () => {
         const download = buildSimulationReportDownload(report, "job-1", "html");
 
         expect(download.contentType).toBe("text/html; charset=utf-8");
-        expect(download.filename).toBe("crazy-fruits-0.1.0-job-1.html");
+        expect(download.filename).toBe("sample-slot-0.1.0-job-1.html");
         expect(download.body).toContain("<!DOCTYPE html>");
         expect(download.body).toContain("<html");
         expect(download.body).toContain("</html>");
-        expect(download.body).toContain("Crazy Fruits");
+        expect(download.body).toContain("Sample Slot");
     });
 
     it("sanitizes unsafe characters out of the filename", () => {
-        const report = createReport({game: {id: "crazy fruits/2", name: "Crazy Fruits", version: "0.1.0+build"}});
+        const report = createReport({game: {id: "sample slot/2", name: "Sample Slot", version: "0.1.0+build"}});
 
         const download = buildSimulationReportDownload(report, "job/1 two", "json");
 
-        expect(download.filename).toBe("crazy-fruits-2-0.1.0-build-job-1-two.json");
+        expect(download.filename).toBe("sample-slot-2-0.1.0-build-job-1-two.json");
     });
 
     it("renders an old report shape (missing breakdown/warnings/recommendations/reproducibility) without throwing", () => {

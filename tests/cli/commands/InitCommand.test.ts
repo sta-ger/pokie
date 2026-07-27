@@ -13,7 +13,7 @@ function createStubScaffolder(result: ScaffoldResult): GamePackageScaffolding & 
 }
 
 describe("InitCommand", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "1.0.0"};
 
     it("has the expected name and description", () => {
         const command = new InitCommand("1.2.1", createStubScaffolder({projectRoot: "/tmp/x", manifest, createdFiles: [], updatedFiles: [], skippedFiles: []}));

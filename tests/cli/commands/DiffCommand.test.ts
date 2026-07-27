@@ -6,7 +6,7 @@ import {DiffCommand} from "../../../cli/commands/DiffCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 
 const left: SimulationReport = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     requestedRounds: 10000,
     rounds: 9800,
     seed: "demo",
@@ -18,7 +18,7 @@ const left: SimulationReport = {
     durationMs: 1234,
     spinsPerSecond: 7942,
     reproducibility: {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         seed: "demo",
         requestedRounds: 10000,
         actualRounds: 9800,
@@ -109,7 +109,7 @@ describe("DiffCommand", () => {
         await command.run(["left.json", "right.json"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain('Diff: Crazy Fruits (id: "crazy-fruits")');
+        expect(printed).toContain('Diff: Sample Slot (id: "sample-slot")');
         expect(printed).toContain("rounds          9800 -> 9850");
         expect(printed).toContain("rtp             95.22% -> 98.00%");
 
@@ -139,8 +139,8 @@ describe("DiffCommand", () => {
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         const parsed = JSON.parse(printed);
         expect(parsed.game).toEqual({
-            left: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
-            right: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            left: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            right: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             changed: false,
         });
         expect(parsed.rtp.left).toBe(0.9522);
@@ -348,7 +348,7 @@ function buildSetReport(betMode: string, rtp: number): SimulationReport {
 describe("DiffCommand (SimulationReportSet -- diffing two `pokie sim --mode all` runs)", () => {
     function buildSet(overrides: Partial<Record<string, SimulationReport>>, extraModeId?: string): SimulationReportSet {
         return {
-            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             requestedRounds: 10000,
             seed: "demo",
             workers: 1,

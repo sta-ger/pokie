@@ -72,7 +72,7 @@ describe("ClientCommand", () => {
         }, "/fake/client/root");
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits"]);
+        await command.run(["./sample-slot"]);
 
         expect(receivedClientRoot).toBe("/fake/client/root");
         expect(receivedOptions).toEqual({host: undefined, port: undefined, apiAddress: {host: "127.0.0.1", port: 3000}});
@@ -91,7 +91,7 @@ describe("ClientCommand", () => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
         await command.run([
-            "./crazy-fruits",
+            "./sample-slot",
             "--port",
             "4444",
             "--host",
@@ -149,7 +149,7 @@ describe("ClientCommand (integration, real PokieClientServer)", () => {
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--port", "0"]);
+        await command.run(["./sample-slot", "--port", "0"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         const match = printed.match(/POKIE client preview.*http:\/\/127\.0\.0\.1:(\d+)/);

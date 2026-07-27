@@ -13,7 +13,7 @@ import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalW
 import {GameSessionHandling} from "../../../src/session/GameSessionHandling.js";
 import {StakeAmountDetermining} from "../../../src/session/StakeAmountDetermining.js";
 
-const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
 type FakeGameStats = {createSessionCalls: number; playCalls: number};
 

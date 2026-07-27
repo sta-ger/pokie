@@ -36,7 +36,7 @@ const VALID_MANIFEST = {
     generatedBy: "pokie stakeengine export",
     pokieVersion: "1.3.0",
     generatedAt: "2024-01-01T00:00:00.000Z",
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     modes: [
         {
             name: "base",

@@ -10,7 +10,7 @@ describe("ParSheetExporter", () => {
     let filePath: string;
 
     const blueprint: GameBlueprint = {
-        manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 2,
         rows: 2,
         symbols: ["A", "W"],
@@ -224,8 +224,8 @@ describe("ParSheetExporter", () => {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(filePath);
         const manifestSheet = workbook.getWorksheet("Manifest")!;
-        expect(manifestSheet.getRow(2).getCell(2).value).toBe("crazy-fruits");
-        expect(manifestSheet.getRow(3).getCell(2).value).toBe("Crazy Fruits");
+        expect(manifestSheet.getRow(2).getCell(2).value).toBe("sample-slot");
+        expect(manifestSheet.getRow(3).getCell(2).value).toBe("Sample Slot");
     });
 
     describe("write failure (real atomic writer, past preflight)", () => {

@@ -19,7 +19,7 @@ import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 // shipped example here (rather than an inline duplicate) keeps the example and the docs/cli.md
 // workflow section it demonstrates from silently drifting out of sync with what actually works.
 describe("CLI workflow (integration): pokie build output passes validate/sim/report/replay/serve/dev", () => {
-    const blueprintPath = path.join(__dirname, "..", "..", "examples", "blueprints", "crazy-fruits.blueprint.json");
+    const blueprintPath = path.join(__dirname, "..", "..", "examples", "blueprints", "sample-slot.blueprint.json");
 
     let workDir: string;
     let outDir: string;
@@ -44,7 +44,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
 
         const buildInfo = JSON.parse(fs.readFileSync(path.join(outDir, "src", "generated", "build-info.json"), "utf-8"));
         expect(buildInfo.source).toBe(blueprintPath);
-        expect(buildInfo.game.id).toBe("crazy-fruits");
+        expect(buildInfo.game.id).toBe("sample-slot");
 
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);
@@ -52,24 +52,24 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         const inspectExitCode = await new InspectCommand().run([outDir]);
         expect(inspectExitCode).toBe(0);
         const inspectPrinted = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
-        expect(inspectPrinted).toContain('game             Crazy Fruits (id: "crazy-fruits", v0.1.0)');
+        expect(inspectPrinted).toContain('game             Sample Slot (id: "sample-slot", v0.1.0)');
         expect(inspectPrinted).toContain(`blueprint hash   ${buildInfo.blueprintHash}`);
         expect(inspectPrinted).toContain(`source           ${blueprintPath}`);
 
         const simFile = path.join(workDir, "sim.json");
         await new SimCommand().run([outDir, "--rounds", "300", "--seed", "demo", "--out", simFile]);
         const report = JSON.parse(fs.readFileSync(simFile, "utf-8")) as SimulationReport;
-        expect(report.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(report.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         expect(report.rounds).toBe(300);
 
         const reportFile = path.join(workDir, "sim.md");
         await new ReportCommand().run([simFile, "--format", "markdown", "--out", reportFile]);
-        expect(fs.readFileSync(reportFile, "utf-8")).toContain("# Simulation Report: Crazy Fruits");
+        expect(fs.readFileSync(reportFile, "utf-8")).toContain("# Simulation Report: Sample Slot");
 
         const replayFile = path.join(workDir, "replay.json");
         await new ReplayCommand().run([outDir, "--seed", "demo", "--round", "5", "--out", replayFile]);
         const replay = JSON.parse(fs.readFileSync(replayFile, "utf-8")) as ReplayDescriptor;
-        expect(replay.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(replay.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         expect(replay.round).toBe(5);
 
         let server: PokieDevServerHandling | undefined;
@@ -84,8 +84,8 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
 
             const gameResponse = await fetch(`http://127.0.0.1:${port}/game`);
             expect(await gameResponse.json()).toEqual({
-                id: "crazy-fruits",
-                name: "Crazy Fruits",
+                id: "sample-slot",
+                name: "Sample Slot",
                 version: "0.1.0",
                 description: "A pokie build example: 5x3, wilds, scatters, weighted reels.",
             });
@@ -165,7 +165,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("Dry run");
-        expect(printed).toContain('game             Crazy Fruits (id: "crazy-fruits", v0.1.0)');
+        expect(printed).toContain('game             Sample Slot (id: "sample-slot", v0.1.0)');
         expect(printed).toContain("blueprint hash   sha256:");
         expect(printed).toContain("would generate   README.md, package.json, src/generated/build-info.json, src/generated/index.js");
     });

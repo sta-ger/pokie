@@ -9,7 +9,7 @@ import {ParCommand} from "../../cli/commands/ParCommand.js";
 // the result is deep-equal to the original for every field this command supports. Exercising the
 // shipped example here (rather than an inline duplicate) keeps it from silently drifting out of sync
 // with what "pokie par" actually does — the same reasoning as BuildWorkflow.integration.test.ts's use
-// of crazy-fruits.blueprint.json.
+// of sample-slot.blueprint.json.
 describe("CLI workflow (integration): pokie par export -> pokie par import round trip", () => {
     const blueprintPath = path.join(__dirname, "..", "..", "examples", "parsheets", "starter.blueprint.json");
     const shippedParSheetPath = path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx");

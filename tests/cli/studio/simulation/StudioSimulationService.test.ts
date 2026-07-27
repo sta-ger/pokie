@@ -107,7 +107,7 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 }
 
 describe("StudioSimulationService", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("runs a small simulation to completion and builds a SimulationReport", async () => {
         const service = new StudioSimulationService(

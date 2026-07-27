@@ -4,7 +4,7 @@ import {ProvenanceSheetMapper} from "../../../src/parsheet/mapping/ProvenanceShe
 describe("ProvenanceSheetMapper", () => {
     const mapper = new ProvenanceSheetMapper();
     const blueprint: GameBlueprint = {
-        manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 3,
         rows: 3,
         symbols: ["A"],

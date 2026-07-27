@@ -17,7 +17,7 @@ describe("loadGameBlueprint", () => {
     it("parses a well-formed blueprint JSON file", () => {
         const filePath = path.join(dir, "blueprint.json");
         const blueprint = {
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 5,
             rows: 3,
             symbols: ["A", "K", "Q"],

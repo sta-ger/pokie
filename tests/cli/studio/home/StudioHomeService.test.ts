@@ -7,7 +7,7 @@ import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.j
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
-        manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 3,
         rows: 3,
         symbols: ["A", "B"],
@@ -90,24 +90,24 @@ describe("StudioHomeService", () => {
             const repository = new InMemoryRecentProjectsRepository();
             const service = new StudioHomeService("1.2.1", repository);
 
-            const result = await service.createProject({destinationDir: tmpDir, name: "crazy-fruits"});
+            const result = await service.createProject({destinationDir: tmpDir, name: "sample-slot"});
 
             expect(result.status).toBe("ok");
             if (result.status !== "ok") {
                 return;
             }
-            expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+            expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
             expect(fs.existsSync(path.join(result.projectRoot, "package.json"))).toBe(true);
 
             const recent = await repository.list();
-            expect(recent).toEqual([{projectRoot: result.projectRoot, name: "Crazy Fruits", openedAt: expect.any(String)}]);
+            expect(recent).toEqual([{projectRoot: result.projectRoot, name: "Sample Slot", openedAt: expect.any(String)}]);
         });
 
         it("resolves a relative destinationDir against the current working directory", async () => {
             const service = new StudioHomeService("1.2.1");
             const relative = path.relative(process.cwd(), tmpDir);
 
-            const result = await service.createProject({destinationDir: relative, name: "crazy-fruits"});
+            const result = await service.createProject({destinationDir: relative, name: "sample-slot"});
 
             expect(result.status).toBe("ok");
             if (result.status === "ok") {
@@ -121,24 +121,24 @@ describe("StudioHomeService", () => {
 
             const result = await service.createProject({
                 destinationDir: tmpDir,
-                name: "crazy-fruits",
+                name: "sample-slot",
                 gameId: "cf",
-                gameName: "Crazy Fruits Deluxe",
+                gameName: "Sample Slot Deluxe",
                 version: "2.0.0",
             });
 
             expect(result.status).toBe("ok");
             if (result.status === "ok") {
-                expect(result.manifest).toEqual({id: "cf", name: "Crazy Fruits Deluxe", version: "2.0.0"});
+                expect(result.manifest).toEqual({id: "cf", name: "Sample Slot Deluxe", version: "2.0.0"});
             }
         });
 
         it("returns a safe error (no stack trace) and records nothing when the destination already exists", async () => {
             const repository = new InMemoryRecentProjectsRepository();
             const service = new StudioHomeService("1.2.1", repository);
-            fs.mkdirSync(path.join(tmpDir, "crazy-fruits"));
+            fs.mkdirSync(path.join(tmpDir, "sample-slot"));
 
-            const result = await service.createProject({destinationDir: tmpDir, name: "crazy-fruits"});
+            const result = await service.createProject({destinationDir: tmpDir, name: "sample-slot"});
 
             expect(result).toEqual({status: "error", error: expect.stringContaining("already exists")});
             if (result.status === "error") {
@@ -152,7 +152,7 @@ describe("StudioHomeService", () => {
         it("scaffolds an existing npm project and records it as a recent project", async () => {
             const repository = new InMemoryRecentProjectsRepository();
             const service = new StudioHomeService("1.2.1", repository);
-            fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({name: "crazy-fruits", version: "0.1.0"}));
+            fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({name: "sample-slot", version: "0.1.0"}));
 
             const result = await service.initProject({directory: tmpDir});
 
@@ -160,14 +160,14 @@ describe("StudioHomeService", () => {
             if (result.status !== "ok") {
                 return;
             }
-            expect(result.manifest.id).toBe("crazy-fruits");
+            expect(result.manifest.id).toBe("sample-slot");
             expect(fs.existsSync(path.join(tmpDir, "tsconfig.json"))).toBe(true);
             expect(await repository.list()).toHaveLength(1);
         });
 
         it("resolves a relative directory against the current working directory", async () => {
             const service = new StudioHomeService("1.2.1");
-            fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({name: "crazy-fruits"}));
+            fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({name: "sample-slot"}));
             const relative = path.relative(process.cwd(), tmpDir);
 
             const result = await service.initProject({directory: relative});
@@ -190,7 +190,7 @@ describe("StudioHomeService", () => {
 
         it("reports clear skipped-file conflicts when re-initializing an already-initialized project", async () => {
             const service = new StudioHomeService("1.2.1");
-            fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({name: "crazy-fruits"}));
+            fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({name: "sample-slot"}));
             await service.initProject({directory: tmpDir});
 
             const second = await service.initProject({directory: tmpDir});
@@ -213,7 +213,7 @@ describe("StudioHomeService", () => {
             if (preview.status !== "ok") {
                 return;
             }
-            expect(preview.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+            expect(preview.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
             expect(preview.reels).toBe(3);
             expect(preview.rows).toBe(3);
             expect(preview.symbolsCount).toBe(2);
@@ -284,7 +284,7 @@ describe("StudioHomeService", () => {
             if (result.status !== "ok") {
                 return;
             }
-            expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+            expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
             expect(fs.existsSync(path.join(result.projectRoot, "src", "generated", "index.js"))).toBe(true);
             expect(await repository.list()).toHaveLength(1);
         });
@@ -342,7 +342,7 @@ describe("StudioHomeService", () => {
     describe("openProject", () => {
         it("loads the project, transitions to loaded, and records it as a recent project", async () => {
             const repository = new InMemoryRecentProjectsRepository();
-            const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+            const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
             const service = new StudioHomeService(
                 "1.2.1",
                 repository,

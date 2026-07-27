@@ -37,7 +37,7 @@ function createStubServer(
 }
 
 describe("ServeCommand", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("has the expected name and description", () => {
         const command = new ServeCommand();
@@ -85,7 +85,7 @@ describe("ServeCommand", () => {
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--port", "4321", "--host", "0.0.0.0"]);
+        await command.run(["./sample-slot", "--port", "4321", "--host", "0.0.0.0"]);
 
         expect(receivedGame).toBe(game);
         expect(receivedOptions).toEqual({host: "0.0.0.0", port: 4321});
@@ -102,7 +102,7 @@ describe("ServeCommand", () => {
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits"]);
+        await command.run(["./sample-slot"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("http://127.0.0.1:4321");

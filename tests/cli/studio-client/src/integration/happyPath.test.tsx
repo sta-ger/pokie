@@ -33,8 +33,8 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     json: () =>
                         Promise.resolve({
                             status: "ok",
-                            projectRoot: "/games/crazy-fruits",
-                            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                            projectRoot: "/games/sample-slot",
+                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                             createdFiles: ["build-info.json"],
                             buildInfo: {blueprintHash: "abc123", pokieVersion: "1.0.0", generatedAt: new Date().toISOString(), files: []},
                             unchanged: false,
@@ -48,8 +48,8 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     status: 200,
                     json: () =>
                         Promise.resolve({
-                            context: {mode: "project", projectRoot: "/games/crazy-fruits"},
-                            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                            context: {mode: "project", projectRoot: "/games/sample-slot"},
+                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                         }),
                 });
             }
@@ -60,8 +60,8 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     json: () =>
                         Promise.resolve({
                             status: "loaded",
-                            projectRoot: "/games/crazy-fruits",
-                            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                            projectRoot: "/games/sample-slot",
+                            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                         }),
                 });
             }
@@ -71,9 +71,9 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     status: 200,
                     json: () =>
                         Promise.resolve({
-                            packageRoot: "/games/crazy-fruits",
+                            packageRoot: "/games/sample-slot",
                             valid: true,
-                            packageJson: {name: "crazy-fruits", version: "0.1.0"},
+                            packageJson: {name: "sample-slot", version: "0.1.0"},
                             buildInfo: {
                                 blueprintHash: "abc123",
                                 source: "in-memory-blueprint",
@@ -90,9 +90,9 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     status: 200,
                     json: () =>
                         Promise.resolve({
-                            packageRoot: "/games/crazy-fruits",
+                            packageRoot: "/games/sample-slot",
                             valid: true,
-                            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                             errors: [],
                             warnings: [],
                             suggestions: [],
@@ -144,7 +144,7 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                             durationMs: 10,
                             report: completed
                                 ? {
-                                    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                                    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                                     requestedRounds: 1000,
                                     rounds: 1000,
                                     seed: null,
@@ -168,7 +168,7 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     json: () =>
                         Promise.resolve({
                             report: {
-                                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                                 requestedRounds: 1000,
                                 rounds: 1000,
                                 seed: null,
@@ -214,7 +214,7 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         // 5. Building's success action lands us in the Project Dashboard (the same "Open in Studio"
         // bridge the app already uses everywhere a build succeeds).
         await user.click(openInStudio);
-        expect(await screen.findByRole("heading", {name: "Crazy Fruits"})).toBeInTheDocument();
+        expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
 
         // 6. Overview recommends running a simulation once the project is known-valid... but validation
         // hasn't run at the *package* level yet, so the recommended action is to validate first --

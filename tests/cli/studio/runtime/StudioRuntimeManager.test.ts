@@ -13,7 +13,7 @@ import type {ResolvedOutcomeLibrary} from "../../../../cli/studio/outcomeLibrary
 import {StudioRuntimeManager} from "../../../../cli/studio/runtime/StudioRuntimeManager.js";
 import type {ValidatedStartRuntimeRequest} from "../../../../cli/studio/runtime/validateStartRuntimeRequest.js";
 
-const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
 function createFakeSession(): GameSessionHandling {
     let credits = 1000;

@@ -79,7 +79,7 @@ async function postJson(url: string, body?: unknown): Promise<{status: number; b
 }
 
 describe("PokieDevServer — pre-generated rounds (opt-in, additive)", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     describe("without preGeneratedOutcomeLibrary configured", () => {
         let server: PokieDevServer;

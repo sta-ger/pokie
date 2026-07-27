@@ -70,7 +70,7 @@ describe("isSimulationActive / isSimulationTerminal", () => {
 
 function createReport(overrides: Partial<SimulationReport> = {}): SimulationReport {
     return {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         requestedRounds: 1000,
         rounds: 1000,
         seed: "demo",
@@ -114,7 +114,7 @@ describe("describeSimulationReport", () => {
         const view = describeSimulationReport(createReport());
 
         expect(view).toMatchObject({
-            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             rounds: 1000,
             requestedRounds: 1000,
             seed: "demo",
@@ -159,7 +159,7 @@ describe("describeSimulationReport", () => {
         const report = createReport({
             warnings: ["No seed was provided — this run is not reproducible."],
             reproducibility: {
-                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 seed: "demo",
                 requestedRounds: 1000,
                 actualRounds: 1000,

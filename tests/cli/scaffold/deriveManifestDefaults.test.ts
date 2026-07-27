@@ -2,19 +2,19 @@ import {deriveManifestDefaults} from "../../../cli/scaffold/deriveManifestDefaul
 
 describe("deriveManifestDefaults", () => {
     it("derives id, a title-cased name, and a PascalCase class name from a plain package name", () => {
-        expect(deriveManifestDefaults("crazy-fruits")).toEqual({id: "crazy-fruits", name: "Crazy Fruits", className: "CrazyFruits"});
+        expect(deriveManifestDefaults("sample-slot")).toEqual({id: "sample-slot", name: "Sample Slot", className: "SampleSlot"});
     });
 
     it("derives id, name, and class name from an underscore-separated package name", () => {
-        expect(deriveManifestDefaults("crazy_fruits_deluxe")).toEqual({
-            id: "crazy_fruits_deluxe",
-            name: "Crazy Fruits Deluxe",
-            className: "CrazyFruitsDeluxe",
+        expect(deriveManifestDefaults("sample_slot_deluxe")).toEqual({
+            id: "sample_slot_deluxe",
+            name: "Sample Slot Deluxe",
+            className: "SampleSlotDeluxe",
         });
     });
 
     it("strips the scope from a scoped package name for id, name, and class name", () => {
-        expect(deriveManifestDefaults("@my-org/crazy-fruits")).toEqual({id: "crazy-fruits", name: "Crazy Fruits", className: "CrazyFruits"});
+        expect(deriveManifestDefaults("@my-org/sample-slot")).toEqual({id: "sample-slot", name: "Sample Slot", className: "SampleSlot"});
     });
 
     it("falls back to a default id/name/class name when the package has no name", () => {

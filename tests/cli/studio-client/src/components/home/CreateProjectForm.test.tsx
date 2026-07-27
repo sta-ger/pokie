@@ -13,8 +13,8 @@ describe("CreateProjectForm", () => {
                 status: 201,
                 body: {
                     status: "ok",
-                    projectRoot: "/games/crazy-fruits",
-                    manifest: {id: "crazy-fruits", name: "crazy-fruits", version: "0.1.0"},
+                    projectRoot: "/games/sample-slot",
+                    manifest: {id: "sample-slot", name: "sample-slot", version: "0.1.0"},
                     createdFiles: ["package.json", "blueprint.json"],
                     updatedFiles: [],
                     skippedFiles: [],
@@ -24,18 +24,18 @@ describe("CreateProjectForm", () => {
 
         renderWithProviders(<CreateProjectForm />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Package name", {exact: false}), "crazy-fruits");
+        await user.type(screen.getByLabelText("Package name", {exact: false}), "sample-slot");
         await user.click(screen.getByRole("button", {name: "Create"}));
 
         expect(await screen.findByText("package.json")).toBeInTheDocument();
         expect(screen.getByText("blueprint.json")).toBeInTheDocument();
-        expect(screen.getByText(/Next: cd \/games\/crazy-fruits && npm install && npm run build/)).toBeInTheDocument();
+        expect(screen.getByText(/Next: cd \/games\/sample-slot && npm install && npm run build/)).toBeInTheDocument();
         expect(calls[0]).toEqual({
             url: "/api/home/projects/create",
             init: {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({destinationDir: ".", name: "crazy-fruits"}),
+                body: JSON.stringify({destinationDir: ".", name: "sample-slot"}),
             },
         });
     });
@@ -48,7 +48,7 @@ describe("CreateProjectForm", () => {
 
         renderWithProviders(<CreateProjectForm />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Package name", {exact: false}), "crazy-fruits");
+        await user.type(screen.getByLabelText("Package name", {exact: false}), "sample-slot");
         await user.click(screen.getByRole("button", {name: "Create"}));
 
         expect(await screen.findByText("destination already exists")).toBeInTheDocument();

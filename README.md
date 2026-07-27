@@ -175,7 +175,7 @@ Scaffold a brand-new [game package](docs/game-packages.md) in a new directory:
 
 ```
 npm i -g pokie
-pokie create crazy-fruits
+pokie create sample-slot
 ```
 
 Or turn an existing empty npm project into one in place:
@@ -189,7 +189,7 @@ npx pokie init
 Then check a package's contract without playing it:
 
 ```
-pokie validate ./crazy-fruits
+pokie validate ./sample-slot
 ```
 
 See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate, what `pokie sim`/`pokie validate`

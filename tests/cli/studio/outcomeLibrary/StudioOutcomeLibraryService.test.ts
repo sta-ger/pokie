@@ -18,7 +18,7 @@ import {StudioOutcomeLibraryService} from "../../../../cli/studio/outcomeLibrary
 import type {OutcomeLibrarySelector} from "../../../../cli/studio/outcomeLibrary/OutcomeLibrarySelector.js";
 
 const identityRealpath = (resolvedPath: string): string => resolvedPath;
-const testProvenance: RoundArtifactProvenance = {game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}, pokieVersion: "1.3.0"};
+const testProvenance: RoundArtifactProvenance = {game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, pokieVersion: "1.3.0"};
 
 function testLibrary(libraryId: string, outcomeCount = 1): WeightedOutcomeLibrary<string> {
     const outcomes = Array.from({length: outcomeCount}, (_, index) => ({
@@ -129,7 +129,7 @@ function bundleManifest(overrides: Partial<OutcomeLibraryBundleManifest> = {}): 
         generatedBy: "pokie outcomelibrary build",
         pokieVersion: "1.3.0",
         generatedAt: "2026-01-01T00:00:00.000Z",
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         configHash: "sha256:config",
         artifactPokieVersion: "1.3.0",
         modes: [
@@ -235,7 +235,7 @@ describe("StudioOutcomeLibraryService", () => {
             expect(view.status).toBe("ok");
             if (view.status !== "ok") throw new Error("expected ok");
             expect(view.provenance.source).toBe("bundle");
-            expect(view.provenance.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+            expect(view.provenance.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
             expect(view.provenance.configHash).toBe("sha256:config");
             expect(view.provenance.pokieVersion).toBe("1.3.0");
         });
@@ -259,7 +259,7 @@ describe("StudioOutcomeLibraryService", () => {
                     generatedBy: "pokie stakeengine export",
                     pokieVersion: "1.3.0",
                     generatedAt: "2026-01-01T00:00:00.000Z",
-                    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                     modes: [{name: "base", betMode: "base", stake: 1, cost: 1, outcomeCount: 1, libraryId: "lib-stake", libraryHash: "sha256:x", events: "base.events.jsonl.zst", weights: "base.csv"}],
                     files: [],
                 },

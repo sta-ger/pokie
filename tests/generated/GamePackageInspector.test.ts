@@ -92,7 +92,7 @@ describe("GamePackageInspector", () => {
     });
 
     it("reports generated with the full build-info.json when present and written by \"pokie build\"", () => {
-        fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({name: "crazy-fruits", version: "0.1.0"}));
+        fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({name: "sample-slot", version: "0.1.0"}));
         fs.mkdirSync(path.join(cwd, "src", "generated"), {recursive: true});
         const buildInfo = {
             schemaVersion: 1,
@@ -100,9 +100,9 @@ describe("GamePackageInspector", () => {
             pokieVersion: "1.3.0",
             generatedAt: "2026-01-02T03:04:05.000Z",
             blueprintHash: "sha256:abc123",
-            source: "crazy-fruits.blueprint.json",
+            source: "sample-slot.blueprint.json",
             files: ["package.json", "README.md", "src/generated/index.js", "src/generated/build-info.json"],
-            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         };
         fs.writeFileSync(path.join(cwd, "src", "generated", "build-info.json"), JSON.stringify(buildInfo));
         const inspector = new GamePackageInspector();

@@ -1,7 +1,7 @@
 import {MarkdownSimulationReportRenderer, SimulationReport} from "pokie";
 
 const report: SimulationReport = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     requestedRounds: 10000,
     rounds: 9800,
     seed: "demo",
@@ -13,7 +13,7 @@ const report: SimulationReport = {
     durationMs: 1234,
     spinsPerSecond: 7942,
     reproducibility: {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         seed: "demo",
         requestedRounds: 10000,
         actualRounds: 9800,
@@ -27,8 +27,8 @@ describe("MarkdownSimulationReportRenderer", () => {
     it("includes game id/name/version, requested/actual rounds, and seed", () => {
         const markdown = new MarkdownSimulationReportRenderer().render(report);
 
-        expect(markdown).toContain("# Simulation Report: Crazy Fruits");
-        expect(markdown).toContain("**Game id**: `crazy-fruits`");
+        expect(markdown).toContain("# Simulation Report: Sample Slot");
+        expect(markdown).toContain("**Game id**: `sample-slot`");
         expect(markdown).toContain("**Game version**: 0.1.0");
         expect(markdown).toContain("**Requested rounds**: 10000");
         expect(markdown).toContain("**Actual rounds**: 9800");
@@ -57,7 +57,7 @@ describe("MarkdownSimulationReportRenderer", () => {
         const markdown = new MarkdownSimulationReportRenderer().render(report);
 
         expect(markdown).toContain("## Reproducibility");
-        expect(markdown).toContain("**Game**: Crazy Fruits (`crazy-fruits`, v0.1.0)");
+        expect(markdown).toContain("**Game**: Sample Slot (`sample-slot`, v0.1.0)");
         expect(markdown).toContain("**Requested rounds**: 10000");
         expect(markdown).toContain("**Actual rounds**: 9800");
         expect(markdown).toContain("**Re-run command**: `pokie sim <packageRoot> --rounds 10000 --seed demo`");

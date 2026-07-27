@@ -6,7 +6,7 @@ Starting a new one from scratch? `pokie build --init-blueprint <file>` writes an
 [Starter template](../../docs/cli.md#starter-template-pokie-build---init-blueprint-file) — instead of hand-authoring
 the whole shape shown below.
 
-- `crazy-fruits.blueprint.json` — 5x3, wilds, scatters, and weighted reels; omits `paylines`/`reelStrips` on
+- `sample-slot.blueprint.json` — 5x3, wilds, scatters, and weighted reels; omits `paylines`/`reelStrips` on
   purpose to show the engine's own defaults (one horizontal line per row, the built-in weighted reel generator)
   still produce a fully playable game. Its `paytable`/`symbolWeights` are tuned (low-pay symbols weighted heavier,
   high-pay symbols rarer) for a realistic demo RTP — around 92-93% over a large simulated sample (e.g.
@@ -26,8 +26,8 @@ the whole shape shown below.
 Try it from the repository root:
 
 ```
-npx pokie build examples/blueprints/crazy-fruits.blueprint.json --out /tmp/crazy-fruits
-cd /tmp/crazy-fruits && npm install
+npx pokie build examples/blueprints/sample-slot.blueprint.json --out /tmp/sample-slot
+cd /tmp/sample-slot && npm install
 npx pokie inspect .
 npx pokie validate .
 ```

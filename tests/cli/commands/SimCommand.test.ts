@@ -51,7 +51,7 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
 }
 
 describe("SimCommand", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("has the expected name and description", () => {
         const command = new SimCommand();
@@ -140,7 +140,7 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "30", "--out", "report.json"]);
+        await command.run(["./sample-slot", "--rounds", "30", "--out", "report.json"]);
 
         const [, contents] = writeFile.mock.calls[0];
         const report = JSON.parse(contents) as SimulationReport;
@@ -153,7 +153,7 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "20"]);
+        await command.run(["./sample-slot", "--rounds", "20"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("workers         1");
@@ -166,7 +166,7 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "30", "--out", "report.json"]);
+        await command.run(["./sample-slot", "--rounds", "30", "--out", "report.json"]);
 
         const [, contents] = writeFile.mock.calls[0];
         const report = JSON.parse(contents) as SimulationReport;
@@ -183,7 +183,7 @@ describe("SimCommand", () => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
         await command.run([
-            "./crazy-fruits",
+            "./sample-slot",
             "--rounds",
             "10000",
             "--min-rounds",
@@ -226,7 +226,7 @@ describe("SimCommand", () => {
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
         await command.run([
-            "./crazy-fruits",
+            "./sample-slot",
             "--rounds",
             "60",
             "--min-rounds",
@@ -263,11 +263,11 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(game));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "50", "--seed", "demo"]);
+        await command.run(["./sample-slot", "--rounds", "50", "--seed", "demo"]);
 
         expect(game.createdWith).toEqual({seed: "demo"});
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain('Simulated "Crazy Fruits"');
+        expect(printed).toContain('Simulated "Sample Slot"');
         expect(printed).toContain("rounds          50");
         expect(printed).toContain("seed            demo");
 
@@ -279,7 +279,7 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "30", "--out", "report.json"]);
+        await command.run(["./sample-slot", "--rounds", "30", "--out", "report.json"]);
 
         expect(writeFile).toHaveBeenCalledTimes(1);
         const [file, contents] = writeFile.mock.calls[0];
@@ -300,7 +300,7 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "20", "--format", "json"]);
+        await command.run(["./sample-slot", "--rounds", "20", "--format", "json"]);
 
         expect(logSpy).toHaveBeenCalledTimes(1);
         const report = JSON.parse(logSpy.mock.calls[0][0]) as SimulationReport;
@@ -314,7 +314,7 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "30", "--out", "report.json"]);
+        await command.run(["./sample-slot", "--rounds", "30", "--out", "report.json"]);
 
         const [, contents] = writeFile.mock.calls[0];
         const report = JSON.parse(contents) as SimulationReport;
@@ -357,7 +357,7 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(createFreeGamesAwareFakeGame(manifest)), writeFile);
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "50", "--out", "report.json"]);
+        await command.run(["./sample-slot", "--rounds", "50", "--out", "report.json"]);
 
         const [, contents] = writeFile.mock.calls[0];
         const report = JSON.parse(contents) as SimulationReport;
@@ -374,7 +374,7 @@ describe("SimCommand", () => {
         const command = new SimCommand(() => Promise.resolve(createFreeGamesAwareFakeGame(manifest)));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "50"]);
+        await command.run(["./sample-slot", "--rounds", "50"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("Breakdown:");
@@ -386,7 +386,7 @@ describe("SimCommand", () => {
 });
 
 describe("SimCommand --mode", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     function createBetModeAwareFakeGame(): PokieGame {
         return {
@@ -432,7 +432,7 @@ describe("SimCommand --mode", () => {
         const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()), writeFile);
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "40", "--mode", "ante", "--out", "report.json"]);
+        await command.run(["./sample-slot", "--rounds", "40", "--mode", "ante", "--out", "report.json"]);
 
         const [, contents] = writeFile.mock.calls[0];
         const report = JSON.parse(contents) as SimulationReport;
@@ -447,7 +447,7 @@ describe("SimCommand --mode", () => {
         const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "20", "--mode", "ante"]);
+        await command.run(["./sample-slot", "--rounds", "20", "--mode", "ante"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("bet mode        ante");
@@ -459,7 +459,7 @@ describe("SimCommand --mode", () => {
         const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--rounds", "20"]);
+        await command.run(["./sample-slot", "--rounds", "20"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).not.toContain("bet mode");
@@ -470,13 +470,13 @@ describe("SimCommand --mode", () => {
     it("surfaces the runtime's own error for an unknown mode id, rather than silently ignoring --mode", async () => {
         const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()));
 
-        await expect(command.run(["./crazy-fruits", "--rounds", "20", "--mode", "typo-mode"])).rejects.toThrow(/Unknown bet mode "typo-mode"/);
+        await expect(command.run(["./sample-slot", "--rounds", "20", "--mode", "typo-mode"])).rejects.toThrow(/Unknown bet mode "typo-mode"/);
     });
 
     it("throws a descriptive error when --mode is given with no value", async () => {
         const command = new SimCommand(() => Promise.resolve(createBetModeAwareFakeGame()));
 
-        await expect(command.run(["./crazy-fruits", "--mode"])).rejects.toThrow(/--mode requires a bet mode id/);
+        await expect(command.run(["./sample-slot", "--mode"])).rejects.toThrow(/--mode requires a bet mode id/);
     });
 
     // Regression: --mode against a game whose session doesn't support bet modes at all must fail
@@ -485,7 +485,7 @@ describe("SimCommand --mode", () => {
     it("fails clearly, rather than silently simulating the base game, when the game has no bet modes at all", async () => {
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
 
-        await expect(command.run(["./crazy-fruits", "--rounds", "20", "--mode", "ante"])).rejects.toThrow(
+        await expect(command.run(["./sample-slot", "--rounds", "20", "--mode", "ante"])).rejects.toThrow(
             /does not support bet mode selection/,
         );
     });

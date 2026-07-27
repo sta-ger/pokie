@@ -243,7 +243,7 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 }
 
 describe("StudioReplayExecutionService", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("returns a queued job immediately, before any round is played (POST never blocks)", () => {
         let roundsPlayed = 0;

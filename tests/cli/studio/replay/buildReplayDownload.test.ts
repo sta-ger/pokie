@@ -3,7 +3,7 @@ import {buildReplayDownload} from "../../../../cli/studio/replay/buildReplayDown
 
 function createDescriptor(overrides: Partial<ReplayDescriptor> = {}): ReplayDescriptor {
     return {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         seed: "demo",
         round: 42,
         totalBet: 42,
@@ -22,17 +22,17 @@ describe("buildReplayDownload", () => {
         const download = buildReplayDownload(descriptor, "replay-1");
 
         expect(download.contentType).toBe("application/json; charset=utf-8");
-        expect(download.filename).toBe("crazy-fruits-0.1.0-replay-1.json");
+        expect(download.filename).toBe("sample-slot-0.1.0-replay-1.json");
         expect(JSON.parse(download.body)).toEqual(descriptor);
         expect(download.body).toContain("\n");
     });
 
     it("sanitizes unsafe characters out of the filename", () => {
-        const descriptor = createDescriptor({game: {id: "crazy fruits/2", name: "Crazy Fruits", version: "0.1.0+build"}});
+        const descriptor = createDescriptor({game: {id: "sample slot/2", name: "Sample Slot", version: "0.1.0+build"}});
 
         const download = buildReplayDownload(descriptor, "replay/1 two");
 
-        expect(download.filename).toBe("crazy-fruits-2-0.1.0-build-replay-1-two.json");
+        expect(download.filename).toBe("sample-slot-2-0.1.0-build-replay-1-two.json");
     });
 
     it("handles a null screen without error", () => {

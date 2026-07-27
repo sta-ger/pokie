@@ -74,9 +74,9 @@ function createStubPrompt(): PromptAdapting & {closed: boolean} {
     };
 }
 
-const rawBlueprint = {manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}};
+const rawBlueprint = {manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}};
 const fullBlueprint: GameBlueprint = {
-    manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 5,
     rows: 3,
     symbols: ["A", "K", "Q", "J"],
@@ -95,8 +95,8 @@ const wizardBlueprint: GameBlueprint = {
     paytable: {A: {3: 5}},
 };
 const generatedResult: GeneratedGamePackage = {
-    projectRoot: "/tmp/crazy-fruits",
-    manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    projectRoot: "/tmp/sample-slot",
+    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     createdFiles: ["package.json", "src/generated/index.js"],
     buildInfo: {
         schemaVersion: 1,
@@ -104,7 +104,7 @@ const generatedResult: GeneratedGamePackage = {
         pokieVersion: "1.3.0",
         generatedAt: "2026-01-01T00:00:00.000Z",
         blueprintHash: "sha256:abc123",
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     },
     unchanged: false,
 };
@@ -336,7 +336,7 @@ describe("BuildCommand", () => {
         expect(exitCode).toBe(0);
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("package.json"));
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("src/generated/index.js"));
-        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('built in "/tmp/crazy-fruits"'));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('built in "/tmp/sample-slot"'));
     });
 
     it("prints a build summary with package root, game id/name/version, and blueprint hash", async () => {
@@ -346,8 +346,8 @@ describe("BuildCommand", () => {
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("Build summary:");
-        expect(printed).toContain("package root     /tmp/crazy-fruits");
-        expect(printed).toContain('game             Crazy Fruits (id: "crazy-fruits", v0.1.0)');
+        expect(printed).toContain("package root     /tmp/sample-slot");
+        expect(printed).toContain('game             Sample Slot (id: "sample-slot", v0.1.0)');
         expect(printed).toContain("blueprint hash   sha256:abc123");
         expect(printed).toContain("status           generated");
     });
@@ -403,7 +403,7 @@ describe("BuildCommand", () => {
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("Dry run");
-        expect(printed).toContain('game             Crazy Fruits (id: "crazy-fruits", v0.1.0)');
+        expect(printed).toContain('game             Sample Slot (id: "sample-slot", v0.1.0)');
         expect(printed).toContain("reels x rows     5 x 3");
         expect(printed).toContain("symbols          4");
         expect(printed).toContain("paylines         2");
@@ -414,7 +414,7 @@ describe("BuildCommand", () => {
 
     it("--dry-run reports default paylines/bets when the blueprint omits them", async () => {
         const minimalBlueprint: GameBlueprint = {
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 3,
             rows: 3,
             symbols: ["A", "B"],
@@ -466,12 +466,12 @@ describe("BuildCommand", () => {
         await command.run(["config.json"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain("pokie inspect /tmp/crazy-fruits");
-        expect(printed).toContain("pokie validate /tmp/crazy-fruits");
-        expect(printed).toContain("pokie sim /tmp/crazy-fruits");
+        expect(printed).toContain("pokie inspect /tmp/sample-slot");
+        expect(printed).toContain("pokie validate /tmp/sample-slot");
+        expect(printed).toContain("pokie sim /tmp/sample-slot");
         expect(printed).toContain("pokie report sim.json");
-        expect(printed).toContain("pokie replay /tmp/crazy-fruits");
-        expect(printed).toContain("pokie dev /tmp/crazy-fruits");
+        expect(printed).toContain("pokie replay /tmp/sample-slot");
+        expect(printed).toContain("pokie dev /tmp/sample-slot");
     });
 
     describe("reelStripGeneration", () => {

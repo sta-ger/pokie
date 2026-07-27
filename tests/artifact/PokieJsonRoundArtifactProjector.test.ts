@@ -10,7 +10,7 @@ import {
 } from "pokie";
 
 const provenance: RoundArtifactProvenance = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
 

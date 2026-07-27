@@ -37,7 +37,7 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
 }
 
 describe("ReplayRecorder", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("throws for a non-positive round", () => {
         const recorder = new ReplayRecorder();
@@ -68,7 +68,7 @@ describe("ReplayRecorder", () => {
 
         const descriptor = recorder.record({game: createFakeGame(manifest), round: 1});
 
-        expect(descriptor.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(descriptor.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
     });
 
     it("defaults seed to null when not given, and passes it through otherwise", () => {

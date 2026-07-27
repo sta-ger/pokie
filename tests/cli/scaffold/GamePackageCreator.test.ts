@@ -17,17 +17,17 @@ describe("GamePackageCreator", () => {
     it("creates a new directory containing a POKIE-compatible game package skeleton", () => {
         const creator = new GamePackageCreator("1.2.1");
 
-        const result = creator.create(parentDir, "crazy-fruits");
+        const result = creator.create(parentDir, "sample-slot");
 
-        const projectRoot = path.join(parentDir, "crazy-fruits");
+        const projectRoot = path.join(parentDir, "sample-slot");
         expect(result.projectRoot).toBe(projectRoot);
         expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(projectRoot, "tsconfig.json"))).toBe(true);
         expect(fs.existsSync(path.join(projectRoot, "src", "index.ts"))).toBe(true);
-        expect(fs.existsSync(path.join(projectRoot, "src", "CrazyFruitsGame.ts"))).toBe(true);
-        expect(fs.existsSync(path.join(projectRoot, "src", "CrazyFruitsSession.ts"))).toBe(true);
+        expect(fs.existsSync(path.join(projectRoot, "src", "SampleSlotGame.ts"))).toBe(true);
+        expect(fs.existsSync(path.join(projectRoot, "src", "SampleSlotSession.ts"))).toBe(true);
         expect(result.createdFiles.sort()).toEqual(
-            ["package.json", "src/CrazyFruitsGame.ts", "src/CrazyFruitsSession.ts", "src/index.ts", "tsconfig.json"].sort(),
+            ["package.json", "src/SampleSlotGame.ts", "src/SampleSlotSession.ts", "src/index.ts", "tsconfig.json"].sort(),
         );
         expect(result.updatedFiles).toEqual([]);
         expect(result.skippedFiles).toEqual([]);
@@ -36,10 +36,10 @@ describe("GamePackageCreator", () => {
     it("writes a package.json with a name, a pokie dependency, and pokie.entry pointing at the compiled entry", () => {
         const creator = new GamePackageCreator("1.2.1");
 
-        const result = creator.create(parentDir, "crazy-fruits");
+        const result = creator.create(parentDir, "sample-slot");
 
         const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
-        expect(pkg.name).toBe("crazy-fruits");
+        expect(pkg.name).toBe("sample-slot");
         expect(pkg.dependencies).toEqual({pokie: "^1.2.1"});
         expect(pkg.scripts).toEqual({
             build: "tsc",
@@ -53,16 +53,16 @@ describe("GamePackageCreator", () => {
     it("derives the game id/name/class name from the given project name", () => {
         const creator = new GamePackageCreator("1.2.1");
 
-        const result = creator.create(parentDir, "crazy-fruits");
+        const result = creator.create(parentDir, "sample-slot");
 
-        expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
     });
 
     it("throws a descriptive error when the target directory already exists", () => {
         const creator = new GamePackageCreator("1.2.1");
-        creator.create(parentDir, "crazy-fruits");
+        creator.create(parentDir, "sample-slot");
 
-        expect(() => creator.create(parentDir, "crazy-fruits")).toThrow(/already exists/);
+        expect(() => creator.create(parentDir, "sample-slot")).toThrow(/already exists/);
     });
 
     it("throws when no name is given", () => {
@@ -81,15 +81,15 @@ describe("GamePackageCreator", () => {
         it("uses the given id/name/version instead of deriving them from the directory name", () => {
             const creator = new GamePackageCreator("1.2.1");
 
-            const result = creator.create(parentDir, "crazy-fruits", {id: "cf", name: "Crazy Fruits Deluxe", version: "2.0.0"});
+            const result = creator.create(parentDir, "sample-slot", {id: "cf", name: "Sample Slot Deluxe", version: "2.0.0"});
 
-            expect(result.manifest).toEqual({id: "cf", name: "Crazy Fruits Deluxe", version: "2.0.0"});
+            expect(result.manifest).toEqual({id: "cf", name: "Sample Slot Deluxe", version: "2.0.0"});
         });
 
         it("derives the class name from the overridden id, not the directory name", () => {
             const creator = new GamePackageCreator("1.2.1");
 
-            const result = creator.create(parentDir, "crazy-fruits", {id: "lucky-sevens"});
+            const result = creator.create(parentDir, "sample-slot", {id: "lucky-sevens"});
 
             expect(fs.existsSync(path.join(result.projectRoot, "src", "LuckySevensGame.ts"))).toBe(true);
             expect(fs.existsSync(path.join(result.projectRoot, "src", "LuckySevensSession.ts"))).toBe(true);
@@ -101,7 +101,7 @@ describe("GamePackageCreator", () => {
         it("writes the overridden version into package.json too", () => {
             const creator = new GamePackageCreator("1.2.1");
 
-            const result = creator.create(parentDir, "crazy-fruits", {version: "3.1.4"});
+            const result = creator.create(parentDir, "sample-slot", {version: "3.1.4"});
 
             const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
             expect(pkg.version).toBe("3.1.4");
@@ -110,17 +110,17 @@ describe("GamePackageCreator", () => {
         it("falls back to the derived defaults when an override is empty/whitespace", () => {
             const creator = new GamePackageCreator("1.2.1");
 
-            const result = creator.create(parentDir, "crazy-fruits", {id: "  ", name: "", version: undefined});
+            const result = creator.create(parentDir, "sample-slot", {id: "  ", name: "", version: undefined});
 
-            expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+            expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         });
 
         it("still works with no overrides object at all (existing 2-arg callers)", () => {
             const creator = new GamePackageCreator("1.2.1");
 
-            const result = creator.create(parentDir, "crazy-fruits");
+            const result = creator.create(parentDir, "sample-slot");
 
-            expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+            expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         });
     });
 });

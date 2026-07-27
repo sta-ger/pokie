@@ -31,6 +31,23 @@ class FakePromptAdapting implements PromptAdapting {
     }
 }
 
+// Answers every question with Enter (an empty line), without a fixed queue to run out of — the whole
+// point of the Enter-only test below is that no question ever *needs* a typed answer, so a canned
+// list of the right length would quietly encode the very thing under test.
+class AlwaysEnterPrompt implements PromptAdapting {
+    public readonly questions: string[] = [];
+    public closed = false;
+
+    public ask(question: string): Promise<string | null> {
+        this.questions.push(question);
+        return Promise.resolve("");
+    }
+
+    public close(): void {
+        this.closed = true;
+    }
+}
+
 // End-to-end happy path for "pokie build" with no arguments: BuildCommand's real GameBlueprintWizard
 // and GameBlueprintValidator/GamePackageGenerator (only the terminal I/O is faked, via a canned
 // PromptAdapting) build a GameBlueprint from scratch, and the resulting package is then run through
@@ -94,5 +111,50 @@ describe("CLI workflow (integration): pokie build (wizard) output passes validat
         const reportFile = path.join(workDir, "sim.md");
         await new ReportCommand().run([simFile, "--format", "markdown", "--out", reportFile]);
         expect(fs.readFileSync(reportFile, "utf-8")).toContain("# Simulation Report: Wizard Slot");
+    });
+
+    // The Enter-only contract, end to end. Nothing here is typed: the run accepts the suggested game
+    // id/name, the default reels/rows/symbols/bets, the default payouts for every symbol, the default
+    // reel weighting, and the default output directory. Reaching exit code 0 at all already proves the
+    // paytable defaults were applied — an Enter-only run used to produce an empty paytable, which
+    // GameBlueprintValidator rejects with "blueprint-paytable-empty" before anything is written.
+    it("builds, validates and simulates a package when every question is answered with Enter", async () => {
+        const prompt = new AlwaysEnterPrompt();
+        // The default output directory is resolved against the process working directory, so it's
+        // pointed at the temp dir — otherwise accepting that default (which is the point of the test)
+        // would write a package into the repository.
+        const cwdSpy = jest.spyOn(process, "cwd").mockReturnValue(workDir);
+
+        try {
+            const buildCommand = new BuildCommand("1.3.0", undefined, undefined, undefined, new GameBlueprintWizard(), () => prompt);
+            const buildExitCode = await buildCommand.run([]);
+
+            expect(buildExitCode).toBe(0);
+            expect(prompt.closed).toBe(true);
+            expect(prompt.questions.length).toBeGreaterThan(0);
+
+            // The wizard suggests a fresh random id per run, so the package directory is discovered
+            // rather than hardcoded — exactly one is expected to have been created.
+            const created = fs.readdirSync(workDir);
+            expect(created).toHaveLength(1);
+            const projectRoot = path.join(workDir, created[0]);
+
+            expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
+            expect(fs.existsSync(path.join(projectRoot, "src", "generated", "index.js"))).toBe(true);
+
+            const buildInfo = JSON.parse(fs.readFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "utf-8"));
+            expect(buildInfo.game.id).toBe(created[0]);
+
+            expect(await new ValidateCommand().run([projectRoot])).toBe(0);
+
+            const simFile = path.join(workDir, "enter-only-sim.json");
+            await new SimCommand().run([projectRoot, "--rounds", "200", "--seed", "demo", "--out", simFile]);
+
+            const report = JSON.parse(fs.readFileSync(simFile, "utf-8")) as SimulationReport;
+            expect(report.rounds).toBe(200);
+            expect(report.game.id).toBe(created[0]);
+        } finally {
+            cwdSpy.mockRestore();
+        }
     });
 });

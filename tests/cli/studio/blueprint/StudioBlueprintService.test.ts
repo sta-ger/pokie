@@ -9,7 +9,7 @@ import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.j
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
-        manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 3,
         rows: 3,
         symbols: ["A", "B"],
@@ -296,8 +296,8 @@ describe("StudioBlueprintService", () => {
         const validSheets = {
             Manifest: [
                 ["Key", "Value"],
-                ["Id", "crazy-fruits"],
-                ["Name", "Crazy Fruits"],
+                ["Id", "sample-slot"],
+                ["Name", "Sample Slot"],
                 ["Version", "0.1.0"],
                 ["Reels", 2],
                 ["Rows", 2],
@@ -324,7 +324,7 @@ describe("StudioBlueprintService", () => {
                 return;
             }
             expect(result.path).toBe(filePath);
-            expect(result.blueprint).toMatchObject({manifest: {id: "crazy-fruits"}, reels: 2, rows: 2});
+            expect(result.blueprint).toMatchObject({manifest: {id: "sample-slot"}, reels: 2, rows: 2});
             expect(result.errors).toEqual([]);
             // No "Meta" sheet in this fixture -- ParSheetImporter's own provenance-missing warning.
             expect(result.warnings.some((issue) => issue.code === "parsheet-provenance-missing")).toBe(true);
@@ -594,7 +594,7 @@ describe("StudioBlueprintService", () => {
             const result = service.save(filePath, buildBlueprint(), true);
 
             expect(result).toEqual({status: "ok", path: filePath});
-            expect(fs.readFileSync(filePath, "utf-8")).toContain('"crazy-fruits"');
+            expect(fs.readFileSync(filePath, "utf-8")).toContain('"sample-slot"');
         });
 
         it("produces a byte-identical file when re-saving unchanged content", () => {
@@ -644,7 +644,7 @@ describe("StudioBlueprintService", () => {
 
             expect(preview.status).toBe("ok");
             if (preview.status === "ok") {
-                expect(preview.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+                expect(preview.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
                 expect(preview.reels).toBe(3);
                 expect(typeof preview.blueprintHash).toBe("string");
             }

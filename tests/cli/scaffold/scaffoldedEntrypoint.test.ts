@@ -12,7 +12,7 @@ describe("a pokie init-scaffolded entry module", () => {
         projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-init-load-test-"));
         fs.writeFileSync(
             path.join(projectRoot, "package.json"),
-            JSON.stringify({name: "crazy-fruits", version: "1.0.0"}, null, 4),
+            JSON.stringify({name: "sample-slot", version: "1.0.0"}, null, 4),
         );
 
         new GamePackageScaffolder("1.2.1").scaffold(projectRoot);
@@ -35,7 +35,7 @@ describe("a pokie init-scaffolded entry module", () => {
     it("can be loaded via loadPokieGame", async () => {
         const game = await loadPokieGame(projectRoot);
 
-        expect(game.getManifest()).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"});
+        expect(game.getManifest()).toEqual({id: "sample-slot", name: "Sample Slot", version: "1.0.0"});
     });
 
     it("produces a manifest that passes PokieGameContractValidationRule with no issues", async () => {

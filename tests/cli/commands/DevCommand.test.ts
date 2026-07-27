@@ -63,7 +63,7 @@ class FakeProcess {
 }
 
 describe("DevCommand", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("has the expected name and description", () => {
         const command = new DevCommand();
@@ -128,7 +128,7 @@ describe("DevCommand", () => {
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--port", "3000", "--client-port", "3100"]);
+        await command.run(["./sample-slot", "--port", "3000", "--client-port", "3100"]);
 
         expect(receivedApiOptions).toEqual({host: undefined, port: 3000});
         expect(receivedClientRoot).toBe("/fake/client/root");
@@ -165,7 +165,7 @@ describe("DevCommand", () => {
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--no-open"]);
+        await command.run(["./sample-slot", "--no-open"]);
 
         expect(openBrowserCalls).toBe(0);
 
@@ -190,7 +190,7 @@ describe("DevCommand", () => {
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--no-open"]);
+        await command.run(["./sample-slot", "--no-open"]);
         fakeProcess.trigger("SIGINT");
         await new Promise((resolve) => {
             setTimeout(resolve, 0);
@@ -223,7 +223,7 @@ describe("DevCommand", () => {
         );
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--no-open"]);
+        await command.run(["./sample-slot", "--no-open"]);
         fakeProcess.trigger("SIGTERM");
         await new Promise((resolve) => {
             setTimeout(resolve, 0);
@@ -250,7 +250,7 @@ describe("DevCommand", () => {
             process: new FakeProcess() as unknown as NodeJS.Process,
         });
 
-        await expect(command.run(["./crazy-fruits", "--no-open"])).rejects.toThrow(clientServerStartError);
+        await expect(command.run(["./sample-slot", "--no-open"])).rejects.toThrow(clientServerStartError);
 
         expect(apiServer.stopCalls).toBe(1);
     });
@@ -268,7 +268,7 @@ describe("DevCommand", () => {
             process: new FakeProcess() as unknown as NodeJS.Process,
         });
 
-        await expect(command.run(["./crazy-fruits", "--no-open"])).rejects.toThrow(healthTimeoutError);
+        await expect(command.run(["./sample-slot", "--no-open"])).rejects.toThrow(healthTimeoutError);
 
         expect(apiServer.stopCalls).toBe(1);
         expect(clientServer.stopCalls).toBe(1);
@@ -291,7 +291,7 @@ describe("DevCommand", () => {
             process: new FakeProcess() as unknown as NodeJS.Process,
         });
 
-        await expect(command.run(["./crazy-fruits", "--no-open"])).rejects.toThrow(healthTimeoutError);
+        await expect(command.run(["./sample-slot", "--no-open"])).rejects.toThrow(healthTimeoutError);
     });
 });
 

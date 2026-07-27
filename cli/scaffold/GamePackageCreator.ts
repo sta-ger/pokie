@@ -25,7 +25,7 @@ export class GamePackageCreator implements GamePackageCreating {
             throw new Error("A project name is required: pokie create <name>");
         }
         if (trimmedName.includes("/") || trimmedName.includes("\\") || trimmedName === "." || trimmedName === "..") {
-            throw new Error(`"${name}" is not a valid project name. Use a plain directory name, e.g. "crazy-fruits".`);
+            throw new Error(`"${name}" is not a valid project name. Use a plain directory name, e.g. "sample-slot".`);
         }
 
         const projectRoot = path.join(parentDir, trimmedName);

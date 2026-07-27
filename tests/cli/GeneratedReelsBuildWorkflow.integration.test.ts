@@ -7,7 +7,7 @@ import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 // examples/blueprints/generated-reels.blueprint.json): per-reel build-time generation of exact reel
 // strips via the existing ReelStripGenerator, mixed freely with literal reels in the same blueprint.
 // Exercises the real shipped example so it stays in sync with what "pokie build" actually does,
-// mirroring BuildWorkflow.integration.test.ts's use of crazy-fruits.blueprint.json for the
+// mirroring BuildWorkflow.integration.test.ts's use of sample-slot.blueprint.json for the
 // literal-reelStrips (and symbolWeights) path.
 describe("CLI workflow (integration): pokie build with reelStripGeneration", () => {
     const blueprintPath = path.join(__dirname, "..", "..", "examples", "blueprints", "generated-reels.blueprint.json");

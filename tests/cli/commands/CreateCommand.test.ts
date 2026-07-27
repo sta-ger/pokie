@@ -55,12 +55,12 @@ function createStubPackageGenerator(
 }
 
 describe("CreateCommand", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("has the expected name and description", () => {
         const command = new CreateCommand(
             "1.2.1",
-            createStubCreator({projectRoot: "/tmp/crazy-fruits", manifest, createdFiles: [], updatedFiles: [], skippedFiles: []}),
+            createStubCreator({projectRoot: "/tmp/sample-slot", manifest, createdFiles: [], updatedFiles: [], skippedFiles: []}),
         );
 
         expect(command.getName()).toBe("create");
@@ -74,18 +74,18 @@ describe("CreateCommand", () => {
     });
 
     it("creates the project under the current working directory using the given name", async () => {
-        const projectRoot = `${process.cwd()}/crazy-fruits`;
+        const projectRoot = `${process.cwd()}/sample-slot`;
         const stub = createStubCreator({
             projectRoot,
             manifest,
-            createdFiles: ["package.json", "tsconfig.json", "src/index.ts", "src/CrazyFruitsGame.ts", "src/CrazyFruitsSession.ts"],
+            createdFiles: ["package.json", "tsconfig.json", "src/index.ts", "src/SampleSlotGame.ts", "src/SampleSlotSession.ts"],
             updatedFiles: [],
             skippedFiles: [],
         });
         const command = new CreateCommand("1.2.1", stub);
 
-        await expect(command.run(["crazy-fruits"])).resolves.toBeUndefined();
-        expect(stub.calledWith).toEqual({parentDir: process.cwd(), name: "crazy-fruits"});
+        await expect(command.run(["sample-slot"])).resolves.toBeUndefined();
+        expect(stub.calledWith).toEqual({parentDir: process.cwd(), name: "sample-slot"});
     });
 
     describe("--random", () => {

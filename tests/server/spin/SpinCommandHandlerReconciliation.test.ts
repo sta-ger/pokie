@@ -48,7 +48,7 @@ function reconciliationServiceWithZeroQuiescence(
 // any single handler instance's own in-process caches (liveSessions/sessionQueues), the closest this test
 // suite gets to actually simulating a process restart.
 
-const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
 type FakeGameStats = {createSessionCalls: number; playCalls: number};
 

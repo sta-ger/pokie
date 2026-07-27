@@ -9,6 +9,19 @@ export type CliInvocation = {
     args: string[];
 };
 
+const TOP_LEVEL_HELP_FLAGS = ["--help", "-h"];
+
+// "pokie --help" / "pokie -h" asks about the CLI itself, so it has to be answered before
+// resolveCliInvocation() below ever sees it: that function's step 3 routes any leading "-"-prefixed
+// token to StudioCommand (which is right for "pokie --no-open", but would hand Studio a --help it
+// doesn't answer and launch it instead of printing the command list). Only the *first* token counts,
+// so "pokie build --help" still belongs to BuildCommand and "pokie studio --help" still belongs to
+// StudioCommand — neither is a top-level help request.
+export function isTopLevelHelpRequest(argv: string[]): boolean {
+    const [first] = argv.slice(2);
+    return first !== undefined && TOP_LEVEL_HELP_FLAGS.includes(first);
+}
+
 // Decides which registered command `argv` should run, and with which args — the one piece of logic
 // standing between "pokie" (no args at all), "pokie ." / "pokie <path>" (an implicit POKIE Studio
 // Project launch for that directory), an explicit "pokie studio [.|<path>]", and every existing

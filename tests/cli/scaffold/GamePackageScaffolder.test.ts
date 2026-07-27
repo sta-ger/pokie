@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import {GamePackageScaffolder} from "../../../cli/scaffold/GamePackageScaffolder.js";
 
-function createEmptyNpmProject(name = "crazy-fruits", version = "1.0.0"): string {
+function createEmptyNpmProject(name = "sample-slot", version = "1.0.0"): string {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-init-test-"));
     fs.writeFileSync(
         path.join(projectRoot, "package.json"),
@@ -50,15 +50,15 @@ describe("GamePackageScaffolder", () => {
     });
 
     it("derives the game id/name from the project's package name and version", () => {
-        projectRoot = createEmptyNpmProject("crazy-fruits", "2.3.4");
+        projectRoot = createEmptyNpmProject("sample-slot", "2.3.4");
         const result = new GamePackageScaffolder("1.2.1").scaffold(projectRoot);
 
-        expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "2.3.4"});
+        expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "2.3.4"});
     });
 
     it("falls back to version 0.0.0 when the project's package.json has no version", () => {
         projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-init-test-"));
-        fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "crazy-fruits"}, null, 4));
+        fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "sample-slot"}, null, 4));
 
         const result = new GamePackageScaffolder("1.2.1").scaffold(projectRoot);
 

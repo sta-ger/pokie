@@ -8,7 +8,7 @@ import type {StudioBlueprintApplyView} from "../../../../cli/studio/blueprint/St
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
-        manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 3,
         rows: 3,
         symbols: ["A", "B"],
@@ -26,7 +26,7 @@ describe("applyGameBlueprintToProject", () => {
 
     beforeEach(() => {
         cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-apply-test-"));
-        projectRoot = path.join(cwd, "crazy-fruits");
+        projectRoot = path.join(cwd, "sample-slot");
         sourcePath = path.join(cwd, "blueprint.json");
         blueprintValidator = new GameBlueprintValidator();
         gamePackageGenerator = new GamePackageGenerator("1.3.0");
@@ -40,7 +40,7 @@ describe("applyGameBlueprintToProject", () => {
     // exactly the state a project is in before its first Apply.
     function seedProject(blueprint: GameBlueprint): void {
         fs.writeFileSync(sourcePath, serializeGameBlueprint(blueprint));
-        gamePackageGenerator.generate(blueprint, cwd, "crazy-fruits", sourcePath);
+        gamePackageGenerator.generate(blueprint, cwd, "sample-slot", sourcePath);
     }
 
     function tempArtifactsLeftBehind(): string[] {

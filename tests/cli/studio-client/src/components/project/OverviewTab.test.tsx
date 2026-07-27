@@ -19,11 +19,11 @@ describe("OverviewTab", () => {
     // must wrap inside its table cell instead of forcing the whole page to scroll horizontally --
     // the same treatment already given to Blueprint hash/Generated files right next to it.
     it("wraps a long, unbroken provenance source path instead of letting it force horizontal page scroll", () => {
-        const longSource = "/home/user/projects/some-very-deeply-nested-workspace/games/crazy-fruits/blueprint/game.blueprint.json";
+        const longSource = "/home/user/projects/some-very-deeply-nested-workspace/games/sample-slot/blueprint/game.blueprint.json";
         const inspection: InspectionResultView = {
             status: "loaded",
-            packageRoot: "/games/crazy-fruits",
-            packageName: "crazy-fruits",
+            packageRoot: "/games/sample-slot",
+            packageName: "sample-slot",
             packageVersion: "1.0.0",
             provenance: {
                 status: "generated",
@@ -37,7 +37,7 @@ describe("OverviewTab", () => {
 
         renderWithMantine(
             <OverviewTab
-                header={{id: "crazy-fruits", version: "1.0.0", projectRoot: "/games/crazy-fruits"}}
+                header={{id: "sample-slot", version: "1.0.0", projectRoot: "/games/sample-slot"}}
                 inspection={inspection}
                 nextAction={NEXT_ACTION}
                 onNextAction={() => undefined}
@@ -52,7 +52,7 @@ describe("OverviewTab", () => {
     it("announces the next-step recommendation as a polite status update, not a silent one", () => {
         renderWithMantine(
             <OverviewTab
-                header={{id: "crazy-fruits", version: "1.0.0", projectRoot: "/games/crazy-fruits"}}
+                header={{id: "sample-slot", version: "1.0.0", projectRoot: "/games/sample-slot"}}
                 inspection={{status: "loading"}}
                 nextAction={NEXT_ACTION}
                 onNextAction={() => undefined}

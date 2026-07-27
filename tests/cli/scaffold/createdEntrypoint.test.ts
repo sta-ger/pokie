@@ -11,7 +11,7 @@ describe("a pokie create-scaffolded entry module", () => {
 
     beforeEach(() => {
         parentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-create-load-test-"));
-        const result = new GamePackageCreator("1.2.1").create(parentDir, "crazy-fruits");
+        const result = new GamePackageCreator("1.2.1").create(parentDir, "sample-slot");
         projectRoot = result.projectRoot;
 
         // Stand in for "npm run build" (tsc): compile the generated src/*.ts files down to the
@@ -35,7 +35,7 @@ describe("a pokie create-scaffolded entry module", () => {
     it("can be loaded via loadPokieGame", async () => {
         const game = await loadPokieGame(projectRoot);
 
-        expect(game.getManifest()).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(game.getManifest()).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
     });
 
     it("produces a manifest that passes PokieGameContractValidationRule with no issues", async () => {

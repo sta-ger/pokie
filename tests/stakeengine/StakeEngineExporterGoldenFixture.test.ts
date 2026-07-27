@@ -63,7 +63,7 @@ describe("StakeEngineExporter golden fixture", () => {
                 cost: 1,
                 outcomeCount: 1,
                 libraryId: "golden-lib",
-                libraryHash: "sha256:80c714180095eaeb1bb8e432dcaba7a2137fa76ee75f881d525da22b94cb7ca1",
+                libraryHash: "sha256:46e7686421c7e43c1cbc633d15be139707b23b0164f1e85af2d34854ccfb17c4",
                 events: "books_base.jsonl.zst",
                 weights: "lookup_base.csv",
             },

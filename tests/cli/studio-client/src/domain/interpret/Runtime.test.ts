@@ -23,7 +23,7 @@ const runningState: StudioRuntimeStateView = {
 
 const session: StudioRuntimeSessionView = {
     sessionId: "session-1",
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     credits: 995,
     bet: 5,
     win: 0,

@@ -8,12 +8,12 @@ function baseFetchRoutes() {
         "/api/project/context": () => ({
             ok: true,
             status: 200,
-            body: {status: "loaded", projectRoot: "/games/crazy-fruits", game: {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"}},
+            body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}},
         }),
         "/api/project/inspect": () => ({
             ok: true,
             status: 200,
-            body: {packageRoot: "/games/crazy-fruits", valid: true, packageJson: {name: "crazy-fruits", version: "1.0.0"}, generated: false},
+            body: {packageRoot: "/games/sample-slot", valid: true, packageJson: {name: "sample-slot", version: "1.0.0"}, generated: false},
         }),
         "/api/project/reports": () => ({ok: true, status: 200, body: []}),
         "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -22,7 +22,7 @@ function baseFetchRoutes() {
         "/api/project/validate": () => ({
             ok: true,
             status: 200,
-            body: {packageRoot: "/games/crazy-fruits", valid: true, game: {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"}, errors: [], warnings: [], suggestions: []},
+            body: {packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []},
         }),
     };
 }
@@ -34,8 +34,8 @@ describe("ProjectDashboardPage", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
 
-        expect(await screen.findByRole("heading", {name: "Crazy Fruits"})).toBeInTheDocument();
-        await waitFor(() => expect(screen.getAllByText("/games/crazy-fruits").length).toBeGreaterThan(0));
+        expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
+        await waitFor(() => expect(screen.getAllByText("/games/sample-slot").length).toBeGreaterThan(0));
 
         await user.click(screen.getByRole("button", {name: "Validate"}));
         await user.click(screen.getByRole("button", {name: "Run Validate"}));
@@ -73,7 +73,7 @@ describe("ProjectDashboardPage", () => {
                         durationMs: 10,
                         report: completed
                             ? {
-                                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"},
+                                game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
                                 requestedRounds: 100,
                                 rounds: 100,
                                 seed: null,
@@ -96,7 +96,7 @@ describe("ProjectDashboardPage", () => {
                     status: 200,
                     body: {
                         report: {
-                            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"},
+                            game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
                             requestedRounds: 100,
                             rounds: 100,
                             seed: null,
@@ -121,7 +121,7 @@ describe("ProjectDashboardPage", () => {
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "Crazy Fruits"});
+        await screen.findByRole("heading", {name: "Sample Slot"});
 
         await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
@@ -160,9 +160,9 @@ describe("ProjectDashboardPage", () => {
                 ok: true,
                 status: 200,
                 body: {
-                    packageRoot: "/games/crazy-fruits",
+                    packageRoot: "/games/sample-slot",
                     valid: true,
-                    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"},
+                    game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
                     errors: [],
                     warnings: [{code: "W1", message: "Consider adding a description."}],
                     suggestions: [],
@@ -171,7 +171,7 @@ describe("ProjectDashboardPage", () => {
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "Crazy Fruits"});
+        await screen.findByRole("heading", {name: "Sample Slot"});
 
         await user.click(screen.getByRole("button", {name: "Validate project"}));
         await waitFor(() => expect(screen.getByText(/Valid, with warnings/)).toBeInTheDocument());
@@ -202,9 +202,9 @@ describe("ProjectDashboardPage", () => {
                         ok: true,
                         status: 200,
                         body: {
-                            packageRoot: "/games/crazy-fruits",
+                            packageRoot: "/games/sample-slot",
                             valid: true,
-                            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"},
+                            game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"},
                             errors: [],
                             warnings: [],
                             suggestions: [],
@@ -222,7 +222,7 @@ describe("ProjectDashboardPage", () => {
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/validation"]});
-        await screen.findByRole("heading", {name: "Crazy Fruits"});
+        await screen.findByRole("heading", {name: "Sample Slot"});
 
         await user.click(screen.getByRole("button", {name: "Run Validate"}));
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
@@ -245,11 +245,11 @@ describe("ProjectDashboardPage", () => {
             });
 
             renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await screen.findByRole("heading", {name: "Crazy Fruits"});
+            await screen.findByRole("heading", {name: "Sample Slot"});
 
             await user.click(screen.getByRole("button", {name: "Close project"}));
 
-            await waitFor(() => expect(screen.queryByRole("heading", {name: "Crazy Fruits"})).not.toBeInTheDocument());
+            await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
             expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
         });
 
@@ -282,18 +282,18 @@ describe("ProjectDashboardPage", () => {
             };
 
             renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await screen.findByRole("heading", {name: "Crazy Fruits"});
+            await screen.findByRole("heading", {name: "Sample Slot"});
 
             await user.click(screen.getByRole("button", {name: "Close project"}));
 
             expect(await screen.findByText(/Couldn't close the project/)).toBeInTheDocument();
             expect(screen.getByText(/a spin is still writing to disk/)).toBeInTheDocument();
-            expect(screen.getByRole("heading", {name: "Crazy Fruits"})).toBeInTheDocument();
+            expect(screen.getByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
 
             shouldFail = false;
             await user.click(screen.getByRole("button", {name: "Close project"}));
 
-            await waitFor(() => expect(screen.queryByRole("heading", {name: "Crazy Fruits"})).not.toBeInTheDocument());
+            await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
         });
     });
 });

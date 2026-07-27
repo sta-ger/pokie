@@ -5,14 +5,32 @@
 `pokie` ships a small CLI, installed alongside the library, for scaffolding and (eventually) operating on
 [game packages](game-packages.md).
 
+## `pokie --help` / `pokie -h`
+
+Prints the general usage line and the full list of commands with their descriptions, then exits with status `0`:
+
+```
+pokie --help
+pokie -h
+```
+
+Both flags are answered by the CLI itself before any command runs, so they never reach
+[`pokie studio`](#pokie--pokie-studio-experimental) — unlike other leading options (e.g. `pokie --no-open`), which
+are Studio's. A flag that follows a command name still belongs to that command: `pokie build --help` is
+`pokie build`'s to interpret, not a top-level help request.
+
+Running `pokie` with no arguments at all is unaffected and still launches [POKIE
+Studio](#pokie--pokie-studio-experimental). An unrecognized command still prints the same command list, but exits
+non-zero.
+
 ## `pokie create <name>`
 
 Scaffolds a brand-new [game package](game-packages.md) in a new `<name>` directory.
 
 ```
 npm i -g pokie
-pokie create crazy-fruits
-cd crazy-fruits
+pokie create sample-slot
+cd sample-slot
 npm install
 npm run build
 ```
@@ -24,7 +42,7 @@ npm run build
   [`pokie dev`](#pokie-dev-packageroot-experimental) below), and `pokie.entry` pointing at `./dist/index.js`;
 - `tsconfig.json` (CommonJS output to `./dist`, source in `./src`);
 - `src/<GameName>Game.ts` — a `PokieGame` implementation (`<GameName>` is `<name>` converted to PascalCase, e.g.
-  `crazy-fruits` → `CrazyFruits`), with a manifest id/name derived from `<name>`, and a `getSessionSerializer()`
+  `sample-slot` → `SampleSlot`), with a manifest id/name derived from `<name>`, and a `getSessionSerializer()`
   returning `new VideoSlotSessionSerializer()` so `pokie serve`/`pokie client`/`pokie dev` show the full
   game-specific payload out of the box (see [Network Serialization](serialization.md));
 - `src/<GameName>Session.ts` — a factory returning a default `VideoSlotSession`;
@@ -37,7 +55,7 @@ The result is loadable like any other [game package](game-packages.md):
 ```ts
 import {loadPokieGame} from "pokie";
 
-const game = await loadPokieGame("./crazy-fruits");
+const game = await loadPokieGame("./sample-slot");
 game.createSession().play();
 ```
 
@@ -90,8 +108,8 @@ the resulting package supports the exact same
 the wizard is just another way to assemble the same input, not a different code path.
 
 ```
-pokie build examples/blueprints/crazy-fruits.blueprint.json
-cd crazy-fruits
+pokie build examples/blueprints/sample-slot.blueprint.json
+cd sample-slot
 npm install
 ```
 
@@ -160,6 +178,10 @@ minimum required to pass validation) so there's something concrete to edit for e
 [`GameBlueprintValidator`](#validation) with zero errors or warnings as written, and `pokie build <file> --out
 <dir>` works on it completely unedited — but the point is to open it in an editor, change the numbers/symbols/ids
 to your own game, and build that.
+
+This same template is the single source of the [interactive
+wizard](#interactive-mode-pokie-build-with-no-arguments)'s defaults, so the two never drift apart: an Enter-only
+wizard run describes the game this file describes.
 
 The full starter-template workflow — scaffold, hand-edit, validate-only preview, then a real build:
 
@@ -343,7 +365,7 @@ A minimal example (5x3, 3 symbols, no wilds/scatters, default paylines and reel 
 
 ```json
 {
-    "manifest": {"id": "crazy-fruits", "name": "Crazy Fruits", "version": "0.1.0"},
+    "manifest": {"id": "sample-slot", "name": "Sample Slot", "version": "0.1.0"},
     "reels": 5,
     "rows": 3,
     "symbols": ["A", "K", "Q"],
@@ -356,7 +378,7 @@ A minimal example (5x3, 3 symbols, no wilds/scatters, default paylines and reel 
 ```
 
 A complete example using every optional field (wilds, scatters, `symbolWeights`, `availableBets`) lives at
-[`examples/blueprints/crazy-fruits.blueprint.json`](../examples/blueprints/crazy-fruits.blueprint.json) in this
+[`examples/blueprints/sample-slot.blueprint.json`](../examples/blueprints/sample-slot.blueprint.json) in this
 repository — see [`examples/blueprints/README.md`](../examples/blueprints/README.md) for how to try it directly
 from a checkout. It's also what the workflow below and `pokie build`'s own smoke test
 (`tests/cli/BuildWorkflow.integration.test.ts`) both run, so it's guaranteed to actually work, not just parse.
@@ -511,7 +533,7 @@ their economics (paying from 2-of-a-kind, much bigger multipliers) are legitimat
   `symbolWeights`/`reelStripGeneration`/`reelStrips`) than a lower-paying one. This is the most common way a
   blueprint's RTP quietly runs away: identical weights across symbols with different payouts (every symbol equally
   likely, but some worth much more) mean the high-value symbol lands just as often as the low-value one — see
-  [`examples/blueprints/crazy-fruits.blueprint.json`](../examples/blueprints/crazy-fruits.blueprint.json)'s own
+  [`examples/blueprints/sample-slot.blueprint.json`](../examples/blueprints/sample-slot.blueprint.json)'s own
   `symbolWeights`/`paytable` for what a fix looks like (low-pay symbols weighted heavier, high-pay symbols rarer).
 
 None of these check the actual math (that's what [`pokie sim`](#pokie-sim-packageroot) is for) — they flag shapes
@@ -566,8 +588,21 @@ pokie build
 
 Runs a wizard on the terminal that asks, in order, for: game id/name/version; reels/rows; symbols; available
 bets; paylines; paytable; reel weighting (symbol weights or explicit reel strips); and the output directory.
-Each answer that has a sensible default (name, version, reels, rows, available bets, paylines, output directory)
-can be left blank to accept it — the prompt shows the default in `[brackets]`. The wizard is deliberately minimal:
+
+**Every question has a default and shows it in `[brackets]`**, so pressing Enter through the entire wizard — without
+typing a single answer — produces a complete, valid package: one that passes [`pokie
+validate`](#pokie-validate-packageroot) with no errors and simulates with [`pokie sim`](#pokie-sim-packageroot)
+straight away. Those defaults are not a second set of values maintained here: they are read off the same canonical
+starter blueprint [`pokie build --init-blueprint <file>`](#init-blueprint-pokie-build---init-blueprint-file) writes
+out, so an Enter-only run and an unedited `--init-blueprint` template describe the same game (5×3, symbols
+`A,K,Q,J`, their payouts and weights) apart from the generated id/name.
+
+Typing an answer always overrides the default, so symbols, paytable entries and reel weighting can still be
+specified by hand exactly as before. Two questions additionally accept `-` to opt out of the default entirely
+rather than replace it: a paytable symbol answered with `-` gets no payout at all, and reel weighting answered
+with `-` leaves weighting to the engine (no `symbolWeights`/`reelStrips` in the blueprint).
+
+The wizard is deliberately minimal:
 it asks for the same fields `pokie build <config.json>` needs for a line-pay video slot and nothing more (no
 wilds/scatters yet) — add those by hand-editing the generated blueprint's config-driven equivalent, or wait for a
 future wizard pass.
@@ -605,9 +640,14 @@ Per-question input handling:
   (EOF) — e.g. a scripted/piped run that provides fewer answers than the wizard asks for.
 - The paytable and reel-strip prompts are asked once per symbol/reel (so the number of prompts scales with how
   many symbols/reels you configured earlier in the same run).
-- Reel weighting is a single choice up front — `w` for symbol weights (one combined `symbol:count` line), `s` for
-  explicit reel strips (one line per reel), or blank for the engine's built-in default weighting — mirroring the
-  blueprint's own `reelStrips`/`symbolWeights` mutual exclusivity.
+- Reel weighting is a single choice up front — blank for default weights covering exactly the symbols entered
+  earlier (the preset's own weight for every symbol it knows, a rarest-first fallback for any it doesn't), `w` for
+  symbol weights typed by hand (one combined `symbol:count` line), `s` for explicit reel strips (one line per
+  reel), or `-` for the engine's built-in default weighting — mirroring the blueprint's own
+  `reelStrips`/`symbolWeights` mutual exclusivity.
+- A blank paytable answer applies that symbol's default payouts rather than leaving it unpaid: the preset's own
+  entry when it fits the chosen reel count, otherwise a generated ladder that respects it (match counts never
+  exceed `reels`, and matching more never pays less). Answer `-` to leave a symbol without a payout.
 - Symbol ids can't contain `:` — the wizard's own prompts reuse it as a pair separator later on (paytable, symbol
   weights), so a symbol id containing one would be unparseable there.
 
@@ -625,19 +665,19 @@ the [`create`/`init` workflow](#workflow) below, there's no `npm run build` step
 output is loadable immediately after `npm install`:
 
 ```
-pokie build examples/blueprints/crazy-fruits.blueprint.json
-cd crazy-fruits && npm install && cd ..
+pokie build examples/blueprints/sample-slot.blueprint.json
+cd sample-slot && npm install && cd ..
 
-pokie inspect ./crazy-fruits
+pokie inspect ./sample-slot
 
-pokie validate ./crazy-fruits
+pokie validate ./sample-slot
 
-pokie sim ./crazy-fruits --rounds 100000 --seed demo --out sim.json
+pokie sim ./sample-slot --rounds 100000 --seed demo --out sim.json
 pokie report sim.json
 
-pokie replay ./crazy-fruits --seed demo --round 42
+pokie replay ./sample-slot --seed demo --round 42
 
-pokie dev ./crazy-fruits
+pokie dev ./sample-slot
 ```
 
 `pokie build`'s own success output prints exactly this sequence (with real paths substituted in) as its "Next:"
@@ -1233,8 +1273,8 @@ Loads a [game package](game-packages.md) with `loadPokieGame` and runs an [aggre
 (`AggregateSimulationRunner`) against it, then reports RTP/hit-frequency/max-win statistics.
 
 ```
-pokie sim ./crazy-fruits --rounds 10000 --seed demo --out report.json
-pokie sim ./crazy-fruits --rounds 1000000 --seed demo --workers 4 --out report.json
+pokie sim ./sample-slot --rounds 10000 --seed demo --out report.json
+pokie sim ./sample-slot --rounds 1000000 --seed demo --workers 4 --out report.json
 ```
 
 Options:
@@ -1439,7 +1479,7 @@ By default `pokie sim` plays exactly `--rounds` rounds — the pre-existing, unc
 running RTP estimate has stabilized, instead of always playing every requested round:
 
 ```
-pokie sim ./crazy-fruits --rounds 5000000 --seed demo \
+pokie sim ./sample-slot --rounds 5000000 --seed demo \
   --min-rounds 100000 --rtp-tolerance 0.002 --check-interval 25000 --out report.json
 ```
 
@@ -1498,7 +1538,7 @@ Renders a JSON report produced by [`pokie sim --out`](#pokie-sim-packageroot) as
 HTML document.
 
 ```
-pokie sim ./crazy-fruits --rounds 10000 --out sim.json
+pokie sim ./sample-slot --rounds 10000 --out sim.json
 pokie report sim.json --format html --out report.html
 ```
 
@@ -1566,9 +1606,9 @@ Compares two JSON reports produced by [`pokie sim --out`](#pokie-sim-packageroot
 handy for seeing how a paytable/config change moved the game's math between runs.
 
 ```
-pokie sim ./crazy-fruits --rounds 100000 --seed demo --out before.json
+pokie sim ./sample-slot --rounds 100000 --seed demo --out before.json
 # ...change the game's config...
-pokie sim ./crazy-fruits --rounds 100000 --seed demo --out after.json
+pokie sim ./sample-slot --rounds 100000 --seed demo --out after.json
 pokie diff before.json after.json
 ```
 
@@ -1585,7 +1625,7 @@ Options:
 The human-readable summary looks like:
 
 ```
-Diff: Crazy Fruits (id: "crazy-fruits")
+Diff: Sample Slot (id: "sample-slot")
   seed            demo -> demo2
   requested rounds 10000 -> 10000 (0, 0.00%)
   rounds          9800 -> 9850 (+50, +0.51%)
@@ -1734,7 +1774,7 @@ This is the first foundation for POKIE replay — it does not (yet) reconstruct 
 [Limitations](#limitations) below.
 
 ```
-pokie replay ./crazy-fruits --seed demo --round 42 --out replay.json
+pokie replay ./sample-slot --seed demo --round 42 --out replay.json
 ```
 
 Options:
@@ -1807,11 +1847,11 @@ Loads a [game package](game-packages.md) and checks it against the `PokieGame` c
 (non-empty `id`/`name`/`version`).
 
 ```
-pokie validate ./crazy-fruits
+pokie validate ./sample-slot
 ```
 
 ```
-Validating "Crazy Fruits" (id: "crazy-fruits", v0.1.0) at "./crazy-fruits"
+Validating "Sample Slot" (id: "sample-slot", v0.1.0) at "./sample-slot"
   valid           yes
 
 No issues found.
@@ -1851,16 +1891,16 @@ contract", `pokie inspect` answers "what is this package and where did it come f
 build` (or on a package you didn't build yourself) to check what blueprint and `pokie` version produced it.
 
 ```
-pokie inspect ./crazy-fruits
+pokie inspect ./sample-slot
 ```
 
 ```
-Inspecting package at "./crazy-fruits"
+Inspecting package at "./sample-slot"
 
-  game             Crazy Fruits (id: "crazy-fruits", v0.1.0)
-  package root     ./crazy-fruits
+  game             Sample Slot (id: "sample-slot", v0.1.0)
+  package root     ./sample-slot
   blueprint hash   sha256:...
-  source           examples/blueprints/crazy-fruits.blueprint.json
+  source           examples/blueprints/sample-slot.blueprint.json
   generated at     2026-01-02T03:04:05.000Z
   pokie version    1.3.0
   generated files  README.md, package.json, src/generated/build-info.json, src/generated/index.js
@@ -1929,7 +1969,7 @@ requests get a bare `204`. This is what lets [`pokie client`](#pokie-client-pack
 different origin/port by design) talk to this server's API at all.
 
 ```
-pokie serve ./crazy-fruits --port 4000 --host 127.0.0.1
+pokie serve ./sample-slot --port 4000 --host 127.0.0.1
 ```
 
 ```
@@ -2251,7 +2291,7 @@ Both are constructor options on `PokieDevServer`, additive to the existing `{hos
 ```ts
 import {FileSessionRepository, InMemoryWallet, loadPokieGame, PokieDevServer} from "pokie";
 
-const game = await loadPokieGame("./crazy-fruits");
+const game = await loadPokieGame("./sample-slot");
 const server = new PokieDevServer(game, {
     host: "127.0.0.1",
     port: 4000,
@@ -2508,7 +2548,7 @@ The reusable server sits behind `src/server` (`PokieDevServer`, implementing `Po
 ```ts
 import {loadPokieGame, PokieDevServer, PokieDevServerHandling} from "pokie";
 
-const game = await loadPokieGame("./crazy-fruits");
+const game = await loadPokieGame("./sample-slot");
 const server: PokieDevServerHandling = new PokieDevServer(game, {host: "127.0.0.1", port: 4000});
 const address = await server.start(); // {host, port} — port is the OS-assigned one if 0 was requested
 // ...
@@ -2527,8 +2567,8 @@ running `pokie serve` (default `http://127.0.0.1:3000`). Use [`pokie dev`](#poki
 to run both together with zero configuration.
 
 ```
-pokie serve ./crazy-fruits            # in one terminal
-pokie client ./crazy-fruits            # in another
+pokie serve ./sample-slot            # in one terminal
+pokie client ./sample-slot            # in another
 ```
 
 ```
@@ -2576,7 +2616,7 @@ child processes — waits for the API's `GET /health` to actually respond, best-
 pointed at the client, and cleanly stops both servers on `Ctrl+C` (`SIGINT`/`SIGTERM`).
 
 ```
-pokie dev ./crazy-fruits
+pokie dev ./sample-slot
 ```
 
 ```
@@ -3189,22 +3229,22 @@ client, even for a load/validation failure.
 A typical end-to-end loop, from a fresh directory to a running dev server, chaining every subcommand above:
 
 ```
-pokie create crazy-fruits
-cd crazy-fruits && npm install && npm run build && cd ..
+pokie create sample-slot
+cd sample-slot && npm install && npm run build && cd ..
 
-pokie validate ./crazy-fruits
+pokie validate ./sample-slot
 
-pokie sim ./crazy-fruits --rounds 100000 --seed before --out before.json
+pokie sim ./sample-slot --rounds 100000 --seed before --out before.json
 pokie report before.json --format markdown --out before.md
 
 # ...tweak the game's paytable/config...
 
-pokie sim ./crazy-fruits --rounds 100000 --seed before --out after.json
+pokie sim ./sample-slot --rounds 100000 --seed before --out after.json
 pokie diff before.json after.json
 
-pokie replay ./crazy-fruits --seed before --round 42 --out replay.json
+pokie replay ./sample-slot --seed before --round 42 --out replay.json
 
-pokie dev ./crazy-fruits
+pokie dev ./sample-slot
 ```
 
 Each step builds on the same `<packageRoot>`:

@@ -21,7 +21,7 @@ describe("RecentProjectsPanel", () => {
                 ok: true,
                 status: 200,
                 body: [
-                    {projectRoot: "/games/a", name: "Crazy Fruits", openedAt: "2026-01-01T00:00:00.000Z", missing: false},
+                    {projectRoot: "/games/a", name: "Sample Slot", openedAt: "2026-01-01T00:00:00.000Z", missing: false},
                     {projectRoot: "/games/b", name: "Gone", openedAt: "2026-01-02T00:00:00.000Z", missing: true},
                 ],
             }),
@@ -29,7 +29,7 @@ describe("RecentProjectsPanel", () => {
 
         renderWithProviders(<RecentProjectsPanel />, {fetchImpl});
 
-        expect(await screen.findByRole("button", {name: "Crazy Fruits"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Sample Slot"})).toBeInTheDocument();
         expect(screen.getByText("Gone (missing)")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Gone"})).not.toBeInTheDocument();
     });
@@ -40,18 +40,18 @@ describe("RecentProjectsPanel", () => {
             "/api/home/recent-projects": () => ({
                 ok: true,
                 status: 200,
-                body: [{projectRoot: "/games/a", name: "Crazy Fruits", openedAt: "2026-01-01T00:00:00.000Z", missing: false}],
+                body: [{projectRoot: "/games/a", name: "Sample Slot", openedAt: "2026-01-01T00:00:00.000Z", missing: false}],
             }),
             "/api/home/projects/open": () => ({
                 ok: true,
                 status: 200,
-                body: {context: {mode: "project", projectRoot: "/games/a"}, manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}},
+                body: {context: {mode: "project", projectRoot: "/games/a"}, manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}},
             }),
         });
 
         renderWithProviders(<RecentProjectsPanel />, {fetchImpl});
 
-        await user.click(await screen.findByRole("button", {name: "Crazy Fruits"}));
+        await user.click(await screen.findByRole("button", {name: "Sample Slot"}));
 
         await waitFor(() => {
             expect(calls).toContainEqual(

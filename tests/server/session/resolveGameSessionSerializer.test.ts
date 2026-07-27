@@ -1,6 +1,6 @@
 import {GameSessionSerializer, PokieGame, PokieGameManifest, resolveGameSessionSerializer} from "pokie";
 
-const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
 describe("resolveGameSessionSerializer", () => {
     it("returns undefined for a game that doesn't implement getSessionSerializer", () => {

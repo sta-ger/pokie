@@ -5,7 +5,7 @@ function createEntry(overrides: Partial<StudioSimulationReportListEntry> = {}): 
     return {
         id: "job-1",
         status: "completed",
-        game: {id: "crazy-fruits", version: "0.1.0"},
+        game: {id: "sample-slot", version: "0.1.0"},
         requestedRounds: 1000,
         actualRounds: 1000,
         workers: 1,

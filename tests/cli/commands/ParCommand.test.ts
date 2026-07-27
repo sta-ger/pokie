@@ -21,9 +21,9 @@ function createStubExporter(
     };
 }
 
-const rawBlueprint = {manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}};
+const rawBlueprint = {manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}};
 const fullBlueprint: GameBlueprint = {
-    manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 3,
     rows: 3,
     symbols: ["A", "K"],

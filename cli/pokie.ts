@@ -22,7 +22,8 @@ import {SimCommand} from "./commands/SimCommand.js";
 import {StakeEngineCommand} from "./commands/StakeEngineCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
-import {resolveCliInvocation} from "./resolveCliInvocation.js";
+import {isTopLevelHelpRequest, resolveCliInvocation} from "./resolveCliInvocation.js";
+import {buildUsageText} from "./usageText.js";
 
 function readOwnVersion(): string {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -47,11 +48,7 @@ function ownStudioRoot(): string {
 }
 
 function printUsage(commands: CliCommandHandling[]): void {
-    console.log("Usage: pokie <command>\n");
-    console.log("Commands:");
-    for (const command of commands) {
-        console.log(`  ${command.getName().padEnd(10)} ${command.getDescription()}`);
-    }
+    console.log(buildUsageText(commands));
 }
 
 async function run(): Promise<number> {
@@ -76,6 +73,14 @@ async function run(): Promise<number> {
         new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot()}),
         new ValidateCommand(),
     ];
+    // Asked for the CLI's own help: print the same command list the unknown-command fallback prints,
+    // but as a successful outcome (exit 0) — the user got exactly what they asked for. Checked before
+    // resolveCliInvocation so these flags never reach StudioCommand; see isTopLevelHelpRequest.
+    if (isTopLevelHelpRequest(process.argv)) {
+        printUsage(commands);
+        return 0;
+    }
+
     // No arguments at all, "pokie ." / "pokie <existing path>", and every explicit command name
     // (including "studio" itself) are all resolved here rather than inline — see
     // resolveCliInvocation's own doc comment for the full precedence. An unrecognized token that

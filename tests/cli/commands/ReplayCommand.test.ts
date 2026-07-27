@@ -40,7 +40,7 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
 }
 
 describe("ReplayCommand", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("has the expected name and description", () => {
         const command = new ReplayCommand();
@@ -84,7 +84,7 @@ describe("ReplayCommand", () => {
         const command = new ReplayCommand(() => Promise.resolve(game));
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--seed", "demo", "--round", "3"]);
+        await command.run(["./sample-slot", "--seed", "demo", "--round", "3"]);
 
         expect(game.createdWith).toEqual({seed: "demo"});
 
@@ -95,7 +95,7 @@ describe("ReplayCommand", () => {
         const command = new ReplayCommand(() => Promise.resolve(createFakeGame(manifest)));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--seed", "demo", "--round", "3"]);
+        await command.run(["./sample-slot", "--seed", "demo", "--round", "3"]);
 
         expect(logSpy).toHaveBeenCalledTimes(1);
         const descriptor = JSON.parse(logSpy.mock.calls[0][0]) as ReplayDescriptor;
@@ -111,7 +111,7 @@ describe("ReplayCommand", () => {
         const command = new ReplayCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
         jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits", "--seed", "demo", "--round", "3", "--out", "replay.json"]);
+        await command.run(["./sample-slot", "--seed", "demo", "--round", "3", "--out", "replay.json"]);
 
         expect(writeFile).toHaveBeenCalledTimes(1);
         const [file, contents] = writeFile.mock.calls[0];

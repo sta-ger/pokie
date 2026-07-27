@@ -13,7 +13,7 @@ import {
 } from "pokie";
 
 const provenance: RoundArtifactProvenance = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     pokieVersion: "1.3.0",
 };
 
@@ -386,7 +386,7 @@ describe("buildRoundArtifact", () => {
 
             ownProvenance.game.name = "mutated";
 
-            expect(artifact.provenance.game.name).toBe("Crazy Fruits");
+            expect(artifact.provenance.game.name).toBe("Sample Slot");
         });
 
         it("returns a deeply frozen artifact that throws on any attempted mutation", () => {

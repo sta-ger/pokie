@@ -3,7 +3,7 @@ import {SimulationReportBuilder} from "../../src/reporting/SimulationReportBuild
 import {SimulationAccumulator} from "../../src/simulation/SimulationAccumulator.js";
 
 describe("SimulationReportBuilder", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("maps manifest id/name/version into the report's game field, dropping other manifest fields", () => {
         const fullManifest: PokieGameManifest = {...manifest, description: "A fruity slot", author: "sta-ger"};
@@ -13,7 +13,7 @@ describe("SimulationReportBuilder", () => {
 
         const report = builder.build({manifest: fullManifest, requestedRounds: 1, statistics: accumulator.getStatistics(), durationMs: 10});
 
-        expect(report.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(report.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
     });
 
     test("carries totalBet/totalWin/rtp/maxWin straight from the statistics", () => {
@@ -212,9 +212,9 @@ describe("SimulationReportBuilder", () => {
         });
 
         test("builds a re-run command using the given packageRoot", () => {
-            const report = buildHealthyReport({packageRoot: "./crazy-fruits"});
+            const report = buildHealthyReport({packageRoot: "./sample-slot"});
 
-            expect(report.reproducibility!.command).toBe("pokie sim ./crazy-fruits --rounds 10000 --seed demo");
+            expect(report.reproducibility!.command).toBe("pokie sim ./sample-slot --rounds 10000 --seed demo");
         });
 
         test("omits --seed from the re-run command when no seed was given", () => {
@@ -255,7 +255,7 @@ describe("SimulationReportBuilder", () => {
         });
 
         test("never contains a double space, regardless of seed/packageRoot", () => {
-            const withSeedAndRoot = buildHealthyReport({packageRoot: "./crazy-fruits"});
+            const withSeedAndRoot = buildHealthyReport({packageRoot: "./sample-slot"});
             const withoutSeedOrRoot = (() => {
                 const accumulator = new SimulationAccumulator();
                 accumulator.addRound(1, 0);
@@ -755,7 +755,7 @@ describe("SimulationReportBuilder", () => {
 });
 
 describe("SimulationReportBuilder new metrics (volatility/distribution/averageBet/averagePayout/targetRtp)", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("passes volatility and payoutHistogram straight through from statistics -- no new math, just surfaced", () => {
         const accumulator = new SimulationAccumulator();
@@ -842,7 +842,7 @@ describe("SimulationReportBuilder new metrics (volatility/distribution/averageBe
 });
 
 describe("SimulationReportBuilder betMode", () => {
-    const manifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("without betMode, core metrics come straight from statistics -- fully backward compatible", () => {
         const accumulator = new SimulationAccumulator();
@@ -949,7 +949,7 @@ describe("SimulationReportBuilder betMode", () => {
 });
 
 describe("SimulationReportBuilder convergence/stopReason", () => {
-    const manifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     test("without stopReason/convergence in the input, the report doesn't have them either -- fully backward compatible", () => {
         const statistics = new SimulationAccumulator().getStatistics();

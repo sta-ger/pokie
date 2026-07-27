@@ -1,12 +1,23 @@
 import {SlotGameNameGenerator, type GameBlueprint, type GameBlueprintManifest, type SlotGameNameGenerating} from "pokie";
+import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
 import type {GameBlueprintWizarding} from "./GameBlueprintWizarding.js";
 import type {PromptAdapting} from "./PromptAdapting.js";
 import type {WizardResult} from "./WizardResult.js";
 
-const DEFAULT_VERSION = "0.1.0";
-const DEFAULT_REELS = 5;
-const DEFAULT_ROWS = 3;
-const DEFAULT_AVAILABLE_BETS = [1, 2, 5, 10];
+// Fallback ladder for symbols the canonical preset knows nothing about (a wizard run that typed its
+// own symbol ids): first symbol is the rarest, each subsequent one two steps more common, which
+// mirrors the shape of the preset's own weights without hardcoding a second copy of its values.
+const FALLBACK_WEIGHT_BASE = 4;
+const FALLBACK_WEIGHT_STEP = 2;
+
+// Lowest match count a generated default paytable ladder pays for, when the preset's own entry for a
+// symbol doesn't fit the chosen reel count. Clamped down for tiny reel counts by the caller.
+const FALLBACK_MIN_MATCH_COUNT = 3;
+
+// The answer that opts a question out of its default entirely — a symbol with no payout at all, or
+// leaving reel weighting to the engine. Enter now applies the default rather than skipping, so
+// skipping needs its own token; "-" is already what the available-bets question uses for this.
+const SKIP_ANSWER = "-";
 
 // A dedicated class (rather than a duck-typed "{error: string}") so a valid parsed value that
 // happens to look like {error: "..."} — e.g. a symbol literally named "error" — is never mistaken
@@ -33,9 +44,18 @@ class WizardCancelled extends Error {}
 // the config-driven path, so it's the only place that shape's validation/generation rules live.
 export class GameBlueprintWizard implements GameBlueprintWizarding {
     private readonly nameGenerator: SlotGameNameGenerating;
+    private readonly defaults: GameBlueprint;
 
-    constructor(nameGenerator: SlotGameNameGenerating = new SlotGameNameGenerator()) {
+    // Every default this wizard offers is read off the same canonical starter blueprint that
+    // "pokie build --init-blueprint" writes out, rather than being restated here — pressing Enter
+    // through the whole wizard therefore produces that known-good blueprint (modulo the generated
+    // manifest and the output directory), which is exactly what makes an Enter-only run valid.
+    constructor(
+        nameGenerator: SlotGameNameGenerating = new SlotGameNameGenerator(),
+        createDefaultBlueprint: () => GameBlueprint = createStarterGameBlueprint,
+    ) {
         this.nameGenerator = nameGenerator;
+        this.defaults = createDefaultBlueprint();
     }
 
     public async run(prompt: PromptAdapting): Promise<WizardResult | null> {
@@ -43,8 +63,16 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             console.log("Building a GameBlueprint interactively. Press Ctrl+C at any time to cancel.\n");
 
             const manifest = await this.askManifest(prompt);
-            const reels = await this.askPositiveInt(prompt, `Number of reels (most games use 3-7) [${DEFAULT_REELS}]: `, DEFAULT_REELS);
-            const rows = await this.askPositiveInt(prompt, `Number of rows (most games use 3-7) [${DEFAULT_ROWS}]: `, DEFAULT_ROWS);
+            const reels = await this.askPositiveInt(
+                prompt,
+                `Number of reels (most games use 3-7) [${this.defaults.reels}]: `,
+                this.defaults.reels,
+            );
+            const rows = await this.askPositiveInt(
+                prompt,
+                `Number of rows (most games use 3-7) [${this.defaults.rows}]: `,
+                this.defaults.rows,
+            );
             const symbols = await this.askSymbols(prompt);
             const availableBets = await this.askAvailableBets(prompt);
             const paylines = await this.askPaylines(prompt, reels, rows);
@@ -80,12 +108,12 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
     private async askManifest(prompt: PromptAdapting): Promise<GameBlueprintManifest> {
         const suggestion = this.nameGenerator.generate();
 
-        const id = await this.askUntilValid(prompt, `Game id (e.g. crazy-fruits) [${suggestion.slug}]: `, (raw) => {
+        const id = await this.askUntilValid(prompt, `Game id (e.g. sample-slot) [${suggestion.slug}]: `, (raw) => {
             if (raw.length === 0) {
                 return suggestion.slug;
             }
             if (raw.includes("/") || raw.includes("\\") || raw === "." || raw === "..") {
-                return new WizardParseError('Game id must be a plain name (no slashes), e.g. "crazy-fruits".');
+                return new WizardParseError('Game id must be a plain name (no slashes), e.g. "sample-slot".');
             }
             return raw;
         });
@@ -96,7 +124,8 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         // 4821") in a name default.
         const defaultName = id === suggestion.slug ? suggestion.title : this.titleCaseFromId(id);
         const name = await this.askWithDefault(prompt, `Game name [${defaultName}]: `, defaultName);
-        const version = await this.askWithDefault(prompt, `Version [${DEFAULT_VERSION}]: `, DEFAULT_VERSION);
+        const defaultVersion = this.defaults.manifest.version;
+        const version = await this.askWithDefault(prompt, `Version [${defaultVersion}]: `, defaultVersion);
 
         return {id, name, version};
     }
@@ -115,7 +144,12 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
     }
 
     private askSymbols(prompt: PromptAdapting): Promise<string[]> {
-        return this.askUntilValid(prompt, "Symbols, comma-separated (e.g. A,K,Q,J,10): ", (raw) => {
+        const defaultSymbols = this.defaults.symbols;
+        return this.askUntilValid(prompt, `Symbols, comma-separated [${defaultSymbols.join(",")}]: `, (raw) => {
+            if (raw.length === 0) {
+                return [...defaultSymbols];
+            }
+
             const symbols = this.splitList(raw);
             if (symbols.length === 0) {
                 return new WizardParseError("Enter at least one symbol id.");
@@ -135,14 +169,15 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
     }
 
     private askAvailableBets(prompt: PromptAdapting): Promise<number[] | undefined> {
+        const defaultBets = this.defaults.availableBets;
         return this.askUntilValid(
             prompt,
-            `Available bets, comma-separated [${DEFAULT_AVAILABLE_BETS.join(",")}] (or "-" for the engine default): `,
+            `Available bets, comma-separated [${(defaultBets ?? []).join(",")}] (or "${SKIP_ANSWER}" for the engine default): `,
             (raw) => {
                 if (raw.length === 0) {
-                    return DEFAULT_AVAILABLE_BETS;
+                    return defaultBets === undefined ? undefined : [...defaultBets];
                 }
-                if (raw === "-") {
+                if (raw === SKIP_ANSWER) {
                     return undefined;
                 }
                 const bets = this.splitList(raw).map(Number);
@@ -188,12 +223,19 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         symbols: string[],
         reels: number,
     ): Promise<Record<string, Record<string, number>>> {
-        console.log("\nPaytable — for each symbol, enter matchCount:multiplier pairs (e.g. 3:5,4:10,5:20), or Enter to skip it.");
+        console.log(
+            `\nPaytable — for each symbol, enter matchCount:multiplier pairs (e.g. 3:5,4:10,5:20), Enter for the ` +
+                `default shown, or "${SKIP_ANSWER}" to leave that symbol without a payout.`,
+        );
 
         const paytable: Record<string, Record<string, number>> = {};
-        for (const symbol of symbols) {
-            const payouts = await this.askUntilValid(prompt, `  "${symbol}": `, (raw) => {
+        for (const [index, symbol] of symbols.entries()) {
+            const defaultPayouts = this.defaultPayoutsFor(symbol, index, symbols.length, reels);
+            const payouts = await this.askUntilValid(prompt, `  "${symbol}" [${this.formatPayouts(defaultPayouts)}]: `, (raw) => {
                 if (raw.length === 0) {
+                    return {...defaultPayouts};
+                }
+                if (raw === SKIP_ANSWER) {
                     return {};
                 }
 
@@ -226,15 +268,17 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         symbols: string[],
         reels: number,
     ): Promise<{reelStrips?: string[][]; symbolWeights?: Record<string, number>}> {
+        const defaultWeights = this.defaultSymbolWeightsFor(symbols);
         const mode = await this.askUntilValid(
             prompt,
-            'Reel weighting — "w" for symbol weights, "s" for explicit reel strips, or Enter for the engine default: ',
+            `Reel weighting — Enter for weights matching the symbols above [${this.formatWeights(defaultWeights)}], ` +
+                `"w" to enter your own symbol weights, "s" for explicit reel strips, or "${SKIP_ANSWER}" for the engine default: `,
             (raw) => {
                 const normalized = raw.toLowerCase();
-                if (normalized === "" || normalized === "w" || normalized === "s") {
+                if (normalized === "" || normalized === "w" || normalized === "s" || normalized === SKIP_ANSWER) {
                     return normalized;
                 }
-                return new WizardParseError('Enter "w", "s", or leave blank.');
+                return new WizardParseError(`Enter "w", "s", "${SKIP_ANSWER}", or leave blank.`);
             },
         );
 
@@ -296,7 +340,61 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             return {reelStrips};
         }
 
-        return {};
+        if (mode === SKIP_ANSWER) {
+            return {};
+        }
+
+        return {symbolWeights: defaultWeights};
+    }
+
+    // The default payouts offered for one symbol. The canonical preset's own entry is used verbatim
+    // whenever it fits the chosen reel count; a wizard run that typed its own symbol ids (or picked a
+    // reel count the preset's match-count keys overflow) still gets a valid ladder instead of nothing,
+    // built so that matching more symbols never pays less — the shape GameBlueprintValidator expects.
+    private defaultPayoutsFor(symbol: string, index: number, symbolCount: number, reels: number): Record<string, number> {
+        const preset = this.defaults.paytable[symbol];
+        if (preset !== undefined && Object.keys(preset).every((times) => Number(times) <= reels)) {
+            return {...preset};
+        }
+
+        const minMatchCount = Math.min(FALLBACK_MIN_MATCH_COUNT, reels);
+        // A paytable needs a match count of at least 2 to mean anything; a 1-reel game can't have one
+        // at all, so offer nothing rather than an entry the validator would reject.
+        if (minMatchCount < 2) {
+            return {};
+        }
+
+        const payouts: Record<string, number> = {};
+        let multiplier = Math.max(1, symbolCount - index);
+        for (let times = minMatchCount; times <= reels; times++) {
+            payouts[String(times)] = multiplier;
+            multiplier *= 2;
+        }
+        return payouts;
+    }
+
+    // Default reel weighting for whatever symbols the run actually ended up with: the preset's own
+    // weight for every symbol it knows (so an Enter-only run gets exactly the preset's weighting), and
+    // a rarest-first fallback for any symbol it doesn't. Every symbol is always covered, which is what
+    // keeps the weighting compatible with the symbol list rather than only with the default one.
+    private defaultSymbolWeightsFor(symbols: string[]): Record<string, number> {
+        const presetWeights = this.defaults.symbolWeights ?? {};
+        const weights: Record<string, number> = {};
+        symbols.forEach((symbol, index) => {
+            weights[symbol] = presetWeights[symbol] ?? FALLBACK_WEIGHT_BASE + index * FALLBACK_WEIGHT_STEP;
+        });
+        return weights;
+    }
+
+    private formatPayouts(payouts: Record<string, number>): string {
+        const pairs = Object.entries(payouts).map(([times, multiplier]) => `${times}:${multiplier}`);
+        return pairs.length > 0 ? pairs.join(",") : SKIP_ANSWER;
+    }
+
+    private formatWeights(weights: Record<string, number>): string {
+        return Object.entries(weights)
+            .map(([symbol, count]) => `${symbol}:${count}`)
+            .join(",");
     }
 
     private async askOutDir(prompt: PromptAdapting, id: string): Promise<string | undefined> {

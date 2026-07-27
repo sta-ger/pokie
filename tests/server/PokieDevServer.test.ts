@@ -170,7 +170,7 @@ async function getJson(url: string): Promise<{status: number; body: Record<strin
 }
 
 describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
     let game: PokieGame & {createdWith?: unknown};
     let server: PokieDevServer;
     let baseUrl: string;
@@ -351,7 +351,7 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
 });
 
 describe("PokieDevServer (replaceable session storage: DI, restart, unknown sessions)", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("restores session state through a shared SessionRepository across independent server instances (simulated restart)", async () => {
         const game = createFakeGame(manifest);
@@ -1203,7 +1203,7 @@ function createRacingSessionRepository(real: InMemorySessionRepository): Version
 }
 
 describe("PokieDevServer (optimistic locking / session versioning)", () => {
-    const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it("returns 409 with a clear error when a spin's session version goes stale before it can save", async () => {
         const game = createFakeGame(manifest);

@@ -1,4 +1,4 @@
-import {ChildProcessWithoutNullStreams, execFileSync, spawn} from "child_process";
+import {ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync} from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -207,5 +207,52 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const output = execFileSync("node", [scriptPath], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(output).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
+    });
+
+    // spawnSync (rather than execFileSync) so a non-zero exit is asserted on directly instead of
+    // surfacing as a thrown error, and so a "pokie --help" that wrongly reached StudioCommand — which
+    // would sit there serving instead of exiting — fails on the timeout rather than hanging the suite.
+    it.each([["--help"], ["-h"]])("prints the general usage and the full command list for `pokie %s`, exiting 0", (flag) => {
+        const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain("Usage: pokie <command>");
+        expect(result.stdout).toContain("Commands:");
+        // A representative spread of registered commands, including the longest name, so a truncated
+        // or partially-rendered list is caught rather than just "some text was printed".
+        for (const commandName of ["build", "create", "inspect", "outcomelibrary", "sim", "studio", "validate"]) {
+            expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
+        }
+    });
+
+    it("builds a package from an Enter-only `pokie build` wizard run, then validates and simulates it", () => {
+        // More blank lines than the wizard has questions: the surplus is simply never read, and using
+        // an exact count here would encode the very question count the Enter-only contract is about.
+        const build = spawnSync(pokieBinPath, ["build"], {
+            cwd: installDir,
+            encoding: "utf-8",
+            input: "\n".repeat(40),
+            timeout: 120000,
+        });
+
+        expect(build.status).toBe(0);
+
+        const projectRoot = (/^ {2}package root {5}(.+)$/m).exec(build.stdout)?.[1].trim();
+        expect(projectRoot).toBeDefined();
+        expect(fs.existsSync(path.join(projectRoot!, "src", "generated", "index.js"))).toBe(true);
+
+        const validate = spawnSync(pokieBinPath, ["validate", projectRoot!], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expect(validate.status).toBe(0);
+
+        const simFile = path.join(installDir!, "enter-only-sim.json");
+        const sim = spawnSync(pokieBinPath, ["sim", projectRoot!, "--rounds", "200", "--seed", "demo", "--out", simFile], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 120000,
+        });
+        expect(sim.status).toBe(0);
+
+        const report = JSON.parse(fs.readFileSync(simFile, "utf-8")) as {rounds: number};
+        expect(report.rounds).toBe(200);
     });
 });

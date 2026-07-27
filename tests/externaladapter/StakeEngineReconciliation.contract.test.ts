@@ -60,8 +60,8 @@ function winningSingleOutcomeLibrary(libraryId: string, gameId: string): Weighte
 
 describe("StakeEngine <-> External Adapter SDK: provenance-homogeneity contract", () => {
     it("both validators accept the same homogeneous-provenance multi-mode input", () => {
-        const base = singleOutcomeLibrary("base-lib", "crazy-fruits");
-        const bonus = winningSingleOutcomeLibrary("bonus-lib", "crazy-fruits");
+        const base = singleOutcomeLibrary("base-lib", "sample-slot");
+        const bonus = winningSingleOutcomeLibrary("bonus-lib", "sample-slot");
 
         const stakeIssues = new StakeEngineExportValidator<string>().validate([
             {modeName: "base", cost: 1, library: base},
@@ -81,7 +81,7 @@ describe("StakeEngine <-> External Adapter SDK: provenance-homogeneity contract"
     });
 
     it("both validators reject the same cross-mode provenance mismatch", () => {
-        const base = singleOutcomeLibrary("base-lib", "crazy-fruits");
+        const base = singleOutcomeLibrary("base-lib", "sample-slot");
         const bonusFromAnotherGame = winningSingleOutcomeLibrary("bonus-lib", "a-different-game");
 
         const stakeIssues = new StakeEngineExportValidator<string>().validate([

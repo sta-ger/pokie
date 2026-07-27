@@ -206,7 +206,7 @@ class — neither has (or needs) its own worker-thread implementation.
 ```ts
 import {ParallelSimulationRunner} from "pokie";
 
-const runner = new ParallelSimulationRunner("./crazy-fruits", 1_000_000, {
+const runner = new ParallelSimulationRunner("./sample-slot", 1_000_000, {
     seed: "demo",
     workers: 4, // omit (or pass 1) to run in-process, exactly like the pre-`--workers` sequential path
 });
@@ -225,7 +225,7 @@ Everything `pokie sim --workers`/Studio's Simulation tab support is available th
 ```ts
 const controller = new AbortController();
 
-const runner = new ParallelSimulationRunner("./crazy-fruits", 5_000_000, {
+const runner = new ParallelSimulationRunner("./sample-slot", 5_000_000, {
     seed: "demo",
     workers: 8, // custom worker count, up to MAX_SIMULATION_WORKERS
     signal: controller.signal, // cancel a run in progress — see Cancellation below
@@ -347,7 +347,7 @@ is always played in full unless `ParallelSimulationRunOptions.convergence` is ex
 ```ts
 import {ParallelSimulationRunner} from "pokie";
 
-const runner = new ParallelSimulationRunner("./crazy-fruits", 5_000_000, {
+const runner = new ParallelSimulationRunner("./sample-slot", 5_000_000, {
     seed: "demo",
     convergence: {
         minRounds: 100_000, // no stop before this many rounds, however stable the estimate looks early

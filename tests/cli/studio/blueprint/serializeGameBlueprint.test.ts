@@ -5,7 +5,7 @@ describe("serializeGameBlueprint", () => {
         const blueprint = {
             availableBets: [1, 2],
             symbols: ["A", "B"],
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             paytable: {A: {3: 5}},
             rows: 3,
             reels: 3,
@@ -19,7 +19,7 @@ describe("serializeGameBlueprint", () => {
 
     it("preserves unknown top-level fields, appended after the known ones in their original order", () => {
         const blueprint = {
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 3,
             rows: 3,
             symbols: ["A"],
@@ -45,7 +45,7 @@ describe("serializeGameBlueprint", () => {
 
     it("produces byte-identical output across repeated calls with the same input", () => {
         const blueprint = {
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 3,
             rows: 3,
             symbols: ["A", "B"],

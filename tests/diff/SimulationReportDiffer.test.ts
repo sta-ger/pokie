@@ -1,7 +1,7 @@
 import {SimulationReport, SimulationReportDiffer} from "pokie";
 
 const reproducibility = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     seed: "demo",
     requestedRounds: 10000,
     actualRounds: 9800,
@@ -9,7 +9,7 @@ const reproducibility = {
 };
 
 const left: SimulationReport = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     requestedRounds: 10000,
     rounds: 9800,
     seed: "demo",
@@ -26,7 +26,7 @@ const left: SimulationReport = {
 };
 
 const right: SimulationReport = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     requestedRounds: 10000,
     rounds: 9850,
     seed: "demo",
@@ -47,15 +47,15 @@ describe("SimulationReportDiffer", () => {
         const diff = new SimulationReportDiffer().diff(left, right);
 
         expect(diff.game).toEqual({
-            left: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
-            right: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            left: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            right: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             changed: false,
         });
         expect(diff.seed).toEqual({left: "demo", right: "demo", changed: false});
     });
 
     it("flags game metadata as changed when id/name/version differ", () => {
-        const diff = new SimulationReportDiffer().diff(left, {...right, game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.2.0"}});
+        const diff = new SimulationReportDiffer().diff(left, {...right, game: {id: "sample-slot", name: "Sample Slot", version: "0.2.0"}});
 
         expect(diff.game.changed).toBe(true);
     });

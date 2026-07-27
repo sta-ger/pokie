@@ -2,7 +2,7 @@ import {buildGameBuildInfo, computeGameBlueprintHash, GameBlueprint} from "pokie
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
-        manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 3,
         rows: 3,
         symbols: ["A", "B"],
@@ -18,14 +18,14 @@ describe("buildGameBuildInfo", () => {
         expect(info.schemaVersion).toBe(1);
         expect(info.generatedBy).toBe("pokie build");
         expect(info.pokieVersion).toBe("1.3.0");
-        expect(info.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(info.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         expect(info.source).toBeUndefined();
     });
 
     it("records the given source path when provided", () => {
-        const info = buildGameBuildInfo(buildBlueprint(), "1.3.0", "blueprints/crazy-fruits.blueprint.json");
+        const info = buildGameBuildInfo(buildBlueprint(), "1.3.0", "blueprints/sample-slot.blueprint.json");
 
-        expect(info.source).toBe("blueprints/crazy-fruits.blueprint.json");
+        expect(info.source).toBe("blueprints/sample-slot.blueprint.json");
     });
 
     it("uses the given generation timestamp, serialized as ISO 8601", () => {
@@ -67,12 +67,12 @@ describe("buildGameBuildInfo", () => {
 
     it("reuses the previous run's generatedAt when blueprint, pokie version, and source all still match", () => {
         const blueprint = buildBlueprint();
-        const previous = buildGameBuildInfo(blueprint, "1.3.0", "blueprints/crazy-fruits.blueprint.json", new Date("2026-01-02T03:04:05.000Z"));
+        const previous = buildGameBuildInfo(blueprint, "1.3.0", "blueprints/sample-slot.blueprint.json", new Date("2026-01-02T03:04:05.000Z"));
 
         const info = buildGameBuildInfo(
             blueprint,
             "1.3.0",
-            "blueprints/crazy-fruits.blueprint.json",
+            "blueprints/sample-slot.blueprint.json",
             new Date("2026-06-01T00:00:00.000Z"),
             undefined,
             previous,

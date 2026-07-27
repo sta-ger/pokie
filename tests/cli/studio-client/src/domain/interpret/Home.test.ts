@@ -13,8 +13,8 @@ import type {
 
 function createEntry(overrides: Partial<StudioHomeRecentProjectView> = {}): StudioHomeRecentProjectView {
     return {
-        projectRoot: "/projects/crazy-fruits",
-        name: "Crazy Fruits",
+        projectRoot: "/projects/sample-slot",
+        name: "Sample Slot",
         openedAt: "2026-01-01T00:00:00.000Z",
         missing: false,
         ...overrides,
@@ -37,8 +37,8 @@ describe("describeScaffoldResult", () => {
     it("passes an ok result through unchanged", () => {
         const result: StudioScaffoldResultView = {
             status: "ok",
-            projectRoot: "/a/crazy-fruits",
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            projectRoot: "/a/sample-slot",
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             createdFiles: ["package.json"],
             updatedFiles: [],
             skippedFiles: [],
@@ -59,7 +59,7 @@ describe("describeBuildPreview", () => {
         const preview: StudioBuildPreviewView = {
             status: "ok",
             warnings: [],
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             reels: 5,
             rows: 3,
             symbolsCount: 7,
@@ -92,7 +92,7 @@ describe("describeBuildResult", () => {
         const result: StudioBuildResult = {
             status: "ok",
             projectRoot: "/out",
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             createdFiles: ["package.json"],
             buildInfo: {
                 schemaVersion: 1,
@@ -100,7 +100,7 @@ describe("describeBuildResult", () => {
                 pokieVersion: "1.0.0",
                 generatedAt: "2026-01-01T00:00:00.000Z",
                 blueprintHash: "sha256:abc",
-                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             },
             unchanged: false,
             warnings: [],

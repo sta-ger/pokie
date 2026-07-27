@@ -95,7 +95,7 @@ gotten that way by bypassing `buildWeightedOutcomeLibrary`.
 import {buildWeightedOutcomeLibrary} from "pokie";
 
 const library = buildWeightedOutcomeLibrary({
-    libraryId: "crazy-fruits-base-game-v1",
+    libraryId: "sample-slot-base-game-v1",
     outcomes: [
         {id: "no-win", weight: 70, artifact: losingArtifact},
         {id: "small-win", weight: 25, artifact: smallWinArtifact},

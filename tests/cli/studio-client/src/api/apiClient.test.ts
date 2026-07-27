@@ -82,15 +82,15 @@ describe("studio-client apiClient", () => {
         it("POSTs the request and returns the scaffold result", async () => {
             const body = {
                 status: "ok",
-                projectRoot: "/a/crazy-fruits",
-                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                projectRoot: "/a/sample-slot",
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 createdFiles: ["package.json"],
                 updatedFiles: [],
                 skippedFiles: [],
             };
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
 
-            const result = await createProject(fetchImpl, {destinationDir: "/a", name: "crazy-fruits"});
+            const result = await createProject(fetchImpl, {destinationDir: "/a", name: "sample-slot"});
 
             expect(calls).toEqual([
                 {
@@ -98,7 +98,7 @@ describe("studio-client apiClient", () => {
                     init: {
                         method: "POST",
                         headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({destinationDir: "/a", name: "crazy-fruits"}),
+                        body: JSON.stringify({destinationDir: "/a", name: "sample-slot"}),
                     },
                 },
             ]);
@@ -108,18 +108,18 @@ describe("studio-client apiClient", () => {
         it("includes gameId/gameName/version overrides in the body when given", async () => {
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "ok"}}));
 
-            await createProject(fetchImpl, {destinationDir: "/a", name: "crazy-fruits", gameId: "cf", gameName: "CF", version: "2.0.0"});
+            await createProject(fetchImpl, {destinationDir: "/a", name: "sample-slot", gameId: "cf", gameName: "CF", version: "2.0.0"});
 
             expect(calls[0].init?.body).toBe(
-                JSON.stringify({destinationDir: "/a", name: "crazy-fruits", gameId: "cf", gameName: "CF", version: "2.0.0"}),
+                JSON.stringify({destinationDir: "/a", name: "sample-slot", gameId: "cf", gameName: "CF", version: "2.0.0"}),
             );
         });
 
         it("returns a domain-level error result rather than throwing", async () => {
-            const body = {status: "error", error: '"crazy-fruits" already exists.'};
+            const body = {status: "error", error: '"sample-slot" already exists.'};
             const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
 
-            const result = await createProject(fetchImpl, {destinationDir: "/a", name: "crazy-fruits"});
+            const result = await createProject(fetchImpl, {destinationDir: "/a", name: "sample-slot"});
 
             expect(result).toEqual(body);
         });
@@ -134,7 +134,7 @@ describe("studio-client apiClient", () => {
             const fetchImpl: FetchLike = () =>
                 Promise.resolve({ok: false, status: 500, json: () => Promise.reject(new Error("not json"))});
 
-            await expect(createProject(fetchImpl, {destinationDir: "/a", name: "crazy-fruits"})).rejects.toThrow(/HTTP 500/);
+            await expect(createProject(fetchImpl, {destinationDir: "/a", name: "sample-slot"})).rejects.toThrow(/HTTP 500/);
         });
     });
 
@@ -143,7 +143,7 @@ describe("studio-client apiClient", () => {
             const body = {
                 status: "ok",
                 projectRoot: "/a",
-                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 createdFiles: ["tsconfig.json"],
                 updatedFiles: ["package.json"],
                 skippedFiles: [],
@@ -180,7 +180,7 @@ describe("studio-client apiClient", () => {
             const body = {
                 status: "ok",
                 warnings: [],
-                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 reels: 5,
                 rows: 3,
                 symbolsCount: 7,
@@ -222,9 +222,9 @@ describe("studio-client apiClient", () => {
             const body = {
                 status: "ok",
                 projectRoot: "/out",
-                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 createdFiles: ["package.json"],
-                buildInfo: {schemaVersion: 1, generatedBy: "pokie build", pokieVersion: "1.0.0", generatedAt: "2026-01-01T00:00:00.000Z", blueprintHash: "sha256:abc", game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}},
+                buildInfo: {schemaVersion: 1, generatedBy: "pokie build", pokieVersion: "1.0.0", generatedAt: "2026-01-01T00:00:00.000Z", blueprintHash: "sha256:abc", game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}},
                 unchanged: false,
                 warnings: [],
             };
@@ -442,7 +442,7 @@ describe("studio-client apiClient", () => {
             const body = {
                 status: "ok",
                 warnings: [],
-                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 reels: 5,
                 rows: 3,
                 symbolsCount: 7,
@@ -451,7 +451,7 @@ describe("studio-client apiClient", () => {
             };
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
 
-            const result = await previewBlueprintBuild(fetchImpl, {manifest: {id: "crazy-fruits"}}, "./out", "blueprint.json");
+            const result = await previewBlueprintBuild(fetchImpl, {manifest: {id: "sample-slot"}}, "./out", "blueprint.json");
 
             expect(calls).toEqual([
                 {
@@ -459,7 +459,7 @@ describe("studio-client apiClient", () => {
                     init: {
                         method: "POST",
                         headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({blueprint: {manifest: {id: "crazy-fruits"}}, outDir: "./out", sourcePath: "blueprint.json"}),
+                        body: JSON.stringify({blueprint: {manifest: {id: "sample-slot"}}, outDir: "./out", sourcePath: "blueprint.json"}),
                     },
                 },
             ]);
@@ -478,15 +478,15 @@ describe("studio-client apiClient", () => {
             const body = {
                 status: "ok",
                 projectRoot: "/out",
-                manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 createdFiles: ["package.json"],
-                buildInfo: {schemaVersion: 1, generatedBy: "pokie build", pokieVersion: "1.0.0", generatedAt: "2026-01-01T00:00:00.000Z", blueprintHash: "sha256:abc", game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}},
+                buildInfo: {schemaVersion: 1, generatedBy: "pokie build", pokieVersion: "1.0.0", generatedAt: "2026-01-01T00:00:00.000Z", blueprintHash: "sha256:abc", game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}},
                 unchanged: false,
                 warnings: [],
             };
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
 
-            const result = await buildBlueprint(fetchImpl, {manifest: {id: "crazy-fruits"}}, "./out");
+            const result = await buildBlueprint(fetchImpl, {manifest: {id: "sample-slot"}}, "./out");
 
             expect(calls).toEqual([
                 {
@@ -494,7 +494,7 @@ describe("studio-client apiClient", () => {
                     init: {
                         method: "POST",
                         headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({blueprint: {manifest: {id: "crazy-fruits"}}, outDir: "./out"}),
+                        body: JSON.stringify({blueprint: {manifest: {id: "sample-slot"}}, outDir: "./out"}),
                     },
                 },
             ]);
@@ -513,7 +513,7 @@ describe("studio-client apiClient", () => {
             const body = {context: {mode: "project", projectRoot: "/a"}, manifest: {id: "a", name: "A", version: "1.0.0"}};
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
 
-            const result = await openProject(fetchImpl, "./crazy-fruits");
+            const result = await openProject(fetchImpl, "./sample-slot");
 
             expect(calls).toEqual([
                 {
@@ -521,7 +521,7 @@ describe("studio-client apiClient", () => {
                     init: {
                         method: "POST",
                         headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({projectRoot: "./crazy-fruits"}),
+                        body: JSON.stringify({projectRoot: "./sample-slot"}),
                     },
                 },
             ]);
@@ -735,7 +735,7 @@ describe("studio-client apiClient", () => {
                 {
                     id: "job-1",
                     status: "completed",
-                    game: {id: "crazy-fruits", version: "0.1.0"},
+                    game: {id: "sample-slot", version: "0.1.0"},
                     requestedRounds: 1000,
                     actualRounds: 1000,
                     rtp: 0.95,
@@ -771,7 +771,7 @@ describe("studio-client apiClient", () => {
     describe("getReport", () => {
         it("GETs /api/project/reports/:id and returns the StudioSimulationReportDetail envelope (report + statistics)", async () => {
             const report = {
-                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 requestedRounds: 1000,
                 rounds: 1000,
                 seed: "demo",
@@ -934,7 +934,7 @@ describe("studio-client apiClient", () => {
                 {
                     id: "replay-1",
                     status: "completed",
-                    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                     round: 42,
                     seed: "demo",
                     completedRounds: 42,

@@ -47,7 +47,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
         const id = blueprint.manifest.id;
         if (outDir === undefined && (id.includes("/") || id.includes("\\") || id === "." || id === "..")) {
             throw new Error(
-                `"manifest.id" ("${id}") is not a valid directory name. Use a plain name, e.g. "crazy-fruits", or pass --out <dir>.`,
+                `"manifest.id" ("${id}") is not a valid directory name. Use a plain name, e.g. "sample-slot", or pass --out <dir>.`,
             );
         }
 

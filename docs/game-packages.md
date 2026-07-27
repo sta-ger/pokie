@@ -54,7 +54,7 @@ field:
 
 ```json
 {
-    "name": "crazy-fruits",
+    "name": "sample-slot",
     "version": "1.0.0",
     "dependencies": {
         "pokie": "^1.3.0"
@@ -78,7 +78,7 @@ import {PokieGame, VideoSlotConfig, VideoSlotSession} from "pokie";
 
 const game: PokieGame = {
     getManifest() {
-        return {id: "crazy-fruits", name: "Crazy Fruits", version: "1.0.0"};
+        return {id: "sample-slot", name: "Sample Slot", version: "1.0.0"};
     },
     createSession(context) {
         const config = new VideoSlotConfig();
@@ -101,7 +101,7 @@ entry file was built for.
 ```ts
 import {loadPokieGame} from "pokie";
 
-const game = await loadPokieGame("/path/to/crazy-fruits");
+const game = await loadPokieGame("/path/to/sample-slot");
 const session = game.createSession({seed: "regression-run-42"});
 
 session.play();

@@ -1,7 +1,7 @@
 {
     "manifest": {
-        "id": "crazy-fruits",
-        "name": "Crazy Fruits",
+        "id": "sample-slot",
+        "name": "Sample Slot",
         "version": "0.1.0",
         "description": "A pokie build example: 5x3, wilds, scatters, weighted reels."
     },

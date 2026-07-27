@@ -3,7 +3,7 @@ import {computeBlueprintHash} from "../../src/parsheet/computeBlueprintHash.js";
 
 describe("computeBlueprintHash", () => {
     const base: GameBlueprint = {
-        manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 2,
         rows: 2,
         symbols: ["A", "K"],

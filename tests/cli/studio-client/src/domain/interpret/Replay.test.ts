@@ -11,7 +11,7 @@ import type {ReplayDescriptor, RoundArtifactJson, StudioReplayJobView, StudioRep
 
 function createDescriptor(overrides: Partial<ReplayDescriptor> = {}): ReplayDescriptor {
     return {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         seed: "demo",
         round: 42,
         totalBet: 420,
@@ -43,7 +43,7 @@ function createArtifact(overrides: Partial<RoundArtifactJson> = {}): RoundArtifa
     return {
         schemaVersion: 1,
         roundId: "replay:demo:5",
-        provenance: {game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}, pokieVersion: "1.0.0"},
+        provenance: {game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, pokieVersion: "1.0.0"},
         betMode: "base",
         stake: 1,
         totalWin: 5,
@@ -71,7 +71,7 @@ function createListEntry(overrides: Partial<StudioReplayListEntry> = {}): Studio
     return {
         id: "replay-1",
         status: "completed",
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         round: 42,
         seed: "demo",
         completedRounds: 42,
@@ -139,7 +139,7 @@ describe("describeReplayResult", () => {
 
         expect(describeReplayResult(job)).toEqual({
             id: "replay-1",
-            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             round: 42,
             seed: "demo",
             totalBet: 420,

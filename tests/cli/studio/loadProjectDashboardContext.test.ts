@@ -13,17 +13,17 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame {
 
 describe("loadProjectDashboardContext", () => {
     it("resolves to loaded with the game's manifest on success", async () => {
-        const manifest: PokieGameManifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+        const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
         const loadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));
 
-        const dashboard = await loadProjectDashboardContext("./crazy-fruits", loadGame);
+        const dashboard = await loadProjectDashboardContext("./sample-slot", loadGame);
 
         expect(dashboard).toEqual({
             status: "loaded",
-            projectRoot: path.resolve("./crazy-fruits"),
+            projectRoot: path.resolve("./sample-slot"),
             game: manifest,
         });
-        expect(loadGame).toHaveBeenCalledWith("./crazy-fruits");
+        expect(loadGame).toHaveBeenCalledWith("./sample-slot");
     });
 
     it("resolves projectRoot to an absolute path even when given a relative one", async () => {
@@ -36,7 +36,7 @@ describe("loadProjectDashboardContext", () => {
     });
 
     it("leaves an already-absolute projectRoot unchanged", async () => {
-        const absolute = path.resolve("/tmp/crazy-fruits");
+        const absolute = path.resolve("/tmp/sample-slot");
         const loadGame = jest.fn().mockResolvedValue(createFakeGame({id: "a", name: "A", version: "1.0.0"}));
 
         const dashboard = await loadProjectDashboardContext(absolute, loadGame);

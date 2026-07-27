@@ -103,10 +103,10 @@ describe("StudioCommand", () => {
         });
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["./crazy-fruits"]);
+        await command.run(["./sample-slot"]);
 
         expect(receivedOptions?.initialContext).toEqual(
-            expect.objectContaining({mode: "project", projectRoot: expect.stringContaining("crazy-fruits")}),
+            expect.objectContaining({mode: "project", projectRoot: expect.stringContaining("sample-slot")}),
         );
 
         logSpy.mockRestore();

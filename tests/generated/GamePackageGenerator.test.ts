@@ -5,7 +5,7 @@ import path from "path";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
-        manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         reels: 3,
         rows: 3,
         symbols: ["A", "B"],
@@ -30,9 +30,9 @@ describe("GamePackageGenerator", () => {
 
         const result = generator.generate(buildBlueprint(), cwd);
 
-        const projectRoot = path.join(cwd, "crazy-fruits");
+        const projectRoot = path.join(cwd, "sample-slot");
         expect(result.projectRoot).toBe(projectRoot);
-        expect(result.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         expect(result.createdFiles.sort()).toEqual(
             ["README.md", "package.json", "src/generated/build-info.json", "src/generated/index.js"].sort(),
         );
@@ -48,7 +48,7 @@ describe("GamePackageGenerator", () => {
         const result = generator.generate(buildBlueprint(), cwd);
         const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
 
-        expect(pkg.name).toBe("crazy-fruits");
+        expect(pkg.name).toBe("sample-slot");
         expect(pkg.version).toBe("0.1.0");
         expect(pkg.dependencies).toEqual({pokie: "^1.3.0"});
         expect(pkg.pokie).toEqual({entry: "./src/generated/index.js"});
@@ -68,7 +68,7 @@ describe("GamePackageGenerator", () => {
     it("uses the blueprint manifest's own description when given", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint({
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0", description: "A fruity slot."},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0", description: "A fruity slot."},
         });
 
         const result = generator.generate(blueprint, cwd);
@@ -83,7 +83,7 @@ describe("GamePackageGenerator", () => {
         const result = generator.generate(buildBlueprint(), cwd);
         const readme = fs.readFileSync(path.join(result.projectRoot, "README.md"), "utf-8");
 
-        expect(readme).toContain("# Crazy Fruits");
+        expect(readme).toContain("# Sample Slot");
         expect(readme).toContain("src/generated/build-info.json");
         expect(readme).toContain("Do not hand-edit");
         expect(readme).toContain("pokie inspect .");
@@ -94,7 +94,7 @@ describe("GamePackageGenerator", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint();
 
-        const result = generator.generate(blueprint, cwd, undefined, "examples/blueprints/crazy-fruits.blueprint.json");
+        const result = generator.generate(blueprint, cwd, undefined, "examples/blueprints/sample-slot.blueprint.json");
         const buildInfo = JSON.parse(
             fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"),
         ) as GameBuildInfo;
@@ -102,8 +102,8 @@ describe("GamePackageGenerator", () => {
         expect(buildInfo.schemaVersion).toBe(1);
         expect(buildInfo.generatedBy).toBe("pokie build");
         expect(buildInfo.pokieVersion).toBe("1.3.0");
-        expect(buildInfo.source).toBe("examples/blueprints/crazy-fruits.blueprint.json");
-        expect(buildInfo.game).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(buildInfo.source).toBe("examples/blueprints/sample-slot.blueprint.json");
+        expect(buildInfo.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         expect(() => new Date(buildInfo.generatedAt).toISOString()).not.toThrow();
         expect(new Date(buildInfo.generatedAt).toISOString()).toBe(buildInfo.generatedAt);
 
@@ -154,7 +154,7 @@ describe("GamePackageGenerator", () => {
         const result = generator.generate(buildBlueprint(), cwd, "elsewhere");
 
         expect(result.projectRoot).toBe(path.join(cwd, "elsewhere"));
-        expect(fs.existsSync(path.join(cwd, "crazy-fruits"))).toBe(false);
+        expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);
     });
 
     it("rebuilds cleanly into a directory from a previous \"pokie build\" run of the same blueprint", () => {
@@ -172,12 +172,12 @@ describe("GamePackageGenerator", () => {
         const generator = new GamePackageGenerator("1.3.0");
         generator.generate(buildBlueprint(), cwd);
 
-        const result = generator.generate(buildBlueprint({manifest: {id: "crazy-fruits", name: "Crazy Fruits Deluxe", version: "0.2.0"}}), cwd);
+        const result = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
 
         const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
         expect(pkg.version).toBe("0.2.0");
         const readme = fs.readFileSync(path.join(result.projectRoot, "README.md"), "utf-8");
-        expect(readme).toContain("# Crazy Fruits Deluxe");
+        expect(readme).toContain("# Sample Slot Deluxe");
     });
 
     it("regenerates byte-identical index.js and build-info.json when rebuilding an unchanged blueprint with the same pokie version", () => {
@@ -233,7 +233,7 @@ describe("GamePackageGenerator", () => {
 
     it("builds into an existing but empty directory", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "crazy-fruits");
+        const projectRoot = path.join(cwd, "sample-slot");
         fs.mkdirSync(projectRoot, {recursive: true});
 
         expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
@@ -242,7 +242,7 @@ describe("GamePackageGenerator", () => {
 
     it("builds into an existing directory that only contains unrelated files elsewhere (nothing at a generated path)", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "crazy-fruits");
+        const projectRoot = path.join(cwd, "sample-slot");
         fs.mkdirSync(projectRoot, {recursive: true});
         fs.writeFileSync(path.join(projectRoot, "LICENSE"), "MIT\n");
 
@@ -252,7 +252,7 @@ describe("GamePackageGenerator", () => {
 
     it("throws a descriptive error when the target path already exists and is not a directory", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "crazy-fruits");
+        const projectRoot = path.join(cwd, "sample-slot");
         fs.writeFileSync(projectRoot, "not a directory");
 
         expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not a directory/);
@@ -260,7 +260,7 @@ describe("GamePackageGenerator", () => {
 
     it("throws naming the conflicting file when the target directory has its own unrelated package.json", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "crazy-fruits");
+        const projectRoot = path.join(cwd, "sample-slot");
         fs.mkdirSync(projectRoot, {recursive: true});
         fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "not-pokie-build-output"}));
 
@@ -269,7 +269,7 @@ describe("GamePackageGenerator", () => {
 
     it("throws when the target directory's build-info.json is corrupt JSON", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "crazy-fruits");
+        const projectRoot = path.join(cwd, "sample-slot");
         fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
         fs.writeFileSync(path.join(projectRoot, "package.json"), "{}");
         fs.writeFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "{not valid json");
@@ -279,7 +279,7 @@ describe("GamePackageGenerator", () => {
 
     it("throws when the target directory's build-info.json wasn't written by \"pokie build\"", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "crazy-fruits");
+        const projectRoot = path.join(cwd, "sample-slot");
         fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
         fs.writeFileSync(path.join(projectRoot, "README.md"), "# hand-written\n");
         fs.writeFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), JSON.stringify({generatedBy: "something-else"}));
@@ -308,7 +308,7 @@ describe("GamePackageGenerator", () => {
         const result = generator.generate(blueprint, cwd);
         const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
 
-        expect(game.getManifest()).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(game.getManifest()).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
 
         const session = game.createSession();
         session.setBet(1);
@@ -760,7 +760,7 @@ describe("GamePackageGenerator", () => {
 
         expect(thrown?.message).toContain("reel 0");
         expect(thrown?.message).toContain("maximum-circular-distance");
-        expect(fs.existsSync(path.join(cwd, "crazy-fruits"))).toBe(false);
+        expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);
     });
 
     it("throws and creates no files when a caller-supplied reelStripGeneration is missing an entry for a generated reel", () => {
@@ -773,7 +773,7 @@ describe("GamePackageGenerator", () => {
         });
 
         expect(() => generator.generate(blueprint, cwd, undefined, undefined, {reels: []})).toThrow(/reelStripGeneration\[1\] is missing/);
-        expect(fs.existsSync(path.join(cwd, "crazy-fruits"))).toBe(false);
+        expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);
     });
 
     it("throws and creates no files when a caller-supplied reelStripGeneration reports an unsuccessful summary for a generated reel", () => {
@@ -797,6 +797,6 @@ describe("GamePackageGenerator", () => {
         expect(() => generator.generate(blueprint, cwd, undefined, undefined, failedResolution)).toThrow(
             /reelStripGeneration\[0\] did not generate successfully/,
         );
-        expect(fs.existsSync(path.join(cwd, "crazy-fruits"))).toBe(false);
+        expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);
     });
 });

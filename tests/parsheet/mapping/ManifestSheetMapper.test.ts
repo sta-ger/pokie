@@ -6,8 +6,8 @@ describe("ManifestSheetMapper", () => {
     it("maps a well-formed grid to a manifest/reels/rows value with no issues", () => {
         const {value, issues} = mapper.fromRows([
             ["Key", "Value"],
-            ["Id", "crazy-fruits"],
-            ["Name", "Crazy Fruits"],
+            ["Id", "sample-slot"],
+            ["Name", "Sample Slot"],
             ["Version", "0.1.0"],
             ["Description", "A demo game"],
             ["Author", "sta-ger"],
@@ -17,7 +17,7 @@ describe("ManifestSheetMapper", () => {
 
         expect(issues).toEqual([]);
         expect(value).toEqual({
-            manifest: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0", description: "A demo game", author: "sta-ger"},
+            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0", description: "A demo game", author: "sta-ger"},
             reels: 5,
             rows: 3,
         });
@@ -26,14 +26,14 @@ describe("ManifestSheetMapper", () => {
     it("omits description/author from the manifest when their rows are blank", () => {
         const {value} = mapper.fromRows([
             ["Key", "Value"],
-            ["Id", "crazy-fruits"],
-            ["Name", "Crazy Fruits"],
+            ["Id", "sample-slot"],
+            ["Name", "Sample Slot"],
             ["Version", "0.1.0"],
             ["Reels", 5],
             ["Rows", 3],
         ]);
 
-        expect(value.manifest).toEqual({id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"});
+        expect(value.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
     });
 
     it("defaults to empty/zero values when required rows are missing entirely, without throwing", () => {
@@ -78,15 +78,15 @@ describe("ManifestSheetMapper", () => {
         const {value, issues} = mapper.fromRows([
             ["Key", "Value"],
             ["", ""],
-            ["Id", "crazy-fruits"],
+            ["Id", "sample-slot"],
         ]);
 
         expect(issues).toEqual([]);
-        expect(value.manifest.id).toBe("crazy-fruits");
+        expect(value.manifest.id).toBe("sample-slot");
     });
 
     it("round-trips toRows -> fromRows back to the original manifest/reels/rows", () => {
-        const manifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0", description: "A demo game", author: "sta-ger"};
+        const manifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0", description: "A demo game", author: "sta-ger"};
         const rows = mapper.toRows(manifest, 5, 3);
         const {value, issues} = mapper.fromRows(rows);
 
@@ -95,7 +95,7 @@ describe("ManifestSheetMapper", () => {
     });
 
     it("round-trips a manifest with no description/author back to a manifest without those keys at all", () => {
-        const manifest = {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"};
+        const manifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
         const rows = mapper.toRows(manifest, 5, 3);
         const {value, issues} = mapper.fromRows(rows);
 

@@ -2,7 +2,7 @@ import {SimulationReport, SimulationReportDiffing, SimulationReportSet, Simulati
 
 function buildReport(betMode: string, rtp: number): SimulationReport {
     return {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         requestedRounds: 1000,
         rounds: 1000,
         seed: "demo",
@@ -17,9 +17,9 @@ function buildReport(betMode: string, rtp: number): SimulationReport {
     };
 }
 
-function buildSet(modes: Record<string, SimulationReport>, gameId = "crazy-fruits"): SimulationReportSet {
+function buildSet(modes: Record<string, SimulationReport>, gameId = "sample-slot"): SimulationReportSet {
     return {
-        game: {id: gameId, name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: gameId, name: "Sample Slot", version: "0.1.0"},
         requestedRounds: 1000,
         seed: "demo",
         workers: 1,
@@ -82,15 +82,15 @@ describe("SimulationReportSetDiffer", () => {
     });
 
     it("reports game.changed based on id/name/version, same as SimulationReportDiffer", () => {
-        const left = buildSet({base: buildReport("base", 0.9)}, "crazy-fruits");
-        const right = buildSet({base: buildReport("base", 0.9)}, "crazy-fruits-v2");
+        const left = buildSet({base: buildReport("base", 0.9)}, "sample-slot");
+        const right = buildSet({base: buildReport("base", 0.9)}, "sample-slot-v2");
         const differ = new SimulationReportSetDiffer();
 
         const setDiff = differ.diff(left, right);
 
         expect(setDiff.game.changed).toBe(true);
-        expect(setDiff.game.left.id).toBe("crazy-fruits");
-        expect(setDiff.game.right.id).toBe("crazy-fruits-v2");
+        expect(setDiff.game.left.id).toBe("sample-slot");
+        expect(setDiff.game.right.id).toBe("sample-slot-v2");
     });
 
     it("never adds a blended/overall metric across modes -- only game, perMode, onlyInLeft, onlyInRight", () => {

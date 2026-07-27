@@ -41,7 +41,7 @@ function stubTarget(overrides: Partial<ExternalDeploymentTarget> = {}): External
 }
 
 function testLibrary(): WeightedOutcomeLibrary {
-    const provenance: RoundArtifactProvenance = {game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"}, pokieVersion: "1.0.0"};
+    const provenance: RoundArtifactProvenance = {game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, pokieVersion: "1.0.0"};
     const artifact = buildRoundArtifact({
         roundId: "lib-0",
         provenance,

@@ -6,7 +6,7 @@ import {ReportCommand} from "../../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 
 const report: SimulationReport = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     requestedRounds: 10000,
     rounds: 9800,
     seed: "demo",
@@ -18,7 +18,7 @@ const report: SimulationReport = {
     durationMs: 1234,
     spinsPerSecond: 7942,
     reproducibility: {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         seed: "demo",
         requestedRounds: 10000,
         actualRounds: 9800,
@@ -101,7 +101,7 @@ describe("ReportCommand", () => {
         await command.run(["sim.json"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain("# Simulation Report: Crazy Fruits");
+        expect(printed).toContain("# Simulation Report: Sample Slot");
         expect(printed).toContain("**RTP**: 95.22%");
 
         logSpy.mockRestore();
@@ -115,7 +115,7 @@ describe("ReportCommand", () => {
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("<!DOCTYPE html>");
-        expect(printed).toContain("<h1>Simulation Report: Crazy Fruits</h1>");
+        expect(printed).toContain("<h1>Simulation Report: Sample Slot</h1>");
 
         logSpy.mockRestore();
     });
@@ -158,12 +158,12 @@ describe("ReportCommand", () => {
         await command.run(["old.json", "--format", "html"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain("# Simulation Report: Crazy Fruits");
+        expect(printed).toContain("# Simulation Report: Sample Slot");
         expect(printed).not.toContain("## Reproducibility");
         expect(printed).not.toContain("## Warnings");
         expect(printed).not.toContain("## Recommendations");
         expect(printed).not.toContain("## Breakdown");
-        expect(printed).toContain("<h1>Simulation Report: Crazy Fruits</h1>");
+        expect(printed).toContain("<h1>Simulation Report: Sample Slot</h1>");
 
         logSpy.mockRestore();
     });
@@ -182,7 +182,7 @@ function buildMode(id: string, rtp: number, targetRtp?: number): SimulationRepor
 }
 
 const reportSet: SimulationReportSet = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     requestedRounds: 10000,
     seed: "demo",
     workers: 1,
@@ -201,7 +201,7 @@ describe("ReportCommand (SimulationReportSet -- pokie sim --mode all output)", (
         await command.run(["set.json"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain("# Simulation Report Set: Crazy Fruits");
+        expect(printed).toContain("# Simulation Report Set: Sample Slot");
         expect(printed).toContain("## Comparison");
         expect(printed).toContain("| Metric | base | ante | buy-10 |");
         expect(printed).toContain("## Mode: base");
@@ -221,7 +221,7 @@ describe("ReportCommand (SimulationReportSet -- pokie sim --mode all output)", (
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("<!DOCTYPE html>");
-        expect(printed).toContain("<h1>Simulation Report Set: Crazy Fruits</h1>");
+        expect(printed).toContain("<h1>Simulation Report Set: Sample Slot</h1>");
         expect(printed).toContain("<h2>Comparison</h2>");
         expect(printed).toContain("<h2>Mode: base</h2>");
         expect(printed).toContain("<h2>Mode: ante</h2>");

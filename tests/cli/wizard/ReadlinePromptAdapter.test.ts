@@ -18,9 +18,9 @@ describe("ReadlinePromptAdapter", () => {
         const {adapter, input} = createAdapter();
 
         const answerPromise = adapter.ask("Game id: ");
-        input.write("crazy-fruits\n");
+        input.write("sample-slot\n");
 
-        expect(await answerPromise).toBe("crazy-fruits");
+        expect(await answerPromise).toBe("sample-slot");
         adapter.close();
     });
 
@@ -70,8 +70,8 @@ describe("ReadlinePromptAdapter", () => {
     it("does not throw when ask() is called again after close(), even mid-buffer", async () => {
         const {adapter, input} = createAdapter();
         const first = adapter.ask("Game id: ");
-        input.write("crazy-fruits\ntrailing-line\n"); // "trailing-line" has nowhere to go yet -> buffered
-        expect(await first).toBe("crazy-fruits");
+        input.write("sample-slot\ntrailing-line\n"); // "trailing-line" has nowhere to go yet -> buffered
+        expect(await first).toBe("sample-slot");
 
         adapter.close(); // regression: used to throw "readline was closed" from rl.prompt() below
 

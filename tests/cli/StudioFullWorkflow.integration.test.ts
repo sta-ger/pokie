@@ -108,9 +108,9 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -
         expect(home.body).toEqual({mode: "home"});
 
         // 2. Create project (via the Blueprint Editor's real Build flow — GamePackageGenerator, no stub).
-        const blueprintPath = path.join(workDir, "crazy-fruits.blueprint.json");
-        fs.writeFileSync(blueprintPath, JSON.stringify(buildBlueprint("crazy-fruits")));
-        const outDir = path.join(workDir, "crazy-fruits-out");
+        const blueprintPath = path.join(workDir, "sample-slot.blueprint.json");
+        fs.writeFileSync(blueprintPath, JSON.stringify(buildBlueprint("sample-slot")));
+        const outDir = path.join(workDir, "sample-slot-out");
         const built = await post(`${baseUrl}/api/home/projects/build`, {blueprintPath, outDir});
         expect(built.status).toBe(201);
         const projectRoot = (built.body as {projectRoot: string}).projectRoot;
@@ -128,7 +128,7 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -
         // 5. Validate.
         const validated = await get(`${baseUrl}/api/project/validate`);
         expect(validated.status).toBe(200);
-        expect(validated.body).toMatchObject({valid: true, game: {id: "crazy-fruits"}});
+        expect(validated.body).toMatchObject({valid: true, game: {id: "sample-slot"}});
 
         // 6. Simulation (run to completion).
         const simCreated = await post(`${baseUrl}/api/project/simulations`, {rounds: 40, seed: "demo"});

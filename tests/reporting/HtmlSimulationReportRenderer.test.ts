@@ -1,7 +1,7 @@
 import {HtmlSimulationReportRenderer, SimulationReport} from "pokie";
 
 const report: SimulationReport = {
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     requestedRounds: 10000,
     rounds: 9800,
     seed: "demo",
@@ -13,7 +13,7 @@ const report: SimulationReport = {
     durationMs: 1234,
     spinsPerSecond: 7942,
     reproducibility: {
-        game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         seed: "demo",
         requestedRounds: 10000,
         actualRounds: 9800,
@@ -28,15 +28,15 @@ describe("HtmlSimulationReportRenderer", () => {
         const html = new HtmlSimulationReportRenderer().render(report);
 
         expect(html).toContain("<!DOCTYPE html>");
-        expect(html).toContain("<title>Simulation Report: Crazy Fruits</title>");
-        expect(html).toContain("<h1>Simulation Report: Crazy Fruits</h1>");
+        expect(html).toContain("<title>Simulation Report: Sample Slot</title>");
+        expect(html).toContain("<h1>Simulation Report: Sample Slot</h1>");
         expect(html).toContain("<table>");
     });
 
     it("includes game id/name/version, requested/actual rounds, and seed", () => {
         const html = new HtmlSimulationReportRenderer().render(report);
 
-        expect(html).toContain("<td>crazy-fruits</td>");
+        expect(html).toContain("<td>sample-slot</td>");
         expect(html).toContain("<td>0.1.0</td>");
         expect(html).toContain("<td>10000</td>");
         expect(html).toContain("<td>9800</td>");
@@ -78,7 +78,7 @@ describe("HtmlSimulationReportRenderer", () => {
         const html = new HtmlSimulationReportRenderer().render(report);
 
         expect(html).toContain("<h2>Reproducibility</h2>");
-        expect(html).toContain("Game: Crazy Fruits (crazy-fruits, v0.1.0)");
+        expect(html).toContain("Game: Sample Slot (sample-slot, v0.1.0)");
         expect(html).toContain("Requested rounds: 10000");
         expect(html).toContain("Actual rounds: 9800");
         expect(html).toContain("Re-run command: <code>pokie sim &lt;packageRoot&gt; --rounds 10000 --seed demo</code>");

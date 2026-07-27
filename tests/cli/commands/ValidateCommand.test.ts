@@ -14,9 +14,9 @@ function createStubValidator(report: PokieGamePackageValidationReport): PokieGam
 }
 
 const validReport: PokieGamePackageValidationReport = {
-    packageRoot: "./crazy-fruits",
+    packageRoot: "./sample-slot",
     valid: true,
-    game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     errors: [],
     warnings: [],
     suggestions: [],
@@ -68,12 +68,12 @@ describe("ValidateCommand", () => {
         const command = new ValidateCommand(validator);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        const exitCode = await command.run(["./crazy-fruits"]);
+        const exitCode = await command.run(["./sample-slot"]);
 
-        expect(validator.calledWith).toBe("./crazy-fruits");
+        expect(validator.calledWith).toBe("./sample-slot");
         expect(exitCode).toBe(0);
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain('Validating "Crazy Fruits"');
+        expect(printed).toContain('Validating "Sample Slot"');
         expect(printed).toContain("valid           yes");
         expect(printed).toContain("No issues found.");
 
@@ -104,7 +104,7 @@ describe("ValidateCommand", () => {
         const command = new ValidateCommand(createStubValidator(validReport));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        const exitCode = await command.run(["./crazy-fruits", "--format", "json"]);
+        const exitCode = await command.run(["./sample-slot", "--format", "json"]);
 
         expect(exitCode).toBe(0);
         expect(logSpy).toHaveBeenCalledTimes(1);

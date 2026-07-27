@@ -114,7 +114,7 @@ describe("RandomGameBlueprintGenerator", () => {
         });
 
         test("an override still produces a blueprint that validates cleanly", () => {
-            const {blueprint} = new RandomGameBlueprintGenerator().generate({seed: 2, overrides: {name: "Crazy Test Slot"}});
+            const {blueprint} = new RandomGameBlueprintGenerator().generate({seed: 2, overrides: {name: "Sample Test Slot"}});
 
             const issues = new GameBlueprintValidator().validate(blueprint);
             expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);

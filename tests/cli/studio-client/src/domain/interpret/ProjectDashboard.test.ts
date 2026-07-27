@@ -30,14 +30,14 @@ describe("describeProjectHeader", () => {
         const view = describeProjectHeader({
             status: "loaded",
             projectRoot: "/a",
-            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0", description: "A fruit slot"},
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0", description: "A fruit slot"},
         });
 
         expect(view).toEqual({
             status: "loaded",
             projectRoot: "/a",
-            id: "crazy-fruits",
-            name: "Crazy Fruits",
+            id: "sample-slot",
+            name: "Sample Slot",
             version: "0.1.0",
             description: "A fruit slot",
         });
@@ -47,10 +47,10 @@ describe("describeProjectHeader", () => {
         const view = describeProjectHeader({
             status: "loaded",
             projectRoot: "/a",
-            game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         });
 
-        expect(view).toEqual({status: "loaded", projectRoot: "/a", id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0", description: undefined});
+        expect(view).toEqual({status: "loaded", projectRoot: "/a", id: "sample-slot", name: "Sample Slot", version: "0.1.0", description: undefined});
     });
 });
 
@@ -109,16 +109,16 @@ describe("describeProvenance", () => {
                 pokieVersion: "1.3.0",
                 generatedAt: "2026-01-02T03:04:05.000Z",
                 blueprintHash: "sha256:abc123",
-                source: "crazy-fruits.blueprint.json",
+                source: "sample-slot.blueprint.json",
                 files: ["package.json", "src/generated/index.js"],
-                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             },
         };
 
         expect(describeProvenance(report)).toEqual({
             status: "generated",
             blueprintHash: "sha256:abc123",
-            source: "crazy-fruits.blueprint.json",
+            source: "sample-slot.blueprint.json",
             pokieVersion: "1.3.0",
             generatedAt: "2026-01-02T03:04:05.000Z",
             files: ["package.json", "src/generated/index.js"],
@@ -136,7 +136,7 @@ describe("describeProvenance", () => {
                 pokieVersion: "1.3.0",
                 generatedAt: "2026-01-02T03:04:05.000Z",
                 blueprintHash: "sha256:abc123",
-                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             },
         };
 
@@ -177,9 +177,9 @@ describe("describeInspection", () => {
                 pokieVersion: "1.3.0",
                 generatedAt: "2026-01-02T03:04:05.000Z",
                 blueprintHash: "sha256:abc123",
-                source: "crazy-fruits.blueprint.json",
+                source: "sample-slot.blueprint.json",
                 files: ["package.json"],
-                game: {id: "crazy-fruits", name: "Crazy Fruits", version: "0.1.0"},
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             },
         };
 
@@ -189,7 +189,7 @@ describe("describeInspection", () => {
             expect(view.provenance).toEqual({
                 status: "generated",
                 blueprintHash: "sha256:abc123",
-                source: "crazy-fruits.blueprint.json",
+                source: "sample-slot.blueprint.json",
                 pokieVersion: "1.3.0",
                 generatedAt: "2026-01-02T03:04:05.000Z",
                 files: ["package.json"],
