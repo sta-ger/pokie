@@ -23,6 +23,12 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
             const [path] = url.split("?");
             const method = init?.method ?? "GET";
 
+            // Startup handshake: "/" resolves the server's mode before landing (see StudioLanding).
+            // This flow is the home-mode one, which is what puts step 1 below on Home.
+            if (path === "/api/context") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({mode: "home"})});
+            }
+
             if (path === "/api/home/blueprints/validate" && method === "POST") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
             }
@@ -190,7 +196,8 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         renderRoutedApp({fetchImpl, initialEntries: ["/"]});
 
         // 1. Land on Home's default "Design & Build" tab -- the guided open-or-create + configure entry.
-        expect(screen.getByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
+        // Awaited rather than immediate: "/" resolves the server mode first, so Home appears a tick later.
+        expect(await screen.findByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
 
         // 2. Configure the game model -- add a symbol. HomePage keeps every tab's content mounted (so
         // switching tabs never loses a draft), so the Advanced Tools tab's own raw Blueprint Editor

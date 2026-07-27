@@ -1,6 +1,7 @@
 import {createHashRouter, Navigate, RouterProvider} from "react-router-dom";
 import {HomePage} from "./components/home/HomePage";
 import {ProjectDashboardPage} from "./components/project/ProjectDashboardPage";
+import {StudioLanding} from "./components/StudioLanding";
 
 // Hash routing, via the *data router* API (createHashRouter + RouterProvider) rather than the
 // declarative <HashRouter><Routes>, specifically so useDesignNavigationGuard's useBlocker works --
@@ -15,7 +16,9 @@ import {ProjectDashboardPage} from "./components/project/ProjectDashboardPage";
 // Created once at module scope (never inside the component) -- recreating the router on every render
 // would reset all navigation/blocker state, which react-router's own docs warn against.
 const router = createHashRouter([
-    {path: "/", element: <Navigate to="/home/design" replace />},
+    // "/" asks the server which mode it was started in before landing (see StudioLanding) instead of
+    // hardcoding Home, which is what made `pokie .` start a project-mode server but open Home anyway.
+    {path: "/", element: <StudioLanding />},
     {path: "/home/:tab", element: <HomePage />},
     {path: "/project", element: <Navigate to="/project/overview" replace />},
     {path: "/project/:tab", element: <ProjectDashboardPage />},

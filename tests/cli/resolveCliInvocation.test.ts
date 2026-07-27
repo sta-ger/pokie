@@ -37,9 +37,74 @@ describe("isTopLevelHelpRequest", () => {
     });
 });
 
+// Studio startup: which of Home / a project dashboard each way of launching Studio resolves to. The
+// discovery function and working directory are injected, so nothing here touches the real filesystem
+// or depends on where the test runner happens to be started from.
+describe("resolveCliInvocation: Studio startup target", () => {
+    const PROJECT_ROOT = "/games/my-slot";
+    const insideProject = (): string | undefined => PROJECT_ROOT;
+    const outsideProject = (): undefined => undefined;
+
+    it('"pokie" inside a project opens that project, from the directory it was run in', () => {
+        const findProjectRoot = jest.fn(insideProject);
+
+        const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, findProjectRoot, () => "/games/my-slot/src/generated");
+
+        expect(invocation).toEqual({commandName: "studio", args: [PROJECT_ROOT]});
+        // Discovery starts at the working directory — walking up from a nested subdirectory is
+        // findPokieProjectRoot's own job, and this is the call that hands it the place to start.
+        expect(findProjectRoot).toHaveBeenCalledWith("/games/my-slot/src/generated");
+    });
+
+    it('"pokie" outside any project opens Home', () => {
+        const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, outsideProject, () => "/tmp/elsewhere");
+
+        expect(invocation).toEqual({commandName: "studio", args: []});
+    });
+
+    it('an explicit "pokie studio" always opens Home, even from inside a project', () => {
+        const findProjectRoot = jest.fn(insideProject);
+
+        const invocation = resolveCliInvocation(["node", "pokie", "studio"], KNOWN_COMMANDS, () => false, findProjectRoot, () => PROJECT_ROOT);
+
+        expect(invocation).toEqual({commandName: "studio", args: []});
+        // Naming Studio explicitly with no target *is* the answer — no discovery is even attempted.
+        expect(findProjectRoot).not.toHaveBeenCalled();
+    });
+
+    it('"pokie ." and "pokie <path>" open the named project without consulting discovery', () => {
+        const findProjectRoot = jest.fn(insideProject);
+
+        for (const target of [".", "/games/other"]) {
+            const invocation = resolveCliInvocation(["node", "pokie", target], KNOWN_COMMANDS, () => true, findProjectRoot, () => PROJECT_ROOT);
+
+            expect(invocation).toEqual({commandName: "studio", args: [target]});
+        }
+        expect(findProjectRoot).not.toHaveBeenCalled();
+    });
+
+    it('"pokie studio <path>" opens the named project', () => {
+        const invocation = resolveCliInvocation(["node", "pokie", "studio", "/games/other"], KNOWN_COMMANDS, () => false, insideProject, () => PROJECT_ROOT);
+
+        expect(invocation).toEqual({commandName: "studio", args: ["/games/other"]});
+    });
+
+    it("bare Studio flags discover a project too, so \"pokie --no-open\" matches \"pokie\"", () => {
+        const invocation = resolveCliInvocation(["node", "pokie", "--no-open", "--port", "0"], KNOWN_COMMANDS, () => false, insideProject, () => PROJECT_ROOT);
+
+        expect(invocation).toEqual({commandName: "studio", args: [PROJECT_ROOT, "--no-open", "--port", "0"]});
+    });
+
+    it("bare Studio flags outside a project stay exactly as they were", () => {
+        const invocation = resolveCliInvocation(["node", "pokie", "--no-open"], KNOWN_COMMANDS, () => false, outsideProject, () => "/tmp/elsewhere");
+
+        expect(invocation).toEqual({commandName: "studio", args: ["--no-open"]});
+    });
+});
+
 describe("resolveCliInvocation", () => {
-    it('resolves to studio with no args when nothing is given ("pokie")', () => {
-        const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false);
+    it('resolves to studio with no args when nothing is given ("pokie") outside a project', () => {
+        const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, () => undefined);
 
         expect(invocation).toEqual({commandName: "studio", args: []});
     });

@@ -2657,15 +2657,34 @@ behavior is exactly what's documented below, unchanged from the sections that fo
 
 Several invocations all launch it, resolved by `resolveCliInvocation` (`cli/resolveCliInvocation.ts`):
 
-- `pokie` (no arguments at all) — Studio in **Home** mode.
-- `pokie .` — Studio in **Project** mode for the current directory.
-- `pokie <path>` — Studio in **Project** mode for `<path>`, as long as `<path>` isn't itself one of the command
+- `pokie` (no arguments at all) — **Project** mode for the nearest game package found by walking up from the
+  current working directory, or **Home** mode when there is none. Running it from anywhere inside a project —
+  including a nested subdirectory such as `src/generated` — therefore opens that project's dashboard, exactly as
+  if the project root had been named explicitly.
+- `pokie .` — Project mode for the current directory.
+- `pokie <path>` — Project mode for `<path>`, as long as `<path>` isn't itself one of the command
   names below and actually exists (a typo'd command name is never silently treated as a path — see below).
-- `pokie studio` — Home mode, explicitly.
+- `pokie studio` — **Home** mode, always. Naming Studio explicitly with no target *is* the request for Home, so
+  this is the way to get Home while standing inside a project; no discovery is attempted.
 - `pokie studio .` / `pokie studio <path>` — Project mode, explicitly.
+
+Bare Studio flags discover a project the same way no arguments do, so `pokie --no-open` inside a project opens
+that project rather than Home, matching plain `pokie`.
+
+"Is this a game package" is decided by the same `"pokie": {"entry": ...}` field in `package.json` that
+[`loadPokieGame`](game-packages.md) itself reads — the discovery walk reuses that one definition instead of a
+second one, and it stops there: whether the entry module actually loads stays the Project Dashboard's own
+question, so a project with a broken entry still opens its dashboard and reports the error there. Nothing is
+remembered between runs either — the target is always rediscovered from the current working directory, never
+restored from a "last opened project".
 
 Every other `pokie <command> ...` invocation (`pokie sim ...`, `pokie serve ...`, etc.) is unaffected — a first
 argument that matches a known command name always dispatches to that command, never to Studio.
+
+Whichever mode the server starts in, the frontend opens directly on that mode's own screen: Project mode lands on
+`#/project/overview` and Home mode on `#/home/design`. The browser can't know the mode from the URL (a hash route
+is never sent to the server), so `#/` asks `GET /api/context` once at startup and redirects accordingly —
+replacing the entry, so Back doesn't return to it.
 
 ```
 pokie
@@ -2676,7 +2695,8 @@ POKIE Studio listening on http://127.0.0.1:3200
 ```
 
 A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` mechanism as `pokie dev`, and the
-same `--no-open` escape hatch) showing the **Home** view. Its navigation groups the flows below into 3
+same `--no-open` escape hatch) showing the **Home** view — this being a run from outside any game package; the
+same command inside one opens that project's dashboard instead. Its navigation groups the flows below into 3
 task-oriented tabs rather than one-tab-per-flow — **Design & Build** (Blueprint Editor + Reel Strip Modeler,
 the default tab), **Open Project** (Recent Projects + Open Existing Project), and **Advanced Tools** (Create
 Project, Initialize Project, Build from Blueprint) — see

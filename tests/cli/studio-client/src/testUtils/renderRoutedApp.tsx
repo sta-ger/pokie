@@ -5,6 +5,7 @@ import {createMemoryRouter, Navigate, RouterProvider} from "react-router-dom";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import {HomePage} from "../../../../../cli/studio-client/src/components/home/HomePage";
 import {ProjectDashboardPage} from "../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
+import {StudioLanding} from "../../../../../cli/studio-client/src/components/StudioLanding";
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
 
 // Mirrors routes.tsx's own route table (/home/:tab -> HomePage, /project/:tab -> ProjectDashboardPage) so
@@ -22,7 +23,7 @@ import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/St
 // Kept as a test-only file (does not touch App.tsx/routes.tsx) so if routes.tsx ever gains a new route,
 // this needs updating too.
 const ROUTES = [
-    {path: "/", element: <Navigate to="/home/design" replace />},
+    {path: "/", element: <StudioLanding />},
     {path: "/home/:tab", element: <HomePage />},
     {path: "/project", element: <Navigate to="/project/overview" replace />},
     {path: "/project/:tab", element: <ProjectDashboardPage />},

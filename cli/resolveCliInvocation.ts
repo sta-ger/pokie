@@ -1,4 +1,5 @@
 import fs from "fs";
+import {findPokieProjectRoot} from "./findPokieProjectRoot.js";
 
 // What cli/pokie.ts actually dispatches on: a command name plus the args to hand that command's
 // own run(). Kept intentionally tiny — this is a pure result value, not a class — so pokie.ts can
@@ -30,28 +31,44 @@ export function isTopLevelHelpRequest(argv: string[]): boolean {
 // "print usage, exit 1" fallback is unaffected.
 //
 // Resolution order, first match wins:
-//   1. No args at all               -> {commandName: "studio", args: []}                 (Home)
+//   1. No args at all               -> {commandName: "studio", args: [<discovered project root>?]}
+//                                                                                          (Project if cwd is
+//                                                                                           inside one, else Home)
 //   2. First token is a known command name (including "studio" itself)
 //                                    -> {commandName: <that name>, args: <the rest>}       (unchanged dispatch)
 //   3. First token looks like an option ("-"-prefixed, e.g. "--no-open")
-//                                    -> {commandName: "studio", args: <all of argv>}       (bare Studio + flags)
+//                                    -> {commandName: "studio", args: [<discovered root>?, ...argv]}
+//                                                                                          (bare Studio + flags)
 //   4. First token is an existing path (`.`, a relative dir/file, or an absolute one)
 //                                    -> {commandName: "studio", args: <all of argv>}       (Project mode)
 //   5. Otherwise                    -> undefined                                          (unknown command)
 //
+// Steps 1 and 3 are the *bare* Studio launches — the user named no target at all — so they discover
+// one: findProjectRoot walks up from the working directory, and a hit is handed to Studio as its
+// projectRoot, making `pokie` from anywhere inside a project (including a nested subdirectory)
+// equivalent to `pokie <that project root>`. No hit means Home, exactly as before. Discovery is
+// deliberately confined to those two steps: an explicit "pokie studio" (step 2) names Studio itself
+// with no target and therefore always means Home, and an explicit path (step 4) is already a target.
+// Nothing is remembered between runs — the answer is always rediscovered from the current working
+// directory, never a "last opened project".
+//
 // Step 4 deliberately checks the filesystem rather than guessing from shape (leading "./", a bare
 // name, whatever) — an unrecognized command name must never be silently treated as a project path
 // just because it looks like one; it only becomes Studio's `projectRoot` if something actually
-// exists there. `pathExists` is injectable so tests never touch the real filesystem.
+// exists there. `pathExists` and `findProjectRoot` are both injectable so tests never touch the real
+// filesystem.
 export function resolveCliInvocation(
     argv: string[],
     knownCommandNames: string[],
     pathExists: (candidatePath: string) => boolean = fs.existsSync,
+    findProjectRoot: (startDir: string) => string | undefined = (startDir) => findPokieProjectRoot(startDir),
+    workingDirectory: () => string = () => process.cwd(),
 ): CliInvocation | undefined {
     const rawArgs = argv.slice(2);
 
     if (rawArgs.length === 0) {
-        return {commandName: "studio", args: []};
+        const discovered = findProjectRoot(workingDirectory());
+        return {commandName: "studio", args: discovered === undefined ? [] : [discovered]};
     }
 
     const [first, ...rest] = rawArgs;
@@ -60,7 +77,12 @@ export function resolveCliInvocation(
         return {commandName: first, args: rest};
     }
 
-    if (first.startsWith("-") || pathExists(first)) {
+    if (first.startsWith("-")) {
+        const discovered = findProjectRoot(workingDirectory());
+        return {commandName: "studio", args: discovered === undefined ? rawArgs : [discovered, ...rawArgs]};
+    }
+
+    if (pathExists(first)) {
         return {commandName: "studio", args: rawArgs};
     }
 

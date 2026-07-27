@@ -209,6 +209,61 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(output).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
     });
 
+    // Studio startup targeting, against the real installed binary: which of Home / a project dashboard
+    // each launch form actually ends up serving. The mode is read from /api/context, i.e. the same
+    // thing the app's own landing route asks before it picks its opening screen.
+    describe("Studio startup target", () => {
+        let projectRoot: string;
+
+        beforeAll(() => {
+            const build = spawnSync(pokieBinPath, ["build", "random", "--seed", "4242", "--out", "./startup-project"], {
+                cwd: installDir,
+                encoding: "utf-8",
+                timeout: 120000,
+            });
+            expect(build.status).toBe(0);
+            projectRoot = fs.realpathSync(path.join(installDir!, "startup-project"));
+        });
+
+        async function contextOf(args: string[], cwd: string): Promise<unknown> {
+            const child = spawn(pokieBinPath, [...args, "--no-open", "--port", "0"], {cwd}) as ChildProcessWithoutNullStreams;
+            try {
+                const port = await waitForListeningPort(child);
+                return await (await fetch(`http://127.0.0.1:${port}/api/context`)).json();
+            } finally {
+                await stopChild(child);
+            }
+        }
+
+        it("`pokie` inside a project opens that project", async () => {
+            expect(await contextOf([], projectRoot)).toEqual({mode: "project", projectRoot});
+        });
+
+        it("`pokie` from a nested directory inside a project still opens that project", async () => {
+            const nested = path.join(projectRoot, "src", "generated");
+            expect(fs.existsSync(nested)).toBe(true);
+
+            expect(await contextOf([], nested)).toEqual({mode: "project", projectRoot});
+        });
+
+        it("`pokie` outside any project opens Home", async () => {
+            // installDir has a package.json of its own, but no "pokie.entry" — not a game package.
+            expect(await contextOf([], installDir!)).toEqual({mode: "home"});
+        });
+
+        it("an explicit `pokie studio` opens Home even from inside a project", async () => {
+            expect(await contextOf(["studio"], projectRoot)).toEqual({mode: "home"});
+        });
+
+        it("`pokie .` opens the project it was pointed at", async () => {
+            expect(await contextOf(["."], projectRoot)).toEqual({mode: "project", projectRoot});
+        });
+
+        it("`pokie studio <path>` opens the project it was pointed at", async () => {
+            expect(await contextOf(["studio", projectRoot], installDir!)).toEqual({mode: "project", projectRoot});
+        });
+    });
+
     // spawnSync (rather than execFileSync) so a non-zero exit is asserted on directly instead of
     // surfacing as a thrown error, and so a "pokie --help" that wrongly reached StudioCommand — which
     // would sit there serving instead of exiting — fails on the timeout rather than hanging the suite.
