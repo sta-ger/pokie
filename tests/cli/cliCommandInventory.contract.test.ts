@@ -122,19 +122,14 @@ const SAMPLE_SIMULATION_REPORT: SimulationReport = {
     spinsPerSecond: 2000,
 };
 
-// Populated as a side effect of registerCommandsForValidCases()'s own stub callbacks actually running
-// during real command execution (dispatch(), invoked by the "CLI dispatch contract" describe block
-// below) -- records, per "valid" CLI_CONTRACT_CASES case (keyed the same way that registry already
-// is: `${command}::${label}`), the exact value each option this case exercises reached at that
-// option's own command-observable seam: an injected dependency argument the real, unstubbed command
-// class threads the value through unmodified, or (for an option whose entire effect is which of two
-// deterministic stdout shapes it prints, and which therefore has no dependency seam at all -- see the
-// per-option comments in registerCommandsForValidCases() for exactly which options this applies to)
-// the same stdout-shape signal the "CLI dispatch contract" describe block already independently
-// verifies via testCase.expectStdout, so tying an option's value evidence to it isn't circular: that
-// block proves expectStdout matches real dispatch output before this file's own "CLI option value
-// contract" describe block (placed after it, so its assertions run after OBSERVED_OPTION_VALUES is
-// populated) ever reads it.
+// Populated ONLY as a side effect of a case's own real dispatch() call actually running (the "CLI
+// dispatch contract" describe block below) -- never before it. Every entry comes from one of two real,
+// post-invocation sources: (1) an injected dependency argument the real, unstubbed command class
+// threads the value through unmodified, recorded by observe() from inside that dependency's own
+// callback while dispatch() is executing it, or (2) the actual stdout dispatch() produced, inspected
+// after dispatch() resolves (see deriveObservedFormat() below). Nothing is ever written here from
+// fixture metadata (e.g. testCase.expectStdout) or from a value this file merely expects -- only from
+// what the dispatched invocation itself produced.
 const OBSERVED_OPTION_VALUES = new Map<string, Record<string, string>>();
 
 function observe(caseKey: string, flag: string, value: unknown): void {
@@ -143,23 +138,69 @@ function observe(caseKey: string, flag: string, value: unknown): void {
     OBSERVED_OPTION_VALUES.set(caseKey, values);
 }
 
-// The handful of options whose whole effect is which of two deterministic stdout shapes they print
-// (no dependency seam at all -- json vs a human summary, or --json vs printHuman) are observed, per
-// case, from the same testCase.expectStdout the "CLI dispatch contract" block already verifies rather
-// than from a runtime callback. One entry per command that has such an option; a command whose verb
-// doesn't actually declare that flag (e.g. par export, stakeengine export/import) simply records a
-// value the "CLI option value contract" block never reads for it, which is harmless. "replay" is the
-// deliberate degenerate case: its --format is validated-but-inert (parsed, then never used -- run()
-// always prints JSON), so both shapes map to the same "json".
-const STDOUT_DERIVED_FORMAT: Record<string, {flag: string; json: string; summary: string}> = {
-    diff: {flag: "--format", json: "json", summary: "summary"},
-    name: {flag: "--json", json: "true", summary: "false"},
-    par: {flag: "--format", json: "json", summary: "summary"},
-    replay: {flag: "--format", json: "json", summary: "json"},
-    sim: {flag: "--format", json: "json", summary: "summary"},
-    stakeengine: {flag: "--format", json: "json", summary: "summary"},
-    validate: {flag: "--format", json: "json", summary: "summary"},
+// A small number of options have no dependency seam at all while their case's dispatch is running: the
+// only thing distinguishing "default" from "accepted" is which of two dependencies never gets called
+// (e.g. --dry-run/--no-open/--overwrite skip a callback entirely; an omitted --out skips a writeFile
+// call the same way), so there is nothing for observe() to record from inside the invocation itself.
+// registerCommandsForValidCases() registers a fallback value for exactly these (flag, case) pairs via
+// recordIfSeamUnreached() below -- this is pure data, not a write into OBSERVED_OPTION_VALUES, so it
+// changes nothing before dispatch() runs. Once a case's real dispatch() call has resolved with its
+// expected exit code (the "CLI dispatch contract" describe block below, immediately after asserting
+// that), each registered fallback is applied ONLY if that flag's own dependency callback still never
+// fired during that real invocation (OBSERVED_OPTION_VALUES has no entry for it yet) -- i.e. the value
+// is still derived from what the actual dispatched invocation did (or provably didn't do), just applied
+// after the fact instead of assumed beforehand. If a regression makes the callback fire after all, its
+// own observe() call already ran during dispatch() and this fallback is skipped, so the wrong value
+// surfaces instead of being masked.
+const SEAM_UNREACHED_FALLBACKS = new Map<string, Array<{flag: string; value: string}>>();
+
+function recordIfSeamUnreached(caseKey: string, flag: string, value: string): void {
+    const fallbacks = SEAM_UNREACHED_FALLBACKS.get(caseKey) ?? [];
+    fallbacks.push({flag, value});
+    SEAM_UNREACHED_FALLBACKS.set(caseKey, fallbacks);
+}
+
+function applyUnreachedSeamFallbacks(caseKey: string): void {
+    for (const fallback of SEAM_UNREACHED_FALLBACKS.get(caseKey) ?? []) {
+        if (OBSERVED_OPTION_VALUES.get(caseKey)?.[fallback.flag] === undefined) {
+            observe(caseKey, fallback.flag, fallback.value);
+        }
+    }
+}
+
+// The handful of options whose whole effect is which of two deterministic stdout shapes a command
+// prints (no dependency seam at all -- json vs a human summary, or --json vs printHuman) are observed
+// from the ACTUAL stdout the "CLI dispatch contract" describe block's own console.log spy captured for
+// that case, inspected after dispatch() resolves (see deriveObservedFormat() below) -- never from
+// fixture metadata like testCase.expectStdout, so a regression that silently changes which shape a
+// default/accepted value actually prints is caught here, not masked by an assumption about what it was
+// supposed to print. One entry per command that has such an option; a command whose verb doesn't
+// actually declare that flag (e.g. par export, stakeengine export/import) simply records a value the
+// "CLI option value contract" block never reads for it, which is harmless. "replay" is the deliberate
+// degenerate case: its --format is validated-but-inert (parsed, then never used -- run() always prints
+// JSON), so both shapes map to the same "json".
+const STDOUT_FORMAT_FLAGS: Record<string, {flag: string; jsonValue: string; nonJsonValue: string}> = {
+    diff: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
+    name: {flag: "--json", jsonValue: "true", nonJsonValue: "false"},
+    par: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
+    replay: {flag: "--format", jsonValue: "json", nonJsonValue: "json"},
+    sim: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
+    stakeengine: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
+    validate: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
 };
+
+// Derives an option's actual value from the real console.log calls dispatch() produced for this case
+// (never from testCase.expectStdout): the entire captured stdout parses as JSON if and only if the
+// command actually printed its machine-readable shape, which is the one real, runtime-observable
+// difference every STDOUT_FORMAT_FLAGS command's format/json option controls.
+function deriveObservedFormat(capturedStdout: string, config: {jsonValue: string; nonJsonValue: string}): string {
+    try {
+        JSON.parse(capturedStdout);
+        return config.jsonValue;
+    } catch {
+        return config.nonJsonValue;
+    }
+}
 
 // Builds the one stubbed CliCommandHandling instance a given "valid" CLI_CONTRACT_CASES entry
 // (looked up by `${command}::${label}`, so a case with no matching builder fails loudly rather than
@@ -192,9 +233,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 }),
             ),
         "build::<config.json> --dry-run validates and previews without writing anything (default, no --out)": (key) => {
-            // --dry-run's accepted "true": pre-set here (registration time); the injected generator flips it to
-            // "false" only if it wrongly runs during a dry-run (buildFromBlueprint returns before generate()).
-            observe(key, "--dry-run", "true");
+            // --dry-run's accepted "true" has no dependency seam to observe directly (a real dry-run never
+            // reaches generate() at all -- buildFromBlueprint returns before calling it): recordIfSeamUnreached
+            // registers "true" as the value to apply once this case's own dispatch() has actually resolved
+            // successfully with generate() never called; the injected generator below still throws if it's ever
+            // wrongly invoked during a dry-run, which fails dispatch() itself rather than silently recording "false".
+            recordIfSeamUnreached(key, "--dry-run", "true");
             return new BuildCommand(
                 TEST_VERSION,
                 () => createStarterGameBlueprint(),
@@ -231,10 +275,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": (key) => {
             // --preset variant routes runRandom() to the variantRandomBlueprintGenerator (12th ctor param); wrapping
             // a real one keeps its output byte-identical while observing --seed/--preset at its own generate() seam.
-            // --dry-run is accepted "true" (pre-set; the never-run GamePackageGenerating throw-stub flips it only on
-            // a regression), and --out defaults to "undefined" (this dry-run build never reaches the generate() seam).
-            observe(key, "--dry-run", "true");
-            observe(key, "--out", "undefined");
+            // --dry-run's accepted "true" and --out's default "undefined" have no dependency seam here (this
+            // dry-run build never reaches the generate() seam at all), so both are registered as
+            // recordIfSeamUnreached fallbacks, applied only once dispatch() actually resolves with generate()
+            // never called; the throw-stub below still fails dispatch() outright if it's ever wrongly invoked.
+            recordIfSeamUnreached(key, "--dry-run", "true");
+            recordIfSeamUnreached(key, "--out", "undefined");
             const variantGenerator = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
             return new BuildCommand(
                 TEST_VERSION,
@@ -478,10 +524,13 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         },
 
         "dev::<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)": (key) => {
-            // --no-open accepted "true": pre-set; openBrowser (which run() calls only when !noOpen) flips it to
-            // "false" only on a regression. This case is also the default (omitted) evidence for the four host/port
-            // options, observed at the createApiServer/createClientServer seams as undefined.
-            observe(key, "--no-open", "true");
+            // --no-open's accepted "true" has no dependency seam of its own (openBrowser, which run() calls only
+            // when !noOpen, is simply never invoked): recordIfSeamUnreached registers "true", applied only once
+            // dispatch() actually resolves with openBrowser never called; the stub below still records "false" if
+            // it's ever wrongly invoked, so a regression surfaces the wrong value instead of being masked. This
+            // case is also the default (omitted) evidence for the four host/port options, observed for real at the
+            // createApiServer/createClientServer seams.
+            recordIfSeamUnreached(key, "--no-open", "true");
             return new DevCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
                 (game, options) => {
@@ -504,9 +553,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             );
         },
-        "dev::<packageRoot> --port --host --client-port --client-host (accepted values, default --no-open)": (key) => {
-            observe(key, "--no-open", "true");
-            return new DevCommand(
+        "dev::<packageRoot> --port --host --client-port --client-host (accepted values, default --no-open)": (key) =>
+            new DevCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
                 (game, options) => {
                     observe(key, "--port", options.port);
@@ -526,13 +574,13 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     clientRoot: "/fake/client/root",
                     process: fakeProcess(),
                 },
-            );
-        },
+            ),
 
         "diff::<left> <right> --format json (accepted --format value, machine-readable shape)": (key) => {
             // --out is omitted here (this is its default evidence): DiffCommand only calls writeFile when
-            // options.out is set, so the seam is structurally never reached -- pre-set "undefined".
-            observe(key, "--out", "undefined");
+            // options.out is set, so the seam is structurally never reached; recordIfSeamUnreached registers
+            // "undefined", applied only once dispatch() actually resolves with writeFile never called.
+            recordIfSeamUnreached(key, "--out", "undefined");
             return new DiffCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT));
         },
         "diff::<left> <right> --out <file> (accepted --out value, default --format summary)": (key) =>
@@ -545,17 +593,20 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         "fairness::seed-commit <serverSeed.txt> (default, no --out — prints the commitment JSON)": (key) => {
             // --out default: emit() only calls writeFile when out !== undefined, so with no --out the seam is never
-            // reached -- pre-set "undefined". --overwrite default "false": with no --out, emit()'s fileExists guard
-            // never runs either, so the flag's own parsed default is the observed value -- pre-set "false".
-            observe(key, "--out", "undefined");
-            observe(key, "--overwrite", "false");
+            // reached. --overwrite default "false": with no --out, emit()'s fileExists guard never runs either, so
+            // neither flag's dependency ever fires in this case; both are recordIfSeamUnreached fallbacks, applied
+            // only once dispatch() actually resolves with the corresponding dependency never called.
+            recordIfSeamUnreached(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--overwrite", "false");
             return new FairnessCommand(undefined, undefined, undefined, undefined, undefined, undefined, () => "server-seed-value\n");
         },
         "fairness::seed-commit <serverSeed.txt> --out --overwrite (accepted values)": (key) => {
-            // --overwrite accepted "true": pre-set; --overwrite short-circuits emit()'s `!overwrite && fileExists(out)`
-            // guard so fileExists must NOT run -- the fileExists stub flips it to "false" only on a regression. --out
-            // accepted is observed at writeFile's own path argument.
-            observe(key, "--overwrite", "true");
+            // --overwrite's accepted "true" has no dependency seam of its own: --overwrite short-circuits emit()'s
+            // `!overwrite && fileExists(out)` guard so fileExists must NOT run; recordIfSeamUnreached registers
+            // "true", applied only once dispatch() resolves with fileExists never called -- the stub below still
+            // records "false" if it's ever wrongly invoked. --out's accepted value is observed for real at
+            // writeFile's own path argument.
+            recordIfSeamUnreached(key, "--overwrite", "true");
             return new FairnessCommand(
                 undefined,
                 undefined,
@@ -574,8 +625,9 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode (accepted --nonce value)": (key) => {
-            observe(key, "--out", "undefined");
-            observe(key, "--overwrite", "false");
+            // --out/--overwrite defaults: same structurally-unreached seam as seed-commit's default case above.
+            recordIfSeamUnreached(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--overwrite", "false");
             return new FairnessCommand(
                 undefined,
                 // A genuinely valid FairnessServerSeedCommitment (real computeFairnessServerSeedCommitment
@@ -601,7 +653,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode --out --overwrite (accepted values)": (key) => {
-            observe(key, "--overwrite", "true");
+            // --overwrite's accepted "true": same no-seam case as seed-commit's own --overwrite accepted case above.
+            recordIfSeamUnreached(key, "--overwrite", "true");
             return new FairnessCommand(
                 undefined,
                 () => computeFairnessServerSeedCommitment({serverSeed: "server-seed-value"}),
@@ -620,8 +673,9 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "fairness::reveal <commitment.json> --server-seed --source": (key) => {
-            observe(key, "--out", "undefined");
-            observe(key, "--overwrite", "false");
+            // --out/--overwrite defaults: same structurally-unreached seam as seed-commit's default case above.
+            recordIfSeamUnreached(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--overwrite", "false");
             return new FairnessCommand(
                 undefined,
                 () => ({}),
@@ -643,7 +697,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "fairness::reveal <commitment.json> --server-seed --source --out --overwrite (accepted values)": (key) => {
-            observe(key, "--overwrite", "true");
+            // --overwrite's accepted "true": same no-seam case as seed-commit's own --overwrite accepted case above.
+            recordIfSeamUnreached(key, "--overwrite", "true");
             return new FairnessCommand(
                 undefined,
                 () => ({}),
@@ -700,7 +755,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         // --count/--theme/--words/--seed reach the generator's generateUnique(count, request); wrapping a real
         // SlotGameNameGenerator observes each one while keeping the (deterministic, offline) output identical.
-        // --json has no such seam and is observed from testCase.expectStdout via STDOUT_DERIVED_FORMAT instead.
+        // --json has no such seam and is derived from the real captured stdout instead (see STDOUT_FORMAT_FLAGS).
         "name::(no args — default count 1, human-readable output)": (key) => {
             const realNameGenerator = new SlotGameNameGenerator();
             return new NameCommand({
@@ -830,9 +885,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             ),
 
         // --round/--seed reach recorder.record({game, seed, round}); --out is observed at writeFile's path (called
-        // only when options.out is set, so the omitted case pre-sets "undefined"); --format is stdout-derived.
+        // only when options.out is set, so the omitted case registers a recordIfSeamUnreached fallback);
+        // --format is derived from actual captured stdout (see STDOUT_FORMAT_FLAGS).
         "replay::<packageRoot> --round <number> (accepted --round value, prints the replay JSON)": (key) => {
-            observe(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--out", "undefined");
             return new ReplayCommand(() => Promise.resolve(stub<PokieGame>({})), undefined, {
                 record: (input) => {
                     observe(key, "--round", input.round);
@@ -858,9 +914,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         // --format has a real seam: renderers.markdown/renderers.html are two independently swappable dependencies,
         // and which one's render() fires is the evidence (each delegates to a real renderer to keep output
-        // identical). --out is observed at writeFile's path (called only when options.out is set).
+        // identical). --out is observed at writeFile's path (called only when options.out is set, so the omitted
+        // case registers a recordIfSeamUnreached fallback instead).
         "report::<simulationReportJson> (default --format markdown)": (key) => {
-            observe(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--out", "undefined");
             const markdownRenderer = new MarkdownSimulationReportRenderer();
             const htmlRenderer = new HtmlSimulationReportRenderer();
             return new ReportCommand(
@@ -930,9 +987,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         // --rounds/--seed/--workers/--mode and the four convergence flags all reach
         // createParallelSimulationRunner(packageRoot, rounds, options); --out is observed at writeFile's path
-        // (called only when options.out is set); --format is stdout-derived.
+        // (called only when options.out is set, so the omitted cases register a recordIfSeamUnreached fallback
+        // instead); --format is derived from actual captured stdout (see STDOUT_FORMAT_FLAGS).
         "sim::<packageRoot> --format json (machine-readable shape, default --rounds/--workers)": (key) => {
-            observe(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--out", "undefined");
             return new SimCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
                 undefined,
@@ -972,7 +1030,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             ),
         "sim::<packageRoot> --min-rounds --rtp-tolerance --check-interval --stable-checks (accepted convergence group)": (key) => {
-            observe(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--out", "undefined");
             return new SimCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
                 undefined,
@@ -1047,9 +1105,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             ),
         // analyze/diff observe --out at writeFile (10th ctor param, called only when options.out is set, so the
-        // omitted cases pre-set "undefined"); --format is stdout-derived.
+        // omitted cases register a recordIfSeamUnreached fallback instead); --format is derived from actual
+        // captured stdout (see STDOUT_FORMAT_FLAGS).
         "stakeengine::analyze <stakeDir> --format json (accepted --format value, machine-readable shape)": (key) => {
-            observe(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--out", "undefined");
             return new StakeEngineCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, {
                 readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []}),
             });
@@ -1070,7 +1129,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             ),
         "stakeengine::diff <leftStakeDir> <rightStakeDir> (no material difference -> the diff(1)-style exit 0)": (key) => {
-            observe(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--out", "undefined");
             return new StakeEngineCommand(
                 TEST_VERSION,
                 undefined,
@@ -1102,10 +1161,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
             ),
 
-        // --port/--host reach createServer(options); --no-open accepted "true" is pre-set and only flipped to
-        // "false" if openBrowser (which run() calls only when !noOpen) wrongly fires.
+        // --port/--host reach createServer(options); --no-open's accepted "true" has no dependency seam of its
+        // own (openBrowser, which run() calls only when !noOpen, is simply never invoked), so it's a
+        // recordIfSeamUnreached fallback, applied only once dispatch() resolves with openBrowser never called --
+        // the stub below still records "false" if it's ever wrongly invoked.
         "studio::--no-open (home mode: no projectRoot given, skips the accepted-but-unexercised browser-open step)": (key) => {
-            observe(key, "--no-open", "true");
+            recordIfSeamUnreached(key, "--no-open", "true");
             return new StudioCommand(TEST_VERSION, {
                 createServer: (options) => {
                     observe(key, "--port", options.port);
@@ -1119,7 +1180,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             });
         },
         "studio::--port --host (accepted values, default --no-open triggers the injected openBrowser stub)": (key) => {
-            observe(key, "--no-open", "true");
             return new StudioCommand(TEST_VERSION, {
                 createServer: (options) => {
                     observe(key, "--port", options.port);
@@ -1134,9 +1194,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         },
 
         // --out is observed at writeFile (2nd ctor param, called only when options.out is set, so the omitted
-        // case pre-sets "undefined"); --format is stdout-derived.
+        // case registers a recordIfSeamUnreached fallback instead); --format is derived from actual captured
+        // stdout (see STDOUT_FORMAT_FLAGS).
         "validate::<packageRoot> --format json (accepted --format value, machine-readable shape)": (key) => {
-            observe(key, "--out", "undefined");
+            recordIfSeamUnreached(key, "--out", "undefined");
             return new ValidateCommand({
                 validate: () =>
                     Promise.resolve({packageRoot: "pkg", valid: true, game: {id: "pkg", name: "Pkg", version: "0.1.0"}, errors: [], warnings: [], suggestions: []}),
@@ -1163,14 +1224,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         const build = builders[key];
         if (!build) {
             throw new Error(`No stubbed command builder registered for valid case "${key}" — add one in registerCommandsForValidCases().`);
-        }
-        // Options whose only effect is which of two deterministic stdout shapes they print have no
-        // dependency seam; their value is observed here, at registration time, from the same
-        // testCase.expectStdout the "CLI dispatch contract" block already independently verifies (see
-        // STDOUT_DERIVED_FORMAT's own comment), never from a runtime callback.
-        const formatConfig = STDOUT_DERIVED_FORMAT[testCase.command];
-        if (formatConfig) {
-            observe(key, formatConfig.flag, testCase.expectStdout === "json" ? formatConfig.json : formatConfig.summary);
         }
         registry.set(key, build(key));
     }
@@ -1453,6 +1506,7 @@ describe("CLI dispatch contract (cli/dispatch.ts, the real entry point cli/pokie
                 throw new Error(`No stubbed command registered for valid case "${testCase.command}::${testCase.label}".`);
             }
 
+            const key = `${testCase.command}::${testCase.label}`;
             const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
             const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
             try {
@@ -1466,6 +1520,17 @@ describe("CLI dispatch contract (cli/dispatch.ts, the real entry point cli/pokie
                 } else {
                     expect(logSpy).toHaveBeenCalled();
                 }
+
+                // Everything below only runs once the assertions above have already proven this exact case's
+                // real dispatch() call resolved with its expected exit code and stream behavior -- so every
+                // OBSERVED_OPTION_VALUES write from here on is derived strictly from what THIS invocation
+                // actually produced, never from testCase's own fixture fields.
+                const formatConfig = STDOUT_FORMAT_FLAGS[testCase.command];
+                if (formatConfig) {
+                    const capturedStdout = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
+                    observe(key, formatConfig.flag, deriveObservedFormat(capturedStdout, formatConfig));
+                }
+                applyUnreachedSeamFallbacks(key);
             } finally {
                 logSpy.mockRestore();
                 errorSpy.mockRestore();
