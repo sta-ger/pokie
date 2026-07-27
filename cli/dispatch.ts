@@ -1,40 +1,9 @@
-import {Command} from "commander";
 import {CliCommandHandling} from "./CliCommandHandling.js";
 import {isTopLevelHelpRequest, resolveCliInvocation} from "./resolveCliInvocation.js";
 import {buildUsageText} from "./usageText.js";
 
 function printUsage(commands: CliCommandHandling[]): void {
     console.log(buildUsageText(commands));
-}
-
-// Builds the Commander program that actually routes an already-resolved {commandName, args} (see
-// resolveCliInvocation) to the matching CliCommandHandling's own run() — this is what replaces the
-// old manual `commands.find(candidate => candidate.getName() === invocation.commandName)` lookup.
-// Each command is registered as a passthrough subcommand: a single variadic positional plus
-// allowUnknownOption()/allowExcessArguments() so Commander forwards its args verbatim, in order,
-// exactly as the hand-rolled `argv.slice(...)` it replaces did — Commander never re-parses or
-// validates a single one of those tokens itself; that stays entirely the domain command class's own
-// job (see each cli/commands/*.ts's own parseArgs()). helpOption(false) on every subcommand keeps
-// Commander from intercepting a command's own "--help"/"-h" (e.g. "pokie build --help" must still
-// reach BuildCommand.run(["--help"]) unchanged — see isTopLevelHelpRequest's own doc comment on why
-// only the CLI's *own* --help/-h is special-cased, before this program ever runs).
-function buildDispatchProgram(commands: CliCommandHandling[], recordExitCode: (exitCode: number) => void): Command {
-    const program = new Command("pokie").helpOption(false).addHelpCommand(false).exitOverride();
-
-    for (const command of commands) {
-        program
-            .command(command.getName())
-            .helpOption(false)
-            .allowUnknownOption()
-            .allowExcessArguments()
-            .argument("[args...]")
-            .action(async (args: string[]) => {
-                const exitCode = await command.run(args);
-                recordExitCode(exitCode ?? 0);
-            });
-    }
-
-    return program;
 }
 
 // The real top-level dispatch logic behind the `pokie` binary: resolve argv against the given
@@ -47,6 +16,14 @@ function buildDispatchProgram(commands: CliCommandHandling[], recordExitCode: (e
 // --help/-h, an unknown command, stdout/stderr separation, exit codes — without pokie.ts's own
 // module-body `run().then(...)` call, which fires unconditionally on import (see pokie.ts's own
 // comments on why it can't be imported directly in a test).
+//
+// This is deliberately Commander-free: resolveCliInvocation() already resolves which registered
+// command owns a given argv (including "studio"'s own implicit-project-root precedence), so all
+// that's left here is a plain lookup by name. The actual CLI argument/option adapter — declaring
+// each public command's own positionals/options/aliases via Commander and validating them — lives on
+// each CliCommandHandling itself (see e.g. cli/commands/BuildCommand.ts's own run()), not here; a
+// second, dispatch-level Commander program would only ever re-forward tokens it can't itself
+// interpret without duplicating that per-command schema.
 export async function dispatch(commands: CliCommandHandling[], argv: string[]): Promise<number> {
     // Asked for the CLI's own help: print the same command list the unknown-command fallback
     // prints, but as a successful outcome (exit 0) — the user got exactly what they asked for.
@@ -70,16 +47,18 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[]): 
         return 1;
     }
 
-    let exitCode = 0;
-    const program = buildDispatchProgram(commands, (resolvedExitCode) => {
-        exitCode = resolvedExitCode;
-    });
+    // Always found in practice: resolveCliInvocation only ever names "studio" or a name it
+    // confirmed is one of the knownCommandNames it was given. The check stays explicit rather than
+    // a non-null assertion so this file makes no assumption about that invariant.
+    const command = commands.find((candidate) => candidate.getName() === invocation.commandName);
+    if (!command) {
+        printUsage(commands);
+        return 1;
+    }
 
     try {
-        // invocation.commandName is always "studio" or one of the knownCommandNames resolveCliInvocation
-        // was given, so this always matches one of the subcommands just registered above.
-        await program.parseAsync(["node", "pokie", invocation.commandName, ...invocation.args]);
-        return exitCode;
+        const exitCode = await command.run(invocation.args);
+        return exitCode ?? 0;
     } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
         return 1;

@@ -11,6 +11,7 @@ import {
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {openBrowser} from "../openBrowser.js";
 import {waitForHealth} from "../waitForHealth.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type DevOptions = {
     packageRoot: string;
@@ -144,66 +145,70 @@ export class DevCommand implements CliCommandHandling {
         this.process.once("SIGTERM", shutdown);
     }
 
+    // Commander declares/validates <packageRoot>, --port/--client-port (each via its own custom
+    // parser, so an invalid *provided* value fails with the exact legacy message), --host/--client-host
+    // (unvalidated strings), and the native "--no-open" negatable boolean (defaults options.open to
+    // true; --no-open sets it false) -- see cli/commands/internal/CommanderCliAdapter.ts. A trailing
+    // "[excess...]" catches any stray bare positional the same way the original loop's default case
+    // did (treated as an "Unknown option"), and a structurally *missing* --port/--client-port value
+    // (the flag given with nothing after it) is mapped back to the exact same message text as an
+    // invalid provided value via optionMissingArgument, matching the original parsePort's single
+    // "value === undefined || ..." check.
     private parseArgs(args: string[]): DevOptions {
-        const [packageRoot, ...rest] = args;
-        if (!packageRoot) {
-            throw new Error(USAGE);
+        let result: DevOptions | undefined;
+        const command = createCommanderCliCommand("dev")
+            .argument("<packageRoot>")
+            .argument("[excess...]")
+            .option("--port <number>", "", (value: string) => this.parsePortValue(value, "--port"))
+            .option("--host <string>")
+            .option("--client-port <number>", "", (value: string) => this.parsePortValue(value, "--client-port"))
+            .option("--client-host <string>")
+            .option("--no-open")
+            .action(
+                (
+                    packageRoot: string,
+                    excess: string[],
+                    options: {port?: number; host?: string; clientPort?: number; clientHost?: string; open?: boolean},
+                ) => {
+                    if (excess.length > 0) {
+                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                    }
+                    result = {
+                        packageRoot,
+                        host: options.host,
+                        port: options.port,
+                        clientHost: options.clientHost,
+                        clientPort: options.clientPort,
+                        noOpen: !options.open,
+                    };
+                },
+            );
+
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                missingArgument: USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) => {
+                    if (flag === "--port" || flag === "--client-port") {
+                        return `${flag} must be a non-negative integer. ${USAGE}`;
+                    }
+                    if (flag === "--host" || flag === "--client-host") {
+                        return `${flag} requires a value. ${USAGE}`;
+                    }
+                    return `Unknown option "${flag}". ${USAGE}`;
+                },
+            });
         }
-
-        let host: string | undefined;
-        let port: number | undefined;
-        let clientHost: string | undefined;
-        let clientPort: number | undefined;
-        let noOpen = false;
-
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--port": {
-                    port = this.parsePort(value, "--port");
-                    i++;
-                    break;
-                }
-                case "--host": {
-                    host = this.requireValue(value, "--host");
-                    i++;
-                    break;
-                }
-                case "--client-port": {
-                    clientPort = this.parsePort(value, "--client-port");
-                    i++;
-                    break;
-                }
-                case "--client-host": {
-                    clientHost = this.requireValue(value, "--client-host");
-                    i++;
-                    break;
-                }
-                case "--no-open": {
-                    noOpen = true;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
-        }
-
-        return {packageRoot, host, port, clientHost, clientPort, noOpen};
+        return result!;
     }
 
-    private parsePort(value: string | undefined, flag: string): number {
+    private parsePortValue(value: string, flag: string): number {
         const parsed = Number(value);
-        if (value === undefined || !Number.isInteger(parsed) || parsed < 0) {
+        if (!Number.isInteger(parsed) || parsed < 0) {
             throw new Error(`${flag} must be a non-negative integer. ${USAGE}`);
         }
         return parsed;
-    }
-
-    private requireValue(value: string | undefined, flag: string): string {
-        if (value === undefined) {
-            throw new Error(`${flag} requires a value. ${USAGE}`);
-        }
-        return value;
     }
 }

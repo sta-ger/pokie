@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import {GameBlueprint, loadGameBlueprint, ParSheetExporter, ParSheetExporting, ParSheetImporter, ParSheetImporting, ValidationIssue} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
     "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]\n" +
@@ -10,8 +11,6 @@ const IMPORT_USAGE = "Usage: pokie par import <input.xlsx> [--out <blueprint.jso
 const EXPORT_USAGE = "Usage: pokie par export <config.json> [--out <output.xlsx>]";
 
 type ImportFormat = "summary" | "json";
-type ImportOptions = {inputPath: string; outPath: string; format: ImportFormat};
-type ExportOptions = {blueprintPath: string; outPath: string};
 
 // One CLI verb ("pokie par <import|export>") rather than two top-level commands, matching how PAR
 // sheet import/export is really one round-trip feature with a shared vocabulary (see
@@ -44,65 +43,119 @@ export class ParCommand implements CliCommandHandling {
         return 'Import/export a GameBlueprint to/from a PAR sheet XLSX workbook ("pokie par import <input.xlsx>" / "pokie par export <config.json>").';
     }
 
+    // Two ordinary-word verbs ("import"/"export") sharing one parent Commander instance — real nested
+    // subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so Commander itself both
+    // dispatches by exact verb name and validates each verb's own args/options. The messages passed
+    // to translateCommanderError are picked per-verb (from args[0], read before parsing) since a
+    // structural error caught at the shared parent.parseAsync() call doesn't otherwise say which
+    // subcommand it came from; an empty/unrecognized verb falls back to the plain USAGE the original
+    // hand-rolled switch's own `default` case threw.
     public run(args: string[]): Promise<number> {
-        const [subcommand, ...rest] = args;
-        switch (subcommand) {
-            case "import":
-                return this.runImport(rest);
-            case "export":
-                return this.runExport(rest);
-            default:
-                // Promise.reject rather than a plain throw so an unknown/missing subcommand behaves
-                // the same as every other command's usage errors — a rejected promise, not a
-                // synchronous throw (see e.g. BuildCommand.run()'s own try/Promise.reject).
-                return Promise.reject(new Error(USAGE));
+        let exitCode = 0;
+        const parent = createCommanderCliCommand("par");
+
+        parent
+            .command("import")
+            .argument("<input.xlsx>")
+            .argument("[excess...]")
+            .option("--out <blueprint.json>")
+            .option("--format <value>", "only \"json\" is supported", (value: string): ImportFormat => {
+                if (value !== "json") {
+                    throw new Error(`--format only supports "json". ${IMPORT_USAGE}`);
+                }
+                return "json";
+            }, "summary" as ImportFormat)
+            .action(async (inputPath: string, excess: string[], options: {out?: string; format: ImportFormat}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${IMPORT_USAGE}`);
+                }
+                const outPath = options.out ?? defaultBlueprintPath(inputPath);
+                exitCode = await this.executeImport(inputPath, outPath, options.format);
+            });
+
+        parent
+            .command("export")
+            .argument("<config.json>")
+            .argument("[excess...]")
+            .option("--out <output.xlsx>")
+            .action(async (blueprintPath: string, excess: string[], options: {out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${EXPORT_USAGE}`);
+                }
+                const outPath = options.out ?? defaultParSheetPath(blueprintPath);
+                exitCode = await this.executeExport(blueprintPath, outPath);
+            });
+
+        const verb = args[0];
+        let verbMessages: CommanderErrorMessages = {};
+        if (verb === "import") {
+            verbMessages = {
+                missingArgument: IMPORT_USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${IMPORT_USAGE}`,
+                optionMissingArgument: (flag) => {
+                    if (flag === "--out") return `--out requires a file path. ${IMPORT_USAGE}`;
+                    if (flag === "--format") return `--format only supports "json". ${IMPORT_USAGE}`;
+                    return `Unknown option "${flag}". ${IMPORT_USAGE}`;
+                },
+            };
+        } else if (verb === "export") {
+            verbMessages = {
+                missingArgument: EXPORT_USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${EXPORT_USAGE}`,
+                optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a file path. ${EXPORT_USAGE}` : `Unknown option "${flag}". ${EXPORT_USAGE}`),
+            };
         }
+
+        return parent
+            .parseAsync(args, {from: "user"})
+            .then(() => exitCode)
+            .catch((error: unknown) => {
+                throw translateCommanderError(error, {...verbMessages, unknownCommand: USAGE, noCommand: USAGE});
+            });
     }
 
-    private async runImport(args: string[]): Promise<number> {
-        const options = this.parseImportArgs(args);
-        const result = await this.importer.importFromFile(options.inputPath);
+    private async executeImport(inputPath: string, outPath: string, format: ImportFormat): Promise<number> {
+        const result = await this.importer.importFromFile(inputPath);
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
-        if (options.format === "json") {
+        if (format === "json") {
             console.log(JSON.stringify(result, null, 4));
         } else {
-            this.printImportSummary(options.inputPath, result.blueprint, errors, warnings);
+            this.printImportSummary(inputPath, result.blueprint, errors, warnings);
         }
 
         if (errors.length > 0) {
             return 1;
         }
 
-        this.writeFile(options.outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
-        if (options.format !== "json") {
-            console.log(`\nWrote blueprint to "${options.outPath}".`);
+        this.writeFile(outPath, `${JSON.stringify(result.blueprint, null, 4)}\n`);
+        if (format !== "json") {
+            console.log(`\nWrote blueprint to "${outPath}".`);
         }
         return 0;
     }
 
-    private async runExport(args: string[]): Promise<number> {
-        const options = this.parseExportArgs(args);
-        const blueprint = this.loadBlueprint(options.blueprintPath);
+    private async executeExport(blueprintPath: string, outPath: string): Promise<number> {
+        const blueprint = this.loadBlueprint(blueprintPath);
 
         // exporter.exportToFile validates the blueprint completely on its own (GameBlueprintValidator
         // plus its own reel-source/lossy-export checks) and never writes anything when it reports an
-        // error — so on error, nothing was created/modified at options.outPath, and printing a success
-        // line here would be a lie.
-        const issues = await this.exporter.exportToFile(blueprint, options.outPath, options.blueprintPath);
+        // error — so on error, nothing was created/modified at outPath, and printing a success line
+        // here would be a lie.
+        const issues = await this.exporter.exportToFile(blueprint, outPath, blueprintPath);
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`Could not export "${options.blueprintPath}" to "${options.outPath}" (${errors.length} error(s)):`);
+            console.error(`Could not export "${blueprintPath}" to "${outPath}" (${errors.length} error(s)):`);
             for (const issue of errors) {
                 console.error(`  - ${issue.code}: ${issue.message}`);
             }
             return 1;
         }
 
-        console.log(`Exported "${options.blueprintPath}" to "${options.outPath}".`);
+        console.log(`Exported "${blueprintPath}" to "${outPath}".`);
         for (const issue of warnings) {
             console.log(`  warning  ${issue.code}: ${issue.message}`);
         }
@@ -130,68 +183,6 @@ export class ParCommand implements CliCommandHandling {
         }
     }
 
-    private parseImportArgs(args: string[]): ImportOptions {
-        const [inputPath, ...rest] = args;
-        if (!inputPath) {
-            throw new Error(IMPORT_USAGE);
-        }
-
-        let outPath = defaultBlueprintPath(inputPath);
-        let format: ImportFormat = "summary";
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a file path. ${IMPORT_USAGE}`);
-                    }
-                    outPath = value;
-                    i++;
-                    break;
-                }
-                case "--format": {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${IMPORT_USAGE}`);
-                    }
-                    format = "json";
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${IMPORT_USAGE}`);
-            }
-        }
-
-        return {inputPath, outPath, format};
-    }
-
-    private parseExportArgs(args: string[]): ExportOptions {
-        const [blueprintPath, ...rest] = args;
-        if (!blueprintPath) {
-            throw new Error(EXPORT_USAGE);
-        }
-
-        let outPath = defaultParSheetPath(blueprintPath);
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a file path. ${EXPORT_USAGE}`);
-                    }
-                    outPath = value;
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${EXPORT_USAGE}`);
-            }
-        }
-
-        return {blueprintPath, outPath};
-    }
 }
 
 function defaultBlueprintPath(inputPath: string): string {

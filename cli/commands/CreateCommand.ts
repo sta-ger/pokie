@@ -13,6 +13,7 @@ import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimul
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
 import {GamePackageCreator} from "../scaffold/GamePackageCreator.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type RandomPreset = "default" | "variant";
 
@@ -64,10 +65,7 @@ export class CreateCommand implements CliCommandHandling {
             return this.runRandom(args);
         }
 
-        const [name] = args;
-        if (!name) {
-            throw new Error("Usage: pokie create <name>");
-        }
+        const name = this.parseName(args);
 
         const result = this.creator.create(process.cwd(), name);
 
@@ -143,43 +141,82 @@ export class CreateCommand implements CliCommandHandling {
         return 0;
     }
 
-    private parseRandomArgs(args: string[]): {name?: string; seed?: number; preset: RandomPreset} {
+    // The plain "pokie create <name>" verb has no options of its own (see the fixture's own
+    // {options: []} for it) -- the original never even looked past args[0], so a trailing
+    // "[excess...]" plus allowUnknownOption() here reproduces that same "everything after the name is
+    // silently ignored" behavior (including a stray "-"/"--"-looking token) rather than Commander's
+    // own default of erroring on either.
+    private parseName(args: string[]): string {
         let name: string | undefined;
-        let seed: number | undefined;
-        let preset: RandomPreset = "default";
+        const command = createCommanderCliCommand("create")
+            .allowUnknownOption()
+            .argument("<name>")
+            .argument("[excess...]")
+            .action((parsedName: string) => {
+                name = parsedName;
+            });
 
-        for (let i = 0; i < args.length; i++) {
-            const arg = args[i];
-            if (arg === "--random") {
-                continue;
-            }
-            if (arg === "--seed") {
-                const value = args[i + 1];
-                if (value === undefined || !Number.isInteger(Number(value))) {
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {missingArgument: "Usage: pokie create <name>"});
+        }
+        return name!;
+    }
+
+    // "--random" itself is a flag-like verb selector (see run()'s own pre-Commander routing, mirroring
+    // BuildCommand's "random"/"--random"), so it's declared here as an ordinary (ignored) boolean
+    // option Commander accepts wherever it appears in argv, rather than something run() strips off by
+    // position -- the original also scanned for it anywhere in args, not just at args[0]. "[name]" is
+    // an optional leading-or-interspersed positional; a second bare positional token is the original's
+    // own "Unexpected extra argument" case (distinct from an unrecognized "-"/"--" flag, which
+    // Commander itself already classifies as commander.unknownOption).
+    private parseRandomArgs(args: string[]): {name?: string; seed?: number; preset: RandomPreset} {
+        let result: {name?: string; seed?: number; preset: RandomPreset} | undefined;
+        const command = createCommanderCliCommand("create --random")
+            .option("--random")
+            .argument("[name]")
+            .argument("[excess...]")
+            .option("--seed <integer>", "", (value: string) => {
+                if (!Number.isInteger(Number(value))) {
                     throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
                 }
-                seed = Number(value);
-                i++;
-                continue;
-            }
-            if (arg === "--preset") {
-                const value = args[i + 1];
-                if (value === undefined || !RANDOM_PRESETS.includes(value as RandomPreset)) {
-                    throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
+                return Number(value);
+            })
+            .option(
+                "--preset <preset>",
+                "",
+                (value: string) => {
+                    if (!RANDOM_PRESETS.includes(value as RandomPreset)) {
+                        throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
+                    }
+                    return value as RandomPreset;
+                },
+                "default" as RandomPreset,
+            )
+            .action((name: string | null, excess: string[], options: {seed?: number; preset: RandomPreset}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unexpected extra argument "${excess[0]}". ${RANDOM_USAGE}`);
                 }
-                preset = value as RandomPreset;
-                i++;
-                continue;
-            }
-            if (arg.startsWith("--")) {
-                throw new Error(`Unknown option "${arg}". ${RANDOM_USAGE}`);
-            }
-            if (name !== undefined) {
-                throw new Error(`Unexpected extra argument "${arg}". ${RANDOM_USAGE}`);
-            }
-            name = arg;
-        }
+                result = {name: name ?? undefined, seed: options.seed, preset: options.preset};
+            });
 
-        return {name, seed, preset};
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
+                optionMissingArgument: (flag) => {
+                    if (flag === "--seed") {
+                        return `--seed requires an integer value. ${RANDOM_USAGE}`;
+                    }
+                    if (flag === "--preset") {
+                        return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
+                    }
+                    return `Unknown option "${flag}". ${RANDOM_USAGE}`;
+                },
+            });
+        }
+        return result!;
     }
 }

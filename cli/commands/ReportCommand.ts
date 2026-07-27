@@ -8,14 +8,9 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ReportFormat = "markdown" | "html";
-
-type ReportOptions = {
-    reportPath: string;
-    format: ReportFormat;
-    out?: string;
-};
 
 const USAGE = "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]";
 
@@ -47,16 +42,16 @@ export class ReportCommand implements CliCommandHandling {
 
     public run(args: string[]): Promise<void> {
         try {
-            const options = this.parseArgs(args);
-            const parsed = this.readReportJson(options.reportPath);
-            const renderer = this.renderers[options.format];
+            const {reportPath, format, out} = this.parseArgs(args);
+            const parsed = this.readReportJson(reportPath);
+            const renderer = this.renderers[format];
 
             const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
             console.log(rendered);
 
-            if (options.out) {
-                this.writeFile(options.out, rendered);
-                console.log(`Report written to "${options.out}".`);
+            if (out) {
+                this.writeFile(out, rendered);
+                console.log(`Report written to "${out}".`);
             }
 
             return Promise.resolve();
@@ -76,38 +71,42 @@ export class ReportCommand implements CliCommandHandling {
         return renderer.renderSet(reportSet);
     }
 
-    private parseArgs(args: string[]): ReportOptions {
-        const [reportPath, ...rest] = args;
-        if (!reportPath) {
-            throw new Error(USAGE);
-        }
-
-        let format: ReportFormat = "markdown";
+    private parseArgs(args: string[]): {reportPath: string; format: ReportFormat; out?: string} {
+        let reportPath!: string;
+        let format!: ReportFormat;
         let out: string | undefined;
 
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--format": {
-                    if (value !== "markdown" && value !== "html") {
-                        throw new Error(`--format must be "markdown" or "html". ${USAGE}`);
-                    }
-                    format = value;
-                    i++;
-                    break;
+        const command = createCommanderCliCommand("report")
+            .argument("<simulationReportJson>")
+            .argument("[excess...]")
+            .option("--format <value>", '"markdown" or "html"', (value: string) => {
+                if (value !== "markdown" && value !== "html") {
+                    throw new Error(`--format must be "markdown" or "html". ${USAGE}`);
                 }
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a file path. ${USAGE}`);
-                    }
-                    out = value;
-                    i++;
-                    break;
+                return value as ReportFormat;
+            })
+            .option("--out <file>", "file path to write the rendered report to")
+            .action((path: string, excess: string[], options: {format?: ReportFormat; out?: string}) => {
+                // An empty-string positional is "present" as far as Commander's own required-argument
+                // check is concerned, but the pre-Commander behavior this preserves treated it the same
+                // as an entirely missing one.
+                if (!path || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
                 }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
+                reportPath = path;
+                format = options.format ?? "markdown";
+                out = options.out;
+            });
+
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                missingArgument: USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) =>
+                    flag === "--format" ? `--format must be "markdown" or "html". ${USAGE}` : `--out requires a file path. ${USAGE}`,
+            });
         }
 
         return {reportPath, format, out};

@@ -1,14 +1,9 @@
 import {PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ValidateFormat = "summary" | "json";
-
-type ValidateOptions = {
-    packageRoot: string;
-    format: ValidateFormat;
-    out?: string;
-};
 
 const USAGE = "Usage: pokie validate <packageRoot> [--format json] [--out <file>]";
 
@@ -33,60 +28,59 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<number> {
-        const options = this.parseArgs(args);
-        const report = await this.validator.validate(options.packageRoot);
+        let packageRoot!: string;
+        let format!: ValidateFormat;
+        let out: string | undefined;
 
-        if (options.out) {
-            this.writeFile(options.out, JSON.stringify(report, null, 4));
+        const command = createCommanderCliCommand("validate")
+            .argument("<packageRoot>")
+            .argument("[excess...]")
+            .option("--format <value>", 'only "json" is supported', (value: string) => {
+                if (value !== "json") {
+                    throw new Error(`--format only supports "json". ${USAGE}`);
+                }
+                return "json" as ValidateFormat;
+            })
+            .option("--out <file>", "file path to write the report to")
+            .action((root: string, excess: string[], options: {format?: ValidateFormat; out?: string}) => {
+                // An empty-string positional is "present" as far as Commander's own required-argument
+                // check is concerned, but the pre-Commander behavior this preserves treated it the same
+                // as an entirely missing one.
+                if (!root || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
+                }
+                packageRoot = root;
+                format = options.format ?? "summary";
+                out = options.out;
+            });
+
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                missingArgument: USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) =>
+                    flag === "--format" ? `--format only supports "json". ${USAGE}` : `--out requires a file path. ${USAGE}`,
+            });
         }
 
-        if (options.format === "json") {
+        const report = await this.validator.validate(packageRoot);
+
+        if (out) {
+            this.writeFile(out, JSON.stringify(report, null, 4));
+        }
+
+        if (format === "json") {
             console.log(JSON.stringify(report, null, 4));
         } else {
             this.printSummary(report);
-            if (options.out) {
-                console.log(`\nReport written to "${options.out}".`);
+            if (out) {
+                console.log(`\nReport written to "${out}".`);
             }
         }
 
         return report.valid ? 0 : 1;
-    }
-
-    private parseArgs(args: string[]): ValidateOptions {
-        const [packageRoot, ...rest] = args;
-        if (!packageRoot) {
-            throw new Error(USAGE);
-        }
-
-        let format: ValidateFormat = "summary";
-        let out: string | undefined;
-
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--format": {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${USAGE}`);
-                    }
-                    format = "json";
-                    i++;
-                    break;
-                }
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a file path. ${USAGE}`);
-                    }
-                    out = value;
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
-        }
-
-        return {packageRoot, format, out};
     }
 
     private printSummary(report: PokieGamePackageValidationReport): void {

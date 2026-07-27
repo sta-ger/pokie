@@ -14,6 +14,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type SimFormat = "summary" | "json";
 
@@ -29,6 +30,23 @@ type SimOptions = {
     // undefined unless the caller supplied all three required flags, in which case `rounds` becomes a
     // maximum rather than a fixed target.
     convergence?: SimulationConvergenceOptions;
+};
+
+// The shape Commander hands the action -- one property per declared option, camelCased from its own
+// flag name (e.g. "--check-interval" -> checkInterval). Kept distinct from SimOptions, whose
+// `convergence` field is a genuine cross-field business object buildConvergenceOptions() derives
+// from four of these properties, not something Commander itself could ever produce.
+type SimCliOptions = {
+    rounds: number;
+    seed?: string;
+    workers: number;
+    out?: string;
+    format: SimFormat;
+    mode?: string;
+    minRounds?: number;
+    rtpTolerance?: number;
+    checkInterval?: number;
+    stableChecks?: number;
 };
 
 // "--mode all" is a reserved mode id meaning "run every mode the game declares" (see runAllModes())
@@ -84,7 +102,139 @@ export class SimCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
+        const command = createCommanderCliCommand("sim")
+            .argument("<packageRoot>")
+            .argument("[excess...]")
+            .option("--rounds <number>", "", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed <= 0) {
+                    throw new Error(`--rounds must be a positive integer. ${USAGE}`);
+                }
+                return parsed;
+            }, SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS)
+            .option("--seed <string>")
+            .option(
+                "--workers <number>",
+                "",
+                (value: string): number => {
+                    const parsed = Number(value);
+                    if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_SIMULATION_WORKERS) {
+                        throw new Error(`--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. ${USAGE}`);
+                    }
+                    return parsed;
+                },
+                1,
+            )
+            .option("--out <file>")
+            .option(
+                "--format <format>",
+                "",
+                (value: string): SimFormat => {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${USAGE}`);
+                    }
+                    return "json";
+                },
+                "summary" as SimFormat,
+            )
+            .option("--mode <betModeId>")
+            .option("--min-rounds <number>", "", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed < 0) {
+                    throw new Error(`--min-rounds must be a non-negative integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--rtp-tolerance <number>", "", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                    throw new Error(`--rtp-tolerance must be a positive number. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--check-interval <number>", "", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed <= 0) {
+                    throw new Error(`--check-interval must be a positive integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--stable-checks <number>", "", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed <= 0) {
+                    throw new Error(`--stable-checks must be a positive integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .action(async (packageRoot: string, excess: string[], rawOptions: SimCliOptions) => {
+                // An empty-string positional ("pokie sim ''") is present as far as Commander's own
+                // required-argument check is concerned, but the pre-Commander behavior this preserves
+                // treated it the same as an entirely missing one (`!packageRoot`).
+                if (!packageRoot) {
+                    throw new Error(USAGE);
+                }
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                }
+
+                const convergence = this.buildConvergenceOptions(
+                    rawOptions.minRounds,
+                    rawOptions.rtpTolerance,
+                    rawOptions.checkInterval,
+                    rawOptions.stableChecks,
+                );
+
+                await this.execute({
+                    packageRoot,
+                    rounds: rawOptions.rounds,
+                    seed: rawOptions.seed,
+                    out: rawOptions.out,
+                    format: rawOptions.format,
+                    workers: rawOptions.workers,
+                    mode: rawOptions.mode,
+                    convergence,
+                });
+            });
+
+        try {
+            await command.parseAsync(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                missingArgument: USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) => {
+                    switch (flag) {
+                        case "--rounds":
+                            return `--rounds must be a positive integer. ${USAGE}`;
+                        case "--seed":
+                            return `--seed requires a value. ${USAGE}`;
+                        case "--workers":
+                            return `--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. ${USAGE}`;
+                        case "--out":
+                            return `--out requires a file path. ${USAGE}`;
+                        case "--format":
+                            return `--format only supports "json". ${USAGE}`;
+                        case "--mode":
+                            return `--mode requires a bet mode id. ${USAGE}`;
+                        case "--min-rounds":
+                            return `--min-rounds must be a non-negative integer. ${USAGE}`;
+                        case "--rtp-tolerance":
+                            return `--rtp-tolerance must be a positive number. ${USAGE}`;
+                        case "--check-interval":
+                            return `--check-interval must be a positive integer. ${USAGE}`;
+                        case "--stable-checks":
+                            return `--stable-checks must be a positive integer. ${USAGE}`;
+                        default:
+                            return `Unknown option "${flag}". ${USAGE}`;
+                    }
+                },
+            });
+        }
+    }
+
+    // The original run()'s own business logic, unchanged -- only its entry point moved, from directly
+    // inside run() to here, called from the Commander action once packageRoot/options are parsed.
+    private async execute(options: SimOptions): Promise<void> {
         // Loaded once up front regardless of path (single mode, no mode, or --mode all) purely to read
         // the package's own declarative getBetModes() -- optional/feature-detected, exactly like every
         // other PokieGame capability -- for mode discovery (--mode all) and each mode's targetRtp.
@@ -193,123 +343,6 @@ export class SimCommand implements CliCommandHandling {
                 console.log(`\nReport written to "${options.out}".`);
             }
         }
-    }
-
-    private parseArgs(args: string[]): SimOptions {
-        const [packageRoot, ...rest] = args;
-        if (!packageRoot) {
-            throw new Error(USAGE);
-        }
-
-        let rounds = SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS;
-        let seed: string | undefined;
-        let out: string | undefined;
-        let format: SimFormat = "summary";
-        let workers = 1;
-        let mode: string | undefined;
-        let minRounds: number | undefined;
-        let rtpTolerance: number | undefined;
-        let checkIntervalRounds: number | undefined;
-        let stableChecks: number | undefined;
-
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--rounds": {
-                    const parsed = Number(value);
-                    if (value === undefined || !Number.isInteger(parsed) || parsed <= 0) {
-                        throw new Error(`--rounds must be a positive integer. ${USAGE}`);
-                    }
-                    rounds = parsed;
-                    i++;
-                    break;
-                }
-                case "--seed": {
-                    if (value === undefined) {
-                        throw new Error(`--seed requires a value. ${USAGE}`);
-                    }
-                    seed = value;
-                    i++;
-                    break;
-                }
-                case "--workers": {
-                    const parsed = Number(value);
-                    if (value === undefined || !Number.isInteger(parsed) || parsed < 1 || parsed > MAX_SIMULATION_WORKERS) {
-                        throw new Error(`--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. ${USAGE}`);
-                    }
-                    workers = parsed;
-                    i++;
-                    break;
-                }
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a file path. ${USAGE}`);
-                    }
-                    out = value;
-                    i++;
-                    break;
-                }
-                case "--format": {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${USAGE}`);
-                    }
-                    format = "json";
-                    i++;
-                    break;
-                }
-                case "--mode": {
-                    if (value === undefined) {
-                        throw new Error(`--mode requires a bet mode id. ${USAGE}`);
-                    }
-                    mode = value;
-                    i++;
-                    break;
-                }
-                case "--min-rounds": {
-                    const parsed = Number(value);
-                    if (value === undefined || !Number.isInteger(parsed) || parsed < 0) {
-                        throw new Error(`--min-rounds must be a non-negative integer. ${USAGE}`);
-                    }
-                    minRounds = parsed;
-                    i++;
-                    break;
-                }
-                case "--rtp-tolerance": {
-                    const parsed = Number(value);
-                    if (value === undefined || !Number.isFinite(parsed) || parsed <= 0) {
-                        throw new Error(`--rtp-tolerance must be a positive number. ${USAGE}`);
-                    }
-                    rtpTolerance = parsed;
-                    i++;
-                    break;
-                }
-                case "--check-interval": {
-                    const parsed = Number(value);
-                    if (value === undefined || !Number.isInteger(parsed) || parsed <= 0) {
-                        throw new Error(`--check-interval must be a positive integer. ${USAGE}`);
-                    }
-                    checkIntervalRounds = parsed;
-                    i++;
-                    break;
-                }
-                case "--stable-checks": {
-                    const parsed = Number(value);
-                    if (value === undefined || !Number.isInteger(parsed) || parsed <= 0) {
-                        throw new Error(`--stable-checks must be a positive integer. ${USAGE}`);
-                    }
-                    stableChecks = parsed;
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
-        }
-
-        const convergence = this.buildConvergenceOptions(minRounds, rtpTolerance, checkIntervalRounds, stableChecks);
-
-        return {packageRoot, rounds, seed, out, format, workers, mode, convergence};
     }
 
     // --min-rounds/--rtp-tolerance/--check-interval must all be given together to enable adaptive

@@ -7,6 +7,7 @@ import {
     SlotGameNameTheme,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]";
 
@@ -63,60 +64,78 @@ export class NameCommand implements CliCommandHandling {
         console.log(`\nReproduce with: pokie name --seed ${results[0].seed}${countFlag}${themeFlag}${wordsFlag}`);
     }
 
+    // NameCommand has no positionals at all, so a trailing "[excess...]" catches every stray bare
+    // token (the original loop's default case treated ANY unmatched token -- flag-shaped or not -- as
+    // an "Unknown option"). Each validated option uses a custom parser for an invalid *provided* value,
+    // and optionMissingArgument maps a structurally *missing* value (the flag given with nothing after
+    // it) back to the exact same message, matching each original case's own single combined check
+    // (e.g. "value === undefined ? NaN : Number(value)").
     private parseArgs(args: string[]): NameOptions {
-        let count = 1;
-        let theme: SlotGameNameTheme | undefined;
-        let wordCount: 2 | 3 | undefined;
-        let seed: number | undefined;
-        let json = false;
-
-        for (let i = 0; i < args.length; i++) {
-            const flag = args[i];
-            const value = args[i + 1];
-            switch (flag) {
-                case "--count": {
-                    const parsed = value === undefined ? NaN : Number(value);
+        let result: NameOptions | undefined;
+        const command = createCommanderCliCommand("name")
+            .argument("[excess...]")
+            .option(
+                "--count <count>",
+                "",
+                (value: string) => {
+                    const parsed = Number(value);
                     if (!Number.isInteger(parsed) || parsed <= 0) {
                         throw new Error(`--count requires a positive integer. ${USAGE}`);
                     }
-                    count = parsed;
-                    i++;
-                    break;
+                    return parsed;
+                },
+                1,
+            )
+            .option("--theme <theme>", "", (value: string) => {
+                if (!ALL_SLOT_GAME_NAME_THEMES.includes(value as SlotGameNameTheme)) {
+                    throw new Error(`--theme must be one of: ${ALL_SLOT_GAME_NAME_THEMES.join(", ")}. ${USAGE}`);
                 }
-                case "--theme": {
-                    if (value === undefined || !ALL_SLOT_GAME_NAME_THEMES.includes(value as SlotGameNameTheme)) {
-                        throw new Error(`--theme must be one of: ${ALL_SLOT_GAME_NAME_THEMES.join(", ")}. ${USAGE}`);
+                return value as SlotGameNameTheme;
+            })
+            .option("--words <words>", "", (value: string) => {
+                if (value !== "2" && value !== "3") {
+                    throw new Error(`--words must be 2 or 3. ${USAGE}`);
+                }
+                return Number(value) as 2 | 3;
+            })
+            .option("--seed <integer>", "", (value: string) => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed)) {
+                    throw new Error(`--seed requires an integer value. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--json")
+            .action(
+                (excess: string[], options: {count: number; theme?: SlotGameNameTheme; words?: 2 | 3; seed?: number; json?: boolean}) => {
+                    if (excess.length > 0) {
+                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
                     }
-                    theme = value as SlotGameNameTheme;
-                    i++;
-                    break;
-                }
-                case "--words": {
-                    if (value !== "2" && value !== "3") {
-                        throw new Error(`--words must be 2 or 3. ${USAGE}`);
-                    }
-                    wordCount = Number(value) as 2 | 3;
-                    i++;
-                    break;
-                }
-                case "--seed": {
-                    const parsed = value === undefined ? NaN : Number(value);
-                    if (!Number.isInteger(parsed)) {
-                        throw new Error(`--seed requires an integer value. ${USAGE}`);
-                    }
-                    seed = parsed;
-                    i++;
-                    break;
-                }
-                case "--json": {
-                    json = true;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
-        }
+                    result = {count: options.count, theme: options.theme, wordCount: options.words, seed: options.seed, json: options.json ?? false};
+                },
+            );
 
-        return {count, theme, wordCount, seed, json};
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) => {
+                    switch (flag) {
+                        case "--count":
+                            return `--count requires a positive integer. ${USAGE}`;
+                        case "--theme":
+                            return `--theme must be one of: ${ALL_SLOT_GAME_NAME_THEMES.join(", ")}. ${USAGE}`;
+                        case "--words":
+                            return `--words must be 2 or 3. ${USAGE}`;
+                        case "--seed":
+                            return `--seed requires an integer value. ${USAGE}`;
+                        default:
+                            return `Unknown option "${flag}". ${USAGE}`;
+                    }
+                },
+            });
+        }
+        return result!;
     }
 }
