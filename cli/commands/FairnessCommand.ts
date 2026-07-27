@@ -130,6 +130,14 @@ export class FairnessCommand implements CliCommandHandling {
     // checks ran in, rather than via requiredOption() (whose own message text/ordering can't be steered to
     // match the original one flag at a time).
     public run(args: string[]): Promise<number> {
+        // An empty argv has no verb for Commander to dispatch on at all; rather than lean on
+        // Commander's own incidental "commander.help" throw for this (still handled below via
+        // noCommand, e.g. for "pokie fairness help"), reject it explicitly up front with the same
+        // combined usage text the original hand-rolled switch's own `default` case threw.
+        if (args.length === 0) {
+            return Promise.reject(new Error(USAGE));
+        }
+
         let exitCode = 0;
         const parent = createCommanderCliCommand("fairness");
 
