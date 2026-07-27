@@ -138,32 +138,36 @@ function observe(caseKey: string, flag: string, value: unknown): void {
     OBSERVED_OPTION_VALUES.set(caseKey, values);
 }
 
-// A small number of options have no dependency seam at all while their case's dispatch is running: the
-// only thing distinguishing "default" from "accepted" is which of two dependencies never gets called
-// (e.g. --dry-run/--no-open/--overwrite skip a callback entirely; an omitted --out skips a writeFile
-// call the same way), so there is nothing for observe() to record from inside the invocation itself.
-// registerCommandsForValidCases() registers a fallback value for exactly these (flag, case) pairs via
-// recordIfSeamUnreached() below -- this is pure data, not a write into OBSERVED_OPTION_VALUES, so it
-// changes nothing before dispatch() runs. Once a case's real dispatch() call has resolved with its
-// expected exit code (the "CLI dispatch contract" describe block below, immediately after asserting
-// that), each registered fallback is applied ONLY if that flag's own dependency callback still never
-// fired during that real invocation (OBSERVED_OPTION_VALUES has no entry for it yet) -- i.e. the value
-// is still derived from what the actual dispatched invocation did (or provably didn't do), just applied
-// after the fact instead of assumed beforehand. If a regression makes the callback fire after all, its
-// own observe() call already ran during dispatch() and this fallback is skipped, so the wrong value
-// surfaces instead of being masked.
-const SEAM_UNREACHED_FALLBACKS = new Map<string, Array<{flag: string; value: string}>>();
+// A small number of options gate a dependency call with NO other observable effect (e.g. an omitted
+// --out skips a writeFile call entirely; --overwrite, whenever --out is also given, short-circuits
+// fileExists() out of the real `!overwrite && fileExists(out)` guard so fileExists must not run at
+// all) -- there is no argument value for observe() to read from inside such a call, only whether it
+// happened. deferValueUnlessCalled() below registers a live `wasCalled()` getter that reads a plain
+// boolean the case's own injected dependency flips *while dispatch() is actually running* -- never a
+// value assumed ahead of time. Once this case's real dispatch() call has resolved with its expected
+// exit code (the "CLI dispatch contract" describe block below, immediately after asserting that),
+// resolveDeferredValues() calls that SAME getter and, only if it reports the dependency was never
+// invoked during THIS real invocation, records the flag's other branch's value.
+//
+// This is sound (not a fixture guess) only when nothing besides the flag under test could have
+// suppressed that exact call in that exact case -- e.g. a case must never *also* omit --out while
+// using this mechanism for --overwrite, since that independently makes the fileExists() guard
+// unreachable regardless of --overwrite's real value and would make the inference meaningless. Every
+// call site below is a case built specifically so the flag under test is the sole gate on that one
+// dependency; see each site's own comment for why.
+type DeferredValueCheck = {flag: string; wasCalled: () => boolean; valueIfNotCalled: string};
+const DEFERRED_VALUE_CHECKS = new Map<string, DeferredValueCheck[]>();
 
-function recordIfSeamUnreached(caseKey: string, flag: string, value: string): void {
-    const fallbacks = SEAM_UNREACHED_FALLBACKS.get(caseKey) ?? [];
-    fallbacks.push({flag, value});
-    SEAM_UNREACHED_FALLBACKS.set(caseKey, fallbacks);
+function deferValueUnlessCalled(caseKey: string, flag: string, wasCalled: () => boolean, valueIfNotCalled: string): void {
+    const checks = DEFERRED_VALUE_CHECKS.get(caseKey) ?? [];
+    checks.push({flag, wasCalled, valueIfNotCalled});
+    DEFERRED_VALUE_CHECKS.set(caseKey, checks);
 }
 
-function applyUnreachedSeamFallbacks(caseKey: string): void {
-    for (const fallback of SEAM_UNREACHED_FALLBACKS.get(caseKey) ?? []) {
-        if (OBSERVED_OPTION_VALUES.get(caseKey)?.[fallback.flag] === undefined) {
-            observe(caseKey, fallback.flag, fallback.value);
+function resolveDeferredValues(caseKey: string): void {
+    for (const {flag, wasCalled, valueIfNotCalled} of DEFERRED_VALUE_CHECKS.get(caseKey) ?? []) {
+        if (!wasCalled()) {
+            observe(caseKey, flag, valueIfNotCalled);
         }
     }
 }
@@ -202,6 +206,20 @@ function deriveObservedFormat(capturedStdout: string, config: {jsonValue: string
     }
 }
 
+// build's --dry-run is the one boolean option whose two branches print two structurally different,
+// unconditional stdout shapes rather than gating a dependency call that's otherwise silent: a dry run
+// always prints BuildCommand.printDryRunSummary()'s own "Dry run —" preamble (see BuildCommand.ts) and
+// a real build never does, in both the plain and "random" verbs alike -- so, exactly like
+// STDOUT_FORMAT_FLAGS above, this is read from the real captured stdout, never assumed from an
+// unreached callback.
+const STDOUT_BOOLEAN_MARKER_FLAGS: Record<string, {flag: string; trueMarker: string}> = {
+    build: {flag: "--dry-run", trueMarker: "Dry run — blueprint is valid, no files written."},
+};
+
+function deriveObservedBoolean(capturedStdout: string, trueMarker: string): string {
+    return capturedStdout.includes(trueMarker) ? "true" : "false";
+}
+
 // Builds the one stubbed CliCommandHandling instance a given "valid" CLI_CONTRACT_CASES entry
 // (looked up by `${command}::${label}`, so a case with no matching builder fails loudly rather than
 // silently skipping) runs through the real dispatch() — every dependency that would otherwise touch
@@ -232,25 +250,21 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 }),
             ),
-        "build::<config.json> --dry-run validates and previews without writing anything (default, no --out)": (key) => {
-            // --dry-run's accepted "true" has no dependency seam to observe directly (a real dry-run never
-            // reaches generate() at all -- buildFromBlueprint returns before calling it): recordIfSeamUnreached
-            // registers "true" as the value to apply once this case's own dispatch() has actually resolved
-            // successfully with generate() never called; the injected generator below still throws if it's ever
-            // wrongly invoked during a dry-run, which fails dispatch() itself rather than silently recording "false".
-            recordIfSeamUnreached(key, "--dry-run", "true");
-            return new BuildCommand(
+        "build::<config.json> --dry-run validates and previews without writing anything (default, no --out)": () =>
+            // --dry-run's accepted "true" is derived from the real captured stdout (see
+            // STDOUT_BOOLEAN_MARKER_FLAGS above) -- a real dry-run never reaches generate() at all
+            // (buildFromBlueprint returns before calling it), so the stub below still fails dispatch()
+            // outright if it's ever wrongly invoked, rather than silently recording the wrong value.
+            new BuildCommand(
                 TEST_VERSION,
                 () => createStarterGameBlueprint(),
                 undefined,
                 stub<GamePackageGenerating>({
                     generate: () => {
-                        observe(key, "--dry-run", "false");
                         throw new Error("GamePackageGenerating.generate() must not run during --dry-run.");
                     },
                 }),
-            );
-        },
+            ),
         "build::<config.json> --out <dir> (accepted --out value, default --dry-run, writes via the injected generator)": (key) =>
             new BuildCommand(
                 TEST_VERSION,
@@ -272,15 +286,52 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             ),
         "build::--init-blueprint <file> writes the starter blueprint template": () =>
             new BuildCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, () => false, () => undefined),
+        "build::random (no flags at all -- default --seed/--out/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)": (key) => {
+            // The one non-dry-run "random" case that also omits --seed/--preset: --out/--dry-run/--seed/--preset
+            // all reach a real seam here (GamePackageGenerating.generate() actually runs, unlike every --dry-run
+            // case above, so --out's default is genuinely observable; the random generator's own generate() always
+            // runs regardless of --dry-run, so --seed/--preset are observable too).
+            const defaultGenerator = new RandomGameBlueprintGenerator();
+            return new BuildCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                stub<GamePackageGenerating>({
+                    generate: (blueprint, cwd, outDir) => {
+                        observe(key, "--out", outDir);
+                        observe(key, "--dry-run", "false");
+                        return {
+                            createdFiles: ["package.json"],
+                            projectRoot: "/fake/random-default-out",
+                            manifest: {id: "random-slot-000", name: "Random Slot 000", version: "0.1.0"},
+                            buildInfo: {blueprintHash: "hash-000", source: undefined},
+                            unchanged: false,
+                        };
+                    },
+                }),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    generate: (input) => {
+                        observe(key, "--seed", input?.seed);
+                        observe(key, "--preset", "default");
+                        return defaultGenerator.generate(input);
+                    },
+                },
+                () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
+            );
+        },
         "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": (key) => {
             // --preset variant routes runRandom() to the variantRandomBlueprintGenerator (12th ctor param); wrapping
             // a real one keeps its output byte-identical while observing --seed/--preset at its own generate() seam.
-            // --dry-run's accepted "true" and --out's default "undefined" have no dependency seam here (this
-            // dry-run build never reaches the generate() seam at all), so both are registered as
-            // recordIfSeamUnreached fallbacks, applied only once dispatch() actually resolves with generate()
-            // never called; the throw-stub below still fails dispatch() outright if it's ever wrongly invoked.
-            recordIfSeamUnreached(key, "--dry-run", "true");
-            recordIfSeamUnreached(key, "--out", "undefined");
+            // --dry-run's accepted "true" is derived from the real captured stdout (see
+            // STDOUT_BOOLEAN_MARKER_FLAGS above); this dry-run build never reaches the GamePackageGenerating.generate()
+            // seam at all, so --out's own default evidence comes from a different, non-dry-run "random" case instead
+            // (see the bare "random (...)" case below) -- the throw-stub here still fails dispatch() outright if
+            // generate() is ever wrongly invoked during a dry run.
             const variantGenerator = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
             return new BuildCommand(
                 TEST_VERSION,
@@ -288,7 +339,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 stub<GamePackageGenerating>({
                     generate: () => {
-                        observe(key, "--dry-run", "false");
                         throw new Error("GamePackageGenerating.generate() must not run during a --dry-run random build.");
                     },
                 }),
@@ -524,13 +574,17 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         },
 
         "dev::<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)": (key) => {
-            // --no-open's accepted "true" has no dependency seam of its own (openBrowser, which run() calls only
-            // when !noOpen, is simply never invoked): recordIfSeamUnreached registers "true", applied only once
-            // dispatch() actually resolves with openBrowser never called; the stub below still records "false" if
-            // it's ever wrongly invoked, so a regression surfaces the wrong value instead of being masked. This
-            // case is also the default (omitted) evidence for the four host/port options, observed for real at the
-            // createApiServer/createClientServer seams.
-            recordIfSeamUnreached(key, "--no-open", "true");
+            // --no-open's accepted "true" has no dependency seam of its own: DevCommand.run() calls
+            // openBrowser() if and only if `!options.noOpen`, and nothing else in this case's dispatch can
+            // suppress that call (the exit-code/stream assertions above already proved the invocation
+            // reached its normal successful end) -- so whether openBrowserCalled ends up true is driven
+            // solely by --no-open's real parsed value. deferValueUnlessCalled() reads that real boolean
+            // after dispatch resolves; if a regression makes noOpen false, the stub still flips
+            // openBrowserCalled AND records "false" directly, so the wrong value surfaces instead of being
+            // masked. This case is also the default (omitted) evidence for the four host/port options,
+            // observed for real at the createApiServer/createClientServer seams.
+            let openBrowserCalled = false;
+            deferValueUnlessCalled(key, "--no-open", () => openBrowserCalled, "true");
             return new DevCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
                 (game, options) => {
@@ -546,6 +600,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                     waitForHealth: () => Promise.resolve(),
                     openBrowser: () => {
+                        openBrowserCalled = true;
                         observe(key, "--no-open", "false");
                     },
                     clientRoot: "/fake/client/root",
@@ -578,10 +633,20 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         "diff::<left> <right> --format json (accepted --format value, machine-readable shape)": (key) => {
             // --out is omitted here (this is its default evidence): DiffCommand only calls writeFile when
-            // options.out is set, so the seam is structurally never reached; recordIfSeamUnreached registers
-            // "undefined", applied only once dispatch() actually resolves with writeFile never called.
-            recordIfSeamUnreached(key, "--out", "undefined");
-            return new DiffCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT));
+            // options.out is set, and nothing else in this case gates that same call, so whether it fires is
+            // driven solely by --out's real parsed value. deferValueUnlessCalled() reads a live boolean the
+            // injected writeFile flips while dispatch() is actually running, applied only once dispatch() has
+            // resolved with its expected exit code -- if writeFile is ever wrongly invoked, the callback still
+            // records the real (non-"undefined") path directly, surfacing the wrong value instead of masking it.
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
+            return new DiffCommand(
+                () => JSON.stringify(SAMPLE_SIMULATION_REPORT),
+                (file) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", file);
+                },
+            );
         },
         "diff::<left> <right> --out <file> (accepted --out value, default --format summary)": (key) =>
             new DiffCommand(
@@ -592,21 +657,39 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             ),
 
         "fairness::seed-commit <serverSeed.txt> (default, no --out — prints the commitment JSON)": (key) => {
-            // --out default: emit() only calls writeFile when out !== undefined, so with no --out the seam is never
-            // reached. --overwrite default "false": with no --out, emit()'s fileExists guard never runs either, so
-            // neither flag's dependency ever fires in this case; both are recordIfSeamUnreached fallbacks, applied
-            // only once dispatch() actually resolves with the corresponding dependency never called.
-            recordIfSeamUnreached(key, "--out", "undefined");
-            recordIfSeamUnreached(key, "--overwrite", "false");
-            return new FairnessCommand(undefined, undefined, undefined, undefined, undefined, undefined, () => "server-seed-value\n");
+            // --out default: emit() only calls writeFile when out !== undefined, and nothing else in this case
+            // gates that call, so whether it fires is driven solely by --out's real parsed value.
+            // deferValueUnlessCalled() reads a live boolean the injected writeFile flips while dispatch() is
+            // actually running. --overwrite's own default evidence does NOT come from this case: with --out also
+            // omitted here, emit()'s fileExists guard is nested inside the same `out !== undefined` branch, so it
+            // is structurally unreachable regardless of --overwrite's real value -- see the dedicated
+            // "--out <file> (accepted --out value, default --overwrite)" case below, which supplies --out so that
+            // guard is genuinely reachable.
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
+            return new FairnessCommand(
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => "server-seed-value\n",
+                undefined,
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
+            );
         },
-        "fairness::seed-commit <serverSeed.txt> --out --overwrite (accepted values)": (key) => {
-            // --overwrite's accepted "true" has no dependency seam of its own: --overwrite short-circuits emit()'s
-            // `!overwrite && fileExists(out)` guard so fileExists must NOT run; recordIfSeamUnreached registers
-            // "true", applied only once dispatch() resolves with fileExists never called -- the stub below still
-            // records "false" if it's ever wrongly invoked. --out's accepted value is observed for real at
-            // writeFile's own path argument.
-            recordIfSeamUnreached(key, "--overwrite", "true");
+        "fairness::seed-commit <serverSeed.txt> --out <file> (accepted --out value, default --overwrite)": (key) => {
+            // --overwrite's default "false" evidence: with --out present (unlike the fully-default case above,
+            // which omits --out and so can never reach fileExists at all), emit()'s `!overwrite && fileExists(out)`
+            // guard fires if and only if overwrite is false -- so fileExists being called at all is itself real,
+            // direct proof of --overwrite's parsed value, observed inline. deferValueUnlessCalled() only supplies
+            // "true" as a fallback for the regression case where fileExists is never reached at all.
+            let fileExistsCalled = false;
+            deferValueUnlessCalled(key, "--overwrite", () => fileExistsCalled, "true");
             return new FairnessCommand(
                 undefined,
                 undefined,
@@ -616,6 +699,33 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 () => "server-seed-value\n",
                 () => {
+                    fileExistsCalled = true;
+                    observe(key, "--overwrite", "false");
+                    return false;
+                },
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+            );
+        },
+        "fairness::seed-commit <serverSeed.txt> --out --overwrite (accepted values)": (key) => {
+            // --overwrite's accepted "true" has no dependency seam of its own: --overwrite short-circuits emit()'s
+            // `!overwrite && fileExists(out)` guard so fileExists must NOT run. deferValueUnlessCalled() reads a
+            // live boolean the injected fileExists flips while dispatch() is actually running, applied only once
+            // dispatch() resolves with fileExists never called -- the stub below still records "false" directly if
+            // it's ever wrongly invoked. --out's accepted value is observed for real at writeFile's own path argument.
+            let fileExistsCalled = false;
+            deferValueUnlessCalled(key, "--overwrite", () => fileExistsCalled, "true");
+            return new FairnessCommand(
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => "server-seed-value\n",
+                () => {
+                    fileExistsCalled = true;
                     observe(key, "--overwrite", "false");
                     return false;
                 },
@@ -625,9 +735,13 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode (accepted --nonce value)": (key) => {
-            // --out/--overwrite defaults: same structurally-unreached seam as seed-commit's default case above.
-            recordIfSeamUnreached(key, "--out", "undefined");
-            recordIfSeamUnreached(key, "--overwrite", "false");
+            // --out default: same structurally-sound writeFile-gated seam as diff's own --out default case above
+            // (nothing else in this case gates emit()'s writeFile call). --overwrite's own default evidence does
+            // NOT come from this case: see seed-commit's own comment on why an --out-omitting case can never prove
+            // anything about --overwrite; the dedicated "--out (accepted --out value, default --overwrite)" case
+            // below supplies --out so that guard is genuinely reachable.
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
             return new FairnessCommand(
                 undefined,
                 // A genuinely valid FairnessServerSeedCommitment (real computeFairnessServerSeedCommitment
@@ -650,11 +764,55 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     observe(key, "--nonce", input.nonce);
                     return computeFairnessCommitment(input);
                 },
+                undefined,
+                undefined,
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
+            );
+        },
+        "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode --out (accepted --out value, default --overwrite)": (key) => {
+            // --overwrite's default "false" evidence: same reachable-guard reasoning as seed-commit's own
+            // "--out (accepted --out value, default --overwrite)" case above (--out is present here, so
+            // emit()'s `!overwrite && fileExists(out)` guard is genuinely reachable). Also observes
+            // --client-seed/--nonce/--source/--mode/--out for real at their own seams, same as the other commit
+            // cases above, since this case's args happen to be the first in array order to include several of
+            // them too.
+            let fileExistsCalled = false;
+            deferValueUnlessCalled(key, "--overwrite", () => fileExistsCalled, "true");
+            return new FairnessCommand(
+                undefined,
+                () => computeFairnessServerSeedCommitment({serverSeed: "server-seed-value"}),
+                stub<OutcomeLibraryBundleReading>({
+                    readModeIndex: (sourceBundleDir, modeName) => {
+                        observe(key, "--source", sourceBundleDir);
+                        observe(key, "--mode", modeName);
+                        return Promise.resolve({libraryId: "lib1", libraryHash: "hash1"});
+                    },
+                }),
+                undefined,
+                undefined,
+                (input) => {
+                    observe(key, "--client-seed", input.clientSeed);
+                    observe(key, "--nonce", input.nonce);
+                    return computeFairnessCommitment(input);
+                },
+                undefined,
+                () => {
+                    fileExistsCalled = true;
+                    observe(key, "--overwrite", "false");
+                    return false;
+                },
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
             );
         },
         "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode --out --overwrite (accepted values)": (key) => {
             // --overwrite's accepted "true": same no-seam case as seed-commit's own --overwrite accepted case above.
-            recordIfSeamUnreached(key, "--overwrite", "true");
+            let fileExistsCalled = false;
+            deferValueUnlessCalled(key, "--overwrite", () => fileExistsCalled, "true");
             return new FairnessCommand(
                 undefined,
                 () => computeFairnessServerSeedCommitment({serverSeed: "server-seed-value"}),
@@ -664,6 +822,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => {
+                    fileExistsCalled = true;
                     observe(key, "--overwrite", "false");
                     return false;
                 },
@@ -673,9 +832,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "fairness::reveal <commitment.json> --server-seed --source": (key) => {
-            // --out/--overwrite defaults: same structurally-unreached seam as seed-commit's default case above.
-            recordIfSeamUnreached(key, "--out", "undefined");
-            recordIfSeamUnreached(key, "--overwrite", "false");
+            // --out default: same structurally-sound writeFile-gated seam as diff's own --out default case above.
+            // --overwrite's own default evidence does NOT come from this case, for the same reason as seed-commit's
+            // own default case above; see the dedicated "--out (accepted --out value, default --overwrite)" case
+            // below.
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
             return new FairnessCommand(
                 undefined,
                 () => ({}),
@@ -694,11 +856,50 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     observe(key, "--server-seed", filePath);
                     return "revealed-seed\n";
                 },
+                undefined,
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
+            );
+        },
+        "fairness::reveal <commitment.json> --server-seed --source --out (accepted --out value, default --overwrite)": (key) => {
+            // --overwrite's default "false" evidence: same reachable-guard reasoning as seed-commit's own
+            // "--out (accepted --out value, default --overwrite)" case above. Also observes --server-seed/
+            // --source/--out for real at their own seams, same as the other reveal cases above, since this
+            // case's args happen to be the first in array order to include them too.
+            let fileExistsCalled = false;
+            deferValueUnlessCalled(key, "--overwrite", () => fileExistsCalled, "true");
+            return new FairnessCommand(
+                undefined,
+                () => ({}),
+                undefined,
+                {
+                    build: (commitment, serverSeed, sourceBundleDir) => {
+                        observe(key, "--source", sourceBundleDir);
+                        return Promise.resolve(stub<FairnessRoundProof>({}));
+                    },
+                },
+                undefined,
+                undefined,
+                (filePath) => {
+                    observe(key, "--server-seed", filePath);
+                    return "revealed-seed\n";
+                },
+                () => {
+                    fileExistsCalled = true;
+                    observe(key, "--overwrite", "false");
+                    return false;
+                },
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
             );
         },
         "fairness::reveal <commitment.json> --server-seed --source --out --overwrite (accepted values)": (key) => {
             // --overwrite's accepted "true": same no-seam case as seed-commit's own --overwrite accepted case above.
-            recordIfSeamUnreached(key, "--overwrite", "true");
+            let fileExistsCalled = false;
+            deferValueUnlessCalled(key, "--overwrite", () => fileExistsCalled, "true");
             return new FairnessCommand(
                 undefined,
                 () => ({}),
@@ -708,6 +909,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 () => "revealed-seed\n",
                 () => {
+                    fileExistsCalled = true;
                     observe(key, "--overwrite", "false");
                     return false;
                 },
@@ -885,17 +1087,26 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             ),
 
         // --round/--seed reach recorder.record({game, seed, round}); --out is observed at writeFile's path (called
-        // only when options.out is set, so the omitted case registers a recordIfSeamUnreached fallback);
-        // --format is derived from actual captured stdout (see STDOUT_FORMAT_FLAGS).
+        // only when options.out is set, and nothing else in this case gates that same call, so whether it fires
+        // is driven solely by --out's real parsed value; --format is derived from actual captured stdout (see
+        // STDOUT_FORMAT_FLAGS).
         "replay::<packageRoot> --round <number> (accepted --round value, prints the replay JSON)": (key) => {
-            recordIfSeamUnreached(key, "--out", "undefined");
-            return new ReplayCommand(() => Promise.resolve(stub<PokieGame>({})), undefined, {
-                record: (input) => {
-                    observe(key, "--round", input.round);
-                    observe(key, "--seed", input.seed);
-                    return stub<ReplayDescriptor>({});
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
+            return new ReplayCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
                 },
-            });
+                {
+                    record: (input) => {
+                        observe(key, "--round", input.round);
+                        observe(key, "--seed", input.seed);
+                        return stub<ReplayDescriptor>({});
+                    },
+                },
+            );
         },
         "replay::<packageRoot> --round --seed --out --format (accepted --seed/--out/--format values)": (key) =>
             new ReplayCommand(
@@ -914,15 +1125,17 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         // --format has a real seam: renderers.markdown/renderers.html are two independently swappable dependencies,
         // and which one's render() fires is the evidence (each delegates to a real renderer to keep output
-        // identical). --out is observed at writeFile's path (called only when options.out is set, so the omitted
-        // case registers a recordIfSeamUnreached fallback instead).
+        // identical). --out is observed at writeFile's path (called only when options.out is set, and nothing
+        // else in this case gates that same call, so whether it fires is driven solely by --out's real value).
         "report::<simulationReportJson> (default --format markdown)": (key) => {
-            recordIfSeamUnreached(key, "--out", "undefined");
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
             const markdownRenderer = new MarkdownSimulationReportRenderer();
             const htmlRenderer = new HtmlSimulationReportRenderer();
             return new ReportCommand(
                 () => JSON.stringify(SAMPLE_SIMULATION_REPORT),
                 (filePath) => {
+                    writeFileCalled = true;
                     observe(key, "--out", filePath);
                 },
                 {
@@ -987,13 +1200,18 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         // --rounds/--seed/--workers/--mode and the four convergence flags all reach
         // createParallelSimulationRunner(packageRoot, rounds, options); --out is observed at writeFile's path
-        // (called only when options.out is set, so the omitted cases register a recordIfSeamUnreached fallback
-        // instead); --format is derived from actual captured stdout (see STDOUT_FORMAT_FLAGS).
+        // (called only when options.out is set, and nothing else in this case gates that same call, so whether it
+        // fires is driven solely by --out's real value); --format is derived from actual captured stdout (see
+        // STDOUT_FORMAT_FLAGS).
         "sim::<packageRoot> --format json (machine-readable shape, default --rounds/--workers)": (key) => {
-            recordIfSeamUnreached(key, "--out", "undefined");
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
             return new SimCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
-                undefined,
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
                 {build: () => SAMPLE_SIMULATION_REPORT},
                 undefined,
                 (packageRoot, rounds, options) => {
@@ -1030,10 +1248,14 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             ),
         "sim::<packageRoot> --min-rounds --rtp-tolerance --check-interval --stable-checks (accepted convergence group)": (key) => {
-            recordIfSeamUnreached(key, "--out", "undefined");
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
             return new SimCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
-                undefined,
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
                 {build: () => SAMPLE_SIMULATION_REPORT},
                 undefined,
                 (packageRoot, rounds, options) => {
@@ -1104,14 +1326,27 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 },
             ),
-        // analyze/diff observe --out at writeFile (10th ctor param, called only when options.out is set, so the
-        // omitted cases register a recordIfSeamUnreached fallback instead); --format is derived from actual
-        // captured stdout (see STDOUT_FORMAT_FLAGS).
+        // analyze/diff observe --out at writeFile (10th ctor param, called only when options.out is set, and
+        // nothing else in either case gates that same call, so whether it fires is driven solely by --out's
+        // real value); --format is derived from actual captured stdout (see STDOUT_FORMAT_FLAGS).
         "stakeengine::analyze <stakeDir> --format json (accepted --format value, machine-readable shape)": (key) => {
-            recordIfSeamUnreached(key, "--out", "undefined");
-            return new StakeEngineCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, {
-                readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []}),
-            });
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
+            return new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
+                undefined,
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
+            );
         },
         "stakeengine::analyze <stakeDir> --out <file> (accepted --out value, default --format summary)": (key) =>
             new StakeEngineCommand(
@@ -1129,7 +1364,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             ),
         "stakeengine::diff <leftStakeDir> <rightStakeDir> (no material difference -> the diff(1)-style exit 0)": (key) => {
-            recordIfSeamUnreached(key, "--out", "undefined");
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
             return new StakeEngineCommand(
                 TEST_VERSION,
                 undefined,
@@ -1140,7 +1376,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
                 stub<StakeEngineStandaloneAnalyzer>({analyze: () => ({stakeDir: "stakeDir", modes: []})}),
-                undefined,
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
                 {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
             );
         },
@@ -1162,11 +1401,14 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             ),
 
         // --port/--host reach createServer(options); --no-open's accepted "true" has no dependency seam of its
-        // own (openBrowser, which run() calls only when !noOpen, is simply never invoked), so it's a
-        // recordIfSeamUnreached fallback, applied only once dispatch() resolves with openBrowser never called --
-        // the stub below still records "false" if it's ever wrongly invoked.
+        // own (openBrowser, which run() calls only when !noOpen, is simply never invoked). Since the exit-code
+        // assertions above already proved this case's dispatch() reached its normal successful end, nothing but
+        // --no-open's own real value can explain openBrowser not firing, so deferValueUnlessCalled() reads the
+        // real openBrowserCalled boolean once dispatch resolves -- the stub still records "false" directly if
+        // it's ever wrongly invoked, surfacing the wrong value instead of masking it.
         "studio::--no-open (home mode: no projectRoot given, skips the accepted-but-unexercised browser-open step)": (key) => {
-            recordIfSeamUnreached(key, "--no-open", "true");
+            let openBrowserCalled = false;
+            deferValueUnlessCalled(key, "--no-open", () => openBrowserCalled, "true");
             return new StudioCommand(TEST_VERSION, {
                 createServer: (options) => {
                     observe(key, "--port", options.port);
@@ -1174,6 +1416,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     return stubAddressServer(6100);
                 },
                 openBrowser: () => {
+                    openBrowserCalled = true;
                     observe(key, "--no-open", "false");
                 },
                 process: fakeProcess(),
@@ -1193,15 +1436,22 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             });
         },
 
-        // --out is observed at writeFile (2nd ctor param, called only when options.out is set, so the omitted
-        // case registers a recordIfSeamUnreached fallback instead); --format is derived from actual captured
-        // stdout (see STDOUT_FORMAT_FLAGS).
+        // --out is observed at writeFile (2nd ctor param, called only when options.out is set, and nothing else
+        // in this case gates that same call, so whether it fires is driven solely by --out's real value);
+        // --format is derived from actual captured stdout (see STDOUT_FORMAT_FLAGS).
         "validate::<packageRoot> --format json (accepted --format value, machine-readable shape)": (key) => {
-            recordIfSeamUnreached(key, "--out", "undefined");
-            return new ValidateCommand({
-                validate: () =>
-                    Promise.resolve({packageRoot: "pkg", valid: true, game: {id: "pkg", name: "Pkg", version: "0.1.0"}, errors: [], warnings: [], suggestions: []}),
-            });
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
+            return new ValidateCommand(
+                {
+                    validate: () =>
+                        Promise.resolve({packageRoot: "pkg", valid: true, game: {id: "pkg", name: "Pkg", version: "0.1.0"}, errors: [], warnings: [], suggestions: []}),
+                },
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
+            );
         },
         "validate::<packageRoot> --out <file> (accepted --out value, default --format summary)": (key) =>
             new ValidateCommand(
@@ -1530,7 +1780,12 @@ describe("CLI dispatch contract (cli/dispatch.ts, the real entry point cli/pokie
                     const capturedStdout = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
                     observe(key, formatConfig.flag, deriveObservedFormat(capturedStdout, formatConfig));
                 }
-                applyUnreachedSeamFallbacks(key);
+                const booleanMarkerConfig = STDOUT_BOOLEAN_MARKER_FLAGS[testCase.command];
+                if (booleanMarkerConfig) {
+                    const capturedStdout = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
+                    observe(key, booleanMarkerConfig.flag, deriveObservedBoolean(capturedStdout, booleanMarkerConfig.trueMarker));
+                }
+                resolveDeferredValues(key);
             } finally {
                 logSpy.mockRestore();
                 errorSpy.mockRestore();

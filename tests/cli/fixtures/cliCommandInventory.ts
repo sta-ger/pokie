@@ -651,6 +651,20 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
             "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
     },
     {
+        // Placed before every other "random" case so it wins the default (omitted) evidence for --out,
+        // --seed, and --preset all at once: it's a genuine non-dry-run random build (--dry-run's own default
+        // evidence is read from stdout, see STDOUT_BOOLEAN_MARKER_FLAGS, so it doesn't need this case's help),
+        // so GamePackageGenerating.generate() actually runs with outDir undefined, unlike every other case here
+        // that omits --out but is also a --dry-run build (where generate() never runs at all, so --out's value
+        // can't be observed).
+        command: "build",
+        kind: "valid",
+        label: "random (no flags at all -- default --seed/--out/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)",
+        args: ["random"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
         command: "build",
         kind: "valid",
         label: "random --seed <integer> --preset variant --dry-run (accepted --preset value)",
@@ -957,6 +971,18 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError: "Usage: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]",
     },
     {
+        // Placed before the fully-default case below so it wins --overwrite's default (omitted) evidence: with
+        // --out present, emit()'s `!overwrite && fileExists(out)` guard is genuinely reachable, unlike the
+        // fully-default case (which also omits --out, so that guard can never fire regardless of --overwrite's
+        // real value — see cliCommandInventory.contract.test.ts's own comment on this).
+        command: "fairness",
+        kind: "valid",
+        label: "seed-commit <serverSeed.txt> --out <file> (accepted --out value, default --overwrite)",
+        args: ["seed-commit", "serverSeed.txt", "--out", "commitment-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
         command: "fairness",
         kind: "valid",
         label: "seed-commit <serverSeed.txt> (default, no --out — prints the commitment JSON)",
@@ -1024,6 +1050,18 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
             "--source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
     },
     {
+        // Placed before the --overwrite-omitting "accepted --nonce" case below so it wins --overwrite's default
+        // (omitted) evidence: with --out present, emit()'s `!overwrite && fileExists(out)` guard is genuinely
+        // reachable (see seed-commit's own equivalent case above for why the fully --out-omitting case can't
+        // provide this evidence).
+        command: "fairness",
+        kind: "valid",
+        label: "commit <serverSeedCommitment.json> --client-seed --nonce --source --mode --out (accepted --out value, default --overwrite)",
+        args: ["commit", "serverSeedCommitment.json", "--client-seed", "player-seed", "--nonce", "0", "--source", "bundleDir", "--mode", "base", "--out", "commit-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
         command: "fairness",
         kind: "valid",
         label: "commit <serverSeedCommitment.json> --client-seed --nonce --source --mode (accepted --nonce value)",
@@ -1072,6 +1110,17 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--source <bundleDir> is required. Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> " +
             "--source <bundleDir> [--out <file>] [--overwrite]",
+    },
+    {
+        // Placed before the --overwrite-omitting "--server-seed --source" case below so it wins --overwrite's
+        // default (omitted) evidence, for the same reachable-guard reason as seed-commit's/commit's own
+        // equivalent cases above.
+        command: "fairness",
+        kind: "valid",
+        label: "reveal <commitment.json> --server-seed --source --out (accepted --out value, default --overwrite)",
+        args: ["reveal", "commitment.json", "--server-seed", "serverSeed.txt", "--source", "bundleDir", "--out", "reveal-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
     {
         command: "fairness",
