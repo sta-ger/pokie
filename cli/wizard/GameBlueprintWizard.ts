@@ -108,21 +108,25 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
     private async askManifest(prompt: PromptAdapting): Promise<GameBlueprintManifest> {
         const suggestion = this.nameGenerator.generate();
 
-        const id = await this.askUntilValid(prompt, `Game id (e.g. sample-slot) [${suggestion.slug}]: `, (raw) => {
+        // packageName, not slug: both are minted from the same title, but slug carries a numeric
+        // uniqueness suffix ("blazing-riches-4821") that has no business in a game id someone is about
+        // to name their project after. The suffixed form stays available where it's actually useful —
+        // see "pokie name", which still prints it alongside the plain one.
+        const suggestedId = suggestion.packageName;
+
+        const id = await this.askUntilValid(prompt, `Game id [${suggestedId}]: `, (raw) => {
             if (raw.length === 0) {
-                return suggestion.slug;
+                return suggestedId;
             }
             if (raw.includes("/") || raw.includes("\\") || raw === "." || raw === "..") {
-                return new WizardParseError('Game id must be a plain name (no slashes), e.g. "sample-slot".');
+                return new WizardParseError("Game id must be a plain name, without slashes.");
             }
             return raw;
         });
 
         // Only the accepted-suggestion id gets the generator's own title as its name default -- a
-        // manually typed id falls back to title-casing that id instead, since title-casing the
-        // suggestion's slug verbatim would surface its numeric uniqueness suffix (e.g. "Blazing Riches
-        // 4821") in a name default.
-        const defaultName = id === suggestion.slug ? suggestion.title : this.titleCaseFromId(id);
+        // manually typed id falls back to title-casing that id instead.
+        const defaultName = id === suggestedId ? suggestion.title : this.titleCaseFromId(id);
         const name = await this.askWithDefault(prompt, `Game name [${defaultName}]: `, defaultName);
         const defaultVersion = this.defaults.manifest.version;
         const version = await this.askWithDefault(prompt, `Version [${defaultVersion}]: `, defaultVersion);

@@ -211,7 +211,7 @@ pokie build random
 ```
 
 ```
-Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 1845220913.
+Generated random game "Blazing Riches" (id: "blazing-riches") from seed 1845220913.
 Reproduce this exact game with: pokie build random --seed 1845220913 --preset default
 Provenance: generator 1.0.0, strategy "default-line-pay".
 Build summary:
@@ -219,7 +219,7 @@ Build summary:
 Running a short smoke simulation...
 Smoke simulation OK: 200 rounds, RTP 96.14%, hit frequency 31.00%.
 
-Game package "Blazing Riches" (id: "blazing-riches-4821") built in ".../blazing-riches-4821".
+Game package "Blazing Riches" (id: "blazing-riches") built in ".../blazing-riches".
 ```
 
 > **No target-RTP promise.** `RandomGameBlueprintGenerator`'s math is *structurally* valid — every blueprint it
@@ -315,7 +315,10 @@ built-in theme/style word pools. `generateUnique(count, request?)` returns `coun
 with pairwise-distinct titles; either method throws `SlotGameNameExhaustedError` if the vocabulary/exclusions are
 too tight to satisfy within its attempt budget. `title` is the display name, `slug` is a directory/manifest-id-safe
 form with a numeric suffix (e.g. `"blazing-riches-4821"`), and `packageName` is an npm-package-name-safe form with
-no suffix (e.g. `"blazing-riches"`) — the same title always yields the same `packageName`, unlike `slug`.
+no suffix (e.g. `"blazing-riches"`) — the same title always yields the same `packageName`, unlike `slug`. The
+suffixed `slug` is offered by `pokie name` for when a guaranteed-distinct id is wanted, but nothing that *creates*
+a game uses it: both the [build wizard](#interactive-mode-pokie-build-with-no-arguments) and
+`RandomGameBlueprintGenerator` name games from `packageName`, so generated ids stay words-only.
 
 `RandomGameBlueprintGenerator.generate(request?)` accepts an optional `{seed?, overrides?}` — `overrides` is an
 `{id?, name?}` override (what `pokie create <name> --random` uses to pin the manifest to the given `<name>` instead
@@ -610,7 +613,8 @@ future wizard pass.
 The game id question offers a ready-made suggestion rather than requiring one to be typed: the wizard mints a
 single [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) result once at the start of
 the run — the same generator `pokie name` uses directly, never a second naming implementation — and offers its
-`slug` (e.g. `[blazing-riches-4821]`) as the id default. Pressing Enter accepts it; typing anything else always
+`packageName` (e.g. `[blazing-riches]`) as the id default — the plain, words-only form, never `slug`'s numerically
+suffixed one, since this id becomes the game's directory and package name. Pressing Enter accepts it; typing anything else always
 wins and is used verbatim as the id instead. That one suggestion is minted before the id question's own reprompt
 loop, so it stays exactly the same across however many invalid attempts that question takes — it is never
 re-rolled mid-run. The name question's own default follows suit: accepting the suggested id defaults the name to

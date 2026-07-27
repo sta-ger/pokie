@@ -10,7 +10,7 @@ describe("RandomGameBlueprintGenerator golden seeds", () => {
         expect(new RandomGameBlueprintGenerator().generate({seed: 42})).toEqual({
             blueprint: {
                 manifest: {
-                    id: "feral-rampaging-pantheon-3459",
+                    id: "feral-rampaging-pantheon",
                     name: "Feral Rampaging Pantheon",
                     version: "0.1.0",
                     description: "Randomly generated video slot (seed 42).",

@@ -23,6 +23,8 @@ class FakeSlotGameNameGenerating implements SlotGameNameGenerating {
     }
 }
 
+// slug and packageName deliberately differ: slug carries SlotGameNameGenerator's numeric uniqueness
+// suffix, and the wizard must offer the plain packageName as the game id, never the suffixed form.
 const SUGGESTION: SlotGameNameResult = {
     title: "Blazing Riches",
     slug: "blazing-riches-4821",
@@ -122,10 +124,10 @@ describe("GameBlueprintWizard", () => {
         expect(prompt.questions.filter((q) => q.startsWith("Game id")).length).toBe(2);
     });
 
-    it("suggests a per-run id/name pair (slug -> id, title -> name) that Enter accepts", async () => {
+    it("suggests a per-run id/name pair (packageName -> id, title -> name) that Enter accepts", async () => {
         const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
         const prompt = new FakePromptAdapting([
-            "", // id -> accept the suggested slug
+            "", // id -> accept the suggested id
             "", // name -> accept the suggested title
             "", // version -> default
             "", // reels -> default
@@ -140,10 +142,28 @@ describe("GameBlueprintWizard", () => {
 
         const result = await new GameBlueprintWizard(nameGenerator).run(prompt);
 
-        expect(result?.blueprint.manifest.id).toBe("blazing-riches-4821");
+        expect(result?.blueprint.manifest.id).toBe("blazing-riches");
         expect(result?.blueprint.manifest.name).toBe("Blazing Riches");
-        expect(prompt.questions[0]).toContain("[blazing-riches-4821]");
+        expect(prompt.questions[0]).toContain("[blazing-riches]");
         expect(prompt.questions[1]).toContain("[Blazing Riches]");
+    });
+
+    it("offers the plain name as the game id, never the generator's numerically suffixed slug", async () => {
+        const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
+        const prompt = new FakePromptAdapting(Array.from({length: 14}, () => ""));
+
+        const result = await new GameBlueprintWizard(nameGenerator).run(prompt);
+
+        expect(result?.blueprint.manifest.id).toBe("blazing-riches");
+        expect(prompt.questions.join("\n")).not.toContain(SUGGESTION.slug);
+    });
+
+    it("asks for the game id without an inline example, since the default already shows the shape", async () => {
+        const prompt = new FakePromptAdapting(Array.from({length: 14}, () => ""));
+
+        await new GameBlueprintWizard(new FakeSlotGameNameGenerating(SUGGESTION)).run(prompt);
+
+        expect(prompt.questions[0]).toBe("Game id [blazing-riches]: ");
     });
 
     it("lets a manually typed id override the suggestion, falling back to title-casing that id for the name default", async () => {
@@ -187,8 +207,8 @@ describe("GameBlueprintWizard", () => {
 
         const result = await new GameBlueprintWizard(nameGenerator).run(prompt);
 
-        expect(result?.blueprint.manifest.id).toBe("blazing-riches-4821");
-        expect(prompt.questions.filter((q) => q.startsWith("Game id")).every((q) => q.includes("[blazing-riches-4821]"))).toBe(
+        expect(result?.blueprint.manifest.id).toBe("blazing-riches");
+        expect(prompt.questions.filter((q) => q.startsWith("Game id")).every((q) => q.includes("[blazing-riches]"))).toBe(
             true,
         );
         expect(nameGenerator.generateCalls).toBe(1);
@@ -419,7 +439,7 @@ describe("GameBlueprintWizard", () => {
 
             expect(result).toEqual({
                 blueprint: {
-                    manifest: {id: "blazing-riches-4821", name: "Blazing Riches", version: "0.1.0"},
+                    manifest: {id: "blazing-riches", name: "Blazing Riches", version: "0.1.0"},
                     reels: 5,
                     rows: 3,
                     symbols: ["A", "K", "Q", "J"],
@@ -469,7 +489,7 @@ describe("GameBlueprintWizard", () => {
             const asked = (prefix: string): string =>
                 prompt.questions.find((question) => question.trimStart().startsWith(prefix)) ?? "";
 
-            expect(asked("Game id")).toContain("[blazing-riches-4821]");
+            expect(asked("Game id")).toContain("[blazing-riches]");
             expect(asked("Game name")).toContain("[Blazing Riches]");
             expect(asked("Version")).toContain("[0.1.0]");
             expect(asked("Number of reels")).toContain("[5]");
@@ -480,7 +500,7 @@ describe("GameBlueprintWizard", () => {
             expect(asked('"A"')).toContain("[3:5,4:10,5:20]");
             expect(asked('"J"')).toContain("[3:1,4:2,5:4]");
             expect(asked("Reel weighting")).toContain("[A:4,K:6,Q:8,J:10]");
-            expect(asked("Output directory")).toContain("[./blazing-riches-4821]");
+            expect(asked("Output directory")).toContain("[./blazing-riches]");
         });
 
         it("applies valid default payouts for a blank paytable answer instead of leaving the symbol unpaid", async () => {

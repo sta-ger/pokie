@@ -85,8 +85,11 @@ export class RandomGameBlueprintGenerator implements RandomGameBlueprintGenerati
     private resolveName(seed: number, overrides?: RandomGameBlueprintOverrides): {id: string; name: string} {
         const overrideName = overrides?.name?.trim();
         if (overrideName === undefined || overrideName.length === 0) {
-            const {title, slug} = this.nameGenerator.generate({seed});
-            return {id: slug, name: title};
+            // packageName, not slug: a generated game's id becomes its directory and package name, so
+            // it stays words-only rather than carrying slug's numeric uniqueness suffix. An override'd
+            // name is slugified the same way (no suffix either), so both paths agree.
+            const {title, packageName} = this.nameGenerator.generate({seed});
+            return {id: packageName, name: title};
         }
         return {id: overrides?.id ?? RandomGameBlueprintGenerator.slugify(overrideName), name: overrideName};
     }
