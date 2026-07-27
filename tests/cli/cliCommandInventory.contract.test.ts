@@ -1,6 +1,7 @@
 import {
     computeFairnessServerSeedCommitment,
     FairnessRoundProof,
+    GamePackageGenerating,
     OutcomeLibraryBundleReading,
     ParallelSimulationRunner,
     PokieGame,
@@ -126,9 +127,47 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
     const builders: Record<string, () => CliCommandHandling> = {
         "build::<config.json> --dry-run validates and previews without writing anything (default, no --out)": () =>
             new BuildCommand(TEST_VERSION, () => createStarterGameBlueprint()),
+        "build::<config.json> --out <dir> (accepted --out value, default --dry-run, writes via the injected generator)": () =>
+            new BuildCommand(
+                TEST_VERSION,
+                () => createStarterGameBlueprint(),
+                undefined,
+                stub<GamePackageGenerating>({
+                    generate: () => ({
+                        createdFiles: ["package.json"],
+                        projectRoot: "/fake/build-out-dir",
+                        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                        buildInfo: {blueprintHash: "hash-out", source: undefined},
+                        unchanged: false,
+                    }),
+                }),
+            ),
         "build::--init-blueprint <file> writes the starter blueprint template": () =>
             new BuildCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, () => false, () => undefined),
         "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": () => new BuildCommand(TEST_VERSION),
+        "build::random --out <dir> --dry-run (accepted --out value, default --seed/--preset)": () => new BuildCommand(TEST_VERSION),
+        "build::random --seed <integer> (default --dry-run/--out/--preset, writes via the injected generator, runs the smoke simulation)": () =>
+            new BuildCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                stub<GamePackageGenerating>({
+                    generate: () => ({
+                        createdFiles: ["package.json"],
+                        projectRoot: "/fake/random-out",
+                        manifest: {id: "random-slot-777", name: "Random Slot 777", version: "0.1.0"},
+                        buildInfo: {blueprintHash: "hash-777", source: undefined},
+                        unchanged: false,
+                    }),
+                }),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
+            ),
 
         "certification::build <bundleDir> <config.json> (default --out)": () =>
             new CertificationCommand(
@@ -137,10 +176,18 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 () => ({modes: [{modeName: "base", seed: "cert-seed", sampleCount: 10}]}),
             ),
+        "certification::build <bundleDir> <config.json> --out <dir> (accepted --out value)": () =>
+            new CertificationCommand(
+                TEST_VERSION,
+                {buildFromBundle: () => Promise.resolve({outDir: "customCertOut", files: ["evidence.json"], manifest: undefined, issues: []})},
+                undefined,
+                () => ({modes: [{modeName: "base", seed: "cert-seed", sampleCount: 10}]}),
+            ),
         "certification::verify <certDir> --source <bundleDir>": () =>
             new CertificationCommand(TEST_VERSION, undefined, {verify: () => Promise.resolve([])}),
 
         "client::<packageRoot> (default host/port)": () => new ClientCommand(() => stubAddressServer(4000)),
+        "client::<packageRoot> --port --host --api-host --api-port (accepted values)": () => new ClientCommand(() => stubAddressServer(4444)),
 
         "create::<name>": () =>
             new CreateCommand(TEST_VERSION, {
@@ -176,6 +223,30 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
                 () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
             ),
+        "create::--random --preset variant (accepted --preset value, default --seed)": () =>
+            new CreateCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    generate: () => ({
+                        projectRoot: "/fake/variant-slot",
+                        manifest: {id: "variant-slot", name: "Variant Slot", version: "0.1.0"},
+                        createdFiles: [],
+                        buildInfo: {
+                            schemaVersion: 1,
+                            generatedBy: "pokie",
+                            pokieVersion: TEST_VERSION,
+                            generatedAt: "2026-01-01T00:00:00.000Z",
+                            blueprintHash: "hash-variant",
+                            game: {id: "variant-slot", name: "Variant Slot", version: "0.1.0"},
+                        },
+                        unchanged: false,
+                    }),
+                },
+                () => Promise.resolve({ok: true, rounds: 150, roundsRequested: 150, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
+            ),
 
         "dev::<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)": () =>
             new DevCommand(
@@ -189,12 +260,28 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     process: fakeProcess(),
                 },
             ),
+        "dev::<packageRoot> --port --host --client-port --client-host (accepted values, default --no-open)": () =>
+            new DevCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                () => stubAddressServer(5001),
+                {
+                    createClientServer: () => stubAddressServer(5101),
+                    waitForHealth: () => Promise.resolve(),
+                    openBrowser: () => undefined,
+                    clientRoot: "/fake/client/root",
+                    process: fakeProcess(),
+                },
+            ),
 
         "diff::<left> <right> --format json (accepted --format value, machine-readable shape)": () =>
             new DiffCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT)),
+        "diff::<left> <right> --out <file> (accepted --out value, default --format summary)": () =>
+            new DiffCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT), () => undefined),
 
         "fairness::seed-commit <serverSeed.txt> (default, no --out — prints the commitment JSON)": () =>
             new FairnessCommand(undefined, undefined, undefined, undefined, undefined, undefined, () => "server-seed-value\n"),
+        "fairness::seed-commit <serverSeed.txt> --out --overwrite (accepted values)": () =>
+            new FairnessCommand(undefined, undefined, undefined, undefined, undefined, undefined, () => "server-seed-value\n", undefined, () => undefined),
         "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode (accepted --nonce value)": () =>
             new FairnessCommand(
                 undefined,
@@ -203,6 +290,18 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 // exercises validates its shape strictly — a hand-rolled placeholder object fails that check.
                 () => computeFairnessServerSeedCommitment({serverSeed: "server-seed-value"}),
                 stub<OutcomeLibraryBundleReading>({readModeIndex: () => Promise.resolve({libraryId: "lib1", libraryHash: "hash1"})}),
+            ),
+        "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode --out --overwrite (accepted values)": () =>
+            new FairnessCommand(
+                undefined,
+                () => computeFairnessServerSeedCommitment({serverSeed: "server-seed-value"}),
+                stub<OutcomeLibraryBundleReading>({readModeIndex: () => Promise.resolve({libraryId: "lib1", libraryHash: "hash1"})}),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => undefined,
             ),
         "fairness::reveal <commitment.json> --server-seed --source": () =>
             new FairnessCommand(
@@ -213,6 +312,18 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => "revealed-seed\n",
+            ),
+        "fairness::reveal <commitment.json> --server-seed --source --out --overwrite (accepted values)": () =>
+            new FairnessCommand(
+                undefined,
+                () => ({}),
+                undefined,
+                {build: () => Promise.resolve(stub<FairnessRoundProof>({}))},
+                undefined,
+                undefined,
+                () => "revealed-seed\n",
+                undefined,
+                () => undefined,
             ),
         "fairness::verify <proof.json> --commitment --source": () =>
             new FairnessCommand({verify: () => Promise.resolve([])}, () => ({})),
@@ -235,6 +346,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         "name::(no args — default count 1, human-readable output)": () => new NameCommand(),
         "name::--json (machine-readable shape)": () => new NameCommand(),
+        "name::--count --theme --words --seed (accepted values)": () => new NameCommand(),
 
         "outcomelibrary::build <config.json> (default --out)": () =>
             new OutcomeLibraryCommand(
@@ -243,7 +355,16 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 () => ({modes: [{modeName: "base", libraryPath: "lib.json"}], libraryId: "lib1", schemaVersion: 1, outcomes: []}),
             ),
+        "outcomelibrary::build <config.json> --out <dir> (accepted --out value)": () =>
+            new OutcomeLibraryCommand(
+                TEST_VERSION,
+                {writeToDirectory: () => Promise.resolve({outDir: "custom-outcomelib-dir", files: ["config.json"], manifest: undefined, issues: []})},
+                undefined,
+                () => ({modes: [{modeName: "base", libraryPath: "lib.json"}], libraryId: "lib1", schemaVersion: 1, outcomes: []}),
+            ),
         "outcomelibrary::validate <bundleDir>": () =>
+            new OutcomeLibraryCommand(TEST_VERSION, undefined, {validate: () => Promise.resolve([])}),
+        "outcomelibrary::validate <bundleDir> --deep (accepted --deep flag)": () =>
             new OutcomeLibraryCommand(TEST_VERSION, undefined, {validate: () => Promise.resolve([])}),
 
         "par::import <input.xlsx> --format json (accepted --format value, machine-readable shape)": () =>
@@ -254,18 +375,49 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 () => undefined,
             ),
+        "par::import <input.xlsx> --out <file> (accepted --out value, default --format summary)": () =>
+            new ParCommand(
+                TEST_VERSION,
+                {importFromFile: () => Promise.resolve({blueprint: createStarterGameBlueprint(), provenance: undefined, issues: []})},
+                undefined,
+                undefined,
+                () => undefined,
+            ),
         "par::export <config.json> (default --out)": () =>
+            new ParCommand(TEST_VERSION, undefined, {exportToFile: () => Promise.resolve([])}, () => createStarterGameBlueprint()),
+        "par::export <config.json> --out <file> (accepted --out value)": () =>
             new ParCommand(TEST_VERSION, undefined, {exportToFile: () => Promise.resolve([])}, () => createStarterGameBlueprint()),
 
         "replay::<packageRoot> --round <number> (accepted --round value, prints the replay JSON)": () =>
             new ReplayCommand(() => Promise.resolve(stub<PokieGame>({})), undefined, {record: () => stub<ReplayDescriptor>({})}),
+        "replay::<packageRoot> --round --seed --out --format (accepted --seed/--out/--format values)": () =>
+            new ReplayCommand(() => Promise.resolve(stub<PokieGame>({})), () => undefined, {record: () => stub<ReplayDescriptor>({})}),
 
         "report::<simulationReportJson> (default --format markdown)": () => new ReportCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT)),
+        "report::<simulationReportJson> --format html --out <file> (accepted --format/--out values)": () =>
+            new ReportCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT), () => undefined),
 
+        "serve::<packageRoot> (default host/port)": () => new ServeCommand(() => Promise.resolve(stub<PokieGame>({})), () => stubAddressServer(4321)),
         "serve::<packageRoot> --port --host (accepted --port/--host values)": () =>
             new ServeCommand(() => Promise.resolve(stub<PokieGame>({})), () => stubAddressServer(4321)),
 
         "sim::<packageRoot> --format json (machine-readable shape, default --rounds/--workers)": () =>
+            new SimCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                undefined,
+                {build: () => SAMPLE_SIMULATION_REPORT},
+                undefined,
+                () => stub<ParallelSimulationRunner>({run: () => Promise.resolve({})}),
+            ),
+        "sim::<packageRoot> --rounds --seed --workers --mode --out (accepted values, default --format summary)": () =>
+            new SimCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                () => undefined,
+                {build: () => SAMPLE_SIMULATION_REPORT},
+                undefined,
+                () => stub<ParallelSimulationRunner>({run: () => Promise.resolve({})}),
+            ),
+        "sim::<packageRoot> --min-rounds --rtp-tolerance --check-interval --stable-checks (accepted convergence group)": () =>
             new SimCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
                 undefined,
@@ -281,7 +433,22 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 () => ({modes: [{modeName: "base", cost: 1, libraryPath: "lib.json"}]}),
             ),
+        "stakeengine::export <config.json> --out <dir> (accepted --out value)": () =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                {exportToDirectory: () => Promise.resolve({outDir: "custom-stakeengine-out", files: ["index.json"], manifest: undefined, issues: []})},
+                undefined,
+                () => ({modes: [{modeName: "base", cost: 1, libraryPath: "lib.json"}]}),
+            ),
         "stakeengine::import <stakeDir> (default --out)": () =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                {importFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", manifest: undefined, modes: [], sourceProvenance: undefined, issues: []})},
+                undefined,
+                {writeToDirectory: () => Promise.resolve({issues: []})},
+            ),
+        "stakeengine::import <stakeDir> --out <dir> (accepted --out value)": () =>
             new StakeEngineCommand(
                 TEST_VERSION,
                 undefined,
@@ -293,6 +460,19 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             new StakeEngineCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, {
                 readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []}),
             }),
+        "stakeengine::analyze <stakeDir> --out <file> (accepted --out value, default --format summary)": () =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
+                undefined,
+                () => undefined,
+            ),
         "stakeengine::diff <leftStakeDir> <rightStakeDir> (no material difference -> the diff(1)-style exit 0)": () =>
             new StakeEngineCommand(
                 TEST_VERSION,
@@ -307,15 +487,39 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
             ),
+        "stakeengine::diff <leftStakeDir> <rightStakeDir> --format json --out <file> (accepted --format/--out values)": () =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
+                stub<StakeEngineStandaloneAnalyzer>({analyze: () => ({stakeDir: "stakeDir", modes: []})}),
+                () => undefined,
+                {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
+            ),
 
         "studio::--no-open (home mode: no projectRoot given, skips the accepted-but-unexercised browser-open step)": () =>
             new StudioCommand(TEST_VERSION, {createServer: () => stubAddressServer(6100), process: fakeProcess()}),
+        "studio::--port --host (accepted values, default --no-open triggers the injected openBrowser stub)": () =>
+            new StudioCommand(TEST_VERSION, {createServer: () => stubAddressServer(7000), openBrowser: () => undefined, process: fakeProcess()}),
 
         "validate::<packageRoot> --format json (accepted --format value, machine-readable shape)": () =>
             new ValidateCommand({
                 validate: () =>
                     Promise.resolve({packageRoot: "pkg", valid: true, game: {id: "pkg", name: "Pkg", version: "0.1.0"}, errors: [], warnings: [], suggestions: []}),
             }),
+        "validate::<packageRoot> --out <file> (accepted --out value, default --format summary)": () =>
+            new ValidateCommand(
+                {
+                    validate: () =>
+                        Promise.resolve({packageRoot: "pkg", valid: true, game: {id: "pkg", name: "Pkg", version: "0.1.0"}, errors: [], warnings: [], suggestions: []}),
+                },
+                () => undefined,
+            ),
     };
 
     const registry = new Map<string, CliCommandHandling>();
@@ -415,6 +619,113 @@ describe("CLI command validation contract (frozen, side-effect-free)", () => {
             expect(coveredCommands.has(descriptor.name)).toBe(true);
         }
     });
+});
+
+// Resolves which CliVerbDescriptor.verb a given CLI_CONTRACT_CASES entry's `args` actually exercises,
+// mirroring each command's own real dispatch logic (never a second, hand-rolled *parser* — this only
+// ever inspects `args[0]`/`args.includes(...)` the same shallow way each command's own run() does to
+// pick a subcommand, and is used purely to bucket test-fixture cases for the coverage assertions
+// below, never to assert behavior itself): a subcommand-style command (certification/fairness/
+// outcomelibrary/par/stakeengine) always has its verb literal as `args[0]`; "build"/"create" each have
+// one sentinel verb recognized by a flag rather than a positional ("--init-blueprint"/"random" for
+// build, "--random" for create); every other command has exactly one verb (`undefined`).
+function deriveVerbForCase(commandName: string, args: string[]): string | undefined {
+    const descriptor = CLI_COMMAND_DESCRIPTORS.find((candidate) => candidate.name === commandName);
+    if (!descriptor) {
+        return undefined;
+    }
+    const verbLiterals = descriptor.verbs.map((verb) => verb.verb).filter((verb): verb is string => verb !== undefined);
+    if (verbLiterals.length === 0) {
+        return undefined;
+    }
+    if (verbLiterals.includes("--init-blueprint") && args[0] === "--init-blueprint") {
+        return "--init-blueprint";
+    }
+    if (verbLiterals.includes("random") && args[0] === "random") {
+        return "random";
+    }
+    if (verbLiterals.includes("--random") && args.includes("--random")) {
+        return "--random";
+    }
+    if (args[0] !== undefined && verbLiterals.includes(args[0])) {
+        return args[0];
+    }
+    return undefined;
+}
+
+type OptionCoverageGroup = {
+    valid: CliContractCase[];
+    invalid: Array<CliContractCase & {expectedError: string}>;
+};
+
+function groupCasesByVerb(commandName: string): Map<string | undefined, OptionCoverageGroup> {
+    const groups = new Map<string | undefined, OptionCoverageGroup>();
+    for (const testCase of CLI_CONTRACT_CASES) {
+        if (testCase.command !== commandName) {
+            continue;
+        }
+        const verb = deriveVerbForCase(commandName, testCase.args);
+        const group = groups.get(verb) ?? {valid: [], invalid: []};
+        if (testCase.kind === "valid") {
+            group.valid.push(testCase);
+        } else {
+            group.invalid.push(testCase as CliContractCase & {expectedError: string});
+        }
+        groups.set(verb, group);
+    }
+    return groups;
+}
+
+// Derives, from CLI_COMMAND_DESCRIPTORS alone, exactly which executable evidence every declared
+// option of every verb is required to have among CLI_CONTRACT_CASES — closing the gap the reviewer
+// flagged: a declared option that exists only in a verb's `usage` string, with no case anywhere
+// actually passing/rejecting it, previously went unnoticed. Every option requires "accepted" evidence
+// (some valid case's args include its flag); a non-required option additionally requires "default"
+// evidence (some valid case in the same verb group omits it); a required option requires
+// "required-missing" evidence (some invalid case's error names the flag and says it's required); and
+// a "validated" option additionally requires "rejected-value" evidence (some invalid case whose args
+// include the flag and whose error names it). A "grouped" option (sim's convergence flags, whose
+// required/rejected semantics are cross-field, not independently meaningful per flag — see
+// CliOptionKind's own doc comment) only needs accepted+default, same as an "unvalidated" one.
+describe("CLI option contract coverage (every declared option has executable evidence, derived from CLI_COMMAND_DESCRIPTORS)", () => {
+    for (const descriptor of CLI_COMMAND_DESCRIPTORS) {
+        const groups = groupCasesByVerb(descriptor.name);
+
+        for (const verbDescriptor of descriptor.verbs) {
+            const group = groups.get(verbDescriptor.verb) ?? {valid: [], invalid: []};
+            const verbLabel = verbDescriptor.verb ?? "(default)";
+
+            for (const option of verbDescriptor.options) {
+                it(`"${descriptor.name} ${verbLabel}"'s "${option.flag}" has an accepted-value case`, () => {
+                    expect(group.valid.some((testCase) => testCase.args.includes(option.flag))).toBe(true);
+                });
+
+                if (!option.required) {
+                    it(`"${descriptor.name} ${verbLabel}"'s "${option.flag}" has a default (omitted) case`, () => {
+                        expect(group.valid.some((testCase) => !testCase.args.includes(option.flag))).toBe(true);
+                    });
+                }
+
+                if (option.required) {
+                    it(`"${descriptor.name} ${verbLabel}"'s "${option.flag}" has a missing-required case`, () => {
+                        const hasRequiredMissing = group.invalid.some(
+                            (testCase) => testCase.expectedError.includes(option.flag) && testCase.expectedError.includes("required"),
+                        );
+                        expect(hasRequiredMissing).toBe(true);
+                    });
+                }
+
+                if (option.kind === "validated") {
+                    it(`"${descriptor.name} ${verbLabel}"'s "${option.flag}" has a rejected-value case`, () => {
+                        const hasRejectedValue = group.invalid.some(
+                            (testCase) => testCase.args.includes(option.flag) && testCase.expectedError.includes(option.flag),
+                        );
+                        expect(hasRejectedValue).toBe(true);
+                    });
+                }
+            }
+        }
+    }
 });
 
 describe("CLI defaults (side-effect-free success path)", () => {

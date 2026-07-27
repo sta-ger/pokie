@@ -33,7 +33,36 @@ export type CliVerbDescriptor = {
     verb: string | undefined;
     usage: string;
     positionals: string[];
-    options: string[];
+    options: CliOptionDescriptor[];
+};
+
+// A single declared option's own machine-readable validation contract, independent of its
+// human-readable `usage` spelling (which stays on CliVerbDescriptor.usage, unchanged) — this is
+// what cliCommandInventory.contract.test.ts's own "CLI option contract coverage" describe block
+// walks to derive, per option, exactly which CLI_CONTRACT_CASES entries are required to exist:
+//   - "boolean": a no-value flag (its mere presence is the whole contract, e.g. --dry-run,
+//     --overwrite, --json, --deep, --no-open). Never "required". Requires only an "accepted"
+//     case (present) and a "default" case (some other case in the same verb group that omits it).
+//   - "unvalidated": takes a value; parseArgs never rejects any particular value for this option,
+//     only requires it be present at all when the flag itself is given. Requires "accepted", plus
+//     either "default" (optional) or "required-missing" evidence (required) — see `required`.
+//   - "validated": takes a value; parseArgs validates its shape/range and rejects a bad one with a
+//     dedicated, flag-naming error message. Requires "accepted" and "rejected-value" evidence (an
+//     invalid case whose args include this flag and whose error message names it), in addition to
+//     whatever `required`/optional evidence a plain "unvalidated" option would need.
+//   - "grouped": one of sim's --min-rounds/--rtp-tolerance/--check-interval/--stable-checks —
+//     each does validate its own value, but their *required* semantics are cross-field (all-or-
+//     nothing as a group, already frozen by CLI_CONTRACT_CASES' own dedicated group-level invalid
+//     cases), not independently meaningful per flag the way e.g. --preset's is. Declared as its own
+//     kind rather than "validated" so the coverage check doesn't also demand a lone per-flag
+//     rejected-value case that would misrepresent this as independent, single-flag validation.
+export type CliOptionKind = "boolean" | "unvalidated" | "validated" | "grouped";
+
+export type CliOptionDescriptor = {
+    // Canonical flag token exactly as it appears in argv, e.g. "--out", "--dry-run".
+    flag: string;
+    required: boolean;
+    kind: CliOptionKind;
 };
 
 export type CliCommandDescriptor = {
@@ -57,7 +86,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: undefined,
                 usage: "Usage: pokie build <config.json> [--out <dir>] [--dry-run]",
                 positionals: ["config.json"],
-                options: ["--out <dir>", "--dry-run"],
+                options: [
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                    {flag: "--dry-run", required: false, kind: "boolean"},
+                ],
             },
             {
                 verb: "--init-blueprint",
@@ -69,7 +101,12 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "random",
                 usage: "Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
                 positionals: [],
-                options: ["--seed <integer>", "--out <dir>", "--dry-run", "--preset default|variant"],
+                options: [
+                    {flag: "--seed", required: false, kind: "validated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                    {flag: "--dry-run", required: false, kind: "boolean"},
+                    {flag: "--preset", required: false, kind: "validated"},
+                ],
             },
         ],
     },
@@ -83,13 +120,13 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "build",
                 usage: "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]",
                 positionals: ["bundleDir", "config.json"],
-                options: ["--out <dir>"],
+                options: [{flag: "--out", required: false, kind: "unvalidated"}],
             },
             {
                 verb: "verify",
                 usage: "Usage: pokie certification verify <certDir> --source <bundleDir>",
                 positionals: ["certDir"],
-                options: ["--source <bundleDir> (required)"],
+                options: [{flag: "--source", required: true, kind: "unvalidated"}],
             },
         ],
     },
@@ -102,7 +139,12 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage:
                     "Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
                 positionals: ["packageRoot"],
-                options: ["--port <number>", "--host <string>", "--api-host <string>", "--api-port <number>"],
+                options: [
+                    {flag: "--port", required: false, kind: "validated"},
+                    {flag: "--host", required: false, kind: "unvalidated"},
+                    {flag: "--api-host", required: false, kind: "unvalidated"},
+                    {flag: "--api-port", required: false, kind: "validated"},
+                ],
             },
         ],
     },
@@ -118,7 +160,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "--random",
                 usage: "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
                 positionals: ["name (optional)"],
-                options: ["--seed <integer>", "--preset default|variant"],
+                options: [
+                    {flag: "--seed", required: false, kind: "validated"},
+                    {flag: "--preset", required: false, kind: "validated"},
+                ],
             },
         ],
     },
@@ -132,7 +177,13 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "Usage: pokie dev <packageRoot> [--port <number>] [--host <string>] " +
                     "[--client-port <number>] [--client-host <string>] [--no-open]",
                 positionals: ["packageRoot"],
-                options: ["--port <number>", "--host <string>", "--client-port <number>", "--client-host <string>", "--no-open"],
+                options: [
+                    {flag: "--port", required: false, kind: "validated"},
+                    {flag: "--host", required: false, kind: "unvalidated"},
+                    {flag: "--client-port", required: false, kind: "validated"},
+                    {flag: "--client-host", required: false, kind: "unvalidated"},
+                    {flag: "--no-open", required: false, kind: "boolean"},
+                ],
             },
         ],
     },
@@ -144,7 +195,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: undefined,
                 usage: "Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
                 positionals: ["leftReportJson", "rightReportJson"],
-                options: ["--format json", "--out <file>"],
+                options: [
+                    {flag: "--format", required: false, kind: "validated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                ],
             },
         ],
     },
@@ -159,7 +213,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "seed-commit",
                 usage: "Usage: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]",
                 positionals: ["serverSeed.txt"],
-                options: ["--out <file>", "--overwrite"],
+                options: [
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                    {flag: "--overwrite", required: false, kind: "boolean"},
+                ],
             },
             {
                 verb: "commit",
@@ -168,12 +225,12 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "--mode <modeName> [--out <file>] [--overwrite]",
                 positionals: ["serverSeedCommitment.json"],
                 options: [
-                    "--client-seed <seed> (required)",
-                    "--nonce <n> (required, canonical non-negative integer)",
-                    "--source <bundleDir> (required)",
-                    "--mode <modeName> (required)",
-                    "--out <file>",
-                    "--overwrite",
+                    {flag: "--client-seed", required: true, kind: "unvalidated"},
+                    {flag: "--nonce", required: true, kind: "validated"},
+                    {flag: "--source", required: true, kind: "unvalidated"},
+                    {flag: "--mode", required: true, kind: "unvalidated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                    {flag: "--overwrite", required: false, kind: "boolean"},
                 ],
             },
             {
@@ -181,13 +238,21 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage:
                     "Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]",
                 positionals: ["commitment.json"],
-                options: ["--server-seed <file> (required)", "--source <bundleDir> (required)", "--out <file>", "--overwrite"],
+                options: [
+                    {flag: "--server-seed", required: true, kind: "unvalidated"},
+                    {flag: "--source", required: true, kind: "unvalidated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                    {flag: "--overwrite", required: false, kind: "boolean"},
+                ],
             },
             {
                 verb: "verify",
                 usage: "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>",
                 positionals: ["proof.json"],
-                options: ["--commitment <commitment.json> (required)", "--source <bundleDir> (required)"],
+                options: [
+                    {flag: "--commitment", required: true, kind: "unvalidated"},
+                    {flag: "--source", required: true, kind: "unvalidated"},
+                ],
             },
         ],
     },
@@ -215,7 +280,13 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: undefined,
                 usage: "Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
                 positionals: [],
-                options: ["--count <n>", "--theme <theme>", "--words <2|3>", "--seed <integer>", "--json"],
+                options: [
+                    {flag: "--count", required: false, kind: "validated"},
+                    {flag: "--theme", required: false, kind: "validated"},
+                    {flag: "--words", required: false, kind: "validated"},
+                    {flag: "--seed", required: false, kind: "validated"},
+                    {flag: "--json", required: false, kind: "boolean"},
+                ],
             },
         ],
     },
@@ -229,13 +300,13 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "build",
                 usage: "Usage: pokie outcomelibrary build <config.json> [--out <dir>]",
                 positionals: ["config.json"],
-                options: ["--out <dir>"],
+                options: [{flag: "--out", required: false, kind: "unvalidated"}],
             },
             {
                 verb: "validate",
                 usage: "Usage: pokie outcomelibrary validate <bundleDir> [--deep]",
                 positionals: ["bundleDir"],
-                options: ["--deep"],
+                options: [{flag: "--deep", required: false, kind: "boolean"}],
             },
         ],
     },
@@ -248,13 +319,16 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "import",
                 usage: "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
                 positionals: ["input.xlsx"],
-                options: ["--out <blueprint.json>", "--format json"],
+                options: [
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                    {flag: "--format", required: false, kind: "validated"},
+                ],
             },
             {
                 verb: "export",
                 usage: "Usage: pokie par export <config.json> [--out <output.xlsx>]",
                 positionals: ["config.json"],
-                options: ["--out <output.xlsx>"],
+                options: [{flag: "--out", required: false, kind: "unvalidated"}],
             },
         ],
     },
@@ -266,7 +340,12 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: undefined,
                 usage: "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
                 positionals: ["packageRoot"],
-                options: ["--round <number> (required)", "--seed <string>", "--out <file>", "--format json"],
+                options: [
+                    {flag: "--round", required: true, kind: "validated"},
+                    {flag: "--seed", required: false, kind: "unvalidated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                    {flag: "--format", required: false, kind: "validated"},
+                ],
             },
         ],
     },
@@ -278,7 +357,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: undefined,
                 usage: "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
                 positionals: ["simulationReportJson"],
-                options: ["--format markdown|html", "--out <file>"],
+                options: [
+                    {flag: "--format", required: false, kind: "validated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                ],
             },
         ],
     },
@@ -290,7 +372,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: undefined,
                 usage: "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
                 positionals: ["packageRoot"],
-                options: ["--port <number>", "--host <string>"],
+                options: [
+                    {flag: "--port", required: false, kind: "validated"},
+                    {flag: "--host", required: false, kind: "unvalidated"},
+                ],
             },
         ],
     },
@@ -306,14 +391,16 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
                 positionals: ["packageRoot"],
                 options: [
-                    "--rounds <number>",
-                    "--seed <string>",
-                    "--workers <number>",
-                    "--mode <betModeId>|all",
-                    "--out <file>",
-                    "--format json",
-                    "--min-rounds/--rtp-tolerance/--check-interval (all-or-nothing group)",
-                    "--stable-checks <number> (requires the group above)",
+                    {flag: "--rounds", required: false, kind: "validated"},
+                    {flag: "--seed", required: false, kind: "unvalidated"},
+                    {flag: "--workers", required: false, kind: "validated"},
+                    {flag: "--mode", required: false, kind: "unvalidated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                    {flag: "--format", required: false, kind: "validated"},
+                    {flag: "--min-rounds", required: false, kind: "grouped"},
+                    {flag: "--rtp-tolerance", required: false, kind: "grouped"},
+                    {flag: "--check-interval", required: false, kind: "grouped"},
+                    {flag: "--stable-checks", required: false, kind: "grouped"},
                 ],
             },
         ],
@@ -331,19 +418,22 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "export",
                 usage: "Usage: pokie stakeengine export <config.json> [--out <dir>]",
                 positionals: ["config.json"],
-                options: ["--out <dir>"],
+                options: [{flag: "--out", required: false, kind: "unvalidated"}],
             },
             {
                 verb: "import",
                 usage: "Usage: pokie stakeengine import <stakeDir> [--out <dir>]",
                 positionals: ["stakeDir"],
-                options: ["--out <dir>"],
+                options: [{flag: "--out", required: false, kind: "unvalidated"}],
             },
             {
                 verb: "analyze",
                 usage: "Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]",
                 positionals: ["stakeDir"],
-                options: ["--format json", "--out <file>"],
+                options: [
+                    {flag: "--format", required: false, kind: "validated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                ],
             },
             {
                 // Exit codes are the diff(1) convention (0 identical, 1 differs, 2 trouble) — the one
@@ -351,7 +441,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "diff",
                 usage: "Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]",
                 positionals: ["leftStakeDir", "rightStakeDir"],
-                options: ["--format json", "--out <file>"],
+                options: [
+                    {flag: "--format", required: false, kind: "validated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                ],
             },
         ],
     },
@@ -363,7 +456,11 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: undefined,
                 usage: "Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
                 positionals: ["projectRoot (optional)"],
-                options: ["--port <number>", "--host <string>", "--no-open"],
+                options: [
+                    {flag: "--port", required: false, kind: "validated"},
+                    {flag: "--host", required: false, kind: "unvalidated"},
+                    {flag: "--no-open", required: false, kind: "boolean"},
+                ],
             },
         ],
     },
@@ -375,7 +472,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: undefined,
                 usage: "Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
                 positionals: ["packageRoot"],
-                options: ["--format json", "--out <file>"],
+                options: [
+                    {flag: "--format", required: false, kind: "validated"},
+                    {flag: "--out", required: false, kind: "unvalidated"},
+                ],
             },
         ],
     },
@@ -409,6 +509,13 @@ export type CliContractCase = {
 // command supports it, to exercise its "--format json"/"--json" output shape rather than its
 // human-readable summary, so CLI_CONTRACT_CASES also demonstrates the machine-readable contract, not
 // only the human-readable one.
+//
+// Beyond that per-command coverage, cliCommandInventory.contract.test.ts's own "CLI option contract
+// coverage" describe block walks every option of every CLI_COMMAND_DESCRIPTORS verb and requires,
+// depending on that option's own CliOptionKind: an "accepted" case (always), a "default"/omitted case
+// (whenever the option isn't required), a "required-missing" case (whenever it is), and a
+// "rejected-value" case (whenever its kind is "validated"). Every option below satisfies that
+// derived requirement — see that describe block for exactly what's checked and why.
 export const CLI_CONTRACT_CASES: CliContractCase[] = [
     // --- build ---
     {
@@ -426,6 +533,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<config.json> --dry-run validates and previews without writing anything (default, no --out)",
         args: ["config.json", "--dry-run"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "build",
+        kind: "valid",
+        label: "<config.json> --out <dir> (accepted --out value, default --dry-run, writes via the injected generator)",
+        args: ["config.json", "--out", "customOutDir"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -456,9 +571,34 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "build",
+        kind: "invalid",
+        label: "random --preset must be default|variant",
+        args: ["random", "--seed", "1", "--preset", "bogus"],
+        expectedExitCode: 1,
+        expectedError:
+            "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+    },
+    {
+        command: "build",
         kind: "valid",
         label: "random --seed <integer> --preset variant --dry-run (accepted --preset value)",
         args: ["random", "--seed", "4242", "--preset", "variant", "--dry-run"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "build",
+        kind: "valid",
+        label: "random --out <dir> --dry-run (accepted --out value, default --seed/--preset)",
+        args: ["random", "--out", "random-out-dir", "--dry-run"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "build",
+        kind: "valid",
+        label: "random --seed <integer> (default --dry-run/--out/--preset, writes via the injected generator, runs the smoke simulation)",
+        args: ["random", "--seed", "777"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -494,6 +634,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "build <bundleDir> <config.json> (default --out)",
         args: ["build", "bundleDir", "config.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "certification",
+        kind: "valid",
+        label: "build <bundleDir> <config.json> --out <dir> (accepted --out value)",
+        args: ["build", "bundleDir", "config.json", "--out", "customCertOut"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -543,9 +691,26 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "client",
+        kind: "invalid",
+        label: "--api-port must be a non-negative integer",
+        args: ["pkg", "--api-port", "-1"],
+        expectedExitCode: 1,
+        expectedError:
+            "--api-port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+    },
+    {
+        command: "client",
         kind: "valid",
         label: "<packageRoot> (default host/port)",
         args: ["pkg"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "client",
+        kind: "valid",
+        label: "<packageRoot> --port --host --api-host --api-port (accepted values)",
+        args: ["pkg", "--port", "4444", "--host", "0.0.0.0", "--api-host", "10.0.0.1", "--api-port", "3001"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -578,9 +743,26 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "create",
+        kind: "invalid",
+        label: "--random --seed must be an integer",
+        args: ["--random", "--seed", "notanumber"],
+        expectedExitCode: 1,
+        expectedError:
+            "--seed requires an integer value. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
+    },
+    {
+        command: "create",
         kind: "valid",
         label: "--random --seed <integer> (accepted --seed value, default --preset)",
         args: ["--random", "--seed", "1"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "create",
+        kind: "valid",
+        label: "--random --preset variant (accepted --preset value, default --seed)",
+        args: ["--random", "--preset", "variant"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -599,6 +781,16 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "dev",
         kind: "invalid",
+        label: "--port must be a non-negative integer",
+        args: ["pkg", "--port", "-2"],
+        expectedExitCode: 1,
+        expectedError:
+            "--port must be a non-negative integer. Usage: pokie dev <packageRoot> [--port <number>] [--host <string>] " +
+            "[--client-port <number>] [--client-host <string>] [--no-open]",
+    },
+    {
+        command: "dev",
+        kind: "invalid",
         label: "--client-port must be a non-negative integer",
         args: ["pkg", "--client-port", "abc"],
         expectedExitCode: 1,
@@ -611,6 +803,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)",
         args: ["pkg", "--no-open"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "dev",
+        kind: "valid",
+        label: "<packageRoot> --port --host --client-port --client-host (accepted values, default --no-open)",
+        args: ["pkg", "--port", "5001", "--host", "0.0.0.0", "--client-port", "5101", "--client-host", "0.0.0.0"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -640,6 +840,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["left.json", "right.json", "--format", "json"],
         expectedExitCode: 0,
         expectStdout: "json",
+    },
+    {
+        command: "diff",
+        kind: "valid",
+        label: "<left> <right> --out <file> (accepted --out value, default --format summary)",
+        args: ["left.json", "right.json", "--out", "diff-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
 
     // --- fairness ---
@@ -673,12 +881,30 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "fairness",
+        kind: "valid",
+        label: "seed-commit <serverSeed.txt> --out --overwrite (accepted values)",
+        args: ["seed-commit", "serverSeed.txt", "--out", "commitment-out.json", "--overwrite"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "fairness",
         kind: "invalid",
         label: "commit missing --client-seed (checked first among its required flags)",
         args: ["commit", "commitment.json"],
         expectedExitCode: 1,
         expectedError:
             "--client-seed <seed> is required. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> " +
+            "--source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "commit missing --nonce (client-seed/source/mode given)",
+        args: ["commit", "commitment.json", "--client-seed", "x", "--source", "bundleDir", "--mode", "base"],
+        expectedExitCode: 1,
+        expectedError:
+            "--nonce <number> is required. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> " +
             "--source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
     },
     {
@@ -694,11 +920,53 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "fairness",
+        kind: "invalid",
+        label: "commit missing --source (client-seed/nonce/mode given)",
+        args: ["commit", "commitment.json", "--client-seed", "x", "--nonce", "0", "--mode", "base"],
+        expectedExitCode: 1,
+        expectedError:
+            "--source <bundleDir> is required. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> " +
+            "--source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "commit missing --mode (client-seed/nonce/source given)",
+        args: ["commit", "commitment.json", "--client-seed", "x", "--nonce", "0", "--source", "bundleDir"],
+        expectedExitCode: 1,
+        expectedError:
+            "--mode <modeName> is required. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> " +
+            "--source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
         kind: "valid",
         label: "commit <serverSeedCommitment.json> --client-seed --nonce --source --mode (accepted --nonce value)",
         args: ["commit", "serverSeedCommitment.json", "--client-seed", "player-seed", "--nonce", "0", "--source", "bundleDir", "--mode", "base"],
         expectedExitCode: 0,
         expectStdout: "json",
+    },
+    {
+        command: "fairness",
+        kind: "valid",
+        label: "commit <serverSeedCommitment.json> --client-seed --nonce --source --mode --out --overwrite (accepted values)",
+        args: [
+            "commit",
+            "serverSeedCommitment.json",
+            "--client-seed",
+            "player-seed",
+            "--nonce",
+            "0",
+            "--source",
+            "bundleDir",
+            "--mode",
+            "base",
+            "--out",
+            "commit-out.json",
+            "--overwrite",
+        ],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
     {
         command: "fairness",
@@ -712,11 +980,29 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "fairness",
+        kind: "invalid",
+        label: "reveal missing --source (server-seed given)",
+        args: ["reveal", "commitment.json", "--server-seed", "serverSeed.txt"],
+        expectedExitCode: 1,
+        expectedError:
+            "--source <bundleDir> is required. Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> " +
+            "--source <bundleDir> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
         kind: "valid",
         label: "reveal <commitment.json> --server-seed --source",
         args: ["reveal", "commitment.json", "--server-seed", "serverSeed.txt", "--source", "bundleDir"],
         expectedExitCode: 0,
         expectStdout: "json",
+    },
+    {
+        command: "fairness",
+        kind: "valid",
+        label: "reveal <commitment.json> --server-seed --source --out --overwrite (accepted values)",
+        args: ["reveal", "commitment.json", "--server-seed", "serverSeed.txt", "--source", "bundleDir", "--out", "reveal-out.json", "--overwrite"],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
     {
         command: "fairness",
@@ -726,6 +1012,15 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--commitment <commitment.json> is required. Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "verify missing --source (commitment given)",
+        args: ["verify", "proof.json", "--commitment", "commitment.json"],
+        expectedExitCode: 1,
+        expectedError:
+            "--source <bundleDir> is required. Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>",
     },
     {
         command: "fairness",
@@ -799,6 +1094,24 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "name",
+        kind: "invalid",
+        label: "--count must be a positive integer",
+        args: ["--count", "0"],
+        expectedExitCode: 1,
+        expectedError:
+            "--count requires a positive integer. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
+    },
+    {
+        command: "name",
+        kind: "invalid",
+        label: "--seed must be an integer",
+        args: ["--seed", "notanumber"],
+        expectedExitCode: 1,
+        expectedError:
+            "--seed requires an integer value. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
+    },
+    {
+        command: "name",
         kind: "valid",
         label: "(no args — default count 1, human-readable output)",
         args: [],
@@ -812,6 +1125,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["--json"],
         expectedExitCode: 0,
         expectStdout: "json",
+    },
+    {
+        command: "name",
+        kind: "valid",
+        label: "--count --theme --words --seed (accepted values)",
+        args: ["--count", "2", "--theme", ALL_SLOT_GAME_NAME_THEMES[0], "--words", "3", "--seed", "555"],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
 
     // --- outcomelibrary ---
@@ -858,6 +1179,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "outcomelibrary",
+        kind: "valid",
+        label: "build <config.json> --out <dir> (accepted --out value)",
+        args: ["build", "config.json", "--out", "custom-outcomelib-dir"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
         kind: "invalid",
         label: "validate missing <bundleDir>",
         args: ["validate"],
@@ -869,6 +1198,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "validate <bundleDir>",
         args: ["validate", "bundleDir"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "valid",
+        label: "validate <bundleDir> --deep (accepted --deep flag)",
+        args: ["validate", "bundleDir", "--deep"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -911,6 +1248,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "par",
+        kind: "valid",
+        label: "import <input.xlsx> --out <file> (accepted --out value, default --format summary)",
+        args: ["import", "input.xlsx", "--out", "custom-blueprint-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "par",
         kind: "invalid",
         label: "export missing <config.json>",
         args: ["export"],
@@ -922,6 +1267,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "export <config.json> (default --out)",
         args: ["export", "config.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "par",
+        kind: "valid",
+        label: "export <config.json> --out <file> (accepted --out value)",
+        args: ["export", "config.json", "--out", "custom-output.xlsx"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -955,11 +1308,28 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "replay",
+        kind: "invalid",
+        label: "--format only supports json",
+        args: ["pkg", "--round", "3", "--format", "xml"],
+        expectedExitCode: 1,
+        expectedError:
+            '--format only supports "json". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]',
+    },
+    {
+        command: "replay",
         kind: "valid",
         label: "<packageRoot> --round <number> (accepted --round value, prints the replay JSON)",
         args: ["pkg", "--round", "3"],
         expectedExitCode: 0,
         expectStdout: "json",
+    },
+    {
+        command: "replay",
+        kind: "valid",
+        label: "<packageRoot> --round --seed --out --format (accepted --seed/--out/--format values)",
+        args: ["pkg", "--round", "5", "--seed", "demo-seed", "--out", "replay-out.json", "--format", "json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
 
     // --- report ---
@@ -988,6 +1358,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 0,
         expectStdout: "text",
     },
+    {
+        command: "report",
+        kind: "valid",
+        label: "<simulationReportJson> --format html --out <file> (accepted --format/--out values)",
+        args: ["report.json", "--format", "html", "--out", "report-out.html"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
 
     // --- serve ---
     {
@@ -1005,6 +1383,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--port", "-5"],
         expectedExitCode: 1,
         expectedError: "--port must be a non-negative integer. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
+    },
+    {
+        command: "serve",
+        kind: "valid",
+        label: "<packageRoot> (default host/port)",
+        args: ["pkg"],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
     {
         command: "serve",
@@ -1030,11 +1416,33 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "sim",
         kind: "invalid",
+        label: "--rounds must be a positive integer",
+        args: ["pkg", "--rounds", "0"],
+        expectedExitCode: 1,
+        expectedError:
+            "--rounds must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] " +
+            "[--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] " +
+            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
         label: "--workers must be within [1, MAX_SIMULATION_WORKERS]",
         args: ["pkg", "--workers", "0"],
         expectedExitCode: 1,
         expectedError:
             `--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. Usage: pokie sim <packageRoot> [--rounds <number>] ` +
+            "[--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] " +
+            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--format only supports json",
+        args: ["pkg", "--format", "xml"],
+        expectedExitCode: 1,
+        expectedError:
+            '--format only supports "json". Usage: pokie sim <packageRoot> [--rounds <number>] ' +
             "[--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] " +
             "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
     },
@@ -1065,6 +1473,22 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<packageRoot> --format json (machine-readable shape, default --rounds/--workers)",
         args: ["pkg", "--format", "json"],
+        expectedExitCode: 0,
+        expectStdout: "json",
+    },
+    {
+        command: "sim",
+        kind: "valid",
+        label: "<packageRoot> --rounds --seed --workers --mode --out (accepted values, default --format summary)",
+        args: ["pkg", "--rounds", "500", "--seed", "demo", "--workers", "2", "--mode", "base", "--out", "sim-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "sim",
+        kind: "valid",
+        label: "<packageRoot> --min-rounds --rtp-tolerance --check-interval --stable-checks (accepted convergence group)",
+        args: ["pkg", "--min-rounds", "1000", "--rtp-tolerance", "0.5", "--check-interval", "100", "--stable-checks", "2", "--format", "json"],
         expectedExitCode: 0,
         expectStdout: "json",
     },
@@ -1111,6 +1535,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "stakeengine",
+        kind: "valid",
+        label: "export <config.json> --out <dir> (accepted --out value)",
+        args: ["export", "config.json", "--out", "custom-stakeengine-out"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "stakeengine",
         kind: "invalid",
         label: "import missing <stakeDir>",
         args: ["import"],
@@ -1125,6 +1557,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "import <stakeDir> (default --out)",
         args: ["import", "stakeDir"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "stakeengine",
+        kind: "valid",
+        label: "import <stakeDir> --out <dir> (accepted --out value)",
+        args: ["import", "stakeDir", "--out", "custom-stakeengine-import-out"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -1150,6 +1590,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "stakeengine",
+        kind: "valid",
+        label: "analyze <stakeDir> --out <file> (accepted --out value, default --format summary)",
+        args: ["analyze", "stakeDir", "--out", "analyze-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "stakeengine",
         kind: "invalid",
         label: "diff missing <rightStakeDir>",
         args: ["diff", "left"],
@@ -1167,6 +1615,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["diff", "left", "right"],
         expectedExitCode: 0,
         expectStdout: "text",
+    },
+    {
+        command: "stakeengine",
+        kind: "valid",
+        label: "diff <leftStakeDir> <rightStakeDir> --format json --out <file> (accepted --format/--out values)",
+        args: ["diff", "left", "right", "--format", "json", "--out", "diff-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "json",
     },
     {
         command: "stakeengine",
@@ -1204,6 +1660,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 0,
         expectStdout: "text",
     },
+    {
+        command: "studio",
+        kind: "valid",
+        label: "--port --host (accepted values, default --no-open triggers the injected openBrowser stub)",
+        args: ["--port", "7000", "--host", "0.0.0.0"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
 
     // --- validate ---
     {
@@ -1229,6 +1693,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--format", "json"],
         expectedExitCode: 0,
         expectStdout: "json",
+    },
+    {
+        command: "validate",
+        kind: "valid",
+        label: "<packageRoot> --out <file> (accepted --out value, default --format summary)",
+        args: ["pkg", "--out", "validate-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
 ];
 
