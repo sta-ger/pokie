@@ -25,7 +25,7 @@
 // registerCommandsForValidCases() in cliCommandInventory.contract.test.ts) — never a real file, a
 // real bound port, or a real subprocess either.
 
-import {ALL_SLOT_GAME_NAME_THEMES, MAX_SIMULATION_WORKERS} from "pokie";
+import {ALL_SLOT_GAME_NAME_THEMES, MAX_SIMULATION_WORKERS, SimulationConfig} from "pokie";
 
 export type CliVerbDescriptor = {
     // The subcommand literal (e.g. "import", "seed-commit"); undefined for a command with no
@@ -63,6 +63,20 @@ export type CliOptionDescriptor = {
     flag: string;
     required: boolean;
     kind: CliOptionKind;
+    // The exact value observed at this option's own command-observable seam -- an injected
+    // dependency argument this option's value is threaded through unmodified, or a deterministic
+    // stdout shape it controls -- when the flag is OMITTED. Every value is compared as a string (see
+    // observe() in cliCommandInventory.contract.test.ts), so an option whose parsed value stays
+    // `undefined` when omitted (no in-command default substituted before reaching the seam) records
+    // the literal string "undefined" here, same as `String(undefined)` would. Omitted (no property at
+    // all) only for a required option, which has no default to observe, and for "boolean" options,
+    // whose default is always the literal "false" (see acceptedValue below) written out explicitly
+    // rather than left implicit, per this field's own purpose.
+    defaultValue?: string;
+    // The exact value observed at that same seam when the flag is given its one documented, accepted
+    // value in CLI_CONTRACT_CASES -- always the literal "true" for a "boolean" option (the flag's own
+    // presence, since a boolean carries no separate value token in argv).
+    acceptedValue: string;
 };
 
 export type CliCommandDescriptor = {
@@ -87,8 +101,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie build <config.json> [--out <dir>] [--dry-run]",
                 positionals: ["config.json"],
                 options: [
-                    {flag: "--out", required: false, kind: "unvalidated"},
-                    {flag: "--dry-run", required: false, kind: "boolean"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "customOutDir"},
+                    {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
             {
@@ -102,10 +116,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
                 positionals: [],
                 options: [
-                    {flag: "--seed", required: false, kind: "validated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
-                    {flag: "--dry-run", required: false, kind: "boolean"},
-                    {flag: "--preset", required: false, kind: "validated"},
+                    {flag: "--seed", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "4242"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "random-accepted-out-dir"},
+                    {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    {flag: "--preset", required: false, kind: "validated", defaultValue: "default", acceptedValue: "variant"},
                 ],
             },
         ],
@@ -120,13 +134,17 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "build",
                 usage: "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]",
                 positionals: ["bundleDir", "config.json"],
-                options: [{flag: "--out", required: false, kind: "unvalidated"}],
+                // defaultValue "certification": the command computes path.join(path.dirname(configPath),
+                // "certification") itself when --out is omitted; with configPath "config.json" that resolves to
+                // "certification" (see CertificationCommand.parseBuildArgs), observed at builder.buildFromBundle's
+                // own outDir argument.
+                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "certification", acceptedValue: "customCertOut"}],
             },
             {
                 verb: "verify",
                 usage: "Usage: pokie certification verify <certDir> --source <bundleDir>",
                 positionals: ["certDir"],
-                options: [{flag: "--source", required: true, kind: "unvalidated"}],
+                options: [{flag: "--source", required: true, kind: "unvalidated", acceptedValue: "bundleDir"}],
             },
         ],
     },
@@ -140,10 +158,13 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
                 positionals: ["packageRoot"],
                 options: [
-                    {flag: "--port", required: false, kind: "validated"},
-                    {flag: "--host", required: false, kind: "unvalidated"},
-                    {flag: "--api-host", required: false, kind: "unvalidated"},
-                    {flag: "--api-port", required: false, kind: "validated"},
+                    {flag: "--port", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "4444"},
+                    {flag: "--host", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "0.0.0.0"},
+                    // defaultValue "127.0.0.1"/"3000": the command resolves apiHost/apiPort with `?? DEFAULT_API_HOST`
+                    // / `?? DEFAULT_API_PORT` before building options.apiAddress, so those concrete defaults (not
+                    // `undefined`) are what reach the createServer seam when the flag is omitted.
+                    {flag: "--api-host", required: false, kind: "unvalidated", defaultValue: "127.0.0.1", acceptedValue: "10.0.0.1"},
+                    {flag: "--api-port", required: false, kind: "validated", defaultValue: "3000", acceptedValue: "3001"},
                 ],
             },
         ],
@@ -161,8 +182,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
                 positionals: ["name (optional)"],
                 options: [
-                    {flag: "--seed", required: false, kind: "validated"},
-                    {flag: "--preset", required: false, kind: "validated"},
+                    {flag: "--seed", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "1"},
+                    {flag: "--preset", required: false, kind: "validated", defaultValue: "default", acceptedValue: "variant"},
                 ],
             },
         ],
@@ -178,11 +199,11 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "[--client-port <number>] [--client-host <string>] [--no-open]",
                 positionals: ["packageRoot"],
                 options: [
-                    {flag: "--port", required: false, kind: "validated"},
-                    {flag: "--host", required: false, kind: "unvalidated"},
-                    {flag: "--client-port", required: false, kind: "validated"},
-                    {flag: "--client-host", required: false, kind: "unvalidated"},
-                    {flag: "--no-open", required: false, kind: "boolean"},
+                    {flag: "--port", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "5001"},
+                    {flag: "--host", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "0.0.0.0"},
+                    {flag: "--client-port", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "5101"},
+                    {flag: "--client-host", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "0.0.0.0"},
+                    {flag: "--no-open", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
         ],
@@ -196,8 +217,12 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
                 positionals: ["leftReportJson", "rightReportJson"],
                 options: [
-                    {flag: "--format", required: false, kind: "validated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
+                    // --format has no dependency seam (it only chooses console.log(json) vs printSummary(diff), and
+                    // the extra "Diff written" line is guarded by `format !== "json"`), so its value is observed via
+                    // the same deterministic stdout shape the dispatch contract already verifies -- see
+                    // observeFormatFromStdout() in the contract test.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "diff-out.json"},
                 ],
             },
         ],
@@ -214,8 +239,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]",
                 positionals: ["serverSeed.txt"],
                 options: [
-                    {flag: "--out", required: false, kind: "unvalidated"},
-                    {flag: "--overwrite", required: false, kind: "boolean"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "commitment-out.json"},
+                    {flag: "--overwrite", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
             {
@@ -225,12 +250,12 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "--mode <modeName> [--out <file>] [--overwrite]",
                 positionals: ["serverSeedCommitment.json"],
                 options: [
-                    {flag: "--client-seed", required: true, kind: "unvalidated"},
-                    {flag: "--nonce", required: true, kind: "validated"},
-                    {flag: "--source", required: true, kind: "unvalidated"},
-                    {flag: "--mode", required: true, kind: "unvalidated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
-                    {flag: "--overwrite", required: false, kind: "boolean"},
+                    {flag: "--client-seed", required: true, kind: "unvalidated", acceptedValue: "player-seed"},
+                    {flag: "--nonce", required: true, kind: "validated", acceptedValue: "0"},
+                    {flag: "--source", required: true, kind: "unvalidated", acceptedValue: "bundleDir"},
+                    {flag: "--mode", required: true, kind: "unvalidated", acceptedValue: "base"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "commit-out.json"},
+                    {flag: "--overwrite", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
             {
@@ -239,10 +264,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]",
                 positionals: ["commitment.json"],
                 options: [
-                    {flag: "--server-seed", required: true, kind: "unvalidated"},
-                    {flag: "--source", required: true, kind: "unvalidated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
-                    {flag: "--overwrite", required: false, kind: "boolean"},
+                    {flag: "--server-seed", required: true, kind: "unvalidated", acceptedValue: "serverSeed.txt"},
+                    {flag: "--source", required: true, kind: "unvalidated", acceptedValue: "bundleDir"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "reveal-out.json"},
+                    {flag: "--overwrite", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
             {
@@ -250,8 +275,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>",
                 positionals: ["proof.json"],
                 options: [
-                    {flag: "--commitment", required: true, kind: "unvalidated"},
-                    {flag: "--source", required: true, kind: "unvalidated"},
+                    {flag: "--commitment", required: true, kind: "unvalidated", acceptedValue: "commitment.json"},
+                    {flag: "--source", required: true, kind: "unvalidated", acceptedValue: "bundleDir"},
                 ],
             },
         ],
@@ -281,11 +306,16 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
                 positionals: [],
                 options: [
-                    {flag: "--count", required: false, kind: "validated"},
-                    {flag: "--theme", required: false, kind: "validated"},
-                    {flag: "--words", required: false, kind: "validated"},
-                    {flag: "--seed", required: false, kind: "validated"},
-                    {flag: "--json", required: false, kind: "boolean"},
+                    {flag: "--count", required: false, kind: "validated", defaultValue: "1", acceptedValue: "2"},
+                    // acceptedValue is ALL_SLOT_GAME_NAME_THEMES[0] (the same value the accepted-values case passes),
+                    // observed at the generator's generateUnique(count, request).theme.
+                    {flag: "--theme", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: ALL_SLOT_GAME_NAME_THEMES[0]},
+                    {flag: "--words", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "3"},
+                    {flag: "--seed", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "555"},
+                    // --json has no dependency seam (it only chooses console.log(JSON.stringify(...)) vs printHuman(...),
+                    // unrelated to generateUnique's arguments), so it's observed via the deterministic stdout shape the
+                    // dispatch contract already verifies -- see observeFormatFromStdout() in the contract test.
+                    {flag: "--json", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
         ],
@@ -300,13 +330,15 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "build",
                 usage: "Usage: pokie outcomelibrary build <config.json> [--out <dir>]",
                 positionals: ["config.json"],
-                options: [{flag: "--out", required: false, kind: "unvalidated"}],
+                // defaultValue "outcomelibrary": path.join(path.dirname(configPath), "outcomelibrary") with configPath
+                // "config.json" resolves to "outcomelibrary", observed at writer.writeToDirectory's own outDir argument.
+                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "outcomelibrary", acceptedValue: "custom-outcomelib-dir"}],
             },
             {
                 verb: "validate",
                 usage: "Usage: pokie outcomelibrary validate <bundleDir> [--deep]",
                 positionals: ["bundleDir"],
-                options: [{flag: "--deep", required: false, kind: "boolean"}],
+                options: [{flag: "--deep", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"}],
             },
         ],
     },
@@ -320,15 +352,21 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
                 positionals: ["input.xlsx"],
                 options: [
-                    {flag: "--out", required: false, kind: "unvalidated"},
-                    {flag: "--format", required: false, kind: "validated"},
+                    // defaultValue "input.blueprint.json": defaultBlueprintPath("input.xlsx") resolves there, observed
+                    // at writeFile's own path argument.
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "input.blueprint.json", acceptedValue: "custom-blueprint-out.json"},
+                    // --format has no dependency seam (json vs printImportSummary; writeFile runs either way and the
+                    // "Wrote blueprint" line is guarded by `format !== "json"`) -- observed via stdout shape.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
                 ],
             },
             {
                 verb: "export",
                 usage: "Usage: pokie par export <config.json> [--out <output.xlsx>]",
                 positionals: ["config.json"],
-                options: [{flag: "--out", required: false, kind: "unvalidated"}],
+                // defaultValue "config.par.xlsx": defaultParSheetPath("config.json") resolves there, observed at
+                // exporter.exportToFile's own outPath argument.
+                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "config.par.xlsx", acceptedValue: "custom-output.xlsx"}],
             },
         ],
     },
@@ -341,10 +379,13 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
                 positionals: ["packageRoot"],
                 options: [
-                    {flag: "--round", required: true, kind: "validated"},
-                    {flag: "--seed", required: false, kind: "unvalidated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
-                    {flag: "--format", required: false, kind: "validated"},
+                    {flag: "--round", required: true, kind: "validated", acceptedValue: "3"},
+                    {flag: "--seed", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "demo-seed"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "replay-out.json"},
+                    // --format is validated-but-inert: parseArgs rejects anything other than "json" but never stores
+                    // the parsed value, and run() always prints the replay JSON unconditionally -- so accepted and
+                    // default are the same observable "json" (not a copy-paste mistake). Observed via stdout shape.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "json", acceptedValue: "json"},
                 ],
             },
         ],
@@ -358,8 +399,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
                 positionals: ["simulationReportJson"],
                 options: [
-                    {flag: "--format", required: false, kind: "validated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
+                    // --format has a real seam: renderers.markdown/renderers.html are two independently swappable
+                    // dependencies, and which one's render() actually fires is the observed evidence.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "markdown", acceptedValue: "html"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "report-out.html"},
                 ],
             },
         ],
@@ -373,8 +416,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
                 positionals: ["packageRoot"],
                 options: [
-                    {flag: "--port", required: false, kind: "validated"},
-                    {flag: "--host", required: false, kind: "unvalidated"},
+                    {flag: "--port", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "4321"},
+                    {flag: "--host", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "0.0.0.0"},
                 ],
             },
         ],
@@ -391,16 +434,23 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
                 positionals: ["packageRoot"],
                 options: [
-                    {flag: "--rounds", required: false, kind: "validated"},
-                    {flag: "--seed", required: false, kind: "unvalidated"},
-                    {flag: "--workers", required: false, kind: "validated"},
-                    {flag: "--mode", required: false, kind: "unvalidated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
-                    {flag: "--format", required: false, kind: "validated"},
-                    {flag: "--min-rounds", required: false, kind: "grouped"},
-                    {flag: "--rtp-tolerance", required: false, kind: "grouped"},
-                    {flag: "--check-interval", required: false, kind: "grouped"},
-                    {flag: "--stable-checks", required: false, kind: "grouped"},
+                    // defaultValue is SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS (SimCommand.parseArgs's own default),
+                    // observed at createParallelSimulationRunner's rounds argument.
+                    {flag: "--rounds", required: false, kind: "validated", defaultValue: String(SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS), acceptedValue: "500"},
+                    {flag: "--seed", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "demo"},
+                    {flag: "--workers", required: false, kind: "validated", defaultValue: "1", acceptedValue: "2"},
+                    {flag: "--mode", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "base"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "sim-out.json"},
+                    // --format has no dependency seam (json vs printSummary; the "Report written" line is guarded by
+                    // the non-json branch) -- observed via stdout shape.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                    // The four convergence flags reach options.convergence.{minRounds,rtpTolerance,checkIntervalRounds,
+                    // stableChecks} on the same createParallelSimulationRunner call; convergence stays `undefined` (so
+                    // each field observes "undefined") unless the whole group is given.
+                    {flag: "--min-rounds", required: false, kind: "grouped", defaultValue: "undefined", acceptedValue: "1000"},
+                    {flag: "--rtp-tolerance", required: false, kind: "grouped", defaultValue: "undefined", acceptedValue: "0.5"},
+                    {flag: "--check-interval", required: false, kind: "grouped", defaultValue: "undefined", acceptedValue: "100"},
+                    {flag: "--stable-checks", required: false, kind: "grouped", defaultValue: "undefined", acceptedValue: "2"},
                 ],
             },
         ],
@@ -418,21 +468,27 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 verb: "export",
                 usage: "Usage: pokie stakeengine export <config.json> [--out <dir>]",
                 positionals: ["config.json"],
-                options: [{flag: "--out", required: false, kind: "unvalidated"}],
+                // defaultValue "stakeengine": path.join(path.dirname(configPath), "stakeengine") resolves there,
+                // observed at exporter.exportToDirectory's own outDir argument.
+                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "stakeengine", acceptedValue: "custom-stakeengine-out"}],
             },
             {
                 verb: "import",
                 usage: "Usage: pokie stakeengine import <stakeDir> [--out <dir>]",
                 positionals: ["stakeDir"],
-                options: [{flag: "--out", required: false, kind: "unvalidated"}],
+                // defaultValue "stakeDir-imported": path.join(path.dirname(stakeDir), `${path.basename(stakeDir)}-imported`)
+                // with stakeDir "stakeDir" resolves there, observed at importWriter.writeToDirectory's own outDir argument.
+                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "stakeDir-imported", acceptedValue: "custom-stakeengine-import-out"}],
             },
             {
                 verb: "analyze",
                 usage: "Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]",
                 positionals: ["stakeDir"],
                 options: [
-                    {flag: "--format", required: false, kind: "validated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
+                    // --format has no dependency seam (json vs printAnalyzeSummary; the "Report written" line is guarded
+                    // by the non-json branch) -- observed via stdout shape.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "analyze-out.json"},
                 ],
             },
             {
@@ -442,8 +498,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]",
                 positionals: ["leftStakeDir", "rightStakeDir"],
                 options: [
-                    {flag: "--format", required: false, kind: "validated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
+                    // --format has no dependency seam (json vs printDiffSummary; the "Diff written" line is guarded by
+                    // the non-json branch) -- observed via stdout shape.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "diff-out.json"},
                 ],
             },
         ],
@@ -457,9 +515,9 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
                 positionals: ["projectRoot (optional)"],
                 options: [
-                    {flag: "--port", required: false, kind: "validated"},
-                    {flag: "--host", required: false, kind: "unvalidated"},
-                    {flag: "--no-open", required: false, kind: "boolean"},
+                    {flag: "--port", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "7000"},
+                    {flag: "--host", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "0.0.0.0"},
+                    {flag: "--no-open", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
         ],
@@ -473,8 +531,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
                 positionals: ["packageRoot"],
                 options: [
-                    {flag: "--format", required: false, kind: "validated"},
-                    {flag: "--out", required: false, kind: "unvalidated"},
+                    // --format has no dependency seam (json vs printSummary; the "Report written" line is guarded by
+                    // the non-json branch) -- observed via stdout shape.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "validate-out.json"},
                 ],
             },
         ],
@@ -527,6 +587,18 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "Usage: pokie build <config.json> [--out <dir>] [--dry-run]\n" +
             "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.",
+    },
+    {
+        // Placed before the --dry-run case so it is the case groupCasesByVerb().valid.find() picks as the
+        // default (omitted) evidence for both --out and --dry-run: a non-dry-run build with no --out, whose
+        // injected generator therefore actually runs with outDir === undefined (String(undefined) === "undefined")
+        // and whose being-called-at-all is --dry-run's own "false" evidence.
+        command: "build",
+        kind: "valid",
+        label: "<config.json> (no --out, no --dry-run — writes via the injected generator using its own default output directory)",
+        args: ["config.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
     {
         command: "build",
@@ -583,6 +655,19 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "random --seed <integer> --preset variant --dry-run (accepted --preset value)",
         args: ["random", "--seed", "4242", "--preset", "variant", "--dry-run"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        // Placed before the "random --out <dir> --dry-run" case so it wins the accepted-value lookup for random's
+        // --out (that dry-run case never calls GamePackageGenerating.generate, so --out's value cannot be observed
+        // there) and is also the default (omitted) evidence for random's --dry-run (a non-dry-run random build
+        // whose generator actually runs; it also runs the post-build smoke simulation, which every random build
+        // does when a seed is present).
+        command: "build",
+        kind: "valid",
+        label: "random --seed <integer> --out <dir> (accepted --out value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)",
+        args: ["random", "--seed", "999", "--out", "random-accepted-out-dir"],
         expectedExitCode: 0,
         expectStdout: "text",
     },

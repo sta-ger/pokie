@@ -1,12 +1,18 @@
 import {
+    computeFairnessCommitment,
     computeFairnessServerSeedCommitment,
     FairnessRoundProof,
     GamePackageGenerating,
+    HtmlSimulationReportRenderer,
+    MarkdownSimulationReportRenderer,
     OutcomeLibraryBundleReading,
     ParallelSimulationRunner,
     PokieGame,
+    RandomGameBlueprintGenerator,
+    RandomGameBlueprintVariantStrategy,
     ReplayDescriptor,
     SimulationReport,
+    SlotGameNameGenerator,
     StakeEngineStandaloneAnalyzer,
 } from "pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
@@ -116,6 +122,45 @@ const SAMPLE_SIMULATION_REPORT: SimulationReport = {
     spinsPerSecond: 2000,
 };
 
+// Populated as a side effect of registerCommandsForValidCases()'s own stub callbacks actually running
+// during real command execution (dispatch(), invoked by the "CLI dispatch contract" describe block
+// below) -- records, per "valid" CLI_CONTRACT_CASES case (keyed the same way that registry already
+// is: `${command}::${label}`), the exact value each option this case exercises reached at that
+// option's own command-observable seam: an injected dependency argument the real, unstubbed command
+// class threads the value through unmodified, or (for an option whose entire effect is which of two
+// deterministic stdout shapes it prints, and which therefore has no dependency seam at all -- see the
+// per-option comments in registerCommandsForValidCases() for exactly which options this applies to)
+// the same stdout-shape signal the "CLI dispatch contract" describe block already independently
+// verifies via testCase.expectStdout, so tying an option's value evidence to it isn't circular: that
+// block proves expectStdout matches real dispatch output before this file's own "CLI option value
+// contract" describe block (placed after it, so its assertions run after OBSERVED_OPTION_VALUES is
+// populated) ever reads it.
+const OBSERVED_OPTION_VALUES = new Map<string, Record<string, string>>();
+
+function observe(caseKey: string, flag: string, value: unknown): void {
+    const values = OBSERVED_OPTION_VALUES.get(caseKey) ?? {};
+    values[flag] = String(value);
+    OBSERVED_OPTION_VALUES.set(caseKey, values);
+}
+
+// The handful of options whose whole effect is which of two deterministic stdout shapes they print
+// (no dependency seam at all -- json vs a human summary, or --json vs printHuman) are observed, per
+// case, from the same testCase.expectStdout the "CLI dispatch contract" block already verifies rather
+// than from a runtime callback. One entry per command that has such an option; a command whose verb
+// doesn't actually declare that flag (e.g. par export, stakeengine export/import) simply records a
+// value the "CLI option value contract" block never reads for it, which is harmless. "replay" is the
+// deliberate degenerate case: its --format is validated-but-inert (parsed, then never used -- run()
+// always prints JSON), so both shapes map to the same "json".
+const STDOUT_DERIVED_FORMAT: Record<string, {flag: string; json: string; summary: string}> = {
+    diff: {flag: "--format", json: "json", summary: "summary"},
+    name: {flag: "--json", json: "true", summary: "false"},
+    par: {flag: "--format", json: "json", summary: "summary"},
+    replay: {flag: "--format", json: "json", summary: "json"},
+    sim: {flag: "--format", json: "json", summary: "summary"},
+    stakeengine: {flag: "--format", json: "json", summary: "summary"},
+    validate: {flag: "--format", json: "json", summary: "summary"},
+};
+
 // Builds the one stubbed CliCommandHandling instance a given "valid" CLI_CONTRACT_CASES entry
 // (looked up by `${command}::${label}`, so a case with no matching builder fails loudly rather than
 // silently skipping) runs through the real dispatch() — every dependency that would otherwise touch
@@ -124,28 +169,160 @@ const SAMPLE_SIMULATION_REPORT: SimulationReport = {
 // tests/cli/commands/*.test.ts already uses for its own per-command success-path tests); everything
 // else (argv parsing, control flow, console output, exit code) is the real, unstubbed command class.
 function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
-    const builders: Record<string, () => CliCommandHandling> = {
-        "build::<config.json> --dry-run validates and previews without writing anything (default, no --out)": () =>
-            new BuildCommand(TEST_VERSION, () => createStarterGameBlueprint()),
-        "build::<config.json> --out <dir> (accepted --out value, default --dry-run, writes via the injected generator)": () =>
+    const builders: Record<string, (key: string) => CliCommandHandling> = {
+        "build::<config.json> (no --out, no --dry-run — writes via the injected generator using its own default output directory)": (key) =>
+            new BuildCommand(
+                TEST_VERSION,
+                () => createStarterGameBlueprint(),
+                undefined,
+                // Non-dry-run build with no --out: the generator actually runs with outDir === undefined
+                // (String(undefined) === "undefined"), and its being called at all is --dry-run's "false" evidence.
+                stub<GamePackageGenerating>({
+                    generate: (blueprint, cwd, outDir) => {
+                        observe(key, "--out", outDir);
+                        observe(key, "--dry-run", "false");
+                        return {
+                            createdFiles: ["package.json"],
+                            projectRoot: "/fake/build-default-out",
+                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            buildInfo: {blueprintHash: "hash-default", source: undefined},
+                            unchanged: false,
+                        };
+                    },
+                }),
+            ),
+        "build::<config.json> --dry-run validates and previews without writing anything (default, no --out)": (key) => {
+            // --dry-run's accepted "true": pre-set here (registration time); the injected generator flips it to
+            // "false" only if it wrongly runs during a dry-run (buildFromBlueprint returns before generate()).
+            observe(key, "--dry-run", "true");
+            return new BuildCommand(
+                TEST_VERSION,
+                () => createStarterGameBlueprint(),
+                undefined,
+                stub<GamePackageGenerating>({
+                    generate: () => {
+                        observe(key, "--dry-run", "false");
+                        throw new Error("GamePackageGenerating.generate() must not run during --dry-run.");
+                    },
+                }),
+            );
+        },
+        "build::<config.json> --out <dir> (accepted --out value, default --dry-run, writes via the injected generator)": (key) =>
             new BuildCommand(
                 TEST_VERSION,
                 () => createStarterGameBlueprint(),
                 undefined,
                 stub<GamePackageGenerating>({
-                    generate: () => ({
-                        createdFiles: ["package.json"],
-                        projectRoot: "/fake/build-out-dir",
-                        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                        buildInfo: {blueprintHash: "hash-out", source: undefined},
-                        unchanged: false,
-                    }),
+                    generate: (blueprint, cwd, outDir) => {
+                        observe(key, "--out", outDir);
+                        observe(key, "--dry-run", "false");
+                        return {
+                            createdFiles: ["package.json"],
+                            projectRoot: "/fake/build-out-dir",
+                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            buildInfo: {blueprintHash: "hash-out", source: undefined},
+                            unchanged: false,
+                        };
+                    },
                 }),
             ),
         "build::--init-blueprint <file> writes the starter blueprint template": () =>
             new BuildCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, () => false, () => undefined),
-        "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": () => new BuildCommand(TEST_VERSION),
-        "build::random --out <dir> --dry-run (accepted --out value, default --seed/--preset)": () => new BuildCommand(TEST_VERSION),
+        "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": (key) => {
+            // --preset variant routes runRandom() to the variantRandomBlueprintGenerator (12th ctor param); wrapping
+            // a real one keeps its output byte-identical while observing --seed/--preset at its own generate() seam.
+            // --dry-run is accepted "true" (pre-set; the never-run GamePackageGenerating throw-stub flips it only on
+            // a regression), and --out defaults to "undefined" (this dry-run build never reaches the generate() seam).
+            observe(key, "--dry-run", "true");
+            observe(key, "--out", "undefined");
+            const variantGenerator = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
+            return new BuildCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                stub<GamePackageGenerating>({
+                    generate: () => {
+                        observe(key, "--dry-run", "false");
+                        throw new Error("GamePackageGenerating.generate() must not run during a --dry-run random build.");
+                    },
+                }),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    generate: (input) => {
+                        observe(key, "--seed", input?.seed);
+                        observe(key, "--preset", "variant");
+                        return variantGenerator.generate(input);
+                    },
+                },
+            );
+        },
+        "build::random --seed <integer> --out <dir> (accepted --out value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)": (key) => {
+            // Non-dry-run random build (preset defaults, so runRandom() uses the randomBlueprintGenerator, 10th ctor
+            // param): observes --out at GamePackageGenerating.generate()'s outDir, --dry-run "false" (generate ran),
+            // and --preset "default" at the random generator's own seam; a real random build with a seed also runs
+            // the post-build smoke simulation, hence the runSmoke stub.
+            const defaultGenerator = new RandomGameBlueprintGenerator();
+            return new BuildCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                stub<GamePackageGenerating>({
+                    generate: (blueprint, cwd, outDir) => {
+                        observe(key, "--out", outDir);
+                        observe(key, "--dry-run", "false");
+                        return {
+                            createdFiles: ["package.json"],
+                            projectRoot: "/fake/random-accepted-out",
+                            manifest: {id: "random-slot-999", name: "Random Slot 999", version: "0.1.0"},
+                            buildInfo: {blueprintHash: "hash-999", source: undefined},
+                            unchanged: false,
+                        };
+                    },
+                }),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    generate: (input) => {
+                        observe(key, "--seed", input?.seed);
+                        observe(key, "--preset", "default");
+                        return defaultGenerator.generate(input);
+                    },
+                },
+                () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
+            );
+        },
+        "build::random --out <dir> --dry-run (accepted --out value, default --seed/--preset)": (key) => {
+            // The --seed default (omitted) evidence for random: a dry-run build whose randomBlueprintGenerator (10th
+            // ctor param) runs with seed undefined; dry-run means the GamePackageGenerating seam is never reached.
+            const defaultGenerator = new RandomGameBlueprintGenerator();
+            return new BuildCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    generate: (input) => {
+                        observe(key, "--seed", input?.seed);
+                        observe(key, "--preset", "default");
+                        return defaultGenerator.generate(input);
+                    },
+                },
+            );
+        },
         "build::random --seed <integer> (default --dry-run/--out/--preset, writes via the injected generator, runs the smoke simulation)": () =>
             new BuildCommand(
                 TEST_VERSION,
@@ -169,25 +346,54 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
             ),
 
-        "certification::build <bundleDir> <config.json> (default --out)": () =>
+        "certification::build <bundleDir> <config.json> (default --out)": (key) =>
             new CertificationCommand(
                 TEST_VERSION,
-                {buildFromBundle: () => Promise.resolve({outDir: "out", files: ["evidence.json"], manifest: undefined, issues: []})},
+                {
+                    buildFromBundle: (bundleDir, modes, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({outDir, files: ["evidence.json"], manifest: undefined, issues: []});
+                    },
+                },
                 undefined,
                 () => ({modes: [{modeName: "base", seed: "cert-seed", sampleCount: 10}]}),
             ),
-        "certification::build <bundleDir> <config.json> --out <dir> (accepted --out value)": () =>
+        "certification::build <bundleDir> <config.json> --out <dir> (accepted --out value)": (key) =>
             new CertificationCommand(
                 TEST_VERSION,
-                {buildFromBundle: () => Promise.resolve({outDir: "customCertOut", files: ["evidence.json"], manifest: undefined, issues: []})},
+                {
+                    buildFromBundle: (bundleDir, modes, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({outDir, files: ["evidence.json"], manifest: undefined, issues: []});
+                    },
+                },
                 undefined,
                 () => ({modes: [{modeName: "base", seed: "cert-seed", sampleCount: 10}]}),
             ),
-        "certification::verify <certDir> --source <bundleDir>": () =>
-            new CertificationCommand(TEST_VERSION, undefined, {verify: () => Promise.resolve([])}),
+        "certification::verify <certDir> --source <bundleDir>": (key) =>
+            new CertificationCommand(TEST_VERSION, undefined, {
+                verify: (certDir, options) => {
+                    observe(key, "--source", options?.sourceBundleDir);
+                    return Promise.resolve([]);
+                },
+            }),
 
-        "client::<packageRoot> (default host/port)": () => new ClientCommand(() => stubAddressServer(4000)),
-        "client::<packageRoot> --port --host --api-host --api-port (accepted values)": () => new ClientCommand(() => stubAddressServer(4444)),
+        "client::<packageRoot> (default host/port)": (key) =>
+            new ClientCommand((clientRoot, options) => {
+                observe(key, "--port", options.port);
+                observe(key, "--host", options.host);
+                observe(key, "--api-host", options.apiAddress?.host);
+                observe(key, "--api-port", options.apiAddress?.port);
+                return stubAddressServer(options.port ?? 4000);
+            }),
+        "client::<packageRoot> --port --host --api-host --api-port (accepted values)": (key) =>
+            new ClientCommand((clientRoot, options) => {
+                observe(key, "--port", options.port);
+                observe(key, "--host", options.host);
+                observe(key, "--api-host", options.apiAddress?.host);
+                observe(key, "--api-port", options.apiAddress?.port);
+                return stubAddressServer(options.port ?? 4444);
+            }),
 
         "create::<name>": () =>
             new CreateCommand(TEST_VERSION, {
@@ -199,11 +405,22 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     skippedFiles: [],
                 }),
             }),
-        "create::--random --seed <integer> (accepted --seed value, default --preset)": () =>
-            new CreateCommand(
+        "create::--random --seed <integer> (accepted --seed value, default --preset)": (key) => {
+            // --seed/--preset reach runRandom()'s generator.generate({seed, overrides}) seam, where `generator` is
+            // the randomBlueprintGenerator (3rd ctor param) for the default preset; wrapping a real one observes
+            // both while keeping its (validated-by the real validator) output identical. The packageGenerator (5th)
+            // and runSmoke (6th) stay stubbed exactly as before to keep the write/smoke steps side-effect-free.
+            const defaultGenerator = new RandomGameBlueprintGenerator();
+            return new CreateCommand(
                 TEST_VERSION,
                 undefined,
-                undefined,
+                {
+                    generate: (input) => {
+                        observe(key, "--seed", input?.seed);
+                        observe(key, "--preset", "default");
+                        return defaultGenerator.generate(input);
+                    },
+                },
                 undefined,
                 {
                     generate: () => ({
@@ -222,9 +439,13 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     }),
                 },
                 () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
-            ),
-        "create::--random --preset variant (accepted --preset value, default --seed)": () =>
-            new CreateCommand(
+            );
+        },
+        "create::--random --preset variant (accepted --preset value, default --seed)": (key) => {
+            // --preset variant routes to the variantRandomBlueprintGenerator (7th ctor param); wrapping a real one
+            // observes --preset "variant" and --seed's default (undefined) at its own generate() seam.
+            const variantGenerator = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
+            return new CreateCommand(
                 TEST_VERSION,
                 undefined,
                 undefined,
@@ -246,53 +467,142 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     }),
                 },
                 () => Promise.resolve({ok: true, rounds: 150, roundsRequested: 150, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
-            ),
-
-        "dev::<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)": () =>
-            new DevCommand(
-                () => Promise.resolve(stub<PokieGame>({})),
-                () => stubAddressServer(5000),
                 {
-                    createClientServer: () => stubAddressServer(5100),
+                    generate: (input) => {
+                        observe(key, "--seed", input?.seed);
+                        observe(key, "--preset", "variant");
+                        return variantGenerator.generate(input);
+                    },
+                },
+            );
+        },
+
+        "dev::<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)": (key) => {
+            // --no-open accepted "true": pre-set; openBrowser (which run() calls only when !noOpen) flips it to
+            // "false" only on a regression. This case is also the default (omitted) evidence for the four host/port
+            // options, observed at the createApiServer/createClientServer seams as undefined.
+            observe(key, "--no-open", "true");
+            return new DevCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                (game, options) => {
+                    observe(key, "--port", options.port);
+                    observe(key, "--host", options.host);
+                    return stubAddressServer(5000);
+                },
+                {
+                    createClientServer: (clientRoot, options) => {
+                        observe(key, "--client-port", options.port);
+                        observe(key, "--client-host", options.host);
+                        return stubAddressServer(5100);
+                    },
                     waitForHealth: () => Promise.resolve(),
-                    openBrowser: () => undefined,
+                    openBrowser: () => {
+                        observe(key, "--no-open", "false");
+                    },
                     clientRoot: "/fake/client/root",
                     process: fakeProcess(),
                 },
-            ),
-        "dev::<packageRoot> --port --host --client-port --client-host (accepted values, default --no-open)": () =>
-            new DevCommand(
+            );
+        },
+        "dev::<packageRoot> --port --host --client-port --client-host (accepted values, default --no-open)": (key) => {
+            observe(key, "--no-open", "true");
+            return new DevCommand(
                 () => Promise.resolve(stub<PokieGame>({})),
-                () => stubAddressServer(5001),
+                (game, options) => {
+                    observe(key, "--port", options.port);
+                    observe(key, "--host", options.host);
+                    return stubAddressServer(5001);
+                },
                 {
-                    createClientServer: () => stubAddressServer(5101),
+                    createClientServer: (clientRoot, options) => {
+                        observe(key, "--client-port", options.port);
+                        observe(key, "--client-host", options.host);
+                        return stubAddressServer(5101);
+                    },
                     waitForHealth: () => Promise.resolve(),
-                    openBrowser: () => undefined,
+                    openBrowser: () => {
+                        observe(key, "--no-open", "false");
+                    },
                     clientRoot: "/fake/client/root",
                     process: fakeProcess(),
                 },
+            );
+        },
+
+        "diff::<left> <right> --format json (accepted --format value, machine-readable shape)": (key) => {
+            // --out is omitted here (this is its default evidence): DiffCommand only calls writeFile when
+            // options.out is set, so the seam is structurally never reached -- pre-set "undefined".
+            observe(key, "--out", "undefined");
+            return new DiffCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT));
+        },
+        "diff::<left> <right> --out <file> (accepted --out value, default --format summary)": (key) =>
+            new DiffCommand(
+                () => JSON.stringify(SAMPLE_SIMULATION_REPORT),
+                (file) => {
+                    observe(key, "--out", file);
+                },
             ),
 
-        "diff::<left> <right> --format json (accepted --format value, machine-readable shape)": () =>
-            new DiffCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT)),
-        "diff::<left> <right> --out <file> (accepted --out value, default --format summary)": () =>
-            new DiffCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT), () => undefined),
-
-        "fairness::seed-commit <serverSeed.txt> (default, no --out — prints the commitment JSON)": () =>
-            new FairnessCommand(undefined, undefined, undefined, undefined, undefined, undefined, () => "server-seed-value\n"),
-        "fairness::seed-commit <serverSeed.txt> --out --overwrite (accepted values)": () =>
-            new FairnessCommand(undefined, undefined, undefined, undefined, undefined, undefined, () => "server-seed-value\n", undefined, () => undefined),
-        "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode (accepted --nonce value)": () =>
-            new FairnessCommand(
+        "fairness::seed-commit <serverSeed.txt> (default, no --out — prints the commitment JSON)": (key) => {
+            // --out default: emit() only calls writeFile when out !== undefined, so with no --out the seam is never
+            // reached -- pre-set "undefined". --overwrite default "false": with no --out, emit()'s fileExists guard
+            // never runs either, so the flag's own parsed default is the observed value -- pre-set "false".
+            observe(key, "--out", "undefined");
+            observe(key, "--overwrite", "false");
+            return new FairnessCommand(undefined, undefined, undefined, undefined, undefined, undefined, () => "server-seed-value\n");
+        },
+        "fairness::seed-commit <serverSeed.txt> --out --overwrite (accepted values)": (key) => {
+            // --overwrite accepted "true": pre-set; --overwrite short-circuits emit()'s `!overwrite && fileExists(out)`
+            // guard so fileExists must NOT run -- the fileExists stub flips it to "false" only on a regression. --out
+            // accepted is observed at writeFile's own path argument.
+            observe(key, "--overwrite", "true");
+            return new FairnessCommand(
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => "server-seed-value\n",
+                () => {
+                    observe(key, "--overwrite", "false");
+                    return false;
+                },
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+            );
+        },
+        "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode (accepted --nonce value)": (key) => {
+            observe(key, "--out", "undefined");
+            observe(key, "--overwrite", "false");
+            return new FairnessCommand(
                 undefined,
                 // A genuinely valid FairnessServerSeedCommitment (real computeFairnessServerSeedCommitment
                 // over an arbitrary string), since the real (unstubbed) computeFairnessCommitment this case
                 // exercises validates its shape strictly — a hand-rolled placeholder object fails that check.
                 () => computeFairnessServerSeedCommitment({serverSeed: "server-seed-value"}),
-                stub<OutcomeLibraryBundleReading>({readModeIndex: () => Promise.resolve({libraryId: "lib1", libraryHash: "hash1"})}),
-            ),
-        "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode --out --overwrite (accepted values)": () =>
-            new FairnessCommand(
+                stub<OutcomeLibraryBundleReading>({
+                    readModeIndex: (sourceBundleDir, modeName) => {
+                        observe(key, "--source", sourceBundleDir);
+                        observe(key, "--mode", modeName);
+                        return Promise.resolve({libraryId: "lib1", libraryHash: "hash1"});
+                    },
+                }),
+                undefined,
+                undefined,
+                // --client-seed/--nonce reach computeCommitment(input) (6th ctor param); delegating to the real
+                // computeFairnessCommitment keeps the resulting commitment genuinely valid.
+                (input) => {
+                    observe(key, "--client-seed", input.clientSeed);
+                    observe(key, "--nonce", input.nonce);
+                    return computeFairnessCommitment(input);
+                },
+            );
+        },
+        "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode --out --overwrite (accepted values)": (key) => {
+            observe(key, "--overwrite", "true");
+            return new FairnessCommand(
                 undefined,
                 () => computeFairnessServerSeedCommitment({serverSeed: "server-seed-value"}),
                 stub<OutcomeLibraryBundleReading>({readModeIndex: () => Promise.resolve({libraryId: "lib1", libraryHash: "hash1"})}),
@@ -300,11 +610,41 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 undefined,
+                () => {
+                    observe(key, "--overwrite", "false");
+                    return false;
+                },
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+            );
+        },
+        "fairness::reveal <commitment.json> --server-seed --source": (key) => {
+            observe(key, "--out", "undefined");
+            observe(key, "--overwrite", "false");
+            return new FairnessCommand(
                 undefined,
-                () => undefined,
-            ),
-        "fairness::reveal <commitment.json> --server-seed --source": () =>
-            new FairnessCommand(
+                () => ({}),
+                undefined,
+                // --source reaches proofBuilder.build(commitment, serverSeed, sourceBundleDir) (4th ctor param).
+                {
+                    build: (commitment, serverSeed, sourceBundleDir) => {
+                        observe(key, "--source", sourceBundleDir);
+                        return Promise.resolve(stub<FairnessRoundProof>({}));
+                    },
+                },
+                undefined,
+                undefined,
+                // --server-seed reaches readTextFile(filePath) (7th ctor param).
+                (filePath) => {
+                    observe(key, "--server-seed", filePath);
+                    return "revealed-seed\n";
+                },
+            );
+        },
+        "fairness::reveal <commitment.json> --server-seed --source --out --overwrite (accepted values)": (key) => {
+            observe(key, "--overwrite", "true");
+            return new FairnessCommand(
                 undefined,
                 () => ({}),
                 undefined,
@@ -312,21 +652,35 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => "revealed-seed\n",
-            ),
-        "fairness::reveal <commitment.json> --server-seed --source --out --overwrite (accepted values)": () =>
-            new FairnessCommand(
-                undefined,
-                () => ({}),
-                undefined,
-                {build: () => Promise.resolve(stub<FairnessRoundProof>({}))},
-                undefined,
-                undefined,
-                () => "revealed-seed\n",
-                undefined,
-                () => undefined,
-            ),
-        "fairness::verify <proof.json> --commitment --source": () =>
-            new FairnessCommand({verify: () => Promise.resolve([])}, () => ({})),
+                () => {
+                    observe(key, "--overwrite", "false");
+                    return false;
+                },
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+            );
+        },
+        "fairness::verify <proof.json> --commitment --source": (key) => {
+            // runVerify() calls loadJson twice in order (proofPath, then commitmentPath); --commitment is the 2nd
+            // call's path. --source reaches verifier.verify(proofCandidate, {commitment, sourceBundleDir}).
+            let loadCount = 0;
+            return new FairnessCommand(
+                {
+                    verify: (proofCandidate, context) => {
+                        observe(key, "--source", context?.sourceBundleDir);
+                        return Promise.resolve([]);
+                    },
+                },
+                (filePath) => {
+                    loadCount++;
+                    if (loadCount === 2) {
+                        observe(key, "--commitment", filePath);
+                    }
+                    return {};
+                },
+            );
+        },
 
         "init::(no args — scaffolds the current project via the injected scaffolder)": () =>
             new InitCommand(TEST_VERSION, {
@@ -344,123 +698,363 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 inspect: () => ({packageRoot: "pkg", valid: true, generated: false, packageJson: {name: "pkg", version: "0.1.0"}}),
             }),
 
-        "name::(no args — default count 1, human-readable output)": () => new NameCommand(),
-        "name::--json (machine-readable shape)": () => new NameCommand(),
-        "name::--count --theme --words --seed (accepted values)": () => new NameCommand(),
+        // --count/--theme/--words/--seed reach the generator's generateUnique(count, request); wrapping a real
+        // SlotGameNameGenerator observes each one while keeping the (deterministic, offline) output identical.
+        // --json has no such seam and is observed from testCase.expectStdout via STDOUT_DERIVED_FORMAT instead.
+        "name::(no args — default count 1, human-readable output)": (key) => {
+            const realNameGenerator = new SlotGameNameGenerator();
+            return new NameCommand({
+                generate: (request) => realNameGenerator.generate(request),
+                generateUnique: (count, request) => {
+                    observe(key, "--count", count);
+                    observe(key, "--theme", request?.theme);
+                    observe(key, "--words", request?.wordCount);
+                    observe(key, "--seed", request?.seed);
+                    return realNameGenerator.generateUnique(count, request);
+                },
+            });
+        },
+        "name::--json (machine-readable shape)": (key) => {
+            const realNameGenerator = new SlotGameNameGenerator();
+            return new NameCommand({
+                generate: (request) => realNameGenerator.generate(request),
+                generateUnique: (count, request) => {
+                    observe(key, "--count", count);
+                    observe(key, "--theme", request?.theme);
+                    observe(key, "--words", request?.wordCount);
+                    observe(key, "--seed", request?.seed);
+                    return realNameGenerator.generateUnique(count, request);
+                },
+            });
+        },
+        "name::--count --theme --words --seed (accepted values)": (key) => {
+            const realNameGenerator = new SlotGameNameGenerator();
+            return new NameCommand({
+                generate: (request) => realNameGenerator.generate(request),
+                generateUnique: (count, request) => {
+                    observe(key, "--count", count);
+                    observe(key, "--theme", request?.theme);
+                    observe(key, "--words", request?.wordCount);
+                    observe(key, "--seed", request?.seed);
+                    return realNameGenerator.generateUnique(count, request);
+                },
+            });
+        },
 
-        "outcomelibrary::build <config.json> (default --out)": () =>
+        "outcomelibrary::build <config.json> (default --out)": (key) =>
             new OutcomeLibraryCommand(
                 TEST_VERSION,
-                {writeToDirectory: () => Promise.resolve({outDir: "out", files: ["config.json"], manifest: undefined, issues: []})},
+                {
+                    writeToDirectory: (modes, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({outDir, files: ["config.json"], manifest: undefined, issues: []});
+                    },
+                },
                 undefined,
                 () => ({modes: [{modeName: "base", libraryPath: "lib.json"}], libraryId: "lib1", schemaVersion: 1, outcomes: []}),
             ),
-        "outcomelibrary::build <config.json> --out <dir> (accepted --out value)": () =>
+        "outcomelibrary::build <config.json> --out <dir> (accepted --out value)": (key) =>
             new OutcomeLibraryCommand(
                 TEST_VERSION,
-                {writeToDirectory: () => Promise.resolve({outDir: "custom-outcomelib-dir", files: ["config.json"], manifest: undefined, issues: []})},
+                {
+                    writeToDirectory: (modes, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({outDir, files: ["config.json"], manifest: undefined, issues: []});
+                    },
+                },
                 undefined,
                 () => ({modes: [{modeName: "base", libraryPath: "lib.json"}], libraryId: "lib1", schemaVersion: 1, outcomes: []}),
             ),
-        "outcomelibrary::validate <bundleDir>": () =>
-            new OutcomeLibraryCommand(TEST_VERSION, undefined, {validate: () => Promise.resolve([])}),
-        "outcomelibrary::validate <bundleDir> --deep (accepted --deep flag)": () =>
-            new OutcomeLibraryCommand(TEST_VERSION, undefined, {validate: () => Promise.resolve([])}),
-
-        "par::import <input.xlsx> --format json (accepted --format value, machine-readable shape)": () =>
-            new ParCommand(
-                TEST_VERSION,
-                {importFromFile: () => Promise.resolve({blueprint: createStarterGameBlueprint(), provenance: undefined, issues: []})},
-                undefined,
-                undefined,
-                () => undefined,
-            ),
-        "par::import <input.xlsx> --out <file> (accepted --out value, default --format summary)": () =>
-            new ParCommand(
-                TEST_VERSION,
-                {importFromFile: () => Promise.resolve({blueprint: createStarterGameBlueprint(), provenance: undefined, issues: []})},
-                undefined,
-                undefined,
-                () => undefined,
-            ),
-        "par::export <config.json> (default --out)": () =>
-            new ParCommand(TEST_VERSION, undefined, {exportToFile: () => Promise.resolve([])}, () => createStarterGameBlueprint()),
-        "par::export <config.json> --out <file> (accepted --out value)": () =>
-            new ParCommand(TEST_VERSION, undefined, {exportToFile: () => Promise.resolve([])}, () => createStarterGameBlueprint()),
-
-        "replay::<packageRoot> --round <number> (accepted --round value, prints the replay JSON)": () =>
-            new ReplayCommand(() => Promise.resolve(stub<PokieGame>({})), undefined, {record: () => stub<ReplayDescriptor>({})}),
-        "replay::<packageRoot> --round --seed --out --format (accepted --seed/--out/--format values)": () =>
-            new ReplayCommand(() => Promise.resolve(stub<PokieGame>({})), () => undefined, {record: () => stub<ReplayDescriptor>({})}),
-
-        "report::<simulationReportJson> (default --format markdown)": () => new ReportCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT)),
-        "report::<simulationReportJson> --format html --out <file> (accepted --format/--out values)": () =>
-            new ReportCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT), () => undefined),
-
-        "serve::<packageRoot> (default host/port)": () => new ServeCommand(() => Promise.resolve(stub<PokieGame>({})), () => stubAddressServer(4321)),
-        "serve::<packageRoot> --port --host (accepted --port/--host values)": () =>
-            new ServeCommand(() => Promise.resolve(stub<PokieGame>({})), () => stubAddressServer(4321)),
-
-        "sim::<packageRoot> --format json (machine-readable shape, default --rounds/--workers)": () =>
-            new SimCommand(
-                () => Promise.resolve(stub<PokieGame>({})),
-                undefined,
-                {build: () => SAMPLE_SIMULATION_REPORT},
-                undefined,
-                () => stub<ParallelSimulationRunner>({run: () => Promise.resolve({})}),
-            ),
-        "sim::<packageRoot> --rounds --seed --workers --mode --out (accepted values, default --format summary)": () =>
-            new SimCommand(
-                () => Promise.resolve(stub<PokieGame>({})),
-                () => undefined,
-                {build: () => SAMPLE_SIMULATION_REPORT},
-                undefined,
-                () => stub<ParallelSimulationRunner>({run: () => Promise.resolve({})}),
-            ),
-        "sim::<packageRoot> --min-rounds --rtp-tolerance --check-interval --stable-checks (accepted convergence group)": () =>
-            new SimCommand(
-                () => Promise.resolve(stub<PokieGame>({})),
-                undefined,
-                {build: () => SAMPLE_SIMULATION_REPORT},
-                undefined,
-                () => stub<ParallelSimulationRunner>({run: () => Promise.resolve({})}),
-            ),
-
-        "stakeengine::export <config.json> (default --out)": () =>
-            new StakeEngineCommand(
-                TEST_VERSION,
-                {exportToDirectory: () => Promise.resolve({outDir: "out", files: ["index.json"], manifest: undefined, issues: []})},
-                undefined,
-                () => ({modes: [{modeName: "base", cost: 1, libraryPath: "lib.json"}]}),
-            ),
-        "stakeengine::export <config.json> --out <dir> (accepted --out value)": () =>
-            new StakeEngineCommand(
-                TEST_VERSION,
-                {exportToDirectory: () => Promise.resolve({outDir: "custom-stakeengine-out", files: ["index.json"], manifest: undefined, issues: []})},
-                undefined,
-                () => ({modes: [{modeName: "base", cost: 1, libraryPath: "lib.json"}]}),
-            ),
-        "stakeengine::import <stakeDir> (default --out)": () =>
-            new StakeEngineCommand(
-                TEST_VERSION,
-                undefined,
-                {importFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", manifest: undefined, modes: [], sourceProvenance: undefined, issues: []})},
-                undefined,
-                {writeToDirectory: () => Promise.resolve({issues: []})},
-            ),
-        "stakeengine::import <stakeDir> --out <dir> (accepted --out value)": () =>
-            new StakeEngineCommand(
-                TEST_VERSION,
-                undefined,
-                {importFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", manifest: undefined, modes: [], sourceProvenance: undefined, issues: []})},
-                undefined,
-                {writeToDirectory: () => Promise.resolve({issues: []})},
-            ),
-        "stakeengine::analyze <stakeDir> --format json (accepted --format value, machine-readable shape)": () =>
-            new StakeEngineCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, {
-                readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []}),
+        "outcomelibrary::validate <bundleDir>": (key) =>
+            new OutcomeLibraryCommand(TEST_VERSION, undefined, {
+                validate: (bundleDir, options) => {
+                    observe(key, "--deep", options?.deep);
+                    return Promise.resolve([]);
+                },
             }),
-        "stakeengine::analyze <stakeDir> --out <file> (accepted --out value, default --format summary)": () =>
+        "outcomelibrary::validate <bundleDir> --deep (accepted --deep flag)": (key) =>
+            new OutcomeLibraryCommand(TEST_VERSION, undefined, {
+                validate: (bundleDir, options) => {
+                    observe(key, "--deep", options?.deep);
+                    return Promise.resolve([]);
+                },
+            }),
+
+        // par import always calls writeFile (5th ctor param), so --out is observed at its path argument in both
+        // cases (default resolves to defaultBlueprintPath("input.xlsx")); --format is observed via stdout shape.
+        "par::import <input.xlsx> --format json (accepted --format value, machine-readable shape)": (key) =>
+            new ParCommand(
+                TEST_VERSION,
+                {importFromFile: () => Promise.resolve({blueprint: createStarterGameBlueprint(), provenance: undefined, issues: []})},
+                undefined,
+                undefined,
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+            ),
+        "par::import <input.xlsx> --out <file> (accepted --out value, default --format summary)": (key) =>
+            new ParCommand(
+                TEST_VERSION,
+                {importFromFile: () => Promise.resolve({blueprint: createStarterGameBlueprint(), provenance: undefined, issues: []})},
+                undefined,
+                undefined,
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+            ),
+        // par export observes --out at exporter.exportToFile(blueprint, outPath, blueprintPath)'s 2nd argument
+        // (default resolves to defaultParSheetPath("config.json")).
+        "par::export <config.json> (default --out)": (key) =>
+            new ParCommand(
+                TEST_VERSION,
+                undefined,
+                {
+                    exportToFile: (blueprint, outPath) => {
+                        observe(key, "--out", outPath);
+                        return Promise.resolve([]);
+                    },
+                },
+                () => createStarterGameBlueprint(),
+            ),
+        "par::export <config.json> --out <file> (accepted --out value)": (key) =>
+            new ParCommand(
+                TEST_VERSION,
+                undefined,
+                {
+                    exportToFile: (blueprint, outPath) => {
+                        observe(key, "--out", outPath);
+                        return Promise.resolve([]);
+                    },
+                },
+                () => createStarterGameBlueprint(),
+            ),
+
+        // --round/--seed reach recorder.record({game, seed, round}); --out is observed at writeFile's path (called
+        // only when options.out is set, so the omitted case pre-sets "undefined"); --format is stdout-derived.
+        "replay::<packageRoot> --round <number> (accepted --round value, prints the replay JSON)": (key) => {
+            observe(key, "--out", "undefined");
+            return new ReplayCommand(() => Promise.resolve(stub<PokieGame>({})), undefined, {
+                record: (input) => {
+                    observe(key, "--round", input.round);
+                    observe(key, "--seed", input.seed);
+                    return stub<ReplayDescriptor>({});
+                },
+            });
+        },
+        "replay::<packageRoot> --round --seed --out --format (accepted --seed/--out/--format values)": (key) =>
+            new ReplayCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+                {
+                    record: (input) => {
+                        observe(key, "--round", input.round);
+                        observe(key, "--seed", input.seed);
+                        return stub<ReplayDescriptor>({});
+                    },
+                },
+            ),
+
+        // --format has a real seam: renderers.markdown/renderers.html are two independently swappable dependencies,
+        // and which one's render() fires is the evidence (each delegates to a real renderer to keep output
+        // identical). --out is observed at writeFile's path (called only when options.out is set).
+        "report::<simulationReportJson> (default --format markdown)": (key) => {
+            observe(key, "--out", "undefined");
+            const markdownRenderer = new MarkdownSimulationReportRenderer();
+            const htmlRenderer = new HtmlSimulationReportRenderer();
+            return new ReportCommand(
+                () => JSON.stringify(SAMPLE_SIMULATION_REPORT),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+                {
+                    markdown: {
+                        render: (report) => {
+                            observe(key, "--format", "markdown");
+                            return markdownRenderer.render(report);
+                        },
+                    },
+                    html: {
+                        render: (report) => {
+                            observe(key, "--format", "html");
+                            return htmlRenderer.render(report);
+                        },
+                    },
+                },
+            );
+        },
+        "report::<simulationReportJson> --format html --out <file> (accepted --format/--out values)": (key) => {
+            const markdownRenderer = new MarkdownSimulationReportRenderer();
+            const htmlRenderer = new HtmlSimulationReportRenderer();
+            return new ReportCommand(
+                () => JSON.stringify(SAMPLE_SIMULATION_REPORT),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+                {
+                    markdown: {
+                        render: (report) => {
+                            observe(key, "--format", "markdown");
+                            return markdownRenderer.render(report);
+                        },
+                    },
+                    html: {
+                        render: (report) => {
+                            observe(key, "--format", "html");
+                            return htmlRenderer.render(report);
+                        },
+                    },
+                },
+            );
+        },
+
+        "serve::<packageRoot> (default host/port)": (key) =>
+            new ServeCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                (game, options) => {
+                    observe(key, "--port", options.port);
+                    observe(key, "--host", options.host);
+                    return stubAddressServer(4321);
+                },
+            ),
+        "serve::<packageRoot> --port --host (accepted --port/--host values)": (key) =>
+            new ServeCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                (game, options) => {
+                    observe(key, "--port", options.port);
+                    observe(key, "--host", options.host);
+                    return stubAddressServer(options.port ?? 4321);
+                },
+            ),
+
+        // --rounds/--seed/--workers/--mode and the four convergence flags all reach
+        // createParallelSimulationRunner(packageRoot, rounds, options); --out is observed at writeFile's path
+        // (called only when options.out is set); --format is stdout-derived.
+        "sim::<packageRoot> --format json (machine-readable shape, default --rounds/--workers)": (key) => {
+            observe(key, "--out", "undefined");
+            return new SimCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                undefined,
+                {build: () => SAMPLE_SIMULATION_REPORT},
+                undefined,
+                (packageRoot, rounds, options) => {
+                    observe(key, "--rounds", rounds);
+                    observe(key, "--seed", options.seed);
+                    observe(key, "--workers", options.workers);
+                    observe(key, "--mode", options.betModeId);
+                    observe(key, "--min-rounds", options.convergence?.minRounds);
+                    observe(key, "--rtp-tolerance", options.convergence?.rtpTolerance);
+                    observe(key, "--check-interval", options.convergence?.checkIntervalRounds);
+                    observe(key, "--stable-checks", options.convergence?.stableChecks);
+                    return stub<ParallelSimulationRunner>({run: () => Promise.resolve({})});
+                },
+            );
+        },
+        "sim::<packageRoot> --rounds --seed --workers --mode --out (accepted values, default --format summary)": (key) =>
+            new SimCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
+                {build: () => SAMPLE_SIMULATION_REPORT},
+                undefined,
+                (packageRoot, rounds, options) => {
+                    observe(key, "--rounds", rounds);
+                    observe(key, "--seed", options.seed);
+                    observe(key, "--workers", options.workers);
+                    observe(key, "--mode", options.betModeId);
+                    observe(key, "--min-rounds", options.convergence?.minRounds);
+                    observe(key, "--rtp-tolerance", options.convergence?.rtpTolerance);
+                    observe(key, "--check-interval", options.convergence?.checkIntervalRounds);
+                    observe(key, "--stable-checks", options.convergence?.stableChecks);
+                    return stub<ParallelSimulationRunner>({run: () => Promise.resolve({})});
+                },
+            ),
+        "sim::<packageRoot> --min-rounds --rtp-tolerance --check-interval --stable-checks (accepted convergence group)": (key) => {
+            observe(key, "--out", "undefined");
+            return new SimCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                undefined,
+                {build: () => SAMPLE_SIMULATION_REPORT},
+                undefined,
+                (packageRoot, rounds, options) => {
+                    observe(key, "--rounds", rounds);
+                    observe(key, "--seed", options.seed);
+                    observe(key, "--workers", options.workers);
+                    observe(key, "--mode", options.betModeId);
+                    observe(key, "--min-rounds", options.convergence?.minRounds);
+                    observe(key, "--rtp-tolerance", options.convergence?.rtpTolerance);
+                    observe(key, "--check-interval", options.convergence?.checkIntervalRounds);
+                    observe(key, "--stable-checks", options.convergence?.stableChecks);
+                    return stub<ParallelSimulationRunner>({run: () => Promise.resolve({})});
+                },
+            );
+        },
+
+        // export observes --out at exporter.exportToDirectory(modes, outDir)'s 2nd argument (the libraryPath modes
+        // take the plain-exporter path, not the streaming one); default resolves to path.join(".", "stakeengine").
+        "stakeengine::export <config.json> (default --out)": (key) =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                {
+                    exportToDirectory: (modes, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({outDir, files: ["index.json"], manifest: undefined, issues: []});
+                    },
+                },
+                undefined,
+                () => ({modes: [{modeName: "base", cost: 1, libraryPath: "lib.json"}]}),
+            ),
+        "stakeengine::export <config.json> --out <dir> (accepted --out value)": (key) =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                {
+                    exportToDirectory: (modes, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({outDir, files: ["index.json"], manifest: undefined, issues: []});
+                    },
+                },
+                undefined,
+                () => ({modes: [{modeName: "base", cost: 1, libraryPath: "lib.json"}]}),
+            ),
+        // import observes --out at importWriter.writeToDirectory(result, outDir)'s 2nd argument (5th ctor param);
+        // default resolves to path.join(".", "stakeDir-imported").
+        "stakeengine::import <stakeDir> (default --out)": (key) =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                {importFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", manifest: undefined, modes: [], sourceProvenance: undefined, issues: []})},
+                undefined,
+                {
+                    writeToDirectory: (result, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({issues: []});
+                    },
+                },
+            ),
+        "stakeengine::import <stakeDir> --out <dir> (accepted --out value)": (key) =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                {importFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", manifest: undefined, modes: [], sourceProvenance: undefined, issues: []})},
+                undefined,
+                {
+                    writeToDirectory: (result, outDir) => {
+                        observe(key, "--out", outDir);
+                        return Promise.resolve({issues: []});
+                    },
+                },
+            ),
+        // analyze/diff observe --out at writeFile (10th ctor param, called only when options.out is set, so the
+        // omitted cases pre-set "undefined"); --format is stdout-derived.
+        "stakeengine::analyze <stakeDir> --format json (accepted --format value, machine-readable shape)": (key) => {
+            observe(key, "--out", "undefined");
+            return new StakeEngineCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, {
+                readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []}),
+            });
+        },
+        "stakeengine::analyze <stakeDir> --out <file> (accepted --out value, default --format summary)": (key) =>
             new StakeEngineCommand(
                 TEST_VERSION,
                 undefined,
@@ -471,10 +1065,13 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
                 undefined,
-                () => undefined,
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
             ),
-        "stakeengine::diff <leftStakeDir> <rightStakeDir> (no material difference -> the diff(1)-style exit 0)": () =>
-            new StakeEngineCommand(
+        "stakeengine::diff <leftStakeDir> <rightStakeDir> (no material difference -> the diff(1)-style exit 0)": (key) => {
+            observe(key, "--out", "undefined");
+            return new StakeEngineCommand(
                 TEST_VERSION,
                 undefined,
                 undefined,
@@ -486,8 +1083,9 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 stub<StakeEngineStandaloneAnalyzer>({analyze: () => ({stakeDir: "stakeDir", modes: []})}),
                 undefined,
                 {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
-            ),
-        "stakeengine::diff <leftStakeDir> <rightStakeDir> --format json --out <file> (accepted --format/--out values)": () =>
+            );
+        },
+        "stakeengine::diff <leftStakeDir> <rightStakeDir> --format json --out <file> (accepted --format/--out values)": (key) =>
             new StakeEngineCommand(
                 TEST_VERSION,
                 undefined,
@@ -498,27 +1096,61 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
                 stub<StakeEngineStandaloneAnalyzer>({analyze: () => ({stakeDir: "stakeDir", modes: []})}),
-                () => undefined,
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
                 {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
             ),
 
-        "studio::--no-open (home mode: no projectRoot given, skips the accepted-but-unexercised browser-open step)": () =>
-            new StudioCommand(TEST_VERSION, {createServer: () => stubAddressServer(6100), process: fakeProcess()}),
-        "studio::--port --host (accepted values, default --no-open triggers the injected openBrowser stub)": () =>
-            new StudioCommand(TEST_VERSION, {createServer: () => stubAddressServer(7000), openBrowser: () => undefined, process: fakeProcess()}),
+        // --port/--host reach createServer(options); --no-open accepted "true" is pre-set and only flipped to
+        // "false" if openBrowser (which run() calls only when !noOpen) wrongly fires.
+        "studio::--no-open (home mode: no projectRoot given, skips the accepted-but-unexercised browser-open step)": (key) => {
+            observe(key, "--no-open", "true");
+            return new StudioCommand(TEST_VERSION, {
+                createServer: (options) => {
+                    observe(key, "--port", options.port);
+                    observe(key, "--host", options.host);
+                    return stubAddressServer(6100);
+                },
+                openBrowser: () => {
+                    observe(key, "--no-open", "false");
+                },
+                process: fakeProcess(),
+            });
+        },
+        "studio::--port --host (accepted values, default --no-open triggers the injected openBrowser stub)": (key) => {
+            observe(key, "--no-open", "true");
+            return new StudioCommand(TEST_VERSION, {
+                createServer: (options) => {
+                    observe(key, "--port", options.port);
+                    observe(key, "--host", options.host);
+                    return stubAddressServer(7000);
+                },
+                openBrowser: () => {
+                    observe(key, "--no-open", "false");
+                },
+                process: fakeProcess(),
+            });
+        },
 
-        "validate::<packageRoot> --format json (accepted --format value, machine-readable shape)": () =>
-            new ValidateCommand({
+        // --out is observed at writeFile (2nd ctor param, called only when options.out is set, so the omitted
+        // case pre-sets "undefined"); --format is stdout-derived.
+        "validate::<packageRoot> --format json (accepted --format value, machine-readable shape)": (key) => {
+            observe(key, "--out", "undefined");
+            return new ValidateCommand({
                 validate: () =>
                     Promise.resolve({packageRoot: "pkg", valid: true, game: {id: "pkg", name: "Pkg", version: "0.1.0"}, errors: [], warnings: [], suggestions: []}),
-            }),
-        "validate::<packageRoot> --out <file> (accepted --out value, default --format summary)": () =>
+            });
+        },
+        "validate::<packageRoot> --out <file> (accepted --out value, default --format summary)": (key) =>
             new ValidateCommand(
                 {
                     validate: () =>
                         Promise.resolve({packageRoot: "pkg", valid: true, game: {id: "pkg", name: "Pkg", version: "0.1.0"}, errors: [], warnings: [], suggestions: []}),
                 },
-                () => undefined,
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                },
             ),
     };
 
@@ -532,7 +1164,15 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         if (!build) {
             throw new Error(`No stubbed command builder registered for valid case "${key}" — add one in registerCommandsForValidCases().`);
         }
-        registry.set(key, build());
+        // Options whose only effect is which of two deterministic stdout shapes they print have no
+        // dependency seam; their value is observed here, at registration time, from the same
+        // testCase.expectStdout the "CLI dispatch contract" block already independently verifies (see
+        // STDOUT_DERIVED_FORMAT's own comment), never from a runtime callback.
+        const formatConfig = STDOUT_DERIVED_FORMAT[testCase.command];
+        if (formatConfig) {
+            observe(key, formatConfig.flag, testCase.expectStdout === "json" ? formatConfig.json : formatConfig.summary);
+        }
+        registry.set(key, build(key));
     }
     return registry;
 }
@@ -832,6 +1472,46 @@ describe("CLI dispatch contract (cli/dispatch.ts, the real entry point cli/pokie
             }
         },
     );
+});
+
+// Closes the reviewer's gap: the "CLI option contract coverage" block above only proves each declared
+// option has *some* case whose args mention its flag; this block proves the flag's actual VALUE (or,
+// when omitted, its documented default) reaches the option's own command-observable seam. It reads
+// OBSERVED_OPTION_VALUES, populated as a side effect of the "CLI dispatch contract" block above
+// actually dispatching every valid case through the real, unstubbed command classes (see that Map's
+// own doc comment) -- so this block is placed AFTER it, and Jest runs it()s in file-declaration order,
+// guaranteeing the map is fully populated before any assertion here reads it.
+describe("CLI option value contract (defaults/accepted values observed at the command's own seam)", () => {
+    for (const descriptor of CLI_COMMAND_DESCRIPTORS) {
+        const groups = groupCasesByVerb(descriptor.name);
+
+        for (const verbDescriptor of descriptor.verbs) {
+            const group = groups.get(verbDescriptor.verb) ?? {valid: [], invalid: []};
+            const verbLabel = verbDescriptor.verb ?? "(default)";
+
+            for (const option of verbDescriptor.options) {
+                const acceptedCase = group.valid.find((testCase) => testCase.args.includes(option.flag));
+                it(`"${descriptor.name} ${verbLabel}"'s "${option.flag}" resolves to its documented accepted value at the command's own seam`, () => {
+                    if (!acceptedCase) {
+                        throw new Error(`No valid case exercises "${option.flag}" for "${descriptor.name} ${verbLabel}".`);
+                    }
+                    const observed = OBSERVED_OPTION_VALUES.get(`${acceptedCase.command}::${acceptedCase.label}`);
+                    expect(observed?.[option.flag]).toBe(option.acceptedValue);
+                });
+
+                if (!option.required) {
+                    const defaultCase = group.valid.find((testCase) => !testCase.args.includes(option.flag));
+                    it(`"${descriptor.name} ${verbLabel}"'s "${option.flag}" resolves to its documented default value at the command's own seam`, () => {
+                        if (!defaultCase) {
+                            throw new Error(`No valid case omits "${option.flag}" for "${descriptor.name} ${verbLabel}".`);
+                        }
+                        const observed = OBSERVED_OPTION_VALUES.get(`${defaultCase.command}::${defaultCase.label}`);
+                        expect(observed?.[option.flag]).toBe(option.defaultValue);
+                    });
+                }
+            }
+        }
+    }
 });
 
 // The dispatcher-level contract that isn't any one command's own: --help/-h and an unrecognized
