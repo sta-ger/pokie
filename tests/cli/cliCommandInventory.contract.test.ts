@@ -1,4 +1,13 @@
-import {ALL_SLOT_GAME_NAME_THEMES, MAX_SIMULATION_WORKERS} from "pokie";
+import {
+    computeFairnessServerSeedCommitment,
+    FairnessRoundProof,
+    OutcomeLibraryBundleReading,
+    ParallelSimulationRunner,
+    PokieGame,
+    ReplayDescriptor,
+    SimulationReport,
+    StakeEngineStandaloneAnalyzer,
+} from "pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {ClientCommand} from "../../cli/commands/ClientCommand.js";
@@ -20,10 +29,11 @@ import {StudioCommand} from "../../cli/commands/StudioCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 import fs from "fs";
 import path from "path";
+import {createStarterGameBlueprint} from "../../cli/build/createStarterGameBlueprint.js";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
 import {dispatch} from "../../cli/dispatch.js";
 import {buildUsageText} from "../../cli/usageText.js";
-import {CLI_COMMAND_DESCRIPTORS} from "./fixtures/cliCommandInventory.js";
+import {CliContractCase, CLI_COMMAND_DESCRIPTORS, CLI_CONTRACT_CASES, CLI_TOP_LEVEL_DISPATCH_CASES} from "./fixtures/cliCommandInventory.js";
 
 const TEST_VERSION = "1.3.0";
 
@@ -33,6 +43,11 @@ const TEST_VERSION = "1.3.0";
 // module body calls run() unconditionally on import — see cli/pokie.ts's own comments and
 // ClientCommand's/DevCommand's doc comments on the same point). Keep this list's names/order in
 // sync with cli/pokie.ts whenever a command is added, renamed, or reordered there.
+//
+// Every command here is otherwise unstubbed (real production defaults for every dependency) — this
+// is the registry CLI_CONTRACT_CASES' "invalid" cases run through, since none of them ever reach an
+// I/O boundary (see the fixture's own doc comment). registerCommandsForValidCases() below is the
+// separate, per-case registry the "valid" cases run through instead.
 function registerCommands(): CliCommandHandling[] {
     return [
         new BuildCommand(TEST_VERSION),
@@ -55,6 +70,267 @@ function registerCommands(): CliCommandHandling[] {
         new StudioCommand(TEST_VERSION),
         new ValidateCommand(),
     ];
+}
+
+// A deliberately loose escape hatch for a stub's return value: bypasses structural checking of a
+// result type entirely (via the `unknown` intermediate) rather than hand-authoring every field of a
+// large production result type this test never actually inspects — used only where the value is
+// either consumed exclusively by another stub (so its exact shape is moot) or by a plain
+// JSON.stringify (so any shape at all is valid input). Never used for a value real, unstubbed
+// production code (a validator, renderer, differ) actually computes over — those get a complete,
+// real literal instead, so that code runs exactly as it does in production.
+function stub<T>(partial: object): T {
+    return partial as unknown as T;
+}
+
+function stubAddressServer(port: number): {start: () => Promise<{host: string; port: number}>; stop: () => Promise<void>} {
+    return {start: () => Promise.resolve({host: "127.0.0.1", port}), stop: () => Promise.resolve()};
+}
+
+// DevCommand/StudioCommand both register real "SIGINT"/"SIGTERM" listeners on whatever `process`
+// they're given via `this.process.once(...)` — injecting this instead of the real global `process`
+// is what keeps a "valid" dispatch case in this file from leaking a listener onto the actual test
+// process (see DevCommand.ts/StudioCommand.ts's own registerShutdown()).
+function fakeProcess(): NodeJS.Process {
+    return {once: () => undefined, exit: () => undefined} as unknown as NodeJS.Process;
+}
+
+// A minimal-but-complete SimulationReport (every field SimulationReport itself requires — see
+// src/reporting/SimulationReport.ts — every other field there is additive/optional) — shared by every
+// "valid" case whose command hands its input to REAL, unstubbed production code that actually reads
+// it (DiffCommand's real SimulationReportDiffer, ReportCommand's real
+// Markdown/HtmlSimulationReportRenderer, SimCommand's own real printSummary()), so that code runs
+// exactly as it would against a real "pokie sim --out" report.
+const SAMPLE_SIMULATION_REPORT: SimulationReport = {
+    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+    requestedRounds: 100,
+    rounds: 100,
+    seed: "demo-seed",
+    totalBet: 100,
+    totalWin: 95,
+    rtp: 0.95,
+    hitFrequency: 0.3,
+    maxWin: 20,
+    durationMs: 50,
+    spinsPerSecond: 2000,
+};
+
+// Builds the one stubbed CliCommandHandling instance a given "valid" CLI_CONTRACT_CASES entry
+// (looked up by `${command}::${label}`, so a case with no matching builder fails loudly rather than
+// silently skipping) runs through the real dispatch() — every dependency that would otherwise touch
+// the filesystem, bind a port, or spawn a worker thread/subprocess is swapped for a fast,
+// deterministic fake via that command class's own constructor injection points (the same points
+// tests/cli/commands/*.test.ts already uses for its own per-command success-path tests); everything
+// else (argv parsing, control flow, console output, exit code) is the real, unstubbed command class.
+function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
+    const builders: Record<string, () => CliCommandHandling> = {
+        "build::<config.json> --dry-run validates and previews without writing anything (default, no --out)": () =>
+            new BuildCommand(TEST_VERSION, () => createStarterGameBlueprint()),
+        "build::--init-blueprint <file> writes the starter blueprint template": () =>
+            new BuildCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, () => false, () => undefined),
+        "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": () => new BuildCommand(TEST_VERSION),
+
+        "certification::build <bundleDir> <config.json> (default --out)": () =>
+            new CertificationCommand(
+                TEST_VERSION,
+                {buildFromBundle: () => Promise.resolve({outDir: "out", files: ["evidence.json"], manifest: undefined, issues: []})},
+                undefined,
+                () => ({modes: [{modeName: "base", seed: "cert-seed", sampleCount: 10}]}),
+            ),
+        "certification::verify <certDir> --source <bundleDir>": () =>
+            new CertificationCommand(TEST_VERSION, undefined, {verify: () => Promise.resolve([])}),
+
+        "client::<packageRoot> (default host/port)": () => new ClientCommand(() => stubAddressServer(4000)),
+
+        "create::<name>": () =>
+            new CreateCommand(TEST_VERSION, {
+                create: () => ({
+                    projectRoot: "/fake/sample-slot",
+                    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                    createdFiles: [],
+                    updatedFiles: [],
+                    skippedFiles: [],
+                }),
+            }),
+        "create::--random --seed <integer> (accepted --seed value, default --preset)": () =>
+            new CreateCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    generate: () => ({
+                        projectRoot: "/fake/random-slot",
+                        manifest: {id: "random-slot", name: "Random Slot", version: "0.1.0"},
+                        createdFiles: [],
+                        buildInfo: {
+                            schemaVersion: 1,
+                            generatedBy: "pokie",
+                            pokieVersion: TEST_VERSION,
+                            generatedAt: "2026-01-01T00:00:00.000Z",
+                            blueprintHash: "hash",
+                            game: {id: "random-slot", name: "Random Slot", version: "0.1.0"},
+                        },
+                        unchanged: false,
+                    }),
+                },
+                () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
+            ),
+
+        "dev::<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)": () =>
+            new DevCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                () => stubAddressServer(5000),
+                {
+                    createClientServer: () => stubAddressServer(5100),
+                    waitForHealth: () => Promise.resolve(),
+                    openBrowser: () => undefined,
+                    clientRoot: "/fake/client/root",
+                    process: fakeProcess(),
+                },
+            ),
+
+        "diff::<left> <right> --format json (accepted --format value, machine-readable shape)": () =>
+            new DiffCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT)),
+
+        "fairness::seed-commit <serverSeed.txt> (default, no --out — prints the commitment JSON)": () =>
+            new FairnessCommand(undefined, undefined, undefined, undefined, undefined, undefined, () => "server-seed-value\n"),
+        "fairness::commit <serverSeedCommitment.json> --client-seed --nonce --source --mode (accepted --nonce value)": () =>
+            new FairnessCommand(
+                undefined,
+                // A genuinely valid FairnessServerSeedCommitment (real computeFairnessServerSeedCommitment
+                // over an arbitrary string), since the real (unstubbed) computeFairnessCommitment this case
+                // exercises validates its shape strictly — a hand-rolled placeholder object fails that check.
+                () => computeFairnessServerSeedCommitment({serverSeed: "server-seed-value"}),
+                stub<OutcomeLibraryBundleReading>({readModeIndex: () => Promise.resolve({libraryId: "lib1", libraryHash: "hash1"})}),
+            ),
+        "fairness::reveal <commitment.json> --server-seed --source": () =>
+            new FairnessCommand(
+                undefined,
+                () => ({}),
+                undefined,
+                {build: () => Promise.resolve(stub<FairnessRoundProof>({}))},
+                undefined,
+                undefined,
+                () => "revealed-seed\n",
+            ),
+        "fairness::verify <proof.json> --commitment --source": () =>
+            new FairnessCommand({verify: () => Promise.resolve([])}, () => ({})),
+
+        "init::(no args — scaffolds the current project via the injected scaffolder)": () =>
+            new InitCommand(TEST_VERSION, {
+                scaffold: () => ({
+                    projectRoot: "/fake/project",
+                    manifest: {id: "fake-project", name: "Fake Project", version: "0.1.0"},
+                    createdFiles: [],
+                    updatedFiles: [],
+                    skippedFiles: [],
+                }),
+            }),
+
+        "inspect::<packageRoot>": () =>
+            new InspectCommand({
+                inspect: () => ({packageRoot: "pkg", valid: true, generated: false, packageJson: {name: "pkg", version: "0.1.0"}}),
+            }),
+
+        "name::(no args — default count 1, human-readable output)": () => new NameCommand(),
+        "name::--json (machine-readable shape)": () => new NameCommand(),
+
+        "outcomelibrary::build <config.json> (default --out)": () =>
+            new OutcomeLibraryCommand(
+                TEST_VERSION,
+                {writeToDirectory: () => Promise.resolve({outDir: "out", files: ["config.json"], manifest: undefined, issues: []})},
+                undefined,
+                () => ({modes: [{modeName: "base", libraryPath: "lib.json"}], libraryId: "lib1", schemaVersion: 1, outcomes: []}),
+            ),
+        "outcomelibrary::validate <bundleDir>": () =>
+            new OutcomeLibraryCommand(TEST_VERSION, undefined, {validate: () => Promise.resolve([])}),
+
+        "par::import <input.xlsx> --format json (accepted --format value, machine-readable shape)": () =>
+            new ParCommand(
+                TEST_VERSION,
+                {importFromFile: () => Promise.resolve({blueprint: createStarterGameBlueprint(), provenance: undefined, issues: []})},
+                undefined,
+                undefined,
+                () => undefined,
+            ),
+        "par::export <config.json> (default --out)": () =>
+            new ParCommand(TEST_VERSION, undefined, {exportToFile: () => Promise.resolve([])}, () => createStarterGameBlueprint()),
+
+        "replay::<packageRoot> --round <number> (accepted --round value, prints the replay JSON)": () =>
+            new ReplayCommand(() => Promise.resolve(stub<PokieGame>({})), undefined, {record: () => stub<ReplayDescriptor>({})}),
+
+        "report::<simulationReportJson> (default --format markdown)": () => new ReportCommand(() => JSON.stringify(SAMPLE_SIMULATION_REPORT)),
+
+        "serve::<packageRoot> --port --host (accepted --port/--host values)": () =>
+            new ServeCommand(() => Promise.resolve(stub<PokieGame>({})), () => stubAddressServer(4321)),
+
+        "sim::<packageRoot> --format json (machine-readable shape, default --rounds/--workers)": () =>
+            new SimCommand(
+                () => Promise.resolve(stub<PokieGame>({})),
+                undefined,
+                {build: () => SAMPLE_SIMULATION_REPORT},
+                undefined,
+                () => stub<ParallelSimulationRunner>({run: () => Promise.resolve({})}),
+            ),
+
+        "stakeengine::export <config.json> (default --out)": () =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                {exportToDirectory: () => Promise.resolve({outDir: "out", files: ["index.json"], manifest: undefined, issues: []})},
+                undefined,
+                () => ({modes: [{modeName: "base", cost: 1, libraryPath: "lib.json"}]}),
+            ),
+        "stakeengine::import <stakeDir> (default --out)": () =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                {importFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", manifest: undefined, modes: [], sourceProvenance: undefined, issues: []})},
+                undefined,
+                {writeToDirectory: () => Promise.resolve({issues: []})},
+            ),
+        "stakeengine::analyze <stakeDir> --format json (accepted --format value, machine-readable shape)": () =>
+            new StakeEngineCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, {
+                readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []}),
+            }),
+        "stakeengine::diff <leftStakeDir> <rightStakeDir> (no material difference -> the diff(1)-style exit 0)": () =>
+            new StakeEngineCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {readFromDirectory: () => Promise.resolve({stakeDir: "stakeDir", modes: [], issues: []})},
+                stub<StakeEngineStandaloneAnalyzer>({analyze: () => ({stakeDir: "stakeDir", modes: []})}),
+                undefined,
+                {diff: () => ({stakeDir: {left: "left", right: "right"}, onlyInLeft: [], onlyInRight: [], perMode: {}})},
+            ),
+
+        "studio::--no-open (home mode: no projectRoot given, skips the accepted-but-unexercised browser-open step)": () =>
+            new StudioCommand(TEST_VERSION, {createServer: () => stubAddressServer(6100), process: fakeProcess()}),
+
+        "validate::<packageRoot> --format json (accepted --format value, machine-readable shape)": () =>
+            new ValidateCommand({
+                validate: () =>
+                    Promise.resolve({packageRoot: "pkg", valid: true, game: {id: "pkg", name: "Pkg", version: "0.1.0"}, errors: [], warnings: [], suggestions: []}),
+            }),
+    };
+
+    const registry = new Map<string, CliCommandHandling>();
+    for (const testCase of CLI_CONTRACT_CASES) {
+        if (testCase.kind !== "valid") {
+            continue;
+        }
+        const key = `${testCase.command}::${testCase.label}`;
+        const build = builders[key];
+        if (!build) {
+            throw new Error(`No stubbed command builder registered for valid case "${key}" — add one in registerCommandsForValidCases().`);
+        }
+        registry.set(key, build());
+    }
+    return registry;
 }
 
 describe("CLI command registry (cli/pokie.ts's `commands` array, mirrored here)", () => {
@@ -84,471 +360,6 @@ describe("CLI command registry (cli/pokie.ts's `commands` array, mirrored here)"
     });
 });
 
-type ContractCase = {
-    command: string;
-    label: string;
-    args: string[];
-    expectedError: string;
-};
-
-// Every case here is side-effect-free by construction: each triggers a command's own parseArgs()
-// validation (a missing required positional/subcommand, or a bad flag value) before that command
-// ever reaches a filesystem read/write, a loadGame() call, or a server bind — see each command's
-// own source for the exact ordering. None of these touch disk, network, or a subprocess.
-const CONTRACT_CASES: ContractCase[] = [
-    // --- build ---
-    {
-        command: "build",
-        label: "missing <config.json> (an empty-string positional, since a truly empty argv launches the wizard instead)",
-        args: [""],
-        expectedError:
-            "Usage: pokie build <config.json> [--out <dir>] [--dry-run]\n" +
-            "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.",
-    },
-    {
-        command: "build",
-        label: "--init-blueprint missing <file>",
-        args: ["--init-blueprint"],
-        expectedError: "Usage: pokie build --init-blueprint <file>",
-    },
-    {
-        command: "build",
-        label: "random --seed must be an integer",
-        args: ["random", "--seed", "notanumber"],
-        expectedError:
-            "--seed requires an integer value. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
-    },
-
-    // --- certification ---
-    {
-        command: "certification",
-        label: "missing/unknown subcommand",
-        args: [],
-        expectedError:
-            "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
-            "   or: pokie certification verify <certDir> --source <bundleDir>\n" +
-            '<config.json> lists one sample source per mode of the given outcome-library bundle — {"modes": ' +
-            '[{"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200}, ...]} — see ' +
-            "docs/certification-evidence-bundle.md for the format.",
-    },
-    {
-        command: "certification",
-        label: "build missing <bundleDir>/<config.json>",
-        args: ["build"],
-        expectedError:
-            "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
-            '<config.json> lists one sample source per mode of the given outcome-library bundle — {"modes": ' +
-            '[{"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200}, ...]} — see ' +
-            "docs/certification-evidence-bundle.md for the format.",
-    },
-    {
-        command: "certification",
-        label: "verify missing <certDir>",
-        args: ["verify"],
-        expectedError: "Usage: pokie certification verify <certDir> --source <bundleDir>",
-    },
-    {
-        command: "certification",
-        label: "verify missing --source (certDir given)",
-        args: ["verify", "certDir"],
-        expectedError: "--source <bundleDir> is required. Usage: pokie certification verify <certDir> --source <bundleDir>",
-    },
-
-    // --- client ---
-    {
-        command: "client",
-        label: "missing <packageRoot>",
-        args: [],
-        expectedError:
-            "Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
-    },
-    {
-        command: "client",
-        label: "--port must be a non-negative integer",
-        args: ["pkg", "--port", "-1"],
-        expectedError:
-            "--port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
-    },
-
-    // --- create ---
-    {
-        command: "create",
-        label: "missing <name>",
-        args: [],
-        expectedError: "Usage: pokie create <name>",
-    },
-    {
-        command: "create",
-        label: "--random --preset must be default|variant",
-        args: ["--random", "--preset", "bogus"],
-        expectedError:
-            "--preset must be one of: default, variant. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
-    },
-
-    // --- dev ---
-    {
-        command: "dev",
-        label: "missing <packageRoot>",
-        args: [],
-        expectedError:
-            "Usage: pokie dev <packageRoot> [--port <number>] [--host <string>] " +
-            "[--client-port <number>] [--client-host <string>] [--no-open]",
-    },
-    {
-        command: "dev",
-        label: "--client-port must be a non-negative integer",
-        args: ["pkg", "--client-port", "abc"],
-        expectedError:
-            "--client-port must be a non-negative integer. Usage: pokie dev <packageRoot> [--port <number>] [--host <string>] " +
-            "[--client-port <number>] [--client-host <string>] [--no-open]",
-    },
-
-    // --- diff ---
-    {
-        command: "diff",
-        label: "missing <rightReportJson>",
-        args: ["left.json"],
-        expectedError: "Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
-    },
-    {
-        command: "diff",
-        label: "--format only supports json",
-        args: ["left.json", "right.json", "--format", "html"],
-        expectedError:
-            '--format only supports "json". Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]',
-    },
-
-    // --- fairness ---
-    {
-        command: "fairness",
-        label: "missing/unknown subcommand",
-        args: [],
-        expectedError:
-            "Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>\n" +
-            "   or: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]\n" +
-            "   or: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]\n" +
-            "   or: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]",
-    },
-    {
-        command: "fairness",
-        label: "seed-commit missing <serverSeed.txt>",
-        args: ["seed-commit"],
-        expectedError: "Usage: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]",
-    },
-    {
-        command: "fairness",
-        label: "commit missing --client-seed (checked first among its required flags)",
-        args: ["commit", "commitment.json"],
-        expectedError:
-            "--client-seed <seed> is required. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> " +
-            "--source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
-    },
-    {
-        command: "fairness",
-        label: "commit --nonce must be a canonical non-negative integer (no sign)",
-        args: ["commit", "commitment.json", "--client-seed", "x", "--nonce", "-1"],
-        expectedError:
-            '--nonce must be a canonical non-negative decimal integer (e.g. "0", "42" — no sign, decimal point, leading zero, ' +
-            'or scientific/hex notation, and no larger than Number.MAX_SAFE_INTEGER), got "-1". Usage: pokie fairness commit ' +
-            "<serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
-    },
-    {
-        command: "fairness",
-        label: "reveal missing --server-seed",
-        args: ["reveal", "commitment.json"],
-        expectedError:
-            "--server-seed <file> is required. Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> " +
-            "--source <bundleDir> [--out <file>] [--overwrite]",
-    },
-    {
-        command: "fairness",
-        label: "verify missing --commitment",
-        args: ["verify", "proof.json"],
-        expectedError:
-            "--commitment <commitment.json> is required. Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>",
-    },
-
-    // --- inspect ---
-    {
-        command: "inspect",
-        label: "missing <packageRoot>",
-        args: [],
-        expectedError: "Usage: pokie inspect <packageRoot>",
-    },
-    {
-        command: "inspect",
-        label: "unexpected extra argument",
-        args: ["pkgRoot", "extra"],
-        expectedError: 'Unknown option "extra". Usage: pokie inspect <packageRoot>',
-    },
-
-    // --- name ---
-    {
-        command: "name",
-        label: "--theme must be one of the declared themes",
-        args: ["--theme", "not-a-real-theme"],
-        expectedError:
-            `--theme must be one of: ${ALL_SLOT_GAME_NAME_THEMES.join(", ")}. ` +
-            "Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
-    },
-    {
-        command: "name",
-        label: "--words must be 2 or 3",
-        args: ["--words", "4"],
-        expectedError:
-            "--words must be 2 or 3. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
-    },
-
-    // --- outcomelibrary ---
-    {
-        command: "outcomelibrary",
-        label: "missing/unknown subcommand",
-        args: [],
-        expectedError:
-            "Usage: pokie outcomelibrary build <config.json> [--out <dir>]\n" +
-            "   or: pokie outcomelibrary validate <bundleDir> [--deep]\n" +
-            '<config.json> lists one outcome source per mode, either a plain WeightedOutcomeLibrary JSON file — ' +
-            '{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}, ...]} — which is fully loaded into ' +
-            'memory, or a streaming JSONL file of outcomes (one canonical {"id","weight","artifact"} record per line, ' +
-            'not wrapped in a library object) for a mode too large to hold in memory at once — {"modeName": "bonus", ' +
-            '"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"} ("libraryId" is required for this form, ' +
-            "since there's no wrapping library object to read it from; \"schemaVersion\" is optional). Exactly one of " +
-            '"libraryPath"/"outcomesPath" is required per mode — see docs/outcome-library-bundle.md for the format.',
-    },
-    {
-        command: "outcomelibrary",
-        label: "build missing <config.json>",
-        args: ["build"],
-        expectedError:
-            "Usage: pokie outcomelibrary build <config.json> [--out <dir>]\n" +
-            '<config.json> lists one outcome source per mode, either a plain WeightedOutcomeLibrary JSON file — ' +
-            '{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}, ...]} — which is fully loaded into ' +
-            'memory, or a streaming JSONL file of outcomes (one canonical {"id","weight","artifact"} record per line, ' +
-            'not wrapped in a library object) for a mode too large to hold in memory at once — {"modeName": "bonus", ' +
-            '"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"} ("libraryId" is required for this form, ' +
-            "since there's no wrapping library object to read it from; \"schemaVersion\" is optional). Exactly one of " +
-            '"libraryPath"/"outcomesPath" is required per mode — see docs/outcome-library-bundle.md for the format.',
-    },
-    {
-        command: "outcomelibrary",
-        label: "validate missing <bundleDir>",
-        args: ["validate"],
-        expectedError: "Usage: pokie outcomelibrary validate <bundleDir> [--deep]",
-    },
-
-    // --- par ---
-    {
-        command: "par",
-        label: "missing/unknown subcommand",
-        args: [],
-        expectedError:
-            "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]\n" +
-            "   or: pokie par export <config.json> [--out <output.xlsx>]",
-    },
-    {
-        command: "par",
-        label: "import missing <input.xlsx>",
-        args: ["import"],
-        expectedError: "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
-    },
-    {
-        command: "par",
-        label: "import --format only supports json",
-        args: ["import", "input.xlsx", "--format", "xml"],
-        expectedError:
-            '--format only supports "json". Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]',
-    },
-    {
-        command: "par",
-        label: "export missing <config.json>",
-        args: ["export"],
-        expectedError: "Usage: pokie par export <config.json> [--out <output.xlsx>]",
-    },
-
-    // --- replay ---
-    {
-        command: "replay",
-        label: "missing <packageRoot>",
-        args: [],
-        expectedError: "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
-    },
-    {
-        command: "replay",
-        label: "--round is required",
-        args: ["pkg"],
-        expectedError:
-            "--round is required. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
-    },
-    {
-        command: "replay",
-        label: "--round must be a positive integer",
-        args: ["pkg", "--round", "0"],
-        expectedError:
-            "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
-    },
-
-    // --- report ---
-    {
-        command: "report",
-        label: "missing <simulationReportJson>",
-        args: [],
-        expectedError: "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
-    },
-    {
-        command: "report",
-        label: '--format must be "markdown" or "html"',
-        args: ["report.json", "--format", "json"],
-        expectedError:
-            '--format must be "markdown" or "html". Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]',
-    },
-
-    // --- serve ---
-    {
-        command: "serve",
-        label: "missing <packageRoot>",
-        args: [],
-        expectedError: "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
-    },
-    {
-        command: "serve",
-        label: "--port must be a non-negative integer",
-        args: ["pkg", "--port", "-5"],
-        expectedError: "--port must be a non-negative integer. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
-    },
-
-    // --- sim ---
-    {
-        command: "sim",
-        label: "missing <packageRoot>",
-        args: [],
-        expectedError:
-            "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] " +
-            "[--mode <betModeId>|all] [--out <file>] [--format json] " +
-            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
-    },
-    {
-        command: "sim",
-        label: "--workers must be within [1, MAX_SIMULATION_WORKERS]",
-        args: ["pkg", "--workers", "0"],
-        expectedError:
-            `--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. Usage: pokie sim <packageRoot> [--rounds <number>] ` +
-            "[--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] " +
-            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
-    },
-    {
-        command: "sim",
-        label: "convergence flags must all be given together (partial group)",
-        args: ["pkg", "--min-rounds", "100"],
-        expectedError:
-            "--min-rounds, --rtp-tolerance and --check-interval must all be provided together to enable adaptive convergence. " +
-            "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] " +
-            "[--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
-    },
-    {
-        command: "sim",
-        label: "--stable-checks alone (without the required group) is rejected",
-        args: ["pkg", "--stable-checks", "3"],
-        expectedError:
-            "--stable-checks requires --min-rounds, --rtp-tolerance and --check-interval to also be set. " +
-            "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] " +
-            "[--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
-    },
-
-    // --- stakeengine ---
-    {
-        command: "stakeengine",
-        label: "missing/unknown subcommand",
-        args: [],
-        expectedError:
-            "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
-            "   or: pokie stakeengine import <stakeDir> [--out <dir>]\n" +
-            "   or: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]\n" +
-            "   or: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]\n" +
-            '<config.json> lists one WeightedOutcomeLibrary source per Stake mode, either a plain JSON file — ' +
-            '{"modes": [{"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a canonical ' +
-            'outcome-library bundle (see docs/outcome-library-bundle.md) — {"modeName": "base", "cost": 1, "bundleDir": ' +
-            '"./bundle", "bundleModeName": "base"} ("bundleModeName" defaults to "modeName" when omitted); exactly one ' +
-            'of "libraryPath"/"bundleDir" is required per mode — see docs/stake-engine-export.md for the format.',
-    },
-    {
-        command: "stakeengine",
-        label: "export missing <config.json>",
-        args: ["export"],
-        expectedError:
-            "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
-            '<config.json> lists one WeightedOutcomeLibrary source per Stake mode, either a plain JSON file — ' +
-            '{"modes": [{"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a canonical ' +
-            'outcome-library bundle (see docs/outcome-library-bundle.md) — {"modeName": "base", "cost": 1, "bundleDir": ' +
-            '"./bundle", "bundleModeName": "base"} ("bundleModeName" defaults to "modeName" when omitted); exactly one ' +
-            'of "libraryPath"/"bundleDir" is required per mode — see docs/stake-engine-export.md for the format.',
-    },
-    {
-        command: "stakeengine",
-        label: "import missing <stakeDir>",
-        args: ["import"],
-        expectedError:
-            "Usage: pokie stakeengine import <stakeDir> [--out <dir>]\n" +
-            '<stakeDir> is a directory previously produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
-            "CSV/books, and its own pokie-manifest.json) — see docs/stake-engine-import.md for details.",
-    },
-    {
-        command: "stakeengine",
-        label: "analyze missing <stakeDir>",
-        args: ["analyze"],
-        expectedError:
-            "Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]\n" +
-            "<stakeDir> is any Stake Engine outcome directory (index.json, per-mode lookup CSV, per-mode zstd-compressed " +
-            "JSONL books) — POKIE's own export or a third party's, with or without a pokie-manifest.json — see " +
-            "docs/stake-engine-standalone.md for details.",
-    },
-    {
-        command: "stakeengine",
-        label: "diff missing <rightStakeDir>",
-        args: ["diff", "left"],
-        expectedError:
-            "Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]\n" +
-            "<leftStakeDir> and <rightStakeDir> are each any Stake Engine outcome directory (index.json, per-mode lookup " +
-            "CSV, per-mode zstd-compressed JSONL books) — POKIE's own export or a third party's, with or without a " +
-            "pokie-manifest.json — see docs/stake-engine-standalone.md for details.",
-    },
-    {
-        command: "stakeengine",
-        label: "analyze --format only supports json (validated before the stakeDir is ever read)",
-        args: ["analyze", "some-stake-dir", "--format", "xml"],
-        expectedError: '--format only supports "json". Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]',
-    },
-    {
-        command: "stakeengine",
-        label: "diff --format only supports json (validated before either stakeDir is ever read)",
-        args: ["diff", "left-dir", "right-dir", "--format", "xml"],
-        expectedError:
-            '--format only supports "json". Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]',
-    },
-
-    // --- studio ---
-    {
-        command: "studio",
-        label: "--port must be a non-negative integer (validated before any server/browser is touched)",
-        args: ["--port", "notanumber"],
-        expectedError:
-            "--port must be a non-negative integer. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
-    },
-
-    // --- validate ---
-    {
-        command: "validate",
-        label: "missing <packageRoot>",
-        args: [],
-        expectedError: "Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
-    },
-    {
-        command: "validate",
-        label: "--format only supports json",
-        args: ["pkg", "--format", "xml"],
-        expectedError: '--format only supports "json". Usage: pokie validate <packageRoot> [--format json] [--out <file>]',
-    },
-];
-
 // Some commands' run() throws synchronously rather than returning a rejected promise (e.g.
 // CreateCommand's plain "missing <name>" branch isn't wrapped in a try/catch, since it never awaits
 // anything before that check) — a real, if inconsistent, part of today's contract. A plain
@@ -564,10 +375,13 @@ async function captureRunErrorMessage(command: CliCommandHandling, args: string[
     throw new Error(`Expected "pokie ${command.getName()} ${args.join(" ")}" to fail, but it resolved.`);
 }
 
+const INVALID_CASES = CLI_CONTRACT_CASES.filter((testCase): testCase is CliContractCase & {expectedError: string} => testCase.kind === "invalid");
+const VALID_CASES = CLI_CONTRACT_CASES.filter((testCase) => testCase.kind === "valid");
+
 describe("CLI command validation contract (frozen, side-effect-free)", () => {
     const commands = registerCommands();
 
-    it.each(CONTRACT_CASES.map((testCase) => [`${testCase.command}: ${testCase.label}`, testCase] as const))(
+    it.each(INVALID_CASES.map((testCase) => [`${testCase.command}: ${testCase.label}`, testCase] as const))(
         "%s",
         async (_label, testCase) => {
             const command = commands.find((candidate) => candidate.getName() === testCase.command);
@@ -582,15 +396,22 @@ describe("CLI command validation contract (frozen, side-effect-free)", () => {
 
     it("every contract case names a command that actually exists in the registry (guards against a typo silently no-oping)", () => {
         const registered = new Set(commands.map((command) => command.getName()));
-        for (const testCase of CONTRACT_CASES) {
+        for (const testCase of CLI_CONTRACT_CASES) {
             expect(registered.has(testCase.command)).toBe(true);
         }
     });
 
-    it("every command with a validation surface (i.e. every command but init) has at least one contract case", () => {
-        const coveredCommands = new Set(CONTRACT_CASES.map((testCase) => testCase.command));
+    it("every command with a validation surface (i.e. every command but init) has at least one invalid contract case", () => {
+        const coveredCommands = new Set(INVALID_CASES.map((testCase) => testCase.command));
         const commandsWithVerbs = CLI_COMMAND_DESCRIPTORS.filter((descriptor) => descriptor.verbs.length > 0);
         for (const descriptor of commandsWithVerbs) {
+            expect(coveredCommands.has(descriptor.name)).toBe(true);
+        }
+    });
+
+    it("every registered command (including init) has at least one valid contract case", () => {
+        const coveredCommands = new Set(VALID_CASES.map((testCase) => testCase.command));
+        for (const descriptor of CLI_COMMAND_DESCRIPTORS) {
             expect(coveredCommands.has(descriptor.name)).toBe(true);
         }
     });
@@ -645,23 +466,24 @@ describe("CLI defaults (side-effect-free success path)", () => {
 });
 
 // Exercises the real top-level dispatcher (cli/dispatch.ts, what cli/pokie.ts's own run() delegates
-// to) against the real registered commands above, rather than only each command class's run()
-// directly — closing the gap between "this command validates its own args correctly" (the describe
-// blocks above) and "the CLI actually surfaces that behavior end to end" (argv resolution, stream
-// separation, process exit code). See tests/cli/dispatch.test.ts for dispatch's own generic
-// mechanics (fake commands, no real registry); this describe block is the frozen contract for what
-// happens when the *real* pokie command list is behind it.
+// to) against real command classes above, rather than only each command class's run() directly —
+// closing the gap between "this command validates its own args correctly" / "this command's accepted
+// path behaves correctly" (the describe blocks above) and "the CLI actually surfaces that behavior end
+// to end" (argv resolution, stream separation, process exit code). See tests/cli/dispatch.test.ts for
+// dispatch's own generic mechanics (fake commands, no real registry); this describe block is the
+// frozen contract for what happens when the *real* pokie command list is behind it.
 describe("CLI dispatch contract (cli/dispatch.ts, the real entry point cli/pokie.ts's run() delegates to)", () => {
     const commands = registerCommands();
+    const validCommands = registerCommandsForValidCases();
 
-    it.each(CONTRACT_CASES.map((testCase) => [`${testCase.command}: ${testCase.label}`, testCase] as const))(
+    it.each(INVALID_CASES.map((testCase) => [`${testCase.command}: ${testCase.label}`, testCase] as const))(
         "%s (through the real dispatcher: stderr-only, exit 1)",
         async (_label, testCase) => {
             const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
             const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
             try {
                 const exitCode = await dispatch(commands, ["node", "pokie", testCase.command, ...testCase.args]);
-                expect(exitCode).toBe(1);
+                expect(exitCode).toBe(testCase.expectedExitCode);
                 expect(errorSpy).toHaveBeenCalledTimes(1);
                 expect(errorSpy.mock.calls[0][0]).toBe(testCase.expectedError);
                 expect(logSpy).not.toHaveBeenCalled();
@@ -672,67 +494,74 @@ describe("CLI dispatch contract (cli/dispatch.ts, the real entry point cli/pokie
         },
     );
 
-    it.each([["--help"], ["-h"]])('"pokie %s" prints the full registered command list to stdout only and exits 0', async (flag) => {
+    it.each(VALID_CASES.map((testCase) => [`${testCase.command}: ${testCase.label}`, testCase] as const))(
+        "%s (through the real dispatcher, against a dependency-injected instance of the real command class)",
+        async (_label, testCase) => {
+            const command = validCommands.get(`${testCase.command}::${testCase.label}`);
+            if (!command) {
+                throw new Error(`No stubbed command registered for valid case "${testCase.command}::${testCase.label}".`);
+            }
+
+            const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+            try {
+                const exitCode = await dispatch([command], ["node", "pokie", testCase.command, ...testCase.args]);
+                expect(exitCode).toBe(testCase.expectedExitCode);
+                expect(errorSpy).not.toHaveBeenCalled();
+
+                if (testCase.expectStdout === "json") {
+                    expect(logSpy).toHaveBeenCalledTimes(1);
+                    expect(() => JSON.parse(logSpy.mock.calls[0][0] as string)).not.toThrow();
+                } else {
+                    expect(logSpy).toHaveBeenCalled();
+                }
+            } finally {
+                logSpy.mockRestore();
+                errorSpy.mockRestore();
+            }
+        },
+    );
+});
+
+// The dispatcher-level contract that isn't any one command's own: --help/-h and an unrecognized
+// command name (both resolved by resolveCliInvocation before any command is ever reached), plus
+// --version (which has no dedicated top-level handling today — see CLI_TOP_LEVEL_DISPATCH_CASES'
+// own comment on that case).
+describe("CLI top-level dispatch contract (--help/-h, unknown command, --version)", () => {
+    const commands = registerCommands();
+
+    it.each(CLI_TOP_LEVEL_DISPATCH_CASES.map((testCase) => [testCase.label, testCase] as const))("%s", async (_label, testCase) => {
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
         try {
-            const exitCode = await dispatch(commands, ["node", "pokie", flag]);
-            expect(exitCode).toBe(0);
-            expect(logSpy).toHaveBeenCalledTimes(1);
-            expect(logSpy.mock.calls[0][0]).toBe(buildUsageText(commands));
-            expect(errorSpy).not.toHaveBeenCalled();
+            const exitCode = await dispatch(commands, ["node", "pokie", ...testCase.argv]);
+            expect(exitCode).toBe(testCase.expectedExitCode);
+
+            if (testCase.expectedStdoutIsUsage) {
+                expect(logSpy).toHaveBeenCalledTimes(1);
+                expect(logSpy.mock.calls[0][0]).toBe(buildUsageText(commands));
+                expect(errorSpy).not.toHaveBeenCalled();
+            } else {
+                expect(logSpy).not.toHaveBeenCalled();
+                expect(errorSpy).toHaveBeenCalledTimes(1);
+                expect(errorSpy.mock.calls[0][0]).toBe(testCase.expectedStderr);
+            }
         } finally {
             logSpy.mockRestore();
             errorSpy.mockRestore();
-        }
-    });
-
-    it('an unknown command name that is also not an existing path prints the same command list to stdout and exits 1', async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
-        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
-        try {
-            // Guaranteed not to collide with a real file/directory in the repo root (this test's cwd).
-            const exitCode = await dispatch(commands, ["node", "pokie", "totally-bogus-pokie-command-xyz-12345"]);
-            expect(exitCode).toBe(1);
-            expect(logSpy).toHaveBeenCalledTimes(1);
-            expect(logSpy.mock.calls[0][0]).toBe(buildUsageText(commands));
-            expect(errorSpy).not.toHaveBeenCalled();
-        } finally {
-            logSpy.mockRestore();
-            errorSpy.mockRestore();
-        }
-    });
-
-    it('dispatches "pokie name --json" end to end (argv resolution -> real NameCommand -> exit code)', async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
-        try {
-            const exitCode = await dispatch(commands, ["node", "pokie", "name", "--json"]);
-            expect(exitCode).toBe(0);
-            expect(logSpy).toHaveBeenCalledTimes(1);
-            expect(() => JSON.parse(logSpy.mock.calls[0][0] as string)).not.toThrow();
-        } finally {
-            logSpy.mockRestore();
-        }
-    });
-
-    it('dispatches "pokie build random --dry-run" end to end, succeeding without writing anything', async () => {
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
-        try {
-            const exitCode = await dispatch(commands, ["node", "pokie", "build", "random", "--seed", "4242", "--dry-run"]);
-            expect(exitCode).toBe(0);
-        } finally {
-            logSpy.mockRestore();
         }
     });
 });
 
-// Ties this file's frozen validation-error/dispatch contract to the deep, per-command functional
-// coverage (defaults, valid-value success paths, JSON output shapes, actual file I/O) that already
-// lives in tests/cli/commands/*.test.ts — one dedicated file per command class, by convention. That
-// coverage isn't duplicated here (this file's cases are deliberately side-effect-free, so most
-// commands' real success paths — which read/write actual packages — can't live here), but its
-// existence is: silently deleting a command's dedicated test file would otherwise go unnoticed by
-// everything else in this file.
+// Ties this file's frozen validation/dispatch contract to the deep, per-command functional coverage
+// (every accepted option value, every JSON output shape, actual file I/O) that already lives in
+// tests/cli/commands/*.test.ts — one dedicated file per command class, by convention. That coverage
+// isn't duplicated here — CLI_CONTRACT_CASES' own "valid" cases above are this file's real,
+// executable evidence that every command's accepted path actually works end to end through
+// dispatch(), not this file-existence check alone (a dedicated test file could exist and still not
+// prove that, and its own absence wouldn't be caught by the checks above) — but silently deleting a
+// command's dedicated test file would otherwise go unnoticed by everything else in this file, so it
+// still gets its own guard.
 describe("CLI command test coverage (structural link to tests/cli/commands/*.test.ts)", () => {
     const commands = registerCommands();
     const COMMANDS_TEST_DIR = path.join(__dirname, "commands");
