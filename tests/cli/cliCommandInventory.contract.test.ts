@@ -18,7 +18,10 @@ import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {StakeEngineCommand} from "../../cli/commands/StakeEngineCommand.js";
 import {StudioCommand} from "../../cli/commands/StudioCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import fs from "fs";
+import path from "path";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
+import {dispatch} from "../../cli/dispatch.js";
 import {buildUsageText} from "../../cli/usageText.js";
 import {CLI_COMMAND_DESCRIPTORS} from "./fixtures/cliCommandInventory.js";
 
@@ -143,6 +146,12 @@ const CONTRACT_CASES: ContractCase[] = [
         label: "verify missing <certDir>",
         args: ["verify"],
         expectedError: "Usage: pokie certification verify <certDir> --source <bundleDir>",
+    },
+    {
+        command: "certification",
+        label: "verify missing --source (certDir given)",
+        args: ["verify", "certDir"],
+        expectedError: "--source <bundleDir> is required. Usage: pokie certification verify <certDir> --source <bundleDir>",
     },
 
     // --- client ---
@@ -308,6 +317,20 @@ const CONTRACT_CASES: ContractCase[] = [
     },
     {
         command: "outcomelibrary",
+        label: "build missing <config.json>",
+        args: ["build"],
+        expectedError:
+            "Usage: pokie outcomelibrary build <config.json> [--out <dir>]\n" +
+            '<config.json> lists one outcome source per mode, either a plain WeightedOutcomeLibrary JSON file — ' +
+            '{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}, ...]} — which is fully loaded into ' +
+            'memory, or a streaming JSONL file of outcomes (one canonical {"id","weight","artifact"} record per line, ' +
+            'not wrapped in a library object) for a mode too large to hold in memory at once — {"modeName": "bonus", ' +
+            '"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"} ("libraryId" is required for this form, ' +
+            "since there's no wrapping library object to read it from; \"schemaVersion\" is optional). Exactly one of " +
+            '"libraryPath"/"outcomesPath" is required per mode — see docs/outcome-library-bundle.md for the format.',
+    },
+    {
+        command: "outcomelibrary",
         label: "validate missing <bundleDir>",
         args: ["validate"],
         expectedError: "Usage: pokie outcomelibrary validate <bundleDir> [--deep]",
@@ -327,6 +350,13 @@ const CONTRACT_CASES: ContractCase[] = [
         label: "import missing <input.xlsx>",
         args: ["import"],
         expectedError: "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
+    },
+    {
+        command: "par",
+        label: "import --format only supports json",
+        args: ["import", "input.xlsx", "--format", "xml"],
+        expectedError:
+            '--format only supports "json". Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]',
     },
     {
         command: "par",
@@ -442,6 +472,18 @@ const CONTRACT_CASES: ContractCase[] = [
     },
     {
         command: "stakeengine",
+        label: "export missing <config.json>",
+        args: ["export"],
+        expectedError:
+            "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
+            '<config.json> lists one WeightedOutcomeLibrary source per Stake mode, either a plain JSON file — ' +
+            '{"modes": [{"modeName": "base", "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a canonical ' +
+            'outcome-library bundle (see docs/outcome-library-bundle.md) — {"modeName": "base", "cost": 1, "bundleDir": ' +
+            '"./bundle", "bundleModeName": "base"} ("bundleModeName" defaults to "modeName" when omitted); exactly one ' +
+            'of "libraryPath"/"bundleDir" is required per mode — see docs/stake-engine-export.md for the format.',
+    },
+    {
+        command: "stakeengine",
         label: "import missing <stakeDir>",
         args: ["import"],
         expectedError:
@@ -468,6 +510,19 @@ const CONTRACT_CASES: ContractCase[] = [
             "<leftStakeDir> and <rightStakeDir> are each any Stake Engine outcome directory (index.json, per-mode lookup " +
             "CSV, per-mode zstd-compressed JSONL books) — POKIE's own export or a third party's, with or without a " +
             "pokie-manifest.json — see docs/stake-engine-standalone.md for details.",
+    },
+    {
+        command: "stakeengine",
+        label: "analyze --format only supports json (validated before the stakeDir is ever read)",
+        args: ["analyze", "some-stake-dir", "--format", "xml"],
+        expectedError: '--format only supports "json". Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]',
+    },
+    {
+        command: "stakeengine",
+        label: "diff --format only supports json (validated before either stakeDir is ever read)",
+        args: ["diff", "left-dir", "right-dir", "--format", "xml"],
+        expectedError:
+            '--format only supports "json". Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]',
     },
 
     // --- studio ---
@@ -568,6 +623,124 @@ describe("CLI defaults (side-effect-free success path)", () => {
             expect(parsed).toHaveLength(1);
         } finally {
             logSpy.mockRestore();
+        }
+    });
+
+    // "random --dry-run" is the one other command-line shape in the whole registry that succeeds
+    // (exit 0) without any filesystem/network/subprocess I/O: the blueprint is generated in memory,
+    // validated, and previewed — see buildFromBlueprint's own "if (dryRun)" branch in
+    // cli/commands/BuildCommand.ts, which returns before GamePackageGenerator.generate() (the command's
+    // one I/O point) is ever called.
+    it('"pokie build random --seed <n> --preset variant --dry-run" succeeds without writing anything', async () => {
+        const command = new BuildCommand(TEST_VERSION);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const exitCode = await command.run(["random", "--seed", "4242", "--preset", "variant", "--dry-run"]);
+            expect(exitCode).toBe(0);
+            expect(logSpy.mock.calls.some((call) => String(call[0]).includes("Generated random game"))).toBe(true);
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+});
+
+// Exercises the real top-level dispatcher (cli/dispatch.ts, what cli/pokie.ts's own run() delegates
+// to) against the real registered commands above, rather than only each command class's run()
+// directly — closing the gap between "this command validates its own args correctly" (the describe
+// blocks above) and "the CLI actually surfaces that behavior end to end" (argv resolution, stream
+// separation, process exit code). See tests/cli/dispatch.test.ts for dispatch's own generic
+// mechanics (fake commands, no real registry); this describe block is the frozen contract for what
+// happens when the *real* pokie command list is behind it.
+describe("CLI dispatch contract (cli/dispatch.ts, the real entry point cli/pokie.ts's run() delegates to)", () => {
+    const commands = registerCommands();
+
+    it.each(CONTRACT_CASES.map((testCase) => [`${testCase.command}: ${testCase.label}`, testCase] as const))(
+        "%s (through the real dispatcher: stderr-only, exit 1)",
+        async (_label, testCase) => {
+            const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+            const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+            try {
+                const exitCode = await dispatch(commands, ["node", "pokie", testCase.command, ...testCase.args]);
+                expect(exitCode).toBe(1);
+                expect(errorSpy).toHaveBeenCalledTimes(1);
+                expect(errorSpy.mock.calls[0][0]).toBe(testCase.expectedError);
+                expect(logSpy).not.toHaveBeenCalled();
+            } finally {
+                logSpy.mockRestore();
+                errorSpy.mockRestore();
+            }
+        },
+    );
+
+    it.each([["--help"], ["-h"]])('"pokie %s" prints the full registered command list to stdout only and exits 0', async (flag) => {
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            const exitCode = await dispatch(commands, ["node", "pokie", flag]);
+            expect(exitCode).toBe(0);
+            expect(logSpy).toHaveBeenCalledTimes(1);
+            expect(logSpy.mock.calls[0][0]).toBe(buildUsageText(commands));
+            expect(errorSpy).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            errorSpy.mockRestore();
+        }
+    });
+
+    it('an unknown command name that is also not an existing path prints the same command list to stdout and exits 1', async () => {
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            // Guaranteed not to collide with a real file/directory in the repo root (this test's cwd).
+            const exitCode = await dispatch(commands, ["node", "pokie", "totally-bogus-pokie-command-xyz-12345"]);
+            expect(exitCode).toBe(1);
+            expect(logSpy).toHaveBeenCalledTimes(1);
+            expect(logSpy.mock.calls[0][0]).toBe(buildUsageText(commands));
+            expect(errorSpy).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            errorSpy.mockRestore();
+        }
+    });
+
+    it('dispatches "pokie name --json" end to end (argv resolution -> real NameCommand -> exit code)', async () => {
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const exitCode = await dispatch(commands, ["node", "pokie", "name", "--json"]);
+            expect(exitCode).toBe(0);
+            expect(logSpy).toHaveBeenCalledTimes(1);
+            expect(() => JSON.parse(logSpy.mock.calls[0][0] as string)).not.toThrow();
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+
+    it('dispatches "pokie build random --dry-run" end to end, succeeding without writing anything', async () => {
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const exitCode = await dispatch(commands, ["node", "pokie", "build", "random", "--seed", "4242", "--dry-run"]);
+            expect(exitCode).toBe(0);
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+});
+
+// Ties this file's frozen validation-error/dispatch contract to the deep, per-command functional
+// coverage (defaults, valid-value success paths, JSON output shapes, actual file I/O) that already
+// lives in tests/cli/commands/*.test.ts — one dedicated file per command class, by convention. That
+// coverage isn't duplicated here (this file's cases are deliberately side-effect-free, so most
+// commands' real success paths — which read/write actual packages — can't live here), but its
+// existence is: silently deleting a command's dedicated test file would otherwise go unnoticed by
+// everything else in this file.
+describe("CLI command test coverage (structural link to tests/cli/commands/*.test.ts)", () => {
+    const commands = registerCommands();
+    const COMMANDS_TEST_DIR = path.join(__dirname, "commands");
+
+    it("every registered command class has its own dedicated test file", () => {
+        for (const command of commands) {
+            const testFile = path.join(COMMANDS_TEST_DIR, `${command.constructor.name}.test.ts`);
+            expect(fs.existsSync(testFile)).toBe(true);
         }
     });
 });
