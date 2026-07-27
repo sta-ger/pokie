@@ -42,11 +42,17 @@
                 "@typescript-eslint/no-explicit-any": "error",
                 "@typescript-eslint/no-unused-vars": "warn",
                 "@typescript-eslint/adjacent-overload-signatures": "off",
-                "@typescript-eslint/no-empty-interface": "off",
+                // Successor of the previously disabled no-empty-interface (removed from
+                // typescript-eslint v8's rule set). The interface-per-class convention declares
+                // semantic aliases like `interface LinesPatternsDescribing extends
+                // ConvertableToArray<number[]> {}`, so single-extends interfaces stay allowed while
+                // bare `{}` object types remain reported.
+                "@typescript-eslint/no-empty-object-type": ["error", {"allowInterfaces": "with-single-extends"}],
                 "@typescript-eslint/member-ordering": "error",
-                "@typescript-eslint/type-annotation-spacing": "error",
                 "@typescript-eslint/prefer-readonly": ["error"],
-                "@typescript-eslint/member-delimiter-style": "error",
+                // type-annotation-spacing and member-delimiter-style were dropped in
+                // typescript-eslint v8 (formatting rules moved out of the plugin). Both shapes stay
+                // enforced by prettier, so they are not re-added from another plugin here.
                 "@typescript-eslint/explicit-member-accessibility": [
                     "error",
                     {
@@ -59,7 +65,10 @@
         }
     ],
     "rules": {
-        "@typescript-eslint/no-var-requires": "off",
+        // typescript-eslint v8 folded no-var-requires (disabled here since v5) into
+        // no-require-imports; keeping it off preserves the runtime require() used to load a
+        // generated CommonJS package inside tests.
+        "@typescript-eslint/no-require-imports": "off",
         "jest/no-commented-out-tests": "off",
         "jest/no-done-callback": "off",
         "jest/no-conditional-expect": "off",
