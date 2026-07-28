@@ -27,6 +27,14 @@ export function BetModesEditor({
 }) {
     const betModes = asBetModesList(blueprint.betModes);
     const draftStatus = describeNewBetModeDraft(betModes, newBetModeId);
+    // A typed-but-not-yet-added id is real, uncommitted state (see MechanicsEditorTab's own doc comment
+    // on why it's lifted up to survive Stepper navigation) -- the description text must say so, not just
+    // silently keep showing the same static instructions regardless of whether there's a draft in
+    // progress.
+    const newBetModeIdDescription =
+        draftStatus.status === "ready"
+            ? `Draft -- "${draftStatus.id}" isn't part of the bet mode list yet. Add (or press Enter) to include it.`
+            : "Give it a unique id, then Add (or press Enter) to create the row, then fill in its label, cost multiplier, and target RTP below.";
 
     function handleAdd(): void {
         if (draftStatus.status !== "ready") {
@@ -98,7 +106,7 @@ export function BetModesEditor({
                 <TextInput
                     placeholder="New bet mode id"
                     aria-label="New bet mode id"
-                    description="Give it a unique id, then Add (or press Enter) to create the row, then fill in its label, cost multiplier, and target RTP below."
+                    description={newBetModeIdDescription}
                     value={newBetModeId}
                     onChange={(event) => onNewBetModeIdChange(event.currentTarget.value)}
                     onKeyDown={(event) => {

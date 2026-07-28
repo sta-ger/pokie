@@ -33,6 +33,23 @@ function describeStepStatusText(stepId: MechanicsEditorStepId, view: BlueprintVa
     return describeSectionStatusText(describeStepStatus(stepId, view));
 }
 
+// The Bet modes step's own Draft/Saved/Invalid/Unsaved lifecycle line, distinct from the Stepper's
+// per-step description above -- that one only ever reflects the last Validate result and stays blank
+// until Validate has actually run, so on its own it can't tell the user an edit sits unapplied. Invalid
+// (this step's own validation errors) takes priority over Unsaved: fixing the error is the more urgent
+// fact. See BetModesEditor's own newBetModeIdDescription for the separate "Draft" state -- a typed but
+// not-yet-added bet mode id -- which this line does not duplicate.
+function describeBetModesLifecycleStatus(isDirty: boolean, view: BlueprintValidationView): {tone: "success" | "warning" | "error"; text: string} {
+    const status = describeStepStatus("betModes", view);
+    if (status.tone === "error") {
+        return {tone: "error", text: "Invalid -- fix the errors below before applying."};
+    }
+    if (isDirty) {
+        return {tone: "warning", text: "Unsaved changes -- go to Apply to save them to the project."};
+    }
+    return {tone: "success", text: "Saved -- matches the project's applied blueprint."};
+}
+
 type LoadView = {status: "loading"} | {status: "unsupported"; message: string} | {status: "error"; message: string} | {status: "ok"};
 
 type ApplyView =
@@ -294,6 +311,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
     }
     const {byStep, unclassified} = classifyIssuesByStep(allIssues);
     const applyBlocked = validateView.status !== "ok";
+    const betModesLifecycleStatus = describeBetModesLifecycleStatus(isDirty, validateView);
 
     function renderStepIssues(stepId: MechanicsEditorStepId): ReactNode {
         const issues = byStep[stepId];
@@ -351,6 +369,9 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
 
             {activeStep === 3 && (
                 <div key={editor.formGeneration}>
+                    <Text size="sm" c={betModesLifecycleStatus.tone === "error" ? "red" : betModesLifecycleStatus.tone === "warning" ? "orange" : "green"} mb="sm">
+                        {betModesLifecycleStatus.text}
+                    </Text>
                     <BetsList blueprint={blueprint} mutate={editor.mutate} />
                     <BetModesEditor blueprint={blueprint} mutate={editor.mutate} newBetModeId={newBetModeId} onNewBetModeIdChange={setNewBetModeId} />
                     {renderStepIssues("betModes")}

@@ -252,6 +252,127 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
     });
 
+    // V13-POLISH-7: the Bet modes step must make its own Draft/Saved/Invalid/Unsaved lifecycle visible
+    // and truthful, not just leave it implicit in the Discard button's enabled state.
+    it("shows the Bet modes step's Draft/Unsaved/Saved lifecycle status as a bet mode id is typed, added, and applied", async () => {
+        const user = userEvent.setup();
+        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
+            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "ok", blueprintHash: "sha256:applied", warnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+
+        // Freshly loaded, no edits yet -- already matches the project's applied blueprint.
+        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
+
+        // A typed-but-not-yet-added id is its own "Draft" state -- not part of the blueprint yet, and
+        // must not be reported as an unsaved blueprint change either.
+        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+        expect(screen.getByText(/Draft -- "buy-bonus" isn't part of the bet mode list yet/)).toBeInTheDocument();
+        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
+
+        // Adding it commits it to the blueprint -- now a real, unsaved change.
+        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
+        expect(screen.getByText("Unsaved changes -- go to Apply to save them to the project.")).toBeInTheDocument();
+
+        // Applying it clears the unsaved state back to saved.
+        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
+        await user.click(screen.getByRole("button", {name: "Run validation"}));
+        await screen.findByText("No issues found.");
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
+        await user.click(screen.getByRole("button", {name: "Apply"}));
+        await user.click(await screen.findByRole("button", {name: "Confirm"}));
+        await screen.findByText(/up to date/);
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
+    });
+
+    it("shows the server's error on a failed Apply of a Bet Modes edit, keeps it recoverable, and Discard reverts it", async () => {
+        const user = userEvent.setup();
+        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
+            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "error", error: "Disk full."}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
+        expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
+        await user.click(screen.getByRole("button", {name: "Run validation"}));
+        await screen.findByText("No issues found.");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
+        await user.click(screen.getByRole("button", {name: "Apply"}));
+        await user.click(await screen.findByRole("button", {name: "Confirm"}));
+
+        expect(await screen.findByText("Disk full.")).toBeInTheDocument();
+        expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
+        expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
+
+        // The failed Apply must never mark the added bet mode "saved" -- it's still an unsaved, fully
+        // recoverable edit, still sitting on its own row exactly as the user left it.
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
+        expect(screen.getByText("Unsaved changes -- go to Apply to save them to the project.")).toBeInTheDocument();
+
+        // Discard still works, reverting all the way back to the originally loaded blueprint (no bet
+        // modes at all).
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
+        await user.click(screen.getByRole("button", {name: "Discard draft"}));
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        expect(screen.queryByLabelText("Bet mode 1 id")).not.toBeInTheDocument();
+        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
+    });
+
+    // Regression coverage for the established "reload discards an unapplied draft" contract (see the
+    // "warns before losing an unapplied draft" describe block below) specifically for Bet Modes: since
+    // MechanicsEditorTab is conditionally *mounted* (only while activeTab === "mechanicsEditor", see
+    // ProjectDashboardPage's own key={projectKey} on it), navigating away and back is a genuine fresh
+    // reload from the server, not a suspend/resume -- an added-but-unapplied bet mode row and an
+    // in-progress "New bet mode id" draft must both be gone afterward, exactly as any other unapplied
+    // field edit already is.
+    it("reloads a clean Bet Modes slate -- no added row, no in-progress draft -- after a confirmed navigation away and back", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({...BASE_ROUTES});
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
+        expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
+
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await user.click(await screen.findByRole("button", {name: "Leave"}));
+        await screen.findByRole("button", {name: "Re-run Inspect"});
+
+        await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+        await screen.findByLabelText("Reels");
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+
+        expect(screen.queryByLabelText("Bet mode 1 id")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
+        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
+
+        // Confirms this really was a fresh reload from the server, not stale client-side state.
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/load")).toHaveLength(2);
+    });
+
     it("does not offer a non-functional 'forces free games' bet-mode control", async () => {
         // BetMode has no field promising engine behavior nothing in the runtime actually delivers
         // (see BetMode.ts's own doc comment) -- the editor must not offer a control for one either,
