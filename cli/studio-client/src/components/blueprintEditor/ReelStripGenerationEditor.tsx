@@ -840,7 +840,7 @@ export function ReelStripGenerationEditor({
                                 />
                                 <NumberInput label="Visible rows" min={1} step={1} value={rows} onChange={(value) => setRows(typeof value === "number" ? value : defaultRows)} />
                             </QuickActions>
-                            <ScreenTable screen={window.map((symbolId) => [symbolId])} />
+                            <ScreenTable screen={[window]} />
                         </PageSection>
 
                         <QuickActions>

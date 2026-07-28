@@ -64,7 +64,8 @@ export type ReplayResultView = {
     seed: string | null;
     totalBet: number;
     totalWin: number;
-    // Cell-level display strings, row-major, or undefined for a session without
+    // Cell-level display strings, reel-major (screen[reelIndex][rowIndex], same orientation as
+    // RoundArtifact.screen -- see ScreenTable's own doc comment), or undefined for a session without
     // getSymbolsCombination() (ReplayDescriptor.screen === null — see ReplayRecorder's own doc
     // comment) — dom.ts renders this as "no screen available" rather than an empty grid.
     screen?: string[][];
