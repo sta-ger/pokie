@@ -82,6 +82,14 @@ export type StudioScaffoldResultView =
       }
     | {status: "error"; error: string};
 
+// GET /api/home/fs/browse's own DTO — see cli/studio/home/StudioFsBrowseService.ts's own doc comment.
+// Backs the "Browse" action on every filesystem-path input in Home's project-creation forms.
+export type StudioFsEntry = {name: string; isDirectory: boolean};
+
+export type StudioFsBrowseView =
+    | {status: "ok"; resolvedPath: string; displayPath: string; parentPath?: string; entries: StudioFsEntry[]}
+    | {status: "error"; error: string; resolvedPath: string};
+
 // POST /api/home/projects/build/preview's own DTO — see cli/studio/home/StudioBuildPreviewView.ts's
 // own doc comment. Never the result of anything being written to disk.
 export type StudioBuildPreviewView =

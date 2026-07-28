@@ -3061,6 +3061,15 @@ client, even for a load/validation failure.
   check: `{"status": "error", "error": "..."}` (e.g. `"... already exists and contains file(s) ... did not
   generate: ..."` — refusing to overwrite a directory it didn't produce) or `{"status": "ok", "projectRoot",
   "manifest", "createdFiles", "buildInfo", "unchanged", "warnings"}` on success (`201`).
+- `GET /api/home/fs/browse?path=<optional>` — backs the "Browse" action on every filesystem-path input in Home's
+  project-creation forms (Create/Init/Build from Blueprint). Lists `path`'s immediate children (defaulting to the
+  directory Studio itself was started in when `path` is omitted): always `200` with `{"status": "ok",
+  "resolvedPath", "displayPath", "parentPath"?, "entries": [{"name", "isDirectory"}]}` (directories sorted before
+  files, dotfiles hidden; `displayPath` is relative — `"./games/foo"` — when `resolvedPath` falls strictly inside
+  Studio's own working directory, and Studio's own absolute working-directory path (never a bare `"."`) otherwise,
+  including when `resolvedPath` *is* that root) or `{"status": "error", "error": "...", "resolvedPath"}` for a
+  nonexistent/unreadable/non-directory path — never a 4xx, same reasoning as `POST /api/home/projects/create`
+  below.
 - `POST /api/home/blueprints/validate` `{"blueprint": <any JSON value>}` — runs `GameBlueprintValidator` against
   `blueprint` as given (no file is read or written): `400 {"error": "..."}` only if `blueprint` itself is missing
   from the request body; otherwise always `200` with `{"status": "ok", "warnings": [...]}` or `{"status": "invalid",

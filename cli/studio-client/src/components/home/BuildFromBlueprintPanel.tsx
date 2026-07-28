@@ -1,4 +1,4 @@
-import {Button, Stack, TextInput} from "@mantine/core";
+import {Button, Stack} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useRef, useState} from "react";
 import {buildProject, previewBuild} from "../../api/apiClient";
@@ -10,6 +10,7 @@ import {describeBuildPreview, describeBuildResult, type BuildPreviewView, type B
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
 type FormValues = {blueprintPath: string; outDir: string};
@@ -76,8 +77,23 @@ export function BuildFromBlueprintPanel() {
         <Stack gap="md" maw={560}>
             <form onSubmit={form.onSubmit(runPreview)}>
                 <Stack gap="sm">
-                    <TextInput label="Blueprint JSON path" required {...form.getInputProps("blueprintPath")} key={form.key("blueprintPath")} />
-                    <TextInput label="Output directory (optional)" {...form.getInputProps("outDir")} key={form.key("outDir")} />
+                    <PathInput
+                        label="Blueprint JSON path"
+                        required
+                        kind="file"
+                        browseTitle="Browse for a blueprint JSON file"
+                        {...form.getInputProps("blueprintPath")}
+                        onPathSelected={(path) => form.setFieldValue("blueprintPath", path)}
+                        key={form.key("blueprintPath")}
+                    />
+                    <PathInput
+                        label="Output directory (optional)"
+                        kind="directory"
+                        browseTitle="Browse for an output directory"
+                        {...form.getInputProps("outDir")}
+                        onPathSelected={(path) => form.setFieldValue("outDir", path)}
+                        key={form.key("outDir")}
+                    />
                     <QuickActions>
                         <Button type="submit" loading={preview.status === "loading"}>
                             Preview

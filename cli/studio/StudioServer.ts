@@ -30,6 +30,7 @@ import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
 import {validateFairnessConfigureRequest, FairnessConfigureRequestInput} from "./fairness/validateFairnessConfigureRequest.js";
 import {validateFairnessGenerateRequest, FairnessGenerateRequestInput} from "./fairness/validateFairnessGenerateRequest.js";
 import {validateFairnessVerifyRequest, FairnessVerifyRequestInput} from "./fairness/validateFairnessVerifyRequest.js";
+import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {validateOutcomeLibrarySelectRequest, OutcomeLibrarySelectRequestInput} from "./outcomeLibrary/validateOutcomeLibrarySelectRequest.js";
@@ -102,6 +103,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly pokieVersion: string;
     private readonly studioRoot: string;
     private readonly homeService: StudioHomeService;
+    private readonly fsBrowseService: StudioFsBrowseService;
     private readonly blueprintService: StudioBlueprintService;
     private readonly loadGame: typeof loadPokieGame;
     private readonly gamePackageInspector: GamePackageInspecting;
@@ -129,6 +131,7 @@ export class StudioServer implements StudioServerHandling {
         this.pokieVersion = options.pokieVersion;
         this.studioRoot = path.resolve(options.studioRoot);
         this.homeService = options.homeService;
+        this.fsBrowseService = options.fsBrowseService ?? new StudioFsBrowseService(this.studioRoot);
         this.blueprintService = options.blueprintService;
         this.loadGame = options.loadGame ?? loadPokieGame;
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
@@ -292,6 +295,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/projects/open") {
             await this.handleHomeOpenProject(req, res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/home/fs/browse") {
+            this.handleHomeFsBrowse(res, url);
             return;
         }
 
@@ -747,6 +755,15 @@ export class StudioServer implements StudioServerHandling {
         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
         this.projectDashboard = dashboard;
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.game});
+    }
+
+    // Always 200: same "a well-formed request that fails at the domain level isn't a failed HTTP
+    // request" reasoning as GET /api/project/validate -- a nonexistent/unreadable/non-directory path is
+    // an expected outcome of a user typing or navigating anywhere on disk, carried in the DTO's own
+    // `status` field (see StudioFsBrowseView) rather than an HTTP error status.
+    private handleHomeFsBrowse(res: ServerResponse, url: URL): void {
+        const requestedPath = url.searchParams.get("path");
+        this.sendJson(res, 200, this.fsBrowseService.browse(requestedPath ?? undefined));
     }
 
     // The five Blueprint Editor handlers below follow the same validate-then-delegate shape as the Home
