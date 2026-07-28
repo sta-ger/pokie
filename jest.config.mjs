@@ -147,6 +147,10 @@ export default {
     // the threshold; one heavy suite of this lane retains ~190-215MB, so it trips on every file that
     // costs anything) -- but it is only checked once a file has finished, so on its own it can neither
     // bound growth within a file nor stop V8 from deferring collection until past the cgroup limit.
+    // test:coverage (check:release) runs this same studio-client-workflows project bundled into one
+    // invocation alongside the other three projects plus --coverage instrumentation -- strictly more
+    // concurrent contention than check:full's dedicated test:workflows step ever sees -- so it carries
+    // the identical pair of flags for the same reason, not just the lane run on its own.
     //
     // With that in place 60000ms is ordinary headroom: enough for a test that chains several sequential
     // findBy*/waitFor assertions to each get setupTests.ts's 15000ms asyncUtilTimeout without the whole

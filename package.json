@@ -26,7 +26,7 @@
         "test": "jest --selectProjects pokie studio-client-components --maxWorkers=2",
         "test:integration": "jest --selectProjects pokie-integration --maxWorkers=2",
         "test:workflows": "node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects studio-client-workflows --maxWorkers=2 --workerIdleMemoryLimit=192MB",
-        "test:coverage": "jest --selectProjects pokie studio-client-components pokie-integration studio-client-workflows --coverage --maxWorkers=2",
+        "test:coverage": "node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects pokie studio-client-components pokie-integration studio-client-workflows --coverage --maxWorkers=2 --workerIdleMemoryLimit=192MB",
         "test:packaging": "jest --selectProjects pokie-packaging --runInBand",
         "test:report": "node scripts/report-test-timings.mjs",
         "bench": "node --expose-gc ./node_modules/jest/bin/jest.js --selectProjects pokie-benchmarks --runInBand",
