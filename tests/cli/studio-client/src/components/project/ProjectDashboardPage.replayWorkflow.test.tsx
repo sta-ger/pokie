@@ -466,6 +466,53 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeInTheDocument();
     }, 60000);
 
+    it("disables Reproduce with a concrete missing-seed explanation and remediation for an imported record with no seed", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            // No outer "seed" was pasted, so the backend's own validated echo carries none either --
+            // this is the shape a Stake Engine-imported round (never recorded with a Pokie seed) takes.
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, artifactWarnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        fireEvent.change(textarea, {target: {value: JSON.stringify({round: 1, artifact: artifactFor()})}});
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await screen.findByText(/Round 1, seed \(none\)\./);
+        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
+        expect(screen.getByText(/no recorded seed/)).toBeInTheDocument();
+        expect(screen.getByText(/Add a "seed" field/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+    }, 60000);
+
+    it("disables Reproduce with a concrete version-mismatch explanation and remediation when the record's game version differs from the loaded project", async () => {
+        const user = userEvent.setup();
+        const mismatchedArtifact = artifactFor({provenance: {game: {id: "a", name: "A", version: "2.0.0"}, pokieVersion: "1.0.0"}});
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({artifact: mismatchedArtifact}))}});
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await screen.findByText(/Round 1, seed demo-seed\./);
+        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
+        expect(screen.getByText(/recorded against a v2\.0\.0, but the project currently loaded is a v1\.0\.0/)).toBeInTheDocument();
+        expect(screen.getByText(/Open project "a" at version 2\.0\.0/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+    }, 60000);
+
     it("completes a malformed-expected-artifact replay with no crash: comparison is unavailable with diagnostics, Inspect/Export still work", async () => {
         const user = userEvent.setup();
         let pollCount = 0;

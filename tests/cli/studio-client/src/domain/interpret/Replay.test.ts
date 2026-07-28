@@ -2,6 +2,7 @@ import {
     describeReplayComparison,
     describeReplayList,
     describeReplayProgress,
+    describeReplayReproducibility,
     describeReplayResult,
     isReplayActive,
     isReplayTerminal,
@@ -426,6 +427,67 @@ describe("describeReplayComparison", () => {
             expect(result.dimensions.rngReelStops).toEqual({status: "mismatch", detail: "RNG/reel-stop data differs."});
             expect(result.status).toBe("mismatch");
         });
+    });
+});
+
+describe("describeReplayReproducibility", () => {
+    const CURRENT_GAME = {id: "sample-slot", version: "0.1.0"};
+
+    it("is ready for an exact record: seed present, game id/version matching the currently loaded project", () => {
+        expect(describeReplayReproducibility({seed: "demo", artifact: createArtifact()}, CURRENT_GAME)).toEqual({status: "ready"});
+    });
+
+    it("is ready when there's no artifact at all to check version against, as long as a seed is present", () => {
+        expect(describeReplayReproducibility({seed: "demo"}, CURRENT_GAME)).toEqual({status: "ready"});
+    });
+
+    it("is ready when the currently loaded project's game is unknown yet (never blocks on an absent check)", () => {
+        expect(describeReplayReproducibility({seed: "demo", artifact: createArtifact()}, undefined)).toEqual({status: "ready"});
+    });
+
+    it("blocks an imported record with no seed, naming the seed as the concrete missing input, with a remediation path", () => {
+        const gate = describeReplayReproducibility({artifact: createArtifact()}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({
+            reason: expect.stringContaining("no recorded seed"),
+            remediation: expect.stringContaining("seed"),
+        });
+    });
+
+    it("blocks a record with a blank seed the same as a missing one", () => {
+        const gate = describeReplayReproducibility({seed: "   ", artifact: createArtifact()}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+    });
+
+    it("blocks a version-mismatched record, naming both the recorded and currently loaded game/version, with a remediation path", () => {
+        const artifact = createArtifact({provenance: {game: {id: "sample-slot", name: "Sample Slot", version: "0.2.0"}, pokieVersion: "1.0.0"}});
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({
+            reason: expect.stringContaining("v0.2.0"),
+            remediation: expect.stringContaining("0.2.0"),
+        });
+    });
+
+    it("blocks a record whose game id itself differs (not just the version) from the currently loaded project", () => {
+        const artifact = createArtifact({provenance: {game: {id: "other-slot", name: "Other Slot", version: "0.1.0"}, pokieVersion: "1.0.0"}});
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+    });
+
+    it("checks the seed before the version, reporting the seed issue when both are absent/mismatched", () => {
+        const artifact = createArtifact({provenance: {game: {id: "other-slot", name: "Other Slot", version: "0.2.0"}, pokieVersion: "1.0.0"}});
+
+        const gate = describeReplayReproducibility({artifact}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded seed")});
     });
 });
 

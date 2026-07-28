@@ -324,6 +324,43 @@ function screensEqual(a: readonly (readonly (string | number)[])[], b: readonly 
     });
 }
 
+// Gates the Reproduce step for a "Replay Artifact" record (a pasted or previously-stored replay,
+// as opposed to a fresh Seed & Round/Recent Simulation attempt, which never claims to reproduce a
+// *specific* prior result and so is never gated by this) — reproducing forward from round 1 is only
+// ever a faithful match of the original result when both the seed that drove it and the exact game
+// build that produced it are known. Neither check needs the artifact's own screen/wins/state/debug —
+// those are only ever *comparison* material (see describeReplayComparison), safely "unavailable" when
+// absent rather than blocking anything, since the fresh reproduction generates its own regardless.
+export type ReplayReproducibilityGate =
+    | {status: "ready"}
+    | {status: "blocked"; reason: string; remediation: string};
+
+export function describeReplayReproducibility(
+    expected: {seed?: string; artifact?: RoundArtifactJson},
+    currentGame: {id: string; version: string} | undefined,
+): ReplayReproducibilityGate {
+    if (expected.seed === undefined || expected.seed.trim().length === 0) {
+        return {
+            status: "blocked",
+            reason:
+                "This round has no recorded seed, so replaying it forward from round 1 can't deterministically reproduce the original result — likely an imported round that never carried a Pokie seed.",
+            remediation:
+                'Add a "seed" field with the original seed to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
+        };
+    }
+
+    const provenanceGame = expected.artifact?.provenance.game;
+    if (currentGame && provenanceGame && (provenanceGame.id !== currentGame.id || provenanceGame.version !== currentGame.version)) {
+        return {
+            status: "blocked",
+            reason: `This round was recorded against ${provenanceGame.id} v${provenanceGame.version}, but the project currently loaded is ${currentGame.id} v${currentGame.version} — reproducing it now would replay a different game build, not a faithful reproduction.`,
+            remediation: `Open project "${provenanceGame.id}" at version ${provenanceGame.version} before reproducing this round, or use it for inspection only (skip Reproduce and go straight to Inspect).`,
+        };
+    }
+
+    return {status: "ready"};
+}
+
 // Same role as interpretReports.ts's ReportListView — distinguishes "no replays run yet" from "here's
 // the list"; "loading"/"error" are constructed directly by main.ts around the fetch call itself, same
 // convention as every other list in this app.

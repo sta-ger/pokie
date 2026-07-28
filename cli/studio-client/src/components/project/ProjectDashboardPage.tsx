@@ -826,6 +826,7 @@ export function ProjectDashboardPage() {
                             recentRuns={reportsView}
                             recentRunsError={reportsError}
                             onRefreshRecentRuns={refreshReports}
+                            currentGame={header.status === "loaded" ? {id: header.id, version: header.version} : undefined}
                         />
                     )}
                     {activeTab === "runtime" && (
