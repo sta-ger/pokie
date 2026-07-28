@@ -1,6 +1,5 @@
 import {Button, Table, TextInput} from "@mantine/core";
-import {useState} from "react";
-import {addBetMode, asBetModesList, duplicateBetModeAt, moveBetModeAt, removeBetModeAt, setBetModeField} from "../../domain/blueprintFormOps";
+import {addBetMode, asBetModesList, describeNewBetModeDraft, duplicateBetModeAt, moveBetModeAt, removeBetModeAt, setBetModeField} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {BufferedNumberInput} from "../common/BufferedNumberInput";
 import {BufferedTextInput} from "../common/BufferedTextInput";
@@ -8,9 +7,42 @@ import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
 
-export function BetModesEditor({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
+// `newBetModeId`/`onNewBetModeIdChange` are lifted into the caller (MechanicsEditorTab) rather than
+// owned locally -- this component only renders while its own Stepper step is active, so a local
+// useState here would be silently discarded (and any in-progress, not-yet-added id lost with zero
+// warning) every time the user switches to another step and back. Lifting it into a component that
+// stays mounted for the tab's whole lifetime is what actually preserves it; MechanicsEditorTab still
+// resets it on every wholesale blueprint replace (New/Load/Discard), the same way editor.formGeneration
+// already resets everything else derived from the previous blueprint.
+export function BetModesEditor({
+    blueprint,
+    mutate,
+    newBetModeId,
+    onNewBetModeIdChange,
+}: {
+    blueprint: Record<string, unknown>;
+    mutate: BlueprintMutate;
+    newBetModeId: string;
+    onNewBetModeIdChange: (value: string) => void;
+}) {
     const betModes = asBetModesList(blueprint.betModes);
-    const [newBetModeId, setNewBetModeId] = useState("");
+    const draftStatus = describeNewBetModeDraft(betModes, newBetModeId);
+    // A typed-but-not-yet-added id is real, uncommitted state (see MechanicsEditorTab's own doc comment
+    // on why it's lifted up to survive Stepper navigation) -- the description text must say so, not just
+    // silently keep showing the same static instructions regardless of whether there's a draft in
+    // progress.
+    const newBetModeIdDescription =
+        draftStatus.status === "ready"
+            ? `Draft -- "${draftStatus.id}" isn't part of the bet mode list yet. Add (or press Enter) to include it.`
+            : "Give it a unique id, then Add (or press Enter) to create the row, then fill in its label, cost multiplier, and target RTP below.";
+
+    function handleAdd(): void {
+        if (draftStatus.status !== "ready") {
+            return;
+        }
+        mutate((b) => addBetMode(b, draftStatus.id));
+        onNewBetModeIdChange("");
+    }
 
     return (
         <PageSection legend="Bet modes">
@@ -74,20 +106,18 @@ export function BetModesEditor({blueprint, mutate}: {blueprint: Record<string, u
                 <TextInput
                     placeholder="New bet mode id"
                     aria-label="New bet mode id"
+                    description={newBetModeIdDescription}
                     value={newBetModeId}
-                    onChange={(event) => setNewBetModeId(event.currentTarget.value)}
-                />
-                <Button
-                    variant="default"
-                    onClick={() => {
-                        const id = newBetModeId.trim();
-                        if (id.length === 0) {
-                            return;
+                    onChange={(event) => onNewBetModeIdChange(event.currentTarget.value)}
+                    onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                            event.preventDefault();
+                            handleAdd();
                         }
-                        mutate((b) => addBetMode(b, id));
-                        setNewBetModeId("");
                     }}
-                >
+                    error={draftStatus.status === "duplicate" ? `"${draftStatus.id}" is already used by another bet mode -- ids must be unique.` : undefined}
+                />
+                <Button variant="default" onClick={handleAdd} disabled={draftStatus.status !== "ready"}>
                     Add bet mode
                 </Button>
             </QuickActions>

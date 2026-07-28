@@ -779,6 +779,25 @@ export function asBetModesList(value: unknown): BetModeFormValues[] {
     });
 }
 
+// The Add-mode quick action's own draft state (BetModesEditor.tsx's "New bet mode id" input, not yet
+// committed to the blueprint) -- "empty"/"duplicate" both mean Add must stay disabled, "ready" is the
+// only state addBetMode should ever be called from. Duplicate ids are caught here, before they ever
+// reach the blueprint, rather than left for a round trip to the server's own
+// "blueprint-betmodes-duplicate-id" validation rule (GameBlueprintValidator.validateBetModes) to catch
+// later on the separate Validate step.
+export type NewBetModeDraftStatus = {status: "empty"} | {status: "duplicate"; id: string} | {status: "ready"; id: string};
+
+export function describeNewBetModeDraft(betModes: BetModeFormValues[], rawId: string): NewBetModeDraftStatus {
+    const id = rawId.trim();
+    if (id.length === 0) {
+        return {status: "empty"};
+    }
+    if (betModes.some((mode) => mode.id === id)) {
+        return {status: "duplicate", id};
+    }
+    return {status: "ready", id};
+}
+
 export function addBetMode(blueprint: Record<string, unknown>, id: string): void {
     blueprint.betModes = [...asBetModesList(blueprint.betModes), {id}];
 }
