@@ -19,8 +19,8 @@ export type StudioFsBrowseView =
 // Home/Project path-taking endpoint), so a plain readdir here adds no new exposure.
 //
 // `root` is the directory Studio itself was started in (StudioServerOptions.studioRoot) -- resolvedPath
-// is rendered relative to it (e.g. "./games/foo") whenever it falls inside, and absolute otherwise, so a
-// bare "." default in the frontend always has a concrete path to show instead.
+// is rendered relative to it (e.g. "./games/foo") whenever it falls inside, and as the root's own
+// absolute path when it *is* the root, so the frontend never has to fall back to a bare "." default.
 export class StudioFsBrowseService {
     private readonly root: string;
 
@@ -84,7 +84,7 @@ export class StudioFsBrowseService {
 
     private displayPath(resolvedPath: string): string {
         if (resolvedPath === this.root) {
-            return ".";
+            return resolvedPath;
         }
         return isPathWithin(this.root, resolvedPath) ? `.${path.sep}${path.relative(this.root, resolvedPath)}` : resolvedPath;
     }

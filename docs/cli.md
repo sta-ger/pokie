@@ -3065,8 +3065,9 @@ client, even for a load/validation failure.
   project-creation forms (Create/Init/Build from Blueprint). Lists `path`'s immediate children (defaulting to the
   directory Studio itself was started in when `path` is omitted): always `200` with `{"status": "ok",
   "resolvedPath", "displayPath", "parentPath"?, "entries": [{"name", "isDirectory"}]}` (directories sorted before
-  files, dotfiles hidden; `displayPath` is relative — `"./games/foo"` — when `resolvedPath` falls inside Studio's
-  own working directory, absolute otherwise) or `{"status": "error", "error": "...", "resolvedPath"}` for a
+  files, dotfiles hidden; `displayPath` is relative — `"./games/foo"` — when `resolvedPath` falls strictly inside
+  Studio's own working directory, and Studio's own absolute working-directory path (never a bare `"."`) otherwise,
+  including when `resolvedPath` *is* that root) or `{"status": "error", "error": "...", "resolvedPath"}` for a
   nonexistent/unreadable/non-directory path — never a 4xx, same reasoning as `POST /api/home/projects/create`
   below.
 - `POST /api/home/blueprints/validate` `{"blueprint": <any JSON value>}` — runs `GameBlueprintValidator` against

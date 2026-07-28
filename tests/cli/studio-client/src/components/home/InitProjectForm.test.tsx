@@ -59,7 +59,7 @@ describe("InitProjectForm", () => {
             "/api/home/fs/browse": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "ok", resolvedPath: "/root", displayPath: ".", entries: [{name: "existing-game", isDirectory: true}]},
+                body: {status: "ok", resolvedPath: "/root", displayPath: "/root", entries: [{name: "existing-game", isDirectory: true}]},
             }),
         });
 

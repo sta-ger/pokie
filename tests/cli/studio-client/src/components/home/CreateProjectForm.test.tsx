@@ -92,7 +92,7 @@ describe("CreateProjectForm", () => {
     it("shows the resolved destination path once the field is focused, instead of a bare '.'", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
-            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/home/dev/games", displayPath: ".", entries: []}}),
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/home/dev/games", displayPath: "/home/dev/games", entries: []}}),
         });
 
         renderWithProviders(<CreateProjectForm />, {fetchImpl});
@@ -102,7 +102,7 @@ describe("CreateProjectForm", () => {
         // getByRole("textbox", ...) only ever matches the actual <input>.
         await user.click(screen.getByRole("textbox", {name: "Destination directory"}));
 
-        expect(await screen.findByText("Resolves to: .")).toBeInTheDocument();
+        expect(await screen.findByText("Resolves to: /home/dev/games")).toBeInTheDocument();
         expect(calls).toEqual([{url: "/api/home/fs/browse?path=.", init: undefined}]);
     });
 
@@ -112,7 +112,7 @@ describe("CreateProjectForm", () => {
             "/api/home/fs/browse": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "ok", resolvedPath: "/home/dev", displayPath: ".", entries: [{name: "games", isDirectory: true}]},
+                body: {status: "ok", resolvedPath: "/home/dev", displayPath: "/home/dev", entries: [{name: "games", isDirectory: true}]},
             }),
             "/api/home/projects/create": () => ({ok: true, status: 201, body: {status: "ok", projectRoot: "/x", manifest: {id: "x", name: "x", version: "0.1.0"}, createdFiles: [], updatedFiles: [], skippedFiles: []}}),
         });

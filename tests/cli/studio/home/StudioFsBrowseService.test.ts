@@ -20,10 +20,10 @@ describe("StudioFsBrowseService", () => {
         fs.rmSync(root, {recursive: true, force: true});
     });
 
-    it("defaults to the root when no path is given, rendering it as '.'", () => {
+    it("defaults to the root when no path is given, rendering it as its concrete absolute path", () => {
         const result = service.browse(undefined);
 
-        expect(result).toMatchObject({status: "ok", resolvedPath: root, displayPath: "."});
+        expect(result).toMatchObject({status: "ok", resolvedPath: root, displayPath: root});
     });
 
     it("lists directories before files, sorted alphabetically within each group, and hides dotfiles", () => {

@@ -437,7 +437,7 @@ describe("StudioServer", () => {
             expect(body).toMatchObject({
                 status: "ok",
                 resolvedPath: studioRoot,
-                displayPath: ".",
+                displayPath: studioRoot,
                 entries: expect.arrayContaining([{name: "games", isDirectory: true}]),
             });
         });

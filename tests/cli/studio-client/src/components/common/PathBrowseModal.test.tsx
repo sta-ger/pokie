@@ -24,7 +24,7 @@ describe("PathBrowseModal", () => {
                     body: {
                         status: "ok",
                         resolvedPath: "/root",
-                        displayPath: ".",
+                        displayPath: "/root",
                         entries: [
                             {name: "games", isDirectory: true},
                             {name: "readme.txt", isDirectory: false},
@@ -39,7 +39,7 @@ describe("PathBrowseModal", () => {
             {fetchImpl},
         );
 
-        expect(await screen.findByText("Current location: .")).toBeInTheDocument();
+        expect(await screen.findByText("Current location: /root")).toBeInTheDocument();
         expect(screen.getByText("readme.txt")).toBeInTheDocument();
 
         await user.click(screen.getByText("games"));
@@ -62,7 +62,7 @@ describe("PathBrowseModal", () => {
                 body: {
                     status: "ok",
                     resolvedPath: "/root",
-                    displayPath: ".",
+                    displayPath: "/root",
                     entries: [
                         {name: "games", isDirectory: true},
                         {name: "readme.txt", isDirectory: false},
@@ -79,7 +79,7 @@ describe("PathBrowseModal", () => {
         expect(screen.queryByText("readme.txt")).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Select this folder"}));
-        expect(onSelect).toHaveBeenCalledWith(".");
+        expect(onSelect).toHaveBeenCalledWith("/root");
     });
 
     it("navigates back up via the parent entry", async () => {
@@ -93,7 +93,7 @@ describe("PathBrowseModal", () => {
                         body: {status: "ok", resolvedPath: "/root/games", displayPath: "./games", parentPath: "/root", entries: []},
                     };
                 }
-                return {ok: true, status: 200, body: {status: "ok", resolvedPath: "/root", displayPath: ".", entries: []}};
+                return {ok: true, status: 200, body: {status: "ok", resolvedPath: "/root", displayPath: "/root", entries: []}};
             },
         });
 
@@ -105,7 +105,7 @@ describe("PathBrowseModal", () => {
         expect(await screen.findByText("Current location: ./games")).toBeInTheDocument();
         await user.click(screen.getByText(".. (up)"));
 
-        expect(await screen.findByText("Current location: .")).toBeInTheDocument();
+        expect(await screen.findByText("Current location: /root")).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Froot")).toBe(true);
     });
 
@@ -116,7 +116,7 @@ describe("PathBrowseModal", () => {
                 if (call.url.includes("does-not-exist")) {
                     return {ok: true, status: 200, body: {status: "error", error: '"does-not-exist" does not exist.', resolvedPath: "/root/does-not-exist"}};
                 }
-                return {ok: true, status: 200, body: {status: "ok", resolvedPath: "/root", displayPath: ".", entries: []}};
+                return {ok: true, status: 200, body: {status: "ok", resolvedPath: "/root", displayPath: "/root", entries: []}};
             },
         });
 
@@ -130,7 +130,7 @@ describe("PathBrowseModal", () => {
 
         await user.click(screen.getByRole("button", {name: "Go to Studio's working directory"}));
 
-        expect(await screen.findByText("Current location: .")).toBeInTheDocument();
+        expect(await screen.findByText("Current location: /root")).toBeInTheDocument();
     });
 
     it("shows a permission-denied error without crashing", async () => {
@@ -150,12 +150,12 @@ describe("PathBrowseModal", () => {
         const onSelect = jest.fn();
         const onClose = jest.fn();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/root", displayPath: ".", entries: []}}),
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/root", displayPath: "/root", entries: []}}),
         });
 
         renderWithProviders(<PathBrowseModal opened onClose={onClose} onSelect={onSelect} kind="directory" initialPath="" title="Browse" />, {fetchImpl});
 
-        expect(await screen.findByText("Current location: .")).toBeInTheDocument();
+        expect(await screen.findByText("Current location: /root")).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Cancel"}));
 
         expect(onClose).toHaveBeenCalledTimes(1);
