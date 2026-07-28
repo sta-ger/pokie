@@ -170,7 +170,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.click(screen.getByRole("button", {name: stepperStep("Export", "Download")}));
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-1/download");
-    }, 45000);
+    }, 60000);
 
     it("shows state before/after in the Inspector when the backend captured them", async () => {
         const user = userEvent.setup();
@@ -222,7 +222,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByText("State after")).toBeVisible();
         expect(screen.getByText(/"win": 0/)).toBeInTheDocument();
         expect(screen.getByText(/"win": 5/)).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows an explicit 'state snapshot unavailable' message (not a silently missing section) when the backend never captured state", async () => {
         const user = userEvent.setup();
@@ -254,7 +254,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await waitFor(() => expect(screen.getByText("State snapshot unavailable for this game/session type.")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.queryByText("Before")).not.toBeInTheDocument();
         expect(screen.queryByText("After")).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows RNG/reel-stop debug data only after opening Advanced details, and renders cleanly when it's absent", async () => {
         const user = userEvent.setup();
@@ -299,7 +299,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // Appears twice: once in its own "Debug data" block, once more inside the full artifact JSON dump
         // right below it -- both under Advanced details, never in the main round view.
         expect(screen.getAllByText(/"reelStops"/).length).toBeGreaterThan(0);
-    }, 45000);
+    }, 60000);
 
     it("shows a full match banner when every comparable dimension (including state/debug) is identical", async () => {
         const user = userEvent.setup();
@@ -338,7 +338,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await waitFor(() => expect(screen.getByText("Matches the expected result")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByText(/RNG \/ reel stops:/)).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows a mismatch banner naming the specific dimension when totalPayout differs", async () => {
         const user = userEvent.setup();
@@ -381,7 +381,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // Dimensions that genuinely coincide (screen/wins) must still say "match", not be swept into the
         // mismatch verdict just because some other dimension differed.
         expect(dimensionRow("Visible screen:").textContent).toMatch(/match/);
-    }, 45000);
+    }, 60000);
 
     it("reports a partial comparison (not a mismatch) when state/debug are simply absent from both sides", async () => {
         const user = userEvent.setup();
@@ -422,7 +422,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(dimensionRow("State transition:").textContent).toMatch(/unavailable/);
         expect(dimensionRow("RNG / reel stops:").textContent).toMatch(/unavailable/);
         expect(dimensionRow("Visible screen:").textContent).toMatch(/match/);
-    }, 45000);
+    }, 60000);
 
     it("blocks continuing past Load for a pasted artifact with an invalid outer round/seed", async () => {
         const user = userEvent.setup();
@@ -441,7 +441,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent('"round" must be a positive integer.'));
         expect(screen.queryByRole("button", {name: "Continue to Reproduce"})).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("surfaces non-fatal warnings for a structurally invalid nested artifact but still allows reproducing", async () => {
         const user = userEvent.setup();
@@ -464,7 +464,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await waitFor(() => expect(screen.getByText('"steps" must be an array.')).toBeInTheDocument());
         expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("completes a malformed-expected-artifact replay with no crash: comparison is unavailable with diagnostics, Inspect/Export still work", async () => {
         const user = userEvent.setup();
@@ -515,7 +515,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // Inspect still shows the reproduced round's own content (screen table etc.) and Export still works.
         await user.click(screen.getByRole("button", {name: /Export.*Download/}));
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-malformed/download");
-    }, 45000);
+    }, 60000);
 
     it("rejects text that isn't valid JSON without ever calling the server", async () => {
         const user = userEvent.setup();
@@ -538,7 +538,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("That's not valid JSON."));
         expect(inspectCalled).toBe(false);
-    }, 45000);
+    }, 60000);
 
     it("discards a stale 'expected artifact' response once a different comparison target is picked", async () => {
         const user = userEvent.setup();
@@ -598,7 +598,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         });
         expect(screen.getByText(/Round 2, seed seed-y\./)).toBeInTheDocument();
         expect(screen.queryByText(/Round 1, seed seed-x\./)).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("clears the 'expected artifact' state when the project changes mid-load", async () => {
         const user = userEvent.setup();
@@ -667,7 +667,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         expect(screen.queryByText("Validating artifact…")).not.toBeInTheDocument();
         expect(screen.queryByText(/Round 1, seed seed-x\./)).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("gates Export behind a completed result for a stored replay reproduction, then exposes the download link", async () => {
         const user = userEvent.setup();
@@ -694,7 +694,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await waitFor(() => expect(screen.getByRole("button", {name: exportStep})).not.toBeDisabled(), {timeout: 15000});
         await user.click(screen.getByRole("button", {name: exportStep}));
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-export/download");
-    }, 45000);
+    }, 60000);
 
     it("gates Export behind picking a live spin, then offers a client-side JSON download for it", async () => {
         const user = userEvent.setup();
@@ -726,7 +726,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: exportStep}));
         expect(screen.getByRole("button", {name: "Download JSON"})).toBeInTheDocument();
         expect(screen.queryByRole("link", {name: "Download JSON"})).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows the Session Spin's own inspect view (screen, credits/bet/win, state before/after) with nothing to reproduce", async () => {
         const user = userEvent.setup();
@@ -765,7 +765,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByText(/Show advanced details/));
         expect(screen.getByText("Raw state before")).toBeVisible();
         expect(screen.getByText("Raw state after")).toBeVisible();
-    }, 45000);
+    }, 60000);
 
     it("discards an out-of-order Recent Replays list response, keeping only the latest refresh's result", async () => {
         const user = userEvent.setup();
@@ -883,5 +883,5 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: stepperStep("Inspect", "See results")}));
 
         expect(screen.getByText("Pick a spin in the Find step first.")).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 });

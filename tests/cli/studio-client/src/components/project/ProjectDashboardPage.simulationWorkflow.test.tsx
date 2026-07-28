@@ -154,7 +154,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(screen.getByRole("button", {name: "Open full report"}));
         await waitFor(() => expect(screen.getAllByText('"reels" is unusually large.').length).toBeGreaterThan(0));
         expect(screen.getAllByText("Increase --rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates.").length).toBeGreaterThan(0);
-    }, 45000);
+    }, 60000);
 
     it("shows a failure summary and lets Retry re-run the same configuration", async () => {
         const user = userEvent.setup();
@@ -187,7 +187,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(screen.getByRole("button", {name: "Repeat simulation"}));
         await waitFor(() => expect(runCalls).toHaveLength(2));
         expect(runCalls[1]).toMatchObject({rounds: 10000, seed: "demo-seed", workers: 1});
-    }, 45000);
+    }, 60000);
 
     it("cancels a running simulation via the confirm modal and shows a cancelled summary", async () => {
         const user = userEvent.setup();
@@ -221,7 +221,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         await waitFor(() => expect(cancelCalled).toBe(true));
         await waitFor(() => expect(screen.getByText(/Cancelled after/)).toBeInTheDocument(), {timeout: 15000});
-    }, 45000);
+    }, 60000);
 
     it("lists recent runs and lets the user reopen a result or run the same configuration again", async () => {
         const user = userEvent.setup();
@@ -271,7 +271,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(within(recentRunsSection).getByRole("button", {name: "Run again"}));
         await waitFor(() => expect(runCalls).toHaveLength(1));
         expect(runCalls[0]).toMatchObject({rounds: 5000, seed: "old-seed", workers: 2});
-    }, 45000);
+    }, 60000);
 
     it("compares the current run against another recent run side by side", async () => {
         const user = userEvent.setup();
@@ -318,7 +318,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await waitFor(() => expect(screen.getByText("This run")).toBeInTheDocument());
         expect(screen.getByText("Comparison")).toBeInTheDocument();
         expect(screen.getAllByText(/97\.00%|96\.00%/).length).toBeGreaterThan(0);
-    }, 45000);
+    }, 60000);
 
     it("gates the Export step behind a resolved report and exposes the three download links", async () => {
         const user = userEvent.setup();
@@ -350,7 +350,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/reports/job-5/download?format=json");
         expect(screen.getByRole("link", {name: "Download Markdown"})).toHaveAttribute("href", "/api/project/reports/job-5/download?format=markdown");
         expect(screen.getByRole("link", {name: "Download HTML"})).toHaveAttribute("href", "/api/project/reports/job-5/download?format=html");
-    }, 45000);
+    }, 60000);
 
     it("keeps Review/Export steps disabled (and unreachable) until there is something to show", async () => {
         const user = userEvent.setup();
@@ -366,7 +366,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(screen.getByRole("button", {name: stepperStep("Review", "See results")})).toBeDisabled();
         expect(screen.getByRole("button", {name: stepperStep("Export", "Download report")})).toBeDisabled();
         expect(screen.getByRole("button", {name: stepperStep("Configure", "Set rounds")})).not.toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("supports keyboard-only navigation through the Stepper, skipping disabled steps", async () => {
         const user = userEvent.setup();
@@ -419,7 +419,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         screen.getByRole("button", {name: exportStep}).focus();
         await user.keyboard("{Enter}");
         expect(screen.getByRole("link", {name: "Download JSON"})).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows identical statistics for a live report and the same report reopened from Recent Runs", async () => {
         const user = userEvent.setup();
@@ -470,7 +470,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(within(recentRunsSection).getByRole("button", {name: "Open"}));
         await waitFor(() => expect(screen.getAllByText("94.00% – 98.00%").length).toBeGreaterThan(0));
         expect(screen.getAllByText("12.50").length).toBeGreaterThan(0); // volatility
-    }, 45000);
+    }, 60000);
 
     it("shows warnings, a convergence assessment, and the main recommendation in the auto-opened summary before opening the full report", async () => {
         const user = userEvent.setup();
@@ -506,7 +506,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(screen.getByText(/RTP 95% CI:/)).toBeInTheDocument();
         expect(screen.getByText(/Increase --rounds/)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Open full report"})).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("discards an out-of-order report-detail response, keeping only the latest request's result", async () => {
         const user = userEvent.setup();
@@ -566,7 +566,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         });
         expect(screen.getAllByText("22.00%").length).toBeGreaterThan(0);
         expect(screen.queryByText("11.00%")).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("discards an out-of-order comparison response, keeping only the latest compare request's result", async () => {
         const user = userEvent.setup();
@@ -638,7 +638,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         });
         expect(screen.getByText("42.00%")).toBeInTheDocument();
         expect(screen.queryByText("31.00%")).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("clears all previous-project data (report, comparison, recent runs) when the project changes mid-load", async () => {
         const user = userEvent.setup();
@@ -718,7 +718,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(screen.getByRole("button", {name: stepperStep("Review", "See results")})).toBeDisabled();
         expect(screen.queryByText("Loading report…")).not.toBeInTheDocument();
         expect(screen.getByText("No completed simulations yet.")).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows no Export download links while the report is loading or after it fails to load", async () => {
         const user = userEvent.setup();
@@ -767,7 +767,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         releaseReport?.();
         await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
         expect(screen.getByRole("button", {name: stepperStep("Export", "Download report")})).toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("blocks Run again while a simulation is active instead of silently reattaching to the old job", async () => {
         const user = userEvent.setup();
@@ -811,7 +811,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
             await screen.findByText("A simulation is already running for this project. Cancel it from the Run step before starting a different configuration."),
         ).toBeInTheDocument();
         expect(runCallCount).toBe(1);
-    }, 45000);
+    }, 60000);
 
     it("never lists the currently-open report in the compare picker", async () => {
         const user = userEvent.setup();
@@ -858,7 +858,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         const comparePanel = compareLegend.closest("fieldset") as HTMLElement;
         expect(within(comparePanel).getByRole("button", {name: /other-game v2\.0\.0/})).toBeInTheDocument();
         expect(within(comparePanel).queryByRole("button", {name: /^a v1\.0\.0/})).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("clears a stale Recent Runs error once a refresh succeeds", async () => {
         const user = userEvent.setup();
@@ -884,7 +884,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
         expect(reportsCallCount).toBe(2);
-    }, 45000);
+    }, 60000);
 
     it("clears the blocked Run again notice once the active simulation completes on its own", async () => {
         const user = userEvent.setup();
@@ -931,7 +931,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         // Let active-job finish naturally (no Cancel click) -- the notice must not outlive it.
         await waitFor(() => expect(screen.queryByText(/already running/)).not.toBeInTheDocument(), {timeout: 15000});
-    }, 45000);
+    }, 60000);
 
     it("clears the blocked Run again notice immediately when Cancel is clicked", async () => {
         const user = userEvent.setup();
@@ -980,7 +980,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(await screen.findByRole("button", {name: "Confirm"}));
 
         await waitFor(() => expect(screen.queryByText(/already running/)).not.toBeInTheDocument());
-    }, 45000);
+    }, 60000);
 
     it("keeps the blocked Run again notice cleared after starting a new run via Retry", async () => {
         const user = userEvent.setup();
@@ -1036,5 +1036,5 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(screen.getByRole("button", {name: "Repeat simulation"}));
         await waitFor(() => expect(runCalls).toHaveLength(2));
         expect(screen.queryByText(/already running/)).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 });

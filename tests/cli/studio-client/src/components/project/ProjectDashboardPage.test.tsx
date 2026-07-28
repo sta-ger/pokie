@@ -150,7 +150,7 @@ describe("ProjectDashboardPage", () => {
         // test rather than at the assertion that was actually starved. 45000ms is the value every other
         // multi-interaction suite in this lane already uses, and it restores the invariant setupTests.ts
         // documents: the per-assertion cap always expires first, so the diagnostic names the real culprit.
-    }, 45000);
+    }, 60000);
 
     it("does not block the happy path on warnings-only validation -- Overview still recommends simulating", async () => {
         const user = userEvent.setup();

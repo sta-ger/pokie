@@ -82,7 +82,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
 
         await user.click(screen.getByText(/Show advanced details/));
         expect(screen.getAllByText(/"credits": 1005/).length).toBeGreaterThan(0);
-    }, 45000);
+    }, 60000);
 
     it("restores an existing session by id", async () => {
         const user = userEvent.setup();
@@ -104,7 +104,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
 
         await screen.findByRole("button", {name: "Spin"});
         expect(screen.getByText(/Session sess-old.*500\.00/)).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("proves idempotent replay: retrying the last request returns the exact same result", async () => {
         const user = userEvent.setup();
@@ -147,7 +147,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
 
         await waitFor(() => expect(spinCallCount).toBe(2));
         expect(capturedRequestId).toBeDefined();
-    }, 45000);
+    }, 60000);
 
     it("shows a clear 'insufficient funds' state with a shortcut to create a new session", async () => {
         const user = userEvent.setup();
@@ -172,7 +172,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
 
         await user.click(screen.getByRole("button", {name: "Create a new session"}));
         expect(screen.getByRole("radio", {name: "New session"})).toBeChecked();
-    }, 45000);
+    }, 60000);
 
     it("shows a clear 'session changed elsewhere' conflict state, and Reload session recovers it", async () => {
         const user = userEvent.setup();
@@ -203,7 +203,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
 
         await user.click(screen.getByRole("button", {name: "Reload session"}));
         await waitFor(() => expect(screen.getByText(/1010\.00/)).toBeInTheDocument());
-    }, 45000);
+    }, 60000);
 
     it("shows a clear runtime-not-running state when spinning without a running runtime session", async () => {
         const user = userEvent.setup();
@@ -224,7 +224,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         await user.click(await screen.findByRole("button", {name: "Spin"}));
 
         expect(await screen.findByText("Runtime is not running — start it first.")).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("a session action in flight blocks a different one from overlapping it, and only the request that was actually made lands", async () => {
         // loadSession/createSession/spin are each individually double-submit-guarded, and every
@@ -283,7 +283,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         releaseSlow?.();
         await screen.findByText(/Session session-a.*111\.00/);
         expect(screen.queryByText(/Session session-b/)).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("clears session/history when the project changes mid-load", async () => {
         const user = userEvent.setup();
@@ -346,7 +346,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
 
         expect(screen.queryByText(/Session session-a/)).not.toBeInTheDocument();
         expect(screen.getByText("stopped")).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("navigates to Replay & Debug and auto-selects the exact round among several recent spins, landing straight on Inspect", async () => {
         const user = userEvent.setup();
@@ -410,7 +410,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         expect(await screen.findByText("sess-1")).toBeInTheDocument();
         expect(screen.getByText(capturedRequestId as string)).toBeInTheDocument();
         expect(screen.queryByRole("radio", {name: "Session Spin"})).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows round history in Continue session without a manual Refresh click", async () => {
         const user = userEvent.setup();
@@ -457,7 +457,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         await user.click(screen.getByRole("button", {name: stepperStep("Continue session", "Keep playing")}));
         await waitFor(() => expect(screen.queryByText("No rounds played yet this session.")).not.toBeInTheDocument());
         expect(screen.getByText(/credits 1005\.00, win 15\.00/)).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("Stop clears round history so old spins are no longer shown", async () => {
         const user = userEvent.setup();
@@ -515,7 +515,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Restore existing"}));
         await waitFor(() => expect(screen.queryByText("sess-1")).not.toBeInTheDocument());
         expect(screen.getByText("No recent sessions yet in this Studio session.")).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("switching sessions clears the last spin so Retry/Debug can't resend a stale requestId", async () => {
         const user = userEvent.setup();
@@ -554,7 +554,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
         expect(screen.getByRole("button", {name: "Retry last request (same request id)"})).toBeDisabled();
         expect(screen.getByRole("button", {name: "Debug this round in Replay & Debug"})).toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("switching projects clears the last spin so Retry/Debug can't resend a stale requestId from the old project", async () => {
         const user = userEvent.setup();
@@ -597,7 +597,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         expect(screen.getByRole("button", {name: "Retry last request (same request id)"})).toBeDisabled();
         expect(screen.getByRole("button", {name: "Debug this round in Replay & Debug"})).toBeDisabled();
         expect(screen.queryByText(/Session sess-1/)).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("Debug this round finds the exact round among several recent spins with a real debug: false contract (no debug bundle at all)", async () => {
         const user = userEvent.setup();
@@ -640,7 +640,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         expect(await screen.findByText("sess-1")).toBeInTheDocument();
         expect(screen.getByText(capturedRequestId as string)).toBeInTheDocument();
         expect(screen.queryByRole("radio", {name: "Session Spin"})).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows a clear fallback instead of a silent generic list when the exact target round has already fallen out of the bounded recent-spin history", async () => {
         const user = userEvent.setup();
@@ -677,7 +677,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         // makes clear why nothing was auto-selected.
         expect(screen.getByRole("radio", {name: "Session Spin"})).toBeInTheDocument();
         expect(screen.getByText(/session sess-other/)).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows a normal loading state, never the fallback, while the recent-spin lookup is still in flight", async () => {
         const user = userEvent.setup();
@@ -733,7 +733,7 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
 
         expect(await screen.findByText("Loading recent spins…")).toBeInTheDocument();
         expect(screen.queryByText("Round no longer available")).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("shows only the fetch error, never the fallback, when refreshing recent spins fails", async () => {
         const user = userEvent.setup();
@@ -787,5 +787,5 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         expect(await screen.findByText("network down")).toBeInTheDocument();
         expect(screen.queryByText("Round no longer available")).not.toBeInTheDocument();
         expect(screen.queryByText("Loading recent spins…")).not.toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 });

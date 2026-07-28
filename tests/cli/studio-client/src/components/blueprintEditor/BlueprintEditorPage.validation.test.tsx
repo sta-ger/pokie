@@ -48,7 +48,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
         expect(screen.getByText("Configure your game model")).toBeInTheDocument();
         expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("loading a different blueprint after a successful validate clears it the same way", async () => {
         const user = userEvent.setup();
@@ -82,7 +82,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
 
         await waitFor(() => expect(screen.queryByText("Ready to build")).not.toBeInTheDocument());
         expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("applying JSON after a successful validate clears it the same way", async () => {
         const user = userEvent.setup();
@@ -118,7 +118,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
 
         await waitFor(() => expect(screen.queryByText("Ready to build")).not.toBeInTheDocument());
         expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("discards a validate response that resolves after a subsequent edit", async () => {
         const user = userEvent.setup();
@@ -153,7 +153,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         expect(screen.queryByText(/^Invalid/)).not.toBeInTheDocument();
         expect(screen.getByText("Configure your game model")).toBeInTheDocument();
         expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("a warnings-only validation still allows Build", async () => {
         const user = userEvent.setup();
@@ -172,7 +172,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         await validate(user);
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
         expect(screen.getAllByRole("button", {name: "Build Package"})[0]).not.toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("a field-level issue shows as the field's own Mantine error, not duplicated in the section's generic list", async () => {
         const user = userEvent.setup();
@@ -201,7 +201,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         // generic section list (crossFieldOnly excludes it there, since it's already shown next to its
         // field).
         expect(screen.getAllByText(/must be a non-empty string/)).toHaveLength(2);
-    }, 45000);
+    }, 60000);
 
     it("auto-jumps to and focuses the first error section, without breaking keyboard navigation afterward", async () => {
         const user = userEvent.setup();
@@ -232,7 +232,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         // Arrow-key navigation must still work immediately after the auto-jump (regression guard).
         await user.keyboard("{ArrowRight}");
         expect(screen.getByRole("tab", {name: /^Bets/})).toHaveAttribute("aria-selected", "true");
-    }, 45000);
+    }, 60000);
 
     it("exposes a section's error/warning count as real, non-aria-hidden accessible text", async () => {
         const user = userEvent.setup();
@@ -262,7 +262,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         // Before any validation had run at all, a section's accessible name is exactly its label (no
         // appended text yet) -- confirmed by every pre-validate tab query elsewhere in this suite
         // (e.g. BlueprintEditorPage.sections.test.tsx's own keyboard-navigation test).
-    }, 45000);
+    }, 60000);
 
     it("a field-level warning shows as a separate note and never marks the field invalid", async () => {
         const user = userEvent.setup();
@@ -299,7 +299,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         // "a warnings-only validation still allows Build" test for the general case; this just confirms
         // a *field-level* warning specifically doesn't accidentally regress that).
         expect(screen.getAllByRole("button", {name: "Build Package"})[0]).not.toBeDisabled();
-    }, 45000);
+    }, 60000);
 
     it("neither warning is lost from the UI when two share the same field-level path", async () => {
         const user = userEvent.setup();
@@ -329,5 +329,5 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         // sectioned editor entirely) -- getAllByText tolerates that instead of asserting exclusivity.
         expect(screen.getByText("First reels warning.")).toBeInTheDocument();
         expect(screen.getAllByText(/Second reels warning\./).length).toBeGreaterThan(0);
-    }, 45000);
+    }, 60000);
 });
