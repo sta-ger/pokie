@@ -220,12 +220,24 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
         await user.click(screen.getByRole("button", {name: "Add bet mode"}));
         expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
+        expect(screen.getByText("Unsaved changes -- go to Apply to save them to the project.")).toBeInTheDocument();
 
         await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
 
-        expect(await screen.findByText(/already used by another bet mode/)).toBeInTheDocument();
+        expect(await screen.findByText('"buy-bonus" is already used by another bet mode -- ids must be unique.')).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Add bet mode"})).toBeDisabled();
         expect(screen.queryByLabelText("Bet mode 2 id")).not.toBeInTheDocument();
+
+        // V13-POLISH-7: a duplicate draft id must never be reported as "Saved"/"Unsaved" -- BetModesEditor's
+        // own field error only covers the field itself, not this step's own lifecycle line, which used to
+        // keep showing whatever it said before the duplicate was typed.
+        expect(screen.getByText(/^Invalid -- "buy-bonus" is already used by another bet mode/)).toBeInTheDocument();
+        expect(screen.queryByText("Unsaved changes -- go to Apply to save them to the project.")).not.toBeInTheDocument();
+        expect(screen.queryByText("Saved -- matches the project's applied blueprint.")).not.toBeInTheDocument();
+
+        // Clearing the duplicate draft restores the truthful Unsaved status underneath it.
+        await user.clear(screen.getByLabelText("New bet mode id"));
+        expect(screen.getByText("Unsaved changes -- go to Apply to save them to the project.")).toBeInTheDocument();
     });
 
     it("clears an in-progress new bet mode id draft when the blueprint is discarded", async () => {
@@ -660,6 +672,31 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             await user.click(screen.getByRole("button", {name: "Overview"}));
             expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument();
             expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
+        });
+
+        // V13-POLISH-7: a typed-but-not-yet-added "New bet mode id" is real, uncommitted user input, not
+        // yet part of the blueprint -- it used to leave isDirty/onDirtyChange entirely untouched, so
+        // switching tabs (or Back/Forward) silently discarded it with zero warning, unlike every other
+        // field edit.
+        it("asks for confirmation before switching tabs with only a typed, unadded bet mode id draft, and confirming clears it", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+            await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+
+            await user.click(screen.getByRole("button", {name: "Overview"}));
+            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Leave"}));
+            expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+            await screen.findByLabelText("Reels");
+            await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+            expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
         });
 
         it("asks for confirmation before closing the project while the draft is unapplied", async () => {

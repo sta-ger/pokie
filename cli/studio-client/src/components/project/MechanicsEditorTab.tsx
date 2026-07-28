@@ -3,7 +3,7 @@ import {useEffect, useRef, useState, type ReactNode} from "react";
 import {applyProjectBlueprint, inspectProject, loadBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {ValidationIssue} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
-import {getWinModelType} from "../../domain/blueprintFormOps";
+import {asBetModesList, describeNewBetModeDraft, getWinModelType, type NewBetModeDraftStatus} from "../../domain/blueprintFormOps";
 import {errorMessage} from "../../domain/errorMessage";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {describeSectionStatusText} from "../../domain/interpret/BlueprintSections";
@@ -35,11 +35,26 @@ function describeStepStatusText(stepId: MechanicsEditorStepId, view: BlueprintVa
 
 // The Bet modes step's own Draft/Saved/Invalid/Unsaved lifecycle line, distinct from the Stepper's
 // per-step description above -- that one only ever reflects the last Validate result and stays blank
-// until Validate has actually run, so on its own it can't tell the user an edit sits unapplied. Invalid
-// (this step's own validation errors) takes priority over Unsaved: fixing the error is the more urgent
-// fact. See BetModesEditor's own newBetModeIdDescription for the separate "Draft" state -- a typed but
-// not-yet-added bet mode id -- which this line does not duplicate.
-function describeBetModesLifecycleStatus(isDirty: boolean, view: BlueprintValidationView): {tone: "success" | "warning" | "error"; text: string} {
+// until Validate has actually run, so on its own it can't tell the user an edit sits unapplied. A
+// duplicate New bet mode id draft takes priority over everything else: BetModesEditor's own field
+// already shows its inline error, but the field error alone left this line free to keep saying "Saved"
+// for an id that is, in fact, not usable -- untruthful. Invalid (this step's own applied-blueprint
+// validation errors) takes priority over Unsaved next: fixing the error is the more urgent fact. See
+// BetModesEditor's own newBetModeIdDescription for the separate "Draft" state -- a typed, unique,
+// not-yet-added bet mode id -- which this line does not duplicate; a ready draft alone still leaves this
+// line as Saved/Unsaved exactly as if it weren't there, matching the fact that Add hasn't committed it
+// to the blueprint yet.
+function describeBetModesLifecycleStatus(
+    isDirty: boolean,
+    view: BlueprintValidationView,
+    newBetModeDraftStatus: NewBetModeDraftStatus,
+): {tone: "success" | "warning" | "error"; text: string} {
+    if (newBetModeDraftStatus.status === "duplicate") {
+        return {
+            tone: "error",
+            text: `Invalid -- "${newBetModeDraftStatus.id}" is already used by another bet mode; the New bet mode id must be unique before it can be added.`,
+        };
+    }
     const status = describeStepStatus("betModes", view);
     if (status.tone === "error") {
         return {tone: "error", text: "Invalid -- fix the errors below before applying."};
@@ -85,6 +100,11 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
         setNewBetModeId("");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor.formGeneration]);
+    // Shared by the dirty-tracking effect below (a non-"empty" draft counts as pending, unsaved-loss-risk
+    // state even though it isn't in the blueprint yet) and the Bet modes lifecycle status computed later
+    // in render (a "duplicate" draft must report Invalid). Recomputed every render from plain state/props
+    // -- not a ref -- so it's safe to read here, unlike cleanRevisionRef below.
+    const newBetModeDraftStatus = describeNewBetModeDraft(asBetModesList(editor.state.blueprint.betModes), newBetModeId);
 
     const [loadView, setLoadView] = useState<LoadView>({status: "loading"});
     const loadRequestIdRef = useRef(0);
@@ -139,13 +159,19 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
     // Refs must never be read during render (react-hooks/refs) -- derive isDirty in an effect with no
     // dependency array instead, which runs after every render (a mutate/markClean/formGeneration
     // change always re-renders anyway) -- same pattern BlueprintEditorPage's own onDirtyChange uses.
-    // Also reports it up via onDirtyChange, same as BlueprintEditorPage -- ProjectDashboardPage gates
-    // switching away from this tab (or closing the project) on it, since unlike Home's guided editor
-    // this tab has no navigation-blocking guard of its own.
+    // `isDirty` itself stays scoped to the blueprint's own revision (it drives the Bet modes step's
+    // Saved/Unsaved lifecycle line and the Apply step's Discard button, both of which must stay truthful
+    // about whether there's an actual blueprint change to save/discard) -- but the onDirtyChange report
+    // ProjectDashboardPage gates navigation away from this tab (or closing the project) on also folds in
+    // a pending "New bet mode id" draft: a typed-but-not-yet-added id is real, uncommitted user input
+    // that a bare tab switch or Back/Forward would otherwise silently throw away with zero warning, same
+    // as any other unsaved field edit. formGeneration resets `newBetModeId` on every wholesale replace
+    // (New/Load/Discard), so a confirmed Leave -- which remounts this whole tab -- and a Discard both
+    // still clear it exactly as before.
     useEffect(() => {
         const dirty = editor.state.revision !== cleanRevisionRef.current;
         setIsDirty(dirty);
-        onDirtyChange?.(dirty);
+        onDirtyChange?.(dirty || newBetModeDraftStatus.status !== "empty");
     });
 
     // Runs once per mount -- this component is remounted wholesale (key={projectKey}) on a genuine
@@ -311,7 +337,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
     }
     const {byStep, unclassified} = classifyIssuesByStep(allIssues);
     const applyBlocked = validateView.status !== "ok";
-    const betModesLifecycleStatus = describeBetModesLifecycleStatus(isDirty, validateView);
+    const betModesLifecycleStatus = describeBetModesLifecycleStatus(isDirty, validateView, newBetModeDraftStatus);
 
     function renderStepIssues(stepId: MechanicsEditorStepId): ReactNode {
         const issues = byStep[stepId];
