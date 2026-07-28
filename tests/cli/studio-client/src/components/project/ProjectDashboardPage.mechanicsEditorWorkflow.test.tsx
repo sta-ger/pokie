@@ -185,6 +185,73 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("ZZ");
     });
 
+    // Regression: the Bet modes step's own content div only renders while `activeStep === 3` (a
+    // conditional *mount*, not Mantine Tabs' own keepMounted/display-none used elsewhere in this
+    // codebase), so BetModesEditor's "New bet mode id" draft used to live in a local useState that was
+    // silently discarded every time the user switched away and back -- unlike a symbol id (committed
+    // into the blueprint on blur, so it survives regardless), a typed-but-not-yet-added bet mode id had
+    // nowhere else to live. It's now lifted into MechanicsEditorTab itself, which stays mounted for the
+    // whole step-switching lifetime.
+    it("preserves an in-progress, not-yet-added bet mode id when switching away from and back to the Bet modes step", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+
+        expect(screen.getByLabelText("New bet mode id")).toHaveValue("buy-bonus");
+        expect(screen.queryByLabelText("Bet mode 1 id")).not.toBeInTheDocument();
+    });
+
+    it("shows a validation error and blocks Add for a duplicate bet mode id, without ever adding a second row", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
+        expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
+
+        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+
+        expect(await screen.findByText(/already used by another bet mode/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Add bet mode"})).toBeDisabled();
+        expect(screen.queryByLabelText("Bet mode 2 id")).not.toBeInTheDocument();
+    });
+
+    it("clears an in-progress new bet mode id draft when the blueprint is discarded", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+
+        // Discard is disabled until the draft is actually dirty -- typing an unadded bet mode id alone
+        // doesn't touch the blueprint, so a real edit is needed to enable it.
+        const symbolInput = screen.getByLabelText("Symbol 1 id");
+        await user.clear(symbolInput);
+        await user.type(symbolInput, "ZZ");
+        await user.tab();
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
+        await user.click(screen.getByRole("button", {name: "Discard draft"}));
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
+        expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
+    });
+
     it("does not offer a non-functional 'forces free games' bet-mode control", async () => {
         // BetMode has no field promising engine behavior nothing in the runtime actually delivers
         // (see BetMode.ts's own doc comment) -- the editor must not offer a control for one either,

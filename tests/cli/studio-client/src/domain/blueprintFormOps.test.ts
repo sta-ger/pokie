@@ -2,6 +2,7 @@ import {
     addBet,
     addPayline,
     asBetModesList,
+    describeNewBetModeDraft,
     duplicateBetModeAt,
     moveBetModeAt,
     setBetModeField,
@@ -193,6 +194,24 @@ describe("blueprintFormOps", () => {
                 {id: "buy-bonus", costMultiplier: 100, forcedFreeGames: 10, targetRtp: 0.9},
                 {id: "buy-bonus-copy", costMultiplier: 100, forcedFreeGames: 10, targetRtp: 0.9},
             ]);
+        });
+
+        describe("describeNewBetModeDraft", () => {
+            it("reports empty for a blank/whitespace-only draft id", () => {
+                expect(describeNewBetModeDraft([], "")).toEqual({status: "empty"});
+                expect(describeNewBetModeDraft([{id: "base"}], "   ")).toEqual({status: "empty"});
+            });
+
+            it("reports duplicate when the trimmed id already belongs to another bet mode", () => {
+                expect(describeNewBetModeDraft([{id: "base"}, {id: "buy-bonus"}], "  buy-bonus  ")).toEqual({
+                    status: "duplicate",
+                    id: "buy-bonus",
+                });
+            });
+
+            it("reports ready with the trimmed id once it's non-empty and unique", () => {
+                expect(describeNewBetModeDraft([{id: "base"}], "  ante  ")).toEqual({status: "ready", id: "ante"});
+            });
         });
     });
 

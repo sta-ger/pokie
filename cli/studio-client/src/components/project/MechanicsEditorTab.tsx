@@ -56,6 +56,18 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
     const [activeStep, setActiveStep] = useState(0);
+    // Lifted out of BetModesEditor itself: the Bet modes step's own content div only renders while
+    // `activeStep === 3` (see below), so a useState local to BetModesEditor would be silently discarded
+    // -- losing whatever id the user had typed but not yet clicked "Add bet mode" for -- every time they
+    // switched to another step and back. Held here instead, where it survives every step switch, and
+    // reset on every wholesale blueprint replace (New/Load/Discard) via the formGeneration effect below,
+    // the same "stale scratch state from the previous blueprint must not survive" rule
+    // nextFormGenerationIsClean already applies to the dirty-tracking ref.
+    const [newBetModeId, setNewBetModeId] = useState("");
+    useEffect(() => {
+        setNewBetModeId("");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor.formGeneration]);
 
     const [loadView, setLoadView] = useState<LoadView>({status: "loading"});
     const loadRequestIdRef = useRef(0);
@@ -340,7 +352,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
             {activeStep === 3 && (
                 <div key={editor.formGeneration}>
                     <BetsList blueprint={blueprint} mutate={editor.mutate} />
-                    <BetModesEditor blueprint={blueprint} mutate={editor.mutate} />
+                    <BetModesEditor blueprint={blueprint} mutate={editor.mutate} newBetModeId={newBetModeId} onNewBetModeIdChange={setNewBetModeId} />
                     {renderStepIssues("betModes")}
                 </div>
             )}
