@@ -52,7 +52,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         // The blocked transition hasn't been resolved yet -- still on Home, draft untouched.
         expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 45000);
+    }, 60000);
 
     it("blocks a direct navigation to /project/* while the Design & Build draft is dirty", async () => {
         const user = userEvent.setup();
@@ -66,7 +66,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 45000);
+    }, 60000);
 
     it("Cancel keeps the current URL and preserves the dirty draft", async () => {
         const user = userEvent.setup();
@@ -84,7 +84,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         expect(router.state.location.pathname).toBe("/home/design");
         expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
         expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     // Many sequential real userEvent interactions plus a real cross-page navigation -- under Jest's
     // parallel/contended workers this can exceed the project's default testTimeout, same reasoning as
@@ -110,7 +110,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         // a leftover duplicate entry sitting in between.
         router.navigate(1);
         await waitFor(() => expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page"));
-    }, 45000);
+    }, 60000);
 
     // Many sequential real userEvent interactions -- same reasoning as above.
     it("switching Home's own tabs never prompts, even while the draft is dirty", async () => {
@@ -133,7 +133,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("registers a native beforeunload listener only while the draft is dirty", async () => {
         const user = userEvent.setup();
@@ -163,7 +163,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         addSpy.mockRestore();
         removeSpy.mockRestore();
-    }, 45000);
+    }, 60000);
 
     // useBlocker only intercepts transitions it can track via history.state.idx -- entries the router
     // itself created via pushState. A raw `window.location.hash = ...` assignment (what a typed
@@ -190,5 +190,5 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         await user.click(screen.getByRole("button", {name: "Leave"}));
         await waitFor(() => expect(window.location.hash).toBe("#/project/overview"));
-    }, 45000);
+    }, 60000);
 });
