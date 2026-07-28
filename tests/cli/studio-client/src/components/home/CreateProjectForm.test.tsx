@@ -5,7 +5,41 @@ import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 describe("CreateProjectForm", () => {
-    it("submits the form and shows the created-files result", async () => {
+    it("provides a deterministic default project name -- Create works with zero typing", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/create": () => ({
+                ok: true,
+                status: 201,
+                body: {
+                    status: "ok",
+                    projectRoot: "/games/my-slot-game",
+                    manifest: {id: "my-slot-game", name: "my-slot-game", version: "0.1.0"},
+                    createdFiles: ["package.json"],
+                    updatedFiles: [],
+                    skippedFiles: [],
+                },
+            }),
+        });
+
+        renderWithProviders(<CreateProjectForm />, {fetchImpl});
+
+        expect(screen.getByLabelText("Package name", {exact: false})).toHaveValue("my-slot-game");
+
+        await user.click(screen.getByRole("button", {name: "Create"}));
+
+        expect(await screen.findByText("package.json")).toBeInTheDocument();
+        expect(calls[0]).toEqual({
+            url: "/api/home/projects/create",
+            init: {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({destinationDir: ".", name: "my-slot-game"}),
+            },
+        });
+    });
+
+    it("submits a custom name and shows the created-files result", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/create": () => ({
@@ -24,7 +58,9 @@ describe("CreateProjectForm", () => {
 
         renderWithProviders(<CreateProjectForm />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Package name", {exact: false}), "sample-slot");
+        const nameField = screen.getByLabelText("Package name", {exact: false});
+        await user.clear(nameField);
+        await user.type(nameField, "sample-slot");
         await user.click(screen.getByRole("button", {name: "Create"}));
 
         expect(await screen.findByText("package.json")).toBeInTheDocument();
@@ -40,7 +76,7 @@ describe("CreateProjectForm", () => {
         });
     });
 
-    it("shows a domain-level failure distinctly from a network error", async () => {
+    it("shows a domain-level failure (an overwrite/existing-directory conflict) distinctly from a network error", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/create": () => ({ok: true, status: 200, body: {status: "error", error: "destination already exists"}}),
@@ -48,9 +84,48 @@ describe("CreateProjectForm", () => {
 
         renderWithProviders(<CreateProjectForm />, {fetchImpl});
 
-        await user.type(screen.getByLabelText("Package name", {exact: false}), "sample-slot");
         await user.click(screen.getByRole("button", {name: "Create"}));
 
         expect(await screen.findByText("destination already exists")).toBeInTheDocument();
+    });
+
+    it("shows the resolved destination path once the field is focused, instead of a bare '.'", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/home/dev/games", displayPath: ".", entries: []}}),
+        });
+
+        renderWithProviders(<CreateProjectForm />, {fetchImpl});
+
+        // Not getByLabelText: with {exact: false} it also substring-matches the *modal's own title*
+        // ("Browse for a destination directory") once that dialog exists elsewhere in the tree --
+        // getByRole("textbox", ...) only ever matches the actual <input>.
+        await user.click(screen.getByRole("textbox", {name: "Destination directory"}));
+
+        expect(await screen.findByText("Resolves to: .")).toBeInTheDocument();
+        expect(calls).toEqual([{url: "/api/home/fs/browse?path=.", init: undefined}]);
+    });
+
+    it("Browse cancellation never changes the destinationDir field", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/home/dev", displayPath: ".", entries: [{name: "games", isDirectory: true}]},
+            }),
+            "/api/home/projects/create": () => ({ok: true, status: 201, body: {status: "ok", projectRoot: "/x", manifest: {id: "x", name: "x", version: "0.1.0"}, createdFiles: [], updatedFiles: [], skippedFiles: []}}),
+        });
+
+        renderWithProviders(<CreateProjectForm />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+        expect(await screen.findByText("games")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Cancel"}));
+
+        expect(screen.getByRole("textbox", {name: "Destination directory"})).toHaveValue(".");
+
+        await user.click(screen.getByRole("button", {name: "Create"}));
+        expect(calls.some((call) => call.url === "/api/home/projects/create" && JSON.parse(call.init?.body ?? "{}").destinationDir === ".")).toBe(true);
     });
 });

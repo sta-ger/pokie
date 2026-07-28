@@ -3,6 +3,7 @@ import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
+import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
@@ -31,6 +32,11 @@ export type StudioServerOptions = {
     // StudioCommand always builds this with readOwnVersion() and passes it in — same reasoning as
     // gamePackageCreator used to have before Home absorbed it.
     homeService: StudioHomeService;
+    // Drives GET /api/home/fs/browse -- the "Browse" action on Home's project-creation path inputs
+    // (Create/Init/Build from Blueprint). Defaults to a StudioFsBrowseService rooted at `studioRoot`,
+    // same "optional, defaulted around a value already required above" shape as gamePackageInspector/
+    // gamePackageValidator below.
+    fsBrowseService?: StudioFsBrowseService;
     // Drives the Blueprint Editor's five /api/home/blueprints/* endpoints — see StudioBlueprintService.
     // Required rather than defaulted for the same reason homeService is: a default instance would need
     // a `pokie` version to embed into generated package.json files, and StudioServer has no business

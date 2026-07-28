@@ -427,6 +427,53 @@ describe("StudioServer", () => {
         expect(context.body).toEqual({mode: "home"});
     });
 
+    describe("Home nav: GET /api/home/fs/browse", () => {
+        it("lists the studio root's own children when no path is given", async () => {
+            fs.mkdirSync(path.join(studioRoot, "games"));
+
+            const {status, body} = await get(`${baseUrl}/api/home/fs/browse`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({
+                status: "ok",
+                resolvedPath: studioRoot,
+                displayPath: ".",
+                entries: expect.arrayContaining([{name: "games", isDirectory: true}]),
+            });
+        });
+
+        it("resolves a relative path against the studio root", async () => {
+            fs.mkdirSync(path.join(studioRoot, "games"));
+            fs.mkdirSync(path.join(studioRoot, "games", "sample-slot"));
+
+            const {status, body} = await get(`${baseUrl}/api/home/fs/browse?path=${encodeURIComponent("games")}`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({
+                status: "ok",
+                resolvedPath: path.join(studioRoot, "games"),
+                displayPath: `.${path.sep}games`,
+                entries: [{name: "sample-slot", isDirectory: true}],
+            });
+        });
+
+        it("reports a nonexistent path as a 200 domain-level error, not a 4xx/5xx", async () => {
+            const {status, body} = await get(`${baseUrl}/api/home/fs/browse?path=${encodeURIComponent("does-not-exist")}`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "error", resolvedPath: path.join(studioRoot, "does-not-exist")});
+            expect((body as {error: string}).error).toContain("does not exist");
+        });
+
+        it("reports a path that resolves to a file, not a directory, as an error", async () => {
+            const {status, body} = await get(`${baseUrl}/api/home/fs/browse?path=${encodeURIComponent("index.html")}`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "error"});
+            expect((body as {error: string}).error).toContain("is not a directory");
+        });
+    });
+
     describe("Home nav: recent-projects dedup/missing (through the injected homeService)", () => {
         it("never lists another project's recent entries as duplicates when the same canonical path is opened twice", async () => {
             const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};

@@ -155,7 +155,11 @@ cli/studio-client/
                            # "here's what to do next" affordance), IssueList/FileList, StatusBadge (the
                            # per-section error/warning/success indicator on Design & Build's tabs),
                            # RowActions/QuickActions/PageSection, BufferedTextInput/BufferedNumberInput,
-                           # SimulationReportDisplay, ScreenTable, BuildPreviewDisplay/BuildResultDisplay
+                           # SimulationReportDisplay, ScreenTable, BuildPreviewDisplay/BuildResultDisplay,
+                           # PathInput/PathBrowseModal (a filesystem-path TextInput plus a "Browse" action
+                           # -- GET /api/home/fs/browse -- and a resolved-path hint shown on focus, used by
+                           # every project-creation path input so a bare "." always has a concrete location
+                           # shown alongside it)
       home/               # HomePage (Design & Build / Open Project / Advanced Tools),
                            # Recent/Create/Init/Build/Open panels (composed into the tabs above)
       blueprintEditor/    # BlueprintEditorPage (plain, or `guided` for Home's Design & Build tab),

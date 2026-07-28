@@ -1,4 +1,4 @@
-import {Button, Stack, TextInput} from "@mantine/core";
+import {Button, Stack} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useState} from "react";
 import {initProject} from "../../api/apiClient";
@@ -7,6 +7,7 @@ import {errorMessage} from "../../domain/errorMessage";
 import {describeScaffoldResult, type ScaffoldActionView} from "../../domain/interpret/Home";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
+import {PathInput} from "../common/PathInput";
 import {ScaffoldResultDisplay} from "./ScaffoldResultDisplay";
 
 export function InitProjectForm() {
@@ -41,7 +42,15 @@ export function InitProjectForm() {
         <Stack gap="md" maw={480}>
             <form onSubmit={form.onSubmit(handleSubmit)}>
                 <Stack gap="sm">
-                    <TextInput label="Existing project directory" required {...form.getInputProps("directory")} key={form.key("directory")} />
+                    <PathInput
+                        label="Existing project directory"
+                        required
+                        kind="directory"
+                        browseTitle="Browse for an existing project directory"
+                        {...form.getInputProps("directory")}
+                        onPathSelected={(path) => form.setFieldValue("directory", path)}
+                        key={form.key("directory")}
+                    />
                     <Button type="submit" loading={view.status === "loading"} style={{alignSelf: "flex-start"}}>
                         Initialize
                     </Button>

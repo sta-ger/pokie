@@ -20,6 +20,7 @@ import type {
     StudioFairnessConfigureView,
     StudioFairnessGenerateView,
     StudioFairnessVerifyView,
+    StudioFsBrowseView,
     StudioHomeRecentProjectView,
     StudioOutcomeLibraryCompareView,
     StudioOutcomeLibraryDeepValidateView,
@@ -81,6 +82,15 @@ export async function createProject(fetchImpl: FetchLike, request: CreateProject
         throw new Error(await extractErrorMessage(response, "Failed to create project"));
     }
     return (await response.json()) as StudioScaffoldResultView;
+}
+
+// Backs the "Browse" action on Home's project-creation path inputs (Create/Init/Build from Blueprint)
+// -- never throws for a domain-level failure (a nonexistent/unreadable/non-directory path), same
+// convention as createProject/initProject above; the DTO's own `status` field carries that.
+export async function browseFilesystem(fetchImpl: FetchLike, path?: string): Promise<StudioFsBrowseView> {
+    const query = path && path.trim().length > 0 ? `?path=${encodeURIComponent(path)}` : "";
+    const response = await fetchImpl(`/api/home/fs/browse${query}`);
+    return (await response.json()) as StudioFsBrowseView;
 }
 
 export type InitProjectRequest = {directory: string};
