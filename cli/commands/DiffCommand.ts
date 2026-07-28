@@ -11,6 +11,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type DiffFormat = "summary" | "json";
 
@@ -105,41 +106,50 @@ export class DiffCommand implements CliCommandHandling {
         return json;
     }
 
+    // Commander declares/validates <leftReportJson> <rightReportJson>, --format (a custom parser that
+    // only accepts the literal "json", same as the original), and --out (unvalidated). A trailing
+    // "[excess...]" catches any stray bare positional (the original loop's default case treated any
+    // unmatched token as an "Unknown option", including a non-flag one). --format's structurally
+    // *missing* value (flag given with nothing after it) maps to the same message as an invalid
+    // provided value, matching the original's single "value !== 'json'" check (undefined !== "json").
     private parseArgs(args: string[]): DiffOptions {
-        const [leftPath, rightPath, ...rest] = args;
-        if (!leftPath || !rightPath) {
-            throw new Error(USAGE);
-        }
-
-        let format: DiffFormat = "summary";
-        let out: string | undefined;
-
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--format": {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${USAGE}`);
-                    }
-                    format = "json";
-                    i++;
-                    break;
+        let result: DiffOptions | undefined;
+        const command = createCommanderCliCommand("diff")
+            .argument("<leftReportJson>")
+            .argument("<rightReportJson>")
+            .argument("[excess...]")
+            .option("--format <format>", "", (value: string) => {
+                if (value !== "json") {
+                    throw new Error(`--format only supports "json". ${USAGE}`);
                 }
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a file path. ${USAGE}`);
-                    }
-                    out = value;
-                    i++;
-                    break;
+                return "json" as DiffFormat;
+            })
+            .option("--out <file>")
+            .action((leftPath: string, rightPath: string, excess: string[], options: {format?: DiffFormat; out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
                 }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
-        }
+                result = {leftPath, rightPath, format: options.format ?? "summary", out: options.out};
+            });
 
-        return {leftPath, rightPath, format, out};
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                missingArgument: USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) => {
+                    if (flag === "--format") {
+                        return `--format only supports "json". ${USAGE}`;
+                    }
+                    if (flag === "--out") {
+                        return `--out requires a file path. ${USAGE}`;
+                    }
+                    return `Unknown option "${flag}". ${USAGE}`;
+                },
+            });
+        }
+        return result!;
     }
 
     private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {

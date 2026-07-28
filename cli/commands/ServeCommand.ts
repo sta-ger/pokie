@@ -1,11 +1,6 @@
 import {loadPokieGame, PokieDevServer, PokieDevServerHandling, PokieDevServerOptions, PokieGame} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-
-type ServeOptions = {
-    packageRoot: string;
-    host?: string;
-    port?: number;
-};
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]";
 
@@ -31,51 +26,49 @@ export class ServeCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
+        let packageRoot!: string;
+        let host: string | undefined;
+        let port: number | undefined;
 
-        const game = await this.loadGame(options.packageRoot);
-        const server = this.createServer(game, {host: options.host, port: options.port});
+        const command = createCommanderCliCommand("serve")
+            .argument("<packageRoot>")
+            .argument("[excess...]")
+            .option("--port <number>", "port to listen on", (value: string) => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed < 0) {
+                    throw new Error(`--port must be a non-negative integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--host <string>", "host to listen on")
+            .action((root: string, excess: string[], options: {port?: number; host?: string}) => {
+                // An empty-string positional is "present" as far as Commander's own required-argument
+                // check is concerned, but the pre-Commander behavior this preserves treated it the same
+                // as an entirely missing one.
+                if (!root || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
+                }
+                packageRoot = root;
+                port = options.port;
+                host = options.host;
+            });
+
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                missingArgument: USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) =>
+                    flag === "--port" ? `--port must be a non-negative integer. ${USAGE}` : `--host requires a value. ${USAGE}`,
+            });
+        }
+
+        const game = await this.loadGame(packageRoot);
+        const server = this.createServer(game, {host, port});
         const address = await server.start();
 
         console.log(`POKIE dev server (experimental) listening on http://${address.host}:${address.port}`);
         console.log("This is a local/dev reference server for a single game package — not a casino backend or RGS.");
-    }
-
-    private parseArgs(args: string[]): ServeOptions {
-        const [packageRoot, ...rest] = args;
-        if (!packageRoot) {
-            throw new Error(USAGE);
-        }
-
-        let host: string | undefined;
-        let port: number | undefined;
-
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--port": {
-                    const parsed = Number(value);
-                    if (value === undefined || !Number.isInteger(parsed) || parsed < 0) {
-                        throw new Error(`--port must be a non-negative integer. ${USAGE}`);
-                    }
-                    port = parsed;
-                    i++;
-                    break;
-                }
-                case "--host": {
-                    if (value === undefined) {
-                        throw new Error(`--host requires a value. ${USAGE}`);
-                    }
-                    host = value;
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
-        }
-
-        return {packageRoot, host, port};
     }
 }

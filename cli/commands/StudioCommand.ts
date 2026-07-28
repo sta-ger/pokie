@@ -7,6 +7,7 @@ import {StudioContextResolving} from "../studio/StudioContextResolving.js";
 import {StudioServer} from "../studio/StudioServer.js";
 import {StudioServerHandling} from "../studio/StudioServerHandling.js";
 import {StudioServerOptions} from "../studio/StudioServerOptions.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type StudioOptions = {
     projectRoot?: string;
@@ -103,56 +104,48 @@ export class StudioCommand implements CliCommandHandling {
         this.process.once("SIGTERM", shutdown);
     }
 
+    // Commander's own "[projectRoot]" optional positional already handles an omitted leading
+    // positional correctly (including when the first token is a "-"-prefixed flag, which leaves it
+    // `null`) -- no manual `args[0].startsWith("--")` sniffing needed, unlike the original. A trailing
+    // "[excess...]" catches any further stray bare positional (matching the original loop's default
+    // case, which treated any unmatched token -- flag-shaped or not -- as an "Unknown option").
     private parseArgs(args: string[]): StudioOptions {
-        let projectRoot: string | undefined;
-        let rest = args;
-        if (args.length > 0 && !args[0].startsWith("--")) {
-            [projectRoot] = args;
-            rest = args.slice(1);
-        }
-
-        let host: string | undefined;
-        let port: number | undefined;
-        let noOpen = false;
-
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--port": {
-                    port = this.parsePort(value);
-                    i++;
-                    break;
+        let result: StudioOptions | undefined;
+        const command = createCommanderCliCommand("studio")
+            .argument("[projectRoot]")
+            .argument("[excess...]")
+            .option("--port <number>", "", (value: string) => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed < 0) {
+                    throw new Error(`--port must be a non-negative integer. ${USAGE}`);
                 }
-                case "--host": {
-                    host = this.requireValue(value, "--host");
-                    i++;
-                    break;
+                return parsed;
+            })
+            .option("--host <string>")
+            .option("--no-open")
+            .action((projectRoot: string | null, excess: string[], options: {port?: number; host?: string; open?: boolean}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
                 }
-                case "--no-open": {
-                    noOpen = true;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
-        }
+                result = {projectRoot: projectRoot ?? undefined, host: options.host, port: options.port, noOpen: !options.open};
+            });
 
-        return {projectRoot, host, port, noOpen};
-    }
-
-    private parsePort(value: string | undefined): number {
-        const parsed = Number(value);
-        if (value === undefined || !Number.isInteger(parsed) || parsed < 0) {
-            throw new Error(`--port must be a non-negative integer. ${USAGE}`);
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) => {
+                    if (flag === "--port") {
+                        return `--port must be a non-negative integer. ${USAGE}`;
+                    }
+                    if (flag === "--host") {
+                        return `--host requires a value. ${USAGE}`;
+                    }
+                    return `Unknown option "${flag}". ${USAGE}`;
+                },
+            });
         }
-        return parsed;
-    }
-
-    private requireValue(value: string | undefined, flag: string): string {
-        if (value === undefined) {
-            throw new Error(`${flag} requires a value. ${USAGE}`);
-        }
-        return value;
+        return result!;
     }
 }

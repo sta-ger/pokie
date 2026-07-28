@@ -1,13 +1,6 @@
 import {PokieClientServer, PokieClientServerHandling, PokieClientServerOptions} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-
-type ClientOptions = {
-    packageRoot: string;
-    host?: string;
-    port?: number;
-    apiHost?: string;
-    apiPort?: number;
-};
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const DEFAULT_API_HOST = "127.0.0.1";
 const DEFAULT_API_PORT = 3000;
@@ -51,79 +44,72 @@ export class ClientCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
-        const apiHost = options.apiHost ?? DEFAULT_API_HOST;
-        const apiPort = options.apiPort ?? DEFAULT_API_PORT;
-
-        const server = this.createServer(this.clientRoot, {
-            host: options.host,
-            port: options.port,
-            apiAddress: {host: apiHost, port: apiPort},
-        });
-        const address = await server.start();
-
-        console.log(`POKIE client preview (experimental) listening on http://${address.host}:${address.port}`);
-        console.log(
-            `Talking to a pokie serve API expected at http://${apiHost}:${apiPort} — start it separately ` +
-                '(e.g. "pokie serve") or use "pokie dev" to run both together.',
-        );
-    }
-
-    private parseArgs(args: string[]): ClientOptions {
-        const [packageRoot, ...rest] = args;
-        if (!packageRoot) {
-            throw new Error(USAGE);
-        }
-
         let host: string | undefined;
         let port: number | undefined;
         let apiHost: string | undefined;
         let apiPort: number | undefined;
 
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--port": {
-                    port = this.parsePort(value, "--port");
-                    i++;
-                    break;
-                }
-                case "--host": {
-                    host = this.requireValue(value, "--host");
-                    i++;
-                    break;
-                }
-                case "--api-port": {
-                    apiPort = this.parsePort(value, "--api-port");
-                    i++;
-                    break;
-                }
-                case "--api-host": {
-                    apiHost = this.requireValue(value, "--api-host");
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
+        const parsePort = (flag: string) => (value: string) => {
+            const parsed = Number(value);
+            if (!Number.isInteger(parsed) || parsed < 0) {
+                throw new Error(`${flag} must be a non-negative integer. ${USAGE}`);
             }
+            return parsed;
+        };
+
+        const command = createCommanderCliCommand("client")
+            .argument("<packageRoot>")
+            .argument("[excess...]")
+            .option("--port <number>", "port to listen on", parsePort("--port"))
+            .option("--host <string>", "host to listen on")
+            .option("--api-port <number>", "port of the pokie serve API to talk to", parsePort("--api-port"))
+            .option("--api-host <string>", "host of the pokie serve API to talk to")
+            .action(
+                (
+                    root: string,
+                    excess: string[],
+                    options: {port?: number; host?: string; apiPort?: number; apiHost?: string},
+                ) => {
+                    // An empty-string positional is "present" as far as Commander's own required-argument
+                    // check is concerned, but the pre-Commander behavior this preserves treated it the
+                    // same as an entirely missing one.
+                    if (!root || excess.length > 0) {
+                        throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
+                    }
+                    host = options.host;
+                    port = options.port;
+                    apiHost = options.apiHost;
+                    apiPort = options.apiPort;
+                },
+            );
+
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                missingArgument: USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) =>
+                    flag === "--port" || flag === "--api-port"
+                        ? `${flag} must be a non-negative integer. ${USAGE}`
+                        : `${flag} requires a value. ${USAGE}`,
+            });
         }
 
-        return {packageRoot, host, port, apiHost, apiPort};
-    }
+        const resolvedApiHost = apiHost ?? DEFAULT_API_HOST;
+        const resolvedApiPort = apiPort ?? DEFAULT_API_PORT;
 
-    private parsePort(value: string | undefined, flag: string): number {
-        const parsed = Number(value);
-        if (value === undefined || !Number.isInteger(parsed) || parsed < 0) {
-            throw new Error(`${flag} must be a non-negative integer. ${USAGE}`);
-        }
-        return parsed;
-    }
+        const server = this.createServer(this.clientRoot, {
+            host,
+            port,
+            apiAddress: {host: resolvedApiHost, port: resolvedApiPort},
+        });
+        const address = await server.start();
 
-    private requireValue(value: string | undefined, flag: string): string {
-        if (value === undefined) {
-            throw new Error(`${flag} requires a value. ${USAGE}`);
-        }
-        return value;
+        console.log(`POKIE client preview (experimental) listening on http://${address.host}:${address.port}`);
+        console.log(
+            `Talking to a pokie serve API expected at http://${resolvedApiHost}:${resolvedApiPort} — start it separately ` +
+                '(e.g. "pokie serve") or use "pokie dev" to run both together.',
+        );
     }
 }

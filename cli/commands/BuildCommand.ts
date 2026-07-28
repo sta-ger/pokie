@@ -21,12 +21,7 @@ import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
 import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../wizard/PromptAdapting.js";
 import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
-
-type BuildOptions = {
-    configPath: string;
-    outDir?: string;
-    dryRun: boolean;
-};
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type RandomPreset = "default" | "variant";
 
@@ -103,6 +98,13 @@ export class BuildCommand implements CliCommandHandling {
         );
     }
 
+    // "--init-blueprint <file>" and "random"/"--random" are both flag-like verb selectors rather than
+    // ordinary positional command names, so Commander (whose subcommand matching only recognizes
+    // non-"-"-prefixed tokens, and has no concept of a second spelling for the same subcommand) can't
+    // itself pick between them; this is the same kind of pre-Commander routing cli/dispatch.ts's own
+    // resolveCliInvocation() already does one level up to pick a command by name. Once a verb is
+    // selected, its own args/options/aliases are declared and validated by Commander alone — see
+    // runInitBlueprint/runRandom/runDefault, none of which hand-parses a flag or coerces a value.
     public run(args: string[]): Promise<number> {
         if (args.length === 0) {
             return this.runWizard();
@@ -117,9 +119,7 @@ export class BuildCommand implements CliCommandHandling {
                 return this.runRandom(args.slice(1));
             }
 
-            const options = this.parseArgs(args);
-            const blueprint = this.loadBlueprint(options.configPath);
-            return Promise.resolve(this.buildFromBlueprint(blueprint, options.outDir, options.configPath, options.dryRun));
+            return this.runDefault(args);
         } catch (error) {
             return Promise.reject(error);
         }
@@ -130,26 +130,68 @@ export class BuildCommand implements CliCommandHandling {
     // <dir>" at the edited result once it looks right; see createStarterGameBlueprint.ts for what the
     // template contains and why it's guaranteed to pass GameBlueprintValidator as-is.
     private runInitBlueprint(rest: string[]): number {
-        const [file, ...extra] = rest;
-        if (!file) {
-            throw new Error(INIT_BLUEPRINT_USAGE);
-        }
-        if (extra.length > 0) {
-            throw new Error(`Unknown option "${extra[0]}". ${INIT_BLUEPRINT_USAGE}`);
-        }
-        if (this.fileExists(file)) {
-            throw new Error(`"${file}" already exists. Choose a different path, or remove/edit the existing file first.`);
-        }
+        let exitCode = 0;
+        const command = createCommanderCliCommand("build --init-blueprint")
+            .argument("<file>")
+            .argument("[excess...]")
+            .action((file: string, excess: string[]) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${INIT_BLUEPRINT_USAGE}`);
+                }
+                if (this.fileExists(file)) {
+                    throw new Error(`"${file}" already exists. Choose a different path, or remove/edit the existing file first.`);
+                }
 
-        const blueprint = this.createStarterBlueprint();
-        this.writeFile(file, `${JSON.stringify(blueprint, null, 4)}\n`);
+                const blueprint = this.createStarterBlueprint();
+                this.writeFile(file, `${JSON.stringify(blueprint, null, 4)}\n`);
 
-        console.log(`Created starter blueprint "${file}".`);
-        console.log(`\nEdit it by hand, then run:`);
-        console.log(`  pokie build ${file} --dry-run`);
-        console.log(`  pokie build ${file} --out <dir>`);
+                console.log(`Created starter blueprint "${file}".`);
+                console.log(`\nEdit it by hand, then run:`);
+                console.log(`  pokie build ${file} --dry-run`);
+                console.log(`  pokie build ${file} --out <dir>`);
+                exitCode = 0;
+            });
 
-        return 0;
+        try {
+            command.parse(rest, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                missingArgument: INIT_BLUEPRINT_USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${INIT_BLUEPRINT_USAGE}`,
+            });
+        }
+        return exitCode;
+    }
+
+    private runDefault(args: string[]): Promise<number> {
+        let exitCode = 0;
+        const command = createCommanderCliCommand("build")
+            .argument("<configPath>")
+            .argument("[excess...]")
+            .option("--out <dir>")
+            .option("--dry-run")
+            .action(async (configPath: string, excess: string[], options: {out?: string; dryRun?: boolean}) => {
+                // An empty-string positional ("pokie build ''") is present as far as Commander's own
+                // required-argument check is concerned, but the pre-Commander behavior this preserves
+                // treated it the same as an entirely missing one (`!configPath`) -- a truly empty argv
+                // is handled earlier, by run()'s own args.length === 0 wizard branch.
+                if (!configPath || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : `${USAGE}\n${BLUEPRINT_HINT}`);
+                }
+                const blueprint = this.loadBlueprint(configPath);
+                exitCode = await this.buildFromBlueprint(blueprint, options.out, configPath, options.dryRun ?? false);
+            });
+
+        return command
+            .parseAsync(args, {from: "user"})
+            .then(() => exitCode)
+            .catch((error: unknown) => {
+                throw translateCommanderError(error, {
+                    missingArgument: `${USAGE}\n${BLUEPRINT_HINT}`,
+                    unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                    optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a directory path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`),
+                });
+            });
     }
 
     private async runWizard(): Promise<number> {
@@ -175,7 +217,60 @@ export class BuildCommand implements CliCommandHandling {
     // richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset always
     // reproduces the same blueprint (see RandomGameBlueprintGenerator.generate).
     private runRandom(args: string[]): Promise<number> {
-        const options = this.parseRandomArgs(args);
+        let exitCode = 0;
+        const command = createCommanderCliCommand("build random")
+            .argument("[excess...]")
+            .option("--seed <integer>", "reproduce a specific random game", (value: string) => {
+                if (!Number.isInteger(Number(value))) {
+                    throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
+                }
+                return Number(value);
+            })
+            .option("--out <dir>")
+            .option("--dry-run")
+            .option(
+                "--preset <preset>",
+                "which generation strategy to use",
+                (value: string) => {
+                    if (!RANDOM_PRESETS.includes(value as RandomPreset)) {
+                        throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
+                    }
+                    return value as RandomPreset;
+                },
+                "default" as RandomPreset,
+            )
+            .action(async (excess: string[], options: {seed?: number; out?: string; dryRun?: boolean; preset: RandomPreset}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${RANDOM_USAGE}`);
+                }
+                exitCode = await this.executeRandom({seed: options.seed, outDir: options.out, dryRun: options.dryRun ?? false, preset: options.preset});
+            });
+
+        return command
+            .parseAsync(args, {from: "user"})
+            .then(() => exitCode)
+            .catch((error: unknown) => {
+                throw translateCommanderError(error, {
+                    unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
+                    optionMissingArgument: (flag) => {
+                        if (flag === "--seed") return `--seed requires an integer value. ${RANDOM_USAGE}`;
+                        if (flag === "--out") return `--out requires a directory path. ${RANDOM_USAGE}`;
+                        if (flag === "--preset") return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
+                        return `Unknown option "${flag}". ${RANDOM_USAGE}`;
+                    },
+                });
+            });
+    }
+
+    // "random"/"--random": generates a fresh, always-valid GameBlueprint (see
+    // RandomGameBlueprintGenerator's own doc comment for why it's guaranteed to pass validation) and
+    // runs it through the exact same validate/resolve/generate pipeline as a real <config.json> --
+    // "randomSeed" passed to buildFromBlueprint below is what additionally triggers the post-build
+    // smoke simulation, which a hand-authored blueprint build never runs. "--preset" only selects which
+    // already-registered RandomGameBlueprintStrategy generates the mechanics (default-line-pay vs the
+    // richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset always
+    // reproduces the same blueprint (see RandomGameBlueprintGenerator.generate).
+    private executeRandom(options: RandomBuildOptions): Promise<number> {
         const generator = options.preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
         const {blueprint, seed, provenance} = generator.generate({seed: options.seed});
 
@@ -184,52 +279,6 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`Provenance: generator ${provenance.generatorVersion}, strategy "${provenance.strategy}".`);
 
         return this.buildFromBlueprint(blueprint, options.outDir, undefined, options.dryRun, seed);
-    }
-
-    private parseRandomArgs(args: string[]): RandomBuildOptions {
-        let seed: number | undefined;
-        let outDir: string | undefined;
-        let dryRun = false;
-        let preset: RandomPreset = "default";
-
-        for (let i = 0; i < args.length; i++) {
-            const flag = args[i];
-            const value = args[i + 1];
-            switch (flag) {
-                case "--seed": {
-                    if (value === undefined || !Number.isInteger(Number(value))) {
-                        throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
-                    }
-                    seed = Number(value);
-                    i++;
-                    break;
-                }
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a directory path. ${RANDOM_USAGE}`);
-                    }
-                    outDir = value;
-                    i++;
-                    break;
-                }
-                case "--dry-run": {
-                    dryRun = true;
-                    break;
-                }
-                case "--preset": {
-                    if (value === undefined || !RANDOM_PRESETS.includes(value as RandomPreset)) {
-                        throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
-                    }
-                    preset = value as RandomPreset;
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${RANDOM_USAGE}`);
-            }
-        }
-
-        return {seed, outDir, dryRun, preset};
     }
 
     private async buildFromBlueprint(
@@ -345,35 +394,4 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  would generate   ${buildInfo.files!.join(", ")}`);
     }
 
-    private parseArgs(args: string[]): BuildOptions {
-        const [configPath, ...rest] = args;
-        if (!configPath) {
-            throw new Error(`${USAGE}\n${BLUEPRINT_HINT}`);
-        }
-
-        let outDir: string | undefined;
-        let dryRun = false;
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a directory path. ${USAGE}`);
-                    }
-                    outDir = value;
-                    i++;
-                    break;
-                }
-                case "--dry-run": {
-                    dryRun = true;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${USAGE}`);
-            }
-        }
-
-        return {configPath, outDir, dryRun};
-    }
 }

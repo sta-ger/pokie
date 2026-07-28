@@ -11,6 +11,7 @@ import {
     WeightedOutcomeLibrary,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {streamJsonlOutcomes} from "./internal/streamJsonlOutcomes.js";
 
 const USAGE = "Usage: pokie outcomelibrary build <config.json> [--out <dir>]\n   or: pokie outcomelibrary validate <bundleDir> [--deep]";
@@ -24,9 +25,6 @@ const CONFIG_HINT =
     '"outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"} ("libraryId" is required for this form, ' +
     'since there\'s no wrapping library object to read it from; "schemaVersion" is optional). Exactly one of ' +
     '"libraryPath"/"outcomesPath" is required per mode — see docs/outcome-library-bundle.md for the format.';
-
-type BuildOptions = {configPath: string; outDir: string};
-type ValidateOptions = {bundleDir: string; deep: boolean};
 
 type BuildDescriptorModeEntry = {
     modeName: string;
@@ -70,22 +68,80 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         );
     }
 
+    // Two ordinary-word verbs ("build"/"validate") sharing one parent Commander instance — real nested
+    // subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so Commander itself both
+    // dispatches by exact verb name and validates each verb's own args/options. The messages passed
+    // to translateCommanderError are picked per-verb (from args[0], read before parsing) since a
+    // structural error caught at the shared parent.parseAsync() call doesn't otherwise say which
+    // subcommand it came from; an empty/unrecognized verb falls back to the combined USAGE+hint the
+    // original hand-rolled switch's own `default` case threw.
     public run(args: string[]): Promise<number> {
-        const [subcommand, ...rest] = args;
-        switch (subcommand) {
-            case "build":
-                return this.runBuild(rest);
-            case "validate":
-                return this.runValidate(rest);
-            default:
-                return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
+        // An empty argv has no verb for Commander to dispatch on at all; rather than lean on
+        // Commander's own incidental "commander.help" throw for this (still handled below via
+        // noCommand, e.g. for "pokie outcomelibrary help"), reject it explicitly up front with the
+        // same combined usage+hint text the original hand-rolled switch's own `default` case threw.
+        if (args.length === 0) {
+            return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
         }
+
+        let exitCode = 0;
+        const parent = createCommanderCliCommand("outcomelibrary");
+
+        parent
+            .command("build")
+            .argument("<config.json>")
+            .argument("[excess...]")
+            .option("--out <dir>")
+            .action(async (configPath: string, excess: string[], options: {out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);
+                }
+                const outDir = options.out ?? path.join(path.dirname(configPath), "outcomelibrary");
+                exitCode = await this.executeBuild(configPath, outDir);
+            });
+
+        parent
+            .command("validate")
+            .argument("<bundleDir>")
+            .argument("[excess...]")
+            .option("--deep")
+            .action(async (bundleDir: string, excess: string[], options: {deep?: boolean}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${VALIDATE_USAGE}`);
+                }
+                exitCode = await this.executeValidate(bundleDir, options.deep ?? false);
+            });
+
+        const verb = args[0];
+        let verbMessages: CommanderErrorMessages = {};
+        if (verb === "build") {
+            verbMessages = {
+                missingArgument: `${BUILD_USAGE}\n${CONFIG_HINT}`,
+                unknownOption: (flag) => `Unknown option "${flag}". ${BUILD_USAGE}`,
+                optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a directory path. ${BUILD_USAGE}` : `Unknown option "${flag}". ${BUILD_USAGE}`),
+            };
+        } else if (verb === "validate") {
+            verbMessages = {
+                missingArgument: VALIDATE_USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${VALIDATE_USAGE}`,
+            };
+        }
+
+        return parent
+            .parseAsync(args, {from: "user"})
+            .then(() => exitCode)
+            .catch((error: unknown) => {
+                throw translateCommanderError(error, {
+                    ...verbMessages,
+                    unknownCommand: `${USAGE}\n${CONFIG_HINT}`,
+                    noCommand: `${USAGE}\n${CONFIG_HINT}`,
+                });
+            });
     }
 
-    private async runBuild(args: string[]): Promise<number> {
-        const options = this.parseBuildArgs(args);
-        const descriptor = this.loadDescriptor(options.configPath);
-        const configDir = path.dirname(options.configPath);
+    private async executeBuild(configPath: string, outDir: string): Promise<number> {
+        const descriptor = this.loadDescriptor(configPath);
+        const configDir = path.dirname(configPath);
 
         const modes: OutcomeLibraryBundleModeInput[] = descriptor.modes.map((entry) => {
             if (entry.libraryPath !== undefined) {
@@ -101,17 +157,17 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             };
         });
 
-        const result = await this.writer.writeToDirectory(modes, options.outDir);
+        const result = await this.writer.writeToDirectory(modes, outDir);
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`Could not build an outcome library bundle from "${options.configPath}" to "${options.outDir}" (${errors.length} error(s)):`);
+            console.error(`Could not build an outcome library bundle from "${configPath}" to "${outDir}" (${errors.length} error(s)):`);
             this.printIssues(errors);
             return 1;
         }
 
-        console.log(`Built an outcome library bundle from "${options.configPath}" to "${options.outDir}":`);
+        console.log(`Built an outcome library bundle from "${configPath}" to "${outDir}":`);
         for (const file of result.files) {
             console.log(`  wrote  ${file}`);
         }
@@ -122,19 +178,18 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         return 0;
     }
 
-    private async runValidate(args: string[]): Promise<number> {
-        const options = this.parseValidateArgs(args);
-        const issues = await this.validator.validate(options.bundleDir, {deep: options.deep});
+    private async executeValidate(bundleDir: string, deep: boolean): Promise<number> {
+        const issues = await this.validator.validate(bundleDir, {deep});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`"${options.bundleDir}" is not a valid outcome library bundle (${errors.length} error(s)):`);
+            console.error(`"${bundleDir}" is not a valid outcome library bundle (${errors.length} error(s)):`);
             this.printIssues(errors);
             return 1;
         }
 
-        console.log(`"${options.bundleDir}" is a valid outcome library bundle${options.deep ? " (deep check)" : ""}.`);
+        console.log(`"${bundleDir}" is a valid outcome library bundle${deep ? " (deep check)" : ""}.`);
         for (const issue of rest) {
             console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
         }
@@ -182,48 +237,4 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         return {modes};
     }
 
-    private parseBuildArgs(args: string[]): BuildOptions {
-        const [configPath, ...rest] = args;
-        if (!configPath) {
-            throw new Error(`${BUILD_USAGE}\n${CONFIG_HINT}`);
-        }
-
-        let outDir = path.join(path.dirname(configPath), "outcomelibrary");
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a directory path. ${BUILD_USAGE}`);
-                    }
-                    outDir = value;
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${BUILD_USAGE}`);
-            }
-        }
-
-        return {configPath, outDir};
-    }
-
-    private parseValidateArgs(args: string[]): ValidateOptions {
-        const [bundleDir, ...rest] = args;
-        if (!bundleDir) {
-            throw new Error(VALIDATE_USAGE);
-        }
-
-        let deep = false;
-        for (const flag of rest) {
-            if (flag === "--deep") {
-                deep = true;
-                continue;
-            }
-            throw new Error(`Unknown option "${flag}". ${VALIDATE_USAGE}`);
-        }
-
-        return {bundleDir, deep};
-    }
 }

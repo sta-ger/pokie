@@ -10,6 +10,7 @@ import {
     ValidationIssue,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
     "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
@@ -20,9 +21,6 @@ const CONFIG_HINT =
     '<config.json> lists one sample source per mode of the given outcome-library bundle — {"modes": ' +
     '[{"modeName": "base", "seed": "cert-2026-07-15-base", "sampleCount": 200}, ...]} — see ' +
     "docs/certification-evidence-bundle.md for the format.";
-
-type BuildOptions = {bundleDir: string; configPath: string; outDir: string};
-type VerifyOptions = {certDir: string; sourceBundleDir: string};
 
 type BuildDescriptorModeEntry = {modeName: string; seed: string; sampleCount: number};
 type BuildDescriptor = {modes: BuildDescriptorModeEntry[]};
@@ -57,21 +55,84 @@ export class CertificationCommand implements CliCommandHandling {
         );
     }
 
+    // Two ordinary-word verbs ("build"/"verify") sharing one parent Commander instance — real nested
+    // subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so Commander itself both
+    // dispatches by exact verb name and validates each verb's own args/options. The messages passed
+    // to translateCommanderError are picked per-verb (from args[0], read before parsing) since a
+    // structural error caught at the shared parent.parseAsync() call doesn't otherwise say which
+    // subcommand it came from; an empty/unrecognized verb falls back to the combined USAGE+hint the
+    // original hand-rolled switch's own `default` case threw.
     public run(args: string[]): Promise<number> {
-        const [subcommand, ...rest] = args;
-        switch (subcommand) {
-            case "build":
-                return this.runBuild(rest);
-            case "verify":
-                return this.runVerify(rest);
-            default:
-                return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
+        // An empty argv has no verb for Commander to dispatch on at all; rather than lean on
+        // Commander's own incidental "commander.help" throw for this (still handled below via
+        // noCommand, e.g. for "pokie certification help"), reject it explicitly up front with the
+        // same combined usage+hint text the original hand-rolled switch's own `default` case threw.
+        if (args.length === 0) {
+            return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
         }
+
+        let exitCode = 0;
+        const parent = createCommanderCliCommand("certification");
+
+        parent
+            .command("build")
+            .argument("<bundleDir>")
+            .argument("<config.json>")
+            .argument("[excess...]")
+            .option("--out <dir>")
+            .action(async (bundleDir: string, configPath: string, excess: string[], options: {out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);
+                }
+                const outDir = options.out ?? path.join(path.dirname(configPath), "certification");
+                exitCode = await this.executeBuild(bundleDir, configPath, outDir);
+            });
+
+        parent
+            .command("verify")
+            .argument("<certDir>")
+            .argument("[excess...]")
+            .option("--source <bundleDir>")
+            .action(async (certDir: string, excess: string[], options: {source?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${VERIFY_USAGE}`);
+                }
+                if (options.source === undefined) {
+                    throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
+                }
+                exitCode = await this.executeVerify(certDir, options.source);
+            });
+
+        const verb = args[0];
+        let verbMessages: CommanderErrorMessages = {};
+        if (verb === "build") {
+            verbMessages = {
+                missingArgument: `${BUILD_USAGE}\n${CONFIG_HINT}`,
+                unknownOption: (flag) => `Unknown option "${flag}". ${BUILD_USAGE}`,
+                optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a directory path. ${BUILD_USAGE}` : `Unknown option "${flag}". ${BUILD_USAGE}`),
+            };
+        } else if (verb === "verify") {
+            verbMessages = {
+                missingArgument: VERIFY_USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${VERIFY_USAGE}`,
+                optionMissingArgument: (flag) => (flag === "--source" ? `--source requires a directory path. ${VERIFY_USAGE}` : `Unknown option "${flag}". ${VERIFY_USAGE}`),
+            };
+        }
+
+        return parent
+            .parseAsync(args, {from: "user"})
+            .then(() => exitCode)
+            .catch((error: unknown) => {
+                throw translateCommanderError(error, {
+                    ...verbMessages,
+                    unknownCommand: `${USAGE}\n${CONFIG_HINT}`,
+                    noCommand: `${USAGE}\n${CONFIG_HINT}`,
+                });
+            });
     }
 
-    private async runBuild(args: string[]): Promise<number> {
-        const options = this.parseBuildArgs(args);
-        const descriptor = this.loadDescriptor(options.configPath);
+    private async executeBuild(bundleDir: string, configPath: string, outDir: string): Promise<number> {
+        const descriptor = this.loadDescriptor(configPath);
 
         const modes: CertificationEvidenceBundleModeSampleInput[] = descriptor.modes.map((entry) => ({
             modeName: entry.modeName,
@@ -79,17 +140,17 @@ export class CertificationCommand implements CliCommandHandling {
             sampleCount: entry.sampleCount,
         }));
 
-        const result: CertificationEvidenceBundleBuildResult = await this.builder.buildFromBundle(options.bundleDir, modes, options.outDir);
+        const result: CertificationEvidenceBundleBuildResult = await this.builder.buildFromBundle(bundleDir, modes, outDir);
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`Could not build a certification/evidence bundle from "${options.bundleDir}" to "${options.outDir}" (${errors.length} error(s)):`);
+            console.error(`Could not build a certification/evidence bundle from "${bundleDir}" to "${outDir}" (${errors.length} error(s)):`);
             this.printIssues(errors);
             return 1;
         }
 
-        console.log(`Built a certification/evidence bundle from "${options.bundleDir}" to "${options.outDir}":`);
+        console.log(`Built a certification/evidence bundle from "${bundleDir}" to "${outDir}":`);
         for (const file of result.files) {
             console.log(`  wrote  ${file}`);
         }
@@ -100,19 +161,18 @@ export class CertificationCommand implements CliCommandHandling {
         return 0;
     }
 
-    private async runVerify(args: string[]): Promise<number> {
-        const options = this.parseVerifyArgs(args);
-        const issues = await this.verifier.verify(options.certDir, {sourceBundleDir: options.sourceBundleDir});
+    private async executeVerify(certDir: string, sourceBundleDir: string): Promise<number> {
+        const issues = await this.verifier.verify(certDir, {sourceBundleDir});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
 
         if (errors.length > 0) {
-            console.error(`"${options.certDir}" did not verify as a valid certification/evidence bundle (${errors.length} error(s)):`);
+            console.error(`"${certDir}" did not verify as a valid certification/evidence bundle (${errors.length} error(s)):`);
             this.printIssues(errors);
             return 1;
         }
 
-        console.log(`"${options.certDir}" verified successfully as a certification/evidence bundle.`);
+        console.log(`"${certDir}" verified successfully as a certification/evidence bundle.`);
         for (const issue of rest) {
             console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
         }
@@ -149,61 +209,4 @@ export class CertificationCommand implements CliCommandHandling {
         return {modes};
     }
 
-    private parseBuildArgs(args: string[]): BuildOptions {
-        const [bundleDir, configPath, ...rest] = args;
-        if (!bundleDir || !configPath) {
-            throw new Error(`${BUILD_USAGE}\n${CONFIG_HINT}`);
-        }
-
-        let outDir = path.join(path.dirname(configPath), "certification");
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--out": {
-                    if (value === undefined) {
-                        throw new Error(`--out requires a directory path. ${BUILD_USAGE}`);
-                    }
-                    outDir = value;
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${BUILD_USAGE}`);
-            }
-        }
-
-        return {bundleDir, configPath, outDir};
-    }
-
-    private parseVerifyArgs(args: string[]): VerifyOptions {
-        const [certDir, ...rest] = args;
-        if (!certDir) {
-            throw new Error(VERIFY_USAGE);
-        }
-
-        let sourceBundleDir: string | undefined;
-        for (let i = 0; i < rest.length; i++) {
-            const flag = rest[i];
-            const value = rest[i + 1];
-            switch (flag) {
-                case "--source": {
-                    if (value === undefined) {
-                        throw new Error(`--source requires a directory path. ${VERIFY_USAGE}`);
-                    }
-                    sourceBundleDir = value;
-                    i++;
-                    break;
-                }
-                default:
-                    throw new Error(`Unknown option "${flag}". ${VERIFY_USAGE}`);
-            }
-        }
-
-        if (sourceBundleDir === undefined) {
-            throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
-        }
-
-        return {certDir, sourceBundleDir};
-    }
 }

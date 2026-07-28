@@ -1,5 +1,6 @@
 import {GamePackageInspecting, GamePackageInspectionReport, GamePackageInspector} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie inspect <packageRoot>";
 
@@ -19,17 +20,33 @@ export class InspectCommand implements CliCommandHandling {
     }
 
     public run(args: string[]): Promise<number> {
-        const [packageRoot, ...rest] = args;
-        if (!packageRoot) {
-            return Promise.reject(new Error(USAGE));
-        }
-        if (rest.length > 0) {
-            return Promise.reject(new Error(`Unknown option "${rest[0]}". ${USAGE}`));
-        }
+        let exitCode = 0;
+        const command = createCommanderCliCommand("inspect")
+            .argument("<packageRoot>")
+            .argument("[excess...]")
+            .action((packageRoot: string, excess: string[]) => {
+                // An empty-string positional is "present" as far as Commander's own required-argument
+                // check is concerned, but the pre-Commander behavior this preserves treated it the same
+                // as an entirely missing one.
+                if (!packageRoot || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
+                }
+                const report = this.inspector.inspect(packageRoot);
+                this.print(report);
+                exitCode = report.valid ? 0 : 1;
+            });
 
-        const report = this.inspector.inspect(packageRoot);
-        this.print(report);
-        return Promise.resolve(report.valid ? 0 : 1);
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            return Promise.reject(
+                translateCommanderError(error, {
+                    missingArgument: USAGE,
+                    unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                }),
+            );
+        }
+        return Promise.resolve(exitCode);
     }
 
     private print(report: GamePackageInspectionReport): void {

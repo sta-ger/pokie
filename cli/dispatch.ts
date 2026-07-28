@@ -16,6 +16,14 @@ function printUsage(commands: CliCommandHandling[]): void {
 // --help/-h, an unknown command, stdout/stderr separation, exit codes — without pokie.ts's own
 // module-body `run().then(...)` call, which fires unconditionally on import (see pokie.ts's own
 // comments on why it can't be imported directly in a test).
+//
+// This is deliberately Commander-free: resolveCliInvocation() already resolves which registered
+// command owns a given argv (including "studio"'s own implicit-project-root precedence), so all
+// that's left here is a plain lookup by name. The actual CLI argument/option adapter — declaring
+// each public command's own positionals/options/aliases via Commander and validating them — lives on
+// each CliCommandHandling itself (see e.g. cli/commands/BuildCommand.ts's own run()), not here; a
+// second, dispatch-level Commander program would only ever re-forward tokens it can't itself
+// interpret without duplicating that per-command schema.
 export async function dispatch(commands: CliCommandHandling[], argv: string[]): Promise<number> {
     // Asked for the CLI's own help: print the same command list the unknown-command fallback
     // prints, but as a successful outcome (exit 0) — the user got exactly what they asked for.
