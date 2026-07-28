@@ -1,6 +1,7 @@
 import {Alert, Badge, Button, Group, List, Table, Text} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck, IconInfoCircle} from "@tabler/icons-react";
 import {useState, type ReactNode} from "react";
+import type {RoundArtifactWin} from "../../api/types";
 import type {ComparisonDimensionResult, ReplayComparisonDimensions, ReplayComparisonView, RoundArtifactDisplayView} from "../../domain/interpret/Replay";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {CodeBlock} from "./CodeBlock";
@@ -33,6 +34,32 @@ function describeDimensionResult(dimension: ComparisonDimensionResult): string {
         return dimension.detail;
     }
     return `unavailable — ${dimension.reason}`;
+}
+
+// Mirrors src/stakeengine/internal/StakeEngineImportSyntheticWinComponent.ts's own constant (documented in
+// docs/stake-engine-import.md) — the one field this whole client can key off to tell a reconstructed win
+// apart from a real one, since it's part of RoundArtifact's own public JSON contract, not an internal type.
+const STAKE_ENGINE_IMPORT_SYNTHETIC_METADATA_KEY = "stakeEngineImportSynthetic";
+
+// A win is only ever "aggregate" (LegacyWinComponent/JackpotWinComponent/the Stake Engine import's own
+// synthetic placeholder) when it carries no winningPositions at all -- every real line/scatter/cluster/ways/
+// value win always attributes its amount to at least one screen position. Never a type-string check: "value"
+// alone can't tell a real ValueWinComponent win apart from an imported placeholder that reuses the same type.
+function isAggregateWin(win: RoundArtifactWin): boolean {
+    return win.winningPositions.length === 0;
+}
+
+function describeWinSymbol(win: RoundArtifactWin): string {
+    return win.symbolId === undefined || win.symbolId === null ? "no symbol (aggregate win)" : String(win.symbolId);
+}
+
+function describeWinPositions(win: RoundArtifactWin): string {
+    if (!isAggregateWin(win)) {
+        return String(win.winningPositions.length);
+    }
+    return win.metadata?.[STAKE_ENGINE_IMPORT_SYNTHETIC_METADATA_KEY] === true
+        ? "unavailable — reconstructed from an imported round, per-position detail wasn't preserved"
+        : "not applicable — an aggregate win, not attributed to specific positions";
 }
 
 // The Inspect step's core view: provenance, screen, a step navigator (each step shows its own wins and
@@ -159,13 +186,20 @@ export function RoundArtifactInspector({
                             <Table.Tbody>
                                 {step.wins.map((win) => (
                                     <Table.Tr key={win.id}>
-                                        <Table.Td>{win.type}</Table.Td>
-                                        <Table.Td>{String(win.symbolId)}</Table.Td>
+                                        <Table.Td>
+                                            {win.type}
+                                            {isAggregateWin(win) && (
+                                                <Badge ml={4} size="xs" variant="light" color="gray">
+                                                    aggregate
+                                                </Badge>
+                                            )}
+                                        </Table.Td>
+                                        <Table.Td>{describeWinSymbol(win)}</Table.Td>
                                         <Table.Td>{win.winAmount.toFixed(2)}</Table.Td>
-                                        <Table.Td>{win.winningPositions.length}</Table.Td>
+                                        <Table.Td>{describeWinPositions(win)}</Table.Td>
                                         <Table.Td>
                                             {win.multiplierBreakdown.length === 0
-                                                ? "—"
+                                                ? "not applicable — no multiplier applied to this win"
                                                 : win.multiplierBreakdown.map((breakdown) => `${breakdown.source} ×${breakdown.combinedMultiplier}`).join(", ")}
                                         </Table.Td>
                                     </Table.Tr>

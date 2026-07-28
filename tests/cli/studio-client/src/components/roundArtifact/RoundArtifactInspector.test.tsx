@@ -53,3 +53,115 @@ describe("RoundArtifactInspector screen orientation", () => {
         expect(within(rows[2]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["R0P2", "R1P2", "R2P2"]);
     });
 });
+
+// Every case a win row can actually present, per RoundArtifactWin's own supported shapes (see
+// src/session/videoslot/winevaluation/*WinComponent.ts and
+// src/stakeengine/internal/StakeEngineImportSyntheticWinComponent.ts): a known individual win (real
+// symbol, real winningPositions), a known aggregate win reconstructed from a Stake Engine import
+// (metadata-flagged, no positions), a known aggregate win with no symbol at all (jackpot/legacy-style),
+// and a win with no multiplier applied. Guards against ever reverting to the old anonymous placeholders
+// ("0" positions, the literal string "undefined", or a bare "—").
+describe("RoundArtifactInspector win amount presentation", () => {
+    function stepWithWins(wins: RoundArtifact["wins"]) {
+        return artifactFor({
+            totalWin: wins.reduce((sum, win) => sum + win.winAmount, 0),
+            steps: [{index: 0, screen: [["R0P0", "R0P1", "R0P2"]], totalWin: wins.reduce((sum, win) => sum + win.winAmount, 0), wins}],
+            wins,
+        });
+    }
+
+    function winsTable(getByText: ReturnType<typeof renderWithMantine>["getByText"]) {
+        const table = getByText("Positions").closest("table");
+        if (!table) {
+            throw new Error("Expected a wins table with a 'Positions' column header.");
+        }
+        return table;
+    }
+
+    it("renders a known individual win's real symbol and position count, with no 'aggregate' badge", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWins([
+                {
+                    type: "line",
+                    id: "w1",
+                    symbolId: "cherry",
+                    winAmount: 5,
+                    winningPositions: [[0, 0], [1, 0]],
+                    multiplierBreakdown: [],
+                    metadata: {},
+                },
+            ]),
+        );
+        const {getByText, queryByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const table = winsTable(getByText);
+
+        expect(within(table).getByText("cherry")).toBeTruthy();
+        expect(within(table).getByText("2")).toBeTruthy();
+        expect(queryByText("aggregate")).toBeNull();
+    });
+
+    it("labels a Stake Engine import's reconstructed win as aggregate and explains why positions aren't available, instead of showing a bare '0'", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWins([
+                {
+                    type: "value",
+                    id: "stakeEngineImportSynthetic",
+                    symbolId: "wild",
+                    winAmount: 12.5,
+                    winningPositions: [],
+                    multiplierBreakdown: [],
+                    metadata: {stakeEngineImportSynthetic: true},
+                },
+            ]),
+        );
+        const {getByText, queryByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const table = winsTable(getByText);
+
+        expect(within(table).getByText("aggregate")).toBeTruthy();
+        expect(queryByText("0", {selector: "td"})).toBeNull();
+        expect(within(table).getByText(/unavailable.*reconstructed from an imported round/)).toBeTruthy();
+    });
+
+    it("labels a symbol-less aggregate win (jackpot/legacy-style) with an explicit reason instead of the literal string 'undefined'", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWins([
+                {
+                    type: "jackpot",
+                    id: "pool-1",
+                    symbolId: undefined as unknown as string,
+                    winAmount: 100,
+                    winningPositions: [],
+                    multiplierBreakdown: [],
+                    metadata: {poolId: "pool-1"},
+                },
+            ]),
+        );
+        const {getByText, queryByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const table = winsTable(getByText);
+
+        expect(within(table).getByText("no symbol (aggregate win)")).toBeTruthy();
+        expect(queryByText("undefined")).toBeNull();
+        expect(within(table).getByText(/not applicable.*aggregate win, not attributed to specific positions/)).toBeTruthy();
+    });
+
+    it("explains a win with no multiplier applied instead of showing a bare dash", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWins([
+                {
+                    type: "line",
+                    id: "w1",
+                    symbolId: "cherry",
+                    winAmount: 5,
+                    winningPositions: [[0, 0]],
+                    multiplierBreakdown: [],
+                    metadata: {},
+                },
+            ]),
+        );
+        const {getByText, queryByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const table = winsTable(getByText);
+
+        expect(within(table).getByText("not applicable — no multiplier applied to this win")).toBeTruthy();
+        expect(queryByText("—")).toBeNull();
+    });
+});
