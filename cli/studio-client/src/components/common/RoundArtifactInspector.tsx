@@ -49,6 +49,20 @@ function isAggregateWin(win: RoundArtifactWin): boolean {
     return win.winningPositions.length === 0;
 }
 
+// Mirrors the "x stake" convention artifact.payoutMultiplier already uses for the round-level Total win
+// row (and the one src/artifact/RoundArtifactValidator.ts itself applies when deriving
+// expectedPayoutMultiplier: stake > 0 ? totalWin / stake : 0) -- a per-win amount alone doesn't say
+// whether 5.00 is a big or small win relative to what was staked, so every known amount also states its
+// own multiple of stake. When stake is 0 (a validator-legal value -- RoundArtifactValidator only requires
+// stake >= 0) a stake-relative unit can't be computed at all, so that's stated explicitly rather than
+// silently showing a misleading "0.00x".
+function describeWinAmount(win: RoundArtifactWin, stake: number): string {
+    if (stake <= 0) {
+        return `${win.winAmount.toFixed(2)} (payout unit unavailable — stake is 0)`;
+    }
+    return `${win.winAmount.toFixed(2)} (${(win.winAmount / stake).toFixed(2)}x stake)`;
+}
+
 function describeWinSymbol(win: RoundArtifactWin): string {
     return win.symbolId === undefined || win.symbolId === null ? "no symbol (aggregate win)" : String(win.symbolId);
 }
@@ -195,7 +209,7 @@ export function RoundArtifactInspector({
                                             )}
                                         </Table.Td>
                                         <Table.Td>{describeWinSymbol(win)}</Table.Td>
-                                        <Table.Td>{win.winAmount.toFixed(2)}</Table.Td>
+                                        <Table.Td>{describeWinAmount(win, artifact.stake)}</Table.Td>
                                         <Table.Td>{describeWinPositions(win)}</Table.Td>
                                         <Table.Td>
                                             {win.multiplierBreakdown.length === 0

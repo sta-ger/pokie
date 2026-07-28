@@ -164,4 +164,159 @@ describe("RoundArtifactInspector win amount presentation", () => {
         expect(within(table).getByText("not applicable — no multiplier applied to this win")).toBeTruthy();
         expect(queryByText("—")).toBeNull();
     });
+
+    it("states a known individual win's amount alongside its own multiple of stake, the same 'x stake' unit the round-level Total win row already uses", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWins([
+                {
+                    type: "line",
+                    id: "w1",
+                    symbolId: "cherry",
+                    winAmount: 5,
+                    winningPositions: [[0, 0], [1, 0]],
+                    multiplierBreakdown: [],
+                    metadata: {},
+                },
+            ]),
+        );
+        const artifactWithStake = {...artifact, stake: 2};
+        const {getByText} = renderWithMantine(<RoundArtifactInspector artifact={artifactWithStake} />);
+        const table = winsTable(getByText);
+
+        expect(within(table).getByText("5.00 (2.50x stake)")).toBeTruthy();
+    });
+
+    it("states an aggregate (Stake Engine import) win's amount alongside its own multiple of stake, not a bare number", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWins([
+                {
+                    type: "value",
+                    id: "stakeEngineImportSynthetic",
+                    symbolId: "wild",
+                    winAmount: 12.5,
+                    winningPositions: [],
+                    multiplierBreakdown: [],
+                    metadata: {stakeEngineImportSynthetic: true},
+                },
+            ]),
+        );
+        const artifactWithStake = {...artifact, stake: 5};
+        const {getByText} = renderWithMantine(<RoundArtifactInspector artifact={artifactWithStake} />);
+        const table = winsTable(getByText);
+
+        expect(within(table).getByText("12.50 (2.50x stake)")).toBeTruthy();
+    });
+
+    it("renders a zero-amount win as an explicit 0.00 with its own zero unit, never a blank cell", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWins([
+                {
+                    type: "line",
+                    id: "w1",
+                    symbolId: "cherry",
+                    winAmount: 0,
+                    winningPositions: [[0, 0]],
+                    multiplierBreakdown: [],
+                    metadata: {},
+                },
+            ]),
+        );
+        const {getByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const table = winsTable(getByText);
+
+        expect(within(table).getByText("0.00 (0.00x stake)")).toBeTruthy();
+    });
+
+    it("states a win amount's payout unit is unavailable rather than a misleading 0.00x when stake is 0", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWins([
+                {
+                    type: "line",
+                    id: "w1",
+                    symbolId: "cherry",
+                    winAmount: 5,
+                    winningPositions: [[0, 0]],
+                    multiplierBreakdown: [],
+                    metadata: {},
+                },
+            ]),
+        );
+        const artifactWithNoStake = {...artifact, stake: 0};
+        const {getByText} = renderWithMantine(<RoundArtifactInspector artifact={artifactWithNoStake} />);
+        const table = winsTable(getByText);
+
+        expect(within(table).getByText("5.00 (payout unit unavailable — stake is 0)")).toBeTruthy();
+    });
+});
+
+// The Advanced details section's own two data-availability branches -- present for any game/session type
+// that captured them, absent otherwise (see RoundArtifactInspector's own doc comment) -- covering both a
+// genuinely reconstructed (Stake Engine import) artifact and an incomplete/partial `debug` payload,
+// neither of which is exercised by the win-amount-focused tests above.
+describe("RoundArtifactInspector imported-artifact and incomplete-debug presentation", () => {
+    it("renders an imported (Stake Engine reconstruction) round's aggregate win and its own debug payload without state snapshots, rather than silently omitting either section", () => {
+        const artifact = describeRoundArtifact(
+            artifactFor({
+                stake: 5,
+                totalWin: 12.5,
+                payoutMultiplier: 2.5,
+                steps: [
+                    {
+                        index: 0,
+                        screen: [["R0P0", "R0P1", "R0P2"]],
+                        totalWin: 12.5,
+                        wins: [
+                            {
+                                type: "value",
+                                id: "stakeEngineImportSynthetic",
+                                symbolId: "wild",
+                                winAmount: 12.5,
+                                winningPositions: [],
+                                multiplierBreakdown: [],
+                                metadata: {stakeEngineImportSynthetic: true},
+                            },
+                        ],
+                    },
+                ],
+                wins: [
+                    {
+                        type: "value",
+                        id: "stakeEngineImportSynthetic",
+                        symbolId: "wild",
+                        winAmount: 12.5,
+                        winningPositions: [],
+                        multiplierBreakdown: [],
+                        metadata: {stakeEngineImportSynthetic: true},
+                    },
+                ],
+                // Only ever partial for a reconstructed round -- Stake Engine's own export format never
+                // preserved RNG/reel-stop data, so an import's debug bag (when a caller attaches one at
+                // all) can't carry the same fields a live-played round's debug would.
+                debug: {source: "stake-engine-import"},
+            }),
+        );
+        const {getByText, getAllByText, queryByText} = renderWithMantine(
+            <RoundArtifactInspector artifact={artifact} stateBefore={undefined} stateAfter={undefined} />,
+        );
+
+        expect(getByText("aggregate")).toBeTruthy();
+        expect(getByText("unavailable — reconstructed from an imported round, per-position detail wasn't preserved")).toBeTruthy();
+        expect(getByText("Debug data")).toBeTruthy();
+        expect(getByText("game-provided, may include RNG/reel-stop data")).toBeTruthy();
+        // Both the "Debug data" CodeBlock and the "Full artifact" CodeBlock at the bottom of Advanced
+        // details legitimately contain this same substring (the latter dumps the whole artifact,
+        // debug field included) -- getAllByText (not getByText) so that expected duplication doesn't
+        // itself throw.
+        expect(getAllByText(/"source": "stake-engine-import"/).length).toBeGreaterThan(0);
+        expect(getByText("State snapshot unavailable for this game/session type.")).toBeTruthy();
+        expect(queryByText("State before")).toBeNull();
+    });
+
+    it("renders an incomplete debug payload (missing conventional RNG/reel-stop fields) as-is instead of hiding the section or crashing", () => {
+        const artifact = describeRoundArtifact(artifactFor({debug: {}}));
+        const {getByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+
+        expect(getByText("Debug data")).toBeTruthy();
+        expect(getByText("game-provided, may include RNG/reel-stop data")).toBeTruthy();
+    });
 });
