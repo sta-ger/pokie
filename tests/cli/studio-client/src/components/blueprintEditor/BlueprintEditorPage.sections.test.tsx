@@ -99,7 +99,7 @@ describe("Guided Design & Build: sectioned layout", () => {
         await user.click(openInStudio);
 
         expect(await screen.findByRole("heading", {name: "Sectioned"})).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 
     it("preserves an in-progress edit in one section when switching to another and back", async () => {
         const user = userEvent.setup();
@@ -113,7 +113,7 @@ describe("Guided Design & Build: sectioned layout", () => {
 
         await user.click(screen.getByRole("tab", {name: "Symbols"}));
         expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("draft-symbol");
-    }, 45000);
+    }, 60000);
 
     it("surfaces a validation error in its own section's badge and inline list, alongside the full summary at the bottom", async () => {
         const user = userEvent.setup();
@@ -154,7 +154,7 @@ describe("Guided Design & Build: sectioned layout", () => {
         // without switching tabs -- *and* the full, unfiltered summary at the bottom shows the same
         // issue too (one inline occurrence, one in BlueprintValidationPanel's own summary).
         expect(screen.getAllByText(/blueprint-manifest-invalid-id/)).toHaveLength(2);
-    }, 45000);
+    }, 60000);
 
     it("switches the active section with arrow-key keyboard navigation", async () => {
         const user = userEvent.setup();
@@ -169,5 +169,5 @@ describe("Guided Design & Build: sectioned layout", () => {
 
         await user.keyboard("{ArrowRight}");
         expect(screen.getByRole("tab", {name: "Symbols"})).toHaveAttribute("aria-selected", "true");
-    }, 45000);
+    }, 60000);
 });

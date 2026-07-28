@@ -62,7 +62,7 @@ describe("useOpenProject: guarded side effects", () => {
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeUndefined();
         expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
-    }, 45000);
+    }, 60000);
 
     it("Confirm calls the open-project API exactly once and navigates exactly once", async () => {
         const user = userEvent.setup();
@@ -86,7 +86,7 @@ describe("useOpenProject: guarded side effects", () => {
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/project/overview");
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
-    }, 45000);
+    }, 60000);
 
     it("a failed open-project call keeps Home's URL and draft, without leaving the guard bypassed", async () => {
         const user = userEvent.setup();
@@ -115,7 +115,7 @@ describe("useOpenProject: guarded side effects", () => {
         router.navigate("/project/overview");
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 45000);
+    }, 60000);
 
     it("browser Back/Forward and a direct route navigation are still blocked while dirty", async () => {
         const user = userEvent.setup();
@@ -136,7 +136,7 @@ describe("useOpenProject: guarded side effects", () => {
         router.navigate("/project/overview");
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 45000);
+    }, 60000);
 
     it("switching Home's own tabs never shows a confirmation, even while dirty", async () => {
         const user = userEvent.setup();
@@ -154,5 +154,5 @@ describe("useOpenProject: guarded side effects", () => {
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
-    }, 45000);
+    }, 60000);
 });

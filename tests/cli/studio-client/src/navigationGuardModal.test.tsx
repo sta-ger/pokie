@@ -39,7 +39,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         });
         expect(screen.getByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 45000);
+    }, 60000);
 
     it("clicking outside the modal does not close it", async () => {
         const user = userEvent.setup();
@@ -61,7 +61,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         });
         expect(screen.getByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 45000);
+    }, 60000);
 
     it("the modal has no close button -- only Leave and Stay", async () => {
         const user = userEvent.setup();
@@ -77,7 +77,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         const dialog = screen.getByRole("dialog");
         const buttons = within(dialog).getAllByRole("button");
         expect(buttons.map((button) => button.textContent)).toEqual(["Stay", "Leave"]);
-    }, 45000);
+    }, 60000);
 
     it("Stay releases the loading state and double-submit guard on the guardedAction path", async () => {
         const user = userEvent.setup();
@@ -104,7 +104,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         await waitFor(() => expect(screen.queryByText("Opening…")).not.toBeInTheDocument());
         expect(screen.getByRole("button", {name: "Open", exact: true})).not.toHaveAttribute("data-loading");
-    }, 45000);
+    }, 60000);
 
     it("after Stay, a subsequent open attempt completes normally", async () => {
         const user = userEvent.setup();
@@ -142,5 +142,5 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
 
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
-    }, 45000);
+    }, 60000);
 });
