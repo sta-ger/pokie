@@ -65,6 +65,12 @@ function describeBetModesLifecycleStatus(
     return {tone: "success", text: "Saved -- matches the project's applied blueprint."};
 }
 
+const BET_MODES_LIFECYCLE_TONE_COLOR: Record<"success" | "warning" | "error", string> = {
+    success: "green",
+    warning: "orange",
+    error: "red",
+};
+
 type LoadView = {status: "loading"} | {status: "unsupported"; message: string} | {status: "error"; message: string} | {status: "ok"};
 
 type ApplyView =
@@ -395,7 +401,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
 
             {activeStep === 3 && (
                 <div key={editor.formGeneration}>
-                    <Text size="sm" c={betModesLifecycleStatus.tone === "error" ? "red" : betModesLifecycleStatus.tone === "warning" ? "orange" : "green"} mb="sm">
+                    <Text size="sm" c={BET_MODES_LIFECYCLE_TONE_COLOR[betModesLifecycleStatus.tone]} mb="sm">
                         {betModesLifecycleStatus.text}
                     </Text>
                     <BetsList blueprint={blueprint} mutate={editor.mutate} />
