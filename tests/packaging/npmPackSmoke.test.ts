@@ -280,6 +280,71 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
     });
 
+    // Mirrors tests/cli/cliCommandInventory.contract.test.ts's own frozen "CLI top-level dispatch
+    // contract" case for "--version" (see CLI_TOP_LEVEL_DISPATCH_CASES) against the real, installed
+    // binary rather than an in-process dispatch() call: there is no dedicated top-level --version flag
+    // today, so it falls through resolveCliInvocation's own "-"-prefixed-token step and reaches
+    // StudioCommand as an unrecognized option, exiting 1 without ever starting a server. Proves the
+    // packaged dist behaves identically to the source under test, not just that the source does.
+    it("`pokie --version` has no dedicated top-level flag today: falls through to Studio's own unknown-option error, exiting 1", () => {
+        const result = spawnSync(pokieBinPath, ["--version"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr.trim()).toBe(
+            'Unknown option "--version". Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]',
+        );
+    });
+
+    it("`pokie <unrecognized command>` prints the same usage/command list as --help, but exits 1", () => {
+        const result = spawnSync(pokieBinPath, ["totally-bogus-pokie-command-xyz-12345"], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toBe("");
+        expect(result.stdout).toContain("Usage: pokie <command>");
+        expect(result.stdout).toContain("Commands:");
+    });
+
+    it("`pokie name --json` prints machine-readable JSON from the real installed binary, distinct from its human-readable default", () => {
+        const jsonResult = spawnSync(pokieBinPath, ["name", "--json", "--count", "3", "--seed", "42"], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
+        expect(jsonResult.status).toBe(0);
+        expect(jsonResult.stderr).toBe("");
+        const names = JSON.parse(jsonResult.stdout) as Array<{title: string; slug: string; packageName: string; seed: number}>;
+        expect(names).toHaveLength(3);
+        for (const name of names) {
+            expect(typeof name.title).toBe("string");
+            expect(typeof name.slug).toBe("string");
+            expect(typeof name.packageName).toBe("string");
+        }
+
+        const humanResult = spawnSync(pokieBinPath, ["name", "--count", "3", "--seed", "42"], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
+        expect(humanResult.status).toBe(0);
+        expect(() => JSON.parse(humanResult.stdout)).toThrow();
+        expect(humanResult.stdout).toContain("Reproduce with: pokie name --seed 42");
+    });
+
+    it("`pokie name --count 0` rejects an invalid option value with a non-zero exit and a stderr-only message", () => {
+        const result = spawnSync(pokieBinPath, ["name", "--count", "0"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr.trim()).toBe(
+            "--count requires a positive integer. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
+        );
+    });
+
     it("builds a package from an Enter-only `pokie build` wizard run, then validates and simulates it", () => {
         // More blank lines than the wizard has questions: the surplus is simply never read, and using
         // an exact count here would encode the very question count the Enter-only contract is about.

@@ -1666,6 +1666,20 @@ describe("CLI option contract coverage (every declared option has executable evi
                         expect(hasRejectedValue).toBe(true);
                     });
                 }
+
+                // Every non-boolean option also needs its own "flag given, but no value token follows it at
+                // all" case — Commander's "commander.optionMissingArgument", a distinct parse failure from
+                // both an omitted flag (the "default (omitted) case" above) and a rejected *value* (the
+                // "rejected-value case" above, which always supplies *some* value token, just an invalid one).
+                // A boolean option carries no value token at all, so this scenario doesn't apply to it.
+                if (option.kind !== "boolean") {
+                    it(`"${descriptor.name} ${verbLabel}"'s "${option.flag}" has a missing-value case (the flag given as the last argv token, with nothing after it)`, () => {
+                        const hasMissingValue = group.invalid.some(
+                            (testCase) => testCase.args[testCase.args.length - 1] === option.flag,
+                        );
+                        expect(hasMissingValue).toBe(true);
+                    });
+                }
             }
         }
     }

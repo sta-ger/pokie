@@ -1836,7 +1836,571 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 0,
         expectStdout: "text",
     },
+
+    // --- missing-value coverage: every non-boolean option given as the very last argv token, with no
+    // value following it at all -- Commander's own "commander.optionMissingArgument" error code (see
+    // translateCommanderError in cli/commands/internal/CommanderCliAdapter.ts), a distinct parse failure
+    // from both an omitted flag (the option's own documented default, asserted above) and a rejected
+    // *value* (e.g. "--port abc", asserted above too) -- Commander throws this before the flag's own
+    // value parser/validator ever runs, so a command whose optionMissingArgument handler happens to
+    // reuse a validated option's rejected-value wording is exercising that wording via a genuinely
+    // different code path, not a duplicate of the rejected-value case above it. ---
+
+    // --- build: missing-value cases ---
+    {
+        command: "build",
+        kind: "invalid",
+        label: "--out given with no value",
+        args: ["config.json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a directory path. Usage: pokie build <config.json> [--out <dir>] [--dry-run]",
+    },
+    {
+        command: "build",
+        kind: "invalid",
+        label: "random --seed given with no value",
+        args: ["random", "--seed"],
+        expectedExitCode: 1,
+        expectedError: "--seed requires an integer value. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+    },
+    {
+        command: "build",
+        kind: "invalid",
+        label: "random --out given with no value",
+        args: ["random", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a directory path. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+    },
+    {
+        command: "build",
+        kind: "invalid",
+        label: "random --preset given with no value",
+        args: ["random", "--preset"],
+        expectedExitCode: 1,
+        expectedError: "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+    },
+
+    // --- certification: missing-value cases ---
+    {
+        command: "certification",
+        kind: "invalid",
+        label: "build --out given with no value",
+        args: ["build", "bundleDir", "config.json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a directory path. Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]",
+    },
+    {
+        command: "certification",
+        kind: "invalid",
+        label: "verify --source given with no value",
+        args: ["verify", "certDir", "--source"],
+        expectedExitCode: 1,
+        expectedError: "--source requires a directory path. Usage: pokie certification verify <certDir> --source <bundleDir>",
+    },
+
+    // --- client: missing-value cases ---
+    {
+        command: "client",
+        kind: "invalid",
+        label: "--port given with no value",
+        args: ["pkg", "--port"],
+        expectedExitCode: 1,
+        expectedError: "--port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+    },
+    {
+        command: "client",
+        kind: "invalid",
+        label: "--host given with no value",
+        args: ["pkg", "--host"],
+        expectedExitCode: 1,
+        expectedError: "--host requires a value. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+    },
+    {
+        command: "client",
+        kind: "invalid",
+        label: "--api-host given with no value",
+        args: ["pkg", "--api-host"],
+        expectedExitCode: 1,
+        expectedError: "--api-host requires a value. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+    },
+    {
+        command: "client",
+        kind: "invalid",
+        label: "--api-port given with no value",
+        args: ["pkg", "--api-port"],
+        expectedExitCode: 1,
+        expectedError: "--api-port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+    },
+
+    // --- create: missing-value cases ---
+    {
+        command: "create",
+        kind: "invalid",
+        label: "--random --seed given with no value",
+        args: ["--random", "--seed"],
+        expectedExitCode: 1,
+        expectedError: "--seed requires an integer value. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
+    },
+    {
+        command: "create",
+        kind: "invalid",
+        label: "--random --preset given with no value",
+        args: ["--random", "--seed", "1", "--preset"],
+        expectedExitCode: 1,
+        expectedError: "--preset must be one of: default, variant. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
+    },
+
+    // --- dev: missing-value cases ---
+    {
+        command: "dev",
+        kind: "invalid",
+        label: "--port given with no value",
+        args: ["pkg", "--no-open", "--port"],
+        expectedExitCode: 1,
+        expectedError: "--port must be a non-negative integer. Usage: pokie dev <packageRoot> [--port <number>] [--host <string>] [--client-port <number>] [--client-host <string>] [--no-open]",
+    },
+    {
+        command: "dev",
+        kind: "invalid",
+        label: "--host given with no value",
+        args: ["pkg", "--no-open", "--host"],
+        expectedExitCode: 1,
+        expectedError: "--host requires a value. Usage: pokie dev <packageRoot> [--port <number>] [--host <string>] [--client-port <number>] [--client-host <string>] [--no-open]",
+    },
+    {
+        command: "dev",
+        kind: "invalid",
+        label: "--client-port given with no value",
+        args: ["pkg", "--no-open", "--client-port"],
+        expectedExitCode: 1,
+        expectedError: "--client-port must be a non-negative integer. Usage: pokie dev <packageRoot> [--port <number>] [--host <string>] [--client-port <number>] [--client-host <string>] [--no-open]",
+    },
+    {
+        command: "dev",
+        kind: "invalid",
+        label: "--client-host given with no value",
+        args: ["pkg", "--no-open", "--client-host"],
+        expectedExitCode: 1,
+        expectedError: "--client-host requires a value. Usage: pokie dev <packageRoot> [--port <number>] [--host <string>] [--client-port <number>] [--client-host <string>] [--no-open]",
+    },
+
+    // --- diff: missing-value cases ---
+    {
+        command: "diff",
+        kind: "invalid",
+        label: "--format given with no value",
+        args: ["left.json", "right.json", "--format"],
+        expectedExitCode: 1,
+        expectedError: "--format only supports \"json\". Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
+    },
+    {
+        command: "diff",
+        kind: "invalid",
+        label: "--out given with no value",
+        args: ["left.json", "right.json", "--format", "json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
+    },
+
+    // --- fairness: missing-value cases ---
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "seed-commit --out given with no value",
+        args: ["seed-commit", "serverSeed.txt", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie fairness seed-commit <serverSeed.txt> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "commit --client-seed given with no value",
+        args: ["commit", "serverSeedCommitment.json", "--nonce", "0", "--source", "bundleDir", "--mode", "base", "--out", "commit-out.json", "--client-seed"],
+        expectedExitCode: 1,
+        expectedError: "--client-seed requires a value. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "commit --nonce given with no value",
+        args: ["commit", "serverSeedCommitment.json", "--client-seed", "player-seed", "--source", "bundleDir", "--mode", "base", "--out", "commit-out.json", "--nonce"],
+        expectedExitCode: 1,
+        expectedError: "--nonce must be a canonical non-negative decimal integer (e.g. \"0\", \"42\" — no sign, decimal point, leading zero, or scientific/hex notation, and no larger than Number.MAX_SAFE_INTEGER), got nothing. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "commit --source given with no value",
+        args: ["commit", "serverSeedCommitment.json", "--client-seed", "player-seed", "--nonce", "0", "--mode", "base", "--out", "commit-out.json", "--source"],
+        expectedExitCode: 1,
+        expectedError: "--source requires a directory path. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "commit --mode given with no value",
+        args: ["commit", "serverSeedCommitment.json", "--client-seed", "player-seed", "--nonce", "0", "--source", "bundleDir", "--out", "commit-out.json", "--mode"],
+        expectedExitCode: 1,
+        expectedError: "--mode requires a mode name. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "commit --out given with no value",
+        args: ["commit", "serverSeedCommitment.json", "--client-seed", "player-seed", "--nonce", "0", "--source", "bundleDir", "--mode", "base", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie fairness commit <serverSeedCommitment.json> --client-seed <seed> --nonce <n> --source <bundleDir> --mode <modeName> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "reveal --server-seed given with no value",
+        args: ["reveal", "commitment.json", "--source", "bundleDir", "--out", "reveal-out.json", "--server-seed"],
+        expectedExitCode: 1,
+        expectedError: "--server-seed requires a file path. Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "reveal --source given with no value",
+        args: ["reveal", "commitment.json", "--server-seed", "serverSeed.txt", "--out", "reveal-out.json", "--source"],
+        expectedExitCode: 1,
+        expectedError: "--source requires a directory path. Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "reveal --out given with no value",
+        args: ["reveal", "commitment.json", "--server-seed", "serverSeed.txt", "--source", "bundleDir", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie fairness reveal <commitment.json> --server-seed <serverSeed.txt> --source <bundleDir> [--out <file>] [--overwrite]",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "verify --commitment given with no value",
+        args: ["verify", "proof.json", "--source", "bundleDir", "--commitment"],
+        expectedExitCode: 1,
+        expectedError: "--commitment requires a file path. Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>",
+    },
+    {
+        command: "fairness",
+        kind: "invalid",
+        label: "verify --source given with no value",
+        args: ["verify", "proof.json", "--commitment", "commitment.json", "--source"],
+        expectedExitCode: 1,
+        expectedError: "--source requires a directory path. Usage: pokie fairness verify <proof.json> --commitment <commitment.json> --source <bundleDir>",
+    },
+
+    // --- name: missing-value cases ---
+    {
+        command: "name",
+        kind: "invalid",
+        label: "--count given with no value",
+        args: ["--count"],
+        expectedExitCode: 1,
+        expectedError: "--count requires a positive integer. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
+    },
+    {
+        command: "name",
+        kind: "invalid",
+        label: "--theme given with no value",
+        args: ["--theme"],
+        expectedExitCode: 1,
+        expectedError: "--theme must be one of: adventure, mystic, fortune, mythic, cosmic, wild. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
+    },
+    {
+        command: "name",
+        kind: "invalid",
+        label: "--words given with no value",
+        args: ["--words"],
+        expectedExitCode: 1,
+        expectedError: "--words must be 2 or 3. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
+    },
+    {
+        command: "name",
+        kind: "invalid",
+        label: "--seed given with no value",
+        args: ["--seed"],
+        expectedExitCode: 1,
+        expectedError: "--seed requires an integer value. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
+    },
+
+    // --- outcomelibrary: missing-value cases ---
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "build --out given with no value",
+        args: ["build", "config.json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a directory path. Usage: pokie outcomelibrary build <config.json> [--out <dir>]",
+    },
+
+    // --- par: missing-value cases ---
+    {
+        command: "par",
+        kind: "invalid",
+        label: "import --out given with no value",
+        args: ["import", "input.xlsx", "--format", "json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
+    },
+    {
+        command: "par",
+        kind: "invalid",
+        label: "import --format given with no value",
+        args: ["import", "input.xlsx", "--format"],
+        expectedExitCode: 1,
+        expectedError: "--format only supports \"json\". Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]",
+    },
+    {
+        command: "par",
+        kind: "invalid",
+        label: "export --out given with no value",
+        args: ["export", "config.json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie par export <config.json> [--out <output.xlsx>]",
+    },
+
+    // --- replay: missing-value cases ---
+    {
+        command: "replay",
+        kind: "invalid",
+        label: "--round given with no value",
+        args: ["pkg", "--round"],
+        expectedExitCode: 1,
+        expectedError: "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+    },
+    {
+        command: "replay",
+        kind: "invalid",
+        label: "--seed given with no value",
+        args: ["pkg", "--round", "3", "--seed"],
+        expectedExitCode: 1,
+        expectedError: "--seed requires a value. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+    },
+    {
+        command: "replay",
+        kind: "invalid",
+        label: "--out given with no value",
+        args: ["pkg", "--round", "3", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+    },
+    {
+        command: "replay",
+        kind: "invalid",
+        label: "--format given with no value",
+        args: ["pkg", "--round", "3", "--format"],
+        expectedExitCode: 1,
+        expectedError: "--format only supports \"json\". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+    },
+
+    // --- report: missing-value cases ---
+    {
+        command: "report",
+        kind: "invalid",
+        label: "--format given with no value",
+        args: ["report.json", "--format"],
+        expectedExitCode: 1,
+        expectedError: "--format must be \"markdown\" or \"html\". Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
+    },
+    {
+        command: "report",
+        kind: "invalid",
+        label: "--out given with no value",
+        args: ["report.json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
+    },
+
+    // --- serve: missing-value cases ---
+    {
+        command: "serve",
+        kind: "invalid",
+        label: "--port given with no value",
+        args: ["pkg", "--port"],
+        expectedExitCode: 1,
+        expectedError: "--port must be a non-negative integer. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
+    },
+    {
+        command: "serve",
+        kind: "invalid",
+        label: "--host given with no value",
+        args: ["pkg", "--host"],
+        expectedExitCode: 1,
+        expectedError: "--host requires a value. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
+    },
+
+    // --- sim: missing-value cases ---
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--rounds given with no value",
+        args: ["pkg", "--format", "json", "--rounds"],
+        expectedExitCode: 1,
+        expectedError: "--rounds must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--seed given with no value",
+        args: ["pkg", "--format", "json", "--seed"],
+        expectedExitCode: 1,
+        expectedError: "--seed requires a value. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--workers given with no value",
+        args: ["pkg", "--format", "json", "--workers"],
+        expectedExitCode: 1,
+        expectedError: "--workers must be an integer between 1 and 32. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--mode given with no value",
+        args: ["pkg", "--format", "json", "--mode"],
+        expectedExitCode: 1,
+        expectedError: "--mode requires a bet mode id. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--out given with no value",
+        args: ["pkg", "--format", "json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--format given with no value",
+        args: ["pkg", "--format"],
+        expectedExitCode: 1,
+        expectedError: "--format only supports \"json\". Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--min-rounds given with no value",
+        args: ["pkg", "--format", "json", "--min-rounds"],
+        expectedExitCode: 1,
+        expectedError: "--min-rounds must be a non-negative integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--rtp-tolerance given with no value",
+        args: ["pkg", "--format", "json", "--rtp-tolerance"],
+        expectedExitCode: 1,
+        expectedError: "--rtp-tolerance must be a positive number. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--check-interval given with no value",
+        args: ["pkg", "--format", "json", "--check-interval"],
+        expectedExitCode: 1,
+        expectedError: "--check-interval must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+    {
+        command: "sim",
+        kind: "invalid",
+        label: "--stable-checks given with no value",
+        args: ["pkg", "--format", "json", "--stable-checks"],
+        expectedExitCode: 1,
+        expectedError: "--stable-checks must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+    },
+
+    // --- stakeengine: missing-value cases ---
+    {
+        command: "stakeengine",
+        kind: "invalid",
+        label: "export --out given with no value",
+        args: ["export", "config.json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a directory path. Usage: pokie stakeengine export <config.json> [--out <dir>]",
+    },
+    {
+        command: "stakeengine",
+        kind: "invalid",
+        label: "import --out given with no value",
+        args: ["import", "stakeDir", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a directory path. Usage: pokie stakeengine import <stakeDir> [--out <dir>]",
+    },
+    {
+        command: "stakeengine",
+        kind: "invalid",
+        label: "analyze --format given with no value",
+        args: ["analyze", "stakeDir", "--format"],
+        expectedExitCode: 1,
+        expectedError: "--format only supports \"json\". Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]",
+    },
+    {
+        command: "stakeengine",
+        kind: "invalid",
+        label: "analyze --out given with no value",
+        args: ["analyze", "stakeDir", "--format", "json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]",
+    },
+    {
+        command: "stakeengine",
+        kind: "invalid",
+        label: "diff --format given with no value",
+        args: ["diff", "left", "right", "--format"],
+        expectedExitCode: 1,
+        expectedError: "--format only supports \"json\". Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]",
+    },
+    {
+        command: "stakeengine",
+        kind: "invalid",
+        label: "diff --out given with no value",
+        args: ["diff", "left", "right", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]",
+    },
+
+    // --- studio: missing-value cases ---
+    {
+        command: "studio",
+        kind: "invalid",
+        label: "--port given with no value",
+        args: ["--no-open", "--port"],
+        expectedExitCode: 1,
+        expectedError: "--port must be a non-negative integer. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
+    },
+    {
+        command: "studio",
+        kind: "invalid",
+        label: "--host given with no value",
+        args: ["--no-open", "--host"],
+        expectedExitCode: 1,
+        expectedError: "--host requires a value. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
+    },
+
+    // --- validate: missing-value cases ---
+    {
+        command: "validate",
+        kind: "invalid",
+        label: "--format given with no value",
+        args: ["pkg", "--format"],
+        expectedExitCode: 1,
+        expectedError: "--format only supports \"json\". Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
+    },
+    {
+        command: "validate",
+        kind: "invalid",
+        label: "--out given with no value",
+        args: ["pkg", "--format", "json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
+    },
 ];
+
 
 export type CliTopLevelDispatchCase = {
     label: string;
