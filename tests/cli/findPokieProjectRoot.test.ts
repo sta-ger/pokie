@@ -85,5 +85,23 @@ describe("findPokieProjectRoot", () => {
 
             expect(findPokieProjectRoot(broken)).toBeUndefined();
         });
+
+        // The "missing/invalid project" and "nested project directory" cases combined: a broken
+        // package.json between the start directory and a real project root must not stop the walk —
+        // it's just another "not a package" ancestor to keep climbing past, same as one with no
+        // "pokie.entry" at all.
+        it("walks past an invalid package.json partway up to find the valid project root above it", () => {
+            const projectRoot = path.join(workDir, "game");
+            const brokenIntermediate = path.join(projectRoot, "packages", "broken-tool");
+            const nested = path.join(brokenIntermediate, "src");
+            fs.mkdirSync(nested, {recursive: true});
+            fs.writeFileSync(
+                path.join(projectRoot, "package.json"),
+                JSON.stringify({name: "game", pokie: {entry: "./src/generated/index.js"}}),
+            );
+            fs.writeFileSync(path.join(brokenIntermediate, "package.json"), "{ not json");
+
+            expect(findPokieProjectRoot(nested)).toBe(projectRoot);
+        });
     });
 });
