@@ -22,13 +22,36 @@ describe("StepProgressList", () => {
         expect(screen.getByRole("list")).toBeInTheDocument();
     });
 
-    it("marks the current step, and a failed step (also the flow's current position), with aria-current=\"step\"", () => {
+    it("marks only the current step with aria-current=\"step\"", () => {
         renderWithMantine(<StepProgressList steps={ALL_STATUSES} />);
         expect(screen.getByText("Validate").closest("li")).toHaveAttribute("aria-current", "step");
-        expect(screen.getByText("Archive").closest("li")).toHaveAttribute("aria-current", "step");
-        for (const label of ["Configure", "Build", "Publish", "Notify"]) {
+        for (const label of ["Configure", "Build", "Publish", "Notify", "Archive"]) {
             expect(screen.getByText(label).closest("li")).not.toHaveAttribute("aria-current");
         }
+    });
+
+    it("marks a failed step aria-current=\"step\" when it is the flow's only current-position step", () => {
+        const steps: StepProgressItem[] = [
+            {id: "a", label: "Configure", status: "completed"},
+            {id: "b", label: "Validate", status: "failed"},
+            {id: "c", label: "Build", status: "blocked"},
+        ];
+        renderWithMantine(<StepProgressList steps={steps} />);
+        expect(screen.getByText("Validate").closest("li")).toHaveAttribute("aria-current", "step");
+        expect(screen.getByText("Validate").textContent).toContain("failed");
+        expect(screen.getByText("Configure").closest("li")).not.toHaveAttribute("aria-current");
+        expect(screen.getByText("Build").closest("li")).not.toHaveAttribute("aria-current");
+    });
+
+    it("never renders more than one aria-current=\"step\" item, even if the caller passes multiple current-position statuses", () => {
+        const steps: StepProgressItem[] = [
+            {id: "a", label: "Configure", status: "current"},
+            {id: "b", label: "Validate", status: "failed"},
+        ];
+        renderWithMantine(<StepProgressList steps={steps} />);
+        expect(screen.getByText("Configure").closest("li")).toHaveAttribute("aria-current", "step");
+        expect(screen.getByText("Validate").closest("li")).not.toHaveAttribute("aria-current");
+        expect(screen.getByText("Validate").textContent).toContain("failed");
     });
 
     it("marks a blocked step aria-disabled, and no other status", () => {

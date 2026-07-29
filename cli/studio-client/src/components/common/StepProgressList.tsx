@@ -13,9 +13,11 @@ import type {ReactNode} from "react";
 // project tabs keep.
 //
 // `aria-current="step"` marks the caller's *position* in the flow -- "current" (in progress, healthy) and
-// "failed" (attempted at this position, but it errored) are both that position; the other four statuses
-// describe steps the flow isn't sitting at right now (already done, not reached yet, or explicitly
-// unreachable/bypassed).
+// "failed" (attempted at this position, but it errored) both describe that position; the other four
+// statuses describe steps the flow isn't sitting at right now (already done, not reached yet, or
+// explicitly unreachable/bypassed). A flow only ever sits at one position, so only the first step whose
+// status is "current" or "failed" is marked aria-current="step" -- this keeps the semantics singular even
+// if a caller mistakenly hands us more than one current-position status in the same list.
 export type StepProgressStatus = "completed" | "current" | "available" | "blocked" | "skipped" | "failed";
 
 const CURRENT_POSITION_STATUSES: ReadonlySet<StepProgressStatus> = new Set(["current", "failed"]);
@@ -55,33 +57,38 @@ const STATUS_ICON: Record<StepProgressStatus, ReactNode> = {
 };
 
 export function StepProgressList({steps}: {steps: StepProgressItem[]}) {
+    const currentPositionId = steps.find((step) => CURRENT_POSITION_STATUSES.has(step.status))?.id;
+
     return (
         <Group component="ol" gap="lg" wrap="wrap" mb="md" style={{listStyle: "none", padding: 0}} role="list" aria-label="Progress">
-            {steps.map((step) => (
-                <Group
-                    key={step.id}
-                    component="li"
-                    gap="xs"
-                    wrap="nowrap"
-                    aria-current={CURRENT_POSITION_STATUSES.has(step.status) ? "step" : undefined}
-                    aria-disabled={step.status === "blocked" ? true : undefined}
-                >
-                    <ThemeIcon size="sm" radius="xl" color={STATUS_COLOR[step.status]} variant={step.status === "available" ? "outline" : "light"} aria-hidden="true">
-                        {STATUS_ICON[step.status]}
-                    </ThemeIcon>
-                    <div>
-                        <Text size="sm" fw={CURRENT_POSITION_STATUSES.has(step.status) ? 600 : 400}>
-                            {step.label}
-                            <VisuallyHidden component="span">, {STATUS_TEXT[step.status]}</VisuallyHidden>
-                        </Text>
-                        {step.description && (
-                            <Text size="xs" c="dimmed">
-                                {step.description}
+            {steps.map((step) => {
+                const isCurrentPosition = step.id === currentPositionId;
+                return (
+                    <Group
+                        key={step.id}
+                        component="li"
+                        gap="xs"
+                        wrap="nowrap"
+                        aria-current={isCurrentPosition ? "step" : undefined}
+                        aria-disabled={step.status === "blocked" ? true : undefined}
+                    >
+                        <ThemeIcon size="sm" radius="xl" color={STATUS_COLOR[step.status]} variant={step.status === "available" ? "outline" : "light"} aria-hidden="true">
+                            {STATUS_ICON[step.status]}
+                        </ThemeIcon>
+                        <div>
+                            <Text size="sm" fw={isCurrentPosition ? 600 : 400}>
+                                {step.label}
+                                <VisuallyHidden component="span">, {STATUS_TEXT[step.status]}</VisuallyHidden>
                             </Text>
-                        )}
-                    </div>
-                </Group>
-            ))}
+                            {step.description && (
+                                <Text size="xs" c="dimmed">
+                                    {step.description}
+                                </Text>
+                            )}
+                        </div>
+                    </Group>
+                );
+            })}
         </Group>
     );
 }
