@@ -382,4 +382,28 @@ describe("StudioHomeService", () => {
             expect(await repository.list()).toEqual([]);
         });
     });
+
+    describe("resolveDefaultProjectDirectory", () => {
+        it("delegates to the injected PokiePathResolver", () => {
+            const resolveIndependentProjectDirectory = jest
+                .fn()
+                .mockReturnValue({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
+            const service = new StudioHomeService(
+                "1.2.1",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {resolveIndependentProjectDirectory} as unknown as ConstructorParameters<typeof StudioHomeService>[8],
+            );
+
+            const result = service.resolveDefaultProjectDirectory("sample-slot");
+
+            expect(resolveIndependentProjectDirectory).toHaveBeenCalledWith("sample-slot");
+            expect(result).toEqual({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
+        });
+    });
 });

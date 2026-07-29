@@ -20,6 +20,7 @@ import {GamePackageCreator} from "../../scaffold/GamePackageCreator.js";
 import {GamePackageScaffolder} from "../../scaffold/GamePackageScaffolder.js";
 import {GamePackageScaffolding} from "../../scaffold/GamePackageScaffolding.js";
 import type {ScaffoldResult} from "../../scaffold/ScaffoldResult.js";
+import {IndependentProjectDirectoryResult, PokiePathResolver} from "../../paths/PokiePathResolver.js";
 import type {StudioBuildPreviewView} from "./StudioBuildPreviewView.js";
 import type {StudioBuildResult} from "./StudioBuildResult.js";
 import type {StudioHomeRecentProjectView} from "./StudioHomeRecentProjectView.js";
@@ -44,6 +45,7 @@ export class StudioHomeService {
     private readonly blueprintValidator: GameBlueprintValidating;
     private readonly gamePackageGenerator: GamePackageGenerating;
     private readonly loadGame: typeof loadPokieGame;
+    private readonly pathResolver: PokiePathResolver;
 
     constructor(
         pokieVersion: string,
@@ -54,6 +56,7 @@ export class StudioHomeService {
         blueprintValidator: GameBlueprintValidating = new GameBlueprintValidator(),
         gamePackageGenerator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
         loadGame: typeof loadPokieGame = loadPokieGame,
+        pathResolver: PokiePathResolver = new PokiePathResolver(),
     ) {
         this.pokieVersion = pokieVersion;
         this.recentProjectsRepository = recentProjectsRepository;
@@ -63,6 +66,15 @@ export class StudioHomeService {
         this.blueprintValidator = blueprintValidator;
         this.gamePackageGenerator = gamePackageGenerator;
         this.loadGame = loadGame;
+        this.pathResolver = pathResolver;
+    }
+
+    // Backs a future "suggest a default destination" affordance on Home's Create Project form -- purely
+    // additive and read-only (no directory is created here), so it never changes destinationDir's own
+    // required-and-explicit contract (see validateCreateProjectRequest/createProject above). See
+    // PokiePathResolver for the platform Documents/Home policy and its own unsafe-default guard.
+    public resolveDefaultProjectDirectory(name: string): IndependentProjectDirectoryResult {
+        return this.pathResolver.resolveIndependentProjectDirectory(name);
     }
 
     // A project is flagged "missing" (never silently dropped — see StudioHomeRecentProjectView's own
