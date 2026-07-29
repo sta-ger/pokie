@@ -110,7 +110,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     commit-reveal CLI workflow (see item 26 below); and `pokie`/`pokie studio` (experimental), a local GUI
     covering most of the commands above (Create/Init, the Mechanics Editor, Outcome Libraries, PAR Sheet,
     Certification, Provably Fair, Stake Engine export, Deployment, Runtime, Replay, Simulation) — see
-    [`studio-frontend.md`](studio-frontend.md) for its own React + Mantine frontend stack and dev workflow.
+    [`studio-frontend.md`](studio-frontend.md) for its own React + Mantine frontend stack and dev workflow, and
+    [`studio-phase2-inventory.md`](studio-phase2-inventory.md) for the versioned, executable-fixture-backed
+    route/UI/contract baseline frozen ahead of Phase 2 redesign work.
 19. **[Reel Strip Generation](reel-strip-generation.md)** — `ReelStripGenerator`, generating a reel strip's fixed
     symbol sequence under constraints (exact counts, minimum/maximum circular distance, max run length, forbidden/
     required adjacency and exact-sequence patterns — directed/reversed matching, wrap-around — locked positions)
