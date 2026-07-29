@@ -4,6 +4,7 @@ import {useEffect, useRef, useState, type ReactNode} from "react";
 import {exportParSheet, importParSheet, previewBlueprintBuild} from "../../api/apiClient";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeBuildPreview, type BuildPreviewView} from "../../domain/interpret/Home";
+import {describePathActionError} from "../../domain/pathActionError";
 import {
     describeParSheetExportOutcome,
     describeParSheetExportResult,
@@ -282,8 +283,8 @@ export function ParSheetImportExportPanel({
                         </Button>
                     </QuickActions>
                     {importView.status === "loading" && <LoadingState label="Reading…" />}
-                    {importView.status === "error" && <ErrorState message={importView.message} />}
-                    {importView.status === "load-error" && <ErrorState message={importView.error} />}
+                    {importView.status === "error" && <ErrorState message={describePathActionError("The PAR sheet file", importView.message)} />}
+                    {importView.status === "load-error" && <ErrorState message={describePathActionError("The PAR sheet file", importView.error)} />}
                 </div>
             )}
 
@@ -385,8 +386,12 @@ export function ParSheetImportExportPanel({
                             </Button>
                         </QuickActions>
                         {exportView.status === "loading" && <LoadingState label="Writing…" />}
-                        {exportView.status === "error" && <ErrorState message={exportView.message} />}
-                        {exportView.status === "failed" && <ErrorState message={exportView.message} />}
+                        {exportView.status === "error" && (
+                            <ErrorState message={describePathActionError("The PAR sheet export destination", exportView.message)} />
+                        )}
+                        {exportView.status === "failed" && (
+                            <ErrorState message={describePathActionError("The PAR sheet export destination", exportView.message)} />
+                        )}
                         {exportView.status === "conflict" && (
                             <RecoveryNotice title={exportView.error} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => runExport(true)} />
                         )}

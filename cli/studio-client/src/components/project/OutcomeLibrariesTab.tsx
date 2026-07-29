@@ -16,6 +16,7 @@ import {
     type OutcomeLibraryOutcome,
     type OutcomeLibrarySelectRequestView,
 } from "../../domain/interpret/OutcomeLibraries";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
@@ -306,10 +307,10 @@ export function OutcomeLibrariesTab({
             return <EmptyState message="Select/import a library first." />;
         }
         if (selectView.status === "load-error") {
-            return <ErrorState message={selectView.error} />;
+            return <ErrorState message={describePathActionError("The outcome library", selectView.error)} />;
         }
         if (selectView.status === "error") {
-            return <ErrorState message={selectView.message} />;
+            return <ErrorState message={describePathActionError("The outcome library", selectView.message)} />;
         }
         if (selectOutcome === undefined) {
             return null;
@@ -342,8 +343,12 @@ export function OutcomeLibrariesTab({
                                 Run deep validation
                             </Button>
                         </QuickActions>
-                        {deepValidateView.status === "error" && <ErrorState message={deepValidateView.message} />}
-                        {deepValidateView.status === "load-error" && <ErrorState message={deepValidateView.error} />}
+                        {deepValidateView.status === "error" && (
+                            <ErrorState message={describePathActionError("The outcome library bundle", deepValidateView.message)} />
+                        )}
+                        {deepValidateView.status === "load-error" && (
+                            <ErrorState message={describePathActionError("The outcome library bundle", deepValidateView.error)} />
+                        )}
                         {deepValidateView.status === "ok" && (
                             <div>
                                 <IssueList title="Errors" issues={deepValidateView.errors} />
@@ -406,8 +411,10 @@ export function OutcomeLibrariesTab({
                             Load library
                         </Button>
                     </QuickActions>
-                    {selectView.status === "error" && <ErrorState message={selectView.message} />}
-                    {selectView.status === "load-error" && <ErrorState message={selectView.error} />}
+                    {selectView.status === "error" && <ErrorState message={describePathActionError("The outcome library", selectView.message)} />}
+                    {selectView.status === "load-error" && (
+                        <ErrorState message={describePathActionError("The outcome library", selectView.error)} />
+                    )}
                 </div>
             )}
 
@@ -532,7 +539,9 @@ export function OutcomeLibrariesTab({
                                     Compare
                                 </Button>
                             </QuickActions>
-                            {"status" in compareView && compareView.status === "error" && <ErrorState message={compareView.message} />}
+                            {"status" in compareView && compareView.status === "error" && (
+                                <ErrorState message={describePathActionError("The comparison request", compareView.message)} />
+                            )}
                             {compareResult && (
                                 <div>
                                     {compareResult.leftSnapshotStale && (
@@ -544,13 +553,17 @@ export function OutcomeLibrariesTab({
                                             onAction={runSelect}
                                         />
                                     )}
-                                    {compareResult.left.status === "load-error" && <ErrorState message={compareResult.left.error} />}
+                                    {compareResult.left.status === "load-error" && (
+                                        <ErrorState message={describePathActionError("The left library", compareResult.left.error)} />
+                                    )}
                                     {compareResult.left.status === "invalid" && (
                                         <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="The loaded library is no longer valid" mb="sm">
                                             <IssueList title="Errors" issues={compareResult.left.errors} />
                                         </Alert>
                                     )}
-                                    {compareResult.right.status === "load-error" && <ErrorState message={compareResult.right.error} />}
+                                    {compareResult.right.status === "load-error" && (
+                                        <ErrorState message={describePathActionError("The right library", compareResult.right.error)} />
+                                    )}
                                     {compareResult.right.status === "invalid" && (
                                         <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="The comparison library is invalid" mb="sm">
                                             <IssueList title="Errors" issues={compareResult.right.errors} />

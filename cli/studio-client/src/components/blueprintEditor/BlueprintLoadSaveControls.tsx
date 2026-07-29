@@ -1,6 +1,7 @@
 import {Button, Collapse} from "@mantine/core";
 import {useState} from "react";
 import type {BlueprintLoadView, BlueprintSaveView} from "../../domain/interpret/BlueprintEditor";
+import {describePathActionError} from "../../domain/pathActionError";
 import {ErrorState} from "../common/ErrorState";
 import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
@@ -74,12 +75,16 @@ export function BlueprintLoadSaveControls({
             </QuickActions>
             {advancedOptionsOpened === undefined ? loadSaveFields : <Collapse expanded={advancedOptionsOpened}>{loadSaveFields}</Collapse>}
 
-            {loadView.status === "error" || loadView.status === "load-error" ? <ErrorState message={loadView.message} /> : null}
+            {(loadView.status === "error" || loadView.status === "load-error") && (
+                <ErrorState message={describePathActionError("The blueprint file", loadView.message)} />
+            )}
 
             {saveView.status === "conflict" && (
                 <RecoveryNotice title={saveView.message} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => onOverwrite(saveView.path)} />
             )}
-            {(saveView.status === "error" || saveView.status === "failed") && <ErrorState message={saveView.message} />}
+            {(saveView.status === "error" || saveView.status === "failed") && (
+                <ErrorState message={describePathActionError("The blueprint file", saveView.message)} />
+            )}
             {saveView.status === "ok" && <SuccessResult message={`Saved to "${saveView.path}".`} />}
         </div>
     );

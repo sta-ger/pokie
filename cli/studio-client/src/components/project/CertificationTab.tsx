@@ -4,6 +4,7 @@ import {useRef, useState, type ReactNode} from "react";
 import {buildCertificationEvidenceBundle, validateCertificationSourceBundle, type CertificationBuildModeInput} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
+import {describePathActionError} from "../../domain/pathActionError";
 import {
     describeCertificationBuildResult,
     describeCertificationOutcome,
@@ -219,8 +220,12 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                         Validate source bundle
                     </Button>
                 </QuickActions>
-                {validateView.status === "network-error" && <ErrorState message={validateView.message} />}
-                {validateView.status === "load-error" && <ErrorState message={validateView.error} />}
+                {validateView.status === "network-error" && (
+                    <ErrorState message={describePathActionError("The certification bundle directory", validateView.message)} />
+                )}
+                {validateView.status === "load-error" && (
+                    <ErrorState message={describePathActionError("The certification bundle directory", validateView.error)} />
+                )}
                 {validateOutcome !== undefined && (
                     <OutcomeBanner
                         color={OUTCOME_BANNER[validateOutcome].color}
@@ -264,8 +269,12 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                         Build certification bundle
                     </Button>
                 </QuickActions>
-                {buildView.status === "network-error" && <ErrorState message={buildView.message} />}
-                {buildView.status === "load-error" && <ErrorState message={buildView.error} />}
+                {buildView.status === "network-error" && (
+                    <ErrorState message={describePathActionError("The certification bundle directory", buildView.message)} />
+                )}
+                {buildView.status === "load-error" && (
+                    <ErrorState message={describePathActionError("The certification bundle directory", buildView.error)} />
+                )}
                 {buildOutcome !== undefined && (
                     <OutcomeBanner
                         color={OUTCOME_BANNER[buildOutcome].color}

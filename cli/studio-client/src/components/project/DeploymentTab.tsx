@@ -15,6 +15,7 @@ import {
     type DeploymentRunResultView,
     type DeploymentTargetsListView,
 } from "../../domain/interpret/Deployment";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
@@ -367,7 +368,7 @@ export function DeploymentTab({
                             </Button>
                         </QuickActions>
                         {runLoading && <LoadingState label="Running…" />}
-                        {runError && <ErrorState message={runError} />}
+                        {runError && <ErrorState message={describePathActionError("The deployment's outcome library file", runError)} />}
                     </div>
                 ))}
 
@@ -462,7 +463,7 @@ export function DeploymentTab({
                             </Button>
                         </QuickActions>
                         {runLoading && <LoadingState label="Deploying…" />}
-                        {runError && <ErrorState message={runError} />}
+                        {runError && <ErrorState message={describePathActionError("The deployment's outcome library file", runError)} />}
                     </div>
                 ))}
 

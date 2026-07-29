@@ -16,6 +16,7 @@ import {
     type FairnessOutcome,
     type FairnessVerifyRequestView,
 } from "../../domain/interpret/Fairness";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
@@ -299,8 +300,12 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                             Compute commitments
                         </Button>
                     </QuickActions>
-                    {configureView.status === "error" && <ErrorState message={configureView.message} />}
-                    {configureView.status === "load-error" && <ErrorState message={configureView.error} />}
+                    {configureView.status === "error" && (
+                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", configureView.message)} />
+                    )}
+                    {configureView.status === "load-error" && (
+                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", configureView.error)} />
+                    )}
                     {configureView.status === "invalid" && <ErrorState message={configureView.message} />}
                     {configureView.status === "ok" && (
                         <div>
@@ -352,8 +357,12 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                                 Generate round proof
                             </Button>
                         </QuickActions>
-                        {generateView.status === "error" && <ErrorState message={generateView.message} />}
-                        {generateView.status === "load-error" && <ErrorState message={generateView.error} />}
+                        {generateView.status === "error" && (
+                            <ErrorState message={describePathActionError("The Provably Fair bundle directory", generateView.message)} />
+                        )}
+                        {generateView.status === "load-error" && (
+                            <ErrorState message={describePathActionError("The Provably Fair bundle directory", generateView.error)} />
+                        )}
                         {generateView.status === "build-error" && <ErrorState message={`${generateView.code}: ${generateView.message}`} />}
                         {generateView.status === "ok" && (
                             <div>
@@ -453,8 +462,12 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                             Verify
                         </Button>
                     </QuickActions>
-                    {verifyView.status === "error" && <ErrorState message={verifyView.message} />}
-                    {verifyView.status === "load-error" && <ErrorState message={verifyView.error} />}
+                    {verifyView.status === "error" && (
+                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", verifyView.message)} />
+                    )}
+                    {verifyView.status === "load-error" && (
+                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", verifyView.error)} />
+                    )}
                     {verifyOutcome !== undefined && (
                         <div>
                             <OutcomeBanner

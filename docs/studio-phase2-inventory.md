@@ -1,4 +1,4 @@
-# POKIE Studio Phase 2 UX/contract inventory (v2)
+# POKIE Studio Phase 2 UX/contract inventory (v3)
 
 **Status:** baseline, frozen 2026-07-29 against implementation commit `30b1dd4` (route/tab baseline) plus the
 executable fixtures added in `[P2-POLISH-01]`. Written *before* any Phase 2 redesign work touches Studio's
@@ -21,8 +21,33 @@ optional one, rather than one wording for both. This is deliberately **not** a p
 strings) -- the live hint, not different placeholder copy, is what now keeps a user from mistaking gray
 placeholder text for a real value. `StudioFsBrowseView`'s `error` variant also gained a `reason: "absent" |
 "type" | "permission" | "other"` field alongside its existing message, for callers that want to key off a
-stable value instead of the message text. None of the Stepper/gating/raw-error-passthrough/inferable-input
-findings below changed; only the path fields' own control type and hint wording did.
+stable value instead of the message text. None of the Stepper/gating/inferable-input findings below changed;
+only the path fields' own control type and hint wording did -- **the raw-error-passthrough finding did later
+change for scoped path actions specifically; see the v3 update immediately below.**
+
+**Update (`[P2-POLISH-04]`, v3):** the "raw-error-passthrough" finding below is no longer accurate for every
+*scoped path action* -- the action a user takes by submitting a path/bundle-dir/library-path field, as
+opposed to a mount-time list/status fetch that carries no user-typed path. `domain/pathActionError.ts`'s
+`describePathActionError(subject, message)` now classifies that raw fs/schema failure text (absent/
+permission/wrong-type/schema-path, mirroring `StudioFsBrowseErrorReason`'s own naming) and renders
+subject-specific inline status + remediation instead -- never the raw message. Wired into: Design & Build /
+Raw Editor's Blueprint Load/Save (`BlueprintLoadSaveControls.tsx`) and the PAR sheet Import/Export panel
+(`ParSheetImportExportPanel.tsx`); Open Project's `OpenProjectForm.tsx`; Certification's Validate/Build;
+Deployment's `runError` (Configure and Deploy steps only -- **not** the mount-time `targetsError`, which
+carries no user-typed path); every Outcome Libraries selector kind's select/deep-validate/compare error and
+load-error states; Stake Engine Export's Validate/Export network-error/load-error states (**not** its
+already-bespoke conflict messages); and Provably Fair's Configure/Generate/Verify `error`/`load-error` states
+that stem from resolving `bundleDir` (**not** Configure's `invalid` domain-validation message, Generate's
+`build-error` -- already a specific, actionable `FairnessRoundProofBuildError` code+message, not a raw fs
+error -- or the pasted-proof/pasted-commitment JSON-parse errors, none of which are path actions). See
+`tests/cli/studio-client/src/domain/pathActionError.test.ts` for the classifier's own reason-by-reason
+coverage and the "Scoped path-action error remediation baseline" describe block in
+`studioSurfaceInventory.baseline.test.tsx` for representative end-to-end fixtures.
+**Deliberately unchanged:** Runtime and Replay (neither has a path field at all -- see their own sections
+below); Advanced Tools' three plain forms (Create/Init/Build-from-blueprint) and their own dedicated-test-
+covered raw-error surfaces; `BlueprintValidationPanel`'s plain-`<Text>` accessibility gap; every hand-built
+(non-raw-fs) message already documented as an exception -- Save's/the two exports' own conflict messages,
+Stake Engine Export's non-overwritable-conflict message.
 
 **Scope:** every named global/project workflow (Design & Build, Raw Editor, Advanced Tools, Open Project,
 Replay, Runtime, Certification, Provably Fair, Deployment, Outcome Libraries, Stake Engine Export) — for each,
@@ -99,9 +124,11 @@ not `required` and a blank one just reaches the server.
 executably below.
 
 **Raw-error surfaces (evidence only, except Load/Save -- see below):** `loadView`
-error/load-error → `ErrorState` (`BlueprintLoadSaveControls.tsx:58`); `saveView` error/failed → `ErrorState`
-(63); `saveView` conflict → `RecoveryNotice` with an "Overwrite" action, the same partial exception to raw
-passthrough Stake Engine Export's overwritable-conflict case is (61); Build Preview/Build Result errors via
+error/load-error → `ErrorState`, subject-specific status + remediation via `describePathActionError` since
+`[P2-POLISH-04]`'s v3 update (`BlueprintLoadSaveControls.tsx:58`); `saveView` error/failed → `ErrorState`,
+same treatment (63); `saveView` conflict → `RecoveryNotice` with an "Overwrite" action, the same partial
+exception to raw passthrough Stake Engine Export's overwritable-conflict case is (61) -- its own message is
+already hand-built, not run through the classifier; Build Preview/Build Result errors via
 the shared `BuildPreviewDisplay`/`BuildResultDisplay` (`common/BuildPreviewDisplay.tsx`,
 `common/BuildResultDisplay.tsx`). **One deviation from the systemic pattern:** `BlueprintValidationPanel`'s
 own "error" status is rendered as a **plain `<Text>`** (`BlueprintValidationPanel.tsx:9-11,30`), *not*
@@ -140,13 +167,14 @@ invalid Validate response.
 
 **Misleading placeholders:** none, pinned by the same fixture as Design & Build.
 
-**Raw-error surfaces (executable -- new fixture below):** Load from path carries no `required` gating at
+**Raw-error surfaces (executable -- fixture below):** Load from path carries no `required` gating at
 all (unlike every required `PathInput` elsewhere in this group) -- a blank path is sent straight to
 `POST /api/home/blueprints/load`, and the server's own `validateLoadBlueprintRequest` rejection
-(`'"path" is required.'`) comes back and renders verbatim through `ErrorState`, no remediation copy added.
-Demonstrated end to end (request body + rendered alert text) by "Design & Build / Raw Editor: Load/Save
-raw-error-surface baseline" below. Save's identical gap is evidence-only (same component, same
-`validateSaveBlueprintRequest` rejection shape).
+(`'"path" is required.'`) comes back classified as `schema` and rendered as "The blueprint file is missing
+or invalid. Provide a valid value and try again." (since `[P2-POLISH-04]`'s v3 update) rather than verbatim.
+Demonstrated end to end (request body + rendered alert text, and that the raw string is absent) by
+"Design & Build / Raw Editor: Load/Save raw-error-surface baseline" below. Save's identical gap is
+evidence-only (same component, same `validateSaveBlueprintRequest` rejection shape, same fix).
 
 **Contract cross-reference:** `StudioRequestContractBaseline.test.ts`'s new "Design & Build / Raw Editor
 (Load / Save / Build) vs. Advanced Tools' Init/Build-from-blueprint" block pins that Save's own
@@ -243,8 +271,12 @@ coercion behavior exists to observe.
 
 **Raw-error surfaces (evidence only, exhaustively covered by `openProjectGuard.test.tsx`'s own failed-
 open-project-call case and `RecentProjectsPanel.test.tsx`):** `OpenProjectForm`'s `state.status === "error"`
-→ `ErrorState` (`OpenProjectForm.tsx:46`); `RecentProjectsPanel`'s own fetch-list error and per-row open
-error, both → `ErrorState` (`RecentProjectsPanel.tsx:46`). One additional, previously-unrecorded UX note:
+→ `ErrorState` (`OpenProjectForm.tsx:46`) -- since `[P2-POLISH-04]`'s v3 update, run through
+`describePathActionError("The project directory", ...)` rather than shown verbatim (`openProjectGuard.test.tsx`'s
+own failed-open-project-call case asserts the raw text is gone). `RecentProjectsPanel`'s own fetch-list error
+and per-row open error, both → `ErrorState` (`RecentProjectsPanel.tsx:46`) -- left as raw passthrough: neither
+is a user-typed path submission (the list fetch takes no path, and a "missing" row's own open failure is
+about a *previously recorded* path, not one this control gates). One additional, previously-unrecorded UX note:
 a "missing" recent-project entry (its `projectRoot` no longer resolves on disk) renders as plain dimmed
 text with "(missing)" appended instead of a clickable link (`RecentProjectsPanel.tsx:62-64`) -- correctly
 non-interactive (there's nothing to open), but with no explanatory tooltip/description beyond the bare
@@ -365,10 +397,12 @@ blocks Build; Sample count's `onChange` coerces any non-numeric/cleared value to
 pinned by the path-field fixture with an inline comment, not altered.
 
 **Raw-error surfaces (executable for Validate; evidence only for Build):** Validate's `network-error`/
-`load-error` states (`ErrorState message={validateView.message}` / `.error`, 221-222) are demonstrated end to
-end by the raw-error-surface fixture (type a bundle dir → Continue → Validate → assert the exact server-
-supplied text renders with no remediation copy). Build's identical pattern (256-257) is evidence-only — same
-component, same passthrough, not separately re-demonstrated.
+`load-error` states (`ErrorState message={...}` / `.error`, 221-222) are demonstrated end to end by the
+"Scoped path-action error remediation baseline" fixture (type a bundle dir → Continue → Validate → assert the
+bundle-directory-specific status + remediation copy renders and the raw server text does not) -- since
+`[P2-POLISH-04]`'s v3 update, both run through `describePathActionError("The certification bundle
+directory", ...)`. Build's identical pattern (256-257) is evidence-only — same component, same fix, not
+separately re-demonstrated.
 
 **Contract cross-reference:** `StudioRequestContractBaseline.test.ts`'s new "Contract baseline: Certification"
 block pins that `validateCertificationBuildRequest`'s mode-shape check is **type-only** — it accepts a
@@ -412,10 +446,17 @@ zero feedback, the same fail-open pattern as Runtime's Load Session.
 seed labels rather than obviously-fake tokens; Mode name's `"base"` placeholder is a real, valid mode name,
 indistinguishable from an actual selected value. Pinned by the path-field fixture.
 
-**Raw-error surfaces (evidence only):** Configure's `error`/`load-error`/`invalid` states (296-298); Generate's
-`error`/`load-error`/`build-error` (349-351, the last concatenating a raw `code:` prefix onto the raw
-message); Verify's `error`/`load-error` (442-443). Not separately re-demonstrated as a fixture here — same
-`ErrorState` passthrough pattern already pinned by the Certification/Deployment/Runtime/Replay fixtures.
+**Raw-error surfaces (executable for Configure; evidence only for Generate/Verify):** Configure's
+`error`/`load-error` (296-297, both stemming from resolving `bundleDir`) are demonstrated by the "Scoped
+path-action error remediation baseline" fixture -- since `[P2-POLISH-04]`'s v3 update, run through
+`describePathActionError("The Provably Fair bundle directory", ...)` rather than shown verbatim. Configure's
+own `invalid` state (298) is deliberately unchanged -- it's already a specific, actionable domain-validation
+message (e.g. "nonce must be a non-negative safe integer"), not a raw fs/schema error. Generate's `error`/
+`load-error` (350) get the identical bundle-directory fix, evidence-only here; Generate's `build-error`
+(351, concatenating `code:` onto `FairnessRoundProofBuildError`'s own message) is also deliberately
+unchanged -- that message is already specific and actionable, not a raw fs error, so classifying it would
+only lose detail. Verify's `error`/`load-error` (443-444, same `bundleDir`-resolution failure) get the same
+fix, evidence-only.
 
 **Contract cross-reference:** `StudioRequestContractBaseline.test.ts`'s new "Contract baseline: Provably Fair"
 block pins that `validateFairnessVerifyRequest` never checks `commitment` at all — not its shape, not even
@@ -460,11 +501,16 @@ than defaulting it; mode fields have no fallback/trim/default applied in this fi
 **Misleading placeholders:** none — no `placeholder` prop exists anywhere in this file (the absence-of-
 placeholder finding above is the relevant one for this tab).
 
-**Raw-error surfaces (executable for the targets-fetch case; evidence only for the rest):** `targetsError`
-(314) is demonstrated end to end by the raw-error-surface fixture (mount-time targets fetch failure → exact
-server text, no remediation). `runError` under Configure (361) and under Deploy (456) are the same passthrough
-pattern, evidence-only here (already covered by `deployment.test.tsx`/`deploymentWorkflow.test.tsx`'s own
-error-path assertions).
+**Raw-error surfaces (executable for the targets-fetch case and for `runError`; both now diverge):**
+`targetsError` (314) is demonstrated end to end by the "Advanced tab raw-error surface baseline" fixture
+(mount-time targets fetch failure → exact server text, no remediation) -- **deliberately left unchanged**:
+fetching the targets registry takes no user-typed path, so it's outside `[P2-POLISH-04]`'s scoped-path-action
+fix. `runError` under Configure (361) and under Deploy (456) share one state and both stem from resolving a
+mode's outcome library path (`loadWeightedOutcomeLibraryFromProjectFile`) -- since the v3 update, both run
+through `describePathActionError("The deployment's outcome library file", ...)` instead of showing the raw
+`Could not read "..."` text verbatim, demonstrated end to end by the "Scoped path-action error remediation
+baseline" fixture; `deploymentWorkflow.test.tsx`'s own error-path assertions (stage-level `runResult` issues,
+a different surface entirely) are unaffected.
 
 **Contract cross-reference:** the pre-existing "missing package-to-library" finding in
 `StudioRequestContractBaseline.test.ts` (added before this baseline) already covers Deployment's own
@@ -509,13 +555,15 @@ selector-field placeholders read as plausible real paths/mode names rather than 
 mitigated in practice by "Load library" staying disabled until real text replaces the placeholder, but the
 strings themselves are the same pattern flagged elsewhere in this document.
 
-**Raw-error surfaces (evidence only — already covered by
-`outcomeLibrariesWorkflow.test.tsx`'s own success/invalid/compare/stale/late-response cases, none of which
-assert on the raw-error text specifically):** `selectView` error/load-error (375-376), `deepValidateView`
-error/load-error (311-312), `compareView`/`compareResult` error/load-error (501, 513, 519) — seven distinct
-call sites, all the same `ErrorState` passthrough. Not re-demonstrated as a fixture here; flagged as the
-largest evidence-only surface in this document by call-site count, worth prioritizing if this baseline is
-ever extended with more executable raw-error fixtures.
+**Raw-error surfaces (executable for `selectView`, via "Scoped path-action error remediation baseline";
+evidence only for the rest):** `selectView` error/load-error (375-376) run through
+`describePathActionError("The outcome library", ...)` since `[P2-POLISH-04]`'s v3 update. Evidence-only, same
+fix: `deepValidateView` error/load-error (311-312) → `describePathActionError("The outcome library
+bundle", ...)`; `compareView`'s own request-level `error` (501) → `describePathActionError("The comparison
+request", ...)`; `compareResult.left`/`.right` load-error (513, 519) → `describePathActionError("The left
+library"/"The right library", ...)`. Seven distinct call sites total, all previously the same `ErrorState`
+passthrough, all now the same classify-and-remediate treatment — `outcomeLibrariesWorkflow.test.tsx`'s own
+success/invalid/compare/stale/late-response cases don't assert on this text and are unaffected.
 
 ---
 
@@ -553,30 +601,37 @@ cross-cutting `NumberInput` convention across all three tabs, not tab-specific.
 in practice (see above); "Mode name"/"Outcome library path" read as plausible real values, same pattern as
 Certification/Outcome Libraries.
 
-**Raw-error surfaces (evidence only):** `validateView` network-error/load-error (232-233); `exportView`
-network-error/load-error/non-overwritable-conflict (303-304, 315); the overwritable-conflict case (307-313)
-is the **one partial exception** among all raw-error surfaces in this document — it pairs the raw error text
-(used as a `RecoveryNotice` title) with an actionable "Overwrite" button, unlike every purely-informational
-`ErrorState` elsewhere.
+**Raw-error surfaces (executable via "Scoped path-action error remediation baseline" for Validate; evidence
+only for Export):** `validateView` network-error/load-error (232-233) run through `describePathActionError(
+"The Stake Engine export's outcome library", ...)` since `[P2-POLISH-04]`'s v3 update. `exportView`'s
+identical network-error/load-error (303-304) get the same fix, evidence-only. `exportView`'s
+non-overwritable-conflict (315) is **deliberately unchanged** — it's already a hand-built, specific message
+(`"<outDir>" already exists and is not empty; refusing to overwrite it without confirmation.`), not a raw fs
+error. The overwritable-conflict case (307-313) remains the **one partial exception** among all raw-error
+surfaces in this document — it pairs that same hand-built message (used as a `RecoveryNotice` title) with an
+actionable "Overwrite" button, unlike every purely-informational `ErrorState` elsewhere.
 
 ---
 
 ## Cross-cutting findings
 
-**Raw-error passthrough is systemic, not per-tab — and not just an "Advanced project tab" pattern either.**
-`common/ErrorState.tsx` renders `{message}` verbatim inside an `Alert` with zero added text, and every
-Advanced tab except `RuntimeTab.tsx` (which wraps two specific cases — "blocked"/"conflict" session states
-— in a friendlier `RecoveryNotice`) and `StakeEngineExportTab.tsx` (whose overwritable-conflict case does
-the same) passes a raw, `domain/errorMessage.ts`-derived string straight through — and the Home surface's
-own Load/Save/Create/Init/Build/Open-project error states all reuse the identical `ErrorState` component,
-with the identical passthrough. This baseline demonstrates the pattern executably for 4 of the 7 Advanced
-tabs (Deployment, Runtime, Replay, Certification) plus the Raw Editor's own Load-from-path case, across
-both trigger shapes (mount-time GET failure and interactive POST failure); the remaining occurrences
-(enumerated per-workflow above) are evidence-only, since they're either already exhaustively covered by
-each tab's own dedicated workflow test or would add near-duplicate fixtures of an already-proven,
-component-level-verified pattern. **A third, narrower exception** exists alongside Runtime/Stake Engine
-Export's own: the guided/Raw Editor's `BlueprintValidationPanel` renders its "error" status as a plain
-`<Text>`, not through `ErrorState`/`role="alert"` at all — see Design & Build's own section above.
+**Raw-error passthrough was systemic, not per-tab — `[P2-POLISH-04]`'s v3 update fixed it for every *scoped
+path action* specifically, not every `ErrorState` use.** `common/ErrorState.tsx` still renders `{message}`
+verbatim inside an `Alert` with zero added text -- that component itself didn't change. What changed is what
+gets passed as `message` at each scoped-path-action call site: `domain/pathActionError.ts`'s
+`describePathActionError(subject, message)` now classifies the raw fs/schema string first and passes
+subject-specific status + remediation copy instead (see each workflow section's own "Raw-error surfaces"
+above for the call-site-by-call-site breakdown, and the v3 update note near the top of this document for the
+full inclusion/exclusion list). **Left as raw passthrough, deliberately:** any surface with no user-typed
+path at all (Runtime's status fetch, Replay's Recent Replays fetch, Deployment's `targetsError`,
+`RecentProjectsPanel`'s list/per-row-open errors); Advanced Tools' three plain forms (Create/Init/
+Build-from-blueprint), which this step's instruction didn't name; and every already-hand-built,
+already-specific message (Save's/the two exports' conflict messages, Provably Fair's `invalid`/`build-error`
+states). `RuntimeTab.tsx`'s own "blocked"/"conflict" `RecoveryNotice` wrapping and `StakeEngineExportTab.tsx`'s
+overwritable-conflict case remain the two pre-existing exceptions to plain `ErrorState` passthrough, unrelated
+to this fix. **A third, narrower exception** also remains: the guided/Raw Editor's `BlueprintValidationPanel`
+renders its "error" status as a plain `<Text>`, not through `ErrorState`/`role="alert"` at all — see Design &
+Build's own section above; this accessibility gap is unrelated to raw-text content and wasn't in scope here.
 
 **Building on top of an un-validated Save is possible.** Save's own request-validation layer (and the
 service that writes it) never checks the blueprint's shape, only that one was sent at all — see Design &
@@ -654,8 +709,10 @@ pre-Verify gating).
 These are **not** backed by an executable fixture in this baseline and are called out explicitly rather than
 silently assumed covered:
 
-1. Outcome Libraries' seven raw-error call sites (select/deep-validate/compare, ×2 for load-error variants) —
-   evidence-only, the largest single evidence-only surface in this document.
+1. Outcome Libraries' seven `describePathActionError`-routed call sites (select/deep-validate/compare, ×2 for
+   load-error variants) — `select` is executable (the "Scoped path-action error remediation baseline"
+   fixture), the remaining six are evidence-only for the fix itself, the largest single evidence-only surface
+   in this document.
 2. Provably Fair's Verify-step "blank bundle dir → silent no-op despite an enabled button" gap, and Runtime's
    analogous Load-Session gap — flagged as fail-open UX, not exercised by a fixture proving the no-op (only
    documented from source).

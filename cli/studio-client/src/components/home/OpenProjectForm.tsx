@@ -2,6 +2,7 @@ import {Button, Stack} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useState} from "react";
 import {errorMessage} from "../../domain/errorMessage";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {ErrorState} from "../common/ErrorState";
@@ -53,7 +54,7 @@ export function OpenProjectForm() {
                 </Stack>
             </form>
             {state.status === "loading" && <LoadingState label="Opening…" />}
-            {state.status === "error" && <ErrorState message={state.message} />}
+            {state.status === "error" && <ErrorState message={describePathActionError("The project directory", state.message)} />}
         </Stack>
     );
 }

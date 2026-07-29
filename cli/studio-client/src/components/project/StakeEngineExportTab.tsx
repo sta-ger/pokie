@@ -13,6 +13,7 @@ import {
     type StakeEngineExportRequestView,
     type StakeEngineExportValidateRequestView,
 } from "../../domain/interpret/StakeEngineExport";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
@@ -230,8 +231,12 @@ export function StakeEngineExportTab({projectRoot}: {projectRoot?: string} = {})
                         Run diagnostics
                     </Button>
                 </QuickActions>
-                {validateView.status === "network-error" && <ErrorState message={validateView.message} />}
-                {validateView.status === "load-error" && <ErrorState message={validateView.error} />}
+                {validateView.status === "network-error" && (
+                    <ErrorState message={describePathActionError("The Stake Engine export's outcome library", validateView.message)} />
+                )}
+                {validateView.status === "load-error" && (
+                    <ErrorState message={describePathActionError("The Stake Engine export's outcome library", validateView.error)} />
+                )}
                 {validateOutcome !== undefined && (
                     <OutcomeBanner
                         color={OUTCOME_BANNER[validateOutcome].color}
@@ -301,8 +306,12 @@ export function StakeEngineExportTab({projectRoot}: {projectRoot?: string} = {})
                         Export to Stake Engine
                     </Button>
                 </QuickActions>
-                {exportView.status === "network-error" && <ErrorState message={exportView.message} />}
-                {exportView.status === "load-error" && <ErrorState message={exportView.error} />}
+                {exportView.status === "network-error" && (
+                    <ErrorState message={describePathActionError("The Stake Engine export's outcome library", exportView.message)} />
+                )}
+                {exportView.status === "load-error" && (
+                    <ErrorState message={describePathActionError("The Stake Engine export's outcome library", exportView.error)} />
+                )}
                 {exportView.status === "conflict" &&
                     (exportView.overwritable ? (
                         <RecoveryNotice
