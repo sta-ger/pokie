@@ -90,6 +90,27 @@ export type StudioFsBrowseView =
     | {status: "ok"; resolvedPath: string; displayPath: string; parentPath?: string; entries: StudioFsEntry[]}
     | {status: "error"; error: string; resolvedPath: string};
 
+// GET /api/home/fs/native-browse/availability's own DTO — see
+// cli/studio/home/StudioNativePickerService.ts's own doc comment. PathInput only ever shows
+// PathBrowseModal's "Server filesystem browser" when this comes back "unavailable" (or a pick request
+// itself later reports "unavailable"/"error").
+export type StudioNativePickerAvailabilityView = {status: "available"} | {status: "unavailable"; reason: string};
+
+export type StudioNativePickerFileFilter = {name: string; extensions: string[]};
+
+// POST /api/home/fs/native-browse's own DTO. "cancelled" is a deliberate no-op outcome (the user closed
+// the OS dialog without picking anything) — distinct from "unavailable"/"error", which are what send
+// PathInput to the PathBrowseModal fallback instead.
+export type StudioNativePickerResultView =
+    | {status: "selected"; path: string}
+    | {status: "cancelled"}
+    | {status: "unavailable"; reason: string}
+    | {status: "error"; message: string};
+
+// GET /api/home/fs/default-location's own DTO — see cli/studio/home/StudioDefaultLocationView.ts's own
+// doc comment.
+export type StudioDefaultLocationView = {status: "valid"; directory: string; source: "documents" | "home"} | {status: "unavailable"};
+
 // POST /api/home/projects/build/preview's own DTO — see cli/studio/home/StudioBuildPreviewView.ts's
 // own doc comment. Never the result of anything being written to disk.
 export type StudioBuildPreviewView =

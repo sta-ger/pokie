@@ -23,6 +23,7 @@ import type {ScaffoldResult} from "../../scaffold/ScaffoldResult.js";
 import {IndependentProjectDirectoryResult, PokiePathResolver} from "../../paths/PokiePathResolver.js";
 import type {StudioBuildPreviewView} from "./StudioBuildPreviewView.js";
 import type {StudioBuildResult} from "./StudioBuildResult.js";
+import type {StudioDefaultLocationView} from "./StudioDefaultLocationView.js";
 import type {StudioHomeRecentProjectView} from "./StudioHomeRecentProjectView.js";
 import type {StudioScaffoldResultView} from "./StudioScaffoldResultView.js";
 import type {ValidatedBuildRequest} from "./validateBuildRequest.js";
@@ -75,6 +76,23 @@ export class StudioHomeService {
     // PokiePathResolver for the platform Documents/Home policy and its own unsafe-default guard.
     public resolveDefaultProjectDirectory(name: string): IndependentProjectDirectoryResult {
         return this.pathResolver.resolveIndependentProjectDirectory(name);
+    }
+
+    // Backs GET /api/home/fs/default-location -- the "platform Documents, then Home" rung of every
+    // PathInput's start-location precedence (see resolveBrowseStartLocation.ts on the client). `name`
+    // is optional: when given (Create Project's own destination field), this reuses
+    // resolveDefaultProjectDirectory's POKIE/<name> policy so Create's suggested destination and its
+    // eventual scaffolded project root agree; when omitted (Init/Build from Blueprint, which browse to
+    // an *existing* location rather than a brand-new project's destination), it falls back to the bare
+    // Documents/Home directory with no project-name suffix.
+    public resolveDefaultBrowseLocation(name?: string): StudioDefaultLocationView {
+        const trimmedName = name?.trim();
+        if (trimmedName && trimmedName.length > 0) {
+            const result = this.pathResolver.resolveIndependentProjectDirectory(trimmedName);
+            return result.status === "valid" ? {status: "valid", directory: result.directory, source: result.source} : {status: "unavailable"};
+        }
+        const base = this.pathResolver.resolveBaseDirectory();
+        return base.status === "valid" ? {status: "valid", directory: base.directory, source: base.source} : {status: "unavailable"};
     }
 
     // A project is flagged "missing" (never silently dropped — see StudioHomeRecentProjectView's own

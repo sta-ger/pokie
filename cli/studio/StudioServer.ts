@@ -32,6 +32,8 @@ import {validateFairnessGenerateRequest, FairnessGenerateRequestInput} from "./f
 import {validateFairnessVerifyRequest, FairnessVerifyRequestInput} from "./fairness/validateFairnessVerifyRequest.js";
 import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
+import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
+import {validateNativeBrowseRequest, NativeBrowseRequestInput} from "./home/validateNativeBrowseRequest.js";
 import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {validateOutcomeLibrarySelectRequest, OutcomeLibrarySelectRequestInput} from "./outcomeLibrary/validateOutcomeLibrarySelectRequest.js";
 import {validateOutcomeLibraryCompareRequest, OutcomeLibraryCompareRequestInput} from "./outcomeLibrary/validateOutcomeLibraryCompareRequest.js";
@@ -46,6 +48,7 @@ import {validateInitProjectRequest, InitProjectRequestInput} from "./home/valida
 import {validateOpenProjectRequest, OpenProjectRequestInput} from "./home/validateOpenProjectRequest.js";
 import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
+import {isLoopbackRequest} from "./isLoopbackRequest.js";
 import {isPathWithin} from "./isPathWithin.js";
 import {buildReplayDownload} from "./replay/buildReplayDownload.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
@@ -73,6 +76,16 @@ import type {StudioToolHandling} from "./StudioToolHandling.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3200;
+
+// The one "unavailable" outcome that isn't about the server's own display -- see isLoopbackRequest's
+// own doc comment for why this is reported instead of ever consulting nativePickerService for a remote
+// caller. `reason` deliberately never mentions displays/zenity/kdialog -- those would be misleading (a
+// remote caller can't tell whether it's *this* or a genuinely headless server without probing, and
+// either way the fix is the same: use the Server filesystem browser fallback PathInput already opens).
+const REMOTE_NATIVE_PICKER_UNAVAILABLE = {
+    status: "unavailable" as const,
+    reason: "Native folder/file dialogs are only available to a Studio session connecting from the same machine running its server.",
+};
 
 const CONTENT_TYPES: Record<string, string> = {
     ".html": "text/html; charset=utf-8",
@@ -104,6 +117,13 @@ export class StudioServer implements StudioServerHandling {
     private readonly studioRoot: string;
     private readonly homeService: StudioHomeService;
     private readonly fsBrowseService: StudioFsBrowseService;
+    private readonly nativePickerService: StudioNativePickerService;
+    // Gates the native picker endpoints below to a "confirmed local" caller -- see isLoopbackRequest's
+    // own doc comment. Injectable (defaults to the real isLoopbackRequest) since a test's own HTTP
+    // client always connects over loopback, the same as a genuinely local caller, so exercising the
+    // remote-rejection path needs a way to say "treat this request as remote" without a real remote
+    // peer.
+    private readonly isLoopbackRequest: (req: IncomingMessage) => boolean;
     private readonly blueprintService: StudioBlueprintService;
     private readonly loadGame: typeof loadPokieGame;
     private readonly gamePackageInspector: GamePackageInspecting;
@@ -132,6 +152,8 @@ export class StudioServer implements StudioServerHandling {
         this.studioRoot = path.resolve(options.studioRoot);
         this.homeService = options.homeService;
         this.fsBrowseService = options.fsBrowseService ?? new StudioFsBrowseService(this.studioRoot);
+        this.nativePickerService = options.nativePickerService ?? new StudioNativePickerService();
+        this.isLoopbackRequest = options.isLoopbackRequest ?? isLoopbackRequest;
         this.blueprintService = options.blueprintService;
         this.loadGame = options.loadGame ?? loadPokieGame;
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
@@ -300,6 +322,21 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/home/fs/browse") {
             this.handleHomeFsBrowse(res, url);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/home/fs/default-location") {
+            this.handleHomeFsDefaultLocation(res, url);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/home/fs/native-browse/availability") {
+            this.sendJson(res, 200, this.isLoopbackRequest(req) ? this.nativePickerService.checkAvailability() : REMOTE_NATIVE_PICKER_UNAVAILABLE);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/fs/native-browse") {
+            await this.handleHomeFsNativeBrowse(req, res);
             return;
         }
 
@@ -764,6 +801,39 @@ export class StudioServer implements StudioServerHandling {
     private handleHomeFsBrowse(res: ServerResponse, url: URL): void {
         const requestedPath = url.searchParams.get("path");
         this.sendJson(res, 200, this.fsBrowseService.browse(requestedPath ?? undefined));
+    }
+
+    // Always 200, same "a well-formed request with no useful answer isn't a failed request" reasoning as
+    // handleHomeFsBrowse above -- see StudioDefaultLocationView's own doc comment for why every failure
+    // mode collapses to a single "unavailable".
+    private handleHomeFsDefaultLocation(res: ServerResponse, url: URL): void {
+        const name = url.searchParams.get("name");
+        this.sendJson(res, 200, this.homeService.resolveDefaultBrowseLocation(name ?? undefined));
+    }
+
+    // Unlike handleHomeFsBrowse, a *malformed* request (a missing/invalid "kind") is a real 400 -- the
+    // caller (PathInput) always sends a well-formed request; the only domain-level outcomes belong to
+    // StudioNativePickerResultView's own status field (selected/cancelled/unavailable/error), same
+    // convention as every other Home POST handler in this class. Gated the same way as the availability
+    // check above: a non-loopback caller never reaches nativePickerService.pick() at all, so a remote
+    // browser can never pop a dialog on the server's own screen even if it calls this endpoint directly
+    // (bypassing PathInput's own availability check) -- see isLoopbackRequest's own doc comment.
+    private async handleHomeFsNativeBrowse(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateNativeBrowseRequest((body ?? {}) as NativeBrowseRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        if (!this.isLoopbackRequest(req)) {
+            this.sendJson(res, 200, REMOTE_NATIVE_PICKER_UNAVAILABLE);
+            return;
+        }
+
+        this.sendJson(res, 200, await this.nativePickerService.pick(validated));
     }
 
     // The five Blueprint Editor handlers below follow the same validate-then-delegate shape as the Home

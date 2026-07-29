@@ -94,6 +94,13 @@ export class PokiePathResolver {
     public resolveProjectRelativeDirectory(projectRoot: string, relativePath: string): ResolveProjectDirectoryResult {
         return resolveProjectDirectory(projectRoot, relativePath);
     }
+
+    // The bare "platform Documents, then Home" policy without resolveIndependentProjectDirectory's own
+    // POKIE/<name> suffix or unsafe-path guard -- for callers (a path field's start-location precedence)
+    // that want a plain default directory to start browsing from, not a brand-new project's destination.
+    public resolveBaseDirectory(): UserBaseDirectoryResult {
+        return this.resolveBase(this.env);
+    }
 }
 
 function describeUnusability(status: "absent" | "type" | "permission"): string {

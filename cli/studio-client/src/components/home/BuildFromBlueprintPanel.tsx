@@ -82,6 +82,8 @@ export function BuildFromBlueprintPanel() {
                         required
                         kind="file"
                         browseTitle="Browse for a blueprint JSON file"
+                        browseId="build-from-blueprint-path"
+                        fileFilters={[{name: "JSON files", extensions: ["json"]}]}
                         {...form.getInputProps("blueprintPath")}
                         onPathSelected={(path) => form.setFieldValue("blueprintPath", path)}
                         key={form.key("blueprintPath")}
@@ -90,6 +92,7 @@ export function BuildFromBlueprintPanel() {
                         label="Output directory (optional)"
                         kind="directory"
                         browseTitle="Browse for an output directory"
+                        browseId="build-from-blueprint-out-dir"
                         {...form.getInputProps("outDir")}
                         onPathSelected={(path) => form.setFieldValue("outDir", path)}
                         key={form.key("outDir")}

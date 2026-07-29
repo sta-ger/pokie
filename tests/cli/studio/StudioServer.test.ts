@@ -22,7 +22,7 @@ import {
 } from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
-import http from "http";
+import http, {IncomingMessage} from "http";
 import os from "os";
 import path from "path";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
@@ -30,6 +30,8 @@ import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
+import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
+import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
@@ -471,6 +473,194 @@ describe("StudioServer", () => {
             expect(status).toBe(200);
             expect(body).toMatchObject({status: "error"});
             expect((body as {error: string}).error).toContain("is not a directory");
+        });
+    });
+
+    describe("Home nav: GET /api/home/fs/default-location", () => {
+        let locationServer: StudioServer | undefined;
+        let locationStudioRoot: string;
+
+        afterEach(async () => {
+            await locationServer?.stop();
+            fs.rmSync(locationStudioRoot, {recursive: true, force: true});
+        });
+
+        async function startServerWithPathResolver(pathResolver: {
+            resolveIndependentProjectDirectory: jest.Mock;
+            resolveBaseDirectory: jest.Mock;
+        }): Promise<string> {
+            locationStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-default-location-test-"));
+            writeStudioAssets(locationStudioRoot);
+            const homeService = new StudioHomeService(
+                "1.0.0",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                pathResolver as unknown as ConstructorParameters<typeof StudioHomeService>[8],
+            );
+            locationServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: locationStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", locationStudioRoot, homeService),
+            });
+            const address = await locationServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("returns the platform Documents/Home default when no name is given", async () => {
+            const locationBaseUrl = await startServerWithPathResolver({
+                resolveIndependentProjectDirectory: jest.fn(),
+                resolveBaseDirectory: jest.fn().mockReturnValue({status: "valid", directory: "/home/alice/Documents", source: "documents"}),
+            });
+
+            const {status, body} = await get(`${locationBaseUrl}/api/home/fs/default-location`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "valid", directory: "/home/alice/Documents", source: "documents"});
+        });
+
+        it("uses the Documents/POKIE/<name> policy when a name is given", async () => {
+            const resolveIndependentProjectDirectory = jest
+                .fn()
+                .mockReturnValue({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
+            const locationBaseUrl = await startServerWithPathResolver({
+                resolveIndependentProjectDirectory,
+                resolveBaseDirectory: jest.fn(),
+            });
+
+            const {status, body} = await get(`${locationBaseUrl}/api/home/fs/default-location?name=${encodeURIComponent("sample-slot")}`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
+            expect(resolveIndependentProjectDirectory).toHaveBeenCalledWith("sample-slot");
+        });
+
+        it("reports unavailable when the resolver can't determine a base directory", async () => {
+            const locationBaseUrl = await startServerWithPathResolver({
+                resolveIndependentProjectDirectory: jest.fn(),
+                resolveBaseDirectory: jest.fn().mockReturnValue({status: "unresolved"}),
+            });
+
+            const {status, body} = await get(`${locationBaseUrl}/api/home/fs/default-location`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "unavailable"});
+        });
+    });
+
+    describe("Home nav: native browse (GET .../native-browse/availability, POST .../native-browse)", () => {
+        let nativeServer: StudioServer | undefined;
+        let nativeStudioRoot: string;
+
+        afterEach(async () => {
+            await nativeServer?.stop();
+            fs.rmSync(nativeStudioRoot, {recursive: true, force: true});
+        });
+
+        async function startServerWithPicker(nativePickerService: StudioNativePickerService, isLoopbackRequest?: (req: IncomingMessage) => boolean): Promise<string> {
+            nativeStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-native-picker-test-"));
+            writeStudioAssets(nativeStudioRoot);
+            const homeService = new StudioHomeService("1.0.0");
+            nativeServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: nativeStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", nativeStudioRoot, homeService),
+                nativePickerService,
+                isLoopbackRequest,
+            });
+            const address = await nativeServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("reports availability from the injected StudioNativePickerService", async () => {
+            const nativeBaseUrl = await startServerWithPicker(
+                new StudioNativePickerService({platform: "linux", env: {}, homeDir: "/home/alice"}, jest.fn()),
+            );
+
+            const {status, body} = await get(`${nativeBaseUrl}/api/home/fs/native-browse/availability`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "unavailable"});
+        });
+
+        it("returns the selected path on POST /api/home/fs/native-browse", async () => {
+            const run = jest.fn().mockResolvedValue({stdout: "/home/alice/games/sample-slot\n", stderr: ""});
+            const nativeBaseUrl = await startServerWithPicker(new StudioNativePickerService({platform: "linux", env: {DISPLAY: ":0"}, homeDir: "/home/alice"}, run));
+
+            const {status, body} = await post(`${nativeBaseUrl}/api/home/fs/native-browse`, {kind: "directory", startPath: "/home/alice/games"});
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "selected", path: "/home/alice/games/sample-slot"});
+        });
+
+        it("rejects a request with an invalid kind as a 400", async () => {
+            const nativeBaseUrl = await startServerWithPicker(new StudioNativePickerService({platform: "linux", env: {}, homeDir: "/home/alice"}, jest.fn()));
+
+            const {status, body} = await post(`${nativeBaseUrl}/api/home/fs/native-browse`, {kind: "spreadsheet"});
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toContain("kind");
+        });
+
+        it("reports the native picker unavailable to a remote caller, without ever consulting the injected picker service, even when the server has a graphical display", async () => {
+            const checkAvailability = jest.fn().mockReturnValue({status: "available"});
+            const nativePickerService = {checkAvailability, pick: jest.fn()} as unknown as StudioNativePickerService;
+            const nativeBaseUrl = await startServerWithPicker(nativePickerService, () => false);
+
+            const {status, body} = await get(`${nativeBaseUrl}/api/home/fs/native-browse/availability`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "unavailable"});
+            expect(checkAvailability).not.toHaveBeenCalled();
+        });
+
+        it("never invokes the injected picker service's pick() for a remote caller's POST /api/home/fs/native-browse, even with a well-formed request", async () => {
+            const pick = jest.fn().mockResolvedValue({status: "selected", path: "/home/alice/games/sample-slot"});
+            const nativePickerService = {checkAvailability: jest.fn(), pick} as unknown as StudioNativePickerService;
+            const nativeBaseUrl = await startServerWithPicker(nativePickerService, () => false);
+
+            const {status, body} = await post(`${nativeBaseUrl}/api/home/fs/native-browse`, {kind: "directory", startPath: "/home/alice/games"});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "unavailable"});
+            expect(pick).not.toHaveBeenCalled();
+        });
+
+        it("still consults the injected picker service for a confirmed-local caller", async () => {
+            const run = jest.fn().mockResolvedValue({stdout: "/home/alice/games/sample-slot\n", stderr: ""});
+            const nativeBaseUrl = await startServerWithPicker(
+                new StudioNativePickerService({platform: "linux", env: {DISPLAY: ":0"}, homeDir: "/home/alice"}, run),
+                () => true,
+            );
+
+            const {status, body} = await post(`${nativeBaseUrl}/api/home/fs/native-browse`, {kind: "directory", startPath: "/home/alice/games"});
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "selected", path: "/home/alice/games/sample-slot"});
+        });
+    });
+
+    describe("isLoopbackRequest", () => {
+        function requestFrom(remoteAddress: string | undefined): IncomingMessage {
+            return {socket: {remoteAddress}} as unknown as IncomingMessage;
+        }
+
+        it.each(["127.0.0.1", "::1", "::ffff:127.0.0.1"])("treats %s as a confirmed-local caller", (remoteAddress) => {
+            expect(isLoopbackRequest(requestFrom(remoteAddress))).toBe(true);
+        });
+
+        it.each(["203.0.113.5", "::ffff:203.0.113.5", "172.17.0.2", undefined])("treats %s as a remote caller", (remoteAddress) => {
+            expect(isLoopbackRequest(requestFrom(remoteAddress))).toBe(false);
         });
     });
 
