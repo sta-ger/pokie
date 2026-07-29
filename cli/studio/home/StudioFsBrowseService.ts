@@ -57,7 +57,12 @@ export class StudioFsBrowseService {
     // actually places it outside on disk -- the same containment resolveProjectDirectory enforces before
     // Certification/Deployment/Stake Engine Export/Provably Fair actually act on this same field's value,
     // surfaced here so the picker can warn about it before the user ever submits.
-    public browse(requestedPath: string | undefined, base?: string): StudioFsBrowseView {
+    // `kind`, when "file", validates/resolves `requestedPath` as a file instead of a directory -- no
+    // readdir is attempted (a file has no children to list), so a `kind: "file"` call's own "ok" always
+    // comes back with an empty `entries`. Defaults to "directory" (every existing caller -- PathBrowseModal's
+    // own directory-listing navigation, and any caller that omits it entirely) so directory browsing/listing
+    // is completely unaffected by this parameter's existence.
+    public browse(requestedPath: string | undefined, base?: string, kind: "directory" | "file" = "directory"): StudioFsBrowseView {
         const explicitBase = base !== undefined && base.trim().length > 0;
         const resolveBase = explicitBase ? path.resolve(base) : this.root;
         const resolvedPath = path.resolve(resolveBase, requestedPath && requestedPath.trim().length > 0 ? requestedPath : ".");
@@ -68,7 +73,11 @@ export class StudioFsBrowseService {
         } catch (error) {
             return {status: "error", ...this.describeError(error, resolvedPath), resolvedPath};
         }
-        if (!stats.isDirectory()) {
+        if (kind === "file") {
+            if (stats.isDirectory()) {
+                return {status: "error", error: `"${resolvedPath}" is a directory, not a file.`, resolvedPath, reason: "type"};
+            }
+        } else if (!stats.isDirectory()) {
             return {status: "error", error: `"${resolvedPath}" is not a directory.`, resolvedPath, reason: "type"};
         }
         // The lexical isPathWithin check gates this: a ".." or absolute `requestedPath` that already,
@@ -76,6 +85,10 @@ export class StudioFsBrowseService {
         // this check's concern -- only a path that *looks* contained is worth a symlink follow-up at all.
         if (explicitBase && isPathWithin(resolveBase, resolvedPath) && this.escapesThroughSymlink(resolveBase, resolvedPath)) {
             return {status: "error", error: `"${resolvedPath}" resolves, through a symlink, outside "${resolveBase}".`, resolvedPath, reason: "symlink-escape"};
+        }
+
+        if (kind === "file") {
+            return {status: "ok", resolvedPath, displayPath: this.displayPath(resolvedPath, resolveBase), entries: []};
         }
 
         let names: string[];

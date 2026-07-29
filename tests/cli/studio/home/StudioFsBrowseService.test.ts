@@ -88,6 +88,33 @@ describe("StudioFsBrowseService", () => {
         expect(result.reason).toBe("type");
     });
 
+    it("resolves an existing file as ok when kind is 'file', instead of reporting a type mismatch", () => {
+        const result = service.browse("readme.txt", undefined, "file");
+
+        expect(result).toMatchObject({status: "ok", resolvedPath: path.join(root, "readme.txt"), displayPath: `.${path.sep}readme.txt`, entries: []});
+    });
+
+    it("reports a directory as a type mismatch when kind is 'file'", () => {
+        const result = service.browse("games", undefined, "file");
+
+        expect(result.status).toBe("error");
+        if (result.status !== "error") {
+            throw new Error("expected an error result");
+        }
+        expect(result.error).toContain("is a directory, not a file");
+        expect(result.reason).toBe("type");
+    });
+
+    it("still reports a nonexistent path as 'absent' (not 'type') when kind is 'file'", () => {
+        const result = service.browse("does-not-exist", undefined, "file");
+
+        expect(result.status).toBe("error");
+        if (result.status !== "error") {
+            throw new Error("expected an error result");
+        }
+        expect(result.reason).toBe("absent");
+    });
+
     it("resolves/display-relativizes against an explicit base instead of the constructor root", () => {
         const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-base-"));
         fs.mkdirSync(path.join(projectRoot, "outcomes"));

@@ -85,6 +85,48 @@ describe("PathInput", () => {
         expect(screen.queryByText("some raw backend message that should never render")).not.toBeInTheDocument();
     });
 
+    it("resolves a file control's existing file value to a truthful 'Resolves to' hint, not a type mismatch, and requests kind=file", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/root/save.json", displayPath: "./save.json", entries: []}}),
+        });
+
+        renderWithProviders(<Harness kind="file" initial="./save.json" />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(await screen.findByText("Resolves to: ./save.json")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Fsave.json&kind=file")).toBe(true);
+    });
+
+    it("renders a file-appropriate status and remediation when a directory is used in a file control", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", error: "some raw backend message that should never render", resolvedPath: "/root/games", reason: "type"}}),
+        });
+
+        renderWithProviders(<Harness kind="file" />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(await screen.findByText('"/root/games" is a folder, not a file.')).toBeInTheDocument();
+        expect(await screen.findByText("Point this at a file instead, or use Browse to pick one.")).toBeInTheDocument();
+    });
+
+    it("does not request kind=file for a directory control", async () => {
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games", displayPath: "/games", entries: []}}),
+        });
+        const user = userEvent.setup();
+
+        renderWithProviders(<Harness initial="." />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+        expect(calls.every((call) => !call.url.includes("kind="))).toBe(true);
+    });
+
     it("shows a generic, non-crashing status when the browse request itself fails to reach the server", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

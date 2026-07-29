@@ -45,9 +45,16 @@ type PathIssue = {status: string; remediation: string};
 // so every state the resolver can report reads as an actionable, POKIE-authored sentence instead. `path`
 // is the resolver's own `resolvedPath` (safe, already-structured data -- the same value an "ok" hint shows)
 // -- never the raw message.
-const PATH_ISSUE_COPY: Record<StudioFsBrowseErrorReason, (path: string) => PathIssue> = {
+// `type` is the one reason whose copy depends on which kind of control raised it -- a directory control
+// handed a file, and a file control handed a directory, are both `reason: "type"` (see
+// StudioFsBrowseService.browse's own doc comment), so only the caller's own `kind` can tell the two
+// mismatches apart and word the remediation for the control actually on screen.
+const PATH_ISSUE_COPY: Record<StudioFsBrowseErrorReason, (path: string, kind: PathBrowseKind) => PathIssue> = {
     absent: (path) => ({status: `"${path}" doesn't exist.`, remediation: "Check the path, or use Browse to pick an existing location."}),
-    type: (path) => ({status: `"${path}" is a file, not a folder.`, remediation: "Point this at a folder instead, or use Browse to pick one."}),
+    type: (path, kind) =>
+        kind === "file"
+            ? {status: `"${path}" is a folder, not a file.`, remediation: "Point this at a file instead, or use Browse to pick one."}
+            : {status: `"${path}" is a file, not a folder.`, remediation: "Point this at a folder instead, or use Browse to pick one."},
     permission: (path) => ({status: `POKIE doesn't have permission to read "${path}".`, remediation: "Choose a location you have access to."}),
     unresolved: (path) => ({status: `"${path}" is a broken link and can't be resolved.`, remediation: "Point this at a different location."}),
     "symlink-escape": (path) => ({status: `"${path}" leads outside the project through a linked folder.`, remediation: "Choose a location inside the project."}),
@@ -56,8 +63,8 @@ const PATH_ISSUE_COPY: Record<StudioFsBrowseErrorReason, (path: string) => PathI
 
 const NETWORK_PATH_ISSUE: PathIssue = {status: "Couldn't check this location.", remediation: "Confirm POKIE Studio's server is reachable, then try again."};
 
-function describePathIssue(reason: StudioFsBrowseErrorReason | "network", path: string): PathIssue {
-    return reason === "network" ? NETWORK_PATH_ISSUE : PATH_ISSUE_COPY[reason](path);
+function describePathIssue(reason: StudioFsBrowseErrorReason | "network", path: string, kind: PathBrowseKind): PathIssue {
+    return reason === "network" ? NETWORK_PATH_ISSUE : PATH_ISSUE_COPY[reason](path, kind);
 }
 
 // A plain path TextInput plus a "Browse" action and a resolved-path hint fetched on focus -- so a bare
@@ -97,7 +104,7 @@ export function PathInput({
     const resolveHint = (path: string): void => {
         const auto = path.trim().length === 0;
         setHint({status: "loading"});
-        browseFilesystem(fetchImpl, path, relevantDirectory)
+        browseFilesystem(fetchImpl, path, relevantDirectory, kind)
             .then((result) => {
                 setHint(result.status === "ok" ? {status: "ok", text: result.displayPath, auto} : {status: "error", reason: result.reason, path: result.resolvedPath});
             })
@@ -170,7 +177,7 @@ export function PathInput({
             )}
             {hint.status === "error" &&
                 (() => {
-                    const issue = describePathIssue(hint.reason, hint.path);
+                    const issue = describePathIssue(hint.reason, hint.path, kind);
                     return (
                         <Stack gap={0}>
                             <Text size="xs" c="red">

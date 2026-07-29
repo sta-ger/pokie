@@ -90,18 +90,23 @@ export async function createProject(fetchImpl: FetchLike, request: CreateProject
 
 // Backs the "Browse" action and PathInput's own live resolved-path hint on every filesystem-path input
 // across Home *and* Project surfaces -- never throws for a domain-level failure (a nonexistent/
-// unreadable/non-directory path), same convention as createProject/initProject above; the DTO's own
+// unreadable/wrong-type path), same convention as createProject/initProject above; the DTO's own
 // `status` field carries that. `base`, when given (e.g. the currently open project's root), resolves
 // `path` relative to it instead of Studio's own server root -- see StudioFsBrowseService.browse's own
 // doc comment for why a project-scoped field (Certification's bundle directory, an Outcome Libraries
-// selector, ...) needs this to show a truthful hint at all.
-export async function browseFilesystem(fetchImpl: FetchLike, path?: string, base?: string): Promise<StudioFsBrowseView> {
+// selector, ...) needs this to show a truthful hint at all. `kind`, when "file", validates/resolves
+// `path` as a file instead of a directory -- omitted (every navigation call, e.g. PathBrowseModal's own
+// directory listing), it stays "directory", the same contract this always had.
+export async function browseFilesystem(fetchImpl: FetchLike, path?: string, base?: string, kind?: "directory" | "file"): Promise<StudioFsBrowseView> {
     const params = new URLSearchParams();
     if (path && path.trim().length > 0) {
         params.set("path", path);
     }
     if (base && base.trim().length > 0) {
         params.set("base", base);
+    }
+    if (kind === "file") {
+        params.set("kind", kind);
     }
     // Checked via the serialized string, not `params.size` -- jsdom's URLSearchParams polyfill (used by
     // every studio-client test) doesn't implement `.size` at all.
