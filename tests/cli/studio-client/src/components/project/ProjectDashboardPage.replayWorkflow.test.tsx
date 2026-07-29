@@ -1057,4 +1057,142 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         expect(screen.getByText("Pick a spin in the Find step first.")).toBeInTheDocument();
     }, 60000);
+
+    it("keeps distinct sessions separately visible in the recent spins list and lets the session filter narrow to just one at a time", async () => {
+        const user = userEvent.setup();
+        const spins: StudioRuntimeSessionView[] = [
+            {sessionId: "sess-2", game: GAME, credits: 100, bet: 1, win: 0, studioRequestId: "req-b1", studioRound: 1},
+            {sessionId: "sess-1", game: GAME, credits: 200, bet: 1, win: 5, studioRequestId: "req-a2", studioRound: 2},
+            {sessionId: "sess-1", game: GAME, credits: 195, bet: 1, win: 0, studioRequestId: "req-a1", studioRound: 1},
+        ];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: spins}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+
+        // Default ("All sessions") shows every round from every session, never conflating a round from
+        // one session with the same round number from another.
+        await screen.findByRole("button", {name: /Round 1 in session sess-2/});
+        expect(screen.getByRole("button", {name: /Round 2 in session sess-1/})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: /Round 1 in session sess-1/})).toBeInTheDocument();
+
+        // Narrowing to sess-1 hides sess-2's round entirely, but keeps both of sess-1's own rounds.
+        await user.click(screen.getByRole("radio", {name: "sess-1"}));
+        expect(screen.getByRole("button", {name: /Round 2 in session sess-1/})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: /Round 1 in session sess-1/})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: /session sess-2/})).not.toBeInTheDocument();
+
+        // Narrowing to sess-2 shows only its own round, hiding sess-1's entirely.
+        await user.click(screen.getByRole("radio", {name: "sess-2"}));
+        expect(screen.getByRole("button", {name: /Round 1 in session sess-2/})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: /session sess-1/})).not.toBeInTheDocument();
+
+        // Back to "All sessions" restores the full, still newest-first list.
+        await user.click(screen.getByRole("radio", {name: "All sessions"}));
+        expect(screen.getByRole("button", {name: /Round 1 in session sess-2/})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: /Round 2 in session sess-1/})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: /Round 1 in session sess-1/})).toBeInTheDocument();
+    }, 60000);
+
+    it("preserves an applied session filter across a refresh of the recent spins list", async () => {
+        const user = userEvent.setup();
+        let spinsCall = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime/spins": () => {
+                spinsCall += 1;
+                const initial: StudioRuntimeSessionView[] = [
+                    {sessionId: "sess-1", game: GAME, credits: 200, bet: 1, win: 0, studioRequestId: "req-a1", studioRound: 1},
+                    {sessionId: "sess-2", game: GAME, credits: 100, bet: 1, win: 0, studioRequestId: "req-b1", studioRound: 1},
+                ];
+                if (spinsCall === 1) {
+                    return {ok: true, status: 200, body: initial};
+                }
+                // A later refresh sees a newer round land for sess-1 -- the filter (already narrowed to
+                // sess-1) must still apply to this freshly fetched list, not just the one it was set against.
+                return {
+                    ok: true,
+                    status: 200,
+                    body: [{sessionId: "sess-1", game: GAME, credits: 190, bet: 1, win: 10, studioRequestId: "req-a2", studioRound: 2}, ...initial],
+                };
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+        await screen.findByRole("button", {name: /Round 1 in session sess-1/});
+
+        await user.click(screen.getByRole("radio", {name: "sess-1"}));
+        expect(screen.queryByRole("button", {name: /session sess-2/})).not.toBeInTheDocument();
+
+        // Two "Refresh" buttons exist on this page (Session Spin's own, and Recent Replays' further
+        // down) -- the Session Spin one is the first in DOM order.
+        await user.click(screen.getAllByRole("button", {name: "Refresh"})[0]);
+        await screen.findByRole("button", {name: /Round 2 in session sess-1/});
+
+        // Still filtered to sess-1 after the refresh -- the newly arrived round shows up, sess-2 stays hidden.
+        expect(screen.getByRole("button", {name: /Round 1 in session sess-1/})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: /session sess-2/})).not.toBeInTheDocument();
+        expect(screen.getByRole("radio", {name: "sess-1"})).toBeChecked();
+    }, 60000);
+
+    it("shows truthful per-entry source (live vs. pre-generated) in both the recent list and Inspect, unaffected by the session filter", async () => {
+        const user = userEvent.setup();
+        const spins: StudioRuntimeSessionView[] = [
+            {
+                sessionId: "sess-live",
+                game: GAME,
+                credits: 200,
+                bet: 1,
+                win: 5,
+                studioRequestId: "req-live",
+                studioRound: 1,
+                studioSource: "live",
+            },
+            {
+                sessionId: "sess-imported",
+                game: GAME,
+                credits: 300,
+                bet: 1,
+                win: 0,
+                studioRequestId: "req-imported",
+                studioRound: 1,
+                studioSource: "pre-generated",
+            },
+        ];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: spins}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+        await screen.findByRole("button", {name: /Round 1 in session sess-live/});
+
+        // Narrow to just the pre-generated (imported) session and inspect it -- its Source row must say
+        // "Pre-generated outcome library", never mislabeled as a live spin just because most spins are live.
+        await user.click(screen.getByRole("radio", {name: "sess-imported"}));
+        expect(screen.queryByRole("button", {name: /session sess-live/})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: /session sess-imported/}));
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        expect(screen.getByText("Pre-generated outcome library")).toBeInTheDocument();
+        expect(screen.queryByText("Live spin")).not.toBeInTheDocument();
+
+        // Back to Find, switch the filter to the live session, and confirm its own Source is truthfully
+        // reported too, distinct from the imported one above.
+        await user.click(screen.getByRole("button", {name: stepperStep("Find", "Locate a round")}));
+        await user.click(screen.getByRole("radio", {name: "All sessions"}));
+        await user.click(screen.getByRole("radio", {name: "sess-live"}));
+        expect(screen.queryByRole("button", {name: /session sess-imported/})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: /session sess-live/}));
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        expect(screen.getByText("Live spin")).toBeInTheDocument();
+        expect(screen.queryByText("Pre-generated outcome library")).not.toBeInTheDocument();
+    }, 60000);
 });

@@ -342,6 +342,106 @@ describe("StudioRuntimeManager", () => {
 
             await manager.stop();
         });
+
+        it("stamps each recorded spin with a stable, session-local round index, a recorded-at timestamp, and its source", async () => {
+            const manager = await startedManager({debug: false});
+            const created = await manager.createSession();
+            if (created.status !== "ok") {
+                return;
+            }
+            const sessionId = created.session.sessionId;
+
+            const first = await manager.spin(sessionId, "req-a");
+            const second = await manager.spin(sessionId, "req-b");
+            expect(first.status).toBe("ok");
+            expect(second.status).toBe("ok");
+            if (first.status !== "ok" || second.status !== "ok") {
+                return;
+            }
+
+            // Round indexing is session-local (this session's own 1st and 2nd round) and 1-based --
+            // not a global spin counter across every session the manager has ever touched.
+            expect(first.session.studioRound).toBe(1);
+            expect(second.session.studioRound).toBe(2);
+            expect(typeof first.session.studioRecordedAt).toBe("string");
+            expect(Number.isNaN(Date.parse(first.session.studioRecordedAt as string))).toBe(false);
+            // A plain start (no pre-generated library) is always "live".
+            expect(first.session.studioSource).toBe("live");
+
+            const recent = manager.listRecentSpins();
+            expect(recent.map((entry) => entry.studioRound)).toEqual([2, 1]);
+
+            await manager.stop();
+        });
+
+        it("an idempotent retry of the same (sessionId, requestId) reuses the original round's identity instead of filing a duplicate entry", async () => {
+            const manager = await startedManager({debug: false});
+            const created = await manager.createSession();
+            if (created.status !== "ok") {
+                return;
+            }
+            const sessionId = created.session.sessionId;
+
+            const first = await manager.spin(sessionId, "req-retry");
+            const retry = await manager.spin(sessionId, "req-retry");
+            expect(first.status).toBe("ok");
+            expect(retry.status).toBe("ok");
+            if (first.status !== "ok" || retry.status !== "ok") {
+                return;
+            }
+
+            // Canonically the same round -- same identity (round/recordedAt/source) on both results,
+            // and the retry's idempotent replay is deep-equal to the original in every other field too.
+            expect(retry).toEqual(first);
+            expect(retry.session.studioRound).toBe(first.session.studioRound);
+            expect(retry.session.studioRecordedAt).toBe(first.session.studioRecordedAt);
+
+            // Never filed as a second entry -- the retry left the recent-spin list exactly as it was.
+            const recent = manager.listRecentSpins();
+            expect(recent).toHaveLength(1);
+            expect(recent[0].studioRound).toBe(1);
+
+            // A genuinely new round for the same session still gets its own, later index.
+            const nextRound = await manager.spin(sessionId, "req-next");
+            expect(nextRound.status).toBe("ok");
+            if (nextRound.status === "ok") {
+                expect(nextRound.session.studioRound).toBe(2);
+            }
+            expect(manager.listRecentSpins()).toHaveLength(2);
+
+            await manager.stop();
+        });
+
+        it("never conflates two different sessions that happen to reuse the same manually-typed requestId", async () => {
+            const manager = await startedManager({debug: false});
+            const createdA = await manager.createSession();
+            const createdB = await manager.createSession();
+            if (createdA.status !== "ok" || createdB.status !== "ok") {
+                return;
+            }
+            expect(createdA.session.sessionId).not.toBe(createdB.session.sessionId);
+
+            // Same literal requestId, deliberately reused across two distinct sessions -- e.g. via the
+            // Debug tab's manual "Request id override" field -- must still be recorded as two distinct,
+            // legitimate rounds, since the canonical identity is the (sessionId, requestId) pair, never
+            // requestId alone.
+            const spunA = await manager.spin(createdA.session.sessionId, "shared-request-id");
+            const spunB = await manager.spin(createdB.session.sessionId, "shared-request-id");
+            expect(spunA.status).toBe("ok");
+            expect(spunB.status).toBe("ok");
+            if (spunA.status !== "ok" || spunB.status !== "ok") {
+                return;
+            }
+
+            expect(spunA.session.studioRound).toBe(1);
+            expect(spunB.session.studioRound).toBe(1);
+
+            const recent = manager.listRecentSpins();
+            expect(recent).toHaveLength(2);
+            expect(new Set(recent.map((entry) => entry.sessionId))).toEqual(new Set([createdA.session.sessionId, createdB.session.sessionId]));
+
+            await manager.stop();
+        });
     });
 
     describe("repositoryMode: file", () => {
