@@ -1,4 +1,5 @@
 import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
+import type {IncomingMessage} from "http";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
@@ -44,6 +45,12 @@ export type StudioServerOptions = {
     // `root` needed, unlike fsBrowseService: a native OS dialog has its own start-location argument, not
     // a fixed root to resolve relative paths against).
     nativePickerService?: StudioNativePickerService;
+    // Gates the two endpoints above to a "confirmed local" caller (see isLoopbackRequest.ts) -- a remote
+    // Studio session (e.g. `pokie studio --host 0.0.0.0`) is reported unavailable and can never invoke
+    // nativePickerService, regardless of the server's own platform/display. Defaults to the real
+    // isLoopbackRequest (the request's actual TCP peer address); overridable in tests, since a test's
+    // own HTTP client always connects over loopback, the same as a genuinely local caller.
+    isLoopbackRequest?: (req: IncomingMessage) => boolean;
     // Drives the Blueprint Editor's five /api/home/blueprints/* endpoints — see StudioBlueprintService.
     // Required rather than defaulted for the same reason homeService is: a default instance would need
     // a `pokie` version to embed into generated package.json files, and StudioServer has no business

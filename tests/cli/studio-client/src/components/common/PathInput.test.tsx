@@ -106,6 +106,25 @@ describe("PathInput", () => {
         expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
     });
 
+    it("never calls POST /api/home/fs/native-browse and opens only the labeled Server filesystem browser for a remote Studio session (server reports the picker unavailable)", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games", displayPath: "./games", entries: []}}),
+            "/api/home/fs/native-browse/availability": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "unavailable", reason: "Native folder/file dialogs are only available to a Studio session connecting from the same machine running its server."},
+            }),
+        });
+
+        renderWithProviders(<Harness initial="./games" />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/native-browse")).toBe(false);
+    });
+
     it("seeds the fallback modal from a remembered location for this browseId when the field is empty", async () => {
         const user = userEvent.setup();
         localStorage.setItem("pokie-studio:browse-location:create-project-destination", "/home/alice/games");
