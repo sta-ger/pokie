@@ -80,6 +80,38 @@ describe("PokiePathResolver", () => {
             }
         });
 
+        it("rejects a Documents symlink whose real destination is the OS temp directory", () => {
+            const realTarget = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-symlink-target-"));
+            try {
+                fs.symlinkSync(realTarget, path.join(tmpDir, "Documents"), "dir");
+                const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
+                const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env);
+
+                const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+                expect(result.status).toBe("unsafe-path");
+            } finally {
+                fs.rmSync(realTarget, {recursive: true, force: true});
+            }
+        });
+
+        it("keeps a benign symlinked Documents directory usable", () => {
+            const fixturesRoot = path.join(process.cwd(), ".pokie-path-resolver-fixtures");
+            const realTarget = fs.mkdtempSync(path.join(fixturesRoot, "real-documents-"));
+            try {
+                const documentsLink = path.join(tmpDir, "Documents");
+                fs.symlinkSync(realTarget, documentsLink, "dir");
+                const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
+                const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env);
+
+                const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+                expect(result).toEqual({status: "valid", directory: path.join(documentsLink, "POKIE", "sample-slot"), source: "documents"});
+            } finally {
+                fs.rmSync(realTarget, {recursive: true, force: true});
+            }
+        });
+
         it("never silently resolves into Studio's own internal directory", () => {
             const documents = path.join(tmpDir, "Documents");
             fs.mkdirSync(documents, {recursive: true});
@@ -170,6 +202,19 @@ describe("PokiePathResolver", () => {
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
             expect(result).toEqual({status: "valid", directory: "C:\\Users\\alice\\POKIE\\sample-slot", source: "home"});
+        });
+
+        it("flags a win32 default that resolves into the install root using Windows path semantics, regardless of host platform", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "win32", env: {USERPROFILE: "C:\\Users\\alice"}, homeDir: "C:\\Users\\alice"};
+            const resolver = new PokiePathResolver(
+                {cwd: "/somewhere/unrelated", installRoot: "C:\\Program Files\\Pokie"},
+                env,
+                () => ({status: "valid", directory: "C:\\Program Files\\Pokie\\Documents", source: "documents"}),
+            );
+
+            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+            expect(result.status).toBe("unsafe-path");
         });
     });
 

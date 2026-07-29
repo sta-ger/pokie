@@ -78,7 +78,11 @@ export class PokiePathResolver {
         // Studio backend).
         const platformPath = this.env.platform === "win32" ? path.win32 : path.posix;
         const directory = platformPath.join(base.directory, POKIE_PROJECTS_FOLDER_NAME, trimmedName);
-        if (isUnsafeStartDirectory(base.directory, this.unsafeContext) || isUnsafeStartDirectory(directory, this.unsafeContext)) {
+        // Judged with the *target* platform's containment semantics too (see isUnsafeStartDirectory.ts),
+        // not whatever this.unsafeContext's own caller happened to assume -- so a win32 base directory
+        // resolved above is checked against Windows drive/UNC rules even when this runs on a POSIX host.
+        const unsafeContext: UnsafeStartDirectoryContext = {...this.unsafeContext, platform: this.env.platform};
+        if (isUnsafeStartDirectory(base.directory, unsafeContext) || isUnsafeStartDirectory(directory, unsafeContext)) {
             return {
                 status: "unsafe-path",
                 message: `Could not determine a safe default project location (resolved to "${directory}"). Choose a destination directory explicitly.`,
