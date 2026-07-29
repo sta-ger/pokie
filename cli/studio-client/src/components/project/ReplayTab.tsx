@@ -120,6 +120,21 @@ export function ReplayTab({
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
     const [selectedSimEntry, setSelectedSimEntry] = useState<StudioSimulationReportListEntry>();
     const [simRound, setSimRound] = useState(1);
+    // Recent spins can span several distinct Studio runtime sessions (a new session created after a
+    // restart, a restored session, etc.) all interleaved newest-first in one list -- this narrows that
+    // list down to one session at a time so picking a round from a specific session isn't a matter of
+    // scanning past every other session's rounds first. "all" (the default) shows the unfiltered list,
+    // same newest-first order recentSpins already arrives in.
+    const [spinSessionFilter, setSpinSessionFilter] = useState<string>("all");
+    // Resets the filter back to "all" the moment its selected session no longer appears in the list at
+    // all (e.g. its rounds aged out past StudioRuntimeManager.MAX_RECENT_SPINS) -- otherwise the picker
+    // would be stuck silently showing an empty list with no way back to "all" other than knowing to
+    // reopen this exact control and pick it by hand.
+    useEffect(() => {
+        if (recentSpins.status === "loaded" && spinSessionFilter !== "all" && !recentSpins.entries.some((entry) => entry.sessionId === spinSessionFilter)) {
+            setSpinSessionFilter("all");
+        }
+    }, [recentSpins, spinSessionFilter]);
 
     const active = progress !== undefined && (progress.status === "queued" || progress.status === "running");
     const terminal = progress !== undefined && !active;
@@ -313,36 +328,65 @@ export function ReplayTab({
                                 <EmptyState message="No spins recorded yet in this Studio session — start the runtime and spin a session first." />
                             )}
                             {recentSpins.status === "loaded" && (
-                                <List listStyleType="none" spacing={4}>
-                                    {recentSpins.entries.map((entry) => (
-                                        // `studioRound` (this session's own stable round index -- see
-                                        // StudioRuntimeSessionView's own doc comment) makes this key stable across
-                                        // a refresh, unlike the array index it replaces: a duplicate (sessionId,
-                                        // studioRequestId) pair (an idempotency-protected retry) is deduplicated
-                                        // into the *same* round by StudioRuntimeManager.recordRecentSpin() before
-                                        // it ever reaches this list, so (sessionId, studioRound) alone is already
-                                        // unique here -- never conflated with a legitimate round from a different
-                                        // session, since the pairing always includes sessionId. Falling back to
-                                        // studioRequestId (still per-session-unique by construction) covers an
-                                        // entry that predates studioRound existing at all.
-                                        <List.Item key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
-                                            <Anchor
-                                                component="button"
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedSpin(entry);
-                                                    setActiveStep(1);
-                                                }}
-                                                style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
-                                            >
-                                                Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits {entry.credits}, win{" "}
-                                                {entry.win ?? 0}
-                                                {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
-                                                {entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : ""}
-                                            </Anchor>
-                                        </List.Item>
-                                    ))}
-                                </List>
+                                <div>
+                                    {/* Distinct session ids in first-seen order -- recentSpins.entries is already
+                                        newest-first, so this naturally lists the most recently active session first
+                                        too. Rendered even with a single session so the control never disappears out
+                                        from under an already-picked filter value (see the reset effect above). */}
+                                    <SegmentedControl
+                                        value={spinSessionFilter}
+                                        onChange={setSpinSessionFilter}
+                                        data={[
+                                            {label: "All sessions", value: "all"},
+                                            ...Array.from(new Set(recentSpins.entries.map((entry) => entry.sessionId))).map((sessionId) => ({
+                                                label: sessionId,
+                                                value: sessionId,
+                                            })),
+                                        ]}
+                                        mb="sm"
+                                        aria-label="Filter by session"
+                                    />
+                                    {(() => {
+                                        const filteredSpins =
+                                            spinSessionFilter === "all"
+                                                ? recentSpins.entries
+                                                : recentSpins.entries.filter((entry) => entry.sessionId === spinSessionFilter);
+                                        return filteredSpins.length === 0 ? (
+                                            <EmptyState message="No spins recorded for the selected session." />
+                                        ) : (
+                                            <List listStyleType="none" spacing={4}>
+                                                {filteredSpins.map((entry) => (
+                                                    // `studioRound` (this session's own stable round index -- see
+                                                    // StudioRuntimeSessionView's own doc comment) makes this key stable across
+                                                    // a refresh, unlike the array index it replaces: a duplicate (sessionId,
+                                                    // studioRequestId) pair (an idempotency-protected retry) is deduplicated
+                                                    // into the *same* round by StudioRuntimeManager.recordRecentSpin() before
+                                                    // it ever reaches this list, so (sessionId, studioRound) alone is already
+                                                    // unique here -- never conflated with a legitimate round from a different
+                                                    // session, since the pairing always includes sessionId. Falling back to
+                                                    // studioRequestId (still per-session-unique by construction) covers an
+                                                    // entry that predates studioRound existing at all.
+                                                    <List.Item key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
+                                                        <Anchor
+                                                            component="button"
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedSpin(entry);
+                                                                setActiveStep(1);
+                                                            }}
+                                                            style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                                        >
+                                                            Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits {entry.credits}, win{" "}
+                                                            {entry.win ?? 0}
+                                                            {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
+                                                            {entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : ""}
+                                                        </Anchor>
+                                                    </List.Item>
+                                                ))}
+                                            </List>
+                                        );
+                                    })()}
+                                </div>
                             )}
                         </div>
                     )}
