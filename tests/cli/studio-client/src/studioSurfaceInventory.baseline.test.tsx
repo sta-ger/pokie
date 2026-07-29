@@ -432,3 +432,104 @@ describe("Advanced tab inferable-empty-input baseline", () => {
         expect(JSON.parse(startCall?.init?.body ?? "{}")).toEqual({debug: false, repositoryMode: "memory"});
     });
 });
+
+// The remaining describe blocks extend this baseline to Home's own 3 tabs (Design & Build, Open
+// Project, Advanced Tools -- which itself hosts the Raw Editor alongside Create/Init/Build-from-
+// blueprint) with the same "whole-surface inventory" material the Advanced-tab blocks above pin: the
+// Stepper/progress control, every path/text field's placeholder (or lack of one), the one and only
+// `disabled`-gated action in this whole group, and a raw-error-surface trigger neither
+// BlueprintEditorPage.*.test.tsx nor CreateProjectForm/InitProjectForm/BuildFromBlueprintPanel.test.tsx
+// nor openProjectGuard.test.tsx already demonstrates end to end -- see
+// docs/studio-phase2-inventory.md's own Design & Build / Raw Editor / Advanced Tools / Open Project
+// sections for the full, line-cited enumeration this only spot-checks executably.
+
+describe("Design & Build vs. Raw Editor: Build-gating baseline", () => {
+    it("the Raw Editor's 'Build Package' is enabled before any validation is ever attempted -- Design & Build's guided flow blocks the identical button until a successful validation", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/blueprints/validate": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "invalid", errors: [{code: "blueprint-manifest-invalid-id", severity: "error", message: "bad id"}], warnings: []},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        // Idle, never-validated state: the guided instance's own "Build Package" (see
+        // BlueprintEditorPage.guidedProgress.test.tsx) is disabled here; the raw instance's identical
+        // button, gated only by `validationView.status === "invalid"` (BlueprintEditorPage.tsx:378), is not.
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
+
+        // A known-invalid result does still block it -- "never blocked before validating" is not "never
+        // blocked at all".
+        await user.click(screen.getByRole("button", {name: "Validate"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled());
+    });
+});
+
+describe("Design & Build / Raw Editor / Advanced Tools / Open Project: path-field placeholder baseline", () => {
+    it("no path/text field across this entire group carries a placeholder -- unlike 6 of the 7 Advanced project tabs", () => {
+        const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        for (const label of [
+            "Load from path",
+            "Save to path",
+            "Output directory (optional)",
+            "Destination directory",
+            "Package name",
+            "Existing project directory",
+            "Blueprint JSON path",
+            "Project path",
+        ]) {
+            // getAllByLabelText (not getByLabelText: "Output directory (optional)" labels two distinct
+            // fields, BlueprintBuildPanel's and BuildFromBlueprintPanel's) finds inputs on Home's other,
+            // currently-hidden (CSS display:none, still mounted -- see HomePage's own "hide, don't
+            // unmount" doc comment) tabs too, unlike getByRole's default hidden-element filtering.
+            for (const field of screen.getAllByLabelText(label, {exact: false})) {
+                expect(field).not.toHaveAttribute("placeholder");
+            }
+        }
+    });
+});
+
+describe("Design & Build / Raw Editor: Load/Save raw-error-surface baseline", () => {
+    it("Load from path / Save to path have no required-field gating at all -- a blank path is sent straight to the server, which rejects it with a raw, unwrapped error message", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            // Matches the exact server-side rejection validateLoadBlueprintRequest.ts throws for a
+            // blank/whitespace path -- StudioServer maps that thrown Error to this 400 shape.
+            "/api/home/blueprints/load": () => ({ok: false, status: 400, body: {error: '"path" is required.'}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        // Unlike every required PathInput/TextInput elsewhere in this group (Project path, Destination
+        // directory, ...), "Load from path" carries no `required` prop -- so clicking Load with a blank
+        // field isn't silently blocked by native HTML validation; it actually reaches the server.
+        await user.click(screen.getByRole("button", {name: "Load"}));
+
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/home/blueprints/load")).toBe(true));
+        expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/load")?.init?.body ?? "{}")).toEqual({path: ""});
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === '"path" is required.')).toBe(true);
+    });
+});
+
+describe("Open Project: required-field baseline", () => {
+    it("'Open' relies entirely on native HTML required-field validation, not a disabled button or an app-level message -- clicking it with a blank path makes zero API calls and shows zero feedback", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/open"]});
+
+        const openButton = screen.getByRole("button", {name: "Open"});
+        expect(openButton).not.toBeDisabled();
+
+        await user.click(openButton);
+
+        expect(calls.some((call) => call.url === "/api/home/projects/open")).toBe(false);
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(screen.queryByText("Opening…")).not.toBeInTheDocument();
+    });
+});

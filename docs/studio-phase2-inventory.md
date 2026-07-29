@@ -41,13 +41,195 @@ directory layout, testing setup) this document does not duplicate.
 
 ---
 
-## Design & Build / Raw Editor / Advanced Tools / Open Project
+## Design & Build (`/home/design`, guided `BlueprintEditorPage`)
 
-Already covered in depth by `tests/cli/studio-client/src/studioSurfaceInventory.baseline.test.tsx`'s first
-three `describe` blocks (route table, Home tab inventory, Project Dashboard tab inventory, New Blueprint
-action surface) and by `docs/studio-frontend.md`'s own UX/Information-architecture section, including the
-dirty-navigation guard, the sectioned Design & Build layout, and the guided Stepper→`StepProgressList`
-conversion. Not re-summarized here; those two documents are the baseline for this group.
+**Route/tab evidence:** `/home/design` (default Home tab, ungrouped). `HomePage.tsx:20,79-81` mounts a
+guided `<BlueprintEditorPage guided .../>` instance permanently (hidden via CSS when another Home tab is
+active, never unmounted). Covered by the route-table/Home-tab-inventory fixtures above (executable).
+
+**Stepper:** not a Mantine `Stepper` at all -- a read-only `StepProgressList` (`BlueprintEditorPage.tsx:317`,
+`common/StepProgressList.tsx`), 3 items: Configure → Validate → Build (`describeGuidedProgress`,
+`BlueprintEditorPage.tsx:48-57`). Purely derived from `validationView.status`, with no `onStepClick` at all
+-- there is nothing to click ahead to (`StepProgressList.tsx`'s own doc comment), unlike every interactive
+Advanced-tab Stepper elsewhere in this document. Fully exercised end to end (idle/invalid/ok transitions,
+`aria-current`/`aria-disabled` semantics) by
+`BlueprintEditorPage.guidedProgress.test.tsx`; not re-demonstrated here.
+
+**Path/text fields (evidence only):** hidden behind a "Show advanced options (JSON mode, load/save by
+path)" disclosure (`BlueprintEditorPage.tsx:322-328`, executable presence-only via the New-Blueprint-action
+fixture above) -- "Load from path" / "Save to path" (`BlueprintLoadSaveControls.tsx:38,42`) and the Build
+panel's "Output directory (optional)" (`BlueprintBuildPanel.tsx:100`). **None of the three carries a
+placeholder** -- pinned executably below (path-field placeholder baseline).
+
+**Disabled actions (executable):** "Build Package" is the **one and only** `disabled`-gated action across
+this entire section (and the Raw Editor / Advanced Tools / Open Project sections below) --
+`disabled={guidedBuildBlocked}`, where `guidedBuildBlocked = validationView.status !== "ok"`
+(`BlueprintEditorPage.tsx:283,378`) blocks Build until the *current revision* has actually validated
+cleanly (idle/loading/error/invalid all block it). New/Load/Save/Validate/"Build Preview" carry no
+`disabled` prop anywhere in this section -- only a `loading` state. Fully exercised (including the
+edit-after-validate re-block) by `BlueprintEditorPage.validation.test.tsx`.
+
+**Inferable empty inputs (evidence only):** Build panel's Output directory: `outDir.trim() || undefined`
+(`BlueprintBuildPanel.tsx:59,66`) -- blank/whitespace silently becomes "use the default output directory"
+rather than being rejected, same coercion pattern as every Advanced tab's own optional-directory fields.
+Load/Save's own path fields have **no** trim/default at all -- see Raw-error surfaces below, since they're
+not `required` and a blank one just reaches the server.
+
+**Misleading placeholders:** none -- `grep`-confirmed zero `placeholder` occurrences across
+`BlueprintEditorPage.tsx`, `BlueprintLoadSaveControls.tsx`, and `BlueprintBuildPanel.tsx`; pinned
+executably below.
+
+**Raw-error surfaces (evidence only, except Load/Save -- see below):** `loadView`
+error/load-error → `ErrorState` (`BlueprintLoadSaveControls.tsx:58`); `saveView` error/failed → `ErrorState`
+(63); `saveView` conflict → `RecoveryNotice` with an "Overwrite" action, the same partial exception to raw
+passthrough Stake Engine Export's overwritable-conflict case is (61); Build Preview/Build Result errors via
+the shared `BuildPreviewDisplay`/`BuildResultDisplay` (`common/BuildPreviewDisplay.tsx`,
+`common/BuildResultDisplay.tsx`). **One deviation from the systemic pattern:** `BlueprintValidationPanel`'s
+own "error" status is rendered as a **plain `<Text>`** (`BlueprintValidationPanel.tsx:9-11,30`), *not*
+routed through `ErrorState`/`role="alert"` at all -- the one raw-error case in this whole document that
+isn't even wrapped in an `Alert`, let alone a friendlier one. Flagged here as a real (if narrow)
+accessibility gap: a screen reader relying on `role="alert"` announcements would miss it entirely.
+
+---
+
+## Raw Editor (Advanced Tools' non-guided `BlueprintEditorPage` instance)
+
+**Route/tab evidence:** `/home/advanced` (`HomePage.tsx:22,95,145`). A second, independently-mounted
+`<BlueprintEditorPage />` instance with `guided` omitted -- "exactly as it always has" per the component's
+own doc comment (`BlueprintEditorPage.tsx:82-87`). Covered by the Home-tab-inventory and New-Blueprint-
+action-surface fixtures above (executable).
+
+**Stepper:** none -- no `StepProgressList`/`Stepper`/`NextStepCallout` renders at all when `guided` is
+false (`BlueprintEditorPage.tsx:310-320` are gated on `guided &&`). Confirmed executable by the existing
+"only the guided instance offers a 'Show advanced options' disclosure" fixture's sibling assertions.
+
+**Path/text fields:** identical set to Design & Build's (Load from path / Save to path / Output directory),
+but **always visible**, never behind a disclosure (no `advancedOptionsOpened` prop passed,
+`BlueprintEditorPage.tsx` guided-vs-raw JSX). Same "no placeholder anywhere" finding, pinned once for both
+sections by the path-field placeholder baseline below.
+
+**Disabled actions (executable -- the material gap this baseline closes):** "Build Package" here is gated
+by `validationView.status === "invalid"` only (`BlueprintEditorPage.tsx:378`) -- looser than the guided
+instance's `!== "ok"`. Concretely: **Build Package is enabled before any validation has ever been
+attempted**, and only becomes disabled once a validation actually comes back invalid. This asymmetry
+between the guided and raw instances of the identical button/panel was previously only described in prose
+(`BlueprintBuildPanel.tsx`'s own `blocked` doc comment); it is now pinned end to end by the "Design & Build
+vs. Raw Editor: Build-gating baseline" fixture below -- idle-state not-disabled, then disabled after an
+invalid Validate response.
+
+**Inferable empty inputs:** same as Design & Build (Output directory trim-or-undefined).
+
+**Misleading placeholders:** none, pinned by the same fixture as Design & Build.
+
+**Raw-error surfaces (executable -- new fixture below):** Load from path carries no `required` gating at
+all (unlike every required `PathInput` elsewhere in this group) -- a blank path is sent straight to
+`POST /api/home/blueprints/load`, and the server's own `validateLoadBlueprintRequest` rejection
+(`'"path" is required.'`) comes back and renders verbatim through `ErrorState`, no remediation copy added.
+Demonstrated end to end (request body + rendered alert text) by "Design & Build / Raw Editor: Load/Save
+raw-error-surface baseline" below. Save's identical gap is evidence-only (same component, same
+`validateSaveBlueprintRequest` rejection shape).
+
+**Contract cross-reference:** `StudioRequestContractBaseline.test.ts`'s new "Design & Build / Raw Editor
+(Load / Save / Build) vs. Advanced Tools' Init/Build-from-blueprint" block pins that Save's own
+request-validation layer (and the service that writes it) never validates the *blueprint's own shape* at
+all -- only that it's present -- unlike Build, which always runs the full validator first. A structurally
+invalid blueprint can be written to disk via Load/Save, sidestepping Build's own gate entirely.
+
+---
+
+## Advanced Tools (scaffold a hand-coded game / initialize in place / build from an existing blueprint file)
+
+The Raw Editor above is physically part of this same `/home/advanced` tab (`HomePage.tsx:95-148`); it's
+documented in its own section above since its Stepper/gating story is materially different from these
+three plain-form tools. These three (`CreateProjectForm`, `InitProjectForm`, `BuildFromBlueprintPanel`)
+share one shape: an uncontrolled Mantine `useForm`, a `PathInput` (or plain `TextInput`) per field, and a
+submit button with no `validate` config on the form at all.
+
+**Route/tab evidence:** `/home/advanced`, same as the Raw Editor. Covered by the Home-tab-inventory
+fixture's own heading assertions ("Scaffold a hand-coded game" / "Initialize an existing directory" /
+"Build from an existing blueprint file", executable).
+
+**Stepper:** none -- three independent, non-sequenced forms with no shared progress indicator of any kind.
+
+**Path/text fields (evidence only, deeply covered by each tool's own dedicated component test --
+`CreateProjectForm.test.tsx` / `InitProjectForm.test.tsx` / `BuildFromBlueprintPanel.test.tsx`, including
+`PathInput`'s own Browse/resolved-hint/Cancel behavior in depth):** Create Project's "Destination
+directory" (`PathInput`, required, default `"."`, `CreateProjectForm.tsx:65-73`), "Package name" (required,
+defaults to the concrete `"my-slot-game"` so Create works with zero typing -- `DEFAULT_PROJECT_NAME`,
+`CreateProjectForm.tsx:17,36`), "Game id"/"Game name"/"Version" (all optional); Init Project's "Existing
+project directory" (`PathInput`, required, default `"."`, `InitProjectForm.tsx:45-53`); Build-from-
+blueprint's "Blueprint JSON path" (`PathInput`, required, `BuildFromBlueprintPanel.tsx:80-88`) and "Output
+directory (optional)" (not required, 89-96). **None of these six fields carries a placeholder** -- pinned
+executably below, alongside Design & Build/Raw Editor/Open Project's own fields.
+
+**Disabled actions:** none in this section -- "Create"/"Initialize"/"Preview"/"Build" carry no `disabled`
+prop at all (only `loading`); every required field instead relies purely on the underlying `<input
+required>`'s **native HTML constraint validation** (no `validate` config passed to any of these 3 forms'
+`useForm` calls) to block a blank submission. This is evidence-only for these three tools (their own
+dedicated test files never exercise a blank-required-field submit either) -- see Open Project below, where
+the identical pattern *is* pinned executably once for the whole group, since all four required fields in
+this document (Project path, Destination directory, Existing project directory, Blueprint JSON path) share
+the exact same un-tested mechanism.
+
+**Inferable empty inputs (evidence only):** Create Project's `gameId`/`gameName`/`version` each collapse a
+blank/whitespace value to `undefined` before sending (`values.gameId.trim() || undefined`, etc.,
+`CreateProjectForm.tsx:47-49`) -- optional-override fields, so this is the intended "no override" behavior,
+not a validation gap. Build-from-blueprint's `outDir` does the same (`BuildFromBlueprintPanel.tsx:42,50`).
+
+**Misleading placeholders:** none, pinned by the same fixture as Design & Build/Raw Editor/Open Project.
+
+**Raw-error surfaces (evidence only -- already covered by each tool's own dedicated test's "domain-level
+failure" cases, e.g. CreateProjectForm.test.tsx's "destination already exists" conflict):** all three
+funnel a failed create/init/preview/build straight into the shared `ScaffoldResultDisplay`/
+`BuildPreviewDisplay`/`BuildResultDisplay` → `ErrorState`, the same systemic passthrough pattern documented
+throughout this file.
+
+**Contract cross-reference:** `StudioRequestContractBaseline.test.ts`'s new contract block also pins Init
+Project's request shape (directory-only, no name/gameId/gameName/version overrides Create Project accepts)
+and confirms Build-from-blueprint shares its exact request shape (`blueprintPath` + optional `outDir`) with
+the Blueprint Editor's own Build panel (`validateBuildRequest` is literally the same function both
+`POST /api/home/projects/build/preview` and `POST /api/home/projects/build` use).
+
+---
+
+## Open Project (`/home/open`)
+
+**Route/tab evidence:** `/home/open` (`HomePage.tsx:21,83-93`). Two independent ways to open a project:
+`RecentProjectsPanel` (a fetched table) and `OpenProjectForm` (a manual path). Covered by the Home-tab-
+inventory fixture (executable) and, for the dirty-Design-draft guard both paths share via `useOpenProject`,
+exhaustively by `openProjectGuard.test.tsx` (Cancel/Confirm/failed-call/Back-Forward/tab-switch, all
+executable) -- not re-demonstrated here.
+
+**Stepper:** none.
+
+**Path/text fields (executable, new fixture below):** `OpenProjectForm`'s "Project path"
+(`OpenProjectForm.tsx:39`) is `required` and carries **no placeholder** -- confirmed by the path-field
+placeholder baseline below.
+
+**Disabled actions (executable, new fixture below):** "Open" carries no `disabled` prop at all (only
+`loading`, `OpenProjectForm.tsx:40`) -- exactly the same native-`required`-only pattern as Advanced Tools'
+three forms above. "Refresh" (`RecentProjectsPanel.tsx:40-42`) is never disabled either. **This is pinned
+executably here** (not just described from source) since it's the cleanest, least-noisy place to
+demonstrate it once for the whole group: clicking "Open" with a blank "Project path" makes **zero** API
+calls and shows **zero** feedback of any kind (no alert, no loading state) -- the browser's own native
+constraint-validation UI is the only signal, and it isn't visible to `@testing-library`'s DOM assertions at
+all, only to a real user in a real browser. Advanced Tools' 3 forms and the Raw Editor's own required Load/
+none-required-but-server-rejects-it Load field (see above) are evidence-only variants of this exact same
+"required-but-not-disabled" convention, not repeated as separate fixtures.
+
+**Inferable empty inputs:** none -- `OpenProjectForm`'s only field is the required path above; no default/
+coercion behavior exists to observe.
+
+**Misleading placeholders:** none, pinned by the shared fixture below.
+
+**Raw-error surfaces (evidence only, exhaustively covered by `openProjectGuard.test.tsx`'s own failed-
+open-project-call case and `RecentProjectsPanel.test.tsx`):** `OpenProjectForm`'s `state.status === "error"`
+→ `ErrorState` (`OpenProjectForm.tsx:46`); `RecentProjectsPanel`'s own fetch-list error and per-row open
+error, both → `ErrorState` (`RecentProjectsPanel.tsx:46`). One additional, previously-unrecorded UX note:
+a "missing" recent-project entry (its `projectRoot` no longer resolves on disk) renders as plain dimmed
+text with "(missing)" appended instead of a clickable link (`RecentProjectsPanel.tsx:62-64`) -- correctly
+non-interactive (there's nothing to open), but with no explanatory tooltip/description beyond the bare
+word, evidence-only.
 
 ---
 
@@ -362,15 +544,33 @@ is the **one partial exception** among all raw-error surfaces in this document �
 
 ## Cross-cutting findings
 
-**Raw-error passthrough is systemic, not per-tab.** `common/ErrorState.tsx` renders `{message}` verbatim
-inside an `Alert` with zero added text, and every Advanced tab except `RuntimeTab.tsx` (which wraps two
-specific cases — "blocked"/"conflict" session states — in a friendlier `RecoveryNotice`) and
-`StakeEngineExportTab.tsx` (whose overwritable-conflict case does the same) passes a raw,
-`domain/errorMessage.ts`-derived string straight through. This baseline demonstrates the pattern executably
-for 4 of the 7 Advanced tabs (Deployment, Runtime, Replay, Certification) across both trigger shapes
-(mount-time GET failure and interactive POST failure); the remaining occurrences (enumerated per-workflow
-above) are evidence-only, since they're either already exhaustively covered by each tab's own dedicated
-workflow test or would add near-duplicate fixtures of an already-proven, component-level-verified pattern.
+**Raw-error passthrough is systemic, not per-tab — and not just an "Advanced project tab" pattern either.**
+`common/ErrorState.tsx` renders `{message}` verbatim inside an `Alert` with zero added text, and every
+Advanced tab except `RuntimeTab.tsx` (which wraps two specific cases — "blocked"/"conflict" session states
+— in a friendlier `RecoveryNotice`) and `StakeEngineExportTab.tsx` (whose overwritable-conflict case does
+the same) passes a raw, `domain/errorMessage.ts`-derived string straight through — and the Home surface's
+own Load/Save/Create/Init/Build/Open-project error states all reuse the identical `ErrorState` component,
+with the identical passthrough. This baseline demonstrates the pattern executably for 4 of the 7 Advanced
+tabs (Deployment, Runtime, Replay, Certification) plus the Raw Editor's own Load-from-path case, across
+both trigger shapes (mount-time GET failure and interactive POST failure); the remaining occurrences
+(enumerated per-workflow above) are evidence-only, since they're either already exhaustively covered by
+each tab's own dedicated workflow test or would add near-duplicate fixtures of an already-proven,
+component-level-verified pattern. **A third, narrower exception** exists alongside Runtime/Stake Engine
+Export's own: the guided/Raw Editor's `BlueprintValidationPanel` renders its "error" status as a plain
+`<Text>`, not through `ErrorState`/`role="alert"` at all — see Design & Build's own section above.
+
+**Building on top of an un-validated Save is possible.** Save's own request-validation layer (and the
+service that writes it) never checks the blueprint's shape, only that one was sent at all — see Design &
+Build/Raw Editor's Contract cross-reference above. This is the Home-surface counterpart to Certification's
+"fail-open contract layer, fail-closed domain layer" finding and Provably Fair's "unchecked commitment"
+finding below — a third instance of the same general shape (a request-validation layer looser than either
+the UI's own gating or another, stricter code path that touches the same data).
+
+**"Build Package" is the only `disabled`-gated action anywhere in Design & Build, the Raw Editor, Advanced
+Tools, or Open Project.** Every other action across all four sections (New/Load/Save/Validate/Build
+Preview, Create/Initialize/Preview/Build-from-blueprint, Refresh/Open) relies on either no client-side
+gating at all or on native HTML `required`-attribute constraint validation instead of a `disabled` prop —
+see the next finding.
 
 **The `Number(value) || 0` `NumberInput` coercion convention** appears identically in Certification's Sample
 count, Provably Fair's Nonce, and Stake Engine Export's Cost — an unparsable/cleared numeric field silently
@@ -384,6 +584,19 @@ no-op despite the button itself being enabled). Both are evidence-only findings,
 worth an explicit decision in the Phase 2 redesign (either disable the action or surface the same validation
 message `runVerify`/`handleLoadSession` already compute internally).
 
+**Every required field on the Home surface is gated by native HTML `required` constraint validation, not an
+app-level `disabled` button or message.** Project path (Open Project), Destination directory/Package name
+(Create Project), Existing project directory (Init Project), and Blueprint JSON path (Build-from-blueprint)
+are all `required` `TextInput`/`PathInput`s inside a plain `<form>` with no Mantine `validate` config — a
+blank submission is silently blocked by the browser's own constraint-validation UI (a tooltip, invisible to
+`@testing-library`'s DOM assertions) before the click handler ever runs, making **zero** API calls and
+showing **zero** in-app feedback. Pinned executably once, for Open Project's "Open" button, by the
+"Open Project: required-field baseline" fixture; the other three fields share the identical mechanism
+(evidence-only, flagged in each section above). This is a different flavor of "fail-open, no feedback" than
+Runtime's/Provably Fair's own silent no-ops just above — those are enabled buttons whose *handler* silently
+does nothing; these are native-validation-blocked buttons whose handler never even runs, with no Studio-
+authored message either way.
+
 **Deployment's Configure step is the only Advanced-tab first content step gated behind a *previous* step's
 selection** (`selectedTarget === undefined`) rather than being immediately reachable — every other tab's
 first step (Select/configure, Configure, Select/import) is always enabled. Evidence, not a defect: Deployment
@@ -392,14 +605,18 @@ inherently has nothing to configure before a target is chosen.
 ## Contract findings summary
 
 `tests/cli/studio/StudioRequestContractBaseline.test.ts` now covers, as executable request/response-contract
-fixtures: New Blueprint (Create/Open/Apply), Runtime retry/debug (requestId/expectedSessionVersion,
-debug/repositoryMode defaults), Deployment vs. Stake Engine Export (targetId+publish vs. outDir+overwrite+cost,
-and the pre-existing "missing package-to-library" finding — neither Deployment's nor Stake Engine Export's
-`modeName` is cross-checked against the project's actual bet modes at the request layer), Outcome Libraries
-selector kinds, **Certification** (validate-source vs. build shape, and the new "shape-only mode check" finding
-— `sampleCount` is only type-checked, not range-checked, at this layer), and **Provably Fair** (configure/
-generate/verify shape, and the new "unchecked commitment" finding — Verify never validates `commitment` at
-all, narrower than the UI's own pre-Verify gating).
+fixtures: New Blueprint (Create/Open/Apply), **Design & Build / Raw Editor / Advanced Tools** (Load/Save
+shape, the new "unvalidated save" finding — Save's blueprint is never checked at this layer or by the
+service that writes it, unlike Build's own always-validate-first path — the shared Build-from-blueprint-
+file/Blueprint-Editor-Build-panel request shape, and Init Project's narrower shape vs. Create Project's),
+Runtime retry/debug (requestId/expectedSessionVersion, debug/repositoryMode defaults), Deployment vs. Stake
+Engine Export (targetId+publish vs. outDir+overwrite+cost, and the pre-existing "missing package-to-library"
+finding — neither Deployment's nor Stake Engine Export's `modeName` is cross-checked against the project's
+actual bet modes at the request layer), Outcome Libraries selector kinds, **Certification** (validate-source
+vs. build shape, and the new "shape-only mode check" finding — `sampleCount` is only type-checked, not
+range-checked, at this layer), and **Provably Fair** (configure/generate/verify shape, and the new
+"unchecked commitment" finding — Verify never validates `commitment` at all, narrower than the UI's own
+pre-Verify gating).
 
 ## Assumptions
 
@@ -428,6 +645,14 @@ silently assumed covered:
    a fixture that actually reaches a later step, edits Configure, and asserts the re-lock.
 4. Outcome Libraries' bundle/stakeengine selector kinds' path fields/placeholders — documented from source,
    only the default json kind is exercised end to end by a fixture.
+5. Advanced Tools' own required-field-blocked-submission gap for Create Project/Init Project/Build-from-
+   blueprint (Destination directory, Existing project directory, Blueprint JSON path) — the identical
+   mechanism *is* exercised end to end once, for Open Project's "Project path" field, but not repeated for
+   these three; evidence-only, same underlying native-`required` behavior.
+6. `BlueprintValidationPanel`'s own "error" status rendering as a plain `<Text>` instead of `ErrorState` —
+   documented from source (the component's own branch, `BlueprintValidationPanel.tsx:9-11,30`), not exercised
+   by a fixture that actually triggers a validate-request network failure and asserts the *absence* of a
+   `role="alert"` element.
 
 A future extension of this baseline should prioritize (1) and (3) first, since they're the two findings this
 document states from source reading alone without any executable proof.
@@ -444,6 +669,15 @@ risky action rather than silently proceeding or silently doing nothing.
 - **Not fail-closed (fail-open, evidence-only, flagged for redesign):** Runtime's Load Session and Provably
   Fair's Verify silent no-ops (§ Cross-cutting findings); Certification's request-contract-layer `sampleCount`
   accepting non-positive/non-integer values (only caught later, at the domain layer, not rejected at the
-  request boundary); Provably Fair's request-contract-layer `commitment` being entirely unchecked at Verify.
+  request boundary); Provably Fair's request-contract-layer `commitment` being entirely unchecked at Verify;
+  Save's request-contract-layer (and service-layer) blueprint shape being entirely unchecked, unlike Build's
+  always-validate-first path (§ Design & Build / Raw Editor); the Raw Editor's own "Build Package" being
+  reachable before any validation has ever been attempted, unlike Design & Build's guided instance of the
+  identical button (§ Raw Editor, executable).
+- **Blocked, but not via `disabled` and with no in-app feedback either:** every required field on the Home
+  surface (Open Project's Project path, Create/Init/Build-from-blueprint's own required path fields) relies
+  on native HTML constraint validation alone — a real block, but an invisible one from Studio's own UI's
+  perspective (§ Cross-cutting findings, executable for Open Project). Distinct from the fail-open bullet
+  above: nothing proceeds, but nothing is communicated either.
   None of these are changed by this baseline — they are documented so a redesign step must make an explicit,
   reviewable choice about each rather than inheriting them by accident.
