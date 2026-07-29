@@ -487,8 +487,8 @@ describe("describeReplayReproducibility", () => {
 
     it("blocks a record whose artifact has no provenance.game at all, naming provenance as the concrete missing input, with a remediation path", () => {
         const artifact = createArtifact() as RoundArtifactJson;
-        // @ts-expect-error simulating a hand-trimmed/pasted artifact JSON missing the required provenance.game field
-        delete artifact.provenance.game;
+        // Simulates a hand-trimmed/pasted artifact JSON missing the required provenance.game field.
+        Reflect.deleteProperty(artifact.provenance, "game");
 
         const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
 
@@ -510,8 +510,8 @@ describe("describeReplayReproducibility", () => {
 
     it("blocks a record missing provenance.game even when no project is currently loaded (unlike the version-mismatch check, this never needs a loaded project to matter)", () => {
         const artifact = createArtifact() as RoundArtifactJson;
-        // @ts-expect-error simulating a hand-trimmed/pasted artifact JSON missing the required provenance.game field
-        delete artifact.provenance.game;
+        // Simulates a hand-trimmed/pasted artifact JSON missing the required provenance.game field.
+        Reflect.deleteProperty(artifact.provenance, "game");
 
         const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, undefined);
 
