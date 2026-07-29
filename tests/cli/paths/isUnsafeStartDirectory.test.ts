@@ -130,5 +130,62 @@ describe("isUnsafeStartDirectory", () => {
                 }),
             ).toBe(false);
         });
+
+        it("rejects a win32 drive-path descendant of the install root despite differing case in both candidate and root", () => {
+            expect(
+                isUnsafeStartDirectory("c:\\program files\\pokie\\bundled\\assets", {
+                    cwd: "C:\\Users\\alice\\project",
+                    installRoot: "C:\\Program Files\\Pokie",
+                    platform: "win32",
+                }),
+            ).toBe(true);
+        });
+
+        it("rejects a win32 candidate equal to the CWD only differing by case", () => {
+            expect(
+                isUnsafeStartDirectory("c:\\users\\alice\\project", {
+                    cwd: "C:\\Users\\Alice\\Project",
+                    platform: "win32",
+                }),
+            ).toBe(true);
+        });
+
+        it("rejects a differently-cased UNC path against a differently-cased configured root", () => {
+            expect(
+                isUnsafeStartDirectory("\\\\BUILD-SERVER\\Share\\Studio\\assets", {
+                    cwd: "C:\\Users\\alice\\project",
+                    studioRoot: "\\\\build-server\\share\\Studio",
+                    platform: "win32",
+                }),
+            ).toBe(true);
+        });
+
+        it("rejects a UNC path containing a differently-cased node_modules segment under win32 semantics", () => {
+            expect(
+                isUnsafeStartDirectory("\\\\build-server\\share\\Node_Modules\\pkg", {
+                    cwd: "C:\\Users\\alice\\project",
+                    platform: "win32",
+                }),
+            ).toBe(true);
+        });
+
+        it("keeps POSIX containment case-sensitive so a differently-cased candidate is not treated as contained", () => {
+            expect(
+                isUnsafeStartDirectory("/OPT/POKIE/bundled/assets", {
+                    cwd: "/elsewhere",
+                    installRoot: "/opt/pokie",
+                    platform: "linux",
+                }),
+            ).toBe(false);
+        });
+
+        it("keeps POSIX unsafe-segment matching case-sensitive", () => {
+            expect(
+                isUnsafeStartDirectory("/home/alice/projects/Node_Modules/pkg", {
+                    cwd: "/elsewhere",
+                    platform: "linux",
+                }),
+            ).toBe(false);
+        });
     });
 });

@@ -41,9 +41,23 @@ function platformPathFor(platform: NodeJS.Platform | undefined): PlatformPathMod
     return platform === "win32" ? path.win32 : path.posix;
 }
 
+// Windows drive-letter and UNC paths are case-insensitive at the filesystem level (NTFS preserves case
+// but doesn't distinguish it), so `C:\Program Files\Pokie` and `c:\program files\pokie` name the same
+// directory -- every containment/equality check below must fold case before comparing when judging
+// Windows paths, while POSIX paths (case-sensitive filesystems) must not.
+function normalizeForComparison(value: string, platformPath: PlatformPathModule): string {
+    return platformPath === path.win32 ? value.toLowerCase() : value;
+}
+
+function pathsEqual(a: string, b: string, platformPath: PlatformPathModule): boolean {
+    return normalizeForComparison(a, platformPath) === normalizeForComparison(b, platformPath);
+}
+
 function isWithin(root: string, candidate: string, platformPath: PlatformPathModule): boolean {
-    const rootWithSep = root.endsWith(platformPath.sep) ? root : root + platformPath.sep;
-    return candidate === root || candidate.startsWith(rootWithSep);
+    const normalizedRoot = normalizeForComparison(root, platformPath);
+    const normalizedCandidate = normalizeForComparison(candidate, platformPath);
+    const rootWithSep = normalizedRoot.endsWith(platformPath.sep) ? normalizedRoot : normalizedRoot + platformPath.sep;
+    return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(rootWithSep);
 }
 
 // Best-effort realpath: an anchor (temp dir, install root, Studio root) is expected to actually exist in
@@ -111,12 +125,12 @@ export function isUnsafeStartDirectory(candidate: string, context: UnsafeStartDi
 
     const resolvedCandidate = platformPath.resolve(candidate);
     const cwd = platformPath.resolve(context.cwd ?? process.cwd());
-    if (resolvedCandidate === cwd) {
+    if (pathsEqual(resolvedCandidate, cwd, platformPath)) {
         return true;
     }
 
     const physicalCandidate = physicalDestination(resolvedCandidate, platformPath, realpath);
-    if (physicalCandidate === physicalAnchor(cwd, realpath)) {
+    if (pathsEqual(physicalCandidate, physicalAnchor(cwd, realpath), platformPath)) {
         return true;
     }
 
@@ -130,8 +144,9 @@ export function isUnsafeStartDirectory(candidate: string, context: UnsafeStartDi
         return true;
     }
 
-    if (resolvedCandidate.split(platformPath.sep).some((segment) => UNSAFE_SEGMENT_NAMES.has(segment))) {
+    const hasUnsafeSegment = (segment: string) => UNSAFE_SEGMENT_NAMES.has(normalizeForComparison(segment, platformPath));
+    if (resolvedCandidate.split(platformPath.sep).some(hasUnsafeSegment)) {
         return true;
     }
-    return physicalCandidate.split(platformPath.sep).some((segment) => UNSAFE_SEGMENT_NAMES.has(segment));
+    return physicalCandidate.split(platformPath.sep).some(hasUnsafeSegment);
 }
