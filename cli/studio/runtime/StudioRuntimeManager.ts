@@ -93,6 +93,13 @@ export class StudioRuntimeManager {
     // core session/game logic. Cleared on every teardown path (see stopServerIfAny()) so a spin from a
     // previous project (or a previous runtime start) never leaks into a later one.
     private recentSpins: StudioRuntimeSessionView[] = [];
+    // Session-local round counters backing each recorded spin's `studioRound` -- keyed by sessionId,
+    // strictly increasing per session regardless of `recentSpins`' own MAX_RECENT_SPINS eviction, so
+    // "Round 23 in session X" stays correctly numbered even once round 1-3's own entries have scrolled
+    // out of the bounded list. Cleared alongside `recentSpins` on every teardown path (see
+    // stopServerIfAny()) for the same reason -- a round count from a torn-down runtime instance must
+    // never bleed into a later one, even if a later session happens to reuse the same id.
+    private sessionRoundCounters = new Map<string, number>();
 
     constructor(
         loadGame: typeof loadPokieGame = loadPokieGame,
@@ -251,11 +258,45 @@ export class StudioRuntimeManager {
         return [...this.recentSpins];
     }
 
+    // Stamps every *newly* recorded spin with its own unambiguous, session-scoped identity --
+    // `studioRound` (this session's 1-based round index), `studioRecordedAt` (when Studio first recorded
+    // it, ISO -- the game server itself returns no timestamp), and `studioSource` (live play vs. a
+    // pre-generated outcome library, since the two can otherwise look identical in the list). Retrying the
+    // *same* (sessionId, studioRequestId) pair -- e.g. the Debug tab's "Retry last request", or a genuine
+    // network-level retry -- replays the same underlying round rather than playing a new one (see
+    // SpinCommandHandler's idempotent-replay path): this canonical identity is what's deduplicated on,
+    // reusing the original entry's round/timestamp/source verbatim and leaving the list itself untouched
+    // rather than filing (or bumping the position of) a second entry for what is the same round. A spin
+    // made *without* a requestId can't be identified as a retry of anything (there's no id to match on),
+    // so it's always treated as its own new round. This never dedupes a legitimate round from a
+    // *different* session, since the match always requires sessionId to agree too, not studioRequestId
+    // alone.
     private recordRecentSpin(session: StudioRuntimeSessionView): void {
+        const requestId = session.studioRequestId;
+        if (requestId !== undefined) {
+            const duplicate = this.recentSpins.find((entry) => entry.sessionId === session.sessionId && entry.studioRequestId === requestId);
+            if (duplicate !== undefined) {
+                session.studioRound = duplicate.studioRound;
+                session.studioRecordedAt = duplicate.studioRecordedAt;
+                session.studioSource = duplicate.studioSource;
+                return;
+            }
+        }
+
+        session.studioRound = this.nextSessionRound(session.sessionId);
+        session.studioRecordedAt = new Date().toISOString();
+        session.studioSource = this.preGeneratedLibrary !== undefined ? "pre-generated" : "live";
+
         this.recentSpins.unshift(session);
         if (this.recentSpins.length > StudioRuntimeManager.MAX_RECENT_SPINS) {
             this.recentSpins.length = StudioRuntimeManager.MAX_RECENT_SPINS;
         }
+    }
+
+    private nextSessionRound(sessionId: string): number {
+        const next = (this.sessionRoundCounters.get(sessionId) ?? 0) + 1;
+        this.sessionRoundCounters.set(sessionId, next);
+        return next;
     }
 
     // Shared by startInternal() and restart()'s own preflight -- resolves options.preGeneratedLibrarySelector
@@ -380,6 +421,7 @@ export class StudioRuntimeManager {
         // around (in-memory sessions are gone; even file-mode sessions have no server serving them), so
         // this is the one place recentSpins needs clearing, not a separate per-caller responsibility.
         this.recentSpins = [];
+        this.sessionRoundCounters = new Map();
     }
 
     private async resetProjectScopedState(): Promise<void> {

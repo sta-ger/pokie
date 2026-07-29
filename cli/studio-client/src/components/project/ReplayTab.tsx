@@ -314,8 +314,18 @@ export function ReplayTab({
                             )}
                             {recentSpins.status === "loaded" && (
                                 <List listStyleType="none" spacing={4}>
-                                    {recentSpins.entries.map((entry, index) => (
-                                        <List.Item key={`${entry.sessionId}-${entry.studioRequestId ?? "none"}-${index}`}>
+                                    {recentSpins.entries.map((entry) => (
+                                        // `studioRound` (this session's own stable round index -- see
+                                        // StudioRuntimeSessionView's own doc comment) makes this key stable across
+                                        // a refresh, unlike the array index it replaces: a duplicate (sessionId,
+                                        // studioRequestId) pair (an idempotency-protected retry) is deduplicated
+                                        // into the *same* round by StudioRuntimeManager.recordRecentSpin() before
+                                        // it ever reaches this list, so (sessionId, studioRound) alone is already
+                                        // unique here -- never conflated with a legitimate round from a different
+                                        // session, since the pairing always includes sessionId. Falling back to
+                                        // studioRequestId (still per-session-unique by construction) covers an
+                                        // entry that predates studioRound existing at all.
+                                        <List.Item key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
                                             <Anchor
                                                 component="button"
                                                 type="button"
@@ -325,8 +335,10 @@ export function ReplayTab({
                                                 }}
                                                 style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                             >
-                                                session {entry.sessionId} — credits {entry.credits}, win {entry.win ?? 0}
+                                                Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits {entry.credits}, win{" "}
+                                                {entry.win ?? 0}
                                                 {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
+                                                {entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : ""}
                                             </Anchor>
                                         </List.Item>
                                     ))}
@@ -513,10 +525,31 @@ export function ReplayTab({
                                         <Table.Th>Session</Table.Th>
                                         <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.sessionId}</Table.Td>
                                     </Table.Tr>
+                                    {selectedSpin.studioRound !== undefined && (
+                                        <Table.Tr>
+                                            <Table.Th>Round</Table.Th>
+                                            <Table.Td>
+                                                Round {selectedSpin.studioRound} in session {selectedSpin.sessionId} — this session&apos;s own round
+                                                count, not a global one.
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    )}
                                     {selectedSpin.studioRequestId && (
                                         <Table.Tr>
                                             <Table.Th>Request id</Table.Th>
                                             <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.studioRequestId}</Table.Td>
+                                        </Table.Tr>
+                                    )}
+                                    {selectedSpin.studioRecordedAt && (
+                                        <Table.Tr>
+                                            <Table.Th>Recorded</Table.Th>
+                                            <Table.Td>{new Date(selectedSpin.studioRecordedAt).toLocaleString()}</Table.Td>
+                                        </Table.Tr>
+                                    )}
+                                    {selectedSpin.studioSource && (
+                                        <Table.Tr>
+                                            <Table.Th>Source</Table.Th>
+                                            <Table.Td>{selectedSpin.studioSource === "pre-generated" ? "Pre-generated outcome library" : "Live spin"}</Table.Td>
                                         </Table.Tr>
                                     )}
                                     <Table.Tr>

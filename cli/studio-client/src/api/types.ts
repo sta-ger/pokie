@@ -485,7 +485,13 @@ export type StudioRuntimeStateView =
 // own doc comment. `sessionVersion` is present whenever the runtime's configured repository is
 // versioned, regardless of debug mode; `studioRequestId` is Studio's own bookkeeping (the client's
 // requestId for this spin), present whenever one was supplied, regardless of debug mode; `debug` is
-// only present when the runtime was started with debug mode on.
+// only present when the runtime was started with debug mode on. `studioRound`/`studioRecordedAt`/
+// `studioSource` are present only on entries that came back from the recent-spins list (GET
+// /api/project/runtime/spins) — never on a plain create/get-session response — and together give each
+// recent spin its own unambiguous, session-scoped identity: `studioRound` is that session's stable
+// 1-based round index (survives both the list's own bound and an idempotent retry of the same
+// requestId), `studioRecordedAt` is when Studio recorded it, and `studioSource` distinguishes a live
+// spin from one played against a pre-generated outcome library.
 export type StudioRuntimeSessionView = {
     sessionId: string;
     game: {id: string; name: string; version: string};
@@ -495,6 +501,9 @@ export type StudioRuntimeSessionView = {
     screen?: unknown[][];
     sessionVersion?: number;
     studioRequestId?: string;
+    studioRound?: number;
+    studioRecordedAt?: string;
+    studioSource?: "live" | "pre-generated";
     debug?: {
         stateAfter: unknown;
         stateBefore?: unknown;

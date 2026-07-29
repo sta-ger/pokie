@@ -23,6 +23,18 @@ export type StudioRuntimeSessionView = {
     // below (the game server's own echoed value, only ever present alongside the rest of the debug
     // bundle).
     studioRequestId?: string;
+    // Studio's own bookkeeping too, attached only by StudioRuntimeManager.recordRecentSpin() -- so these
+    // are present on every entry `listRecentSpins()` returns, but absent from a plain createSession()/
+    // getSession() result (neither of which is ever recorded as a "recent spin"). `studioRound` is this
+    // session's own 1-based round index (stable across MAX_RECENT_SPINS eviction and across an
+    // idempotent retry of the same requestId -- see recordRecentSpin()'s own doc comment), the one piece
+    // of unambiguous identity that survives everything else about a round changing. `studioRecordedAt` is
+    // when Studio recorded it (the game server itself returns no timestamp). `studioSource` distinguishes
+    // a live spin from one played against a pre-generated outcome library, which otherwise looks
+    // identical in the list.
+    studioRound?: number;
+    studioRecordedAt?: string;
+    studioSource?: "live" | "pre-generated";
     debug?: {
         stateAfter: unknown;
         stateBefore?: unknown;
