@@ -122,4 +122,61 @@ describe("StudioFsBrowseService", () => {
             spy.mockRestore();
         }
     });
+
+    it("reports a dangling symlink as 'unresolved', distinct from a plain nonexistent path", () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-dangling-target-"));
+        fs.rmSync(outside, {recursive: true, force: true});
+        fs.symlinkSync(outside, path.join(root, "broken-link"));
+
+        const result = service.browse("broken-link");
+
+        expect(result.status).toBe("error");
+        if (result.status !== "error") {
+            throw new Error("expected an error result");
+        }
+        expect(result.error).toContain("broken link");
+        expect(result.reason).toBe("unresolved");
+    });
+
+    it("reports a symlink inside an explicit base that points outside it as a 'symlink-escape' error", () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-escape-target-"));
+        try {
+            fs.symlinkSync(outside, path.join(root, "evil"));
+
+            const result = service.browse("evil", root);
+
+            expect(result.status).toBe("error");
+            if (result.status !== "error") {
+                throw new Error("expected an error result");
+            }
+            expect(result.error).toContain("symlink");
+            expect(result.reason).toBe("symlink-escape");
+        } finally {
+            fs.rmSync(outside, {recursive: true, force: true});
+        }
+    });
+
+    it("does not flag an ordinary '..'-style escape out of an explicit base as an error (browsing outside base stays supported)", () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-lexical-outside-"));
+        try {
+            const result = service.browse("..", outside);
+
+            expect(result).toMatchObject({status: "ok", resolvedPath: path.dirname(outside)});
+        } finally {
+            fs.rmSync(outside, {recursive: true, force: true});
+        }
+    });
+
+    it("does not flag a symlink for a request with no explicit base (constructor root browsing stays unrestricted)", () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-no-base-target-"));
+        try {
+            fs.symlinkSync(outside, path.join(root, "link-out"));
+
+            const result = service.browse("link-out");
+
+            expect(result).toMatchObject({status: "ok", resolvedPath: path.join(root, "link-out")});
+        } finally {
+            fs.rmSync(outside, {recursive: true, force: true});
+        }
+    });
 });

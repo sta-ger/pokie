@@ -86,9 +86,14 @@ export type StudioScaffoldResultView =
 // Backs the "Browse" action on every filesystem-path input in Home's project-creation forms.
 export type StudioFsEntry = {name: string; isDirectory: boolean};
 
+// Mirrors StudioFsBrowseService.ts's own StudioFsBrowseErrorReason -- "unresolved" (a dangling symlink) and
+// "symlink-escape" (a project-scoped field's value that looks contained but, through a symlink, isn't) are
+// only ever produced for a caller-supplied `base`; see that file's own doc comments for the full picture.
+export type StudioFsBrowseErrorReason = "absent" | "type" | "permission" | "unresolved" | "symlink-escape" | "other";
+
 export type StudioFsBrowseView =
     | {status: "ok"; resolvedPath: string; displayPath: string; parentPath?: string; entries: StudioFsEntry[]}
-    | {status: "error"; error: string; resolvedPath: string; reason: "absent" | "type" | "permission" | "other"};
+    | {status: "error"; error: string; resolvedPath: string; reason: StudioFsBrowseErrorReason};
 
 // GET /api/home/fs/native-browse/availability's own DTO — see
 // cli/studio/home/StudioNativePickerService.ts's own doc comment. PathInput only ever shows

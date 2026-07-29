@@ -44,17 +44,61 @@ describe("PathInput", () => {
         localStorage.clear();
     });
 
-    it("shows a permission-denied hint (not a crash) when focused", async () => {
+    it("shows a contextual permission-denied status and remediation (never the raw backend message) when focused", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", error: 'Permission denied reading ".".', resolvedPath: "/root"}}),
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", error: 'Permission denied reading ".".', resolvedPath: "/root", reason: "permission"}}),
         });
 
         renderWithProviders(<Harness />, {fetchImpl});
 
         await user.click(screen.getByRole("textbox", {name: "Path"}));
 
-        expect(await screen.findByText('Permission denied reading ".".')).toBeInTheDocument();
+        expect(await screen.findByText('POKIE doesn\'t have permission to read "/root".')).toBeInTheDocument();
+        expect(await screen.findByText("Choose a location you have access to.")).toBeInTheDocument();
+        expect(screen.queryByText('Permission denied reading ".".')).not.toBeInTheDocument();
+    });
+
+    it.each([
+        ["absent", "/root/missing", '"/root/missing" doesn\'t exist.', "Check the path, or use Browse to pick an existing location."],
+        ["type", "/root/readme.txt", '"/root/readme.txt" is a file, not a folder.', "Point this at a folder instead, or use Browse to pick one."],
+        ["unresolved", "/root/broken-link", '"/root/broken-link" is a broken link and can\'t be resolved.', "Point this at a different location."],
+        [
+            "symlink-escape",
+            "/projects/sample-slot/evil",
+            '"/projects/sample-slot/evil" leads outside the project through a linked folder.',
+            "Choose a location inside the project.",
+        ],
+        ["other", "/root/weird", '"/root/weird" can\'t be used.', "Choose a different location, or use Browse to pick one."],
+    ] as const)("renders a distinct, contextual status and remediation for a %s resolver outcome, never the raw error text", async (reason, resolvedPath, expectedStatus, expectedRemediation) => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", error: "some raw backend message that should never render", resolvedPath, reason}}),
+        });
+
+        renderWithProviders(<Harness />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(await screen.findByText(expectedStatus)).toBeInTheDocument();
+        expect(await screen.findByText(expectedRemediation)).toBeInTheDocument();
+        expect(screen.queryByText("some raw backend message that should never render")).not.toBeInTheDocument();
+    });
+
+    it("shows a generic, non-crashing status when the browse request itself fails to reach the server", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => {
+                throw new Error("network down");
+            },
+        });
+
+        renderWithProviders(<Harness />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(await screen.findByText("Couldn't check this location.")).toBeInTheDocument();
+        expect(await screen.findByText("Confirm POKIE Studio's server is reachable, then try again.")).toBeInTheDocument();
     });
 
     it("shows a 'Resolves to' hint for a non-blank (including bare '.') current value", async () => {
