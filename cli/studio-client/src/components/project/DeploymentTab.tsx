@@ -281,12 +281,27 @@ export function DeploymentTab({
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Select target" description="Where to publish" />
-                <Stepper.Step label="Configure" description="Modes & libraries" disabled={selectedTarget === undefined} />
-                <Stepper.Step label="Check compatibility" description="Preflight" disabled={!compatibilityChecked} />
-                <Stepper.Step label="Preview artifacts" description="What would be generated" disabled={!previewReachable} />
-                <Stepper.Step label="Deploy" description="Publish" disabled={!canContinueToDeploy} />
-                <Stepper.Step label="Review result" description="Outcome" disabled={!reviewReachable} />
+                <Stepper.Step label="Select target" description="Where to publish" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Configure"
+                    description="Modes & libraries"
+                    disabled={selectedTarget === undefined}
+                    aria-current={activeStep === 1 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Check compatibility"
+                    description="Preflight"
+                    disabled={!compatibilityChecked}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Preview artifacts"
+                    description="What would be generated"
+                    disabled={!previewReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
+                <Stepper.Step label="Deploy" description="Publish" disabled={!canContinueToDeploy} aria-current={activeStep === 4 ? "step" : undefined} />
+                <Stepper.Step label="Review result" description="Outcome" disabled={!reviewReachable} aria-current={activeStep === 5 ? "step" : undefined} />
             </Stepper>
 
             {activeStep === 0 && (

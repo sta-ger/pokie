@@ -101,13 +101,15 @@ describe("Stepper wraps onto multiple lines instead of overflowing on a narrow v
         const filesWithSteppers = [
             "blueprintEditor/ParSheetImportExportPanel.tsx",
             "blueprintEditor/ReelStripGenerationEditor.tsx",
-            "blueprintEditor/BlueprintEditorPage.tsx",
             "project/SimulationTab.tsx",
             "project/OutcomeLibrariesTab.tsx",
             "project/RuntimeTab.tsx",
             "project/DeploymentTab.tsx",
             "project/MechanicsEditorTab.tsx",
             "project/ReplayTab.tsx",
+            "project/CertificationTab.tsx",
+            "project/ProvablyFairTab.tsx",
+            "project/StakeEngineExportTab.tsx",
         ];
         for (const relativePath of filesWithSteppers) {
             const source = readFileSync(join(componentsRoot, relativePath), "utf8");

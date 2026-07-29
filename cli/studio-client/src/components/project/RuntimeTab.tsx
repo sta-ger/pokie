@@ -423,11 +423,25 @@ export function RuntimeTab({
             </PageSection>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Create or restore session" description="Start playing" />
-                <Stepper.Step label="Play" description="Spin" disabled={!sessionReachable} />
-                <Stepper.Step label="Inspect round" description="See the result" disabled={!inspectReachable} />
-                <Stepper.Step label="Continue session" description="Keep playing" disabled={!sessionReachable} />
-                <Stepper.Step label="Debug" description="Advanced" />
+                <Stepper.Step
+                    label="Create or restore session"
+                    description="Start playing"
+                    aria-current={activeStep === 0 ? "step" : undefined}
+                />
+                <Stepper.Step label="Play" description="Spin" disabled={!sessionReachable} aria-current={activeStep === 1 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Inspect round"
+                    description="See the result"
+                    disabled={!inspectReachable}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Continue session"
+                    description="Keep playing"
+                    disabled={!sessionReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
+                <Stepper.Step label="Debug" description="Advanced" aria-current={activeStep === 4 ? "step" : undefined} />
             </Stepper>
 
             {activeStep === 0 && (

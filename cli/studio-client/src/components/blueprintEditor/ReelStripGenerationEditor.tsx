@@ -690,11 +690,31 @@ export function ReelStripGenerationEditor({
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Select reel" description="Which reel" />
-                <Stepper.Step label="Edit or generate" description="Literal or generated" disabled={!editReachable} />
-                <Stepper.Step label="Inspect diagnostics" description="Validation" disabled={!diagnosticsReachable} />
-                <Stepper.Step label="Preview stop windows" description="Screen window" disabled={!stopWindowReachable} />
-                <Stepper.Step label="Apply" description="Commit or discard" disabled={!editReachable} />
+                <Stepper.Step label="Select reel" description="Which reel" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Edit or generate"
+                    description="Literal or generated"
+                    disabled={!editReachable}
+                    aria-current={activeStep === 1 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Inspect diagnostics"
+                    description="Validation"
+                    disabled={!diagnosticsReachable}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Preview stop windows"
+                    description="Screen window"
+                    disabled={!stopWindowReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Apply"
+                    description="Commit or discard"
+                    disabled={!editReachable}
+                    aria-current={activeStep === 4 ? "step" : undefined}
+                />
             </Stepper>
 
             {activeStep === 0 &&

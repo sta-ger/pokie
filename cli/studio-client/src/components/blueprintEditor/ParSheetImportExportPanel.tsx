@@ -246,10 +246,20 @@ export function ParSheetImportExportPanel({
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Import" description="Read a PAR sheet" />
-                <Stepper.Step label="Diagnose & map" description="Issues & provenance" disabled={!diagnoseReachable} />
-                <Stepper.Step label="Preview canonical model" description="What it becomes" disabled={!previewReachable} />
-                <Stepper.Step label="Apply / Export" description="Commit or write out" />
+                <Stepper.Step label="Import" description="Read a PAR sheet" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Diagnose & map"
+                    description="Issues & provenance"
+                    disabled={!diagnoseReachable}
+                    aria-current={activeStep === 1 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Preview canonical model"
+                    description="What it becomes"
+                    disabled={!previewReachable}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step label="Apply / Export" description="Commit or write out" aria-current={activeStep === 3 ? "step" : undefined} />
             </Stepper>
 
             {activeStep === 0 && (

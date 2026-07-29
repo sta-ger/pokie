@@ -367,11 +367,20 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                {MECHANICS_EDITOR_STEPS.map((step) => (
-                    <Stepper.Step key={step.id} label={step.label} description={describeStepStatusText(step.id, validateView)} />
+                {MECHANICS_EDITOR_STEPS.map((step, index) => (
+                    <Stepper.Step
+                        key={step.id}
+                        label={step.label}
+                        description={describeStepStatusText(step.id, validateView)}
+                        aria-current={activeStep === index ? "step" : undefined}
+                    />
                 ))}
-                <Stepper.Step label="Validate" description="Errors & warnings" />
-                <Stepper.Step label="Apply" description="Save & rebuild" />
+                <Stepper.Step
+                    label="Validate"
+                    description="Errors & warnings"
+                    aria-current={activeStep === MECHANICS_EDITOR_STEPS.length ? "step" : undefined}
+                />
+                <Stepper.Step label="Apply" description="Save & rebuild" aria-current={activeStep === MECHANICS_EDITOR_STEPS.length + 1 ? "step" : undefined} />
             </Stepper>
 
             {activeStep === 0 && (

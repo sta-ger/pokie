@@ -282,11 +282,31 @@ export function CertificationTab() {
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Select/configure" description="Bundle & modes" />
-                <Stepper.Step label="Validate" description="Preflight" disabled={!validateReachable} />
-                <Stepper.Step label="Build bundle" description="Sample & publish" disabled={!buildReachable} />
-                <Stepper.Step label="Inspect" description="Manifest & artifacts" disabled={!inspectReachable} />
-                <Stepper.Step label="Export" description="Download manifest" disabled={!inspectReachable} />
+                <Stepper.Step label="Select/configure" description="Bundle & modes" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Validate"
+                    description="Preflight"
+                    disabled={!validateReachable}
+                    aria-current={activeStep === 1 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Build bundle"
+                    description="Sample & publish"
+                    disabled={!buildReachable}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Inspect"
+                    description="Manifest & artifacts"
+                    disabled={!inspectReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Export"
+                    description="Download manifest"
+                    disabled={!inspectReachable}
+                    aria-current={activeStep === 4 ? "step" : undefined}
+                />
             </Stepper>
 
             {activeStep === 0 && (
