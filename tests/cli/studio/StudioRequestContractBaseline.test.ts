@@ -8,6 +8,11 @@ import {validateRuntimeSpinRequest} from "../../../cli/studio/runtime/validateRu
 import {validateStartRuntimeRequest} from "../../../cli/studio/runtime/validateStartRuntimeRequest.js";
 import {validateOutcomeLibrarySelector} from "../../../cli/studio/outcomeLibrary/validateOutcomeLibrarySelector.js";
 import {validateOutcomeLibrarySelectRequest} from "../../../cli/studio/outcomeLibrary/validateOutcomeLibrarySelectRequest.js";
+import {validateCertificationSourceValidateRequest} from "../../../cli/studio/certification/validateCertificationSourceValidateRequest.js";
+import {validateCertificationBuildRequest} from "../../../cli/studio/certification/validateCertificationBuildRequest.js";
+import {validateFairnessConfigureRequest} from "../../../cli/studio/fairness/validateFairnessConfigureRequest.js";
+import {validateFairnessGenerateRequest} from "../../../cli/studio/fairness/validateFairnessGenerateRequest.js";
+import {validateFairnessVerifyRequest} from "../../../cli/studio/fairness/validateFairnessVerifyRequest.js";
 
 // Phase 2's own starting point: this file freezes the *actual* shape of Studio's request/response
 // contracts for the flows named in the phase's inventory, as executable assertions, before any
@@ -160,5 +165,74 @@ describe("Contract baseline: Outcome Libraries selector, and the missing package
         // is just a lookup key resolved lazily against the bundle/export directory on disk, never
         // cross-checked against the project's package at this layer either.
         expect(() => validateOutcomeLibrarySelector({kind: "bundle", bundleDir: "bundle", modeName: noSuchMode}, "selector")).not.toThrow();
+    });
+});
+
+describe("Contract baseline: Certification (validate-source / build)", () => {
+    it("Validate-source takes only a bundleDir -- Build additionally requires an outDir and a non-empty modes array", () => {
+        expect(validateCertificationSourceValidateRequest({bundleDir: "./outcomes/bundle"})).toEqual({bundleDir: "./outcomes/bundle"});
+        expect(() => validateCertificationSourceValidateRequest({})).toThrow('"bundleDir" must be a non-empty string.');
+
+        expect(() =>
+            validateCertificationBuildRequest({bundleDir: "./outcomes/bundle", modes: [{modeName: "base", seed: "s1", sampleCount: 10}]}),
+        ).toThrow('"outDir" must be a non-empty string.');
+        expect(() => validateCertificationBuildRequest({bundleDir: "./outcomes/bundle", outDir: "out"})).toThrow(
+            '"modes" must be a non-empty array.',
+        );
+    });
+
+    // "shape-only mode check" contract: unlike the UI's own `isModeValid` (CertificationTab.tsx), which
+    // requires a positive integer sampleCount before a row counts as complete, this request-validation
+    // layer only checks `typeof sampleCount === "number"` -- a non-positive or non-integer sample count
+    // is accepted here exactly like a valid one. The only place that distinction is enforced is
+    // CertificationEvidenceBundleBuilder's own domain-level pass, which runs later against the already-
+    // validated request, never as a 400 here. This is the current, frozen behavior -- not something this
+    // baseline changes.
+    it("Build's own mode shape check is type-only -- it accepts a non-positive or non-integer sampleCount the UI's own isModeValid would reject", () => {
+        expect(() =>
+            validateCertificationBuildRequest({
+                bundleDir: "./outcomes/bundle",
+                outDir: "out",
+                modes: [{modeName: "base", seed: "s1", sampleCount: -5}],
+            }),
+        ).not.toThrow();
+        expect(() =>
+            validateCertificationBuildRequest({
+                bundleDir: "./outcomes/bundle",
+                outDir: "out",
+                modes: [{modeName: "base", seed: "s1", sampleCount: 1.5}],
+            }),
+        ).not.toThrow();
+    });
+});
+
+describe("Contract baseline: Provably Fair (configure / generate / verify)", () => {
+    it("Configure requires all four of bundleDir/modeName/serverSeed/clientSeed plus a numeric nonce -- Generate needs only bundleDir/commitment/serverSeed", () => {
+        expect(() => validateFairnessConfigureRequest({bundleDir: "b", modeName: "base", serverSeed: "s", clientSeed: "c"})).toThrow(
+            '"nonce" must be a number.',
+        );
+        expect(validateFairnessConfigureRequest({bundleDir: "b", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 1})).toEqual({
+            bundleDir: "b",
+            modeName: "base",
+            serverSeed: "s",
+            clientSeed: "c",
+            nonce: 1,
+        });
+
+        expect(() => validateFairnessGenerateRequest({bundleDir: "b", commitment: {}, serverSeed: "s"})).not.toThrow();
+        expect(() => validateFairnessGenerateRequest({bundleDir: "b", serverSeed: "s"})).toThrow('"commitment" must be an object.');
+    });
+
+    // "unchecked commitment" contract: Verify requires `proof` to be an object, but never validates
+    // `commitment` at all -- it's passed straight through even when entirely absent. This is narrower
+    // than the UI's own gating (ProvablyFairTab's `resolveVerifyInputs` requires *both* a proof and a
+    // commitment to exist before enabling the "Verify" button), so a request sent outside that UI (or a
+    // future UI variant with looser gating) can ask the server to verify a proof with no commitment at
+    // all -- FairnessRoundProofVerifier's own structural checks are what actually catches that, not this
+    // layer. Frozen behavior, not something this baseline changes.
+    it("Verify requires only a proof object -- commitment is never checked at this layer, even though the UI requires both before enabling 'Verify'", () => {
+        expect(() => validateFairnessVerifyRequest({proof: {}})).not.toThrow();
+        expect(validateFairnessVerifyRequest({proof: {round: 1}}).commitment).toBeUndefined();
+        expect(() => validateFairnessVerifyRequest({proof: "not-an-object"} as never)).toThrow('"proof" must be an object.');
     });
 });
