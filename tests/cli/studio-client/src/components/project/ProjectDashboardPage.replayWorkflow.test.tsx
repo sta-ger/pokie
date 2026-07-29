@@ -532,6 +532,54 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
     }, 60000);
 
+    it("disables Reproduce with a concrete missing-provenance explanation and remediation for a record whose artifact carries no recorded game id/version, while Inspect/Reproduce-and-compare from Recent Replays remain available", async () => {
+        const user = userEvent.setup();
+        const storedEntry: StudioReplayListEntry = {id: "stored-1", round: 1, status: "completed", startedAt: "2026-01-01T00:00:00.000Z", game: GAME};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === undefined) {
+                    return {ok: true, status: 200, body: [storedEntry]};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        // State and an RNG trace are both captured (so those gates aren't what's under test), but the
+        // artifact's provenance block never recorded which game/version produced it -- e.g. a
+        // hand-trimmed import that dropped "provenance.game" while keeping everything else.
+        fireEvent.change(textarea, {
+            target: {
+                value: JSON.stringify({
+                    round: 1,
+                    seed: "demo-seed",
+                    artifact: {...artifactFor({debug: {reelStops: [1, 2, 3]}}), provenance: {pokieVersion: "1.0.0"}},
+                    stateBefore: {win: 0},
+                    stateAfter: {win: 5},
+                }),
+            },
+        });
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await screen.findByText(/Round 1, seed demo-seed\./);
+        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
+        expect(screen.getByText(/no recorded game id\/version provenance/)).toBeInTheDocument();
+        expect(screen.getByText(/Add a "provenance.game" object/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+
+        // The gate only blocks *this pasted record's* Reproduce action -- a stored replay's own
+        // Inspect/Reproduce-and-compare actions in Recent Replays stay fully available regardless.
+        const recentReplaysSection = screen.getByText("Recent replays").closest("fieldset") as HTMLElement;
+        expect(within(recentReplaysSection).getByRole("button", {name: "Inspect"})).not.toBeDisabled();
+        expect(within(recentReplaysSection).getByRole("button", {name: "Reproduce & compare"})).not.toBeDisabled();
+    }, 60000);
+
     it("disables Reproduce with a concrete missing-state explanation and remediation for an incomplete record with no session state captured", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

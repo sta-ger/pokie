@@ -485,6 +485,40 @@ describe("describeReplayReproducibility", () => {
         expect(gate.status).toBe("blocked");
     });
 
+    it("blocks a record whose artifact has no provenance.game at all, naming provenance as the concrete missing input, with a remediation path", () => {
+        const artifact = createArtifact() as RoundArtifactJson;
+        // @ts-expect-error simulating a hand-trimmed/pasted artifact JSON missing the required provenance.game field
+        delete artifact.provenance.game;
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({
+            reason: expect.stringContaining("no recorded game id/version provenance"),
+            remediation: expect.stringContaining("provenance.game"),
+        });
+    });
+
+    it("blocks a record whose artifact carries a game id but no version, the same as provenance missing entirely", () => {
+        const artifact = createArtifact({provenance: {game: {id: "sample-slot", name: "Sample Slot", version: ""}, pokieVersion: "1.0.0"}});
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded game id/version provenance")});
+    });
+
+    it("blocks a record missing provenance.game even when no project is currently loaded (unlike the version-mismatch check, this never needs a loaded project to matter)", () => {
+        const artifact = createArtifact() as RoundArtifactJson;
+        // @ts-expect-error simulating a hand-trimmed/pasted artifact JSON missing the required provenance.game field
+        delete artifact.provenance.game;
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, undefined);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded game id/version provenance")});
+    });
+
     it("checks the seed before the version, reporting the seed issue when both are absent/mismatched", () => {
         const artifact = createArtifact({provenance: {game: {id: "other-slot", name: "Other Slot", version: "0.2.0"}, pokieVersion: "1.0.0"}});
 

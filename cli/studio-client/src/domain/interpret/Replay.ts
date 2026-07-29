@@ -328,10 +328,11 @@ function screensEqual(a: readonly (readonly (string | number)[])[], b: readonly 
 // as opposed to a fresh Seed & Round/Recent Simulation attempt, which never claims to reproduce a
 // *specific* prior result and so is never gated by this) — reproducing forward from round 1 is only
 // ever a faithful, *verifiable* match of the original result when the seed and exact game build that
-// produced it are known, AND — whenever the record carries a round artifact at all — its own state
-// and RNG trace are complete enough to actually verify a fresh reproduction against. A record that
-// carries an artifact but not those (an "incomplete" record — e.g. an import that only kept the
-// round-level result) is deliberately blocked here rather than left to silently produce a same-seed
+// produced it are known, AND — whenever the record carries a round artifact at all — its own game
+// id/version provenance, state, and RNG trace are complete enough to actually verify a fresh
+// reproduction against. A record that carries an artifact but not those (an "incomplete" record — e.g.
+// an import that only kept the round-level result, or hand-trimmed the provenance block) is
+// deliberately blocked here rather than left to silently produce a same-seed
 // replay nobody can confirm is faithful: describeReplayComparison's own "unavailable" dimensions are
 // for a *reproduced* side happening not to capture something despite a complete expected side, not for
 // papering over an expected side that never had the data to check against in the first place. A record
@@ -355,7 +356,17 @@ export function describeReplayReproducibility(
         };
     }
 
-    const provenanceGame = expected.artifact?.provenance.game;
+    const provenanceGame = expected.artifact?.provenance?.game;
+    if (expected.artifact !== undefined && (!provenanceGame || !provenanceGame.id || !provenanceGame.version)) {
+        return {
+            status: "blocked",
+            reason:
+                'This round\'s artifact has no recorded game id/version provenance ("provenance.game"), so there is no way to confirm it was reproduced against the same game build that originally produced it — likely an incomplete or hand-trimmed record.',
+            remediation:
+                'Add a "provenance.game" object with the original "id" and "version" to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
+        };
+    }
+
     if (currentGame && provenanceGame && (provenanceGame.id !== currentGame.id || provenanceGame.version !== currentGame.version)) {
         return {
             status: "blocked",
