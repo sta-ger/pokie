@@ -800,7 +800,8 @@ export class StudioServer implements StudioServerHandling {
     // `status` field (see StudioFsBrowseView) rather than an HTTP error status.
     private handleHomeFsBrowse(res: ServerResponse, url: URL): void {
         const requestedPath = url.searchParams.get("path");
-        this.sendJson(res, 200, this.fsBrowseService.browse(requestedPath ?? undefined));
+        const base = url.searchParams.get("base");
+        this.sendJson(res, 200, this.fsBrowseService.browse(requestedPath ?? undefined, base ?? undefined));
     }
 
     // Always 200, same "a well-formed request with no useful answer isn't a failed request" reasoning as

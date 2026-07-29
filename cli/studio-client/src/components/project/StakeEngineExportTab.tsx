@@ -21,6 +21,7 @@ import {ErrorState} from "../common/ErrorState";
 import {FieldWarningText} from "../common/FieldWarningText";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
 import {RowActions} from "../common/RowActions";
@@ -89,7 +90,7 @@ function modeFieldWarnings(mode: ModeFields): {modeName?: string; libraryPath?: 
 // browser). Mirrors CertificationTab's own lifecycle discipline: a monotonic requestId ref per async
 // action, a double-submit guard, and an invalidate*() helper that resets state and cascades to downstream
 // steps whenever an upstream input changes.
-export function StakeEngineExportTab() {
+export function StakeEngineExportTab({projectRoot}: {projectRoot?: string} = {}) {
     const fetchImpl = useStudioApi();
     const [activeStep, setActiveStep] = useState(0);
 
@@ -370,11 +371,16 @@ export function StakeEngineExportTab() {
 
             {activeStep === 0 && (
                 <div>
-                    <TextInput
+                    <PathInput
                         label="Output directory"
                         placeholder="./stakeengine"
+                        kind="directory"
+                        browseTitle="Browse for a Stake Engine export output directory"
+                        browseId="stakeengine-export-out-dir"
+                        relevantDirectory={projectRoot}
                         value={outDir}
                         onChange={(event) => handleOutDirChange(event.currentTarget.value)}
+                        onPathSelected={handleOutDirChange}
                         mb="sm"
                     />
                     <Text size="sm" fw={600} mb={4}>
@@ -394,13 +400,19 @@ export function StakeEngineExportTab() {
                                     <FieldWarningText message={warnings.modeName} />
                                 </div>
                                 <div>
-                                    <TextInput
+                                    <PathInput
                                         label="Outcome library path"
                                         placeholder="./outcomes/base.json"
+                                        kind="file"
+                                        browseTitle="Browse for an outcome library"
+                                        browseId="stakeengine-export-mode-library-path"
+                                        fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                                        relevantDirectory={projectRoot}
                                         value={mode.libraryPath}
                                         onChange={(event) =>
                                             handleModesChange(modes.map((m, i) => (i === index ? {...m, libraryPath: event.currentTarget.value} : m)))
                                         }
+                                        onPathSelected={(path) => handleModesChange(modes.map((m, i) => (i === index ? {...m, libraryPath: path} : m)))}
                                     />
                                     <FieldWarningText message={warnings.libraryPath} />
                                 </div>

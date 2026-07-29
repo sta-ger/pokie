@@ -10,10 +10,28 @@ import {renderWithProviders} from "../../testUtils/renderWithProviders";
 // getInputProps()/setFieldValue (see CreateProjectForm/InitProjectForm/BuildFromBlueprintPanel), but its
 // own on-focus resolved-path hint and Browse wiring don't depend on that at all, so a plain useState
 // harness exercises them directly without needing a whole form around it.
-function Harness({kind = "directory" as const, initial = ".", browseId}: {kind?: "directory" | "file"; initial?: string; browseId?: string}) {
+function Harness({
+    kind = "directory" as const,
+    initial = ".",
+    browseId,
+    relevantDirectory,
+}: {
+    kind?: "directory" | "file";
+    initial?: string;
+    browseId?: string;
+    relevantDirectory?: string;
+}) {
     const [value, setValue] = useState(initial);
     return (
-        <PathInput label="Path" value={value} onChange={(event) => setValue(event.currentTarget.value)} onPathSelected={setValue} kind={kind} browseId={browseId} />
+        <PathInput
+            label="Path"
+            value={value}
+            onChange={(event) => setValue(event.currentTarget.value)}
+            onPathSelected={setValue}
+            kind={kind}
+            browseId={browseId}
+            relevantDirectory={relevantDirectory}
+        />
     );
 }
 
@@ -37,6 +55,47 @@ describe("PathInput", () => {
         await user.click(screen.getByRole("textbox", {name: "Path"}));
 
         expect(await screen.findByText('Permission denied reading ".".')).toBeInTheDocument();
+    });
+
+    it("shows a 'Resolves to' hint for a non-blank (including bare '.') current value", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games", displayPath: "/games", entries: []}}),
+        });
+
+        renderWithProviders(<Harness initial="." />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(await screen.findByText("Resolves to: /games")).toBeInTheDocument();
+    });
+
+    it("shows an 'Auto resolved destination' hint (not 'Resolves to') for a blank/optional current value", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games/default", displayPath: "/games/default", entries: []}}),
+        });
+
+        renderWithProviders(<Harness initial="" />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(await screen.findByText("Auto resolved destination: /games/default")).toBeInTheDocument();
+        expect(screen.queryByText(/^Resolves to:/)).not.toBeInTheDocument();
+    });
+
+    it("resolves the hint against a caller-supplied relevantDirectory (e.g. the open project's root), not Studio's own server root", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/projects/sample-slot/outcomes", displayPath: "./outcomes", entries: []}}),
+        });
+
+        renderWithProviders(<Harness initial="./outcomes" relevantDirectory="/projects/sample-slot" />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(await screen.findByText("Resolves to: ./outcomes")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Foutcomes&base=%2Fprojects%2Fsample-slot")).toBe(true);
     });
 
     it("falls back to the Server filesystem browser modal, seeded with the field's current value, when native browsing is unavailable", async () => {

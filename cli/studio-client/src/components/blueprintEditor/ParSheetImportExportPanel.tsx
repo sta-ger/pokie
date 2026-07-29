@@ -1,4 +1,4 @@
-import {Button, Stepper, Text, TextInput} from "@mantine/core";
+import {Button, Stepper, Text} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import {exportParSheet, importParSheet, previewBlueprintBuild} from "../../api/apiClient";
@@ -27,6 +27,7 @@ import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
 
@@ -265,11 +266,16 @@ export function ParSheetImportExportPanel({
             {activeStep === 0 && (
                 <div>
                     <QuickActions>
-                        <TextInput
+                        <PathInput
                             label="PAR sheet path"
                             placeholder="./game.par.xlsx"
+                            kind="file"
+                            browseTitle="Browse for a PAR sheet"
+                            browseId="par-sheet-import-path"
+                            fileFilters={[{name: "PAR sheets", extensions: ["xlsx"]}]}
                             value={importPath}
                             onChange={(event) => handleImportPathChange(event.currentTarget.value)}
+                            onPathSelected={handleImportPathChange}
                         />
                         <Button onClick={runImport} loading={importView.status === "loading"}>
                             Import
@@ -363,11 +369,16 @@ export function ParSheetImportExportPanel({
 
                     <PageSection legend="Export current blueprint">
                         <QuickActions>
-                            <TextInput
+                            <PathInput
                                 label="Export to path"
                                 placeholder="./game.par.xlsx"
+                                kind="file"
+                                browseTitle="Browse for a PAR sheet destination"
+                                browseId="par-sheet-export-path"
+                                fileFilters={[{name: "PAR sheets", extensions: ["xlsx"]}]}
                                 value={exportPath}
                                 onChange={(event) => handleExportPathChange(event.currentTarget.value)}
+                                onPathSelected={handleExportPathChange}
                             />
                             <Button onClick={() => runExport(false)} loading={exportView.status === "loading"}>
                                 Export

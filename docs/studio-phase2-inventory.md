@@ -1,9 +1,28 @@
-# POKIE Studio Phase 2 UX/contract inventory (v1)
+# POKIE Studio Phase 2 UX/contract inventory (v2)
 
 **Status:** baseline, frozen 2026-07-29 against implementation commit `30b1dd4` (route/tab baseline) plus the
 executable fixtures added in `[P2-POLISH-01]`. Written *before* any Phase 2 redesign work touches Studio's
 Advanced tabs, so a future redesign step can diff its own intended changes against this document instead of
 guessing what "before" looked like.
+
+**Update (`[P2-POLISH-04]`, v2):** every path field enumerated below (Design & Build/Raw Editor's Load/Save/
+Output directory, Advanced Tools' three forms -- already on `PathInput` since before this baseline, Open
+Project's own Project path, the PAR sheet import/export panel's two paths, and every project-scoped
+Advanced-tab path field: Certification, Deployment, Outcome Libraries' three selector kinds, Stake Engine
+Export, Provably Fair) now goes through the shared `PathInput` picker/resolver (Browse -- native OS dialog,
+falling back to the server filesystem browser -- plus a live on-focus resolved-path hint), not a plain
+`TextInput`. Project-scoped fields additionally resolve/display that hint against the *project's* root
+(`PathInput`'s `relevantDirectory`, threaded through as a new optional `projectRoot` prop on each Advanced
+tab), not wherever `pokie studio` happened to be started from -- `GET /api/home/fs/browse` gained an optional
+`base` query param for exactly this (see `StudioFsBrowseService.browse`'s own doc comment). The hint itself
+now reads "Resolves to: <path>" for a relative/dot value and "Auto resolved destination: <path>" for a blank/
+optional one, rather than one wording for both. This is deliberately **not** a placeholder-text change: every
+"misleading placeholder" flagged below is left exactly as pinned (existing fixtures still assert the same
+strings) -- the live hint, not different placeholder copy, is what now keeps a user from mistaking gray
+placeholder text for a real value. `StudioFsBrowseView`'s `error` variant also gained a `reason: "absent" |
+"type" | "permission" | "other"` field alongside its existing message, for callers that want to key off a
+stable value instead of the message text. None of the Stepper/gating/raw-error-passthrough/inferable-input
+findings below changed; only the path fields' own control type and hint wording did.
 
 **Scope:** every named global/project workflow (Design & Build, Raw Editor, Advanced Tools, Open Project,
 Replay, Runtime, Certification, Provably Fair, Deployment, Outcome Libraries, Stake Engine Export) — for each,

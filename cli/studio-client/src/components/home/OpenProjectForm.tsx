@@ -1,4 +1,4 @@
-import {Button, Stack, TextInput} from "@mantine/core";
+import {Button, Stack} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useState} from "react";
 import {errorMessage} from "../../domain/errorMessage";
@@ -6,6 +6,7 @@ import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
+import {PathInput} from "../common/PathInput";
 
 export function OpenProjectForm() {
     const openAndNavigate = useOpenProject();
@@ -36,7 +37,16 @@ export function OpenProjectForm() {
         <Stack gap="md" maw={480}>
             <form onSubmit={form.onSubmit(handleSubmit)}>
                 <Stack gap="sm">
-                    <TextInput label="Project path" required {...form.getInputProps("projectRoot")} key={form.key("projectRoot")} />
+                    <PathInput
+                        label="Project path"
+                        required
+                        kind="directory"
+                        browseTitle="Browse for a project directory"
+                        browseId="open-project-path"
+                        {...form.getInputProps("projectRoot")}
+                        onPathSelected={(path) => form.setFieldValue("projectRoot", path)}
+                        key={form.key("projectRoot")}
+                    />
                     <Button type="submit" loading={state.status === "loading"} style={{alignSelf: "flex-start"}}>
                         Open
                     </Button>

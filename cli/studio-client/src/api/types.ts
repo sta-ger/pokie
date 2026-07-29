@@ -88,7 +88,7 @@ export type StudioFsEntry = {name: string; isDirectory: boolean};
 
 export type StudioFsBrowseView =
     | {status: "ok"; resolvedPath: string; displayPath: string; parentPath?: string; entries: StudioFsEntry[]}
-    | {status: "error"; error: string; resolvedPath: string};
+    | {status: "error"; error: string; resolvedPath: string; reason: "absent" | "type" | "permission" | "other"};
 
 // GET /api/home/fs/native-browse/availability's own DTO — see
 // cli/studio/home/StudioNativePickerService.ts's own doc comment. PathInput only ever shows

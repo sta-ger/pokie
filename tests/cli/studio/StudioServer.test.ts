@@ -474,6 +474,25 @@ describe("StudioServer", () => {
             expect(body).toMatchObject({status: "error"});
             expect((body as {error: string}).error).toContain("is not a directory");
         });
+
+        it("resolves a relative path against an explicit `base` instead of the studio root -- a project-scoped path field's own root", async () => {
+            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-fs-browse-base-"));
+            fs.mkdirSync(path.join(projectRoot, "outcomes"));
+            try {
+                const {status, body} = await get(
+                    `${baseUrl}/api/home/fs/browse?path=${encodeURIComponent("outcomes")}&base=${encodeURIComponent(projectRoot)}`,
+                );
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({
+                    status: "ok",
+                    resolvedPath: path.join(projectRoot, "outcomes"),
+                    displayPath: `.${path.sep}outcomes`,
+                });
+            } finally {
+                fs.rmSync(projectRoot, {recursive: true, force: true});
+            }
+        });
     });
 
     describe("Home nav: GET /api/home/fs/default-location", () => {

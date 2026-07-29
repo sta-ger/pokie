@@ -22,6 +22,7 @@ import {FieldWarningText} from "../common/FieldWarningText";
 import {IssueList} from "../common/IssueList";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 import {WarningState} from "../common/WarningState";
 
@@ -88,7 +89,7 @@ function modeFieldWarnings(mode: ModeFields): {modeName?: string; seed?: string;
 // in this UI. Mirrors OutcomeLibrariesTab's own lifecycle discipline: a monotonic requestId ref per
 // async action, a double-submit guard, and an invalidate*() helper that resets state and cascades to
 // downstream steps whenever an upstream input changes.
-export function CertificationTab() {
+export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     const fetchImpl = useStudioApi();
     const [activeStep, setActiveStep] = useState(0);
 
@@ -244,7 +245,17 @@ export function CertificationTab() {
         }
         return (
             <div>
-                <TextInput label="Output directory" value={outDir} onChange={(event) => handleOutDirChange(event.currentTarget.value)} mb="sm" />
+                <PathInput
+                    label="Output directory"
+                    kind="directory"
+                    browseTitle="Browse for a certification output directory"
+                    browseId="certification-out-dir"
+                    relevantDirectory={projectRoot}
+                    value={outDir}
+                    onChange={(event) => handleOutDirChange(event.currentTarget.value)}
+                    onPathSelected={handleOutDirChange}
+                    mb="sm"
+                />
                 {hasIncompleteModeRow && (
                     <WarningState message="One or more mode rows on Select/configure are incomplete. Fill in mode name, seed, and a positive sample count, or remove the row, before building." />
                 )}
@@ -311,11 +322,16 @@ export function CertificationTab() {
 
             {activeStep === 0 && (
                 <div>
-                    <TextInput
+                    <PathInput
                         label="Source outcome-library bundle directory"
                         placeholder="./outcomes/bundle"
+                        kind="directory"
+                        browseTitle="Browse for a source outcome-library bundle directory"
+                        browseId="certification-bundle-dir"
+                        relevantDirectory={projectRoot}
                         value={bundleDir}
                         onChange={(event) => handleBundleDirChange(event.currentTarget.value)}
+                        onPathSelected={handleBundleDirChange}
                         mb="sm"
                     />
                     <Text size="sm" fw={600} mb={4}>

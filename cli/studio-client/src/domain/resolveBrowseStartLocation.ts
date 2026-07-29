@@ -25,7 +25,7 @@ export type BrowseStartLocationParams = {
 export async function resolveBrowseStartLocation(params: BrowseStartLocationParams): Promise<string | undefined> {
     const trimmedCurrentValue = params.currentValue.trim();
     if (trimmedCurrentValue.length > 0) {
-        const hint = await browseFilesystem(params.fetchImpl, trimmedCurrentValue);
+        const hint = await browseFilesystem(params.fetchImpl, trimmedCurrentValue, params.relevantDirectory);
         if (hint.status === "ok") {
             return trimmedCurrentValue;
         }

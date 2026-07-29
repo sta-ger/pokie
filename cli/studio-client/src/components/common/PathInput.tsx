@@ -31,7 +31,11 @@ type PathInputProps = TextInputProps & {
     fileFilters?: StudioNativePickerFileFilter[];
 };
 
-type HintState = {status: "idle"} | {status: "loading"} | {status: "ok"; text: string} | {status: "error"; message: string};
+type HintState =
+    | {status: "idle"}
+    | {status: "loading"}
+    | {status: "ok"; text: string; auto: boolean}
+    | {status: "error"; message: string};
 
 // A plain path TextInput plus a "Browse" action and a resolved-path hint fetched on focus -- so a bare
 // "." (or any relative path) always has a concrete, current location shown alongside it instead of being
@@ -62,18 +66,24 @@ export function PathInput({
 
     const currentValue = String(value ?? defaultValue ?? "");
 
+    // A blank field has nothing of the user's own to "resolve" -- what it shows is wherever an omitted/
+    // default value would actually land (e.g. Build's own "use the project's default output directory"),
+    // so the hint is worded as "Auto resolved destination" rather than "Resolves to", which would wrongly
+    // imply the empty string itself was resolved. Every other value (a relative path, a bare ".", an
+    // already-absolute path) really is the user's own input being resolved, hence "Resolves to".
     const resolveHint = (path: string): void => {
+        const auto = path.trim().length === 0;
         setHint({status: "loading"});
-        browseFilesystem(fetchImpl, path)
+        browseFilesystem(fetchImpl, path, relevantDirectory)
             .then((result) => {
-                setHint(result.status === "ok" ? {status: "ok", text: result.displayPath} : {status: "error", message: result.error});
+                setHint(result.status === "ok" ? {status: "ok", text: result.displayPath, auto} : {status: "error", message: result.error});
             })
             .catch((error: unknown) => setHint({status: "error", message: errorMessage(error)}));
     };
 
     const rememberAndSelect = (path: string): void => {
         onPathSelected(path);
-        setHint({status: "ok", text: path});
+        setHint({status: "ok", text: path, auto: false});
         if (browseId) {
             setRememberedBrowseLocation(browseId, path);
         }
@@ -132,7 +142,7 @@ export function PathInput({
             )}
             {hint.status === "ok" && (
                 <Text size="xs" c="dimmed">
-                    Resolves to: {hint.text}
+                    {hint.auto ? "Auto resolved destination" : "Resolves to"}: {hint.text}
                 </Text>
             )}
             {hint.status === "error" && (

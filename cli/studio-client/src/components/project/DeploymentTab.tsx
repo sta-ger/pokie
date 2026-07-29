@@ -23,6 +23,7 @@ import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
 
@@ -182,6 +183,7 @@ export function DeploymentTab({
     runLoading,
     selectedArtifactPath,
     onSelectArtifact,
+    projectRoot,
 }: {
     targetsView: DeploymentTargetsListView;
     targetsError: string | undefined;
@@ -199,6 +201,7 @@ export function DeploymentTab({
     runLoading: boolean;
     selectedArtifactPath: string | undefined;
     onSelectArtifact: (path: string) => void;
+    projectRoot?: string;
 }) {
     const confirm = useConfirm();
     const [activeStep, setActiveStep] = useState(0);
@@ -337,10 +340,16 @@ export function DeploymentTab({
                                         value={mode.modeName}
                                         onChange={(event) => onUpdateMode(index, {modeName: event.currentTarget.value})}
                                     />
-                                    <TextInput
+                                    <PathInput
                                         label="Outcome library path"
+                                        kind="file"
+                                        browseTitle="Browse for an outcome library"
+                                        browseId="deployment-outcome-library-path"
+                                        fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                                        relevantDirectory={projectRoot}
                                         value={mode.libraryPath}
                                         onChange={(event) => onUpdateMode(index, {libraryPath: event.currentTarget.value})}
+                                        onPathSelected={(path) => onUpdateMode(index, {libraryPath: path})}
                                     />
                                     <RowActions itemLabel={`mode ${index + 1}`} onRemove={() => onRemoveMode(index)} />
                                 </QuickActions>

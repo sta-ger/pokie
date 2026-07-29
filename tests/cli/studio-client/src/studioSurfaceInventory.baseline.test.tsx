@@ -533,3 +533,22 @@ describe("Open Project: required-field baseline", () => {
         expect(screen.queryByText("Opening…")).not.toBeInTheDocument();
     });
 });
+
+describe("[P2-POLISH-04] project-scoped path fields: shared PathInput, resolved against the project's own root", () => {
+    it("Certification's bundle-directory field is a PathInput whose resolved-path hint is requested against the open project's root, not Studio's own server root", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch(PROJECT_ROUTES);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/certification"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        const bundleDirField = screen.getByLabelText("Source outcome-library bundle directory", {exact: false});
+        expect(screen.getByRole("button", {name: "Browse…"})).toBeInTheDocument();
+
+        await user.type(bundleDirField, "./outcomes/bundle");
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        await waitFor(() =>
+            expect(calls.some((call) => call.url.startsWith("/api/home/fs/browse") && call.url.includes("base=%2Fgames%2Fmy-slot"))).toBe(true),
+        );
+    });
+});

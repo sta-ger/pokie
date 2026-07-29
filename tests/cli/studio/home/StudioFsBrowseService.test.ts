@@ -74,6 +74,7 @@ describe("StudioFsBrowseService", () => {
         }
         expect(result.error).toContain("does not exist");
         expect(result.resolvedPath).toBe(path.join(root, "does-not-exist"));
+        expect(result.reason).toBe("absent");
     });
 
     it("reports a path that resolves to a file (not a directory) as an error", () => {
@@ -84,6 +85,23 @@ describe("StudioFsBrowseService", () => {
             throw new Error("expected an error result");
         }
         expect(result.error).toContain("is not a directory");
+        expect(result.reason).toBe("type");
+    });
+
+    it("resolves/display-relativizes against an explicit base instead of the constructor root", () => {
+        const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-base-"));
+        fs.mkdirSync(path.join(projectRoot, "outcomes"));
+        try {
+            const result = service.browse("outcomes", projectRoot);
+
+            expect(result).toMatchObject({
+                status: "ok",
+                resolvedPath: path.join(projectRoot, "outcomes"),
+                displayPath: `.${path.sep}outcomes`,
+            });
+        } finally {
+            fs.rmSync(projectRoot, {recursive: true, force: true});
+        }
     });
 
     it("reports a permission-denied readdir failure as a friendly error, not a thrown exception", () => {
@@ -99,6 +117,7 @@ describe("StudioFsBrowseService", () => {
                 throw new Error("expected an error result");
             }
             expect(result.error).toContain("Permission denied");
+            expect(result.reason).toBe("permission");
         } finally {
             spy.mockRestore();
         }

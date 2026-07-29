@@ -1,4 +1,4 @@
-import {Button, Text, TextInput} from "@mantine/core";
+import {Button, Text} from "@mantine/core";
 import {useRef, useState} from "react";
 import {buildBlueprint, previewBlueprintBuild} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -10,6 +10,7 @@ import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
 export function BlueprintBuildPanel({
@@ -97,7 +98,15 @@ export function BlueprintBuildPanel({
     return (
         <PageSection legend="Build">
             <QuickActions>
-                <TextInput label="Output directory (optional)" value={outDir} onChange={(event) => setOutDir(event.currentTarget.value)} />
+                <PathInput
+                    label="Output directory (optional)"
+                    kind="directory"
+                    browseTitle="Browse for an output directory"
+                    browseId="blueprint-build-out-dir"
+                    value={outDir}
+                    onChange={(event) => setOutDir(event.currentTarget.value)}
+                    onPathSelected={setOutDir}
+                />
                 <Button variant="default" onClick={runPreview} loading={preview.status === "loading"}>
                     Build Preview
                 </Button>
