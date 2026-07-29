@@ -324,6 +324,82 @@ function screensEqual(a: readonly (readonly (string | number)[])[], b: readonly 
     });
 }
 
+// Gates the Reproduce step for a "Replay Artifact" record (a pasted or previously-stored replay,
+// as opposed to a fresh Seed & Round/Recent Simulation attempt, which never claims to reproduce a
+// *specific* prior result and so is never gated by this) — reproducing forward from round 1 is only
+// ever a faithful, *verifiable* match of the original result when the seed and exact game build that
+// produced it are known, AND — whenever the record carries a round artifact at all — its own game
+// id/version provenance, state, and RNG trace are complete enough to actually verify a fresh
+// reproduction against. A record that carries an artifact but not those (an "incomplete" record — e.g.
+// an import that only kept the round-level result, or hand-trimmed the provenance block) is
+// deliberately blocked here rather than left to silently produce a same-seed
+// replay nobody can confirm is faithful: describeReplayComparison's own "unavailable" dimensions are
+// for a *reproduced* side happening not to capture something despite a complete expected side, not for
+// papering over an expected side that never had the data to check against in the first place. A record
+// with no artifact at all (just a bare round/seed) has nothing to check state/RNG against, so it's
+// exempt from this — same as the version check below.
+export type ReplayReproducibilityGate =
+    | {status: "ready"}
+    | {status: "blocked"; reason: string; remediation: string};
+
+export function describeReplayReproducibility(
+    expected: {seed?: string; artifact?: RoundArtifactJson; stateBefore?: unknown; stateAfter?: unknown},
+    currentGame: {id: string; version: string} | undefined,
+): ReplayReproducibilityGate {
+    if (expected.seed === undefined || expected.seed.trim().length === 0) {
+        return {
+            status: "blocked",
+            reason:
+                "This round has no recorded seed, so replaying it forward from round 1 can't deterministically reproduce the original result — likely an imported round that never carried a Pokie seed.",
+            remediation:
+                'Add a "seed" field with the original seed to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
+        };
+    }
+
+    const provenanceGame = expected.artifact?.provenance?.game;
+    if (expected.artifact !== undefined && (!provenanceGame || !provenanceGame.id || !provenanceGame.version)) {
+        return {
+            status: "blocked",
+            reason:
+                'This round\'s artifact has no recorded game id/version provenance ("provenance.game"), so there is no way to confirm it was reproduced against the same game build that originally produced it — likely an incomplete or hand-trimmed record.',
+            remediation:
+                'Add a "provenance.game" object with the original "id" and "version" to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
+        };
+    }
+
+    if (currentGame && provenanceGame && (provenanceGame.id !== currentGame.id || provenanceGame.version !== currentGame.version)) {
+        return {
+            status: "blocked",
+            reason: `This round was recorded against ${provenanceGame.id} v${provenanceGame.version}, but the project currently loaded is ${currentGame.id} v${currentGame.version} — reproducing it now would replay a different game build, not a faithful reproduction.`,
+            remediation: `Open project "${provenanceGame.id}" at version ${provenanceGame.version} before reproducing this round, or use it for inspection only (skip Reproduce and go straight to Inspect).`,
+        };
+    }
+
+    if (expected.artifact !== undefined) {
+        if (expected.stateBefore === undefined || expected.stateAfter === undefined) {
+            return {
+                status: "blocked",
+                reason:
+                    'This round\'s artifact has no recorded session state ("stateBefore"/"stateAfter" immediately around the round), so a fresh reproduction\'s own state transition can\'t be verified against it — likely an incomplete or hand-trimmed record.',
+                remediation:
+                    'Add "stateBefore" and "stateAfter" fields (captured alongside the original round) to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect).',
+            };
+        }
+
+        if (extractDeterministicReelStops(expected.artifact.debug) === undefined) {
+            return {
+                status: "blocked",
+                reason:
+                    'This round\'s artifact has no recorded RNG/reel-stop trace (a "reelStops" field under "debug"), so a fresh reproduction\'s own RNG data can\'t be verified against it — likely an incomplete or hand-trimmed record.',
+                remediation:
+                    'Add a "reelStops" field under the artifact\'s "debug" data before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect).',
+            };
+        }
+    }
+
+    return {status: "ready"};
+}
+
 // Same role as interpretReports.ts's ReportListView — distinguishes "no replays run yet" from "here's
 // the list"; "loading"/"error" are constructed directly by main.ts around the fetch call itself, same
 // convention as every other list in this app.

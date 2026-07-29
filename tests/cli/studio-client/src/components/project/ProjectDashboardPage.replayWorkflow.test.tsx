@@ -343,7 +343,11 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
     it("shows a mismatch banner naming the specific dimension when totalPayout differs", async () => {
         const user = userEvent.setup();
         let pollCount = 0;
-        const pastedDescriptor = descriptorFor({artifact: artifactFor({totalWin: 5}, "expected-hash")});
+        const pastedDescriptor = descriptorFor({
+            artifact: artifactFor({totalWin: 5, debug: {reelStops: [1, 2, 3]}}, "expected-hash"),
+            stateBefore: {win: 0},
+            stateAfter: {win: 5},
+        });
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
@@ -383,13 +387,18 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(dimensionRow("Visible screen:").textContent).toMatch(/match/);
     }, 60000);
 
-    it("reports a partial comparison (not a mismatch) when state/debug are simply absent from both sides", async () => {
+    it("reports a partial comparison (not a mismatch) when state/debug are absent from the freshly reproduced side", async () => {
         const user = userEvent.setup();
         let pollCount = 0;
-        // Neither side carries stateBefore/stateAfter/debug -- an older-style descriptor, or a game
-        // without session serialization -- so state/rngReelStops must show "unavailable", and that alone
-        // must never demote the verdict to "mismatch".
-        const pastedDescriptor = descriptorFor({}, "shared-hash-2");
+        // The expected (pasted) side carries a full state/RNG capture -- required for Reproduce to be
+        // reachable at all -- but the freshly reproduced side (this project's current game/session) simply
+        // doesn't capture them, an older-style descriptor, or a game without session serialization -- so
+        // state/rngReelStops must show "unavailable", and that alone must never demote the verdict to
+        // "mismatch".
+        const pastedDescriptor = descriptorFor(
+            {artifact: artifactFor({debug: {reelStops: [1, 2, 3]}}, "shared-hash-2"), stateBefore: {win: 0}, stateAfter: {win: 5}},
+            "shared-hash-2",
+        );
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
@@ -459,11 +468,163 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
-        fireEvent.change(textarea, {target: {value: JSON.stringify({round: 1, seed: "demo-seed", artifact: {...artifactFor(), steps: "not-an-array"}})}});
+        fireEvent.change(textarea, {
+            target: {
+                value: JSON.stringify({
+                    round: 1,
+                    seed: "demo-seed",
+                    artifact: {...artifactFor({debug: {reelStops: [1, 2, 3]}}), steps: "not-an-array"},
+                    stateBefore: {win: 0},
+                    stateAfter: {win: 5},
+                }),
+            },
+        });
         await user.click(screen.getByRole("button", {name: "Validate & continue"}));
 
         await waitFor(() => expect(screen.getByText('"steps" must be an array.')).toBeInTheDocument());
-        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).not.toBeDisabled();
+    }, 60000);
+
+    it("disables Reproduce with a concrete missing-seed explanation and remediation for an imported record with no seed", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            // No outer "seed" was pasted, so the backend's own validated echo carries none either --
+            // this is the shape a Stake Engine-imported round (never recorded with a Pokie seed) takes.
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, artifactWarnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        fireEvent.change(textarea, {target: {value: JSON.stringify({round: 1, artifact: artifactFor()})}});
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await screen.findByText(/Round 1, seed \(none\)\./);
+        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
+        expect(screen.getByText(/no recorded seed/)).toBeInTheDocument();
+        expect(screen.getByText(/Add a "seed" field/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+    }, 60000);
+
+    it("disables Reproduce with a concrete version-mismatch explanation and remediation when the record's game version differs from the loaded project", async () => {
+        const user = userEvent.setup();
+        const mismatchedArtifact = artifactFor({provenance: {game: {id: "a", name: "A", version: "2.0.0"}, pokieVersion: "1.0.0"}});
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({artifact: mismatchedArtifact}))}});
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await screen.findByText(/Round 1, seed demo-seed\./);
+        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
+        expect(screen.getByText(/recorded against a v2\.0\.0, but the project currently loaded is a v1\.0\.0/)).toBeInTheDocument();
+        expect(screen.getByText(/Open project "a" at version 2\.0\.0/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+    }, 60000);
+
+    it("disables Reproduce with a concrete missing-provenance explanation and remediation for a record whose artifact carries no recorded game id/version, while Inspect/Reproduce-and-compare from Recent Replays remain available", async () => {
+        const user = userEvent.setup();
+        const storedEntry: StudioReplayListEntry = {id: "stored-1", round: 1, status: "completed", startedAt: "2026-01-01T00:00:00.000Z", game: GAME};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === undefined) {
+                    return {ok: true, status: 200, body: [storedEntry]};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        // State and an RNG trace are both captured (so those gates aren't what's under test), but the
+        // artifact's provenance block never recorded which game/version produced it -- e.g. a
+        // hand-trimmed import that dropped "provenance.game" while keeping everything else.
+        fireEvent.change(textarea, {
+            target: {
+                value: JSON.stringify({
+                    round: 1,
+                    seed: "demo-seed",
+                    artifact: {...artifactFor({debug: {reelStops: [1, 2, 3]}}), provenance: {pokieVersion: "1.0.0"}},
+                    stateBefore: {win: 0},
+                    stateAfter: {win: 5},
+                }),
+            },
+        });
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await screen.findByText(/Round 1, seed demo-seed\./);
+        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
+        expect(screen.getByText(/no recorded game id\/version provenance/)).toBeInTheDocument();
+        expect(screen.getByText(/Add a "provenance.game" object/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+
+        // The gate only blocks *this pasted record's* Reproduce action -- a stored replay's own
+        // Inspect/Reproduce-and-compare actions in Recent Replays stay fully available regardless.
+        const recentReplaysSection = screen.getByText("Recent replays").closest("fieldset") as HTMLElement;
+        expect(within(recentReplaysSection).getByRole("button", {name: "Inspect"})).not.toBeDisabled();
+        expect(within(recentReplaysSection).getByRole("button", {name: "Reproduce & compare"})).not.toBeDisabled();
+    }, 60000);
+
+    it("disables Reproduce with a concrete missing-state explanation and remediation for an incomplete record with no session state captured", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        // Carries an RNG trace but no stateBefore/stateAfter -- an incomplete record, distinct from a
+        // record that never had a round artifact at all.
+        fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({artifact: artifactFor({debug: {reelStops: [1, 2, 3]}})}))}});
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await screen.findByText(/Round 1, seed demo-seed\./);
+        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
+        expect(screen.getByText(/no recorded session state/)).toBeInTheDocument();
+        expect(screen.getByText(/Add "stateBefore" and "stateAfter" fields/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+    }, 60000);
+
+    it("disables Reproduce with a concrete missing-RNG-trace explanation and remediation for an incomplete record with no reelStops captured", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+        const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
+        // Carries state but no explicit RNG/reel-stop trace under the artifact's debug data.
+        fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({stateBefore: {win: 0}, stateAfter: {win: 5}}))}});
+        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+
+        await screen.findByText(/Round 1, seed demo-seed\./);
+        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
+        expect(screen.getByText(/no recorded RNG\/reel-stop trace/)).toBeInTheDocument();
+        expect(screen.getByText(/Add a "reelStops" field/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
     }, 60000);
 
     it("completes a malformed-expected-artifact replay with no crash: comparison is unavailable with diagnostics, Inspect/Export still work", async () => {
@@ -497,8 +658,20 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         // wins is not an array (missing/malformed comparison-relevant field) -- but round/seed alone are
-        // still enough for the backend to accept this for replay (requirement 1's two-tier split).
-        fireEvent.change(textarea, {target: {value: JSON.stringify({round: 1, seed: "demo-seed", artifact: {...artifactFor(), wins: "not-an-array"}})}});
+        // still enough for the backend to accept this for replay (requirement 1's two-tier split). State
+        // and an RNG trace are still captured here so the reproducibility gate itself isn't what's under
+        // test in this case.
+        fireEvent.change(textarea, {
+            target: {
+                value: JSON.stringify({
+                    round: 1,
+                    seed: "demo-seed",
+                    artifact: {...artifactFor({debug: {reelStops: [1, 2, 3]}}), wins: "not-an-array"},
+                    stateBefore: {win: 0},
+                    stateAfter: {win: 5},
+                }),
+            },
+        });
         await user.click(screen.getByRole("button", {name: "Validate & continue"}));
 
         await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));

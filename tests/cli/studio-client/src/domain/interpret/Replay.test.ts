@@ -2,6 +2,7 @@ import {
     describeReplayComparison,
     describeReplayList,
     describeReplayProgress,
+    describeReplayReproducibility,
     describeReplayResult,
     isReplayActive,
     isReplayTerminal,
@@ -426,6 +427,156 @@ describe("describeReplayComparison", () => {
             expect(result.dimensions.rngReelStops).toEqual({status: "mismatch", detail: "RNG/reel-stop data differs."});
             expect(result.status).toBe("mismatch");
         });
+    });
+});
+
+describe("describeReplayReproducibility", () => {
+    const CURRENT_GAME = {id: "sample-slot", version: "0.1.0"};
+    // A fully-captured artifact: state before/after plus an explicit RNG/reel-stop trace -- the shape
+    // an "exact" record needs to satisfy every reproducibility input, not just seed/version.
+    const EXACT_ARTIFACT = createArtifact({debug: {reelStops: [1, 2, 3]}});
+    const EXACT_STATE = {stateBefore: {win: 0}, stateAfter: {win: 5}};
+
+    it("is ready for an exact record: seed present, game id/version matching the currently loaded project, state and RNG trace both captured", () => {
+        expect(describeReplayReproducibility({seed: "demo", artifact: EXACT_ARTIFACT, ...EXACT_STATE}, CURRENT_GAME)).toEqual({status: "ready"});
+    });
+
+    it("is ready when there's no artifact at all to check version/state/RNG against, as long as a seed is present", () => {
+        expect(describeReplayReproducibility({seed: "demo"}, CURRENT_GAME)).toEqual({status: "ready"});
+    });
+
+    it("is ready when the currently loaded project's game is unknown yet (never blocks on an absent check)", () => {
+        expect(describeReplayReproducibility({seed: "demo", artifact: EXACT_ARTIFACT, ...EXACT_STATE}, undefined)).toEqual({status: "ready"});
+    });
+
+    it("blocks an imported record with no seed, naming the seed as the concrete missing input, with a remediation path", () => {
+        const gate = describeReplayReproducibility({artifact: EXACT_ARTIFACT, ...EXACT_STATE}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({
+            reason: expect.stringContaining("no recorded seed"),
+            remediation: expect.stringContaining("seed"),
+        });
+    });
+
+    it("blocks a record with a blank seed the same as a missing one", () => {
+        const gate = describeReplayReproducibility({seed: "   ", artifact: EXACT_ARTIFACT, ...EXACT_STATE}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+    });
+
+    it("blocks a version-mismatched record, naming both the recorded and currently loaded game/version, with a remediation path", () => {
+        const artifact = createArtifact({provenance: {game: {id: "sample-slot", name: "Sample Slot", version: "0.2.0"}, pokieVersion: "1.0.0"}});
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({
+            reason: expect.stringContaining("v0.2.0"),
+            remediation: expect.stringContaining("0.2.0"),
+        });
+    });
+
+    it("blocks a record whose game id itself differs (not just the version) from the currently loaded project", () => {
+        const artifact = createArtifact({provenance: {game: {id: "other-slot", name: "Other Slot", version: "0.1.0"}, pokieVersion: "1.0.0"}});
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+    });
+
+    it("blocks a record whose artifact has no provenance.game at all, naming provenance as the concrete missing input, with a remediation path", () => {
+        const artifact = createArtifact() as RoundArtifactJson;
+        // Simulates a hand-trimmed/pasted artifact JSON missing the required provenance.game field.
+        Reflect.deleteProperty(artifact.provenance, "game");
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({
+            reason: expect.stringContaining("no recorded game id/version provenance"),
+            remediation: expect.stringContaining("provenance.game"),
+        });
+    });
+
+    it("blocks a record whose artifact carries a game id but no version, the same as provenance missing entirely", () => {
+        const artifact = createArtifact({provenance: {game: {id: "sample-slot", name: "Sample Slot", version: ""}, pokieVersion: "1.0.0"}});
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded game id/version provenance")});
+    });
+
+    it("blocks a record missing provenance.game even when no project is currently loaded (unlike the version-mismatch check, this never needs a loaded project to matter)", () => {
+        const artifact = createArtifact() as RoundArtifactJson;
+        // Simulates a hand-trimmed/pasted artifact JSON missing the required provenance.game field.
+        Reflect.deleteProperty(artifact.provenance, "game");
+
+        const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, undefined);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded game id/version provenance")});
+    });
+
+    it("checks the seed before the version, reporting the seed issue when both are absent/mismatched", () => {
+        const artifact = createArtifact({provenance: {game: {id: "other-slot", name: "Other Slot", version: "0.2.0"}, pokieVersion: "1.0.0"}});
+
+        const gate = describeReplayReproducibility({artifact}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded seed")});
+    });
+
+    it("blocks an incomplete record missing session state, naming state as the concrete missing input, with a remediation path", () => {
+        const gate = describeReplayReproducibility({seed: "demo", artifact: EXACT_ARTIFACT}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({
+            reason: expect.stringContaining("no recorded session state"),
+            remediation: expect.stringContaining("stateBefore"),
+        });
+    });
+
+    it("blocks an incomplete record with only stateBefore captured (a partial pair), the same as state missing entirely", () => {
+        const gate = describeReplayReproducibility({seed: "demo", artifact: EXACT_ARTIFACT, stateBefore: {win: 0}}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded session state")});
+    });
+
+    it("blocks an incomplete record missing an RNG/reel-stop trace, naming it as the concrete missing input, with a remediation path", () => {
+        const artifact = createArtifact(); // no debug at all
+        const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({
+            reason: expect.stringContaining("no recorded RNG/reel-stop trace"),
+            remediation: expect.stringContaining("reelStops"),
+        });
+    });
+
+    it("blocks an incomplete record whose debug data exists but carries no explicit reelStops field", () => {
+        const artifact = createArtifact({debug: {rngEngine: "engine-a"}});
+        const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded RNG/reel-stop trace")});
+    });
+
+    it("checks state before RNG trace, reporting the state issue when both are absent", () => {
+        const artifact = createArtifact(); // no debug, no state
+        const gate = describeReplayReproducibility({seed: "demo", artifact}, CURRENT_GAME);
+
+        expect(gate.status).toBe("blocked");
+        expect(gate).toMatchObject({reason: expect.stringContaining("no recorded session state")});
+    });
+
+    it("checks seed and version before state/RNG completeness", () => {
+        expect(describeReplayReproducibility({artifact: createArtifact()}, CURRENT_GAME)).toMatchObject({reason: expect.stringContaining("no recorded seed")});
+
+        const mismatched = createArtifact({provenance: {game: {id: "sample-slot", name: "Sample Slot", version: "0.2.0"}, pokieVersion: "1.0.0"}});
+        expect(describeReplayReproducibility({seed: "demo", artifact: mismatched}, CURRENT_GAME)).toMatchObject({reason: expect.stringContaining("v0.2.0")});
     });
 });
 

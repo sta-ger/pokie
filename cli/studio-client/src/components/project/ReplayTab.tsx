@@ -4,7 +4,7 @@ import {useEffect, useRef, useState} from "react";
 import {useLocation} from "react-router-dom";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
-import type {ReplayComparisonView, ReplayListView, ReplayProgressView, ReplayResultView} from "../../domain/interpret/Replay";
+import {describeReplayReproducibility, type ReplayComparisonView, type ReplayListView, type ReplayProgressView, type ReplayResultView} from "../../domain/interpret/Replay";
 import type {ReportListView} from "../../domain/interpret/Reports";
 import {describeRuntimeScreen, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {useConfirm} from "../../hooks/useConfirm";
@@ -72,6 +72,7 @@ export function ReplayTab({
     recentRuns,
     recentRunsError,
     onRefreshRecentRuns,
+    currentGame,
 }: {
     progress: ReplayProgressView | undefined;
     result: ReplayResultView | undefined;
@@ -94,6 +95,10 @@ export function ReplayTab({
     recentRuns: ReportListView;
     recentRunsError: string | undefined;
     onRefreshRecentRuns: () => void;
+    // The currently loaded project's own game id/version — the "current" side of the version-mismatch
+    // check in describeReplayReproducibility. Undefined only while the project header itself hasn't
+    // loaded yet, in which case that check is simply skipped (never blocks on an absent value).
+    currentGame: {id: string; version: string} | undefined;
 }) {
     const confirm = useConfirm();
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
@@ -181,6 +186,14 @@ export function ReplayTab({
 
     const inspectReachable = (findMethod === "spin" && selectedSpin !== undefined) || result !== undefined;
     const exportReachable = inspectReachable;
+
+    // Only a "Replay Artifact" record (pasted or picked from Recent Replays) carries known
+    // seed/provenance to check up front — Seed & Round/Recent Simulation are fresh attempts that never
+    // claim to reproduce one *specific* prior result, and Session Spin is already fully disabled above.
+    const artifactReproducibility =
+        expected.status === "loaded"
+            ? describeReplayReproducibility({seed: expected.seed, artifact: expected.artifact, stateBefore: expected.stateBefore, stateAfter: expected.stateAfter}, currentGame)
+            : undefined;
 
     return (
         <div>
@@ -404,8 +417,17 @@ export function ReplayTab({
                                             ))}
                                         </List>
                                     )}
+                                    {artifactReproducibility?.status === "blocked" && (
+                                        <Alert color="yellow" variant="light" title="Reproduce isn't reliable for this round" mb="sm">
+                                            <Text size="sm">{artifactReproducibility.reason}</Text>
+                                            <Text size="sm" mt={4}>
+                                                {artifactReproducibility.remediation}
+                                            </Text>
+                                        </Alert>
+                                    )}
                                     <QuickActions>
                                         <Button
+                                            disabled={artifactReproducibility?.status === "blocked"}
                                             onClick={() => {
                                                 onRun(expected.round, expected.seed, true);
                                                 setActiveStep(2);
