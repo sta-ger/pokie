@@ -387,7 +387,7 @@ describe("StudioHomeService", () => {
         it("delegates to the injected PokiePathResolver", () => {
             const resolveIndependentProjectDirectory = jest
                 .fn()
-                .mockReturnValue({status: "ok", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
+                .mockReturnValue({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
             const service = new StudioHomeService(
                 "1.2.1",
                 undefined,
@@ -403,7 +403,7 @@ describe("StudioHomeService", () => {
             const result = service.resolveDefaultProjectDirectory("sample-slot");
 
             expect(resolveIndependentProjectDirectory).toHaveBeenCalledWith("sample-slot");
-            expect(result).toEqual({status: "ok", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
+            expect(result).toEqual({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
         });
     });
 });

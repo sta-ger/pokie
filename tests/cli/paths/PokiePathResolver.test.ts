@@ -36,7 +36,7 @@ describe("PokiePathResolver", () => {
 
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result).toEqual({status: "ok", directory: path.join(documents, "POKIE", "sample-slot"), source: "documents"});
+            expect(result).toEqual({status: "valid", directory: path.join(documents, "POKIE", "sample-slot"), source: "documents"});
         });
 
         it("falls back to Home/POKIE/<name> when Documents does not resolve", () => {
@@ -45,32 +45,39 @@ describe("PokiePathResolver", () => {
 
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result).toEqual({status: "ok", directory: path.join(tmpDir, "POKIE", "sample-slot"), source: "home"});
+            expect(result).toEqual({status: "valid", directory: path.join(tmpDir, "POKIE", "sample-slot"), source: "home"});
         });
 
         it("rejects a blank name", () => {
             const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, {platform: "linux", env: {}, homeDir: tmpDir});
 
-            expect(resolver.resolveIndependentProjectDirectory("   ")).toEqual({status: "error", message: "A project name is required."});
+            expect(resolver.resolveIndependentProjectDirectory("   ")).toEqual({status: "invalid-name", message: "A project name is required."});
         });
 
         it("rejects a name containing path separators or traversal segments", () => {
             const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, {platform: "linux", env: {}, homeDir: tmpDir});
 
-            expect(resolver.resolveIndependentProjectDirectory("../escape").status).toBe("error");
-            expect(resolver.resolveIndependentProjectDirectory("nested/name").status).toBe("error");
+            expect(resolver.resolveIndependentProjectDirectory("../escape").status).toBe("invalid-name");
+            expect(resolver.resolveIndependentProjectDirectory("nested/name").status).toBe("invalid-name");
         });
 
         it("never silently resolves into the OS temp directory even when Home itself is inside it", () => {
             // Simulates a broken/misconfigured environment where the computed Home directory happens to
             // land inside the OS temp dir -- the unsafe-start-directory guard must still refuse it
-            // rather than silently handing back a temp-dir-rooted default.
-            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: path.join(os.tmpdir(), "not-a-real-home")};
-            const resolver = new PokiePathResolver({}, env);
+            // rather than silently handing back a temp-dir-rooted default. Uses a real, existing,
+            // writable directory (rather than a nonexistent path) so the fixture actually reaches the
+            // unsafe-directory guard instead of being rejected earlier as merely "absent".
+            const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-temp-home-test-"));
+            try {
+                const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tempHome};
+                const resolver = new PokiePathResolver({}, env);
 
-            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+                const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result.status).toBe("error");
+                expect(result.status).toBe("unsafe-path");
+            } finally {
+                fs.rmSync(tempHome, {recursive: true, force: true});
+            }
         });
 
         it("never silently resolves into Studio's own internal directory", () => {
@@ -81,7 +88,88 @@ describe("PokiePathResolver", () => {
 
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result.status).toBe("error");
+            expect(result.status).toBe("unsafe-path");
+        });
+
+        it("reports the unresolved state when the base-directory lookup can't determine a home directory at all", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
+            const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env, () => ({status: "unresolved"}));
+
+            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+            expect(result.status).toBe("unresolved");
+            expect((result as {message: string}).message.length).toBeGreaterThan(0);
+        });
+
+        it("reports the absent state when Home itself does not exist", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
+            const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env, () => ({status: "absent", directory: "/no/such/home"}));
+
+            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+            expect(result).toEqual({status: "absent", message: 'The default project location "/no/such/home" does not exist.'});
+        });
+
+        it("reports the type state when Home resolves to a non-directory", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
+            const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env, () => ({status: "type", directory: "/home/a-file"}));
+
+            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+            expect(result).toEqual({status: "type", message: 'The default project location "/home/a-file" is not a directory.'});
+        });
+
+        it("reports the permission state when Home is not writable", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
+            const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env, () => ({status: "permission", directory: "/home/locked"}));
+
+            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+            expect(result).toEqual({status: "permission", message: 'The default project location "/home/locked" is not writable.'});
+        });
+
+        it("joins a win32 base directory using Windows path semantics regardless of the host OS", () => {
+            // Bypasses PlatformDirectories' own fs-backed usability check (a Windows-style path can't be
+            // meaningfully validated against a non-Windows test host's real filesystem -- see
+            // PlatformDirectories.test.ts for that layer's own coverage) so this test isolates exactly
+            // what it's meant to check: that the base directory and project name are joined with
+            // backslashes, not the host's forward-slash path.join.
+            const env: PlatformDirectoryEnvironment = {platform: "win32", env: {USERPROFILE: "C:\\Users\\alice"}, homeDir: "C:\\Users\\alice"};
+            const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env, () => ({
+                status: "valid",
+                directory: "C:\\Users\\alice\\Documents",
+                source: "documents",
+            }));
+
+            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+            expect(result).toEqual({status: "valid", directory: "C:\\Users\\alice\\Documents\\POKIE\\sample-slot", source: "documents"});
+        });
+
+        it("joins a relocated/localized win32 Documents base directory using Windows path semantics", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "win32", env: {USERPROFILE: "C:\\Users\\alice"}, homeDir: "C:\\Users\\alice"};
+            const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env, () => ({
+                status: "valid",
+                directory: "D:\\MyStuff\\Dokumente",
+                source: "documents",
+            }));
+
+            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+            expect(result).toEqual({status: "valid", directory: "D:\\MyStuff\\Dokumente\\POKIE\\sample-slot", source: "documents"});
+        });
+
+        it("falls back to a win32 Home base directory using Windows path semantics when Documents is disabled/unusable", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "win32", env: {USERPROFILE: "C:\\Users\\alice"}, homeDir: "C:\\Users\\alice"};
+            const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env, () => ({
+                status: "valid",
+                directory: "C:\\Users\\alice",
+                source: "home",
+            }));
+
+            const result = resolver.resolveIndependentProjectDirectory("sample-slot");
+
+            expect(result).toEqual({status: "valid", directory: "C:\\Users\\alice\\POKIE\\sample-slot", source: "home"});
         });
     });
 

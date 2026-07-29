@@ -1,14 +1,25 @@
 import path from "path";
 import {resolveProjectDirectory, ResolveProjectDirectoryResult} from "../studio/outcomeLibrary/resolveProjectDirectory.js";
 import {isUnsafeStartDirectory, UnsafeStartDirectoryContext} from "./isUnsafeStartDirectory.js";
-import {resolveUserBaseDirectory} from "./PlatformDirectories.js";
+import {resolveUserBaseDirectory, UserBaseDirectoryResult} from "./PlatformDirectories.js";
 import {defaultPlatformDirectoryEnvironment, PlatformDirectoryEnvironment} from "./PlatformDirectoryEnvironment.js";
 
 const POKIE_PROJECTS_FOLDER_NAME = "POKIE";
 
+// Mirrors PlatformDirectories.ts's DirectoryUsabilityResult/UserBaseDirectoryResult states, plus the two
+// concerns only this class can detect: "invalid-name" (the caller-supplied project name itself, before
+// any path resolution happens) and "unsafe-path" (isUnsafeStartDirectory.ts). Kept as one flat
+// discriminated union -- rather than nesting PlatformDirectories' result inside an outer ok/error shape
+// -- so every caller gets the same single `switch (result.status)` regardless of which layer produced
+// the failure.
 export type IndependentProjectDirectoryResult =
-    | {readonly status: "ok"; readonly directory: string; readonly source: "documents" | "home"}
-    | {readonly status: "error"; readonly message: string};
+    | {readonly status: "valid"; readonly directory: string; readonly source: "documents" | "home"}
+    | {readonly status: "invalid-name"; readonly message: string}
+    | {readonly status: "absent"; readonly message: string}
+    | {readonly status: "type"; readonly message: string}
+    | {readonly status: "permission"; readonly message: string}
+    | {readonly status: "unresolved"; readonly message: string}
+    | {readonly status: "unsafe-path"; readonly message: string};
 
 // The one reusable path-resolution policy every "where does a new, independent POKIE project go by
 // default" and "does this path actually stay inside the project I already know about" decision in both
@@ -31,33 +42,65 @@ export type IndependentProjectDirectoryResult =
 export class PokiePathResolver {
     private readonly unsafeContext: UnsafeStartDirectoryContext;
     private readonly env: PlatformDirectoryEnvironment;
+    private readonly resolveBase: (env: PlatformDirectoryEnvironment) => UserBaseDirectoryResult;
 
-    constructor(unsafeContext: UnsafeStartDirectoryContext = {}, env: PlatformDirectoryEnvironment = defaultPlatformDirectoryEnvironment()) {
+    constructor(
+        unsafeContext: UnsafeStartDirectoryContext = {},
+        env: PlatformDirectoryEnvironment = defaultPlatformDirectoryEnvironment(),
+        resolveBase: (env: PlatformDirectoryEnvironment) => UserBaseDirectoryResult = resolveUserBaseDirectory,
+    ) {
         this.unsafeContext = unsafeContext;
         this.env = env;
+        this.resolveBase = resolveBase;
     }
 
     public resolveIndependentProjectDirectory(name: string): IndependentProjectDirectoryResult {
         const trimmedName = name.trim();
         if (trimmedName.length === 0) {
-            return {status: "error", message: "A project name is required."};
+            return {status: "invalid-name", message: "A project name is required."};
         }
         if (trimmedName.includes("/") || trimmedName.includes("\\") || trimmedName === "." || trimmedName === "..") {
-            return {status: "error", message: `"${name}" is not a valid project name. Use a plain directory name, e.g. "sample-slot".`};
+            return {status: "invalid-name", message: `"${name}" is not a valid project name. Use a plain directory name, e.g. "sample-slot".`};
         }
 
-        const base = resolveUserBaseDirectory(this.env);
-        const directory = path.join(base.directory, POKIE_PROJECTS_FOLDER_NAME, trimmedName);
+        const base = this.resolveBase(this.env);
+        if (base.status === "unresolved") {
+            return {status: "unresolved", message: "Could not determine the current user's home directory."};
+        }
+        if (base.status !== "valid") {
+            return {status: base.status, message: `The default project location "${base.directory}" ${describeUnusability(base.status)}.`};
+        }
+
+        // Constructed and evaluated with the *target* platform's path semantics (path.win32/path.posix),
+        // not whatever the host OS running this process happens to use -- resolving a win32 base
+        // directory with the host's own `path.join` would silently mix backslash and forward-slash
+        // separators whenever the host isn't actually Windows (e.g. under test, or a cross-platform
+        // Studio backend).
+        const platformPath = this.env.platform === "win32" ? path.win32 : path.posix;
+        const directory = platformPath.join(base.directory, POKIE_PROJECTS_FOLDER_NAME, trimmedName);
         if (isUnsafeStartDirectory(base.directory, this.unsafeContext) || isUnsafeStartDirectory(directory, this.unsafeContext)) {
             return {
-                status: "error",
+                status: "unsafe-path",
                 message: `Could not determine a safe default project location (resolved to "${directory}"). Choose a destination directory explicitly.`,
             };
         }
-        return {status: "ok", directory, source: base.source};
+        return {status: "valid", directory, source: base.source};
     }
 
     public resolveProjectRelativeDirectory(projectRoot: string, relativePath: string): ResolveProjectDirectoryResult {
         return resolveProjectDirectory(projectRoot, relativePath);
+    }
+}
+
+function describeUnusability(status: "absent" | "type" | "permission"): string {
+    switch (status) {
+        case "absent":
+            return "does not exist";
+        case "type":
+            return "is not a directory";
+        case "permission":
+            return "is not writable";
+        default:
+            return status satisfies never;
     }
 }
