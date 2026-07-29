@@ -47,6 +47,7 @@ export function InitProjectForm() {
                         required
                         kind="directory"
                         browseTitle="Browse for an existing project directory"
+                        browseId="init-project-directory"
                         {...form.getInputProps("directory")}
                         onPathSelected={(path) => form.setFieldValue("directory", path)}
                         key={form.key("directory")}

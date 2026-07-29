@@ -406,4 +406,82 @@ describe("StudioHomeService", () => {
             expect(result).toEqual({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
         });
     });
+
+    describe("resolveDefaultBrowseLocation", () => {
+        it("delegates to resolveIndependentProjectDirectory when a name is given", () => {
+            const resolveIndependentProjectDirectory = jest
+                .fn()
+                .mockReturnValue({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
+            const service = new StudioHomeService(
+                "1.2.1",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {resolveIndependentProjectDirectory} as unknown as ConstructorParameters<typeof StudioHomeService>[8],
+            );
+
+            const result = service.resolveDefaultBrowseLocation("sample-slot");
+
+            expect(resolveIndependentProjectDirectory).toHaveBeenCalledWith("sample-slot");
+            expect(result).toEqual({status: "valid", directory: "/home/alice/Documents/POKIE/sample-slot", source: "documents"});
+        });
+
+        it("collapses a non-valid resolveIndependentProjectDirectory outcome to unavailable", () => {
+            const resolveIndependentProjectDirectory = jest.fn().mockReturnValue({status: "invalid-name", message: "nope"});
+            const service = new StudioHomeService(
+                "1.2.1",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {resolveIndependentProjectDirectory} as unknown as ConstructorParameters<typeof StudioHomeService>[8],
+            );
+
+            expect(service.resolveDefaultBrowseLocation("../escape")).toEqual({status: "unavailable"});
+        });
+
+        it("delegates to resolveBaseDirectory when no name is given", () => {
+            const resolveBaseDirectory = jest.fn().mockReturnValue({status: "valid", directory: "/home/alice/Documents", source: "documents"});
+            const service = new StudioHomeService(
+                "1.2.1",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {resolveBaseDirectory} as unknown as ConstructorParameters<typeof StudioHomeService>[8],
+            );
+
+            const result = service.resolveDefaultBrowseLocation();
+
+            expect(resolveBaseDirectory).toHaveBeenCalled();
+            expect(result).toEqual({status: "valid", directory: "/home/alice/Documents", source: "documents"});
+        });
+
+        it("collapses a non-valid resolveBaseDirectory outcome to unavailable", () => {
+            const resolveBaseDirectory = jest.fn().mockReturnValue({status: "unresolved"});
+            const service = new StudioHomeService(
+                "1.2.1",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {resolveBaseDirectory} as unknown as ConstructorParameters<typeof StudioHomeService>[8],
+            );
+
+            expect(service.resolveDefaultBrowseLocation("   ")).toEqual({status: "unavailable"});
+        });
+    });
 });

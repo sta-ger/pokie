@@ -5,6 +5,7 @@ import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
 import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
+import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
@@ -37,6 +38,12 @@ export type StudioServerOptions = {
     // same "optional, defaulted around a value already required above" shape as gamePackageInspector/
     // gamePackageValidator below.
     fsBrowseService?: StudioFsBrowseService;
+    // Drives GET /api/home/fs/native-browse/availability and POST /api/home/fs/native-browse -- the
+    // system-native folder/file dialog every PathInput tries before ever falling back to
+    // fsBrowseService's own browser-rendered listing. Defaults to a real StudioNativePickerService (no
+    // `root` needed, unlike fsBrowseService: a native OS dialog has its own start-location argument, not
+    // a fixed root to resolve relative paths against).
+    nativePickerService?: StudioNativePickerService;
     // Drives the Blueprint Editor's five /api/home/blueprints/* endpoints — see StudioBlueprintService.
     // Required rather than defaulted for the same reason homeService is: a default instance would need
     // a `pokie` version to embed into generated package.json files, and StudioServer has no business

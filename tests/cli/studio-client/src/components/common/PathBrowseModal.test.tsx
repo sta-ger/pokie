@@ -145,6 +145,21 @@ describe("PathBrowseModal", () => {
         expect(await screen.findByText('Permission denied reading "/root/locked".')).toBeInTheDocument();
     });
 
+    it("always labels itself 'Server filesystem browser', with whose filesystem it shows, regardless of the caller's own title", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/root", displayPath: "/root", entries: []}}),
+        });
+
+        renderWithProviders(
+            <PathBrowseModal opened onClose={jest.fn()} onSelect={jest.fn()} kind="directory" initialPath="" title="Browse for a destination directory" />,
+            {fetchImpl},
+        );
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        expect(screen.getByText(/showing files on the machine running Studio's server, not this browser's device/)).toBeInTheDocument();
+        expect(screen.getByText(/Browse for a destination directory/)).toBeInTheDocument();
+    });
+
     it("Cancel closes without ever calling onSelect", async () => {
         const user = userEvent.setup();
         const onSelect = jest.fn();

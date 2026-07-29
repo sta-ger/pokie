@@ -20,8 +20,12 @@ import type {
     StudioFairnessConfigureView,
     StudioFairnessGenerateView,
     StudioFairnessVerifyView,
+    StudioDefaultLocationView,
     StudioFsBrowseView,
     StudioHomeRecentProjectView,
+    StudioNativePickerAvailabilityView,
+    StudioNativePickerFileFilter,
+    StudioNativePickerResultView,
     StudioOutcomeLibraryCompareView,
     StudioOutcomeLibraryDeepValidateView,
     StudioOutcomeLibrarySelectView,
@@ -91,6 +95,38 @@ export async function browseFilesystem(fetchImpl: FetchLike, path?: string): Pro
     const query = path && path.trim().length > 0 ? `?path=${encodeURIComponent(path)}` : "";
     const response = await fetchImpl(`/api/home/fs/browse${query}`);
     return (await response.json()) as StudioFsBrowseView;
+}
+
+// Backs PathInput's start-location precedence -- the "platform Documents, then Home" rung, after the
+// field's own current value/relevant directory/remembered location have all come up empty. `name`
+// opts into the Create Project destination field's own Documents/POKIE/<name> suggestion; every other
+// caller omits it. Never throws for a domain-level failure, same convention as browseFilesystem.
+export async function resolveDefaultBrowseLocation(fetchImpl: FetchLike, name?: string): Promise<StudioDefaultLocationView> {
+    const query = name && name.trim().length > 0 ? `?name=${encodeURIComponent(name)}` : "";
+    const response = await fetchImpl(`/api/home/fs/default-location${query}`);
+    return (await response.json()) as StudioDefaultLocationView;
+}
+
+// Whether this same machine (the one running Studio's server) can show a real native OS folder/file
+// dialog at all -- PathInput checks this once before every Browse click to decide whether to try the
+// native picker first or go straight to the honestly-labelled PathBrowseModal fallback.
+export async function checkNativePickerAvailability(fetchImpl: FetchLike): Promise<StudioNativePickerAvailabilityView> {
+    const response = await fetchImpl("/api/home/fs/native-browse/availability");
+    return (await response.json()) as StudioNativePickerAvailabilityView;
+}
+
+export type NativeBrowseRequest = {kind: "directory" | "file"; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};
+
+// Opens the system-native folder/file dialog on the machine running Studio's server. Never throws for a
+// domain-level outcome (cancelled/unavailable/error) — StudioNativePickerResultView's own `status` field
+// carries that, same convention as browseFilesystem.
+export async function pickNativePath(fetchImpl: FetchLike, request: NativeBrowseRequest): Promise<StudioNativePickerResultView> {
+    const response = await fetchImpl("/api/home/fs/native-browse", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(request),
+    });
+    return (await response.json()) as StudioNativePickerResultView;
 }
 
 export type InitProjectRequest = {directory: string};

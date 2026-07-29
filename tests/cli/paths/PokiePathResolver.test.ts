@@ -245,4 +245,22 @@ describe("PokiePathResolver", () => {
             expect(result.status).toBe("error");
         });
     });
+
+    describe("resolveBaseDirectory", () => {
+        it("reports the same Documents/Home policy as resolveIndependentProjectDirectory, without a POKIE/<name> suffix", () => {
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-path-resolver-base-test-"));
+            try {
+                const documents = path.join(tmpDir, "Documents");
+                fs.mkdirSync(documents);
+                const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
+                const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env);
+
+                const result = resolver.resolveBaseDirectory();
+
+                expect(result).toEqual({status: "valid", directory: documents, source: "documents"});
+            } finally {
+                fs.rmSync(tmpDir, {recursive: true, force: true});
+            }
+        });
+    });
 });

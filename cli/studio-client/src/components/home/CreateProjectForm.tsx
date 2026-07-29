@@ -67,6 +67,7 @@ export function CreateProjectForm() {
                         required
                         kind="directory"
                         browseTitle="Browse for a destination directory"
+                        browseId="create-project-destination"
                         {...form.getInputProps("destinationDir")}
                         onPathSelected={(path) => form.setFieldValue("destinationDir", path)}
                         key={form.key("destinationDir")}
