@@ -190,7 +190,10 @@ export function ReplayTab({
     // Only a "Replay Artifact" record (pasted or picked from Recent Replays) carries known
     // seed/provenance to check up front — Seed & Round/Recent Simulation are fresh attempts that never
     // claim to reproduce one *specific* prior result, and Session Spin is already fully disabled above.
-    const artifactReproducibility = expected.status === "loaded" ? describeReplayReproducibility({seed: expected.seed, artifact: expected.artifact}, currentGame) : undefined;
+    const artifactReproducibility =
+        expected.status === "loaded"
+            ? describeReplayReproducibility({seed: expected.seed, artifact: expected.artifact, stateBefore: expected.stateBefore, stateAfter: expected.stateAfter}, currentGame)
+            : undefined;
 
     return (
         <div>
