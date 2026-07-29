@@ -219,11 +219,21 @@ export function ReplayTab({
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Find" description="Locate a round" />
-                <Stepper.Step label="Load" description="Confirm & validate" />
-                <Stepper.Step label="Reproduce" description="Run the replay" disabled={findMethod === "spin"} />
-                <Stepper.Step label="Inspect" description="See results" disabled={!inspectReachable} />
-                <Stepper.Step label="Export" description="Download" disabled={!exportReachable} />
+                <Stepper.Step label="Find" description="Locate a round" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step label="Load" description="Confirm & validate" aria-current={activeStep === 1 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Reproduce"
+                    description="Run the replay"
+                    disabled={findMethod === "spin"}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Inspect"
+                    description="See results"
+                    disabled={!inspectReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
+                <Stepper.Step label="Export" description="Download" disabled={!exportReachable} aria-current={activeStep === 4 ? "step" : undefined} />
             </Stepper>
 
             {activeStep === 0 && (

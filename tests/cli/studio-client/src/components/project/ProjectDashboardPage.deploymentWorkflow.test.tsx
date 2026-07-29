@@ -42,6 +42,12 @@ function baseRunView(overrides: Partial<StudioDeploymentRunView> = {}): StudioDe
     };
 }
 
+// Mantine's Stepper.Step packs the step icon + label + description into one <button> -- same
+// convention ReplayTab/SimulationTab's own tests already established.
+function stepperStep(label: string, description: string): RegExp {
+    return new RegExp(`${label}.*${description}`);
+}
+
 async function goToDeploymentConfigure(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Deployment"}));
@@ -92,6 +98,54 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         expect(screen.getByText(/"ok": true/)).not.toBeVisible();
         await user.click(screen.getByText(/Show advanced details/));
         expect(await screen.findByText(/"ok": true/)).toBeVisible();
+    });
+
+    it("aria-current tracks the active step, and later steps stay disabled (not merely inactive) until their own prerequisite is met", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/deployment/runs": () =>
+                runResponse(
+                    baseRunView({
+                        stages: [
+                            stage("descriptor", "ok"),
+                            stage("compatibility", "ok"),
+                            stage("projection", "ok"),
+                            stage("generation", "ok"),
+                            stage("artifactValidation", "ok"),
+                            stage("diagnostic", "ok"),
+                        ],
+                        generation: {artifacts: [{relativePath: "base.json", content: "{\"ok\":true}"}], issues: []},
+                    }),
+                ),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToDeploymentConfigure(user);
+
+        const selectTargetStep = screen.getByRole("button", {name: stepperStep("Select target", "Where to publish")});
+        const configureStep = screen.getByRole("button", {name: stepperStep("Configure", "Modes & libraries")});
+        const deployStep = screen.getByRole("button", {name: stepperStep("Deploy", "Publish")});
+        const reviewStep = screen.getByRole("button", {name: stepperStep("Review result", "Outcome")});
+
+        // Reaching Configure (by picking a target) unblocks it and moves the current marker off Select
+        // target -- but Deploy/Review result are still unreached, so they stay both non-current and
+        // disabled, never just visually de-emphasized.
+        expect(selectTargetStep).not.toHaveAttribute("aria-current");
+        expect(configureStep).toHaveAttribute("aria-current", "step");
+        expect(deployStep).not.toHaveAttribute("aria-current");
+        expect(deployStep).toBeDisabled();
+        expect(reviewStep).not.toHaveAttribute("aria-current");
+        expect(reviewStep).toBeDisabled();
+
+        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
+
+        const previewStep = screen.getByRole("button", {name: stepperStep("Preview artifacts", "What would be generated")});
+        expect(configureStep).not.toHaveAttribute("aria-current");
+        expect(previewStep).toHaveAttribute("aria-current", "step");
+        // A successful preview is exactly what unblocks Deploy.
+        expect(deployStep).not.toBeDisabled();
     });
 
     it("shows a clear incompatible-target state and blocks proceeding to Preview artifacts", async () => {

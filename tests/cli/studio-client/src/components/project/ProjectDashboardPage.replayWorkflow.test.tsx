@@ -1058,6 +1058,35 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByText("Pick a spin in the Find step first.")).toBeInTheDocument();
     }, 60000);
 
+    it("marks exactly the active Stepper step aria-current=\"step\", moving it as the user jumps back and forth", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        const findStep = screen.getByRole("button", {name: stepperStep("Find", "Locate a round")});
+        const loadStep = screen.getByRole("button", {name: stepperStep("Load", "Confirm & validate")});
+        expect(findStep).toHaveAttribute("aria-current", "step");
+        expect(loadStep).not.toHaveAttribute("aria-current");
+
+        // Reproduce/Inspect/Export haven't got anything to act on yet -- gated, not just inactive.
+        expect(screen.getByRole("button", {name: stepperStep("Inspect", "See results")})).toBeDisabled();
+        expect(screen.getByRole("button", {name: stepperStep("Export", "Download")})).toBeDisabled();
+
+        // "Load" carries no `disabled` guard -- free navigation forward is always allowed, matching the
+        // Stepper's own default `allowNextStepsSelect` behavior used throughout this workflow.
+        await user.click(loadStep);
+        expect(findStep).not.toHaveAttribute("aria-current");
+        expect(loadStep).toHaveAttribute("aria-current", "step");
+
+        // ...and back again -- revisiting an earlier step is a first-class, intentional path here (see
+        // the free-navigation cases elsewhere in this file), not something the aria-current marker loses
+        // track of.
+        await user.click(findStep);
+        expect(findStep).toHaveAttribute("aria-current", "step");
+        expect(loadStep).not.toHaveAttribute("aria-current");
+    });
+
     it("keeps distinct sessions separately visible in the recent spins list and lets the session filter narrow to just one at a time", async () => {
         const user = userEvent.setup();
         const spins: StudioRuntimeSessionView[] = [

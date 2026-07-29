@@ -1,4 +1,4 @@
-import {Anchor, Collapse, SegmentedControl, Stepper, Text, Title} from "@mantine/core";
+import {Anchor, Collapse, SegmentedControl, Text, Title} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
@@ -16,6 +16,7 @@ import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {NextStepCallout} from "../common/NextStepCallout";
+import {StepProgressList, type StepProgressItem, type StepProgressStatus} from "../common/StepProgressList";
 import {BetsList} from "./BetsList";
 import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
@@ -32,14 +33,27 @@ import {SymbolsTable} from "./SymbolsTable";
 
 type BlueprintMode = "form" | "json";
 
-function guidedStepIndex(status: BlueprintValidationView["status"]): number {
-    if (status === "idle") {
-        return 0;
-    }
-    if (status === "ok") {
-        return 2;
-    }
-    return 1;
+// The guided flow is a strict 3-stage pipeline with no way to jump ahead (there's nothing to click --
+// see StepProgressList.tsx's own doc comment) -- "Build" is only ever reachable once "Validate" has
+// actually produced an "ok" result for the *current* revision (validationView resets to "idle" on every
+// edit, see the revision-bump effect above), so it's "blocked" rather than merely "available" until then.
+const VALIDATE_STEP_STATUS: Record<BlueprintValidationView["status"], StepProgressStatus> = {
+    idle: "available",
+    loading: "current",
+    invalid: "failed",
+    error: "failed",
+    ok: "completed",
+};
+
+function describeGuidedProgress(status: BlueprintValidationView["status"]): StepProgressItem[] {
+    const configureStatus: StepProgressStatus = status === "idle" ? "current" : "completed";
+    const validateStatus = VALIDATE_STEP_STATUS[status];
+    const buildStatus: StepProgressStatus = status === "ok" ? "current" : "blocked";
+    return [
+        {id: "configure", label: "Configure", description: "Game model", status: configureStatus},
+        {id: "validate", label: "Validate", description: "Check for issues", status: validateStatus},
+        {id: "build", label: "Build", description: "Create your package", status: buildStatus},
+    ];
 }
 
 type GuidedNextStep = {tone: "info" | "success" | "warning"; title: string; description: string};
@@ -126,8 +140,8 @@ export function BlueprintEditorPage({
     // A form edit, New, Load, and a successful JSON Apply all bump `revision` (see
     // blueprintEditorState.ts's own doc comment) -- resetting validationView to idle on every bump, in
     // one place, uniformly makes *any* of those stale a previous validation result: section statuses
-    // (describeSectionStatus already returns "neutral" for "idle"), the Stepper/NextStepCallout ("Ready
-    // to build" only shows for "ok"), and guided Build-gating (below, keyed off "ok") all revert for
+    // (describeSectionStatus already returns "neutral" for "idle"), the guided progress list/NextStepCallout
+    // ("Ready to build" only shows for "ok"), and guided Build-gating (below, keyed off "ok") all revert for
     // free, with no separate reset needed at each call site. `handleNew` no longer sets this explicitly.
     useEffect(() => {
         setValidationView({status: "idle"});
@@ -258,7 +272,7 @@ export function BlueprintEditorPage({
 
     const {blueprint, revision} = editor.state;
 
-    const stepIndex = guidedStepIndex(validationView.status);
+    const guidedProgress = describeGuidedProgress(validationView.status);
     const nextStep = describeGuidedNextStep(validationView.status);
 
     // Guided flow requires an actual successful validation *of the current revision* before allowing a
@@ -300,11 +314,7 @@ export function BlueprintEditorPage({
                         Start from a blank blueprint or load an existing one, configure your game model, validate it, then build your
                         game package.
                     </Text>
-                    <Stepper active={stepIndex} mb="md" size="sm" allowNextStepsSelect={false}>
-                        <Stepper.Step label="Configure" description="Game model" />
-                        <Stepper.Step label="Validate" description="Check for issues" />
-                        <Stepper.Step label="Build" description="Create your package" />
-                    </Stepper>
+                    <StepProgressList steps={guidedProgress} />
                     <NextStepCallout {...nextStep} />
                 </div>
             )}

@@ -343,10 +343,25 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Select/import" description="Choose a library" />
-                <Stepper.Step label="Validate & analyze" description="Diagnostics" disabled={!analyzeReachable} />
-                <Stepper.Step label="Inspect" description="Distribution & features" disabled={!inspectReachable} />
-                <Stepper.Step label="Compare or use" description="Diff & hand-off" disabled={!inspectReachable} />
+                <Stepper.Step label="Select/import" description="Choose a library" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Validate & analyze"
+                    description="Diagnostics"
+                    disabled={!analyzeReachable}
+                    aria-current={activeStep === 1 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Inspect"
+                    description="Distribution & features"
+                    disabled={!inspectReachable}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Compare or use"
+                    description="Diff & hand-off"
+                    disabled={!inspectReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
             </Stepper>
 
             {activeStep === 0 && (

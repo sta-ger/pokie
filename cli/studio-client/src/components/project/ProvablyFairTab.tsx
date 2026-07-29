@@ -235,10 +235,20 @@ export function ProvablyFairTab() {
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Configure" description="Seeds & mode" />
-                <Stepper.Step label="Generate/inspect proof" description="Reveal" disabled={!generateReachable} />
-                <Stepper.Step label="Verify" description="Cross-check" />
-                <Stepper.Step label="Review diagnostics" description="Issues" disabled={!diagnosticsReachable} />
+                <Stepper.Step label="Configure" description="Seeds & mode" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Generate/inspect proof"
+                    description="Reveal"
+                    disabled={!generateReachable}
+                    aria-current={activeStep === 1 ? "step" : undefined}
+                />
+                <Stepper.Step label="Verify" description="Cross-check" aria-current={activeStep === 2 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Review diagnostics"
+                    description="Issues"
+                    disabled={!diagnosticsReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
             </Stepper>
 
             {activeStep === 0 && (

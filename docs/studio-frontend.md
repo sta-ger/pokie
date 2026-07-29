@@ -30,8 +30,10 @@ validate → build → simulate → view a report — not around internal module
 tabs never loses in-progress work):
 
 - **Design & Build** (`/home/design`, the default) — the guided happy path. Renders `BlueprintEditorPage` in
-  `guided` mode: a `Stepper` (Configure → Validate → Build) and a `NextStepCallout` next-step hint, both
-  driven by the panel's own existing local validation state. JSON mode and Load/Save-by-path are tucked
+  `guided` mode: a `StepProgressList` (Configure → Validate → Build, a read-only status list — not a
+  `Stepper`, since there's nothing to click ahead to; see "Stepper vs. other step UI" below) and a
+  `NextStepCallout` next-step hint, both driven by the panel's own existing local validation state. JSON
+  mode and Load/Save-by-path are tucked
   behind a "Show advanced options" disclosure — Build works directly off the in-memory blueprint, so neither
   is required for the guided flow. A successful build's "Open in Studio" button (unchanged) is the bridge
   into the Project Dashboard.
@@ -257,7 +259,15 @@ Two Jest projects (`jest.config.mjs`):
   to another and back, a validation error surfacing as both a section's own badge/inline `IssueList` and
   in the unchanged bottom summary, and arrow-key navigation between section tabs. The domain-level section
   classifier itself is unit-tested independently in
-  `tests/cli/studio-client/src/domain/interpret/BlueprintSections.test.ts`. The data router builds
+  `tests/cli/studio-client/src/domain/interpret/BlueprintSections.test.ts`.
+  `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedProgress.test.tsx`
+  covers the read-only progress list (see the Stepper audit above): no clickable step buttons, and the
+  idle/invalid/ok transitions each land on the right `completed`/`current`/`blocked`/`failed`
+  `aria-current`/status combination.
+  `tests/cli/studio-client/src/components/common/StepProgressList.test.tsx` unit-tests the shared component
+  itself across its full `completed|current|available|blocked|skipped|failed` state vocabulary --
+  `aria-current`/`aria-disabled` placement and that each status is exposed as real, non-color-only text. The
+  data router builds
   Fetch API `Request` objects internally on every navigation even with zero loaders/actions defined, which
   jsdom doesn't provide — `tests/cli/studio-client/src/jestPolyfills.ts` polyfills `Request`/`Response`/
   `Headers`/`fetch` via `undici` (a devDependency; this is what Node's own built-in `fetch` is built on).
@@ -275,3 +285,43 @@ npx jest --selectProjects studio-client-components  # just the React component t
   up"); nav tabs render as real `<button>`s (not an `href`-less `<a>`, which isn't keyboard-focusable).
 - `AppShell`'s navbar collapses behind a `Burger` below Mantine's `sm` breakpoint; wide tables (Paytable,
   simulation breakdown) scroll within their own container rather than the page.
+- Every `Stepper.Step` across Studio (all 11 interactive Steppers, see the audit below) carries an explicit
+  `aria-current={activeStep === N ? "step" : undefined}` -- Mantine's own `Stepper` has no built-in
+  current-step ARIA semantics (only a `data-progress` styling hook), so without this a screen reader had no
+  way to tell which step is active beyond visual styling.
+
+### Stepper vs. other step/wizard UI (cross-cutting audit)
+
+Studio has no in-house Stepper component -- every multi-stage tab/panel imports Mantine's `Stepper`
+directly. This audits every such usage (plus every other step-like/wizard-like pattern in the codebase) and
+classifies it as **linear** (strict, one-way order, no revisiting), **partially linear** (reachability is
+order-dependent -- a step's prerequisite is a prior step's own output -- but revisiting an already-reached
+step is a first-class, intentional path), or **nonlinear** (no inherent order at all; any section can be
+visited in any order). "Keep Stepper only for real sequential transitions" is read as: Stepper's own
+free-jump-to-any-non-disabled-step model (Mantine's default `allowNextStepsSelect={true}` -- no Studio
+Stepper overrides it) is the right fit for **partially linear** flows, since it's exactly "resume where you
+left off, revisit an earlier stage on demand, can't skip ahead of what's ready yet." It is the *wrong* fit
+for a flow with no order dependency at all (that belongs in tabs) or for a flow with no navigation at all
+(that belongs in a plain progress/status display, not a control that looks clickable but isn't).
+
+| Workflow | File | Classification | Disposition |
+|---|---|---|---|
+| Replay | `project/ReplayTab.tsx` | Partially linear | Kept as `Stepper` -- reachability is gated (`inspectReachable`/`exportReachable`), but jumping back to Find then forward again is an explicit, tested re-entry path (see `ProjectDashboardPage.replayWorkflow.test.tsx`), not an edge case to prevent. |
+| Deployment | `project/DeploymentTab.tsx` | Partially linear | Kept as `Stepper`. Most heavily guarded of the group: `pendingAdvanceStepRef` only actually advances once a non-stale async result lands, and losing `selectedTarget`/an invalidated `runResult` snaps the stepper back a stage -- backward-correcting guards, not backward-*blocking* ones. |
+| Certification | `project/CertificationTab.tsx` | Partially linear | Kept as `Stepper`. Forward-gated (`validateReachable`/`buildReachable`/`inspectReachable`) with no backward lock. |
+| Runtime | `project/RuntimeTab.tsx` | Partially linear | Kept as `Stepper`. Same `pendingAdvanceStepRef` pattern as Deployment; a session teardown resets to step 0. "Debug" is deliberately always reachable regardless of session state. |
+| Provably Fair | `project/ProvablyFairTab.tsx` | Partially linear | Kept as `Stepper`. "Verify" is always reachable regardless of prior state -- gating only applies to the two steps that need a prior result to show. |
+| Simulation | `project/SimulationTab.tsx` | Partially linear | Kept as `Stepper`. Auto-advances when a running job goes terminal; the pattern Replay's own auto-advance explicitly mirrors. |
+| Mechanics Editor | `project/MechanicsEditorTab.tsx` | Partially linear | Kept as `Stepper`. Section steps are ungated (free navigation among content sections); only the final "Apply" action is separately blocked by validation status, at the button level, not the Stepper level. |
+| Stake Engine Export | `project/StakeEngineExportTab.tsx` | Partially linear | Kept as `Stepper`. Straightforward forward-gated chain, no backward lock. |
+| Outcome Libraries | `project/OutcomeLibrariesTab.tsx` | Partially linear | Kept as `Stepper`. Gated on a selection result existing; no backward lock. |
+| PAR Sheet Import/Export | `blueprintEditor/ParSheetImportExportPanel.tsx` | Partially linear | Kept as `Stepper`. Forward-gated; final step never disabled. |
+| Reel Strip Generation | `blueprintEditor/ReelStripGenerationEditor.tsx` | Partially linear | Kept as `Stepper`. Forward-gated; a reel-selection change resets the stepper back to an earlier step. |
+| Guided Design & Build | `blueprintEditor/BlueprintEditorPage.tsx` (`guided`) | Linear, non-interactive | **Changed.** `active` was a pure function of validation status with no `onStepClick` at all -- Mantine's `Stepper` still rendered every step as a real, focusable `<button>` that silently did nothing when clicked (a false affordance for keyboard/screen-reader users, and the reason nearby tests had to disambiguate "Validate" button matches). Replaced with `common/StepProgressList.tsx`, a read-only `<ol>`/`<li>` list (no buttons, `role="list"`) supporting the full `completed \| current \| available \| blocked \| skipped \| failed` state vocabulary, with `aria-current="step"` on the active stage and each stage's status mirrored as real (non-color-only) text via `VisuallyHidden`, the same icon+text split `StatusBadge.tsx` already uses. |
+| Guided Design & Build sections | `blueprintEditor/SectionedFormEditor.tsx` | Nonlinear | Already correct -- Mantine `Tabs` (ARIA tablist, roving tabindex), no order dependency between Game basics/Layout/Symbols/Bets/Paylines/Paytable/Reels. No change. |
+| Home/Project top-level navigation | `layout/NavTabs.tsx` | Nonlinear | Already correct -- a plain `<nav>` of buttons with `aria-current="page"`, one level above any per-tab Stepper; switching never implies sequencing. No change. |
+
+No workflow here is **strictly linear with a backward lock** -- every gated flow lets the user revisit an
+earlier, already-reached step (there is no code path anywhere that blocks *revisiting*), so none needed a
+one-way "wizard" treatment. The one flow that had no navigation at all (guided Design & Build's top-level
+stage indicator) is the only one that was actually misusing `Stepper`, and is the only one converted.

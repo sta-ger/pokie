@@ -341,11 +341,31 @@ export function StakeEngineExportTab() {
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Configure" description="Source, modes & output" />
-                <Stepper.Step label="Preview" description="What will be exported" disabled={!previewReachable} />
-                <Stepper.Step label="Validate diagnostics" description="Preflight & provenance" disabled={!validateReachable} />
-                <Stepper.Step label="Export" description="Write to disk" disabled={!exportReachable} />
-                <Stepper.Step label="Review result" description="Manifest & files" disabled={!reviewReachable} />
+                <Stepper.Step label="Configure" description="Source, modes & output" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Preview"
+                    description="What will be exported"
+                    disabled={!previewReachable}
+                    aria-current={activeStep === 1 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Validate diagnostics"
+                    description="Preflight & provenance"
+                    disabled={!validateReachable}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Export"
+                    description="Write to disk"
+                    disabled={!exportReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Review result"
+                    description="Manifest & files"
+                    disabled={!reviewReachable}
+                    aria-current={activeStep === 4 ? "step" : undefined}
+                />
             </Stepper>
 
             {activeStep === 0 && (

@@ -153,10 +153,25 @@ export function SimulationTab({
     return (
         <div>
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Configure" description="Set rounds" />
-                <Stepper.Step label="Run" description="Watch progress" disabled={progress === undefined} />
-                <Stepper.Step label="Review" description="See results" disabled={!reviewReachable} />
-                <Stepper.Step label="Export" description="Download report" disabled={!exportReachable} />
+                <Stepper.Step label="Configure" description="Set rounds" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    label="Run"
+                    description="Watch progress"
+                    disabled={progress === undefined}
+                    aria-current={activeStep === 1 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Review"
+                    description="See results"
+                    disabled={!reviewReachable}
+                    aria-current={activeStep === 2 ? "step" : undefined}
+                />
+                <Stepper.Step
+                    label="Export"
+                    description="Download report"
+                    disabled={!exportReachable}
+                    aria-current={activeStep === 3 ? "step" : undefined}
+                />
             </Stepper>
 
             {activeStep === 0 && (
