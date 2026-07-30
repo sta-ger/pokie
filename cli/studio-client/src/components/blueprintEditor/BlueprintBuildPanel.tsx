@@ -6,6 +6,7 @@ import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {BuildResultDisplay} from "../common/BuildResultDisplay";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeBuildPreview, describeBuildResult, type BuildPreviewView, type BuildProjectView} from "../../domain/interpret/Home";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
@@ -41,6 +42,19 @@ export function BlueprintBuildPanel({
     // be misleading -- there's no validation error to "fix" yet.
     blockedMessage?: string;
 }) {
+    // Unlike Home's Build-from-Blueprint tab (whose blueprint comes from a user-typed path, so a
+    // "load-error" here can be about that path), this panel's blueprint is always the in-memory editor
+    // model -- the only user-typed path involved anywhere in this panel's own preview/build request is
+    // Output directory, so every error-carrying status below is safely describable with that one fixed
+    // subject.
+    const describeOutDirFailure = (message: string): string => describePathActionError("The output directory", message);
+    const withOutDirPreviewError = (view: BuildPreviewView): BuildPreviewView =>
+        view.status === "error" || view.status === "load-error" ? {...view, message: describeOutDirFailure(view.message)} : view;
+    const withOutDirResultError = (view: BuildProjectView): BuildProjectView =>
+        view.status === "error" || view.status === "load-error" || view.status === "failed"
+            ? {...view, message: describeOutDirFailure(view.message)}
+            : view;
+
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const confirm = useConfirm();
@@ -58,8 +72,8 @@ export function BlueprintBuildPanel({
         }
         setPreview({status: "loading"});
         previewBlueprintBuild(fetchImpl, blueprint, outDir.trim() || undefined, sourcePath)
-            .then((view) => setPreview(describeBuildPreview(view)))
-            .catch((error: unknown) => setPreview({status: "error", message: errorMessage(error)}))
+            .then((view) => setPreview(withOutDirPreviewError(describeBuildPreview(view))))
+            .catch((error: unknown) => setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))}))
             .finally(() => previewGuard.end());
     };
 
@@ -76,14 +90,14 @@ export function BlueprintBuildPanel({
             setResult({status: "loading"});
             buildBlueprint(fetchImpl, blueprint, resolvedOutDir, sourcePath)
                 .then((view) => {
-                    setResult(describeBuildResult(view));
+                    setResult(withOutDirResultError(describeBuildResult(view)));
                     if (view.status === "ok") {
                         setLastProjectRoot(view.projectRoot);
                         lastBuiltOutDir.current = resolvedOutDir;
                         onBuildSuccess?.(builtRevision);
                     }
                 })
-                .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}))
+                .catch((error: unknown) => setResult({status: "error", message: describeOutDirFailure(errorMessage(error))}))
                 .finally(() => buildGuard.end());
         };
 

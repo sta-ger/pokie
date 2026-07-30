@@ -516,6 +516,31 @@ describe("Scoped path-action error remediation baseline", () => {
         ).toBe(true);
         expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
     });
+
+    it("Design & Build: a failed Build Package call is turned into output-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            // Matches StudioBlueprintService.build()'s own GamePackageGenerator.generate() rejection
+            // shape for an output directory it can't write to -- reported as a 200 {status: "error"}
+            // domain result, never an HTTP-level failure (see StudioServer's own handleBlueprintBuild).
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir'"}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await user.type(screen.getAllByLabelText("Output directory (optional)")[0], "./no/such/dir");
+        await user.click(screen.getAllByRole("button", {name: "Build Package"})[0]);
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The output directory could not be found. Check the path and try again.")).toBe(
+            true,
+        );
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
 });
 
 describe("Advanced tab inferable-empty-input baseline", () => {
