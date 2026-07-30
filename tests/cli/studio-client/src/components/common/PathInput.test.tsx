@@ -95,7 +95,7 @@ describe("PathInput", () => {
 
         await user.click(screen.getByRole("textbox", {name: "Path"}));
 
-        expect(await screen.findByText("Resolves to: ./save.json")).toBeInTheDocument();
+        expect(await screen.findByText("Resolves to: /root/save.json")).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Fsave.json&kind=file")).toBe(true);
     });
 
@@ -143,31 +143,33 @@ describe("PathInput", () => {
         expect(await screen.findByText("Confirm POKIE Studio's server is reachable, then try again.")).toBeInTheDocument();
     });
 
-    it("shows a 'Resolves to' hint for a non-blank (including bare '.') current value", async () => {
+    it("shows a 'Resolves to' hint carrying the absolute resolvedPath (not the project-relative displayPath) for a relative/dot current value", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games", displayPath: "/games", entries: []}}),
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/home/alice/games", displayPath: "./games", entries: []}}),
         });
 
         renderWithProviders(<Harness initial="." />, {fetchImpl});
 
         await user.click(screen.getByRole("textbox", {name: "Path"}));
 
-        expect(await screen.findByText("Resolves to: /games")).toBeInTheDocument();
+        expect(await screen.findByText("Resolves to: /home/alice/games")).toBeInTheDocument();
+        expect(screen.queryByText(/\.\/games/)).not.toBeInTheDocument();
     });
 
-    it("shows an 'Auto resolved destination' hint (not 'Resolves to') for a blank/optional current value", async () => {
+    it("shows an 'Auto resolved destination' hint (not 'Resolves to') carrying the absolute resolvedPath, not the project-relative displayPath, for a blank/optional current value", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games/default", displayPath: "/games/default", entries: []}}),
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/home/alice/games/default", displayPath: "./default", entries: []}}),
         });
 
         renderWithProviders(<Harness initial="" />, {fetchImpl});
 
         await user.click(screen.getByRole("textbox", {name: "Path"}));
 
-        expect(await screen.findByText("Auto resolved destination: /games/default")).toBeInTheDocument();
+        expect(await screen.findByText("Auto resolved destination: /home/alice/games/default")).toBeInTheDocument();
         expect(screen.queryByText(/^Resolves to:/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/\.\/default/)).not.toBeInTheDocument();
     });
 
     it("resolves the hint against a caller-supplied relevantDirectory (e.g. the open project's root), not Studio's own server root", async () => {
@@ -180,7 +182,7 @@ describe("PathInput", () => {
 
         await user.click(screen.getByRole("textbox", {name: "Path"}));
 
-        expect(await screen.findByText("Resolves to: ./outcomes")).toBeInTheDocument();
+        expect(await screen.findByText("Resolves to: /projects/sample-slot/outcomes")).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Foutcomes&base=%2Fprojects%2Fsample-slot")).toBe(true);
     });
 

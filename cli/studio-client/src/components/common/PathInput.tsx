@@ -106,7 +106,7 @@ export function PathInput({
         setHint({status: "loading"});
         browseFilesystem(fetchImpl, path, relevantDirectory, kind)
             .then((result) => {
-                setHint(result.status === "ok" ? {status: "ok", text: result.displayPath, auto} : {status: "error", reason: result.reason, path: result.resolvedPath});
+                setHint(result.status === "ok" ? {status: "ok", text: result.resolvedPath, auto} : {status: "error", reason: result.reason, path: result.resolvedPath});
             })
             .catch(() => setHint({status: "error", reason: "network", path}));
     };
