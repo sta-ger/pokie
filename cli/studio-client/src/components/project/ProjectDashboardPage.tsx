@@ -730,6 +730,11 @@ export function ProjectDashboardPage() {
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
             ]}
+            // Same warn-then-close-then-navigate path as the "Close project" button below (see
+            // handleClose) -- without this, the brand link's default `href="#/"` would silently bounce
+            // back to this same still-active project (see AppShellLayout's own onHomeClick doc comment),
+            // discarding an unapplied Mechanics Editor draft or an active operation with no warning at all.
+            onHomeClick={handleClose}
         >
             <div>
                 <Title order={2}>{header.status === "loaded" ? header.name : "Project"}</Title>

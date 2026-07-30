@@ -717,6 +717,28 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
         });
 
+        // The "POKIE Studio" breadcrumb is a second way to leave the project, not just the "Close
+        // project" button -- it must go through the exact same warn-then-close-then-navigate path
+        // (see AppShellLayout's own onHomeClick doc comment), not silently bounce back to this same
+        // still-active project (its default `href="#/"` behavior) and discard the draft unwarned.
+        it("asks for confirmation before leaving via the POKIE Studio breadcrumb while the draft is unapplied", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl} = createRoutedFakeFetch({
+                ...BASE_ROUTES,
+                "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
+            });
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await goToMechanicsEditorTab(user);
+            await makeADirtyEdit(user);
+
+            await user.click(screen.getByRole("button", {name: "POKIE Studio"}));
+            expect(await screen.findByText(/unapplied Mechanics Editor draft/)).toBeInTheDocument();
+
+            await user.click(screen.getByRole("button", {name: "Confirm"}));
+            expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
+        });
+
         // MechanicsEditorTab is conditionally *mounted* only while activeTab === "mechanicsEditor" --
         // clicking a different NavTabs entry was already guarded, but browser Back/Forward (and any
         // other in-app navigate() call) bypasses that entirely, going straight through the router. This

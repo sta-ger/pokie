@@ -253,6 +253,27 @@ describe("ProjectDashboardPage", () => {
             expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
         });
 
+        // The "POKIE Studio" breadcrumb is the other way to leave a project -- it must actually reach
+        // the global Studio home (by closing the project, same as the button above) rather than a plain
+        // `href="#/"` bouncing straight back to this same still-active project, since the server's own
+        // context hasn't changed (see AppShellLayout's own onHomeClick doc comment).
+        it("also reaches Home via the POKIE Studio breadcrumb, closing the project first", async () => {
+            const user = userEvent.setup();
+            const {fetchImpl, calls} = createRoutedFakeFetch({
+                ...baseFetchRoutes(),
+                "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
+            });
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "Sample Slot"});
+
+            await user.click(screen.getByRole("button", {name: "POKIE Studio"}));
+
+            await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
+            expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
+            expect(calls.some((call) => call.url === "/api/projects/close")).toBe(true);
+        });
+
         // Every other mutating apiClient.ts function throws on a non-ok response; closeProject() used to
         // be the one exception (it parsed the body regardless of status), and the page-level handler threw
         // the failure away entirely -- so a failed close was indistinguishable from the button silently
