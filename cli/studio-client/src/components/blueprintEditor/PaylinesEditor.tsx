@@ -1,10 +1,12 @@
 import {Button, Group, Stack, Text} from "@mantine/core";
+import {useState} from "react";
 import {addPayline, duplicatePaylineAt, movePaylineAt, removePaylineAt, setPaylineCell} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {BufferedNumberInput} from "../common/BufferedNumberInput";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
+import {PaylinePresetsModal} from "./PaylinePresetsModal";
 
 function asPaylines(value: unknown): number[][] {
     return Array.isArray(value) ? value.map((line) => (Array.isArray(line) ? line.filter((cell): cell is number => typeof cell === "number") : [])) : [];
@@ -12,6 +14,7 @@ function asPaylines(value: unknown): number[][] {
 
 export function PaylinesEditor({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
     const paylines = asPaylines(blueprint.paylines);
+    const [presetsOpened, setPresetsOpened] = useState(false);
 
     return (
         <PageSection legend="Paylines">
@@ -50,7 +53,11 @@ export function PaylinesEditor({blueprint, mutate}: {blueprint: Record<string, u
                 <Button variant="default" onClick={() => mutate((b) => addPayline(b))}>
                     Add payline
                 </Button>
+                <Button variant="default" onClick={() => setPresetsOpened(true)}>
+                    Apply preset…
+                </Button>
             </QuickActions>
+            <PaylinePresetsModal opened={presetsOpened} onClose={() => setPresetsOpened(false)} blueprint={blueprint} mutate={mutate} />
         </PageSection>
     );
 }

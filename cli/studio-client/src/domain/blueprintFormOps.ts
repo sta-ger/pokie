@@ -155,6 +155,15 @@ export function movePaylineAt(blueprint: Record<string, unknown>, fromIndex: num
     blueprint.paylines = moveItem(asPaylines(blueprint.paylines), fromIndex, toIndex);
 }
 
+// Applies a preset's or a saved custom set's lines (see paylinePresets.ts / customPaylineSets.ts) onto
+// the blueprint's paylines. "replace" swaps the whole list; "append" only ever adds to it — neither mode
+// touches an existing line in place, so a manually-tuned payline already on the blueprint is never
+// silently lost.
+export function applyPaylineSet(blueprint: Record<string, unknown>, lines: number[][], mode: "replace" | "append"): void {
+    const incoming = lines.map((line) => [...line]);
+    blueprint.paylines = mode === "replace" ? incoming : [...asPaylines(blueprint.paylines), ...incoming];
+}
+
 // Keeps every existing payline's length in sync after `reels` changes — pads a shorter line with 0s,
 // truncates a longer one — so a payline never silently holds a stale reel count the form no longer
 // shows an input for.
