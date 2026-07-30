@@ -153,8 +153,12 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         addSpy.mockClear();
         removeSpy.mockClear();
 
-        // "New Blueprint" resets the draft back to clean.
+        // "New Blueprint" now opens the New flow's own dirty-confirm gate first (see
+        // NewBlueprintDialog's own doc comment) -- Discard then Blank resets the draft back to clean,
+        // same end state the direct reset used to reach in one click.
         await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(await screen.findByRole("button", {name: "Discard"}));
+        await user.click(await screen.findByRole("button", {name: "Blank"}));
 
         await waitFor(() => expect(removeSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(true));
         expect(addSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(false);

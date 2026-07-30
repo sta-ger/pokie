@@ -15,6 +15,7 @@ import {validateApplyProjectBlueprintRequest, ApplyProjectBlueprintRequestInput}
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
 import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
+import {validateBlueprintRandomRequest, BlueprintRandomRequestInput} from "./blueprint/validateBlueprintRandomRequest.js";
 import {validateParSheetExportRequest, ParSheetExportRequestInput} from "./blueprint/validateParSheetExportRequest.js";
 import {validateParSheetImportRequest, ParSheetImportRequestInput} from "./blueprint/validateParSheetImportRequest.js";
 import {validateSaveBlueprintRequest, SaveBlueprintRequestInput} from "./blueprint/validateSaveBlueprintRequest.js";
@@ -347,6 +348,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/blueprints/load") {
             await this.handleBlueprintLoad(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/random") {
+            await this.handleBlueprintRandom(req, res);
             return;
         }
 
@@ -838,7 +844,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, await this.nativePickerService.pick(validated));
     }
 
-    // The five Blueprint Editor handlers below follow the same validate-then-delegate shape as the Home
+    // The Blueprint Editor handlers below follow the same validate-then-delegate shape as the Home
     // handlers above — see that block's own doc comment. StudioBlueprintService never throws either;
     // its DTOs' own `status` field carries every domain-level outcome (including a save conflict, which
     // does get a real 409 — see handleBlueprintSave below — since "a file already exists and needs
@@ -868,6 +874,19 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, this.blueprintService.load(validated.path));
+    }
+
+    private async handleBlueprintRandom(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintRandomRequest((body ?? {}) as BlueprintRandomRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.random(validated.seed, validated.preset, validated.name));
     }
 
     private async handleBlueprintSave(req: IncomingMessage, res: ServerResponse): Promise<void> {

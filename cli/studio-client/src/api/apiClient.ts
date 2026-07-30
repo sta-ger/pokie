@@ -7,6 +7,7 @@ import type {
     ProjectDashboardContext,
     StudioBlueprintApplyView,
     StudioBlueprintLoadView,
+    StudioBlueprintRandomView,
     StudioBlueprintSaveView,
     StudioBlueprintValidationView,
     StudioBuildPreviewView,
@@ -224,6 +225,24 @@ export async function loadBlueprint(fetchImpl: FetchLike, path: string): Promise
         throw new Error(await extractErrorMessage(response, "Failed to load blueprint"));
     }
     return (await response.json()) as StudioBlueprintLoadView;
+}
+
+export type GenerateRandomBlueprintRequest = {seed?: number; preset?: "default" | "variant"; name?: string};
+
+// Backs the New flow's "Generate random" option — the same RandomGameBlueprintGenerator "pokie build
+// random"/"pokie create --random" use, run server-side (see StudioBlueprintService.random()'s own doc
+// comment). Omitting `seed` mints a fresh one each call (what "Randomize again" does); passing back a
+// previously returned `seed`/`preset` reproduces that exact blueprint.
+export async function generateRandomBlueprint(fetchImpl: FetchLike, request: GenerateRandomBlueprintRequest = {}): Promise<StudioBlueprintRandomView> {
+    const response = await fetchImpl("/api/home/blueprints/random", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to generate a random blueprint"));
+    }
+    return (await response.json()) as StudioBlueprintRandomView;
 }
 
 // A 409 ("conflict") is an expected domain outcome, not a failed request — handled the same way

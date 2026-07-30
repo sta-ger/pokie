@@ -967,6 +967,37 @@ describe("StudioServer", () => {
             });
         });
 
+        describe("POST /api/home/blueprints/random", () => {
+            it("rejects a non-integer seed", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/random`, {seed: "not-a-number"});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"seed" must be an integer when given.'});
+            });
+
+            it("rejects an unknown preset", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/random`, {preset: "bogus"});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"preset" must be one of: default, variant.'});
+            });
+
+            it("generates a valid blueprint with no body", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/random`, {});
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "ok", preset: "default"});
+                expect(typeof (body as {seed: number}).seed).toBe("number");
+            });
+
+            it("reproduces the exact same blueprint for the same seed and preset", async () => {
+                const first = await post(`${homeBaseUrl}/api/home/blueprints/random`, {seed: 99, preset: "variant"});
+                const second = await post(`${homeBaseUrl}/api/home/blueprints/random`, {seed: 99, preset: "variant"});
+
+                expect(first.body).toEqual(second.body);
+            });
+        });
+
         describe("POST /api/home/blueprints/save", () => {
             it("rejects a body with no path field", async () => {
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/save`, {blueprint: buildBlueprint()});
