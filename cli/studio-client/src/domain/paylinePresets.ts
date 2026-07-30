@@ -118,15 +118,17 @@ export type PaylineSetCompatibility = {compatible: boolean; reason?: string};
 
 // Shared by both built-in presets and saved custom sets (see customPaylineSets.ts) -- a payline set only
 // ever applies as-is (never reshaped/truncated/padded) because a row index means "this physical row",
-// so silently remapping it to fit a different grid would change which cells actually pay.
-export function describePaylineSetCompatibility(lines: number[][], reels: number, rows: number): PaylineSetCompatibility {
-    const wrongReelCount = lines.some((line) => line.length !== reels);
-    if (wrongReelCount) {
-        return {compatible: false, reason: `Requires ${lines[0]?.length ?? 0} reels (current layout has ${reels}).`};
+// so silently remapping it to fit a different grid would change which cells actually pay. That's why
+// this requires an *exact* reels/rows match against the set's own stored shape rather than merely
+// checking every line's row indexes still fit: a 5x3 set whose lines happen to only touch 3 of a 5x4
+// layout's 4 rows is still a 5x3 set, not an (unproven) adaptation of a 5x4 one, so it must stay
+// disabled until a domain-backed adaptation for that shape pair actually exists.
+export function describePaylineSetCompatibility(setReels: number, setRows: number, reels: number, rows: number): PaylineSetCompatibility {
+    if (setReels !== reels) {
+        return {compatible: false, reason: `Requires ${setReels} reels (current layout has ${reels}).`};
     }
-    const maxRow = Math.max(-1, ...lines.flat());
-    if (maxRow >= rows) {
-        return {compatible: false, reason: `Requires at least ${maxRow + 1} rows (current layout has ${rows}).`};
+    if (setRows !== rows) {
+        return {compatible: false, reason: `Requires ${setRows} rows (current layout has ${rows}).`};
     }
     return {compatible: true};
 }

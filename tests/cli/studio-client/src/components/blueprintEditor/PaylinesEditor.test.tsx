@@ -84,6 +84,35 @@ describe("PaylinesEditor presets", () => {
         expect(group5x3.getByText(/Requires 5 reels/)).toBeInTheDocument();
     });
 
+    it("disables a 5x3 preset group's Apply buttons on a 5x4 layout, never treating fewer stored rows as compatible", async () => {
+        const user = userEvent.setup();
+        renderWithProviders(<Harness initialBlueprint={{reels: 5, rows: 4, paylines: []}} />);
+
+        await openPresetModal(user);
+        const group5x3 = within(screen.getByRole("group", {name: "5 reels × 3 rows preset group"}));
+        const classic9Row = group5x3.getByText("Classic 9").closest("tr") as HTMLElement;
+
+        expect(within(classic9Row).getByRole("button", {name: "Replace"})).toBeDisabled();
+        expect(within(classic9Row).getByRole("button", {name: "Append"})).toBeDisabled();
+        expect(group5x3.getByText(/Requires 3 rows/)).toBeInTheDocument();
+    });
+
+    it("disables a saved 5x3 custom set on a 5x4 layout with a row-count incompatibility reason", async () => {
+        const user = userEvent.setup();
+        localStorage.setItem(
+            "pokie-studio:custom-payline-sets",
+            JSON.stringify([{id: "custom-1", name: "My 5x3 set", reels: 5, rows: 3, lines: [[1, 1, 1, 1, 1]]}]),
+        );
+        renderWithProviders(<Harness initialBlueprint={{reels: 5, rows: 4, paylines: []}} />);
+
+        await openPresetModal(user);
+        const customRow = screen.getByLabelText('Custom set "My 5x3 set" name').closest("tr") as HTMLElement;
+
+        expect(within(customRow).getByRole("button", {name: "Replace"})).toBeDisabled();
+        expect(within(customRow).getByRole("button", {name: "Append"})).toBeDisabled();
+        expect(within(customRow).getByText(/Requires 3 rows/)).toBeInTheDocument();
+    });
+
     it("saves the current paylines as a named custom set, then it's reusable, renamable, and deletable", async () => {
         const user = userEvent.setup();
         renderWithProviders(<Harness initialBlueprint={{reels: 3, rows: 3, paylines: [[1, 1, 1], [0, 0, 0]]}} />);

@@ -58,9 +58,8 @@ function PaylineMiniPreview({lines, reels, rows}: {lines: number[][]; reels: num
 }
 
 // One shape's presets (e.g. every 5x3 layout) under a single heading -- every preset in the group shares
-// the same compatibility verdict, so it's computed once per group (from the group's largest preset,
-// whose lines are a superset of every smaller one's -- see paylinePresets.ts's own prefix-nesting doc
-// comment) instead of repeating the same reason text on every row.
+// the same declared reels/rows, so compatibility is computed once per group (from the group's own
+// shape) instead of repeating the same reason text on every row.
 function PresetShapeGroupSection({
     group,
     reels,
@@ -72,8 +71,7 @@ function PresetShapeGroupSection({
     rows: number;
     onApply: (lines: number[][], mode: "replace" | "append") => void;
 }) {
-    const largest = group.presets[group.presets.length - 1];
-    const compatibility = describePaylineSetCompatibility(largest.lines, reels, rows);
+    const compatibility = describePaylineSetCompatibility(group.reels, group.rows, reels, rows);
 
     return (
         <Stack gap={4} role="group" aria-label={`${group.reels} reels × ${group.rows} rows preset group`}>
@@ -120,9 +118,9 @@ function PresetShapeGroupSection({
 
 // Every "apply" action here (built-in preset or saved custom set) goes through applyPaylineSet's own
 // Replace/Append split -- Replace swaps the list, Append only ever adds -- so this modal never has a
-// third, silently-destructive path of its own. Incompatible shapes (wrong reel count, or rows too
-// shallow for one of the set's row indexes) stay visible with the reason rather than being hidden, and
-// their Replace/Append buttons are simply disabled -- see describePaylineSetCompatibility's own doc
+// third, silently-destructive path of its own. Any shape that isn't an exact reels/rows match (wrong
+// reel count, or wrong row count either way) stays visible with the reason rather than being hidden,
+// and their Replace/Append buttons are simply disabled -- see describePaylineSetCompatibility's own doc
 // comment on why an incompatible set is never reshaped to fit. Shape groups matching the blueprint's
 // current reels/rows sort first so the relevant choices don't require scrolling past the others.
 export function PaylinePresetsModal({
@@ -218,7 +216,7 @@ export function PaylinePresetsModal({
                             <Table verticalSpacing="xs">
                                 <Table.Tbody>
                                     {customSets.map((set) => {
-                                        const compatibility = describePaylineSetCompatibility(set.lines, reels, rows);
+                                        const compatibility = describePaylineSetCompatibility(set.reels, set.rows, reels, rows);
                                         return (
                                             <Table.Tr key={set.id}>
                                                 <Table.Td>

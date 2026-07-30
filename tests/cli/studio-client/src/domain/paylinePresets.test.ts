@@ -42,19 +42,26 @@ describe("paylinePresets", () => {
     });
 
     describe("describePaylineSetCompatibility", () => {
-        it("is compatible when the current layout exactly matches the set's shape", () => {
-            expect(describePaylineSetCompatibility([[1, 1, 1, 1, 1]], 5, 3)).toEqual({compatible: true});
+        it("is compatible when the current layout exactly matches the set's stored shape", () => {
+            expect(describePaylineSetCompatibility(5, 3, 5, 3)).toEqual({compatible: true});
         });
 
         it("is incompatible with a reason when the reel count doesn't match", () => {
-            const result = describePaylineSetCompatibility([[1, 1, 1, 1, 1]], 6, 3);
+            const result = describePaylineSetCompatibility(5, 3, 6, 3);
 
             expect(result.compatible).toBe(false);
             expect(result.reason).toMatch(/5 reels/);
         });
 
-        it("is incompatible with a reason when a line needs a row the current layout doesn't have", () => {
-            const result = describePaylineSetCompatibility([[0, 1, 2, 1, 0]], 5, 2);
+        it("is incompatible with a reason when the current layout has fewer rows than the set's stored shape", () => {
+            const result = describePaylineSetCompatibility(5, 3, 5, 2);
+
+            expect(result.compatible).toBe(false);
+            expect(result.reason).toMatch(/3 rows/);
+        });
+
+        it("is incompatible with a reason when the current layout has more rows than the set's stored shape, never silently adapting it", () => {
+            const result = describePaylineSetCompatibility(5, 3, 5, 4);
 
             expect(result.compatible).toBe(false);
             expect(result.reason).toMatch(/3 rows/);
