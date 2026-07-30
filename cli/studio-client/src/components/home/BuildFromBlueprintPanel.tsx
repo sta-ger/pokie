@@ -35,6 +35,15 @@ const withBuildResultError = (view: BuildProjectView): BuildProjectView => {
     return view;
 };
 
+// The complete identity of a preview/destination-check request -- every field the server response
+// actually depends on (blueprintPath as well as outDir). Matching on outDir alone let a preview run
+// against one blueprint get reused to authorize a Build against a *different* blueprint sharing the
+// same (often default/empty) outDir -- this is compared wholesale before any preview result is ever
+// trusted for a build.
+type PreviewRequestIdentity = {blueprintPath: string; outDir: string | undefined};
+const samePreviewRequest = (a: PreviewRequestIdentity, b: PreviewRequestIdentity): boolean =>
+    a.blueprintPath === b.blueprintPath && a.outDir === b.outDir;
+
 export function BuildFromBlueprintPanel() {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
@@ -46,14 +55,14 @@ export function BuildFromBlueprintPanel() {
     // *same* outDir confirms before silently overwriting it -- never gates a first build against a given
     // outDir. Same pattern as the Blueprint Editor's own Build panel.
     const lastBuiltOutDir = useRef<string | undefined>(undefined);
-    // The outDir a Build Preview's own "ok" result (above) actually describes -- used only to decide
-    // whether that result's `destinationHasContent` is still trustworthy for the *current* outDir text
-    // before a build (see runBuild below); a stale preview against a since-edited outDir must never be
-    // read as if it described today's destination. Same pattern as the Blueprint Editor's own Build
-    // panel, but state rather than a ref: `runPreview` below is passed straight into Mantine's
-    // form.onSubmit, and a ref written from a function handed to another call made during render trips
-    // react-hooks/refs (its value could, in principle, be read back during that same render).
-    const [previewedOutDir, setPreviewedOutDir] = useState<string | undefined>(undefined);
+    // The exact request a Build Preview's own "ok" result (above) actually describes -- used only to
+    // decide whether that result's `destinationHasContent` is still trustworthy for the *current* request
+    // before a build (see runBuild below); a stale preview against a since-edited blueprint path or
+    // outDir must never be read as if it described today's destination. State rather than a ref:
+    // `runPreview` below is passed straight into Mantine's form.onSubmit, and a ref written from a
+    // function handed to another call made during render trips react-hooks/refs (its value could, in
+    // principle, be read back during that same render).
+    const [previewedRequest, setPreviewedRequest] = useState<PreviewRequestIdentity | undefined>(undefined);
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
 
@@ -62,22 +71,45 @@ export function BuildFromBlueprintPanel() {
         initialValues: {blueprintPath: "", outDir: ""},
     });
 
+    // The request a resolved destination-check response actually still describes vs. what the form
+    // (uncontrolled, so this always reads the live DOM values, not a stale render's closure) currently
+    // holds -- used by both runPreview and runBuild's own fallback check below to drop an out-of-order
+    // response for a since-abandoned request rather than let it overwrite a newer one's result just
+    // because it happened to resolve later. A ref would work just as well here but isn't needed: the form
+    // itself is already the one place both call sites can read the live, current request from.
+    const isStillCurrentRequest = (identity: PreviewRequestIdentity): boolean => {
+        const values = form.getValues();
+        return samePreviewRequest(identity, {blueprintPath: values.blueprintPath, outDir: values.outDir.trim() || undefined});
+    };
+
     const runPreview = (values: FormValues): void => {
         if (!previewGuard.begin()) {
             return;
         }
         const resolvedOutDir = values.outDir.trim() || undefined;
-        setPreviewedOutDir(resolvedOutDir);
+        const identity: PreviewRequestIdentity = {blueprintPath: values.blueprintPath, outDir: resolvedOutDir};
         setPreview({status: "loading"});
         previewBuild(fetchImpl, {blueprintPath: values.blueprintPath, outDir: resolvedOutDir})
-            .then((view) => setPreview(withBlueprintPathPreviewError(describeBuildPreview(view))))
-            .catch((error: unknown) => setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))}))
+            .then((view) => {
+                if (!isStillCurrentRequest(identity)) {
+                    return;
+                }
+                setPreview(withBlueprintPathPreviewError(describeBuildPreview(view)));
+                setPreviewedRequest(identity);
+            })
+            .catch((error: unknown) => {
+                if (!isStillCurrentRequest(identity)) {
+                    return;
+                }
+                setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))});
+            })
             .finally(() => previewGuard.end());
     };
 
     const runBuild = (): void => {
         const values = form.getValues();
         const resolvedOutDir = values.outDir.trim() || undefined;
+        const identity: PreviewRequestIdentity = {blueprintPath: values.blueprintPath, outDir: resolvedOutDir};
         const doBuild = (): void => {
             if (!buildGuard.begin()) {
                 return;
@@ -109,38 +141,45 @@ export function BuildFromBlueprintPanel() {
             }
         };
 
-        // A Build Preview run against this exact outDir already told us whether the destination is empty
-        // -- reuse that answer instead of asking again. A stale preview (against a since-edited outDir) is
-        // deliberately never trusted for this -- see previewedOutDir's own doc comment -- so it falls
-        // through to the read-only check below instead.
-        if (preview.status === "ok" && previewedOutDir === resolvedOutDir) {
+        // A Build Preview run against this exact blueprint path and outDir already told us whether the
+        // destination is empty -- reuse that answer instead of asking again. A stale preview (against a
+        // since-edited blueprint path or outDir) is deliberately never trusted for this -- see
+        // previewedRequest's own doc comment -- so it falls through to the read-only check below instead.
+        if (preview.status === "ok" && previewedRequest !== undefined && samePreviewRequest(previewedRequest, identity)) {
             confirmIfDestinationHasContent(preview);
             return;
         }
 
-        // No Preview has ever been run against this exact outDir -- Build must still know whether it's
+        // No Preview has ever been run against this exact request -- Build must still know whether it's
         // about to write into existing content, so it runs the same read-only destination check Preview
         // does before deciding, rather than silently trusting an empty destination. Setting `preview`/
-        // `previewedOutDir` from the result makes this fresh answer the trustworthy one for any further
-        // Build click against this same outDir, same as if the user had clicked Preview themselves. A
-        // failed check (bad blueprint path, network error, etc.) must NOT fall through to doBuild() --
-        // whether the destination already has content is unknown, so authorizing a write here could
-        // silently overwrite it without ever asking. It's reported the same way runPreview's own
-        // rejection is, and the build is left un-started (buildGuard.end() with no doBuild() call).
+        // `previewedRequest` from the result makes this fresh answer the trustworthy one for any further
+        // Build click against this same request, same as if the user had clicked Preview themselves --
+        // but only if this is still the request the form currently holds (see isStillCurrentRequest's own
+        // doc comment); an out-of-order response for a since-abandoned request must never overwrite a
+        // newer, still in-flight or already-resolved one. A failed check (bad blueprint path, network
+        // error, etc.) must NOT fall through to doBuild() -- whether the destination already has content
+        // is unknown, so authorizing a write here could silently overwrite it without ever asking. It's
+        // reported the same way runPreview's own rejection is, and the build is left un-started
+        // (buildGuard.end() with no doBuild() call).
         if (!buildGuard.begin()) {
             return;
         }
         previewBuild(fetchImpl, {blueprintPath: values.blueprintPath, outDir: resolvedOutDir})
             .then((view) => {
                 const described = withBlueprintPathPreviewError(describeBuildPreview(view));
-                setPreview(described);
-                setPreviewedOutDir(resolvedOutDir);
                 buildGuard.end();
+                if (isStillCurrentRequest(identity)) {
+                    setPreview(described);
+                    setPreviewedRequest(identity);
+                }
                 confirmIfDestinationHasContent(described);
             })
             .catch((error: unknown) => {
-                setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))});
                 buildGuard.end();
+                if (isStillCurrentRequest(identity)) {
+                    setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))});
+                }
             });
     };
 

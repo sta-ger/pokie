@@ -217,11 +217,20 @@ export function BlueprintBuildPanel({
     // State (not a ref) because it drives rendered output below (the "new destination" hint) as well as
     // runBuild's own confirm check -- a ref would be legal for the latter alone, but not for the former.
     const [lastBuiltOutDir, setLastBuiltOutDir] = useState<string | undefined>(undefined);
-    // The outDir a Build Preview's own "ok" result (above) actually describes -- used only to decide
-    // whether that result's `destinationHasContent` is still trustworthy for the *current* outDir text
-    // before a build (see runBuild below); a stale preview against a since-edited outDir must never be
-    // read as if it described today's destination.
-    const previewedOutDir = useRef<string | undefined>(undefined);
+    // The exact request (blueprint content, sourcePath, and outDir) a Build Preview's own "ok" result
+    // (above) actually describes -- used only to decide whether that result's `destinationHasContent` is
+    // still trustworthy for the *current* request before a build (see runBuild below); a stale preview
+    // against a since-edited blueprint, sourcePath, or outDir must never be read as if it described
+    // today's destination. Compared by JSON identity, same as hasBlueprintChanged's own field-by-field
+    // comparisons elsewhere in this panel -- `blueprint` is a plain data object with no stable identity of
+    // its own across renders.
+    const previewedRequest = useRef<{blueprintJson: string; sourcePath: string | undefined; outDir: string | undefined} | undefined>(undefined);
+    // Monotonic counter tagging every in-flight destination-check request (from either runPreview or
+    // runBuild's own fallback check below) -- whichever request was issued *last* is the only one ever
+    // allowed to write `preview`/`previewedRequest`, regardless of which one's response actually arrives
+    // first. Without this, an older request for a since-abandoned blueprint/outDir that happens to
+    // resolve after a newer one would silently overwrite the newer, correct result.
+    const latestRequestSeq = useRef(0);
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
 
@@ -230,16 +239,29 @@ export function BlueprintBuildPanel({
             return;
         }
         const resolvedOutDir = outDir.trim() || undefined;
-        previewedOutDir.current = resolvedOutDir;
+        const identity = {blueprintJson: JSON.stringify(blueprint), sourcePath, outDir: resolvedOutDir};
+        const seq = ++latestRequestSeq.current;
         setPreview({status: "loading"});
         previewBlueprintBuild(fetchImpl, blueprint, resolvedOutDir, sourcePath)
-            .then((view) => setPreview(withOutDirPreviewError(describeBuildPreview(view))))
-            .catch((error: unknown) => setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))}))
+            .then((view) => {
+                if (seq !== latestRequestSeq.current) {
+                    return;
+                }
+                setPreview(withOutDirPreviewError(describeBuildPreview(view)));
+                previewedRequest.current = identity;
+            })
+            .catch((error: unknown) => {
+                if (seq !== latestRequestSeq.current) {
+                    return;
+                }
+                setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))});
+            })
             .finally(() => previewGuard.end());
     };
 
     const runBuild = (): void => {
         const resolvedOutDir = outDir.trim() || undefined;
+        const identity = {blueprintJson: JSON.stringify(blueprint), sourcePath, outDir: resolvedOutDir};
         const doBuild = (): void => {
             if (!buildGuard.begin()) {
                 return;
@@ -283,38 +305,52 @@ export function BlueprintBuildPanel({
             }
         };
 
-        // A Build Preview run against this exact outDir already told us whether the destination is empty
-        // -- reuse that answer instead of asking again. A stale preview (against a since-edited outDir) is
-        // deliberately never trusted for this -- see previewedOutDir's own doc comment -- so it falls
-        // through to the read-only check below instead.
-        if (preview.status === "ok" && previewedOutDir.current === resolvedOutDir) {
+        // A Build Preview run against this exact blueprint, sourcePath, and outDir already told us whether
+        // the destination is empty -- reuse that answer instead of asking again. A stale preview (against
+        // a since-edited blueprint or outDir) is deliberately never trusted for this -- see
+        // previewedRequest's own doc comment -- so it falls through to the read-only check below instead.
+        if (
+            preview.status === "ok" &&
+            previewedRequest.current !== undefined &&
+            previewedRequest.current.blueprintJson === identity.blueprintJson &&
+            previewedRequest.current.sourcePath === identity.sourcePath &&
+            previewedRequest.current.outDir === identity.outDir
+        ) {
             confirmIfDestinationHasContent(preview);
             return;
         }
 
-        // No Preview has ever been run against this exact outDir -- Build must still know whether it's
+        // No Preview has ever been run against this exact request -- Build must still know whether it's
         // about to write into existing content, so it runs the same read-only destination check Build
         // Preview does before deciding, rather than silently trusting an empty destination. Setting
-        // `preview`/`previewedOutDir` from the result makes this fresh answer the trustworthy one for any
-        // further Build click against this same outDir, same as if the user had clicked Build Preview
-        // themselves. A failed check (invalid blueprint, network error, etc.) must NOT fall through to
-        // doBuild() -- whether the destination already has content is unknown, so authorizing a write
-        // here could silently overwrite it without ever asking. It's reported the same way runPreview's
-        // own rejection is, and the build is left un-started (buildGuard.end() with no doBuild() call).
+        // `preview`/`previewedRequest` from the result makes this fresh answer the trustworthy one for any
+        // further Build click against this same request, same as if the user had clicked Build Preview
+        // themselves -- but only if this is still the *latest* request issued (see latestRequestSeq's own
+        // doc comment); an out-of-order response for a since-abandoned request must never overwrite a
+        // newer, still in-flight or already-resolved one. A failed check (invalid blueprint, network
+        // error, etc.) must NOT fall through to doBuild() -- whether the destination already has content
+        // is unknown, so authorizing a write here could silently overwrite it without ever asking. It's
+        // reported the same way runPreview's own rejection is, and the build is left un-started
+        // (buildGuard.end() with no doBuild() call).
         if (!buildGuard.begin()) {
             return;
         }
+        const seq = ++latestRequestSeq.current;
         previewBlueprintBuild(fetchImpl, blueprint, resolvedOutDir, sourcePath)
             .then((view) => {
                 const described = withOutDirPreviewError(describeBuildPreview(view));
-                setPreview(described);
-                previewedOutDir.current = resolvedOutDir;
                 buildGuard.end();
+                if (seq === latestRequestSeq.current) {
+                    setPreview(described);
+                    previewedRequest.current = identity;
+                }
                 confirmIfDestinationHasContent(described);
             })
             .catch((error: unknown) => {
-                setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))});
                 buildGuard.end();
+                if (seq === latestRequestSeq.current) {
+                    setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))});
+                }
             });
     };
 
