@@ -199,23 +199,19 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         // Awaited rather than immediate: "/" resolves the server mode first, so Home appears a tick later.
         expect(await screen.findByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
 
-        // 2. Configure the game model -- add a symbol. HomePage keeps every tab's content mounted (so
-        // switching tabs never loses a draft), so the Advanced Tools tab's own raw Blueprint Editor
-        // instance is also in the DOM here -- [0] is always the Design & Build tab's own, since it's the
-        // first of the three tab bodies in HomePage's markup. The guided editor's own fields are further
-        // split into named sections (SectionedFormEditor) -- Symbols is one of them, so it needs its own
-        // tab click first; the raw Advanced Tools editor has no such tabs, so "Symbols" as a role="tab"
-        // unambiguously means the guided one.
+        // 2. Configure the game model -- add a symbol. The guided editor's own fields are split into
+        // named sections (SectionedFormEditor) -- Symbols is one of them, so it needs its own tab click
+        // first.
         await user.click(screen.getByRole("tab", {name: "Symbols"}));
-        await user.type(screen.getAllByLabelText("New symbol id")[0], "wild");
-        await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
+        await user.type(screen.getByLabelText("New symbol id"), "wild");
+        await user.click(screen.getByRole("button", {name: "Add symbol"}));
 
         // 3. Validate.
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
+        await user.click(screen.getByRole("button", {name: "Validate"}));
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
 
         // 4. Build.
-        await user.click(screen.getAllByRole("button", {name: "Build Package"})[0]);
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
         const openInStudio = await screen.findByRole("button", {name: "Open in Studio"});
 
         // 5. Building's success action lands us in the Project Dashboard (the same "Open in Studio"

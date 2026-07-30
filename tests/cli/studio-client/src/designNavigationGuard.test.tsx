@@ -30,12 +30,11 @@ async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Pr
     // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first. Typing
     // alone doesn't dirty the blueprint (the field is just local uncommitted input state until "Add
     // symbol" actually mutates the blueprint) -- same setup HomePage.test.tsx's own dirty-confirm test
-    // uses. [0] is always the guided Design & Build tab's own instance -- Advanced Tools' raw Blueprint
-    // Editor is permanently mounted too (tabs are hidden via CSS, never unmounted) and comes second in
-    // the DOM.
+    // uses. There is exactly one BlueprintEditorPage instance on Home now (the guided Design & Build
+    // tab's own) -- Advanced Tools no longer mounts a second, independent raw editor.
     await user.click(screen.getByRole("tab", {name: "Symbols"}));
-    await user.type(screen.getAllByLabelText("New symbol id")[0], "wild-draft");
-    await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
+    await user.type(screen.getByLabelText("New symbol id"), "wild-draft");
+    await user.click(screen.getByRole("button", {name: "Add symbol"}));
 }
 
 describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
@@ -83,7 +82,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(router.state.location.pathname).toBe("/home/design");
         expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
-        expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
+        expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
 
     // Many sequential real userEvent interactions plus a real cross-page navigation -- under Jest's
@@ -132,7 +131,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
-        expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
+        expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
 
     it("registers a native beforeunload listener only while the draft is dirty", async () => {
@@ -154,9 +153,8 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         addSpy.mockClear();
         removeSpy.mockClear();
 
-        // "New Blueprint" resets the draft back to clean -- [0] is the guided Design & Build tab's own
-        // instance, same reasoning as dirtyTheDesignDraft above.
-        await user.click(screen.getAllByRole("button", {name: "New Blueprint"})[0]);
+        // "New Blueprint" resets the draft back to clean.
+        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
 
         await waitFor(() => expect(removeSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(true));
         expect(addSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(false);

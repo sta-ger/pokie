@@ -15,8 +15,8 @@ async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Pr
     // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first. Typing
     // alone doesn't dirty the blueprint -- "Add symbol" actually mutates it.
     await user.click(screen.getByRole("tab", {name: "Symbols"}));
-    await user.type(screen.getAllByLabelText("New symbol id")[0], "wild-draft");
-    await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
+    await user.type(screen.getByLabelText("New symbol id"), "wild-draft");
+    await user.click(screen.getByRole("button", {name: "Add symbol"}));
 }
 
 async function openViaOpenProjectForm(user: ReturnType<typeof userEvent.setup>): Promise<void> {
@@ -110,7 +110,7 @@ describe("useOpenProject: guarded side effects", () => {
         expect(router.state.location.pathname).toBe("/home/open");
         expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
-        expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
+        expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
 
         // The failed attempt must not leave the router-level one-shot bypass stuck "on" -- a later,
         // unrelated navigation away from Home while still dirty must still be blocked, not silently let
@@ -156,6 +156,6 @@ describe("useOpenProject: guarded side effects", () => {
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Design & Build"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
-        expect(screen.getAllByDisplayValue("wild-draft")[0]).toBeInTheDocument();
+        expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
 });
