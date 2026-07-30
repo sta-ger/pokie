@@ -541,6 +541,92 @@ describe("Scoped path-action error remediation baseline", () => {
         );
         expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
     });
+
+    it("Advanced Tools / Create Project: a failed create call is turned into destination-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/create": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir/my-slot-game'"},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        await user.click(screen.getByRole("button", {name: "Create"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The destination directory could not be found. Check the path and try again.")).toBe(
+            true,
+        );
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
+
+    it("Advanced Tools / Initialize: a required-field rejection is turned into project-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            // Matches validateInitProjectRequest's own rejection shape for a missing "directory" --
+            // GamePackageScaffolder.scaffold's raw fs failures share this same "error" status/subject.
+            "/api/home/projects/init": () => ({ok: true, status: 200, body: {status: "error", error: '"directory" is required.'}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        await user.click(screen.getByRole("button", {name: "Initialize"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(
+            alerts.some((alert) => alert.textContent === "The project directory is missing or invalid. Provide a valid value and try again."),
+        ).toBe(true);
+        expect(alerts.some((alert) => alert.textContent === '"directory" is required.')).toBe(false);
+    });
+
+    it("Advanced Tools / Build from Blueprint: a failed Preview call is turned into blueprint-file-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/build/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "load-error", error: "ENOENT: no such file or directory, open './missing.json'"},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        await user.type(screen.getByLabelText("Blueprint JSON path", {exact: false}), "./missing.json");
+        await user.click(screen.getByRole("button", {name: "Preview"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The blueprint file could not be found. Check the path and try again.")).toBe(true);
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
+
+    it("Advanced Tools / Build from Blueprint: a failed Build call is turned into output-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/build": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir'"},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        await user.type(screen.getByLabelText("Blueprint JSON path", {exact: false}), "./blueprint.json");
+        // getAllByLabelText, index 0: "Output directory (optional)" also labels the Raw Editor's own
+        // Build panel further down this same tab -- BuildFromBlueprintPanel renders first (HomePage.tsx),
+        // same convention as the placeholder baseline above.
+        await user.type(screen.getAllByLabelText("Output directory (optional)")[0], "./no/such/dir");
+        await user.click(screen.getByRole("button", {name: "Build"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The output directory could not be found. Check the path and try again.")).toBe(
+            true,
+        );
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
 });
 
 describe("Advanced tab inferable-empty-input baseline", () => {

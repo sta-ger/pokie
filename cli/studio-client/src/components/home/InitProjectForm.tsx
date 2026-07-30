@@ -5,10 +5,17 @@ import {initProject} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeScaffoldResult, type ScaffoldActionView} from "../../domain/interpret/Home";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {PathInput} from "../common/PathInput";
 import {ScaffoldResultDisplay} from "./ScaffoldResultDisplay";
+
+// GamePackageScaffolder.scaffold's only user-typed path is `directory` -- every failure it can throw
+// (missing package.json, an unreadable/nonexistent directory) is about that one field.
+const describeDirectoryFailure = (message: string): string => describePathActionError("The project directory", message);
+const withDirectoryError = (view: ScaffoldActionView): ScaffoldActionView =>
+    view.status === "error" || view.status === "failed" ? {...view, message: describeDirectoryFailure(view.message)} : view;
 
 export function InitProjectForm() {
     const fetchImpl = useStudioApi();
@@ -29,12 +36,12 @@ export function InitProjectForm() {
         setView({status: "loading"});
         initProject(fetchImpl, {directory: values.directory})
             .then((result) => {
-                setView(describeScaffoldResult(result));
+                setView(withDirectoryError(describeScaffoldResult(result)));
                 if (result.status === "ok") {
                     setLastProjectRoot(result.projectRoot);
                 }
             })
-            .catch((error: unknown) => setView({status: "error", message: errorMessage(error)}))
+            .catch((error: unknown) => setView({status: "error", message: describeDirectoryFailure(errorMessage(error))}))
             .finally(() => submitGuard.end());
     };
 

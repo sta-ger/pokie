@@ -7,6 +7,7 @@ import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {BuildResultDisplay} from "../common/BuildResultDisplay";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeBuildPreview, describeBuildResult, type BuildPreviewView, type BuildProjectView} from "../../domain/interpret/Home";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
@@ -14,6 +15,25 @@ import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
 type FormValues = {blueprintPath: string; outDir: string};
+
+// StudioHomeService.previewBuild/buildProject's own loadAndValidateBlueprint step never touches outDir
+// -- every "load-error" (and a plain apiClient-level "error", which only ever happens before that step
+// gets a chance to fail some other way) is about `blueprintPath`. Only Build's own domain "error"/
+// "failed" status -- from GamePackageGenerator writing the package -- is ever about `outDir`, same
+// underlying service and same fixed subject as the Blueprint Editor's own Build panel.
+const describeBlueprintPathFailure = (message: string): string => describePathActionError("The blueprint file", message);
+const describeOutDirFailure = (message: string): string => describePathActionError("The output directory", message);
+const withBlueprintPathPreviewError = (view: BuildPreviewView): BuildPreviewView =>
+    view.status === "error" || view.status === "load-error" ? {...view, message: describeBlueprintPathFailure(view.message)} : view;
+const withBuildResultError = (view: BuildProjectView): BuildProjectView => {
+    if (view.status === "load-error") {
+        return {...view, message: describeBlueprintPathFailure(view.message)};
+    }
+    if (view.status === "error" || view.status === "failed") {
+        return {...view, message: describeOutDirFailure(view.message)};
+    }
+    return view;
+};
 
 export function BuildFromBlueprintPanel() {
     const fetchImpl = useStudioApi();
@@ -40,8 +60,8 @@ export function BuildFromBlueprintPanel() {
         }
         setPreview({status: "loading"});
         previewBuild(fetchImpl, {blueprintPath: values.blueprintPath, outDir: values.outDir.trim() || undefined})
-            .then((view) => setPreview(describeBuildPreview(view)))
-            .catch((error: unknown) => setPreview({status: "error", message: errorMessage(error)}))
+            .then((view) => setPreview(withBlueprintPathPreviewError(describeBuildPreview(view))))
+            .catch((error: unknown) => setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))}))
             .finally(() => previewGuard.end());
     };
 
@@ -55,13 +75,13 @@ export function BuildFromBlueprintPanel() {
             setResult({status: "loading"});
             buildProject(fetchImpl, {blueprintPath: values.blueprintPath, outDir})
                 .then((view) => {
-                    setResult(describeBuildResult(view));
+                    setResult(withBuildResultError(describeBuildResult(view)));
                     if (view.status === "ok") {
                         setLastProjectRoot(view.projectRoot);
                         lastBuiltOutDir.current = outDir;
                     }
                 })
-                .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}))
+                .catch((error: unknown) => setResult({status: "error", message: describeBlueprintPathFailure(errorMessage(error))}))
                 .finally(() => buildGuard.end());
         };
 

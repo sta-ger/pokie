@@ -43,11 +43,29 @@ error -- or the pasted-proof/pasted-commitment JSON-parse errors, none of which 
 `tests/cli/studio-client/src/domain/pathActionError.test.ts` for the classifier's own reason-by-reason
 coverage and the "Scoped path-action error remediation baseline" describe block in
 `studioSurfaceInventory.baseline.test.tsx` for representative end-to-end fixtures.
+**Update (`[P2-POLISH-04]`, v4):** Advanced Tools' three plain forms are no longer a raw-error-passthrough
+exception either. `CreateProjectForm.tsx`, `InitProjectForm.tsx`, and `BuildFromBlueprintPanel.tsx` (Home's
+version, not the Blueprint Editor's own panel of the same shared components) now each wrap their
+`ScaffoldActionView`/`BuildPreviewView`/`BuildProjectView` `error`/`load-error`/`failed` messages through
+`describePathActionError` before rendering, same policy as everywhere else in this document. Create's
+combined destinationDir+name request has no server-side field-level distinction for its failures (an invalid/
+conflicting name, a destination it can't write to all share one `{status:"error"}` DTO -- see
+`StudioHomeService.createProject`), so every one of its failures is shown under one fixed subject, "The
+destination directory" -- same single-fixed-subject convention `BlueprintBuildPanel` already uses for its own
+outDir-only failures. Init's `directory` is its only field, so every failure is unambiguously "The project
+directory". Build-from-blueprint's two path fields *are* cleanly separable server-side
+(`StudioHomeService.loadAndValidateBlueprint` only ever touches `blueprintPath`; `GamePackageGenerator.generate`
+only ever touches `outDir`), so its `load-error` status is described as "The blueprint file" and its own
+domain `error`/`failed` status (build only -- preview never writes) as "The output directory", mirroring
+`BlueprintBuildPanel`'s existing outDir subject exactly since it's the identical underlying service. See the
+"Advanced Tools / Create Project", "Advanced Tools / Initialize", and "Advanced Tools / Build from Blueprint"
+cases in the "Scoped path-action error remediation baseline" describe block in
+`studioSurfaceInventory.baseline.test.tsx` for representative ENOENT/required-field fixtures, and each tool's
+own dedicated test file for the destination-already-exists domain-conflict case (also now translated, not raw).
 **Deliberately unchanged:** Runtime and Replay (neither has a path field at all -- see their own sections
-below); Advanced Tools' three plain forms (Create/Init/Build-from-blueprint) and their own dedicated-test-
-covered raw-error surfaces; `BlueprintValidationPanel`'s plain-`<Text>` accessibility gap; every hand-built
-(non-raw-fs) message already documented as an exception -- Save's/the two exports' own conflict messages,
-Stake Engine Export's non-overwritable-conflict message.
+below); `BlueprintValidationPanel`'s plain-`<Text>` accessibility gap; every hand-built (non-raw-fs) message
+already documented as an exception -- Save's/the two exports' own conflict messages, Stake Engine Export's
+non-overwritable-conflict message.
 
 **Scope:** every named global/project workflow (Design & Build, Raw Editor, Advanced Tools, Open Project,
 Replay, Runtime, Certification, Provably Fair, Deployment, Outcome Libraries, Stake Engine Export) — for each,
@@ -225,11 +243,18 @@ not a validation gap. Build-from-blueprint's `outDir` does the same (`BuildFromB
 
 **Misleading placeholders:** none, pinned by the same fixture as Design & Build/Raw Editor/Open Project.
 
-**Raw-error surfaces (evidence only -- already covered by each tool's own dedicated test's "domain-level
-failure" cases, e.g. CreateProjectForm.test.tsx's "destination already exists" conflict):** all three
-funnel a failed create/init/preview/build straight into the shared `ScaffoldResultDisplay`/
-`BuildPreviewDisplay`/`BuildResultDisplay` → `ErrorState`, the same systemic passthrough pattern documented
-throughout this file.
+**Raw-error surfaces (executable, new fixtures cited below -- no longer a passthrough since
+`[P2-POLISH-04]`'s v4 update):** all three still funnel a failed create/init/preview/build into the shared
+`ScaffoldResultDisplay`/`BuildPreviewDisplay`/`BuildResultDisplay` → `ErrorState`, but each tool now
+pre-translates the `message` it hands that shared display through `describePathActionError` first -- Create
+and Init under one fixed subject each ("The destination directory" / "The project directory"), Build-from-
+blueprint under one of two, depending on which underlying service failed ("The blueprint file" for a
+`load-error`, "The output directory" for Build's own domain `error`/`failed`). See the "Advanced Tools /
+Create Project", "Advanced Tools / Initialize", and "Advanced Tools / Build from Blueprint" cases in
+`studioSurfaceInventory.baseline.test.tsx`'s "Scoped path-action error remediation baseline" describe block
+(ENOENT/required-field fixtures) and each tool's own dedicated test file (the destination-already-exists
+domain-conflict case, evidence that even a non-fs hand-typed message is translated, not just raw fs/schema
+text).
 
 **Contract cross-reference:** `StudioRequestContractBaseline.test.ts`'s new contract block also pins Init
 Project's request shape (directory-only, no name/gameId/gameName/version overrides Create Project accepts)

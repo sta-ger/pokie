@@ -5,6 +5,7 @@ import {createProject} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeScaffoldResult, type ScaffoldActionView} from "../../domain/interpret/Home";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {PathInput} from "../common/PathInput";
@@ -23,6 +24,14 @@ type CreateProjectFormValues = {
     gameName: string;
     version: string;
 };
+
+// GamePackageCreator.create's own failures -- an invalid/conflicting name, a destination it can't
+// write to -- are all reported through this one combined destinationDir+name request, so "The
+// destination directory" is the one fixed subject every describable failure below is shown under (same
+// convention as BlueprintBuildPanel's own single-fixed-subject reasoning).
+const describeDestinationFailure = (message: string): string => describePathActionError("The destination directory", message);
+const withDestinationError = (view: ScaffoldActionView): ScaffoldActionView =>
+    view.status === "error" || view.status === "failed" ? {...view, message: describeDestinationFailure(view.message)} : view;
 
 export function CreateProjectForm() {
     const fetchImpl = useStudioApi();
@@ -49,12 +58,12 @@ export function CreateProjectForm() {
             version: values.version.trim() || undefined,
         })
             .then((result) => {
-                setView(describeScaffoldResult(result));
+                setView(withDestinationError(describeScaffoldResult(result)));
                 if (result.status === "ok") {
                     setLastProjectRoot(result.projectRoot);
                 }
             })
-            .catch((error: unknown) => setView({status: "error", message: errorMessage(error)}))
+            .catch((error: unknown) => setView({status: "error", message: describeDestinationFailure(errorMessage(error))}))
             .finally(() => submitGuard.end());
     };
 

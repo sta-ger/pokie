@@ -76,7 +76,7 @@ describe("CreateProjectForm", () => {
         });
     });
 
-    it("shows a domain-level failure (an overwrite/existing-directory conflict) distinctly from a network error", async () => {
+    it("shows a domain-level failure (an overwrite/existing-directory conflict) as destination-directory-specific remediation, never the raw server error text", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/create": () => ({ok: true, status: 200, body: {status: "error", error: "destination already exists"}}),
@@ -86,7 +86,24 @@ describe("CreateProjectForm", () => {
 
         await user.click(screen.getByRole("button", {name: "Create"}));
 
-        expect(await screen.findByText("destination already exists")).toBeInTheDocument();
+        expect(
+            await screen.findByText("The destination directory could not be completed. Try again, and check the Studio server logs if the problem persists."),
+        ).toBeInTheDocument();
+        expect(screen.queryByText("destination already exists")).not.toBeInTheDocument();
+    });
+
+    it("shows an ENOENT failure as destination-directory-specific inline remediation, never the raw fs error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/create": () => ({ok: true, status: 200, body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir/my-slot-game'"}}),
+        });
+
+        renderWithProviders(<CreateProjectForm />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Create"}));
+
+        expect(await screen.findByText("The destination directory could not be found. Check the path and try again.")).toBeInTheDocument();
+        expect(screen.queryByText(/ENOENT/)).not.toBeInTheDocument();
     });
 
     it("shows the resolved destination path once the field is focused, instead of a bare '.'", async () => {
