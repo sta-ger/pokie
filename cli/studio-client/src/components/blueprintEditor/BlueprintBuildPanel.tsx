@@ -455,13 +455,6 @@ export function BlueprintBuildPanel({
             )}
 
             <BuildPreviewDisplay view={preview} />
-            {preview.status === "ok" && builtSnapshot && (
-                <Text size="xs" c="dimmed" mb="sm">
-                    {hasBlueprintChanged(blueprint, builtSnapshot.blueprint as Record<string, unknown>)
-                        ? `Since the last build: ${diffBlueprintTopLevelFields(blueprint, builtSnapshot.blueprint as Record<string, unknown>).join(", ")} differ.`
-                        : "Matches the last build — no unbuilt changes."}
-                </Text>
-            )}
             {/* onOpen is never actually invoked here -- "ok" is suppressed out of `transientResult` above,
                 the callback only satisfies BuildResultDisplay's required prop. */}
             <BuildResultDisplay view={transientResult} onOpen={() => undefined} />

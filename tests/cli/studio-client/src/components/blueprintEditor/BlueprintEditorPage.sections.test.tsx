@@ -20,6 +20,31 @@ function okValidateFetch(): FetchLike {
         if (path === "/api/home/blueprints/validate" && method === "POST") {
             return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
         }
+        // Direct Build Package performs P2-POLISH-09's read-only destination preflight first. Keep this
+        // destination empty so the scenario reaches the actual build and its "Open in Studio" assertion
+        // without silently bypassing the safety check.
+        if (path === "/api/home/blueprints/build-preview" && method === "POST") {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () =>
+                    Promise.resolve({
+                        status: "ok",
+                        warnings: [],
+                        manifest: {id: "sectioned", name: "Sectioned", version: "0.1.0"},
+                        reels: 5,
+                        rows: 3,
+                        symbolsCount: 1,
+                        blueprintHash: "abc123",
+                        expectedFiles: ["build-info.json"],
+                        projectRoot: "/games/sectioned",
+                        destinationHasContent: false,
+                        createFiles: ["build-info.json"],
+                        updateFiles: [],
+                        deleteFiles: [],
+                    }),
+            });
+        }
         if (path === "/api/home/blueprints/build" && method === "POST") {
             return Promise.resolve({
                 ok: true,
