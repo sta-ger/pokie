@@ -45,6 +45,24 @@ const EXPORT_OUTCOME_BANNER: Record<ParSheetExportOutcome, {color: string; icon:
     invalid: {color: "red", icon: <IconAlertTriangle size={16} />, title: "This blueprint is invalid"},
 };
 
+// Mirrors ParCommand.ts's own defaultParSheetPath -- `pokie par export`'s real default output location
+// for a given blueprint source: same directory, same basename with any known blueprint/PAR-sheet suffix
+// stripped, ".par.xlsx" appended (the extra ".par.xlsx" strip, absent from the CLI's own version, covers
+// this panel's own round-trip case: `blueprintPath` here can itself already be a PAR sheet, when the
+// current blueprint was reached via a prior Import + Apply). Undefined when there's no known source path
+// to derive from (a brand-new blueprint, or one only ever edited via New/JSON) -- Export to path stays
+// genuinely unresolvable then, not a fabricated guess.
+function parSheetExportDefaultPath(blueprintPath: string | undefined): string | undefined {
+    if (blueprintPath === undefined || blueprintPath.trim().length === 0) {
+        return undefined;
+    }
+    const lastSlash = Math.max(blueprintPath.lastIndexOf("/"), blueprintPath.lastIndexOf("\\"));
+    const dir = lastSlash >= 0 ? blueprintPath.slice(0, lastSlash + 1) : "";
+    const filename = lastSlash >= 0 ? blueprintPath.slice(lastSlash + 1) : blueprintPath;
+    const base = filename.replace(/\.blueprint\.json$/i, "").replace(/\.par\.xlsx$/i, "").replace(/\.json$/i, "");
+    return `${dir}${base}.par.xlsx`;
+}
+
 // Guided Import -> Diagnose & map -> Preview canonical model -> Apply/Export workflow, built entirely on
 // the same Studio API/pokie services "pokie par import"/"pokie par export" themselves use (see
 // StudioBlueprintService.importParSheet()/exportParSheet()) -- no spreadsheet parsing, column mapping, or
@@ -63,10 +81,14 @@ const EXPORT_OUTCOME_BANNER: Record<ParSheetExportOutcome, {color: string; icon:
 // useBlueprintEditor's own doc comment), which is what resets every piece of state here back to nothing.
 export function ParSheetImportExportPanel({
     blueprint,
+    blueprintPath,
     revision,
     onApplyImportedBlueprint,
 }: {
     blueprint: Record<string, unknown>;
+    // The path the current blueprint was last loaded/imported from (BlueprintEditorPage's own
+    // `blueprintPath`), if any -- used only to derive Export to path's own real initial value, below.
+    blueprintPath?: string;
     revision: number;
     onApplyImportedBlueprint: (blueprint: unknown, sourcePath: string) => void;
 }) {
@@ -180,7 +202,11 @@ export function ParSheetImportExportPanel({
     }
 
     // ---- Export ----
-    const [exportPath, setExportPath] = useState("");
+    // Initialized once from `blueprintPath` (not re-derived on every prop change): this panel remounts
+    // wholesale via the parent's own `key={formGeneration}` on every wholesale blueprint replace (New/
+    // Load/a successful Import Apply -- see this file's own doc comment above), which is exactly when
+    // `blueprintPath` itself can change, so a fresh mount always sees the current value.
+    const [exportPath, setExportPath] = useState(() => parSheetExportDefaultPath(blueprintPath) ?? "");
     const [exportView, setExportView] = useState<ParSheetExportView>({status: "idle"});
     const exportRequestIdRef = useRef(0);
     const exportGuard = useDoubleSubmitGuard();

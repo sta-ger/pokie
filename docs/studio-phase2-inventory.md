@@ -67,6 +67,54 @@ below); `BlueprintValidationPanel`'s plain-`<Text>` accessibility gap; every han
 already documented as an exception -- Save's/the two exports' own conflict messages, Stake Engine Export's
 non-overwritable-conflict message.
 
+**Update (`[P2-POLISH-04]`, v5):** every "misleading placeholder" finding below (Certification's bundle
+directory/Mode name/Seed; Provably Fair's Configure-step bundle directory/Server seed/Client seed/Mode name;
+Outcome Libraries' Library JSON path/Bundle directory/Stake Engine export directory/Mode name; Stake Engine
+Export's per-mode Mode name/Outcome library path) was individually re-audited against the actual CLI/server
+codebase for a real, code-backed default a Studio field could legitimately prefill instead of illustrative
+example text -- not just left "exactly as pinned" on the strength of the live resolver hint added in v2, which
+tells a user where a value *would* resolve to but was never itself a substitute for a real initial value. That
+audit found **no** such convention anywhere for any of them: `OutcomeLibraryBundleWriter`/`Reader`/`Validator`
+(`src/weightedoutcome/bundle/`), `StudioOutcomeLibraryService.loadLibrary` (`cli/studio/outcomeLibrary/
+StudioOutcomeLibraryService.ts`), and `loadWeightedOutcomeLibraryFromProjectFile` (used by Deployment's own
+per-mode library path, same finding) all require an explicit, caller-supplied path/directory with no fallback;
+`pokie outcomelibrary build`'s own real default (`OutcomeLibraryCommand.ts:99`,
+`path.join(path.dirname(configPath), "outcomelibrary")`) depends on where a hand-authored build config lives,
+not on a mode name or the project root, and produces a different (bundle) layout than these fields' own
+flat-JSON/bundle/Stake-Engine-export selectors expect; `GameBlueprint`'s `BetMode` type
+(`src/gamepackage/BetMode.ts`) carries no library-path field a mode name could look up. These are all
+*source* locations -- pointing at pre-existing content the tool doesn't create -- so inventing a plausible-
+looking default (e.g. resolving blank to the project root, the way Init Project's/Create Project's *destination*
+fields already correctly do) would reproduce the exact "looks real, isn't" problem this step exists to remove,
+not fix it. Per this audit, every one of these fields correctly **keeps** its existing placeholder --
+`studioSurfaceInventory.baseline.test.tsx`'s existing "Advanced tab path-field & disabled-action baseline"
+assertions for them are unchanged.
+
+Two fields, by contrast, **were** found to be either already-inferable-but-still-carrying-dead-placeholder-
+markup or newly-wired-up as inferable, and are now fixed:
+- **Stake Engine Export's own Output directory** (`StakeEngineExportTab.tsx`) already rendered a real,
+  non-blank initial value (`"stakeengine"`, this tab's own destination-directory convention, not a placeholder)
+  -- but the field's JSX still also carried a `placeholder="./stakeengine"` prop that could never actually be
+  seen (the field is never blank), a piece of dead/misleading markup left over from before it had a real
+  default. Removed; the field now has no `placeholder` attribute at all, matching Certification's own
+  equivalent Output directory field (which never carried one). See the updated "Stake Engine Export's Configure
+  step" case in `studioSurfaceInventory.baseline.test.tsx`'s "Advanced tab path-field & disabled-action
+  baseline" describe block.
+- **The PAR Sheet Import/Export panel's own "Export to path"** (`ParSheetImportExportPanel.tsx`, part of
+  Design & Build/Raw Editor -- omitted from this document's own path-field enumeration above, an oversight this
+  update also corrects) is a genuine *destination* for the blueprint currently open in the editor, and
+  `pokie par export`'s own CLI command (`ParCommand.ts`'s `defaultParSheetPath`) already has a real default for
+  exactly this: same directory, same basename (extension stripped) as the blueprint's own source, `.par.xlsx`
+  appended. `BlueprintEditorPage.tsx` already tracks that source path (`blueprintPath`, previously only threaded
+  into `BlueprintBuildPanel` as `sourcePath`) whenever the current blueprint was reached via Load or a PAR
+  import-then-Apply; it's now also threaded into this panel, which uses it to initialize Export to path to that
+  same CLI-mirrored default the moment a source path is known -- a real submitted value, not a hint. A brand-new
+  blueprint (New, or one only ever edited via JSON) has no known source path to derive from, so the field
+  correctly stays blank with its existing `"./game.par.xlsx"` placeholder in that case -- genuinely
+  un-inferable, same policy as every field in the previous paragraph. Import path itself (which file to read)
+  remains a placeholder unconditionally, for the same "source location, not inferable" reasoning. See the new
+  case in `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.parSheetImportExport.test.tsx`.
+
 **Scope:** every named global/project workflow (Design & Build, Raw Editor, Advanced Tools, Open Project,
 Replay, Runtime, Certification, Provably Fair, Deployment, Outcome Libraries, Stake Engine Export) — for each,
 what routes/tabs/Steppers exist, every path field and its placeholder, every disabled action and its gating
@@ -121,7 +169,16 @@ Advanced-tab Stepper elsewhere in this document. Fully exercised end to end (idl
 path)" disclosure (`BlueprintEditorPage.tsx:322-328`, executable presence-only via the New-Blueprint-action
 fixture above) -- "Load from path" / "Save to path" (`BlueprintLoadSaveControls.tsx:38,42`) and the Build
 panel's "Output directory (optional)" (`BlueprintBuildPanel.tsx:100`). **None of the three carries a
-placeholder** -- pinned executably below (path-field placeholder baseline).
+placeholder** -- pinned executably below (path-field placeholder baseline). The same disclosure also hosts the
+PAR Sheet Import/Export panel (`ParSheetImportExportPanel.tsx`, own section reference: this file is the Home-
+surface part of Advanced Tools' "raw" Blueprint Editor path too, see the Raw Editor section below) --
+previously omitted from this enumeration, an oversight `[P2-POLISH-04]`'s v5 update corrects: "PAR sheet path"
+(Import step) and "Export to path" (Apply/Export step) both carry the placeholder `"./game.par.xlsx"`. Import
+path stays a placeholder unconditionally (a source file to read, no inferable default); Export to path is now
+initialized to a real value derived from the editor's own known blueprint source path (via `blueprintPath`,
+mirroring `pokie par export`'s own `defaultParSheetPath` default) whenever one is known (Load, or a prior PAR
+import applied), and only falls back to blank+placeholder for a brand-new/JSON-only blueprint -- see the v5
+update above and `BlueprintEditorPage.parSheetImportExport.test.tsx`'s own new case.
 
 **Disabled actions (executable):** "Build Package" is the **one and only** `disabled`-gated action across
 this entire section (and the Raw Editor / Advanced Tools / Open Project sections below) --
@@ -137,9 +194,11 @@ rather than being rejected, same coercion pattern as every Advanced tab's own op
 Load/Save's own path fields have **no** trim/default at all -- see Raw-error surfaces below, since they're
 not `required` and a blank one just reaches the server.
 
-**Misleading placeholders:** none -- `grep`-confirmed zero `placeholder` occurrences across
-`BlueprintEditorPage.tsx`, `BlueprintLoadSaveControls.tsx`, and `BlueprintBuildPanel.tsx`; pinned
-executably below.
+**Misleading placeholders:** none in `BlueprintEditorPage.tsx`, `BlueprintLoadSaveControls.tsx`, or
+`BlueprintBuildPanel.tsx` -- `grep`-confirmed zero `placeholder` occurrences; pinned executably below. PAR
+Sheet Import/Export's own Import path placeholder (`"./game.par.xlsx"`, corrected into this enumeration by the
+v5 update above) is a source-location placeholder with no code-backed default, same reasoning as every other
+tab's own source-path fields -- correctly unchanged.
 
 **Raw-error surfaces (evidence only, except Load/Save -- see below):** `loadView`
 error/load-error → `ErrorState`, subject-specific status + remediation via `describePathActionError` since
@@ -167,10 +226,14 @@ action-surface fixtures above (executable).
 false (`BlueprintEditorPage.tsx:310-320` are gated on `guided &&`). Confirmed executable by the existing
 "only the guided instance offers a 'Show advanced options' disclosure" fixture's sibling assertions.
 
-**Path/text fields:** identical set to Design & Build's (Load from path / Save to path / Output directory),
-but **always visible**, never behind a disclosure (no `advancedOptionsOpened` prop passed,
-`BlueprintEditorPage.tsx` guided-vs-raw JSX). Same "no placeholder anywhere" finding, pinned once for both
-sections by the path-field placeholder baseline below.
+**Path/text fields:** identical set to Design & Build's (Load from path / Save to path / Output directory,
+plus PAR Sheet Import/Export's own Import path/Export to path -- see the v5 update in Design & Build's own
+section above), but **always visible**, never behind a disclosure (no `advancedOptionsOpened` prop passed,
+`BlueprintEditorPage.tsx` guided-vs-raw JSX). Same "no placeholder anywhere" finding for the first three,
+pinned once for both sections by the path-field placeholder baseline below; Import/Export to path carry the
+identical placeholder/real-default-when-known behavior described in Design & Build's own section (this is the
+same `ParSheetImportExportPanel` instance's own logic, just always visible here instead of behind a
+disclosure).
 
 **Disabled actions (executable -- the material gap this baseline closes):** "Build Package" here is gated
 by `validationView.status === "invalid"` only (`BlueprintEditorPage.tsx:378`) -- looser than the guided
@@ -183,7 +246,11 @@ invalid Validate response.
 
 **Inferable empty inputs:** same as Design & Build (Output directory trim-or-undefined).
 
-**Misleading placeholders:** none, pinned by the same fixture as Design & Build.
+**Misleading placeholders:** none for Load from path/Save to path/Output directory, pinned by the same
+fixture as Design & Build. PAR Sheet Import/Export's own Import path placeholder is unchanged (same
+"source location, no code-backed default" reasoning as every tab's own source-path fields); Export to path's
+own placeholder is now unreachable whenever the editor knows the blueprint's own source path, per the v5
+update in Design & Build's own section above.
 
 **Raw-error surfaces (executable -- fixture below):** Load from path carries no `required` gating at
 all (unlike every required `PathInput` elsewhere in this group) -- a blank path is sent straight to
@@ -417,9 +484,12 @@ submitted payload (`toModeInputs`, 67-69) with no warning — only a *touched-bu
 blocks Build; Sample count's `onChange` coerces any non-numeric/cleared value to `0`
 (`Number(value) || 0`, 351) rather than rejecting the keystroke.
 
-**Misleading placeholders (executable, flagged not changed):** the Seed placeholder
-`"cert-2026-07-20-base"` embeds a real-looking date+mode-name pattern rather than an obviously-fake token —
-pinned by the path-field fixture with an inline comment, not altered.
+**Misleading placeholders (executable, re-audited in `[P2-POLISH-04]`'s v5 update, confirmed unchanged):** the
+Seed placeholder `"cert-2026-07-20-base"` embeds a real-looking date+mode-name pattern rather than an
+obviously-fake token — pinned by the path-field fixture with an inline comment. The Source outcome-library
+bundle directory placeholder is likewise unaltered: it's a *source* location with no code-backed default
+anywhere in the CLI (see the v5 update above), so it correctly stays a placeholder rather than a fabricated
+value.
 
 **Raw-error surfaces (executable for Validate; evidence only for Build):** Validate's `network-error`/
 `load-error` states (`ErrorState message={...}` / `.error`, 221-222) are demonstrated end to end by the
@@ -467,9 +537,11 @@ zero feedback, the same fail-open pattern as Runtime's Load Session.
 (`Number(value) || 0`, 288); the Verify-step bundle-dir auto-fill from Configure noted above is a silent
 (non-empty-triggered) auto-fill, not a rejection.
 
-**Misleading placeholders (executable, flagged not changed):** Server/Client seed placeholders read like real
-seed labels rather than obviously-fake tokens; Mode name's `"base"` placeholder is a real, valid mode name,
-indistinguishable from an actual selected value. Pinned by the path-field fixture.
+**Misleading placeholders (executable, re-audited in `[P2-POLISH-04]`'s v5 update, confirmed unchanged):**
+Server/Client seed placeholders read like real seed labels rather than obviously-fake tokens; Mode name's
+`"base"` placeholder is a real, valid mode name, indistinguishable from an actual selected value. Pinned by the
+path-field fixture. The Configure-step bundle directory placeholder is likewise unaltered -- same "source
+location, no code-backed default" reasoning as Certification's own bundle directory (see the v5 update above).
 
 **Raw-error surfaces (executable for Configure; evidence only for Generate/Verify):** Configure's
 `error`/`load-error` (296-297, both stemming from resolving `bundleDir`) are demonstrated by the "Scoped
@@ -575,10 +647,13 @@ runtime" similarly no-ops internally (599-602) rather than being `disabled`.
 **Inferable empty inputs:** none found — every selector field is trimmed, and if empty, `buildSelector`
 returns `undefined`, which disables the relevant action rather than substituting a default.
 
-**Misleading placeholders (executable for the json kind; evidence-only for bundle/stakeengine):** all four
-selector-field placeholders read as plausible real paths/mode names rather than obviously-illustrative text —
-mitigated in practice by "Load library" staying disabled until real text replaces the placeholder, but the
-strings themselves are the same pattern flagged elsewhere in this document.
+**Misleading placeholders (executable for the json kind; evidence-only for bundle/stakeengine; re-audited in
+`[P2-POLISH-04]`'s v5 update, confirmed unchanged):** all four selector-field placeholders read as plausible
+real paths/mode names rather than obviously-illustrative text — mitigated in practice by "Load library" staying
+disabled until real text replaces the placeholder, but the strings themselves are the same pattern flagged
+elsewhere in this document. None of the three path fields (Library JSON path, Bundle directory, Stake Engine
+export directory) has a code-backed default anywhere in the CLI either (same audit as Certification/Provably
+Fair's own source fields, see the v5 update above) — genuinely un-inferable, correctly still placeholders.
 
 **Raw-error surfaces (executable for `selectView`, via "Scoped path-action error remediation baseline";
 evidence only for the rest):** `selectView` error/load-error (375-376) run through
@@ -605,12 +680,13 @@ these booleans are recomputed every render rather than cached once reached, edit
 reaching a later step can retroactively re-lock Preview/Validate/Export — a nuance the audit table's "no
 backward lock" phrasing doesn't fully capture; flagged here for a future redesign to consider explicitly.
 
-**Path/text fields (executable):** "Output directory" (`placeholder="./stakeengine"`, but defaults to the
-non-blank `"stakeengine"` — confirmed executable that the placeholder is therefore **structurally
-unreachable**, since the field is never actually empty for a user to see it); per-mode "Mode name"
-(`placeholder="base"`) and "Outcome library path" (`placeholder="./outcomes/base.json"`). One empty mode row
-exists by default (`EMPTY_MODE`, line 97). No overwrite checkbox exists as a form field — overwrite is a
-post-conflict `RecoveryNotice` action instead (305-313), not a field.
+**Path/text fields (executable):** "Output directory" defaults to the non-blank `"stakeengine"` — a real
+initial *value*, not a placeholder (see the v5 update above: its former `placeholder="./stakeengine"`, dead/
+structurally unreachable since the field was never actually blank, was removed rather than left as misleading
+markup); per-mode "Mode name" (`placeholder="base"`) and "Outcome library path"
+(`placeholder="./outcomes/base.json"`). One empty mode row exists by default (`EMPTY_MODE`, line 97). No
+overwrite checkbox exists as a form field — overwrite is a post-conflict `RecoveryNotice` action instead
+(305-313), not a field.
 
 **Disabled actions (executable):** "Continue to Preview" `disabled={!previewReachable}` (424); "Export to
 Stake Engine" `disabled={toModeInputs(modes).length === 0 || hasIncompleteModeRow}` (298, evidence only).
@@ -622,9 +698,11 @@ validation."
 (`Number(value) || 0`, 412) — same pattern as Certification's Sample count and Provably Fair's Nonce, a
 cross-cutting `NumberInput` convention across all three tabs, not tab-specific.
 
-**Misleading placeholders (executable, flagged not changed):** "Output directory"'s placeholder is dead code
-in practice (see above); "Mode name"/"Outcome library path" read as plausible real values, same pattern as
-Certification/Outcome Libraries.
+**Misleading placeholders (executable; re-audited in `[P2-POLISH-04]`'s v5 update):** "Output directory" is no
+longer in this list -- its inferable real value is now correctly presented as a value, not a placeholder (see
+above). "Mode name"/"Outcome library path" remain unchanged: no code-backed default exists for either anywhere
+in the CLI (`loadWeightedOutcomeLibraryFromProjectFile` always requires an explicit caller-supplied path; see
+the v5 update above), so they correctly stay placeholders, same pattern as Certification/Outcome Libraries.
 
 **Raw-error surfaces (executable via "Scoped path-action error remediation baseline" for Validate; evidence
 only for Export):** `validateView` network-error/load-error (232-233) run through `describePathActionError(

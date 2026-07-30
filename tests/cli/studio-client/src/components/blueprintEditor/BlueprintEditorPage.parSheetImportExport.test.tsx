@@ -191,6 +191,45 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await waitFor(() => expect(screen.getByDisplayValue("imported-game")).toBeInTheDocument());
     });
 
+    it("[P2-POLISH-04] Export to path starts blank with its example placeholder for a brand-new blueprint (no known source path to infer from), but initializes to a real value derived from the blueprint's own source once one is known (via Apply)", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => {
+            if (url === IMPORT_URL) {
+                return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToImportStep();
+
+        // Brand-new blueprint, never loaded/imported from anywhere -- genuinely un-inferable, so Export
+        // to path starts blank with its illustrative placeholder, same as PAR sheet path above.
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply / Export", "Commit or write out")}));
+        const freshExportInput = screen.getByLabelText("Export to path") as HTMLInputElement;
+        expect(freshExportInput.value).toBe("");
+        expect(freshExportInput).toHaveAttribute("placeholder", "./game.par.xlsx");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Import", "Read a PAR sheet")}));
+        await user.type(screen.getByLabelText("PAR sheet path"), "./in.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText("Imported successfully");
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply / Export", "Commit or write out")}));
+        await user.click(screen.getByRole("button", {name: "Apply"}));
+        const dialog = await screen.findByRole("dialog");
+        await user.click(within(dialog).getByRole("button", {name: "Confirm"}));
+
+        // BlueprintEditorPage's own `blueprintPath` (now the just-imported "/games/in.par.xlsx") is
+        // threaded into this remounted panel as a real resolver-derived default -- mirrors ParCommand.ts's
+        // own `defaultParSheetPath` convention (same directory/basename, ".par.xlsx" extension), not a
+        // fabricated guess. A real, live value, not placeholder text.
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply / Export", "Commit or write out")}));
+        const exportInput = screen.getByLabelText("Export to path") as HTMLInputElement;
+        expect(exportInput.value).toBe("/games/in.par.xlsx");
+        expect(exportInput).toHaveAttribute("placeholder", "./game.par.xlsx");
+    });
+
     it("exports the current blueprint successfully, and handles a conflict via Overwrite", async () => {
         const user = userEvent.setup();
         let firstAttempt = true;

@@ -340,15 +340,22 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         expect(loadButton).not.toBeDisabled();
     });
 
-    it("Stake Engine Export's Configure step: outDir defaults to a non-blank 'stakeengine' value, so its own placeholder can never actually be seen", async () => {
+    it("Stake Engine Export's Configure step: outDir is inferable (a real, non-blank 'stakeengine' initial value, not a placeholder) -- Mode name/Outcome library path stay genuinely non-inferable placeholders", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
         renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
+        // [P2-POLISH-04]: outDir's own default output directory is a real code-backed convention (this
+        // tab's own state, mirrored nowhere else) -- it renders as an actual initial *value*, so its
+        // former "./stakeengine" placeholder (structurally unreachable, since the field is never blank)
+        // was removed rather than left as dead/misleading markup. Mode name and Outcome library path have
+        // no such convention anywhere in the CLI (no command derives/writes a per-mode-name library path
+        // -- see docs/studio-phase2-inventory.md's own v5 update) -- genuinely un-inferable, so they
+        // correctly keep their illustrative placeholders.
         const outDirInput = screen.getByLabelText("Output directory") as HTMLInputElement;
         expect(outDirInput.value).toBe("stakeengine");
-        expect(outDirInput).toHaveAttribute("placeholder", "./stakeengine");
+        expect(outDirInput).not.toHaveAttribute("placeholder");
         expect(screen.getByLabelText("Mode name")).toHaveAttribute("placeholder", "base");
         expect(screen.getByLabelText("Outcome library path")).toHaveAttribute("placeholder", "./outcomes/base.json");
 

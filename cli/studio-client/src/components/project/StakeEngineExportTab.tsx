@@ -382,7 +382,6 @@ export function StakeEngineExportTab({projectRoot}: {projectRoot?: string} = {})
                 <div>
                     <PathInput
                         label="Output directory"
-                        placeholder="./stakeengine"
                         kind="directory"
                         browseTitle="Browse for a Stake Engine export output directory"
                         browseId="stakeengine-export-out-dir"
