@@ -32,6 +32,31 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
             if (path === "/api/home/blueprints/validate" && method === "POST") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
             }
+            // Direct Build Package performs P2-POLISH-09's read-only destination preflight first.
+            // Keep this happy-path destination empty so the scenario reaches the actual build and its
+            // existing Open in Studio assertion without silently bypassing the safety check.
+            if (path === "/api/home/blueprints/build-preview" && method === "POST") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () =>
+                        Promise.resolve({
+                            status: "ok",
+                            warnings: [],
+                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            reels: 5,
+                            rows: 3,
+                            symbolsCount: 3,
+                            blueprintHash: "abc123",
+                            expectedFiles: ["build-info.json"],
+                            projectRoot: "/games/sample-slot",
+                            destinationHasContent: false,
+                            createFiles: ["build-info.json"],
+                            updateFiles: [],
+                            deleteFiles: [],
+                        }),
+                });
+            }
             if (path === "/api/home/blueprints/build" && method === "POST") {
                 return Promise.resolve({
                     ok: true,
