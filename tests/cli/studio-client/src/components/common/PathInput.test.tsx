@@ -219,7 +219,9 @@ describe("PathInput", () => {
         // Flush the stale response's own promise chain (fetch -> .json() -> .then) so a regression --
         // it overwriting the hint -- would already have happened by the time we assert below.
         await act(async () => {
-            await new Promise((resolve) => setTimeout(resolve, 0));
+            await new Promise((resolve) => {
+                setTimeout(resolve, 0);
+            });
         });
 
         expect(screen.getByText("Resolves to: /root/ab")).toBeInTheDocument();
@@ -272,21 +274,21 @@ describe("PathInput", () => {
             "/api/home/fs/browse": (call: FakeCall) =>
                 call.url.includes("kind=file")
                     ? {
-                          ok: true,
-                          status: 200,
-                          body: {
-                              status: "ok",
-                              resolvedPath: "/projects/sample-slot/blueprints/sample.json",
-                              displayPath: "./blueprints/sample.json",
-                              parentPath: "/projects/sample-slot/blueprints",
-                              entries: [],
-                          },
-                      }
+                        ok: true,
+                        status: 200,
+                        body: {
+                            status: "ok",
+                            resolvedPath: "/projects/sample-slot/blueprints/sample.json",
+                            displayPath: "./blueprints/sample.json",
+                            parentPath: "/projects/sample-slot/blueprints",
+                            entries: [],
+                        },
+                    }
                     : {
-                          ok: true,
-                          status: 200,
-                          body: {status: "ok", resolvedPath: "/projects/sample-slot/blueprints", displayPath: "/projects/sample-slot/blueprints", entries: []},
-                      },
+                        ok: true,
+                        status: 200,
+                        body: {status: "ok", resolvedPath: "/projects/sample-slot/blueprints", displayPath: "/projects/sample-slot/blueprints", entries: []},
+                    },
             ...UNAVAILABLE_ROUTE,
         });
 
