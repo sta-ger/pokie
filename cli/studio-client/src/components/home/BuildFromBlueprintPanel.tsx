@@ -11,6 +11,7 @@ import {describePathActionError} from "../../domain/pathActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
+import {useRequestSequence} from "../../hooks/useRequestSequence";
 import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
@@ -63,6 +64,11 @@ export function BuildFromBlueprintPanel() {
     // function handed to another call made during render trips react-hooks/refs (its value could, in
     // principle, be read back during that same render).
     const [previewedRequest, setPreviewedRequest] = useState<PreviewRequestIdentity | undefined>(undefined);
+    // Tags every in-flight destination-check request (from either runPreview or runBuild's own fallback
+    // check below) with the order it was issued in -- see useRequestSequence's own doc comment for why
+    // isStillCurrentRequest alone can't catch two concurrent requests sharing the very same identity
+    // (e.g. Preview clicked, then Build clicked before it settles, with the form untouched in between).
+    const requestSeq = useRequestSequence();
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
 
@@ -82,23 +88,30 @@ export function BuildFromBlueprintPanel() {
         return samePreviewRequest(identity, {blueprintPath: values.blueprintPath, outDir: values.outDir.trim() || undefined});
     };
 
+    // A response is only trustworthy for rendering, confirmation, or authorizing a build if BOTH: no
+    // later request (of either kind) has since been issued (`seq`, see requestSeq's own doc comment),
+    // AND the form still holds the exact values this response describes (isStillCurrentRequest) --
+    // either one alone misses a real staleness case the other catches.
+    const isFreshResponse = (seq: number, identity: PreviewRequestIdentity): boolean => requestSeq.isLatest(seq) && isStillCurrentRequest(identity);
+
     const runPreview = (values: FormValues): void => {
         if (!previewGuard.begin()) {
             return;
         }
         const resolvedOutDir = values.outDir.trim() || undefined;
         const identity: PreviewRequestIdentity = {blueprintPath: values.blueprintPath, outDir: resolvedOutDir};
+        const seq = requestSeq.next();
         setPreview({status: "loading"});
         previewBuild(fetchImpl, {blueprintPath: values.blueprintPath, outDir: resolvedOutDir})
             .then((view) => {
-                if (!isStillCurrentRequest(identity)) {
+                if (!isFreshResponse(seq, identity)) {
                     return;
                 }
                 setPreview(withBlueprintPathPreviewError(describeBuildPreview(view)));
                 setPreviewedRequest(identity);
             })
             .catch((error: unknown) => {
-                if (!isStillCurrentRequest(identity)) {
+                if (!isFreshResponse(seq, identity)) {
                     return;
                 }
                 setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))});
@@ -155,31 +168,35 @@ export function BuildFromBlueprintPanel() {
         // does before deciding, rather than silently trusting an empty destination. Setting `preview`/
         // `previewedRequest` from the result makes this fresh answer the trustworthy one for any further
         // Build click against this same request, same as if the user had clicked Preview themselves --
-        // but only if this is still the request the form currently holds (see isStillCurrentRequest's own
-        // doc comment); an out-of-order response for a since-abandoned request must never overwrite a
-        // newer, still in-flight or already-resolved one. A failed check (bad blueprint path, network
-        // error, etc.) must NOT fall through to doBuild() -- whether the destination already has content
-        // is unknown, so authorizing a write here could silently overwrite it without ever asking. It's
-        // reported the same way runPreview's own rejection is, and the build is left un-started
-        // (buildGuard.end() with no doBuild() call).
+        // but only if this response is still fresh (see isFreshResponse's own doc comment); a stale
+        // response -- whether out-of-order against a since-abandoned request, or simply superseded by a
+        // later request issued before it settled -- must never overwrite a newer result, open a
+        // confirmation, or authorize doBuild() with its own (possibly obsolete) answer. A failed check
+        // (bad blueprint path, network error, etc.) must NOT fall through to doBuild() either -- whether
+        // the destination already has content is unknown, so authorizing a write here could silently
+        // overwrite it without ever asking. It's reported the same way runPreview's own rejection is, and
+        // the build is left un-started (buildGuard.end() with no doBuild() call).
         if (!buildGuard.begin()) {
             return;
         }
+        const seq = requestSeq.next();
         previewBuild(fetchImpl, {blueprintPath: values.blueprintPath, outDir: resolvedOutDir})
             .then((view) => {
                 const described = withBlueprintPathPreviewError(describeBuildPreview(view));
                 buildGuard.end();
-                if (isStillCurrentRequest(identity)) {
-                    setPreview(described);
-                    setPreviewedRequest(identity);
+                if (!isFreshResponse(seq, identity)) {
+                    return;
                 }
+                setPreview(described);
+                setPreviewedRequest(identity);
                 confirmIfDestinationHasContent(described);
             })
             .catch((error: unknown) => {
                 buildGuard.end();
-                if (isStillCurrentRequest(identity)) {
-                    setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))});
+                if (!isFreshResponse(seq, identity)) {
+                    return;
                 }
+                setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))});
             });
     };
 

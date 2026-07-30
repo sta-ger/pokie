@@ -472,4 +472,113 @@ describe("BuildFromBlueprintPanel", () => {
         expect(screen.getByText(/Destination: \/games\/second-out/)).toBeInTheDocument();
         expect(screen.queryByText(/first-out/)).not.toBeInTheDocument();
     });
+
+    it("never opens confirmation or authorizes a build from Build's own fallback check once the blueprint path changed while it was still pending", async () => {
+        const user = userEvent.setup();
+        const buildCalls: unknown[] = [];
+        const respondTo: Array<(body: unknown) => void> = [];
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/home/projects/build") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+            }
+            if (url !== "/api/home/projects/build/preview") {
+                throw new Error(`unexpected fetch to ${url}`);
+            }
+            return new Promise((resolve) => {
+                respondTo.push((body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}));
+            });
+        };
+
+        renderWithProviders(<BuildFromBlueprintPanel />, {fetchImpl});
+
+        await user.type(screen.getByRole("textbox", {name: "Blueprint JSON path"}), "/games/first.json");
+        await user.click(screen.getByRole("button", {name: "Build"}));
+        await waitFor(() => expect(respondTo).toHaveLength(1));
+
+        // No new Preview/Build click happens here -- only the field changes, so the fallback check's own
+        // `seq` never advances. isFreshResponse's own current-identity comparison must be what catches this.
+        await user.clear(screen.getByRole("textbox", {name: "Blueprint JSON path"}));
+        await user.type(screen.getByRole("textbox", {name: "Blueprint JSON path"}), "/games/second.json");
+
+        respondTo[0](previewOkBody({projectRoot: "/games/first-out", destinationHasContent: true}));
+        // Flush the stale response's own promise chain so a regression -- it opening confirmation or
+        // rendering its own (now-obsolete) destination -- would already have happened by the time we assert.
+        await act(async () => {
+            await new Promise((resolve) => {
+                setTimeout(resolve, 0);
+            });
+        });
+
+        expect(screen.queryByText(/already has content/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/first-out/)).not.toBeInTheDocument();
+        expect(buildCalls).toEqual([]);
+    });
+
+    it("lets only the newer of two concurrent checks for the exact same request identity authorize the eventual build", async () => {
+        const user = userEvent.setup();
+        const buildCalls: unknown[] = [];
+        const respondTo: Array<(body: unknown) => void> = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/home/projects/build") {
+                buildCalls.push(JSON.parse(init?.body ?? "{}"));
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () =>
+                        Promise.resolve({
+                            status: "ok",
+                            projectRoot: "/games/sample-slot",
+                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            warnings: [],
+                            createdFiles: ["package.json"],
+                            buildInfo: {
+                                schemaVersion: 1,
+                                generatedBy: "pokie build",
+                                pokieVersion: "1.0.0",
+                                generatedAt: "2026-01-01T00:00:00.000Z",
+                                blueprintHash: "sha256:abc",
+                                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            },
+                            unchanged: false,
+                        }),
+                });
+            }
+            if (url !== "/api/home/projects/build/preview") {
+                throw new Error(`unexpected fetch to ${url}`);
+            }
+            return new Promise((resolve) => {
+                respondTo.push((body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}));
+            });
+        };
+
+        renderWithProviders(<BuildFromBlueprintPanel />, {fetchImpl});
+
+        await user.type(screen.getByRole("textbox", {name: "Blueprint JSON path"}), "/games/blueprint.json");
+        // Preview's own guard is independent from Build's -- clicking both, with the form untouched in
+        // between, issues two concurrent destination checks sharing the exact same identity.
+        await user.click(screen.getByRole("button", {name: "Preview"}));
+        await user.click(screen.getByRole("button", {name: "Build"}));
+        await waitFor(() => expect(respondTo).toHaveLength(2));
+
+        // The second (Build's own) request is the one issued last -- it settles first with "has content",
+        // which must be what confirmation and the eventual build go by.
+        respondTo[1](previewOkBody({projectRoot: "/games/sample-slot", destinationHasContent: true}));
+        expect(await screen.findByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+
+        // The first (Preview's own) request settles late, reporting the opposite answer -- being the
+        // older of the two, it must never overwrite the confirmation or preview the newer one already set up.
+        respondTo[0](previewOkBody({projectRoot: "/games/sample-slot", destinationHasContent: false}));
+        await act(async () => {
+            await new Promise((resolve) => {
+                setTimeout(resolve, 0);
+            });
+        });
+        expect(screen.getByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(buildCalls).toEqual([]);
+
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+        await waitFor(() => {
+            expect(buildCalls).toEqual([{blueprintPath: "/games/blueprint.json", outDir: undefined}]);
+        });
+    });
 });

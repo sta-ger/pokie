@@ -1,5 +1,5 @@
 import {Button, Stack, Text} from "@mantine/core";
-import {useId, useRef, useState} from "react";
+import {useEffect, useId, useRef, useState} from "react";
 import {buildBlueprint, openOutputFolder, previewBlueprintBuild} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
@@ -22,6 +22,7 @@ import {describePathActionError} from "../../domain/pathActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
+import {useRequestSequence} from "../../hooks/useRequestSequence";
 import {PageSection} from "../common/PageSection";
 import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
@@ -225,14 +226,41 @@ export function BlueprintBuildPanel({
     // comparisons elsewhere in this panel -- `blueprint` is a plain data object with no stable identity of
     // its own across renders.
     const previewedRequest = useRef<{blueprintJson: string; sourcePath: string | undefined; outDir: string | undefined} | undefined>(undefined);
-    // Monotonic counter tagging every in-flight destination-check request (from either runPreview or
-    // runBuild's own fallback check below) -- whichever request was issued *last* is the only one ever
-    // allowed to write `preview`/`previewedRequest`, regardless of which one's response actually arrives
-    // first. Without this, an older request for a since-abandoned blueprint/outDir that happens to
-    // resolve after a newer one would silently overwrite the newer, correct result.
-    const latestRequestSeq = useRef(0);
+    // Tags every in-flight destination-check request (from either runPreview or runBuild's own fallback
+    // check below) with the order it was issued in -- see useRequestSequence's own doc comment for why
+    // an identity comparison alone can't tell apart two concurrent requests sharing the exact same
+    // identity (e.g. Build Preview clicked, then Build Package clicked before it settles).
+    const requestSeq = useRequestSequence();
+    // The live {blueprint, sourcePath, outDir} this render actually holds -- kept in a ref (rather than
+    // read fresh from props/state inside an old response's callback) because that callback closure was
+    // captured at the render where its request was issued, so its own `blueprint`/`sourcePath`/`outDir`
+    // variables are frozen to that moment; this ref is the one thing a stale closure can still read to
+    // learn "what does the form/editor show right now". Mirrored from props/state in an effect (writing a
+    // ref straight from the render body itself is against the rules of hooks) -- responses only ever
+    // resolve on a later tick, well after this effect has already run, so it's never stale by the time
+    // it's read.
+    const currentIdentityRef = useRef<{blueprintJson: string; sourcePath: string | undefined; outDir: string | undefined}>({
+        blueprintJson: JSON.stringify(blueprint),
+        sourcePath,
+        outDir: outDir.trim() || undefined,
+    });
+    useEffect(() => {
+        currentIdentityRef.current = {blueprintJson: JSON.stringify(blueprint), sourcePath, outDir: outDir.trim() || undefined};
+    });
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
+
+    const isCurrentIdentity = (identity: {blueprintJson: string; sourcePath: string | undefined; outDir: string | undefined}): boolean => {
+        const current = currentIdentityRef.current;
+        return current.blueprintJson === identity.blueprintJson && current.sourcePath === identity.sourcePath && current.outDir === identity.outDir;
+    };
+
+    // A response is only trustworthy for rendering, confirmation, or authorizing a build if BOTH: no
+    // later request (of either kind) has since been issued (`seq`, see requestSeq's own doc comment),
+    // AND the editor/form still holds the exact values this response describes (isCurrentIdentity) --
+    // either one alone misses a real staleness case the other catches.
+    const isFreshResponse = (seq: number, identity: {blueprintJson: string; sourcePath: string | undefined; outDir: string | undefined}): boolean =>
+        requestSeq.isLatest(seq) && isCurrentIdentity(identity);
 
     const runPreview = (): void => {
         if (!previewGuard.begin()) {
@@ -240,18 +268,18 @@ export function BlueprintBuildPanel({
         }
         const resolvedOutDir = outDir.trim() || undefined;
         const identity = {blueprintJson: JSON.stringify(blueprint), sourcePath, outDir: resolvedOutDir};
-        const seq = ++latestRequestSeq.current;
+        const seq = requestSeq.next();
         setPreview({status: "loading"});
         previewBlueprintBuild(fetchImpl, blueprint, resolvedOutDir, sourcePath)
             .then((view) => {
-                if (seq !== latestRequestSeq.current) {
+                if (!isFreshResponse(seq, identity)) {
                     return;
                 }
                 setPreview(withOutDirPreviewError(describeBuildPreview(view)));
                 previewedRequest.current = identity;
             })
             .catch((error: unknown) => {
-                if (seq !== latestRequestSeq.current) {
+                if (!isFreshResponse(seq, identity)) {
                     return;
                 }
                 setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))});
@@ -325,32 +353,35 @@ export function BlueprintBuildPanel({
         // Preview does before deciding, rather than silently trusting an empty destination. Setting
         // `preview`/`previewedRequest` from the result makes this fresh answer the trustworthy one for any
         // further Build click against this same request, same as if the user had clicked Build Preview
-        // themselves -- but only if this is still the *latest* request issued (see latestRequestSeq's own
-        // doc comment); an out-of-order response for a since-abandoned request must never overwrite a
-        // newer, still in-flight or already-resolved one. A failed check (invalid blueprint, network
-        // error, etc.) must NOT fall through to doBuild() -- whether the destination already has content
-        // is unknown, so authorizing a write here could silently overwrite it without ever asking. It's
-        // reported the same way runPreview's own rejection is, and the build is left un-started
-        // (buildGuard.end() with no doBuild() call).
+        // themselves -- but only if this response is still fresh (see isFreshResponse's own doc comment);
+        // a stale response -- whether out-of-order against a since-abandoned request, or simply
+        // superseded by a later request or edit before it settled -- must never overwrite a newer result,
+        // open a confirmation, or authorize doBuild() with its own (possibly obsolete) answer. A failed
+        // check (invalid blueprint, network error, etc.) must NOT fall through to doBuild() either --
+        // whether the destination already has content is unknown, so authorizing a write here could
+        // silently overwrite it without ever asking. It's reported the same way runPreview's own rejection
+        // is, and the build is left un-started (buildGuard.end() with no doBuild() call).
         if (!buildGuard.begin()) {
             return;
         }
-        const seq = ++latestRequestSeq.current;
+        const seq = requestSeq.next();
         previewBlueprintBuild(fetchImpl, blueprint, resolvedOutDir, sourcePath)
             .then((view) => {
                 const described = withOutDirPreviewError(describeBuildPreview(view));
                 buildGuard.end();
-                if (seq === latestRequestSeq.current) {
-                    setPreview(described);
-                    previewedRequest.current = identity;
+                if (!isFreshResponse(seq, identity)) {
+                    return;
                 }
+                setPreview(described);
+                previewedRequest.current = identity;
                 confirmIfDestinationHasContent(described);
             })
             .catch((error: unknown) => {
                 buildGuard.end();
-                if (seq === latestRequestSeq.current) {
-                    setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))});
+                if (!isFreshResponse(seq, identity)) {
+                    return;
                 }
+                setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))});
             });
     };
 

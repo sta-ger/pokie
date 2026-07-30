@@ -297,4 +297,91 @@ describe("BlueprintBuildPanel", () => {
         expect(screen.getByText(/Destination: \/games\/other-out/)).toBeInTheDocument();
         expect(screen.queryByText(/sample-out/)).not.toBeInTheDocument();
     });
+
+    it("never opens confirmation or authorizes a build from Build Package's own fallback check once outDir changed while it was still pending", async () => {
+        const user = userEvent.setup();
+        const buildCalls: unknown[] = [];
+        const respondTo: Array<(body: unknown) => void> = [];
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/home/blueprints/build") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(buildOkBody())});
+            }
+            if (url !== "/api/home/blueprints/build-preview") {
+                throw new Error(`unexpected fetch to ${url}`);
+            }
+            return new Promise((resolve) => {
+                respondTo.push((body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}));
+            });
+        };
+
+        renderWithProviders(<BlueprintBuildPanel blueprint={blueprint} />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(respondTo).toHaveLength(1));
+
+        // No new Build Preview/Build Package click happens here -- only the outDir field changes, so the
+        // fallback check's own `seq` never advances. isFreshResponse's own current-identity comparison
+        // (via currentIdentityRef) must be what catches this.
+        await user.type(screen.getByRole("textbox", {name: "Output directory (optional)"}), "/games/other");
+
+        respondTo[0](previewOkBody({projectRoot: "/games/sample-slot", destinationHasContent: true}));
+        // Flush the stale response's own promise chain so a regression -- it opening confirmation or
+        // rendering its own (now-obsolete) destination -- would already have happened by the time we assert.
+        await act(async () => {
+            await new Promise((resolve) => {
+                setTimeout(resolve, 0);
+            });
+        });
+
+        expect(screen.queryByText(/already has content/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Destination:/)).not.toBeInTheDocument();
+        expect(buildCalls).toEqual([]);
+    });
+
+    it("lets only the newer of two concurrent checks for the exact same request identity authorize the eventual build", async () => {
+        const user = userEvent.setup();
+        const buildCalls: unknown[] = [];
+        const respondTo: Array<(body: unknown) => void> = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/home/blueprints/build") {
+                buildCalls.push(JSON.parse(init?.body ?? "{}"));
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(buildOkBody())});
+            }
+            if (url !== "/api/home/blueprints/build-preview") {
+                throw new Error(`unexpected fetch to ${url}`);
+            }
+            return new Promise((resolve) => {
+                respondTo.push((body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}));
+            });
+        };
+
+        renderWithProviders(<BlueprintBuildPanel blueprint={blueprint} />, {fetchImpl});
+
+        // Build Preview's own guard is independent from Build Package's -- clicking both, with nothing
+        // changed in between, issues two concurrent destination checks sharing the exact same identity.
+        await user.click(screen.getByRole("button", {name: "Build Preview"}));
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(respondTo).toHaveLength(2));
+
+        // The second (Build Package's own) request is the one issued last -- it settles first with "has
+        // content", which must be what confirmation and the eventual build go by.
+        respondTo[1](previewOkBody({projectRoot: "/games/sample-slot", destinationHasContent: true}));
+        expect(await screen.findByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+
+        // The first (Build Preview's own) request settles late, reporting the opposite answer -- being the
+        // older of the two, it must never overwrite the confirmation or preview the newer one already set up.
+        respondTo[0](previewOkBody({projectRoot: "/games/sample-slot", destinationHasContent: false}));
+        await act(async () => {
+            await new Promise((resolve) => {
+                setTimeout(resolve, 0);
+            });
+        });
+        expect(screen.getByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(buildCalls).toEqual([]);
+
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+        await waitFor(() => {
+            expect(buildCalls).toEqual([{blueprint, outDir: undefined, sourcePath: undefined}]);
+        });
+    });
 });
