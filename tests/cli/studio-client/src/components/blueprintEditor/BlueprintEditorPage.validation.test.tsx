@@ -60,6 +60,13 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
             if (path === "/api/home/blueprints/load" && init?.method === "POST") {
                 return respond({status: "ok", path: "/games/other.json", blueprint: {manifest: {id: "other", name: "Other", version: "0.1.0"}}});
             }
+            // Typing into "Load from path" below (a PathInput) triggers its own resolved-path hint
+            // fetch on every change -- irrelevant to what this test covers, but it must resolve to a
+            // real "ok" shape rather than falling through to the generic `respond([])` below, which
+            // PathInput can't interpret as a valid StudioFsBrowseView.
+            if (path === "/api/home/fs/browse") {
+                return respond({status: "ok", resolvedPath: "/games/other.json", displayPath: "/games/other.json", entries: []});
+            }
             return respond([]);
         };
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
