@@ -143,13 +143,23 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // to nothing at all.
     //
     // The *very first* publish for a given projectRoot is a deliberate exception: with nothing previously
-    // consumable there, there's no reader to protect from a partial write and no "old" state a "new" one
-    // could ever be mixed with — so it writes plain, independently relocatable files directly, exactly
-    // what this method always did before the live-directory scheme existed. This isn't just an
-    // optimization: callers are entitled to rely on it. applyGameBlueprintToProject, for one, points this
-    // generator at a throwaway staging directory it always creates fresh and then commits by picking each
-    // of the four files apart and renaming it into the real project individually — a relative symlink
-    // surviving that individual relocation would resolve to nothing.
+    // consumable there, there's no "old" state a "new" one could ever be mixed with — so it writes plain,
+    // independently relocatable files, exactly what this method always did before the live-directory
+    // scheme existed, rather than the symlink indirection every later rebuild uses. This isn't just an
+    // optimization: callers are entitled to rely on the *files* themselves being plain. applyGameBlueprintToProject,
+    // for one, points this generator at a throwaway staging directory it always creates fresh and then
+    // commits by picking each of the four files apart and renaming it into the real project individually
+    // — a relative symlink surviving that individual relocation would resolve to nothing.
+    //
+    // That doesn't mean a concurrent reader of projectRoot is unprotected, though: when projectRoot is
+    // itself fresh (missing, or present but empty — the case every real first build and every one of
+    // applyGameBlueprintToProject's always-fresh staging directories is in), publishFirstBuild commits the
+    // whole package with one directory rename (see publishAtomicFirstBuild), so a reader can only ever see
+    // projectRoot missing/empty or fully populated — never some of the four files without the rest. Only
+    // a first build into a projectRoot that already holds unrelated content (so the whole directory can't
+    // be swapped in one step without disturbing it) falls back to committing the four files individually
+    // (see publishPlainFiles) — there being no way to protect a reader of *that* directory from observing
+    // the files land one at a time without risking the unrelated content it doesn't own.
     //
     // A projectRoot's *second* publish is the other deliberate exception: it migrates the first publish's
     // plain files onto the live-directory/symlink scheme (see migrateToLiveScheme) — every rebuild after
@@ -179,7 +189,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
             relativePaths.some((relativePath) => this.pathExists(path.join(projectRoot, ...relativePath.split("/"))));
 
         if (!hasPriorPublish) {
-            this.publishPlainFiles(tempDir, projectRoot, relativePaths);
+            this.publishFirstBuild(tempDir, projectRoot, relativePaths);
             return;
         }
 
@@ -193,10 +203,53 @@ export class GamePackageGenerator implements GamePackageGenerating {
         this.publishLiveGeneration(tempDir, generationsDir, liveLinkPath);
     }
 
+    // A projectRoot's very first publish, dispatched to whichever of the two paths below can actually
+    // commit it without ever exposing a reader to a subset of GENERATED_PACKAGE_FILES. Both leave the
+    // four public paths as plain, independently relocatable files — never symlinks — for the reasons
+    // publishGeneratedFiles documents.
+    private publishFirstBuild(tempDir: string, projectRoot: string, relativePaths: string[]): void {
+        if (this.isMissingOrEmptyDirectory(projectRoot)) {
+            this.publishAtomicFirstBuild(tempDir, projectRoot);
+            return;
+        }
+        this.publishPlainFiles(tempDir, projectRoot, relativePaths);
+    }
+
+    // True when projectRoot is either absent or an existing-but-empty directory — the only two states a
+    // single directory rename can safely replace, since neither holds any content of its own that a
+    // whole-directory swap would disturb. assertSafeToRebuild has already run by the time this is called
+    // (see generate()), so an existing projectRoot is guaranteed to actually be a directory here.
+    private isMissingOrEmptyDirectory(projectRoot: string): boolean {
+        if (!fs.existsSync(projectRoot)) {
+            return true;
+        }
+        return fs.readdirSync(projectRoot).length === 0;
+    }
+
+    // Commits every staged file at once by renaming the whole "tempDir" over projectRoot in a single
+    // syscall — the only case where the *directory itself*, not just each file within it, can be swapped
+    // atomically, since projectRoot is guaranteed empty (or absent) here (see isMissingOrEmptyDirectory).
+    // Renaming a directory over an existing *empty* directory is itself atomic (same primitive
+    // publishLiveGeneration relies on to rename a symlink over "live"), so a reader can only ever observe
+    // projectRoot missing/empty or fully populated with all four files — never anything in between. A
+    // failure here leaves projectRoot exactly as it was found (missing, or still the same empty
+    // directory) and removes only the never-published "tempDir".
+    private publishAtomicFirstBuild(tempDir: string, projectRoot: string): void {
+        try {
+            fs.renameSync(tempDir, projectRoot);
+        } catch (error) {
+            this.removeBestEffort(tempDir);
+            throw error;
+        }
+    }
+
     // Commits every staged file directly into place as a plain file — a straight rename each, rolled
-    // back (in reverse order) if a later one fails. Used only for a projectRoot's very first publish (see
-    // publishGeneratedFiles); there being no previous package here means a partial failure has nothing
-    // to preserve, just nothing new left half-written.
+    // back (in reverse order) if a later one fails. Used only when a projectRoot's very first publish
+    // lands in a directory that already holds unrelated content of its own (so the whole directory can't
+    // be swapped in one step — see publishFirstBuild): there being no previous *package* here means a
+    // partial failure has no package to preserve, just nothing new left half-written; a concurrent reader
+    // watching the individual public paths land one at a time is the one exposure this fallback can't
+    // close without risking the unrelated content it doesn't own.
     private publishPlainFiles(tempDir: string, projectRoot: string, relativePaths: string[]): void {
         const committed: string[] = [];
         for (const relativePath of relativePaths) {
