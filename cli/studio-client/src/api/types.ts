@@ -116,12 +116,27 @@ export type StudioNativePickerResultView =
 // doc comment.
 export type StudioDefaultLocationView = {status: "valid"; directory: string; source: "documents" | "home"} | {status: "unavailable"};
 
+// POST /api/home/fs/open-folder's own DTO — see cli/studio/home/StudioOpenFolderView.ts's own doc
+// comment.
+export type StudioOpenFolderView = {status: "ok"} | {status: "unavailable"; reason: string} | {status: "error"; message: string};
+
+// Mirrors cli/studio/previewBuildDestination.ts's own BuildDestinationPreview — see that file's own
+// doc comment. Read-only: never the result of anything being created/modified on disk.
+export type BuildDestinationPreview = {
+    projectRoot: string;
+    destinationHasContent: boolean;
+    createFiles: string[];
+    updateFiles: string[];
+    deleteFiles: string[];
+    priorBuild?: {version: string; blueprintHash: string; generatedAt: string};
+};
+
 // POST /api/home/projects/build/preview's own DTO — see cli/studio/home/StudioBuildPreviewView.ts's
 // own doc comment. Never the result of anything being written to disk.
 export type StudioBuildPreviewView =
     | {status: "load-error"; error: string}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {
+    | ({
           status: "ok";
           warnings: ValidationIssue[];
           manifest: PokieGameManifest;
@@ -130,7 +145,7 @@ export type StudioBuildPreviewView =
           symbolsCount: number;
           blueprintHash: string;
           expectedFiles: string[];
-      };
+      } & BuildDestinationPreview);
 
 // POST /api/home/projects/build's own DTO — see cli/studio/home/StudioBuildResult.ts's own doc
 // comment.

@@ -1,4 +1,13 @@
-import {BetMode, BetModeRuntimeSemanticsInvalidError, computeGameBlueprintHash, GameBlueprint, GameBuildInfo, GamePackageGenerator, PokieGame} from "pokie";
+import {
+    BetMode,
+    BetModeRuntimeSemanticsInvalidError,
+    computeGameBlueprintHash,
+    GameBlueprint,
+    GameBuildInfo,
+    GamePackageGenerator,
+    GENERATED_PACKAGE_FILES,
+    PokieGame,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -231,6 +240,420 @@ describe("GamePackageGenerator", () => {
         }
     });
 
+    describe("package-level atomic publish", () => {
+        function readGeneratedFiles(projectRoot: string): Record<string, string> {
+            const contents: Record<string, string> = {};
+            for (const relativePath of GENERATED_PACKAGE_FILES) {
+                contents[relativePath] = fs.readFileSync(path.join(projectRoot, ...relativePath.split("/")), "utf-8");
+            }
+            return contents;
+        }
+
+        // Every path GENERATED_PACKAGE_FILES names must always be a plain, independently packageable
+        // regular file -- never a symlink or any other indirection -- so a packer (npm pack, tar, zip,
+        // ...) never depends on how this generator laid the package out internally.
+        function assertAllPlainFiles(projectRoot: string): void {
+            for (const relativePath of GENERATED_PACKAGE_FILES) {
+                const stats = fs.lstatSync(path.join(projectRoot, ...relativePath.split("/")));
+                expect(stats.isSymbolicLink()).toBe(false);
+                expect(stats.isFile()).toBe(true);
+            }
+        }
+
+        // Every path actually present under projectRoot (recursively), relative to it -- used to confirm
+        // a rebuild never leaves behind a stale backup or leftover temp directory: exactly the packageable
+        // set GENERATED_PACKAGE_FILES names, nothing else.
+        function listAllFiles(root: string): string[] {
+            const results: string[] = [];
+            const walk = (dir: string, prefix: string): void => {
+                for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+                    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+                    if (entry.isDirectory()) {
+                        walk(path.join(dir, entry.name), relativePath);
+                    } else {
+                        results.push(relativePath);
+                    }
+                }
+            };
+            walk(root, "");
+            return results.sort();
+        }
+
+        afterEach(() => {
+            jest.restoreAllMocks();
+        });
+
+        it("leaves an existing build completely untouched, and no temp directory behind, when staging a file fails", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const original = readGeneratedFiles(first.projectRoot);
+
+            jest.spyOn(fs, "writeFileSync").mockImplementation((targetPath) => {
+                if (String(targetPath).endsWith("README.md")) {
+                    throw new Error("simulated disk-full while staging");
+                }
+            });
+
+            expect(() => generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd)).toThrow(
+                /simulated disk-full while staging/,
+            );
+
+            jest.restoreAllMocks();
+            expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
+            expect(fs.readdirSync(path.dirname(first.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
+        });
+
+        // The very first publish for a projectRoot has nothing previously consumable to protect, so it
+        // writes plain, independently relocatable files -- exactly what callers like
+        // applyGameBlueprintToProject (which stages into a throwaway directory and relocates each
+        // generated file individually) require. When projectRoot itself is fresh (missing, or present
+        // but empty -- true of every real first build and of applyGameBlueprintToProject's own
+        // always-fresh staging directories), that commit is one single directory rename, so a reader can
+        // only ever observe projectRoot missing/empty or fully populated -- never a subset of
+        // GENERATED_PACKAGE_FILES. A rebuild into a projectRoot that already holds a prior publish
+        // commits through that very same single-rename boundary (see the "rebuild" tests below) --
+        // projectRoot itself is swapped as a whole, rather than one public path at a time.
+        it("commits the whole package with a single atomic directory rename on the very first publish into a directory that doesn't exist yet", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const projectRoot = path.join(cwd, "sample-slot");
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            const renameTargets: string[] = [];
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                renameTargets.push(String(to));
+                return realRenameSync(from, to);
+            });
+
+            const result = generator.generate(buildBlueprint(), cwd);
+
+            jest.restoreAllMocks();
+            // Exactly one rename commits the whole package -- never one rename per public path.
+            expect(renameTargets).toEqual([projectRoot]);
+            expect(readGeneratedFiles(result.projectRoot)["package.json"]).toContain("sample-slot");
+            for (const relativePath of GENERATED_PACKAGE_FILES) {
+                expect(fs.lstatSync(path.join(result.projectRoot, ...relativePath.split("/"))).isSymbolicLink()).toBe(false);
+            }
+        });
+
+        // The same single-rename commit applies when projectRoot already exists but is empty (e.g. a
+        // caller -- or applyGameBlueprintToProject -- pre-created it) -- POSIX rename can replace an
+        // existing empty directory exactly as atomically as it can create a missing one.
+        it("commits the whole package with a single atomic directory rename on the very first publish into a directory that already exists but is empty", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const projectRoot = path.join(cwd, "sample-slot");
+            fs.mkdirSync(projectRoot, {recursive: true});
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            const renameTargets: string[] = [];
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                renameTargets.push(String(to));
+                return realRenameSync(from, to);
+            });
+
+            const result = generator.generate(buildBlueprint(), cwd);
+
+            jest.restoreAllMocks();
+            expect(renameTargets).toEqual([projectRoot]);
+            expect(readGeneratedFiles(result.projectRoot)["README.md"]).toBeDefined();
+        });
+
+        // The atomicity claim itself: right up to the single rename that commits the package, projectRoot
+        // must not exist at all (never a directory a reader could peek into and see some, but not all,
+        // public paths) -- and immediately after that one call, every public path must already resolve.
+        it("never observes projectRoot holding some, but not all, public paths while committing the very first publish", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const projectRoot = path.join(cwd, "sample-slot");
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            let observed: {existedBefore: boolean; presentAfter: boolean[]} | undefined;
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                if (String(to) !== projectRoot) {
+                    return realRenameSync(from, to);
+                }
+                const existedBefore = fs.existsSync(projectRoot);
+                const result = realRenameSync(from, to);
+                const presentAfter = GENERATED_PACKAGE_FILES.map((relativePath) =>
+                    fs.existsSync(path.join(projectRoot, ...relativePath.split("/"))),
+                );
+                observed = {existedBefore, presentAfter};
+                return result;
+            });
+
+            generator.generate(buildBlueprint(), cwd);
+
+            jest.restoreAllMocks();
+            expect(observed).toEqual({existedBefore: false, presentAfter: [true, true, true, true]});
+        });
+
+        // A failure at the single commit rename must leave projectRoot exactly as it was found (missing,
+        // here) and nothing else behind -- there's no partial set of files to roll back, since the rename
+        // either moves everything or nothing.
+        it("leaves projectRoot missing and nothing else behind when the very first publish's atomic commit rename fails", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const projectRoot = path.join(cwd, "sample-slot");
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                if (String(to) === projectRoot) {
+                    throw new Error("simulated rename failure committing the first build");
+                }
+                return realRenameSync(from, to);
+            });
+
+            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/simulated rename failure committing the first build/);
+
+            jest.restoreAllMocks();
+            expect(fs.existsSync(projectRoot)).toBe(false);
+            expect(fs.readdirSync(cwd)).toEqual([]);
+
+            // A clean retry (unmocked) still succeeds afterward -- the failure left nothing in the way.
+            const result = generator.generate(buildBlueprint(), cwd);
+            expect(fs.lstatSync(path.join(result.projectRoot, "package.json")).isSymbolicLink()).toBe(false);
+        });
+
+        // A projectRoot that already holds unrelated content of its own (a real first build into a
+        // directory an npm install, or a user, already put something in) can't be swapped in one rename
+        // without disturbing that content, and there's no atomic way to commit several independent public
+        // paths into it either -- so this generator refuses the publish outright rather than ever
+        // committing the four public paths one at a time (which would let a reader observe a subset of
+        // GENERATED_PACKAGE_FILES). Nothing new is written, and the directory's own unrelated content is
+        // left completely untouched.
+        it("fails closed, without publishing any generated files, when the very first publish would land in a non-empty directory", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const projectRoot = path.join(cwd, "sample-slot");
+            fs.mkdirSync(projectRoot, {recursive: true});
+            fs.writeFileSync(path.join(projectRoot, "LICENSE"), "MIT\n");
+
+            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not empty/);
+
+            expect(fs.readdirSync(projectRoot)).toEqual(["LICENSE"]);
+            // No leftover staging directory either.
+            expect(fs.readdirSync(cwd).filter((entry) => entry !== "sample-slot")).toEqual([]);
+        });
+
+        // The core guarantee for every rebuild into a projectRoot this generator already published to:
+        // the whole projectRoot is swapped as one unit (see GamePackageGenerator's own publishRebuild
+        // comment), so a failure committing that swap must restore the prior projectRoot exactly as it
+        // was, leaving the whole prior package fully intact -- whatever fails, and whenever it fails.
+        it("preserves the complete prior package, with no stale artifacts left, when a rebuild's commit fails partway through", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const original = readGeneratedFiles(first.projectRoot);
+            const projectRoot = first.projectRoot;
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                // The freshly staged tempDir commits cleanly moving unmanaged entries aside and renaming
+                // projectRoot itself out to its stale backup; fail exactly the rename that would swap the
+                // staged tempDir into projectRoot's now-freed name, proving the rollback restores the
+                // whole prior projectRoot, not just part of it.
+                if (String(from).includes(".tmp-") && String(to) === projectRoot) {
+                    throw new Error("simulated rename failure committing the rebuild");
+                }
+                return realRenameSync(from, to);
+            });
+
+            expect(() =>
+                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+            ).toThrow(/simulated rename failure committing the rebuild/);
+
+            jest.restoreAllMocks();
+            expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
+            assertAllPlainFiles(first.projectRoot);
+            // No leftover stale backup or temp directory from the failed attempt -- exactly the
+            // packageable file set remains.
+            expect(listAllFiles(first.projectRoot)).toEqual([...GENERATED_PACKAGE_FILES].sort());
+            expect(fs.readdirSync(path.dirname(first.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
+
+            // A clean retry (unmocked) still succeeds afterward -- the failure left nothing in the way.
+            const retried = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
+            expect(JSON.parse(fs.readFileSync(path.join(retried.projectRoot, "package.json"), "utf-8")).version).toBe("0.2.0");
+        });
+
+        // The positive case: a successful rebuild actually updates every generated file to describe the
+        // new build, and every public path stays exactly what it always is -- a plain, directly
+        // packageable regular file, never a symlink or any other indirection -- with no stale backup or
+        // temp directory left behind.
+        it("commits a successful rebuild with every public path remaining a plain, packageable file", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            generator.generate(buildBlueprint(), cwd);
+            assertAllPlainFiles(path.join(cwd, "sample-slot"));
+
+            const second = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
+            assertAllPlainFiles(second.projectRoot);
+
+            const pkg = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "package.json"), "utf-8"));
+            const buildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8")) as GameBuildInfo;
+            const readme = fs.readFileSync(path.join(second.projectRoot, "README.md"), "utf-8");
+            expect(pkg.version).toBe("0.2.0");
+            expect(buildInfo.game.version).toBe("0.2.0");
+            expect(readme).toContain("# Sample Slot Deluxe");
+
+            // Exactly the packageable file set remains -- no leftover stale backup or temp directory from
+            // the rebuild's own commit.
+            expect(listAllFiles(second.projectRoot)).toEqual([...GENERATED_PACKAGE_FILES].sort());
+            expect(fs.readdirSync(path.dirname(second.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
+        });
+
+        // The atomicity claim for a rebuild, mirroring the equivalent first-build test above: right up to
+        // the single rename that swaps the freshly staged package into projectRoot's place, every public
+        // path must still resolve to its complete *old* content (proving no earlier, partial commit ever
+        // touched projectRoot), and immediately after that one call, every public path must already
+        // resolve to its complete *new* content -- so a reader can never observe a mixture of the two
+        // (e.g. a new package.json paired with an old generated module).
+        it("never observes a mixture of the old and new generated files while committing a successful rebuild", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const projectRoot = first.projectRoot;
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            let observed: {existedBefore: boolean; contentsBefore: Record<string, string> | undefined; contentsAfter: Record<string, string>} | undefined;
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                if (String(to) !== projectRoot) {
+                    return realRenameSync(from, to);
+                }
+                // projectRoot was already renamed aside to its stale backup by an earlier call, so it
+                // must not exist here -- confirming this rename is the sole boundary between old and new.
+                const existedBefore = fs.existsSync(projectRoot);
+                const contentsBefore = existedBefore ? readGeneratedFiles(projectRoot) : undefined;
+                const result = realRenameSync(from, to);
+                const contentsAfter = readGeneratedFiles(projectRoot);
+                observed = {existedBefore, contentsBefore, contentsAfter};
+                return result;
+            });
+
+            const second = generator.generate(
+                buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
+                cwd,
+            );
+
+            jest.restoreAllMocks();
+            expect(observed?.existedBefore).toBe(false);
+            const pkg = JSON.parse(observed!.contentsAfter["package.json"]);
+            const buildInfo = JSON.parse(observed!.contentsAfter["src/generated/build-info.json"]) as GameBuildInfo;
+            expect(pkg.version).toBe("0.2.0");
+            expect(buildInfo.game.version).toBe("0.2.0");
+            expect(observed!.contentsAfter).toEqual(readGeneratedFiles(second.projectRoot));
+        });
+
+        it("fails closed with an actionable error, before writing anything, when a recognized package is missing a previously generated file", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            fs.rmSync(path.join(first.projectRoot, "README.md"));
+
+            expect(() =>
+                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+            ).toThrow(/is missing file\(s\) a previous "pokie build" generated: README\.md/);
+
+            // Nothing was written as a result of the failed attempt -- package.json (which was present
+            // and recognized) left exactly as it was.
+            expect(JSON.parse(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8")).version).toBe("0.1.0");
+        });
+
+        // The four public generated-file paths (package.json, README.md, src/generated/index.js,
+        // src/generated/build-info.json) themselves must be trusted before generate() ever reads or
+        // writes through one of them -- an attacker-controlled symlink there could point anywhere,
+        // including outside projectRoot entirely.
+        describe("untrusted public generated-file paths", () => {
+            it("fails closed, without reading/copying/deleting the escape target, when a public path is a symlink escaping the output tree", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+                const original = readGeneratedFiles(first.projectRoot);
+
+                const outsideDir = path.join(cwd, "outside-secret");
+                fs.mkdirSync(outsideDir, {recursive: true});
+                fs.writeFileSync(path.join(outsideDir, "secret.json"), '{"leaked": true}');
+                const outsideTarget = path.join(outsideDir, "secret.json");
+
+                const packageJsonPath = path.join(first.projectRoot, "package.json");
+                fs.rmSync(packageJsonPath);
+                fs.symlinkSync(outsideTarget, packageJsonPath);
+
+                expect(() =>
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+                ).toThrow(/package\.json.*symlink/);
+
+                // The escape target is completely untouched -- neither read nor deleted.
+                expect(fs.existsSync(outsideTarget)).toBe(true);
+                expect(fs.readFileSync(outsideTarget, "utf-8")).toBe('{"leaked": true}');
+                // Every other public path is exactly as the first build left it -- only package.json was
+                // ever touched by the attacker, and this rejection happened before any write.
+                const {"package.json": _pkg, ...restOriginal} = original;
+                const restNow = readGeneratedFiles(first.projectRoot);
+                Reflect.deleteProperty(restNow as Record<string, string>, "package.json");
+                expect(restNow).toEqual(restOriginal);
+            });
+
+            it("fails closed when a public path is a directory instead of the plain file this generator writes", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+
+                const readmePath = path.join(first.projectRoot, "README.md");
+                fs.rmSync(readmePath);
+                fs.mkdirSync(readmePath);
+
+                expect(() =>
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+                ).toThrow(/README\.md.*directory/);
+            });
+
+            // lstat on the leaf path alone never catches an attacker turning an *intermediate* component
+            // into a symlink to an arbitrary external directory, since ordinary path resolution follows
+            // every non-final component automatically -- so every ancestor between projectRoot and a
+            // public path's own parent is walked and checked too (see assertPlainAncestorDirectories).
+            it("fails closed, without reading/deleting the escape target, when the intermediate \"src/generated\" ancestor directory is itself a symlink escaping the output tree", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+
+                const outsideDir = path.join(cwd, "outside-secret");
+                fs.mkdirSync(outsideDir, {recursive: true});
+                fs.writeFileSync(path.join(outsideDir, "build-info.json"), '{"leaked": true}');
+
+                const srcGeneratedDir = path.join(first.projectRoot, "src", "generated");
+                fs.rmSync(srcGeneratedDir, {recursive: true});
+                fs.symlinkSync(outsideDir, srcGeneratedDir);
+
+                let thrown: Error | undefined;
+                try {
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
+                } catch (error) {
+                    thrown = error as Error;
+                }
+
+                expect(thrown?.message).toContain(srcGeneratedDir);
+                expect(thrown?.message).toContain("is a symlink, not the plain directory");
+                // The escape target is completely untouched -- neither read nor deleted.
+                expect(fs.existsSync(path.join(outsideDir, "build-info.json"))).toBe(true);
+                expect(fs.readFileSync(path.join(outsideDir, "build-info.json"), "utf-8")).toBe('{"leaked": true}');
+            });
+
+            it("fails closed, without reading/deleting the escape target, when the intermediate \"src\" ancestor directory is itself a symlink escaping the output tree", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+
+                const outsideDir = path.join(cwd, "outside-secret");
+                fs.mkdirSync(path.join(outsideDir, "generated"), {recursive: true});
+                fs.writeFileSync(path.join(outsideDir, "generated", "build-info.json"), '{"leaked": true}');
+
+                const srcDir = path.join(first.projectRoot, "src");
+                fs.rmSync(srcDir, {recursive: true});
+                fs.symlinkSync(outsideDir, srcDir);
+
+                let thrown: Error | undefined;
+                try {
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
+                } catch (error) {
+                    thrown = error as Error;
+                }
+
+                expect(thrown?.message).toContain(srcDir);
+                expect(thrown?.message).toContain("is a symlink, not the plain directory");
+                expect(fs.existsSync(path.join(outsideDir, "generated", "build-info.json"))).toBe(true);
+                expect(fs.readFileSync(path.join(outsideDir, "generated", "build-info.json"), "utf-8")).toBe('{"leaked": true}');
+            });
+        });
+    });
+
     it("builds into an existing but empty directory", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const projectRoot = path.join(cwd, "sample-slot");
@@ -240,14 +663,14 @@ describe("GamePackageGenerator", () => {
         expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
     });
 
-    it("builds into an existing directory that only contains unrelated files elsewhere (nothing at a generated path)", () => {
+    it("refuses a first build into an existing directory that already holds unrelated files, leaving them untouched", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const projectRoot = path.join(cwd, "sample-slot");
         fs.mkdirSync(projectRoot, {recursive: true});
         fs.writeFileSync(path.join(projectRoot, "LICENSE"), "MIT\n");
 
-        expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
-        expect(fs.existsSync(path.join(projectRoot, "LICENSE"))).toBe(true);
+        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not empty/);
+        expect(fs.readdirSync(projectRoot)).toEqual(["LICENSE"]);
     });
 
     it("throws a descriptive error when the target path already exists and is not a directory", () => {

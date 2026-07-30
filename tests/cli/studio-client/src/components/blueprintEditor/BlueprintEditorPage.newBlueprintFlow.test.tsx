@@ -248,7 +248,21 @@ describe("BlueprintEditorPage - New flow", () => {
                 return {
                     ok: true,
                     status: 200,
-                    body: {status: "ok", warnings: [], manifest: {id: "before-new", name: "Before New", version: "0.1.0"}, reels: 5, rows: 3, symbolsCount: 0, blueprintHash: "hash", expectedFiles: []},
+                    body: {
+                        status: "ok",
+                        warnings: [],
+                        manifest: {id: "before-new", name: "Before New", version: "0.1.0"},
+                        reels: 5,
+                        rows: 3,
+                        symbolsCount: 0,
+                        blueprintHash: "hash",
+                        expectedFiles: [],
+                        projectRoot: "/games/before-new",
+                        destinationHasContent: false,
+                        createFiles: [],
+                        updateFiles: [],
+                        deleteFiles: [],
+                    },
                 };
             }
             throw new Error(`unexpected fetch to ${call.url}`);

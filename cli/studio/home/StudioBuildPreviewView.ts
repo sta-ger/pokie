@@ -1,14 +1,18 @@
 import type {GameBlueprintManifest, ValidationIssue} from "pokie";
+import type {BuildDestinationPreview} from "../previewBuildDestination.js";
 
 // POST /api/home/projects/build/preview's own DTO — never writes anything to disk (same reasoning as
 // BuildCommand's own --dry-run: validate, then compute the same blueprintHash/expected-files preview
 // buildGameBuildInfo already produces, purely in memory). "load-error" covers a blueprintPath that
 // doesn't exist/doesn't parse as JSON (see loadGameBlueprint); "invalid" covers a well-formed JSON
-// object that fails GameBlueprintValidator's own structural checks.
+// object that fails GameBlueprintValidator's own structural checks. The "ok" case's destination fields
+// come from previewBuildDestination.ts — same read-only resolution/recognition rules the real build
+// (GamePackageGenerator) applies, so this preview's answer about what's already at the destination
+// never disagrees with what an actual build would do there.
 export type StudioBuildPreviewView =
     | {status: "load-error"; error: string}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {
+    | ({
           status: "ok";
           warnings: ValidationIssue[];
           manifest: GameBlueprintManifest;
@@ -17,4 +21,4 @@ export type StudioBuildPreviewView =
           symbolsCount: number;
           blueprintHash: string;
           expectedFiles: string[];
-      };
+      } & BuildDestinationPreview);

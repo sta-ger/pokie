@@ -1,4 +1,5 @@
 import type {
+    BuildDestinationPreview,
     GameBuildInfo,
     PokieGameManifest,
     StudioBuildPreviewView,
@@ -52,7 +53,7 @@ export type BuildPreviewView =
     | {status: "error"; message: string}
     | {status: "load-error"; message: string}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {
+    | ({
           status: "ok";
           warnings: ValidationIssue[];
           manifest: PokieGameManifest;
@@ -61,7 +62,7 @@ export type BuildPreviewView =
           symbolsCount: number;
           blueprintHash: string;
           expectedFiles: string[];
-      };
+      } & BuildDestinationPreview);
 
 export function describeBuildPreview(preview: StudioBuildPreviewView): BuildPreviewView {
     if (preview.status === "load-error") {

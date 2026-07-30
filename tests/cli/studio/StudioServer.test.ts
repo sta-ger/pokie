@@ -669,6 +669,99 @@ describe("StudioServer", () => {
         });
     });
 
+    describe("Home nav: open output folder (POST /api/home/fs/open-folder)", () => {
+        let folderServer: StudioServer | undefined;
+        let folderStudioRoot: string;
+        let folderWorkDir: string;
+
+        afterEach(async () => {
+            await folderServer?.stop();
+            fs.rmSync(folderStudioRoot, {recursive: true, force: true});
+            fs.rmSync(folderWorkDir, {recursive: true, force: true});
+        });
+
+        async function startServerWithOpenFolder(
+            openFolder: (folderPath: string) => void,
+            isLoopbackRequest?: (req: IncomingMessage) => boolean,
+        ): Promise<string> {
+            folderStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-open-folder-test-"));
+            folderWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-open-folder-work-"));
+            writeStudioAssets(folderStudioRoot);
+            const homeService = new StudioHomeService("1.0.0");
+            folderServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: folderStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", folderStudioRoot, homeService),
+                openFolder,
+                isLoopbackRequest,
+            });
+            const address = await folderServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("rejects a body with no path field", async () => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+
+            const {status, body} = await post(`${folderBaseUrl}/api/home/fs/open-folder`, {});
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toContain("path");
+            expect(openFolder).not.toHaveBeenCalled();
+        });
+
+        it("opens an existing directory via the injected openFolder and reports ok", async () => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+
+            const {status, body} = await post(`${folderBaseUrl}/api/home/fs/open-folder`, {path: folderWorkDir});
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "ok"});
+            expect(openFolder).toHaveBeenCalledWith(folderWorkDir);
+        });
+
+        it("reports an error, without invoking openFolder, for a path that doesn't exist", async () => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+            const missingPath = path.join(folderWorkDir, "does-not-exist");
+
+            const {status, body} = await post(`${folderBaseUrl}/api/home/fs/open-folder`, {path: missingPath});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "error"});
+            expect((body as {message: string}).message).toContain(missingPath);
+            expect(openFolder).not.toHaveBeenCalled();
+        });
+
+        it("reports an error, without invoking openFolder, for a path that is a file, not a directory", async () => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder);
+            const filePath = path.join(folderWorkDir, "a-file.txt");
+            fs.writeFileSync(filePath, "hello");
+
+            const {status, body} = await post(`${folderBaseUrl}/api/home/fs/open-folder`, {path: filePath});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "error"});
+            expect(openFolder).not.toHaveBeenCalled();
+        });
+
+        it("reports unavailable and never invokes openFolder for a remote caller, even with an existing directory", async () => {
+            const openFolder = jest.fn();
+            const folderBaseUrl = await startServerWithOpenFolder(openFolder, () => false);
+
+            const {status, body} = await post(`${folderBaseUrl}/api/home/fs/open-folder`, {path: folderWorkDir});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "unavailable"});
+            expect(openFolder).not.toHaveBeenCalled();
+        });
+    });
+
     describe("isLoopbackRequest", () => {
         function requestFrom(remoteAddress: string | undefined): IncomingMessage {
             return {socket: {remoteAddress}} as unknown as IncomingMessage;
