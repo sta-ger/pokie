@@ -241,14 +241,6 @@ describe("GamePackageGenerator", () => {
     });
 
     describe("package-level atomic publish", () => {
-        // GamePackageGenerator's own private layout, mirrored here (rather than exported) so these
-        // tests can inspect/inject faults at the exact points a rebuild is supposed to be atomic at,
-        // without the production code needing to expose internals it otherwise wouldn't. LIVE_DIR_NAME
-        // is a symlink (never a real directory) pointing at whichever GENERATIONS_DIR_NAME/gen-* directory
-        // is currently published -- see GamePackageGenerator's own comments for why.
-        const GENERATIONS_DIR_NAME = ".pokie-build";
-        const LIVE_DIR_NAME = "live";
-
         function readGeneratedFiles(projectRoot: string): Record<string, string> {
             const contents: Record<string, string> = {};
             for (const relativePath of GENERATED_PACKAGE_FILES) {
@@ -257,25 +249,34 @@ describe("GamePackageGenerator", () => {
             return contents;
         }
 
-        function publicSymlinkTargets(projectRoot: string): Record<string, string> {
-            const targets: Record<string, string> = {};
+        // Every path GENERATED_PACKAGE_FILES names must always be a plain, independently packageable
+        // regular file -- never a symlink or any other indirection -- so a packer (npm pack, tar, zip,
+        // ...) never depends on how this generator laid the package out internally.
+        function assertAllPlainFiles(projectRoot: string): void {
             for (const relativePath of GENERATED_PACKAGE_FILES) {
-                targets[relativePath] = fs.readlinkSync(path.join(projectRoot, ...relativePath.split("/")));
+                const stats = fs.lstatSync(path.join(projectRoot, ...relativePath.split("/")));
+                expect(stats.isSymbolicLink()).toBe(false);
+                expect(stats.isFile()).toBe(true);
             }
-            return targets;
         }
 
-        function liveLinkPathOf(projectRoot: string): string {
-            return path.join(projectRoot, GENERATIONS_DIR_NAME, LIVE_DIR_NAME);
-        }
-
-        // The steady-state invariant of the whole scheme: GENERATIONS_DIR_NAME contains exactly the
-        // "live" symlink and whichever single generation directory it currently targets -- nothing left
-        // over from an old generation, a failed candidate, or a throwaway temp name.
-        function expectOnlyLiveGenerationPresent(projectRoot: string): void {
-            const liveTarget = fs.readlinkSync(liveLinkPathOf(projectRoot));
-            const entries = fs.readdirSync(path.join(projectRoot, GENERATIONS_DIR_NAME));
-            expect(entries.sort()).toEqual([LIVE_DIR_NAME, liveTarget].sort());
+        // Every path actually present under projectRoot (recursively), relative to it -- used to confirm
+        // a rebuild never leaves behind a stale backup or leftover temp directory: exactly the packageable
+        // set GENERATED_PACKAGE_FILES names, nothing else.
+        function listAllFiles(root: string): string[] {
+            const results: string[] = [];
+            const walk = (dir: string, prefix: string): void => {
+                for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+                    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+                    if (entry.isDirectory()) {
+                        walk(path.join(dir, entry.name), relativePath);
+                    } else {
+                        results.push(relativePath);
+                    }
+                }
+            };
+            walk(root, "");
+            return results.sort();
         }
 
         afterEach(() => {
@@ -428,446 +429,90 @@ describe("GamePackageGenerator", () => {
             expect(fs.readdirSync(cwd).filter((entry) => entry !== "sample-slot")).toEqual([]);
         });
 
-        // The core atomicity guarantee: every rebuild *after* the one-time migration below only ever
-        // changes what "live" (GENERATIONS_DIR_NAME/LIVE_DIR_NAME) points to, via a single symlink-over-
-        // symlink rename -- the four public paths themselves are never rewritten again, and the previous
-        // "live" symlink is never removed or renamed aside before the new one is ready, so there is only
-        // one rename in this whole publish that can ever target "live" at all. A failure there must leave
-        // that previous "live" completely untouched -- nothing was ever modified at its path to restore in
-        // the first place -- and must remove the not-yet-published candidate generation directory and its
-        // throwaway symlink, leaving the package that was actually live at the time of failure fully intact.
-        it("preserves the complete prior package, with no stale/candidate artifacts left, when the live-generation swap itself fails", () => {
+        // The core guarantee for every rebuild into a projectRoot this generator already published to:
+        // each of the four public paths is committed independently (see GamePackageGenerator's own
+        // publishRebuild comment), so a failure partway through must roll every file this attempt already
+        // committed back to its exact previous content, leaving the whole prior package fully intact --
+        // whatever fails, and whenever it fails.
+        it("preserves the complete prior package, with no stale artifacts left, when a rebuild's commit fails partway through", () => {
             const generator = new GamePackageGenerator("1.3.0");
-            generator.generate(buildBlueprint(), cwd);
-            // A second build migrates the first, plain-file publish to the live-directory/symlink scheme
-            // -- establishing the steady state a *third* build's failure below is meant to test.
-            const priorBuild = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-            const original = readGeneratedFiles(priorBuild.projectRoot);
-            const originalLinks = publicSymlinkTargets(priorBuild.projectRoot);
-            const liveLinkPath = liveLinkPathOf(priorBuild.projectRoot);
-            const originalLiveTarget = fs.readlinkSync(liveLinkPath);
+            const first = generator.generate(buildBlueprint(), cwd);
+            const original = readGeneratedFiles(first.projectRoot);
+            const buildInfoRealPath = path.join(first.projectRoot, "src", "generated", "build-info.json");
 
             const realRenameSync = fs.renameSync.bind(fs);
             jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                // Exactly one rename in this publish ever targets liveLinkPath itself: repointing it (a
-                // brand-new throwaway symlink renamed over it) at the newly published generation. Nothing
-                // renames liveLinkPath *away* first, so failing this one call leaves it exactly as it was.
-                if (String(to) === liveLinkPath) {
-                    throw new Error("simulated rename failure publishing the live generation");
+                // package.json and README.md commit cleanly first; fail exactly the rename that would
+                // commit build-info.json's freshly staged content over its real path, proving the rollback
+                // undoes every file this attempt already committed, not just the one that failed.
+                if (String(from).includes(".tmp-") && String(to) === buildInfoRealPath) {
+                    throw new Error("simulated rename failure committing build-info.json");
                 }
                 return realRenameSync(from, to);
             });
 
             expect(() =>
-                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}), cwd),
-            ).toThrow(/simulated rename failure publishing the live generation/);
+                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+            ).toThrow(/simulated rename failure committing build-info\.json/);
 
             jest.restoreAllMocks();
-            // Every generated file, still all belonging to the one prior (v0.2.0) build -- never a mix.
-            expect(readGeneratedFiles(priorBuild.projectRoot)).toEqual(original);
-            // The public symlinks themselves were never touched by a failed live-generation swap.
-            expect(publicSymlinkTargets(priorBuild.projectRoot)).toEqual(originalLinks);
-            // "live" still points at exactly the generation it did before the failed attempt.
-            expect(fs.readlinkSync(liveLinkPath)).toBe(originalLiveTarget);
-            // No leftover candidate generation directory or throwaway temp symlink -- only "live" and the
-            // one generation it actually targets remain.
-            expectOnlyLiveGenerationPresent(priorBuild.projectRoot);
-            expect(fs.readdirSync(path.dirname(priorBuild.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
-        });
-
-        // A package's very first publish is always plain files (see the "very first publish" test
-        // above) -- so its *second* publish is always the one that must migrate those plain files to the
-        // live-directory/symlink scheme. That migration is itself two phases (see GamePackageGenerator's
-        // own migrateToLiveScheme comment): first a purely structural clone-and-rewire that must never
-        // change observable content, then the same atomic swap an ordinary rebuild uses. A failure during
-        // the first phase must restore every path already migrated back to its exact previous (plain-file)
-        // content, and must remove the "live" symlink and cloned generation directory this attempt
-        // created -- not leave any of it symlinked to, or referencing, a scheme nothing else agrees is
-        // live yet.
-        it("preserves the complete prior (still plain-file) package, with no live-scheme artifacts left, when migrating it to symlinks fails partway through", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const first = generator.generate(buildBlueprint(), cwd);
-            const original = readGeneratedFiles(first.projectRoot);
-            for (const relativePath of GENERATED_PACKAGE_FILES) {
-                expect(fs.lstatSync(path.join(first.projectRoot, ...relativePath.split("/"))).isSymbolicLink()).toBe(false);
-            }
-
-            const realSymlinkSync = fs.symlinkSync.bind(fs);
-            let symlinkCalls = 0;
-            jest.spyOn(fs, "symlinkSync").mockImplementation((linkTarget, linkPath) => {
-                symlinkCalls++;
-                // Call 1 bootstraps "live" -> the generation directory holding a byte-for-byte clone of
-                // the *current* (old) content -- a purely structural change, nothing observable yet. Calls
-                // 2-5 are the four public paths themselves (ensurePublicSymlinks); let two of those
-                // migrate cleanly, then fail, proving the rollback undoes every path this attempt already
-                // touched, not just the one that failed.
-                if (symlinkCalls === 4) {
-                    throw new Error("simulated symlink failure migrating a public path");
-                }
-                return realSymlinkSync(linkTarget, linkPath);
-            });
-
-            expect(() => generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd)).toThrow(
-                /simulated symlink failure migrating a public path/,
-            );
-
-            jest.restoreAllMocks();
-            // The whole prior package is still there, still plain files, byte-identical -- none of it
-            // was left half-migrated to symlinks pointing at the (orphaned) new generation.
             expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
-            for (const relativePath of GENERATED_PACKAGE_FILES) {
-                expect(fs.lstatSync(path.join(first.projectRoot, ...relativePath.split("/"))).isSymbolicLink()).toBe(false);
-            }
-            const projectRootEntries = fs.readdirSync(first.projectRoot);
-            expect(projectRootEntries.some((entry) => entry.includes(".stale-"))).toBe(false);
-            expect(fs.readdirSync(path.join(first.projectRoot, "src", "generated")).some((entry) => entry.includes(".stale-"))).toBe(false);
-            // No orphaned "live" symlink or cloned/candidate generation directory left behind -- the
-            // failed migration didn't establish the live scheme at all.
-            const generationsDir = path.join(first.projectRoot, GENERATIONS_DIR_NAME);
-            expect(fs.existsSync(generationsDir) ? fs.readdirSync(generationsDir) : []).toEqual([]);
+            assertAllPlainFiles(first.projectRoot);
+            // No leftover stale backup or temp directory from the failed attempt -- exactly the
+            // packageable file set remains.
+            expect(listAllFiles(first.projectRoot)).toEqual([...GENERATED_PACKAGE_FILES].sort());
+            expect(fs.readdirSync(path.dirname(first.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
 
-            // A clean retry (unmocked) still migrates successfully afterward -- the failure left nothing
-            // in the way of the live scheme it's meant to establish.
+            // A clean retry (unmocked) still succeeds afterward -- the failure left nothing in the way.
             const retried = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-            expect(fs.lstatSync(path.join(retried.projectRoot, "package.json")).isSymbolicLink()).toBe(true);
-            expectOnlyLiveGenerationPresent(retried.projectRoot);
+            expect(JSON.parse(fs.readFileSync(path.join(retried.projectRoot, "package.json"), "utf-8")).version).toBe("0.2.0");
         });
 
-        // Fault injection at the exact moment "live" is repointed proves the two visibility windows the
-        // reviewer flagged are both closed: a reader following any public path never sees ENOENT (no
-        // missing-live gap), and every public path flips from the complete old build to the complete new
-        // one at that single call -- never a mix -- whether this is an ordinary rebuild's swap or the
-        // one-time plain-file migration's own final swap.
-        it("never observes \"live\" -- and so any public path -- resolving to nothing, at any point during an ordinary rebuild's swap", () => {
+        // The positive case: a successful rebuild actually updates every generated file to describe the
+        // new build, and every public path stays exactly what it always is -- a plain, directly
+        // packageable regular file, never a symlink or any other indirection -- with no stale backup or
+        // temp directory left behind.
+        it("commits a successful rebuild with every public path remaining a plain, packageable file", () => {
             const generator = new GamePackageGenerator("1.3.0");
             generator.generate(buildBlueprint(), cwd);
-            // The second build performs the one-time migration; the swap under test is the *third* build.
+            assertAllPlainFiles(path.join(cwd, "sample-slot"));
+
             const second = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-            const liveLinkPath = liveLinkPathOf(second.projectRoot);
-            const packageJsonPath = path.join(second.projectRoot, "package.json");
+            assertAllPlainFiles(second.projectRoot);
 
-            const realRenameSync = fs.renameSync.bind(fs);
-            let observed: {before: string; after: string} | undefined;
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                if (String(to) !== liveLinkPath) {
-                    return realRenameSync(from, to);
-                }
-                // Right up to this call, every public path must still resolve -- reading through it must
-                // never throw, even mid-swap.
-                expect(() => fs.readFileSync(packageJsonPath, "utf-8")).not.toThrow();
-                const before = (JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {version: string}).version;
-                const result = realRenameSync(from, to);
-                const after = (JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {version: string}).version;
-                observed = {before, after};
-                return result;
-            });
+            const pkg = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "package.json"), "utf-8"));
+            const buildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8")) as GameBuildInfo;
+            const readme = fs.readFileSync(path.join(second.projectRoot, "README.md"), "utf-8");
+            expect(pkg.version).toBe("0.2.0");
+            expect(buildInfo.game.version).toBe("0.2.0");
+            expect(readme).toContain("# Sample Slot Deluxe");
 
-            const third = generator.generate(
-                buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
-                cwd,
-            );
-
-            jest.restoreAllMocks();
-            // The single rename that repoints "live" is exactly where the version flips -- atomically,
-            // with the path resolving throughout (never to nothing).
-            expect(observed).toEqual({before: "0.2.0", after: "0.3.0"});
-            expect(JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")).version).toBe("0.3.0");
-            expect(third.projectRoot).toBe(second.projectRoot);
+            // Exactly the packageable file set remains -- no leftover stale backup or temp directory from
+            // the rebuild's own commit.
+            expect(listAllFiles(second.projectRoot)).toEqual([...GENERATED_PACKAGE_FILES].sort());
+            expect(fs.readdirSync(path.dirname(second.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
         });
 
-        it("never observes a mix of old and new content across the four public paths while migrating plain files onto the live-directory scheme", () => {
+        it("fails closed with an actionable error, before writing anything, when a recognized package is missing a previously generated file", () => {
             const generator = new GamePackageGenerator("1.3.0");
             const first = generator.generate(buildBlueprint(), cwd);
-            const packageJsonPath = path.join(first.projectRoot, "package.json");
-            const readmePath = path.join(first.projectRoot, "README.md");
-            const liveLinkPath = liveLinkPathOf(first.projectRoot);
+            fs.rmSync(path.join(first.projectRoot, "README.md"));
 
-            const realRenameSync = fs.renameSync.bind(fs);
-            let observed: {beforePkg: string; afterPkg: string; beforeReadme: string; afterReadme: string} | undefined;
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                if (String(to) !== liveLinkPath) {
-                    return realRenameSync(from, to);
-                }
-                // By this point migration's structural phase (clone + rewire) has already run, so both
-                // paths are symlinks -- but must still read as the old content until this exact call.
-                const beforePkg = (JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {version: string}).version;
-                const beforeReadme = fs.readFileSync(readmePath, "utf-8");
-                const result = realRenameSync(from, to);
-                const afterPkg = (JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {version: string}).version;
-                const afterReadme = fs.readFileSync(readmePath, "utf-8");
-                observed = {beforePkg, afterPkg, beforeReadme, afterReadme};
-                return result;
-            });
+            expect(() =>
+                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+            ).toThrow(/is missing file\(s\) a previous "pokie build" generated: README\.md/);
 
-            generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-
-            jest.restoreAllMocks();
-            expect(observed?.beforePkg).toBe("0.1.0");
-            expect(observed?.afterPkg).toBe("0.2.0");
-            expect(observed?.beforeReadme).toContain("# Sample Slot");
-            expect(observed?.beforeReadme).not.toContain("# Sample Slot Deluxe");
-            expect(observed?.afterReadme).toContain("# Sample Slot Deluxe");
-            // Both files flip together, at the very same rename -- package.json and README.md were never
-            // observed disagreeing about which build is live.
-        });
-
-        // The other visibility window the reviewer flagged (beyond the single "live" swap covered above):
-        // ensurePublicSymlinks itself replaces each of the four public paths individually while migrating
-        // them onto the live-directory scheme. That replacement must be a single atomic rename of a
-        // freshly built symlink over the existing plain file — never a rename of the plain file away
-        // followed by a separate symlink creation — so a reader following any one of the four paths can
-        // never observe ENOENT while its own conversion is in flight, and (since the structural phase
-        // clones the *current* content byte-for-byte before rewiring) must keep reading its exact prior
-        // content right through that conversion, only actually changing later, at the one live-generation
-        // swap this same migration performs last (see the "never observes a mix" test above).
-        it("never observes ENOENT for any public path, and continues to observe its prior content, at each path's own replacement while migrating onto the live-directory scheme", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const first = generator.generate(buildBlueprint(), cwd);
-            const originalContents = readGeneratedFiles(first.projectRoot);
-
-            const realRenameSync = fs.renameSync.bind(fs);
-            const relativePathByRealPath = new Map<string, string>(
-                GENERATED_PACKAGE_FILES.map((relativePath) => [path.join(first.projectRoot, ...relativePath.split("/")), relativePath]),
-            );
-            const observedPerFile: Record<string, {beforeThrew: boolean; before: string; after: string}> = {};
-
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                const relativePath = relativePathByRealPath.get(String(to));
-                if (relativePath === undefined) {
-                    return realRenameSync(from, to);
-                }
-                // Right up to this exact rename -- the one that replaces this single public path's plain
-                // file with its symlink -- the path must still resolve and read as its original content.
-                let beforeThrew = false;
-                let before = "";
-                try {
-                    before = fs.readFileSync(String(to), "utf-8");
-                } catch {
-                    beforeThrew = true;
-                }
-                const result = realRenameSync(from, to);
-                const after = fs.readFileSync(String(to), "utf-8");
-                observedPerFile[relativePath] = {beforeThrew, before, after};
-                return result;
-            });
-
-            generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-
-            jest.restoreAllMocks();
-            for (const relativePath of GENERATED_PACKAGE_FILES) {
-                const observed = observedPerFile[relativePath];
-                expect(observed).toBeDefined();
-                expect(observed.beforeThrew).toBe(false);
-                expect(observed.before).toBe(originalContents[relativePath]);
-                expect(observed.after).toBe(originalContents[relativePath]);
-            }
-        });
-
-        // A failure partway through migrating the public paths must still leave every path -- including
-        // ones already converted to a symlink by this attempt -- fully resolvable throughout its own
-        // rollback, never briefly missing. This complements the existing "preserves the complete prior
-        // (still plain-file) package" test, which only checks the *end* state after rollback; this one
-        // checks that no public path ever throws ENOENT while the rollback itself is in flight.
-        it("never observes ENOENT for any public path while rolling back a failed migration to the live-directory scheme", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const first = generator.generate(buildBlueprint(), cwd);
-            const realPaths = GENERATED_PACKAGE_FILES.map((relativePath) => path.join(first.projectRoot, ...relativePath.split("/")));
-
-            const realSymlinkSync = fs.symlinkSync.bind(fs);
-            let symlinkCalls = 0;
-            jest.spyOn(fs, "symlinkSync").mockImplementation((linkTarget, linkPath) => {
-                symlinkCalls++;
-                // Call 1 bootstraps "live"; calls 2-5 are the four public paths' own replacement symlinks
-                // (each built at a throwaway temp name before being renamed into place). Let two of those
-                // succeed, then fail the third, so rollback has real work to undo.
-                if (symlinkCalls === 4) {
-                    throw new Error("simulated symlink failure migrating a public path");
-                }
-                return realSymlinkSync(linkTarget, linkPath);
-            });
-
-            let observedEnoentDuringRollback = false;
-            const realRenameSync = fs.renameSync.bind(fs);
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                const result = realRenameSync(from, to);
-                for (const realPath of realPaths) {
-                    if (!fs.existsSync(realPath)) {
-                        observedEnoentDuringRollback = true;
-                    }
-                }
-                return result;
-            });
-
-            expect(() => generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd)).toThrow(
-                /simulated symlink failure migrating a public path/,
-            );
-
-            jest.restoreAllMocks();
-            expect(observedEnoentDuringRollback).toBe(false);
-            for (const realPath of realPaths) {
-                expect(fs.existsSync(realPath)).toBe(true);
-            }
-        });
-
-        // The positive case: once migrated to the live-directory scheme, a successful rebuild must make
-        // the new package visible as one indivisible unit -- package.json, README, the generated module,
-        // and build-info always describing the same build, never a mix -- and must do so without ever
-        // rewriting the public paths themselves again.
-        it("republishes all four files as one atomic unit on a successful rebuild -- consistent content, symlinks never re-wired", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const blueprintV1 = buildBlueprint();
-            const blueprintV2 = buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}});
-            const blueprintV3 = buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}, symbols: ["A", "B", "C"]});
-
-            generator.generate(blueprintV1, cwd);
-            // The second build is the one-time migration to the live-directory/symlink scheme; capture
-            // the resulting symlink targets as the baseline a genuinely atomic third build must not change.
-            const second = generator.generate(blueprintV2, cwd);
-            const linksAfterMigration = publicSymlinkTargets(second.projectRoot);
-
-            const third = generator.generate(blueprintV3, cwd);
-
-            // The public paths were not touched by this third build -- only what "live" points to changed.
-            expect(publicSymlinkTargets(third.projectRoot)).toEqual(linksAfterMigration);
-
-            const pkg = JSON.parse(fs.readFileSync(path.join(third.projectRoot, "package.json"), "utf-8"));
-            const buildInfo = JSON.parse(fs.readFileSync(path.join(third.projectRoot, "src", "generated", "build-info.json"), "utf-8")) as GameBuildInfo;
-            const game = require(path.join(third.projectRoot, "src", "generated", "index.js")) as PokieGame;
-
-            // Every generated file agrees on the same, single (v3) build -- nothing left over from v1/v2.
-            expect(pkg.version).toBe("0.3.0");
-            expect(buildInfo.game.version).toBe("0.3.0");
-            expect(buildInfo.blueprintHash).toBe(computeGameBlueprintHash(blueprintV3));
-            expect(game.getManifest().version).toBe("0.3.0");
-
-            // Exactly one generation directory remains -- whichever "live" now targets -- no orphaned
-            // temp, candidate, or prior-generation artifacts left behind by a successful rebuild.
-            expectOnlyLiveGenerationPresent(third.projectRoot);
-            expect(fs.readdirSync(path.dirname(third.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
-        });
-
-        // The atomic-publish scheme only follows or deletes a prior GENERATIONS_DIR_NAME/LIVE_DIR_NAME
-        // it can prove it owns. Anything else there -- a symlink escaping containment, a "live" that
-        // isn't a symlink at all, or GENERATIONS_DIR_NAME itself hijacked into a symlink -- must be
-        // rejected before generate() writes or deletes anything, with an actionable error, rather than
-        // being followed (migrateToLiveScheme's clone) or silently trusted for later deletion
-        // (publishLiveGeneration's removeBestEffort(previousTarget)).
-        describe("untrusted existing GENERATIONS_DIR_NAME/LIVE_DIR_NAME layouts", () => {
-            it("fails closed, without deleting or writing anything, when \"live\" is a symlink escaping the output tree", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-                const original = readGeneratedFiles(first.projectRoot);
-
-                const outsideDir = path.join(cwd, "outside-secret");
-                fs.mkdirSync(outsideDir, {recursive: true});
-                fs.writeFileSync(path.join(outsideDir, "canary.txt"), "do not touch");
-
-                const generationsDir = path.join(first.projectRoot, GENERATIONS_DIR_NAME);
-                fs.mkdirSync(generationsDir, {recursive: true});
-                fs.symlinkSync(outsideDir, liveLinkPathOf(first.projectRoot));
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-                ).toThrow(/does not point at a generation this generator produced/);
-
-                // The escape target is completely untouched -- neither read into a clone nor deleted.
-                expect(fs.existsSync(path.join(outsideDir, "canary.txt"))).toBe(true);
-                // The prior (still plain-file) package is untouched too -- the rejection happened before
-                // any write.
-                expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
-            });
-
-            it("fails closed when \"live\" already exists but is not a symlink", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-                const original = readGeneratedFiles(first.projectRoot);
-
-                const liveLinkPath = liveLinkPathOf(first.projectRoot);
-                fs.mkdirSync(liveLinkPath, {recursive: true});
-                fs.writeFileSync(path.join(liveLinkPath, "package.json"), "{}");
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-                ).toThrow(/already exists but is not a symlink this generator produced/);
-
-                expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
-            });
-
-            it("fails closed when GENERATIONS_DIR_NAME itself is a symlink", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-                const original = readGeneratedFiles(first.projectRoot);
-
-                const outsideDir = path.join(cwd, "outside-generations");
-                fs.mkdirSync(outsideDir, {recursive: true});
-                fs.symlinkSync(outsideDir, path.join(first.projectRoot, GENERATIONS_DIR_NAME));
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-                ).toThrow(/is not a directory this generator produced/);
-
-                expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
-            });
-
-            it("fails closed when \"live\" points at a directory contained in GENERATIONS_DIR_NAME that isn't a gen-* generation", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-                const original = readGeneratedFiles(first.projectRoot);
-
-                const generationsDir = path.join(first.projectRoot, GENERATIONS_DIR_NAME);
-                const unrelatedDir = path.join(generationsDir, "not-a-generation");
-                fs.mkdirSync(unrelatedDir, {recursive: true});
-                fs.symlinkSync("not-a-generation", liveLinkPathOf(first.projectRoot));
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-                ).toThrow(/does not point at a generation this generator produced/);
-
-                expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
-            });
-
-            it("fails closed with an actionable error, before writing anything, when a recognized package is missing a previously generated file", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-                fs.rmSync(path.join(first.projectRoot, "README.md"));
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-                ).toThrow(/is missing file\(s\) a previous "pokie build" generated: README\.md/);
-
-                // Nothing was written as a result of the failed attempt -- no live scheme established,
-                // package.json (which was present and recognized) left exactly as it was.
-                expect(fs.existsSync(path.join(first.projectRoot, GENERATIONS_DIR_NAME))).toBe(false);
-                expect(JSON.parse(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8")).version).toBe("0.1.0");
-            });
-
-            // The positive case this whole fail-closed gate must not regress: a prior package this
-            // generator actually produced -- symlink scheme and all -- still rebuilds atomically, and a
-            // failure partway through a later rebuild still retains the complete previous package (see
-            // the other tests in this describe block above for that guarantee in detail).
-            it("still rebuilds atomically for a recognized prior package once migrated onto the live-directory scheme", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                generator.generate(buildBlueprint(), cwd);
-                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-
-                const third = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
-                    cwd,
-                );
-
-                const pkg = JSON.parse(fs.readFileSync(path.join(third.projectRoot, "package.json"), "utf-8"));
-                expect(pkg.version).toBe("0.3.0");
-                expectOnlyLiveGenerationPresent(third.projectRoot);
-            });
+            // Nothing was written as a result of the failed attempt -- package.json (which was present
+            // and recognized) left exactly as it was.
+            expect(JSON.parse(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8")).version).toBe("0.1.0");
         });
 
         // The four public generated-file paths (package.json, README.md, src/generated/index.js,
-        // src/generated/build-info.json) themselves must be trusted before migrateToLiveScheme's
-        // fs.copyFileSync clone ever *follows* one -- copyFileSync dereferences a symlink, so cloning an
-        // attacker-swapped public path would read whatever external file it points at, then publish that
-        // content as part of the new live generation.
+        // src/generated/build-info.json) themselves must be trusted before generate() ever reads or
+        // writes through one of them -- an attacker-controlled symlink there could point anywhere,
+        // including outside projectRoot entirely.
         describe("untrusted public generated-file paths", () => {
-            it("fails closed, without reading/copying/deleting the escape target, when a not-yet-migrated public path is a symlink escaping the output tree", () => {
+            it("fails closed, without reading/copying/deleting the escape target, when a public path is a symlink escaping the output tree", () => {
                 const generator = new GamePackageGenerator("1.3.0");
                 const first = generator.generate(buildBlueprint(), cwd);
                 const original = readGeneratedFiles(first.projectRoot);
@@ -885,11 +530,9 @@ describe("GamePackageGenerator", () => {
                     generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
                 ).toThrow(/package\.json.*symlink/);
 
-                // The escape target is completely untouched -- neither read into a clone nor deleted --
-                // and no live-directory scheme (which a successful clone would have established) exists.
+                // The escape target is completely untouched -- neither read nor deleted.
                 expect(fs.existsSync(outsideTarget)).toBe(true);
                 expect(fs.readFileSync(outsideTarget, "utf-8")).toBe('{"leaked": true}');
-                expect(fs.existsSync(path.join(first.projectRoot, GENERATIONS_DIR_NAME))).toBe(false);
                 // Every other public path is exactly as the first build left it -- only package.json was
                 // ever touched by the attacker, and this rejection happened before any write.
                 const {"package.json": _pkg, ...restOriginal} = original;
@@ -898,7 +541,7 @@ describe("GamePackageGenerator", () => {
                 expect(restNow).toEqual(restOriginal);
             });
 
-            it("fails closed when a not-yet-migrated public path is a directory instead of the plain file this generator writes", () => {
+            it("fails closed when a public path is a directory instead of the plain file this generator writes", () => {
                 const generator = new GamePackageGenerator("1.3.0");
                 const first = generator.generate(buildBlueprint(), cwd);
 
@@ -909,214 +552,61 @@ describe("GamePackageGenerator", () => {
                 expect(() =>
                     generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
                 ).toThrow(/README\.md.*directory/);
-
-                expect(fs.existsSync(path.join(first.projectRoot, GENERATIONS_DIR_NAME))).toBe(false);
             });
 
-            it("fails closed, without touching the escape target, when a migrated public path is a symlink escaping \"live\"", () => {
+            // lstat on the leaf path alone never catches an attacker turning an *intermediate* component
+            // into a symlink to an arbitrary external directory, since ordinary path resolution follows
+            // every non-final component automatically -- so every ancestor between projectRoot and a
+            // public path's own parent is walked and checked too (see assertPlainAncestorDirectories).
+            it("fails closed, without reading/deleting the escape target, when the intermediate \"src/generated\" ancestor directory is itself a symlink escaping the output tree", () => {
                 const generator = new GamePackageGenerator("1.3.0");
-                generator.generate(buildBlueprint(), cwd);
-                const migrated = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
-                    cwd,
-                );
-                const original = readGeneratedFiles(migrated.projectRoot);
-                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
+                const first = generator.generate(buildBlueprint(), cwd);
 
-                const outsideDir = path.join(cwd, "outside-secret");
-                fs.mkdirSync(outsideDir, {recursive: true});
-                fs.writeFileSync(path.join(outsideDir, "secret.json"), '{"leaked": true}');
-                const outsideTarget = path.join(outsideDir, "secret.json");
-
-                const packageJsonPath = path.join(migrated.projectRoot, "package.json");
-                fs.rmSync(packageJsonPath);
-                fs.symlinkSync(outsideTarget, packageJsonPath);
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}), cwd),
-                ).toThrow(/package\.json.*not the symlink "pokie build" expects/);
-
-                expect(fs.existsSync(outsideTarget)).toBe(true);
-                expect(fs.readFileSync(outsideTarget, "utf-8")).toBe('{"leaked": true}');
-                // "live" itself was never repointed -- the rejection happened before any output mutation.
-                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
-                const {"package.json": _pkg, ...restOriginal} = original;
-                const restNow = readGeneratedFiles(migrated.projectRoot);
-                delete (restNow as Record<string, string>)["package.json"];
-                expect(restNow).toEqual(restOriginal);
-            });
-
-            it("fails closed, without reading/deleting the escape target, when the live generation's own build-info.json entry is itself a symlink escaping the output tree", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                generator.generate(buildBlueprint(), cwd);
-                const migrated = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
-                    cwd,
-                );
-                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
-
-                const outsideDir = path.join(cwd, "outside-secret");
-                fs.mkdirSync(outsideDir, {recursive: true});
-                fs.writeFileSync(path.join(outsideDir, "secret.json"), '{"leaked": true}');
-                const outsideTarget = path.join(outsideDir, "secret.json");
-
-                // Reach past both trusted symlinks -- the public path and "live" itself -- and corrupt the
-                // actual generation-directory entry they resolve to. Every public path's own symlink text
-                // (and "live"'s own target) stays exactly as this generator left it; only what's sitting
-                // *inside* the generation directory is attacker-controlled, which is what this check exists
-                // to catch.
-                const buildInfoInGeneration = path.join(
-                    path.dirname(liveLinkPathOf(migrated.projectRoot)),
-                    originalLiveTarget,
-                    "src",
-                    "generated",
-                    "build-info.json",
-                );
-                fs.rmSync(buildInfoInGeneration);
-                fs.symlinkSync(outsideTarget, buildInfoInGeneration);
-
-                expect(() =>
-                    generator.generate(
-                        buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
-                        cwd,
-                    ),
-                ).toThrow(/build-info\.json.*symlink/);
-
-                // The escape target is completely untouched -- neither read nor deleted -- and "live" was
-                // never repointed, so the rejection happened before any output mutation.
-                expect(fs.existsSync(outsideTarget)).toBe(true);
-                expect(fs.readFileSync(outsideTarget, "utf-8")).toBe('{"leaked": true}');
-                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
-            });
-
-            it("fails closed, without reading/deleting the escape target, when an intermediate ancestor directory (\"src/generated\") inside the live generation is itself a symlink escaping the output tree", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                generator.generate(buildBlueprint(), cwd);
-                const migrated = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
-                    cwd,
-                );
-                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
-
-                // Plant a convincing-looking external directory -- a plain regular build-info.json sitting
-                // where a leaf-only check would expect one -- so only an ancestor-aware check catches this.
                 const outsideDir = path.join(cwd, "outside-secret");
                 fs.mkdirSync(outsideDir, {recursive: true});
                 fs.writeFileSync(path.join(outsideDir, "build-info.json"), '{"leaked": true}');
 
-                const generationDir = path.join(path.dirname(liveLinkPathOf(migrated.projectRoot)), originalLiveTarget);
-                const srcGeneratedDir = path.join(generationDir, "src", "generated");
+                const srcGeneratedDir = path.join(first.projectRoot, "src", "generated");
                 fs.rmSync(srcGeneratedDir, {recursive: true});
                 fs.symlinkSync(outsideDir, srcGeneratedDir);
 
-                expect(() =>
-                    generator.generate(
-                        buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
-                        cwd,
-                    ),
-                ).toThrow(/is a symlink, not the plain directory/);
+                let thrown: Error | undefined;
+                try {
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
+                } catch (error) {
+                    thrown = error as Error;
+                }
 
-                // The escape target is completely untouched -- neither read nor deleted -- and "live" was
-                // never repointed, so the rejection happened before any output mutation.
+                expect(thrown?.message).toContain(srcGeneratedDir);
+                expect(thrown?.message).toContain("is a symlink, not the plain directory");
+                // The escape target is completely untouched -- neither read nor deleted.
                 expect(fs.existsSync(path.join(outsideDir, "build-info.json"))).toBe(true);
                 expect(fs.readFileSync(path.join(outsideDir, "build-info.json"), "utf-8")).toBe('{"leaked": true}');
-                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
             });
 
-            it("fails closed, without reading/deleting the escape target, when an intermediate ancestor directory (\"src\") inside the live generation is itself a symlink escaping the output tree", () => {
+            it("fails closed, without reading/deleting the escape target, when the intermediate \"src\" ancestor directory is itself a symlink escaping the output tree", () => {
                 const generator = new GamePackageGenerator("1.3.0");
-                generator.generate(buildBlueprint(), cwd);
-                const migrated = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
-                    cwd,
-                );
-                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
+                const first = generator.generate(buildBlueprint(), cwd);
 
                 const outsideDir = path.join(cwd, "outside-secret");
                 fs.mkdirSync(path.join(outsideDir, "generated"), {recursive: true});
                 fs.writeFileSync(path.join(outsideDir, "generated", "build-info.json"), '{"leaked": true}');
 
-                const generationDir = path.join(path.dirname(liveLinkPathOf(migrated.projectRoot)), originalLiveTarget);
-                const srcDir = path.join(generationDir, "src");
+                const srcDir = path.join(first.projectRoot, "src");
                 fs.rmSync(srcDir, {recursive: true});
                 fs.symlinkSync(outsideDir, srcDir);
 
-                expect(() =>
-                    generator.generate(
-                        buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
-                        cwd,
-                    ),
-                ).toThrow(/is a symlink, not the plain directory/);
-
-                expect(fs.existsSync(path.join(outsideDir, "generated", "build-info.json"))).toBe(true);
-                expect(fs.readFileSync(path.join(outsideDir, "generated", "build-info.json"), "utf-8")).toBe('{"leaked": true}');
-                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
-            });
-
-            it("fails closed when the live generation's own build-info.json entry is missing", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                generator.generate(buildBlueprint(), cwd);
-                const migrated = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
-                    cwd,
-                );
-                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
-
-                const buildInfoInGeneration = path.join(
-                    path.dirname(liveLinkPathOf(migrated.projectRoot)),
-                    originalLiveTarget,
-                    "src",
-                    "generated",
-                    "build-info.json",
-                );
-                fs.rmSync(buildInfoInGeneration);
-
-                expect(() =>
-                    generator.generate(
-                        buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
-                        cwd,
-                    ),
-                ).toThrow(/build-info\.json.*missing/);
-
-                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
-            });
-
-            it("fails closed when a migrated public path has been replaced with a plain file instead of its expected symlink through \"live\"", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                generator.generate(buildBlueprint(), cwd);
-                const migrated = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
-                    cwd,
-                );
-
-                const buildInfoPath = path.join(migrated.projectRoot, "src", "generated", "build-info.json");
-                fs.rmSync(buildInfoPath);
-                fs.writeFileSync(buildInfoPath, '{"forged": true}');
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}), cwd),
-                ).toThrow(/build-info\.json.*not the symlink "pokie build" expects/);
-            });
-
-            it("still migrates and rebuilds atomically once every public path is confirmed trustworthy", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                generator.generate(buildBlueprint(), cwd);
-                const migrated = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
-                    cwd,
-                );
-                for (const relativePath of GENERATED_PACKAGE_FILES) {
-                    expect(fs.lstatSync(path.join(migrated.projectRoot, ...relativePath.split("/"))).isSymbolicLink()).toBe(true);
+                let thrown: Error | undefined;
+                try {
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
+                } catch (error) {
+                    thrown = error as Error;
                 }
 
-                const third = generator.generate(
-                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
-                    cwd,
-                );
-
-                const pkg = JSON.parse(fs.readFileSync(path.join(third.projectRoot, "package.json"), "utf-8"));
-                expect(pkg.version).toBe("0.3.0");
-                expectOnlyLiveGenerationPresent(third.projectRoot);
+                expect(thrown?.message).toContain(srcDir);
+                expect(thrown?.message).toContain("is a symlink, not the plain directory");
+                expect(fs.existsSync(path.join(outsideDir, "generated", "build-info.json"))).toBe(true);
+                expect(fs.readFileSync(path.join(outsideDir, "generated", "build-info.json"), "utf-8")).toBe('{"leaked": true}');
             });
         });
     });
