@@ -275,4 +275,49 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(screen.getByRole("radio", {name: "JSON"}));
         expect(jsonTextareaValue()).not.toContain("before-new");
     });
+
+    it("clears a stale validation result after Blank replaces the draft", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createFakeFetch((call) => {
+            if (call.url === "/api/home/blueprints/validate") {
+                return {ok: true, status: 200, body: {status: "ok", warnings: []}};
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Validate"}));
+        expect(await screen.findByText("Valid — no issues found.")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(await screen.findByRole("button", {name: "Blank"}));
+
+        expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();
+    });
+
+    it("clears a stale validation result after Generate random's Use this blueprint replaces the draft", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createFakeFetch((call) => {
+            if (call.url === "/api/home/blueprints/validate") {
+                return {ok: true, status: 200, body: {status: "ok", warnings: []}};
+            }
+            if (call.url === RANDOM_URL) {
+                return {ok: true, status: 200, body: randomBlueprintBody()};
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Validate"}));
+        expect(await screen.findByText("Valid — no issues found.")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(await screen.findByRole("button", {name: "Generate random"}));
+        await user.click(screen.getByRole("button", {name: "Generate"}));
+        expect(await screen.findByText('Generated "Random Slot" (id: "random-slot") from seed 42.')).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Use this blueprint"}));
+
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();
+    });
 });

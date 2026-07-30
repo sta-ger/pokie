@@ -161,7 +161,10 @@ export function BlueprintEditorPage({
     // one place, uniformly makes *any* of those stale a previous validation result: section statuses
     // (describeSectionStatus already returns "neutral" for "idle"), the guided progress list/NextStepCallout
     // ("Ready to build" only shows for "ok"), and guided Build-gating (below, keyed off "ok") all revert for
-    // free, with no separate reset needed at each call site. `handleNew` no longer sets this explicitly.
+    // free, with no separate reset needed at each call site. handleChooseBlank/handleUseRandomBlueprint
+    // set this explicitly too (see their own doc comments) purely to avoid a one-frame stale-validation
+    // flash between their own replace and this effect running; every other bump still relies on this
+    // alone.
     useEffect(() => {
         setValidationView({status: "idle"});
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -196,7 +199,9 @@ export function BlueprintEditorPage({
 
     // New -> Blank: the New flow's minimal option (see NewBlueprintDialog's own doc comment) -- same
     // wholesale-replace bookkeeping New always did, now reached through the dialog's dirty-confirm gate
-    // instead of directly from the "New Blueprint" button.
+    // instead of directly from the "New Blueprint" button. `setValidationView` here is set explicitly
+    // (rather than relying solely on the revision-bump effect below) so the Validation panel can never
+    // paint even one frame of the *replaced* draft's own errors/warnings still describing the prior one.
     const handleChooseBlank = (): void => {
         const snapshot = captureReplaceSnapshot();
         const revisionBeforeReplace = editor.state.revision;
@@ -206,6 +211,7 @@ export function BlueprintEditorPage({
         overwriteConfirmedForPath.current = undefined;
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
+        setValidationView({status: "idle"});
         setUndoSnapshot({...snapshot, validAtRevision: revisionBeforeReplace + 1});
         closeNewDialog();
     };
@@ -215,7 +221,7 @@ export function BlueprintEditorPage({
     // starter object or a loaded file -- see StudioBlueprintService.random()'s own doc comment for why
     // this is the exact same RandomGameBlueprintGenerator "pokie build random"/"pokie create --random"
     // use. Never saved to a path of its own (there isn't one yet), so `blueprintPath` clears exactly
-    // like Blank.
+    // like Blank. Explicit `setValidationView` reset for the same reason as handleChooseBlank's own.
     const handleUseRandomBlueprint = (blueprint: unknown): void => {
         const snapshot = captureReplaceSnapshot();
         const revisionBeforeReplace = editor.state.revision;
@@ -225,6 +231,7 @@ export function BlueprintEditorPage({
         overwriteConfirmedForPath.current = undefined;
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
+        setValidationView({status: "idle"});
         setUndoSnapshot({...snapshot, validAtRevision: revisionBeforeReplace + 1});
         closeNewDialog();
     };
