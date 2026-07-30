@@ -1,11 +1,23 @@
-import {Button, Text} from "@mantine/core";
-import {useRef, useState} from "react";
+import {Button, Stack, Text} from "@mantine/core";
+import {useId, useRef, useState} from "react";
 import {buildBlueprint, previewBlueprintBuild} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {BuildResultDisplay} from "../common/BuildResultDisplay";
+import {CodeBlock} from "../common/CodeBlock";
+import {FileList} from "../common/FileList";
+import {IssueList} from "../common/IssueList";
+import {RecoveryNotice} from "../common/RecoveryNotice";
 import {errorMessage} from "../../domain/errorMessage";
-import {describeBuildPreview, describeBuildResult, type BuildPreviewView, type BuildProjectView} from "../../domain/interpret/Home";
+import {formatTimestamp} from "../../domain/formatTimestamp";
+import {diffBlueprintTopLevelFields, hasBlueprintChanged} from "../../domain/interpret/BlueprintEditor";
+import {
+    describeBuildPreview,
+    describeBuildResult,
+    type BuildPreviewView,
+    type BuildProjectView,
+    type BuiltBlueprintSnapshot,
+} from "../../domain/interpret/Home";
 import {describePathActionError} from "../../domain/pathActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
@@ -28,24 +40,146 @@ function buildOutputAutoDestination(blueprint: Record<string, unknown>): string 
     return typeof id === "string" && id.trim().length > 0 ? id : undefined;
 }
 
+// A field present in only one of the two blueprints renders as JSON `undefined`, which
+// JSON.stringify silently drops -- spelled out explicitly here instead, so a field that was added or
+// removed since the build doesn't blank out and read as if nothing had changed at all.
+function formatBlueprintFieldValue(value: unknown): string {
+    return value === undefined ? "(not present)" : JSON.stringify(value, null, 2);
+}
+
+// The "Compare built blueprint" control's own revealed content -- one row per differing top-level field
+// (from diffBlueprintTopLevelFields), each showing the exact value the last build used side by side with
+// the current draft's own value. Purely a rendering of the two already-known objects passed in --
+// reads `current`/`built`, never writes either, so opening/closing this view can never itself change the
+// draft or the built snapshot.
+function BuiltBlueprintCompareView({fields, current, built}: {fields: string[]; current: Record<string, unknown>; built: Record<string, unknown>}) {
+    return (
+        <Stack gap="md">
+            {fields.map((field) => (
+                <div key={field}>
+                    <Text fw={600} size="sm" mb={4}>
+                        {field}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                        Built
+                    </Text>
+                    <CodeBlock>{formatBlueprintFieldValue(built[field])}</CodeBlock>
+                    <Text size="xs" c="dimmed" mt={4}>
+                        Current draft
+                    </Text>
+                    <CodeBlock>{formatBlueprintFieldValue(current[field])}</CodeBlock>
+                </div>
+            ))}
+        </Stack>
+    );
+}
+
+// The persistent "last successful build" block -- rendered from `builtSnapshot`, which the parent keeps
+// alive across this panel's own key={`build-${formGeneration}`} remount and across a later failed
+// rebuild (the transient `result` state going to "error"/"failed" never touches this). `changed` is a
+// content comparison of the *current* draft against the exact blueprint that produced this build, never
+// a revision-number one -- see hasBlueprintChanged's own doc comment for why "Restore built blueprint"
+// itself would otherwise permanently defeat a revision-based check.
+function BuiltBlueprintSummary({
+    snapshot,
+    blueprint,
+    onOpen,
+    onRestore,
+}: {
+    snapshot: BuiltBlueprintSnapshot;
+    blueprint: Record<string, unknown>;
+    onOpen: () => void;
+    onRestore: () => void;
+}) {
+    const changed = hasBlueprintChanged(blueprint, snapshot.blueprint as Record<string, unknown>);
+    const changedFields = changed ? diffBlueprintTopLevelFields(blueprint, snapshot.blueprint as Record<string, unknown>) : [];
+    // Local to this summary, not lifted to BlueprintEditorPage like `builtSnapshot` itself -- purely a
+    // "is the comparison panel open" UI toggle, nothing about it needs to survive this component's own
+    // remount (a New/Random/Load already discards the whole built snapshot along with it).
+    const [compareOpened, setCompareOpened] = useState(false);
+    const compareId = useId();
+
+    return (
+        <Stack gap="sm">
+            <Text style={{overflowWrap: "anywhere"}}>
+                Last built &quot;{snapshot.manifest.name}&quot; (id: &quot;{snapshot.manifest.id}&quot;, v{snapshot.manifest.version}) at{" "}
+                {formatTimestamp(snapshot.buildInfo.generatedAt)} in &quot;{snapshot.projectRoot}&quot;
+                {snapshot.unchanged ? " (unchanged — deterministic rebuild)." : "."}
+            </Text>
+            <Text size="xs" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                Blueprint hash: {snapshot.buildInfo.blueprintHash}
+            </Text>
+            <IssueList title="Warnings" issues={snapshot.warnings} />
+            <FileList title="Created files" files={snapshot.createdFiles} />
+            <QuickActions>
+                <Button onClick={onOpen}>Open in Studio</Button>
+                {changed && (
+                    <Button
+                        variant="default"
+                        aria-expanded={compareOpened}
+                        aria-controls={compareId}
+                        onClick={() => setCompareOpened((opened) => !opened)}
+                    >
+                        Compare built blueprint
+                    </Button>
+                )}
+                {changed && (
+                    <Button variant="default" onClick={onRestore}>
+                        Restore built blueprint
+                    </Button>
+                )}
+            </QuickActions>
+            {changed ? (
+                <RecoveryNotice
+                    message={`Unbuilt changes — the draft has changed since this build (${changedFields.join(", ") || "top-level fields"} differ). Rebuild to include them, or discard them to go back to what was built.`}
+                    actionLabel="Discard unbuilt changes"
+                    onAction={onRestore}
+                />
+            ) : (
+                <Text size="xs" c="dimmed">
+                    Matches the last build — no unbuilt changes.
+                </Text>
+            )}
+            {changed && (
+                // Always mounted (toggled via `hidden`, not conditional rendering) so `aria-controls`
+                // above never names an element absent from the DOM -- same convention as
+                // AdvancedDisclosure's own controlled region.
+                <PageSection id={compareId} legend="Comparison against the last build" hidden={!compareOpened}>
+                    <BuiltBlueprintCompareView
+                        fields={changedFields}
+                        current={blueprint}
+                        built={snapshot.blueprint as Record<string, unknown>}
+                    />
+                </PageSection>
+            )}
+        </Stack>
+    );
+}
+
 export function BlueprintBuildPanel({
     blueprint,
     sourcePath,
-    revision,
-    onBuildSuccess,
+    builtSnapshot,
+    onBuilt,
+    onRestoreBuilt,
     blocked = false,
     blockedMessage = "Fix the validation errors above before building.",
 }: {
     blueprint: Record<string, unknown>;
     sourcePath?: string;
-    // The editor's own revision at the moment this exact blueprint snapshot was rendered -- captured at
-    // build-request time (not response time) so a caller can tell "this specific edit was built" apart
-    // from any further edits made while the build was in flight (see onBuildSuccess below).
-    revision: number;
-    // Fired with the revision that was actually built, right alongside the existing "Open in Studio"
-    // success state -- lets BlueprintEditorPage treat a successful build as a clean/no-longer-dirty
-    // checkpoint.
-    onBuildSuccess?: (builtRevision: number) => void;
+    // The persistent last-successful-build record -- owned by BlueprintEditorPage, not this panel's own
+    // local state (see BuiltBlueprintSummary's own doc comment for why).
+    builtSnapshot?: BuiltBlueprintSnapshot;
+    // Fired with the full record on a successful build. Deliberately NOT folded into the same
+    // "mark clean" bookkeeping Save uses: building a package is not the same fact as the source blueprint
+    // being saved to disk, and conflating the two used to make an unsaved draft silently read as "clean"
+    // (no unsaved-changes warning) the moment it happened to build successfully -- see
+    // BlueprintEditorPage's own cleanRevisionRef doc comment.
+    onBuilt?: (snapshot: BuiltBlueprintSnapshot) => void;
+    // Wholesale-replaces the draft with the exact blueprint that produced `builtSnapshot` -- both
+    // "Restore built blueprint" and "Discard unbuilt changes" in BuiltBlueprintSummary call this same one
+    // operation, gated behind the same confirm below.
+    onRestoreBuilt?: (blueprint: unknown) => void;
     // Disables only "Build Package" (never the non-destructive "Build Preview") -- set when the blueprint
     // is known-invalid, so the happy path never lets a build be attempted that the server would reject
     // anyway. Warnings-only validation results never set this.
@@ -75,7 +209,6 @@ export function BlueprintBuildPanel({
     const [outDir, setOutDir] = useState("");
     const [preview, setPreview] = useState<BuildPreviewView>({status: "idle"});
     const [result, setResult] = useState<BuildProjectView>({status: "idle"});
-    const [lastProjectRoot, setLastProjectRoot] = useState<string>();
     const lastBuiltOutDir = useRef<string | undefined>(undefined);
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
@@ -93,10 +226,6 @@ export function BlueprintBuildPanel({
 
     const runBuild = (): void => {
         const resolvedOutDir = outDir.trim() || undefined;
-        // Captured now, at request-send time -- if the user keeps editing while this build is in flight,
-        // the *built* revision must still be reported as whatever was actually sent, not whatever the
-        // revision happens to be once the response arrives.
-        const builtRevision = revision;
         const doBuild = (): void => {
             if (!buildGuard.begin()) {
                 return;
@@ -106,9 +235,20 @@ export function BlueprintBuildPanel({
                 .then((view) => {
                     setResult(withOutDirResultError(describeBuildResult(view)));
                     if (view.status === "ok") {
-                        setLastProjectRoot(view.projectRoot);
                         lastBuiltOutDir.current = resolvedOutDir;
-                        onBuildSuccess?.(builtRevision);
+                        // `blueprint` here is the exact value this closure was built with (this render's
+                        // own prop, fixed for the lifetime of this specific request) -- a further edit
+                        // made while the build is in flight changes a *later* render's `blueprint`, never
+                        // this one, so the snapshot always describes what was actually sent.
+                        onBuilt?.({
+                            blueprint,
+                            manifest: view.manifest,
+                            projectRoot: view.projectRoot,
+                            buildInfo: view.buildInfo,
+                            unchanged: view.unchanged,
+                            warnings: view.warnings,
+                            createdFiles: view.createdFiles,
+                        });
                     }
                 })
                 .catch((error: unknown) => setResult({status: "error", message: describeOutDirFailure(errorMessage(error))}))
@@ -122,6 +262,22 @@ export function BlueprintBuildPanel({
         }
         doBuild();
     };
+
+    // Both "Restore built blueprint" and "Discard unbuilt changes" (BuiltBlueprintSummary below) call
+    // this one operation -- a destructive wholesale replace of the current draft, gated behind the same
+    // confirm every other destructive action in this codebase uses.
+    const handleRestoreBuilt = (): void => {
+        if (!builtSnapshot) {
+            return;
+        }
+        confirm("Discard the changes made since the last build and restore the built blueprint?", () => onRestoreBuilt?.(builtSnapshot.blueprint));
+    };
+
+    // Suppressed to "idle" once a build reaches "ok" -- BuiltBlueprintSummary below (driven by the
+    // persistent `builtSnapshot`, not this transient `result`) is the one place a successful build is
+    // rendered, so the two never show the same success twice, and a later failed rebuild's "error"/
+    // "failed" status here never hides that still-valid prior success.
+    const transientResult: BuildProjectView = result.status === "ok" ? {status: "idle"} : result;
 
     return (
         <PageSection legend="Build">
@@ -150,14 +306,20 @@ export function BlueprintBuildPanel({
             )}
 
             <BuildPreviewDisplay view={preview} />
-            <BuildResultDisplay
-                view={result}
-                onOpen={() => {
-                    if (lastProjectRoot !== undefined) {
-                        openAndNavigate(lastProjectRoot).catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}));
+            {/* onOpen is never actually invoked here -- "ok" is suppressed out of `transientResult` above,
+                the callback only satisfies BuildResultDisplay's required prop. */}
+            <BuildResultDisplay view={transientResult} onOpen={() => undefined} />
+
+            {builtSnapshot && (
+                <BuiltBlueprintSummary
+                    snapshot={builtSnapshot}
+                    blueprint={blueprint}
+                    onOpen={() =>
+                        openAndNavigate(builtSnapshot.projectRoot).catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}))
                     }
-                }}
-            />
+                    onRestore={handleRestoreBuilt}
+                />
+            )}
         </PageSection>
     );
 }

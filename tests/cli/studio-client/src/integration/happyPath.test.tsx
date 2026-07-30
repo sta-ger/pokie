@@ -215,8 +215,14 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         const openInStudio = await screen.findByRole("button", {name: "Open in Studio"});
 
         // 5. Building's success action lands us in the Project Dashboard (the same "Open in Studio"
-        // bridge the app already uses everywhere a build succeeds).
+        // bridge the app already uses everywhere a build succeeds) -- via the same guarded-navigation
+        // confirm every other "leave a dirty Design & Build draft" exit uses (see openProjectGuard.test.tsx):
+        // the symbol added in step 2 was never saved to a source blueprint file, and building a package is
+        // a distinct fact from that (see BlueprintBuildPanel's own `onBuilt` doc comment), so the draft is
+        // still genuinely dirty here.
         await user.click(openInStudio);
+        expect(await screen.findByText("You have unsaved changes in Design & Build. Leave and lose them?")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Leave"}));
         expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
 
         // 6. Overview recommends running a simulation once the project is known-valid... but validation
