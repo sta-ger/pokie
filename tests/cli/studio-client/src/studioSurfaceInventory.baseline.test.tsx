@@ -533,6 +533,28 @@ describe("Scoped path-action error remediation baseline", () => {
             // Matches StudioBlueprintService.build()'s own GamePackageGenerator.generate() rejection
             // shape for an output directory it can't write to -- reported as a 200 {status: "error"}
             // domain result, never an HTTP-level failure (see StudioServer's own handleBlueprintBuild).
+            // P2-POLISH-09 first performs the same read-only destination preview used by Build Preview
+            // before allowing a write. Model that successful, empty-destination preflight explicitly so
+            // this test still reaches the Build Package domain failure it is intended to cover.
+            "/api/home/blueprints/build-preview": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    warnings: [],
+                    manifest: {id: "my-slot", name: "My Slot", version: "1.0.0"},
+                    reels: 5,
+                    rows: 3,
+                    symbolsCount: 3,
+                    blueprintHash: "sha256:preview",
+                    expectedFiles: [],
+                    projectRoot: "/no/such/dir",
+                    destinationHasContent: false,
+                    createFiles: [],
+                    updateFiles: [],
+                    deleteFiles: [],
+                },
+            }),
             "/api/home/blueprints/build": () => ({ok: true, status: 200, body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir'"}}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
@@ -617,6 +639,27 @@ describe("Scoped path-action error remediation baseline", () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            // Direct Build now performs a read-only destination preflight before its write. Keeping the
+            // preflight successful and empty isolates the following ENOENT result from the write itself.
+            "/api/home/projects/build/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    warnings: [],
+                    manifest: {id: "my-slot", name: "My Slot", version: "1.0.0"},
+                    reels: 5,
+                    rows: 3,
+                    symbolsCount: 3,
+                    blueprintHash: "sha256:preview",
+                    expectedFiles: [],
+                    projectRoot: "/no/such/dir",
+                    destinationHasContent: false,
+                    createFiles: [],
+                    updateFiles: [],
+                    deleteFiles: [],
+                },
+            }),
             "/api/home/projects/build": () => ({
                 ok: true,
                 status: 200,
@@ -626,11 +669,9 @@ describe("Scoped path-action error remediation baseline", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
 
         await user.type(screen.getByLabelText("Blueprint JSON path", {exact: false}), "./blueprint.json");
-        // getAllByLabelText, index 0: "Output directory (optional)" also labels the guided Design & Build
-        // instance's own Build panel (Home keeps every tab permanently mounted, see HomePage.tsx), which
-        // renders first -- harmless either way here, since the mocked response never inspects which field
-        // received the text, only that Build was clicked.
-        await user.type(screen.getAllByLabelText("Output directory (optional)")[0], "./no/such/dir");
+        // Home keeps tabs mounted; the second field belongs to Advanced Tools / Build from Blueprint.
+        // Fill the actual request's outDir so this remains an end-to-end scoped-path scenario.
+        await user.type(screen.getAllByLabelText("Output directory (optional)")[1], "./no/such/dir");
         await user.click(screen.getByRole("button", {name: "Build"}));
 
         const alerts = await screen.findAllByRole("alert");
