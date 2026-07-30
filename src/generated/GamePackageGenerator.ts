@@ -71,10 +71,12 @@ export class GamePackageGenerator implements GamePackageGenerating {
 
         const projectRoot = outDir !== undefined ? path.resolve(cwd, outDir) : path.join(cwd, id);
         const projectRootExists = fs.existsSync(projectRoot);
-        const previousBuildInfo = projectRootExists ? this.readPreviousBuildInfo(projectRoot) : undefined;
+        // Validates the existing layout (including every public generated-file path's own type/target)
+        // before anything below ever reads through one of those paths -- readPreviousBuildInfo included.
         if (projectRootExists) {
             this.assertSafeToRebuild(projectRoot);
         }
+        const previousBuildInfo = projectRootExists ? this.readPreviousBuildInfo(projectRoot) : undefined;
 
         const buildInfo = buildGameBuildInfo(
             blueprint,
@@ -485,6 +487,12 @@ export class GamePackageGenerator implements GamePackageGenerating {
         // this can't be gated on one having been found.
         this.assertTrustedGenerationsLayout(projectRoot);
 
+        // Also unconditional, and also before any recognition check: a known-recognized package (via
+        // build-info.json's "files") is not enough to trust what's actually sitting at each of those
+        // paths right now -- see assertTrustedPublicPaths.
+        const liveLinkPath = path.join(projectRoot, GENERATIONS_DIR_NAME, LIVE_DIR_NAME);
+        this.assertTrustedPublicPaths(projectRoot, liveLinkPath);
+
         const knownFiles = this.readKnownGeneratedFiles(projectRoot);
         const conflicting = GENERATED_PACKAGE_FILES.filter(
             (relativePath) => !knownFiles.includes(relativePath) && fs.existsSync(path.join(projectRoot, ...relativePath.split("/"))),
@@ -503,7 +511,6 @@ export class GamePackageGenerator implements GamePackageGenerating {
         // is now missing, the layout is an ambiguous partial one that migrateToLiveScheme has no safe
         // way to clone from (it would discover the gap mid-clone, after already committing to a
         // rebuild). Fail closed here instead, before generate() does anything else.
-        const liveLinkPath = path.join(projectRoot, GENERATIONS_DIR_NAME, LIVE_DIR_NAME);
         if (knownFiles.length > 0 && !this.pathExists(liveLinkPath)) {
             const missing = knownFiles.filter(
                 (relativePath) => !fs.existsSync(path.join(projectRoot, ...relativePath.split("/"))),
@@ -567,6 +574,61 @@ export class GamePackageGenerator implements GamePackageGenerating {
                 `"${liveLinkPath}" does not point at a generation this generator produced (expected a ` +
                     `"${GENERATION_DIR_PREFIX}*" directory contained in "${generationsDir}"). ${remediation}`,
             );
+        }
+    }
+
+    // Validates each of the four fixed public paths (GENERATED_PACKAGE_FILES) before generate() does
+    // anything that would trust their current type or target: migrateToLiveScheme's fs.copyFileSync
+    // clone (which *follows* a symlink to read its target's bytes) if this package hasn't reached the
+    // live-directory scheme yet, or the fact that an ordinary rebuild past that point never re-touches
+    // the public paths at all -- it only repoints LIVE_DIR_NAME, so a public path that's since been
+    // swapped out from under this generator would otherwise keep resolving to whatever an attacker put
+    // there, silently out of sync with every future "live" build. Recognizing a package (via a
+    // convincing build-info.json) is not enough on its own; what's actually sitting at each path right
+    // now must independently match what this generator would have put there:
+    //  - before migration, every public path that exists must be a plain regular file -- never a
+    //    symlink (publishPlainFiles/ensurePublicSymlinks are the only things that ever create these
+    //    paths, and neither ever writes a symlink before migration has happened) or anything else.
+    //  - once migrated, every public path must exist and be exactly the relative symlink through
+    //    LIVE_DIR_NAME that ensurePublicSymlinks would itself have wired up for it.
+    // Every check here is lstat/readlink-based -- a symlink's target is never dereferenced, read,
+    // copied, or written -- so a hostile target is inert no matter which branch rejects it.
+    private assertTrustedPublicPaths(projectRoot: string, liveLinkPath: string): void {
+        const liveEstablished = this.isSymlink(liveLinkPath);
+        const remediation = `Refusing to rebuild "${projectRoot}" -- remove the conflicting file(s) (or all of "${projectRoot}") and run "pokie build" fresh.`;
+
+        for (const relativePath of GENERATED_PACKAGE_FILES) {
+            const realPath = path.join(projectRoot, ...relativePath.split("/"));
+
+            let stats: fs.Stats | undefined;
+            try {
+                stats = fs.lstatSync(realPath);
+            } catch {
+                stats = undefined;
+            }
+
+            if (!liveEstablished) {
+                if (stats !== undefined && !stats.isFile()) {
+                    throw new Error(
+                        `"${realPath}" is a ${stats.isSymbolicLink() ? "symlink" : stats.isDirectory() ? "directory" : "special file"}, ` +
+                            `not the plain file "pokie build" writes before a package has migrated onto its live-directory scheme. ${remediation}`,
+                    );
+                }
+                continue;
+            }
+
+            if (stats === undefined) {
+                throw new Error(
+                    `"${realPath}" is missing, but "pokie build" already migrated "${projectRoot}" onto its live-directory scheme. ${remediation}`,
+                );
+            }
+
+            const expectedTarget = path.relative(path.dirname(realPath), path.join(liveLinkPath, ...relativePath.split("/")));
+            if (!stats.isSymbolicLink() || !this.isAlreadyCorrectSymlink(realPath, expectedTarget)) {
+                throw new Error(
+                    `"${realPath}" is not the symlink "pokie build" expects through "${liveLinkPath}". ${remediation}`,
+                );
+            }
         }
     }
 
