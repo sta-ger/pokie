@@ -1,9 +1,10 @@
 import {Button, Stack, Text} from "@mantine/core";
-import {useRef, useState} from "react";
+import {useId, useRef, useState} from "react";
 import {buildBlueprint, previewBlueprintBuild} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {BuildResultDisplay} from "../common/BuildResultDisplay";
+import {CodeBlock} from "../common/CodeBlock";
 import {FileList} from "../common/FileList";
 import {IssueList} from "../common/IssueList";
 import {RecoveryNotice} from "../common/RecoveryNotice";
@@ -39,6 +40,40 @@ function buildOutputAutoDestination(blueprint: Record<string, unknown>): string 
     return typeof id === "string" && id.trim().length > 0 ? id : undefined;
 }
 
+// A field present in only one of the two blueprints renders as JSON `undefined`, which
+// JSON.stringify silently drops -- spelled out explicitly here instead, so a field that was added or
+// removed since the build doesn't blank out and read as if nothing had changed at all.
+function formatBlueprintFieldValue(value: unknown): string {
+    return value === undefined ? "(not present)" : JSON.stringify(value, null, 2);
+}
+
+// The "Compare built blueprint" control's own revealed content -- one row per differing top-level field
+// (from diffBlueprintTopLevelFields), each showing the exact value the last build used side by side with
+// the current draft's own value. Purely a rendering of the two already-known objects passed in --
+// reads `current`/`built`, never writes either, so opening/closing this view can never itself change the
+// draft or the built snapshot.
+function BuiltBlueprintCompareView({fields, current, built}: {fields: string[]; current: Record<string, unknown>; built: Record<string, unknown>}) {
+    return (
+        <Stack gap="md">
+            {fields.map((field) => (
+                <div key={field}>
+                    <Text fw={600} size="sm" mb={4}>
+                        {field}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                        Built
+                    </Text>
+                    <CodeBlock>{formatBlueprintFieldValue(built[field])}</CodeBlock>
+                    <Text size="xs" c="dimmed" mt={4}>
+                        Current draft
+                    </Text>
+                    <CodeBlock>{formatBlueprintFieldValue(current[field])}</CodeBlock>
+                </div>
+            ))}
+        </Stack>
+    );
+}
+
 // The persistent "last successful build" block -- rendered from `builtSnapshot`, which the parent keeps
 // alive across this panel's own key={`build-${formGeneration}`} remount and across a later failed
 // rebuild (the transient `result` state going to "error"/"failed" never touches this). `changed` is a
@@ -58,6 +93,11 @@ function BuiltBlueprintSummary({
 }) {
     const changed = hasBlueprintChanged(blueprint, snapshot.blueprint as Record<string, unknown>);
     const changedFields = changed ? diffBlueprintTopLevelFields(blueprint, snapshot.blueprint as Record<string, unknown>) : [];
+    // Local to this summary, not lifted to BlueprintEditorPage like `builtSnapshot` itself -- purely a
+    // "is the comparison panel open" UI toggle, nothing about it needs to survive this component's own
+    // remount (a New/Random/Load already discards the whole built snapshot along with it).
+    const [compareOpened, setCompareOpened] = useState(false);
+    const compareId = useId();
 
     return (
         <Stack gap="sm">
@@ -74,6 +114,16 @@ function BuiltBlueprintSummary({
             <QuickActions>
                 <Button onClick={onOpen}>Open in Studio</Button>
                 {changed && (
+                    <Button
+                        variant="default"
+                        aria-expanded={compareOpened}
+                        aria-controls={compareId}
+                        onClick={() => setCompareOpened((opened) => !opened)}
+                    >
+                        Compare built blueprint
+                    </Button>
+                )}
+                {changed && (
                     <Button variant="default" onClick={onRestore}>
                         Restore built blueprint
                     </Button>
@@ -89,6 +139,18 @@ function BuiltBlueprintSummary({
                 <Text size="xs" c="dimmed">
                     Matches the last build — no unbuilt changes.
                 </Text>
+            )}
+            {changed && (
+                // Always mounted (toggled via `hidden`, not conditional rendering) so `aria-controls`
+                // above never names an element absent from the DOM -- same convention as
+                // AdvancedDisclosure's own controlled region.
+                <PageSection id={compareId} legend="Comparison against the last build" hidden={!compareOpened}>
+                    <BuiltBlueprintCompareView
+                        fields={changedFields}
+                        current={blueprint}
+                        built={snapshot.blueprint as Record<string, unknown>}
+                    />
+                </PageSection>
             )}
         </Stack>
     );

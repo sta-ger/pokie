@@ -163,6 +163,53 @@ describe("Guided Design & Build: sectioned layout", () => {
         expect(screen.getAllByText(/blueprint-manifest-invalid-id/)).toHaveLength(2);
     }, 60000);
 
+    it("exposes an explicit Compare built blueprint action once the draft diverges from the last build, without mutating either blueprint", async () => {
+        const user = userEvent.setup();
+        renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
+
+        await user.type(screen.getAllByLabelText("Game id")[0], "sectioned");
+        await user.type(screen.getAllByLabelText("Game name")[0], "Sectioned");
+
+        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
+        await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
+
+        await user.click(screen.getAllByRole("button", {name: "Build Package"})[0]);
+        await screen.findByRole("button", {name: "Open in Studio"});
+
+        // No compare/restore action yet -- the draft still matches exactly what was just built.
+        expect(screen.queryByRole("button", {name: "Compare built blueprint"})).not.toBeInTheDocument();
+        expect(screen.getByText("Matches the last build — no unbuilt changes.")).toBeInTheDocument();
+
+        // Diverge the draft from the built snapshot. Fields here only commit onBlur (see
+        // MetadataFieldset's own `defaultValue`/`onBlur` wiring), so an explicit tab-away is needed for
+        // the typed value to actually reach the blueprint.
+        const gameNameInput = screen.getAllByLabelText("Game name")[0];
+        await user.clear(gameNameInput);
+        await user.type(gameNameInput, "Sectioned Renamed");
+        await user.tab();
+
+        const compareButton = await screen.findByRole("button", {name: "Compare built blueprint"});
+        expect(compareButton).toHaveAttribute("aria-expanded", "false");
+        // Restore/discard remain available alongside the new compare action.
+        expect(screen.getByRole("button", {name: "Restore built blueprint"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Discard unbuilt changes"})).toBeInTheDocument();
+
+        await user.click(compareButton);
+        expect(compareButton).toHaveAttribute("aria-expanded", "true");
+
+        const comparison = screen.getByRole("group", {name: "Comparison against the last build"});
+        expect(within(comparison).getByText("manifest")).toBeInTheDocument();
+        expect(comparison).toHaveTextContent(/"name": "Sectioned"/);
+        expect(comparison).toHaveTextContent(/"name": "Sectioned Renamed"/);
+
+        // Comparing is read-only -- neither the draft nor the built snapshot changed.
+        expect(screen.getAllByLabelText("Game name")[0]).toHaveValue("Sectioned Renamed");
+        expect(screen.getByRole("button", {name: "Restore built blueprint"})).toBeInTheDocument();
+
+        await user.click(compareButton);
+        expect(compareButton).toHaveAttribute("aria-expanded", "false");
+    }, 60000);
+
     it("switches the active section with arrow-key keyboard navigation", async () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
