@@ -51,6 +51,8 @@ import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import {isLoopbackRequest} from "./isLoopbackRequest.js";
 import {isPathWithin} from "./isPathWithin.js";
+import {openInFileManager} from "../openInFileManager.js";
+import {validateOpenFolderRequest, OpenFolderRequestInput} from "./home/validateOpenFolderRequest.js";
 import {buildReplayDownload} from "./replay/buildReplayDownload.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
@@ -125,6 +127,12 @@ export class StudioServer implements StudioServerHandling {
     // remote-rejection path needs a way to say "treat this request as remote" without a real remote
     // peer.
     private readonly isLoopbackRequest: (req: IncomingMessage) => boolean;
+    // Backs POST /api/home/fs/open-folder -- opens a build's own output directory in the OS file
+    // manager, on the machine running Studio's server. Gated by isLoopbackRequest exactly like
+    // nativePickerService above (also a real OS command), so a remote Studio session can never trigger
+    // it. Defaults to the real openInFileManager; overridable in tests so no real OS command is ever
+    // spawned.
+    private readonly openFolder: (folderPath: string) => void;
     private readonly blueprintService: StudioBlueprintService;
     private readonly loadGame: typeof loadPokieGame;
     private readonly gamePackageInspector: GamePackageInspecting;
@@ -155,6 +163,7 @@ export class StudioServer implements StudioServerHandling {
         this.fsBrowseService = options.fsBrowseService ?? new StudioFsBrowseService(this.studioRoot);
         this.nativePickerService = options.nativePickerService ?? new StudioNativePickerService();
         this.isLoopbackRequest = options.isLoopbackRequest ?? isLoopbackRequest;
+        this.openFolder = options.openFolder ?? openInFileManager;
         this.blueprintService = options.blueprintService;
         this.loadGame = options.loadGame ?? loadPokieGame;
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
@@ -338,6 +347,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/fs/native-browse") {
             await this.handleHomeFsNativeBrowse(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/fs/open-folder") {
+            await this.handleHomeFsOpenFolder(req, res);
             return;
         }
 
@@ -842,6 +856,40 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, await this.nativePickerService.pick(validated));
+    }
+
+    // Opens a build's output directory in the OS file manager, on the machine running Studio's server —
+    // "Open output folder" on a successful Build/Rebuild. Gated by isLoopbackRequest exactly like
+    // handleHomeFsNativeBrowse above (also a real OS command), and reported "unavailable" rather than
+    // even attempting it for a remote caller — see that handler's own doc comment. Unlike the native
+    // picker, this never pops a dialog to cancel; the only domain-level failure worth reporting is the
+    // path not actually being a directory on this server, checked before openInFileManager (itself
+    // fire-and-forget, see its own doc comment) is ever called.
+    private async handleHomeFsOpenFolder(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateOpenFolderRequest((body ?? {}) as OpenFolderRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        if (!this.isLoopbackRequest(req)) {
+            this.sendJson(res, 200, {
+                status: "unavailable",
+                reason: "Opening a folder is only available to a Studio session connecting from the same machine running its server.",
+            });
+            return;
+        }
+
+        if (!fs.existsSync(validated.path) || !fs.statSync(validated.path).isDirectory()) {
+            this.sendJson(res, 200, {status: "error", message: `"${validated.path}" does not exist or is not a directory.`});
+            return;
+        }
+
+        this.openFolder(validated.path);
+        this.sendJson(res, 200, {status: "ok"});
     }
 
     // The Blueprint Editor handlers below follow the same validate-then-delegate shape as the Home

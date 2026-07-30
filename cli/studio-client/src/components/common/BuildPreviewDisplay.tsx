@@ -1,6 +1,7 @@
 import {Stack, Text} from "@mantine/core";
 import type {BuildPreviewView} from "../../domain/interpret/Home";
 import {ErrorState} from "./ErrorState";
+import {FileList} from "./FileList";
 import {IssueList} from "./IssueList";
 import {LoadingState} from "./LoadingState";
 
@@ -22,6 +23,9 @@ export function BuildPreviewDisplay({view}: {view: BuildPreviewView}) {
     return (
         <Stack gap="sm">
             <Text fw={600}>Preview</Text>
+            <Text size="xs" c="dimmed">
+                Preview only — nothing is written to disk yet.
+            </Text>
             <IssueList title="Warnings" issues={view.warnings} />
             {view.status === "invalid" ? (
                 <IssueList title="Errors" issues={view.errors} />
@@ -38,8 +42,22 @@ export function BuildPreviewDisplay({view}: {view: BuildPreviewView}) {
                         Blueprint hash: {view.blueprintHash}
                     </Text>
                     <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                        Would generate: {view.expectedFiles.join(", ")}
+                        Destination: {view.projectRoot}
+                        {view.destinationHasContent ? " (already exists — building will update it)" : " (does not exist yet — building will create it)"}
                     </Text>
+                    {view.priorBuild && view.priorBuild.version !== view.manifest.version && (
+                        <Text size="sm">
+                            Version change: {view.priorBuild.version} → {view.manifest.version}
+                        </Text>
+                    )}
+                    {view.priorBuild && view.priorBuild.version === view.manifest.version && (
+                        <Text size="xs" c="dimmed">
+                            Version unchanged: {view.priorBuild.version}
+                        </Text>
+                    )}
+                    <FileList title="Files to create" files={view.createFiles} />
+                    <FileList title="Files to update" files={view.updateFiles} />
+                    <FileList title="Files to delete" files={view.deleteFiles} />
                 </Stack>
             )}
         </Stack>

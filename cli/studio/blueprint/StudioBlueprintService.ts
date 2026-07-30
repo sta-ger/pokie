@@ -25,6 +25,7 @@ import fs from "fs";
 import path from "path";
 import {applyGameBlueprintToProject} from "./applyGameBlueprintToProject.js";
 import {isPathWithin} from "../isPathWithin.js";
+import {previewBuildDestination} from "../previewBuildDestination.js";
 import type {StudioHomeService} from "../home/StudioHomeService.js";
 import type {StudioBuildPreviewView} from "../home/StudioBuildPreviewView.js";
 import type {StudioBuildResult} from "../home/StudioBuildResult.js";
@@ -247,6 +248,7 @@ export class StudioBlueprintService {
             symbolsCount: b.symbols.length,
             blueprintHash: buildInfo.blueprintHash,
             expectedFiles: buildInfo.files ?? [],
+            ...previewBuildDestination(b.manifest.id, process.cwd(), outDir),
         };
     }
 

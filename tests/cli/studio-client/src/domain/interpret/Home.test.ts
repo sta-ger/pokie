@@ -65,6 +65,11 @@ describe("describeBuildPreview", () => {
             symbolsCount: 7,
             blueprintHash: "sha256:abc",
             expectedFiles: ["package.json"],
+            projectRoot: "/a/sample-slot",
+            destinationHasContent: false,
+            createFiles: ["package.json"],
+            updateFiles: [],
+            deleteFiles: [],
         };
 
         expect(describeBuildPreview(preview)).toEqual(preview);

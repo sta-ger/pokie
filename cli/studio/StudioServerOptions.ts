@@ -51,6 +51,10 @@ export type StudioServerOptions = {
     // isLoopbackRequest (the request's actual TCP peer address); overridable in tests, since a test's
     // own HTTP client always connects over loopback, the same as a genuinely local caller.
     isLoopbackRequest?: (req: IncomingMessage) => boolean;
+    // Backs POST /api/home/fs/open-folder -- "Open output folder" on a successful Build/Rebuild.
+    // Defaults to the real openInFileManager (a best-effort OS command, see its own doc comment);
+    // overridable in tests so no real OS command is ever spawned.
+    openFolder?: (folderPath: string) => void;
     // Drives the Blueprint Editor's five /api/home/blueprints/* endpoints — see StudioBlueprintService.
     // Required rather than defaulted for the same reason homeService is: a default instance would need
     // a `pokie` version to embed into generated package.json files, and StudioServer has no business

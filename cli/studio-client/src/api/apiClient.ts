@@ -27,6 +27,7 @@ import type {
     StudioNativePickerAvailabilityView,
     StudioNativePickerFileFilter,
     StudioNativePickerResultView,
+    StudioOpenFolderView,
     StudioOutcomeLibraryCompareView,
     StudioOutcomeLibraryDeepValidateView,
     StudioOutcomeLibrarySelectView,
@@ -133,6 +134,18 @@ export async function resolveDefaultBrowseLocation(fetchImpl: FetchLike, name?: 
 export async function checkNativePickerAvailability(fetchImpl: FetchLike): Promise<StudioNativePickerAvailabilityView> {
     const response = await fetchImpl("/api/home/fs/native-browse/availability");
     return (await response.json()) as StudioNativePickerAvailabilityView;
+}
+
+// Opens a build's own output directory in the OS file manager, on the machine running Studio's server —
+// "Open output folder" on a successful Build/Rebuild. Never throws for a domain-level outcome
+// (unavailable/error) — same convention as browseFilesystem/pickNativePath.
+export async function openOutputFolder(fetchImpl: FetchLike, path: string): Promise<StudioOpenFolderView> {
+    const response = await fetchImpl("/api/home/fs/open-folder", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path}),
+    });
+    return (await response.json()) as StudioOpenFolderView;
 }
 
 export type NativeBrowseRequest = {kind: "directory" | "file"; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};

@@ -1,6 +1,6 @@
 import {Button, Stack, Text} from "@mantine/core";
 import {useId, useRef, useState} from "react";
-import {buildBlueprint, previewBlueprintBuild} from "../../api/apiClient";
+import {buildBlueprint, openOutputFolder, previewBlueprintBuild} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {BuildResultDisplay} from "../common/BuildResultDisplay";
@@ -84,11 +84,13 @@ function BuiltBlueprintSummary({
     snapshot,
     blueprint,
     onOpen,
+    onOpenFolder,
     onRestore,
 }: {
     snapshot: BuiltBlueprintSnapshot;
     blueprint: Record<string, unknown>;
     onOpen: () => void;
+    onOpenFolder: () => void;
     onRestore: () => void;
 }) {
     const changed = hasBlueprintChanged(blueprint, snapshot.blueprint as Record<string, unknown>);
@@ -113,6 +115,9 @@ function BuiltBlueprintSummary({
             <FileList title="Created files" files={snapshot.createdFiles} />
             <QuickActions>
                 <Button onClick={onOpen}>Open in Studio</Button>
+                <Button variant="default" onClick={onOpenFolder}>
+                    Open output folder
+                </Button>
                 {changed && (
                     <Button
                         variant="default"
@@ -209,7 +214,14 @@ export function BlueprintBuildPanel({
     const [outDir, setOutDir] = useState("");
     const [preview, setPreview] = useState<BuildPreviewView>({status: "idle"});
     const [result, setResult] = useState<BuildProjectView>({status: "idle"});
-    const lastBuiltOutDir = useRef<string | undefined>(undefined);
+    // State (not a ref) because it drives rendered output below (the "new destination" hint) as well as
+    // runBuild's own confirm check -- a ref would be legal for the latter alone, but not for the former.
+    const [lastBuiltOutDir, setLastBuiltOutDir] = useState<string | undefined>(undefined);
+    // The outDir a Build Preview's own "ok" result (above) actually describes -- used only to decide
+    // whether that result's `destinationHasContent` is still trustworthy for the *current* outDir text
+    // before a build (see runBuild below); a stale preview against a since-edited outDir must never be
+    // read as if it described today's destination.
+    const previewedOutDir = useRef<string | undefined>(undefined);
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
 
@@ -217,8 +229,10 @@ export function BlueprintBuildPanel({
         if (!previewGuard.begin()) {
             return;
         }
+        const resolvedOutDir = outDir.trim() || undefined;
+        previewedOutDir.current = resolvedOutDir;
         setPreview({status: "loading"});
-        previewBlueprintBuild(fetchImpl, blueprint, outDir.trim() || undefined, sourcePath)
+        previewBlueprintBuild(fetchImpl, blueprint, resolvedOutDir, sourcePath)
             .then((view) => setPreview(withOutDirPreviewError(describeBuildPreview(view))))
             .catch((error: unknown) => setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))}))
             .finally(() => previewGuard.end());
@@ -235,7 +249,7 @@ export function BlueprintBuildPanel({
                 .then((view) => {
                     setResult(withOutDirResultError(describeBuildResult(view)));
                     if (view.status === "ok") {
-                        lastBuiltOutDir.current = resolvedOutDir;
+                        setLastBuiltOutDir(resolvedOutDir);
                         // `blueprint` here is the exact value this closure was built with (this render's
                         // own prop, fixed for the lifetime of this specific request) -- a further edit
                         // made while the build is in flight changes a *later* render's `blueprint`, never
@@ -255,12 +269,35 @@ export function BlueprintBuildPanel({
                 .finally(() => buildGuard.end());
         };
 
-        if (lastBuiltOutDir.current !== undefined && lastBuiltOutDir.current === resolvedOutDir) {
+        if (lastBuiltOutDir !== undefined && lastBuiltOutDir === resolvedOutDir) {
             const target = resolvedOutDir ?? "the default output directory";
             confirm(`A package was already built at "${target}" this session. Rebuild and overwrite it?`, doBuild);
             return;
         }
+
+        // A Build Preview run against this exact outDir already told us the destination isn't empty --
+        // confirm before writing there, same as the same-session-rebuild case above. A stale preview
+        // (against a since-edited outDir) is deliberately never trusted for this -- see previewedOutDir's
+        // own doc comment -- so an outDir change without a fresh Preview falls straight through to
+        // doBuild(), unchanged from this panel's prior behavior.
+        if (preview.status === "ok" && preview.destinationHasContent && previewedOutDir.current === resolvedOutDir) {
+            confirm(`"${preview.projectRoot}" already has content. Building will create/update files there. Continue?`, doBuild);
+            return;
+        }
+
         doBuild();
+    };
+
+    const handleOpenFolder = (folderPath: string): void => {
+        openOutputFolder(fetchImpl, folderPath)
+            .then((view) => {
+                if (view.status === "unavailable") {
+                    setResult({status: "error", message: view.reason});
+                } else if (view.status === "error") {
+                    setResult({status: "error", message: view.message});
+                }
+            })
+            .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}));
     };
 
     // Both "Restore built blueprint" and "Discard unbuilt changes" (BuiltBlueprintSummary below) call
@@ -278,6 +315,15 @@ export function BlueprintBuildPanel({
     // rendered, so the two never show the same success twice, and a later failed rebuild's "error"/
     // "failed" status here never hides that still-valid prior success.
     const transientResult: BuildProjectView = result.status === "ok" ? {status: "idle"} : result;
+
+    // Set once there's a real prior build (builtSnapshot) *and* the outDir text has since changed away
+    // from what that build actually used -- never set before any build has happened, and unset again once
+    // a build against the new outDir lands (lastBuiltOutDir catches up to it). Backs the explicit "the old
+    // package is untouched, here's where this one is going" hint below -- nothing here ever deletes
+    // builtSnapshot.projectRoot; a new outDir only ever adds a second, separate package.
+    const resolvedOutDirForDisplay = outDir.trim() || undefined;
+    const priorBuildProjectRootIfDestinationChanged =
+        builtSnapshot !== undefined && lastBuiltOutDir !== resolvedOutDirForDisplay ? builtSnapshot.projectRoot : undefined;
 
     return (
         <PageSection legend="Build">
@@ -304,8 +350,21 @@ export function BlueprintBuildPanel({
                     {blockedMessage}
                 </Text>
             )}
+            {priorBuildProjectRootIfDestinationChanged !== undefined && (
+                <Text size="xs" c="dimmed" mb="sm">
+                    This will build to a new destination — the package already built at &quot;{priorBuildProjectRootIfDestinationChanged}&quot; is
+                    untouched and stays right where it is.
+                </Text>
+            )}
 
             <BuildPreviewDisplay view={preview} />
+            {preview.status === "ok" && builtSnapshot && (
+                <Text size="xs" c="dimmed" mb="sm">
+                    {hasBlueprintChanged(blueprint, builtSnapshot.blueprint as Record<string, unknown>)
+                        ? `Since the last build: ${diffBlueprintTopLevelFields(blueprint, builtSnapshot.blueprint as Record<string, unknown>).join(", ")} differ.`
+                        : "Matches the last build — no unbuilt changes."}
+                </Text>
+            )}
             {/* onOpen is never actually invoked here -- "ok" is suppressed out of `transientResult` above,
                 the callback only satisfies BuildResultDisplay's required prop. */}
             <BuildResultDisplay view={transientResult} onOpen={() => undefined} />
@@ -317,6 +376,7 @@ export function BlueprintBuildPanel({
                     onOpen={() =>
                         openAndNavigate(builtSnapshot.projectRoot).catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}))
                     }
+                    onOpenFolder={() => handleOpenFolder(builtSnapshot.projectRoot)}
                     onRestore={handleRestoreBuilt}
                 />
             )}

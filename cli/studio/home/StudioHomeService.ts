@@ -12,6 +12,7 @@ import {
 import fs from "fs";
 import path from "path";
 import {loadProjectDashboardContext} from "../loadProjectDashboardContext.js";
+import {previewBuildDestination} from "../previewBuildDestination.js";
 import type {ProjectDashboardContext} from "../ProjectDashboardContext.js";
 import {InMemoryRecentProjectsRepository} from "../InMemoryRecentProjectsRepository.js";
 import type {RecentProjectsRepository} from "../RecentProjectsRepository.js";
@@ -147,6 +148,7 @@ export class StudioHomeService {
             symbolsCount: blueprint.symbols.length,
             blueprintHash: buildInfo.blueprintHash,
             expectedFiles: buildInfo.files ?? [],
+            ...previewBuildDestination(blueprint.manifest.id, process.cwd(), request.outDir),
         };
     }
 

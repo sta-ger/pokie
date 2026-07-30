@@ -231,6 +231,75 @@ describe("GamePackageGenerator", () => {
         }
     });
 
+    describe("atomic staging/swap", () => {
+        afterEach(() => {
+            jest.restoreAllMocks();
+        });
+
+        it("leaves an existing build completely untouched, and no temp directory behind, when staging a file fails", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const originalPackageJson = fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8");
+            const originalReadme = fs.readFileSync(path.join(first.projectRoot, "README.md"), "utf-8");
+
+            jest.spyOn(fs, "writeFileSync").mockImplementation((targetPath) => {
+                if (String(targetPath).endsWith("README.md")) {
+                    throw new Error("simulated disk-full while staging");
+                }
+            });
+
+            expect(() => generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd)).toThrow(
+                /simulated disk-full while staging/,
+            );
+
+            jest.restoreAllMocks();
+            expect(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8")).toBe(originalPackageJson);
+            expect(fs.readFileSync(path.join(first.projectRoot, "README.md"), "utf-8")).toBe(originalReadme);
+            expect(fs.readdirSync(path.dirname(first.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
+        });
+
+        it("rolls back every already-committed file, and leaves no stale/temp artifacts behind, when a later file fails to commit", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const originalPackageJson = fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8");
+            const originalReadme = fs.readFileSync(path.join(first.projectRoot, "README.md"), "utf-8");
+            const originalIndexJs = fs.readFileSync(path.join(first.projectRoot, "src", "generated", "index.js"), "utf-8");
+            const originalBuildInfo = fs.readFileSync(path.join(first.projectRoot, "src", "generated", "build-info.json"), "utf-8");
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            let indexJsCommitAttempts = 0;
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                // Only the very first rename targeting the real index.js path is the actual "commit
+                // the staged file" attempt -- fail only that one, so commitGeneratedFile's own restore
+                // rename (staleIndexJs -> realIndexJs, the same `to`) succeeds and this surfaces as a
+                // clean commitError rather than the double-failure "couldn't even restore" message.
+                if (String(to).endsWith(`${path.sep}src${path.sep}generated${path.sep}index.js`)) {
+                    indexJsCommitAttempts++;
+                    if (indexJsCommitAttempts === 1) {
+                        throw new Error("simulated rename failure committing index.js");
+                    }
+                }
+                return realRenameSync(from, to);
+            });
+
+            expect(() => generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd)).toThrow(
+                /simulated rename failure committing index\.js/,
+            );
+
+            jest.restoreAllMocks();
+            // package.json and README.md commit (and would-be-stale-cleanup) happen before index.js in
+            // GENERATED_PACKAGE_FILES's own declared order, so they're the ones this rollback must restore.
+            expect(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8")).toBe(originalPackageJson);
+            expect(fs.readFileSync(path.join(first.projectRoot, "README.md"), "utf-8")).toBe(originalReadme);
+            expect(fs.readFileSync(path.join(first.projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(originalIndexJs);
+            expect(fs.readFileSync(path.join(first.projectRoot, "src", "generated", "build-info.json"), "utf-8")).toBe(originalBuildInfo);
+
+            const projectRootEntries = fs.readdirSync(first.projectRoot);
+            expect(projectRootEntries.some((entry) => entry.includes(".stale-"))).toBe(false);
+            expect(fs.readdirSync(path.dirname(first.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
+        });
+    });
+
     it("builds into an existing but empty directory", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const projectRoot = path.join(cwd, "sample-slot");

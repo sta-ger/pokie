@@ -710,6 +710,45 @@ describe("StudioBlueprintService", () => {
 
             expect(preview.status).toBe("invalid");
         });
+
+        it("reports a fresh destination as non-existent, with every generated file listed to create and none to update", () => {
+            const service = createService();
+            const outDir = path.join(tmpDir, "out");
+
+            const preview = service.previewBuild(buildBlueprint(), outDir, "blueprint.json");
+
+            expect(preview.status).toBe("ok");
+            if (preview.status !== "ok") {
+                return;
+            }
+            expect(preview.projectRoot).toBe(outDir);
+            expect(preview.destinationHasContent).toBe(false);
+            expect(preview.createFiles.sort()).toEqual(["README.md", "package.json", "src/generated/build-info.json", "src/generated/index.js"].sort());
+            expect(preview.updateFiles).toEqual([]);
+            expect(preview.deleteFiles).toEqual([]);
+            expect(preview.priorBuild).toBeUndefined();
+        });
+
+        it("reports an already-built destination as having content, every generated file listed to update, and the prior build's version", async () => {
+            const service = createService();
+            const outDir = path.join(tmpDir, "out");
+            await service.build(buildBlueprint(), outDir, "blueprint.json");
+
+            const preview = service.previewBuild(
+                buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot", version: "0.2.0"}}),
+                outDir,
+                "blueprint.json",
+            );
+
+            expect(preview.status).toBe("ok");
+            if (preview.status !== "ok") {
+                return;
+            }
+            expect(preview.destinationHasContent).toBe(true);
+            expect(preview.createFiles).toEqual([]);
+            expect(preview.updateFiles.sort()).toEqual(["README.md", "package.json", "src/generated/build-info.json", "src/generated/index.js"].sort());
+            expect(preview.priorBuild).toEqual({version: "0.1.0", blueprintHash: computeGameBlueprintHash(buildBlueprint()), generatedAt: expect.any(String)});
+        });
     });
 
     describe("build", () => {

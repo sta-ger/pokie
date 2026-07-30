@@ -60,6 +60,11 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
                     symbolsCount: 2,
                     blueprintHash: "sha256:abc",
                     expectedFiles: ["package.json"],
+                    projectRoot: "/games/imported-game",
+                    destinationHasContent: false,
+                    createFiles: ["package.json"],
+                    updateFiles: [],
+                    deleteFiles: [],
                 });
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -395,6 +400,11 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
                 symbolsCount: 2,
                 blueprintHash: "sha256:a",
                 expectedFiles: ["package.json"],
+                projectRoot: "/games/imported-game",
+                destinationHasContent: false,
+                createFiles: ["package.json"],
+                updateFiles: [],
+                deleteFiles: [],
             }),
         );
         await new Promise((resolveTimeout) => {
@@ -424,6 +434,11 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
                     symbolsCount: 2,
                     blueprintHash: "sha256:a",
                     expectedFiles: ["package.json"],
+                    projectRoot: "/games/imported-game",
+                    destinationHasContent: false,
+                    createFiles: ["package.json"],
+                    updateFiles: [],
+                    deleteFiles: [],
                 });
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -505,6 +520,11 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
                     symbolsCount: 2,
                     blueprintHash: "sha256:b",
                     expectedFiles: ["package.json"],
+                    projectRoot: "/games/imported-game",
+                    destinationHasContent: false,
+                    createFiles: ["package.json"],
+                    updateFiles: [],
+                    deleteFiles: [],
                 });
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -543,6 +563,11 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
                 symbolsCount: 2,
                 blueprintHash: "sha256:a",
                 expectedFiles: ["package.json"],
+                projectRoot: "/games/imported-game",
+                destinationHasContent: false,
+                createFiles: ["package.json"],
+                updateFiles: [],
+                deleteFiles: [],
             }),
         );
     });

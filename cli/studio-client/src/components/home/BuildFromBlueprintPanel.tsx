@@ -1,7 +1,7 @@
 import {Button, Stack} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useRef, useState} from "react";
-import {buildProject, previewBuild} from "../../api/apiClient";
+import {buildProject, openOutputFolder, previewBuild} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {BuildResultDisplay} from "../common/BuildResultDisplay";
@@ -46,6 +46,14 @@ export function BuildFromBlueprintPanel() {
     // *same* outDir confirms before silently overwriting it -- never gates a first build against a given
     // outDir. Same pattern as the Blueprint Editor's own Build panel.
     const lastBuiltOutDir = useRef<string | undefined>(undefined);
+    // The outDir a Build Preview's own "ok" result (above) actually describes -- used only to decide
+    // whether that result's `destinationHasContent` is still trustworthy for the *current* outDir text
+    // before a build (see runBuild below); a stale preview against a since-edited outDir must never be
+    // read as if it described today's destination. Same pattern as the Blueprint Editor's own Build
+    // panel, but state rather than a ref: `runPreview` below is passed straight into Mantine's
+    // form.onSubmit, and a ref written from a function handed to another call made during render trips
+    // react-hooks/refs (its value could, in principle, be read back during that same render).
+    const [previewedOutDir, setPreviewedOutDir] = useState<string | undefined>(undefined);
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
 
@@ -58,8 +66,10 @@ export function BuildFromBlueprintPanel() {
         if (!previewGuard.begin()) {
             return;
         }
+        const resolvedOutDir = values.outDir.trim() || undefined;
+        setPreviewedOutDir(resolvedOutDir);
         setPreview({status: "loading"});
-        previewBuild(fetchImpl, {blueprintPath: values.blueprintPath, outDir: values.outDir.trim() || undefined})
+        previewBuild(fetchImpl, {blueprintPath: values.blueprintPath, outDir: resolvedOutDir})
             .then((view) => setPreview(withBlueprintPathPreviewError(describeBuildPreview(view))))
             .catch((error: unknown) => setPreview({status: "error", message: describeBlueprintPathFailure(errorMessage(error))}))
             .finally(() => previewGuard.end());
@@ -90,7 +100,30 @@ export function BuildFromBlueprintPanel() {
             confirm(`A package was already built at "${target}" this session. Rebuild and overwrite it?`, doBuild);
             return;
         }
+
+        // A Build Preview run against this exact outDir already told us the destination isn't empty --
+        // confirm before writing there, same as the same-session-rebuild case above. A stale preview
+        // (against a since-edited outDir) is deliberately never trusted for this -- see previewedOutDir's
+        // own doc comment -- so an outDir change without a fresh Preview falls straight through to
+        // doBuild(), unchanged from this panel's prior behavior.
+        if (preview.status === "ok" && preview.destinationHasContent && previewedOutDir === outDir) {
+            confirm(`"${preview.projectRoot}" already has content. Building will create/update files there. Continue?`, doBuild);
+            return;
+        }
+
         doBuild();
+    };
+
+    const handleOpenFolder = (folderPath: string): void => {
+        openOutputFolder(fetchImpl, folderPath)
+            .then((view) => {
+                if (view.status === "unavailable") {
+                    setResult({status: "error", message: view.reason});
+                } else if (view.status === "error") {
+                    setResult({status: "error", message: view.message});
+                }
+            })
+            .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}));
     };
 
     return (
@@ -136,6 +169,7 @@ export function BuildFromBlueprintPanel() {
                         openAndNavigate(lastProjectRoot).catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}));
                     }
                 }}
+                onOpenFolder={lastProjectRoot !== undefined ? () => handleOpenFolder(lastProjectRoot) : undefined}
             />
         </Stack>
     );

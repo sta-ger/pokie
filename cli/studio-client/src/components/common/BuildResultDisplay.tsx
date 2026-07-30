@@ -5,10 +5,14 @@ import {ErrorState} from "./ErrorState";
 import {FileList} from "./FileList";
 import {IssueList} from "./IssueList";
 import {LoadingState} from "./LoadingState";
+import {QuickActions} from "./QuickActions";
 
 // Shared by Home's Build-from-Blueprint tab and the Blueprint Editor's own Build panel -- same
-// reasoning as BuildPreviewDisplay.
-export function BuildResultDisplay({view, onOpen}: {view: BuildProjectView; onOpen: () => void}) {
+// reasoning as BuildPreviewDisplay. `onOpenFolder` is optional -- omitted entirely (rather than a
+// disabled button), the "Open output folder" action simply doesn't render, since a caller with no way
+// to open a folder (no server-side wiring at all) has nothing more honest to offer than not showing the
+// button.
+export function BuildResultDisplay({view, onOpen, onOpenFolder}: {view: BuildProjectView; onOpen: () => void; onOpenFolder?: () => void}) {
     if (view.status === "idle") {
         return null;
     }
@@ -34,9 +38,14 @@ export function BuildResultDisplay({view, onOpen}: {view: BuildProjectView; onOp
             </Text>
             <IssueList title="Warnings" issues={view.warnings} />
             <FileList title="Created files" files={view.createdFiles} />
-            <Button onClick={onOpen} style={{alignSelf: "flex-start"}}>
-                Open in Studio
-            </Button>
+            <QuickActions>
+                <Button onClick={onOpen}>Open in Studio</Button>
+                {onOpenFolder && (
+                    <Button variant="default" onClick={onOpenFolder}>
+                        Open output folder
+                    </Button>
+                )}
+            </QuickActions>
         </Stack>
     );
 }
