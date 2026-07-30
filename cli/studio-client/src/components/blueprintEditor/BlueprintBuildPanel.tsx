@@ -297,9 +297,10 @@ export function BlueprintBuildPanel({
         // Preview does before deciding, rather than silently trusting an empty destination. Setting
         // `preview`/`previewedOutDir` from the result makes this fresh answer the trustworthy one for any
         // further Build click against this same outDir, same as if the user had clicked Build Preview
-        // themselves. A failed check (invalid blueprint, network error, etc.) falls straight through to
-        // doBuild(), whose own error handling already covers that case -- unchanged from this panel's
-        // prior behavior when no destination information was available at all.
+        // themselves. A failed check (invalid blueprint, network error, etc.) must NOT fall through to
+        // doBuild() -- whether the destination already has content is unknown, so authorizing a write
+        // here could silently overwrite it without ever asking. It's reported the same way runPreview's
+        // own rejection is, and the build is left un-started (buildGuard.end() with no doBuild() call).
         if (!buildGuard.begin()) {
             return;
         }
@@ -311,9 +312,9 @@ export function BlueprintBuildPanel({
                 buildGuard.end();
                 confirmIfDestinationHasContent(described);
             })
-            .catch(() => {
+            .catch((error: unknown) => {
+                setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))});
                 buildGuard.end();
-                doBuild();
             });
     };
 

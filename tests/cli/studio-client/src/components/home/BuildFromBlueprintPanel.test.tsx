@@ -291,6 +291,26 @@ describe("BuildFromBlueprintPanel", () => {
         expect(buildCalls).toEqual([{blueprintPath: "/games/blueprint.json", outDir: undefined}]);
     });
 
+    it("does not build, and shows an error instead, when the destination check fails and Preview was never run", async () => {
+        const user = userEvent.setup();
+        const buildCalls: unknown[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/build/preview": () => ({ok: false, status: 500, body: {error: "network down"}}),
+            "/api/home/projects/build": (call) => {
+                buildCalls.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 200, body: {status: "ok"}};
+            },
+        });
+
+        renderWithProviders(<BuildFromBlueprintPanel />, {fetchImpl});
+
+        await user.type(screen.getByRole("textbox", {name: "Blueprint JSON path"}), "/games/blueprint.json");
+        await user.click(screen.getByRole("button", {name: "Build"}));
+
+        expect(await screen.findByText("The blueprint file could not be completed. Try again, and check the Studio server logs if the problem persists.")).toBeInTheDocument();
+        expect(buildCalls).toEqual([]);
+    });
+
     it("builds directly, with no confirmation, when Preview was never run and the destination turns out empty", async () => {
         const user = userEvent.setup();
         const buildCalls: unknown[] = [];
