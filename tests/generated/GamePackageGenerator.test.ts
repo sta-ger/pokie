@@ -656,6 +656,121 @@ describe("GamePackageGenerator", () => {
             expectOnlyLiveGenerationPresent(third.projectRoot);
             expect(fs.readdirSync(path.dirname(third.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
         });
+
+        // The atomic-publish scheme only follows or deletes a prior GENERATIONS_DIR_NAME/LIVE_DIR_NAME
+        // it can prove it owns. Anything else there -- a symlink escaping containment, a "live" that
+        // isn't a symlink at all, or GENERATIONS_DIR_NAME itself hijacked into a symlink -- must be
+        // rejected before generate() writes or deletes anything, with an actionable error, rather than
+        // being followed (migrateToLiveScheme's clone) or silently trusted for later deletion
+        // (publishLiveGeneration's removeBestEffort(previousTarget)).
+        describe("untrusted existing GENERATIONS_DIR_NAME/LIVE_DIR_NAME layouts", () => {
+            it("fails closed, without deleting or writing anything, when \"live\" is a symlink escaping the output tree", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+                const original = readGeneratedFiles(first.projectRoot);
+
+                const outsideDir = path.join(cwd, "outside-secret");
+                fs.mkdirSync(outsideDir, {recursive: true});
+                fs.writeFileSync(path.join(outsideDir, "canary.txt"), "do not touch");
+
+                const generationsDir = path.join(first.projectRoot, GENERATIONS_DIR_NAME);
+                fs.mkdirSync(generationsDir, {recursive: true});
+                fs.symlinkSync(outsideDir, liveLinkPathOf(first.projectRoot));
+
+                expect(() =>
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+                ).toThrow(/does not point at a generation this generator produced/);
+
+                // The escape target is completely untouched -- neither read into a clone nor deleted.
+                expect(fs.existsSync(path.join(outsideDir, "canary.txt"))).toBe(true);
+                // The prior (still plain-file) package is untouched too -- the rejection happened before
+                // any write.
+                expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
+            });
+
+            it("fails closed when \"live\" already exists but is not a symlink", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+                const original = readGeneratedFiles(first.projectRoot);
+
+                const liveLinkPath = liveLinkPathOf(first.projectRoot);
+                fs.mkdirSync(liveLinkPath, {recursive: true});
+                fs.writeFileSync(path.join(liveLinkPath, "package.json"), "{}");
+
+                expect(() =>
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+                ).toThrow(/already exists but is not a symlink this generator produced/);
+
+                expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
+            });
+
+            it("fails closed when GENERATIONS_DIR_NAME itself is a symlink", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+                const original = readGeneratedFiles(first.projectRoot);
+
+                const outsideDir = path.join(cwd, "outside-generations");
+                fs.mkdirSync(outsideDir, {recursive: true});
+                fs.symlinkSync(outsideDir, path.join(first.projectRoot, GENERATIONS_DIR_NAME));
+
+                expect(() =>
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+                ).toThrow(/is not a directory this generator produced/);
+
+                expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
+            });
+
+            it("fails closed when \"live\" points at a directory contained in GENERATIONS_DIR_NAME that isn't a gen-* generation", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+                const original = readGeneratedFiles(first.projectRoot);
+
+                const generationsDir = path.join(first.projectRoot, GENERATIONS_DIR_NAME);
+                const unrelatedDir = path.join(generationsDir, "not-a-generation");
+                fs.mkdirSync(unrelatedDir, {recursive: true});
+                fs.symlinkSync("not-a-generation", liveLinkPathOf(first.projectRoot));
+
+                expect(() =>
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+                ).toThrow(/does not point at a generation this generator produced/);
+
+                expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
+            });
+
+            it("fails closed with an actionable error, before writing anything, when a recognized package is missing a previously generated file", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                const first = generator.generate(buildBlueprint(), cwd);
+                fs.rmSync(path.join(first.projectRoot, "README.md"));
+
+                expect(() =>
+                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+                ).toThrow(/is missing file\(s\) a previous "pokie build" generated: README\.md/);
+
+                // Nothing was written as a result of the failed attempt -- no live scheme established,
+                // package.json (which was present and recognized) left exactly as it was.
+                expect(fs.existsSync(path.join(first.projectRoot, GENERATIONS_DIR_NAME))).toBe(false);
+                expect(JSON.parse(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8")).version).toBe("0.1.0");
+            });
+
+            // The positive case this whole fail-closed gate must not regress: a prior package this
+            // generator actually produced -- symlink scheme and all -- still rebuilds atomically, and a
+            // failure partway through a later rebuild still retains the complete previous package (see
+            // the other tests in this describe block above for that guarantee in detail).
+            it("still rebuilds atomically for a recognized prior package once migrated onto the live-directory scheme", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                generator.generate(buildBlueprint(), cwd);
+                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
+
+                const third = generator.generate(
+                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
+                    cwd,
+                );
+
+                const pkg = JSON.parse(fs.readFileSync(path.join(third.projectRoot, "package.json"), "utf-8"));
+                expect(pkg.version).toBe("0.3.0");
+                expectOnlyLiveGenerationPresent(third.projectRoot);
+            });
+        });
     });
 
     it("builds into an existing but empty directory", () => {

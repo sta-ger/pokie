@@ -480,6 +480,11 @@ export class GamePackageGenerator implements GamePackageGenerating {
             );
         }
 
+        // Runs unconditionally, before any recognition check below: an attacker planting a bogus
+        // GENERATIONS_DIR_NAME/LIVE_DIR_NAME doesn't need a convincing build-info.json alongside it, so
+        // this can't be gated on one having been found.
+        this.assertTrustedGenerationsLayout(projectRoot);
+
         const knownFiles = this.readKnownGeneratedFiles(projectRoot);
         const conflicting = GENERATED_PACKAGE_FILES.filter(
             (relativePath) => !knownFiles.includes(relativePath) && fs.existsSync(path.join(projectRoot, ...relativePath.split("/"))),
@@ -490,6 +495,77 @@ export class GamePackageGenerator implements GamePackageGenerating {
                 `"${projectRoot}" already exists and contains file(s) "pokie build" did not generate: ${conflicting.join(", ")}. ` +
                     `Refusing to overwrite them — choose a different --out directory, remove the conflicting file(s), or point ` +
                     `--out at a directory previously produced by "pokie build" (recognized via its own src/generated/build-info.json).`,
+            );
+        }
+
+        // A directory not yet migrated onto the live-directory scheme (see migrateToLiveScheme) is
+        // "known" only via its plain files themselves -- if any of those the prior build vouches for
+        // is now missing, the layout is an ambiguous partial one that migrateToLiveScheme has no safe
+        // way to clone from (it would discover the gap mid-clone, after already committing to a
+        // rebuild). Fail closed here instead, before generate() does anything else.
+        const liveLinkPath = path.join(projectRoot, GENERATIONS_DIR_NAME, LIVE_DIR_NAME);
+        if (knownFiles.length > 0 && !this.pathExists(liveLinkPath)) {
+            const missing = knownFiles.filter(
+                (relativePath) => !fs.existsSync(path.join(projectRoot, ...relativePath.split("/"))),
+            );
+            if (missing.length > 0) {
+                throw new Error(
+                    `"${projectRoot}" is missing file(s) a previous "pokie build" generated: ${missing.join(", ")}. ` +
+                        `Refusing to rebuild an incomplete package — restore the missing file(s), or remove "${projectRoot}" ` +
+                        `and run "pokie build" fresh.`,
+                );
+            }
+        }
+    }
+
+    // Validates GENERATIONS_DIR_NAME/LIVE_DIR_NAME before generate() does anything else that could
+    // read or delete through them (migrateToLiveScheme's clone, or publishLiveGeneration's
+    // removeBestEffort(previousTarget) — see readLiveTarget). GENERATIONS_DIR_NAME not existing at all
+    // is the ordinary case for every rebuild before migrateToLiveScheme's first run, and is left alone.
+    // Once it exists, it must be exactly what this generator itself would ever produce: a real
+    // (non-symlink) directory, whose LIVE_DIR_NAME entry (if present) is a symlink -- never a plain
+    // file or real directory -- resolving to a GENERATION_DIR_PREFIX-named directory physically
+    // contained inside GENERATIONS_DIR_NAME's own resolved location. Anything short of that -- a
+    // symlink escaping containment, a dangling target, or a hand-placed non-symlink "live" -- fails
+    // closed here with an actionable error, rather than being silently followed (and possibly deleted)
+    // or silently overwritten.
+    private assertTrustedGenerationsLayout(projectRoot: string): void {
+        const generationsDir = path.join(projectRoot, GENERATIONS_DIR_NAME);
+        if (!this.pathExists(generationsDir)) {
+            return;
+        }
+
+        const remediation = `Refusing to rebuild — remove "${generationsDir}" (or all of "${projectRoot}") and run "pokie build" fresh.`;
+
+        if (this.isSymlink(generationsDir) || !fs.statSync(generationsDir).isDirectory()) {
+            throw new Error(`"${generationsDir}" is not a directory this generator produced. ${remediation}`);
+        }
+
+        const liveLinkPath = path.join(generationsDir, LIVE_DIR_NAME);
+        if (!this.pathExists(liveLinkPath)) {
+            return;
+        }
+
+        if (!this.isSymlink(liveLinkPath)) {
+            throw new Error(`"${liveLinkPath}" already exists but is not a symlink this generator produced. ${remediation}`);
+        }
+
+        let resolvedGenerationsDir: string;
+        let resolvedLiveTarget: string;
+        try {
+            resolvedGenerationsDir = fs.realpathSync(generationsDir);
+            resolvedLiveTarget = fs.realpathSync(liveLinkPath);
+        } catch {
+            throw new Error(`"${liveLinkPath}" points at a generation that no longer exists. ${remediation}`);
+        }
+
+        const isContained = resolvedLiveTarget.startsWith(`${resolvedGenerationsDir}${path.sep}`);
+        const ownsBasename = path.basename(resolvedLiveTarget).startsWith(GENERATION_DIR_PREFIX);
+
+        if (!isContained || !ownsBasename || !fs.statSync(resolvedLiveTarget).isDirectory()) {
+            throw new Error(
+                `"${liveLinkPath}" does not point at a generation this generator produced (expected a ` +
+                    `"${GENERATION_DIR_PREFIX}*" directory contained in "${generationsDir}"). ${remediation}`,
             );
         }
     }
