@@ -639,16 +639,43 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // assertTrustedPublicPaths above only checks the public path's own symlink *text* -- that it points
     // into liveLinkPath at the expected relative location -- which says nothing about what's actually
     // sitting there: assertTrustedGenerationsLayout vouches for liveLinkPath and the generation directory
-    // containing it, never for the individual files inside that directory. Nothing here planted those
-    // files itself except this generator, but an attacker able to write under GENERATIONS_DIR_NAME
-    // (e.g. directly into a generation directory, before or after "live" is pointed at it) could still
-    // make a leaf entry -- build-info.json, most exploitably, since readPreviousBuildInfo reads it -- a
-    // symlink to an arbitrary external file. lstat (never following the final path component) means that
-    // nested symlink is detected and rejected here, not followed: its referent is never opened, read, or
-    // written.
+    // containing it, never for the individual files (or intermediate directories, e.g. "src" or
+    // "src/generated") inside that directory. Nothing here planted those itself except this generator,
+    // but an attacker able to write under GENERATIONS_DIR_NAME (e.g. directly into a generation
+    // directory, before or after "live" is pointed at it) could still make an *intermediate* ancestor of
+    // a leaf entry a symlink to an arbitrary external directory, so that a plain-looking leaf name
+    // (build-info.json, most exploitably, since readPreviousBuildInfo reads it) actually resolves outside
+    // the generation entirely once the OS follows that ancestor during path resolution -- lstat on the
+    // leaf alone would not catch this, since lstat only refuses to follow the *final* path component.
+    // So every ancestor component from liveLinkPath down to the leaf's parent is walked and lstat'd
+    // (never following the final component of any single lstat call) one directory at a time, confirming
+    // each is a real (non-symlink) directory before the next component is even joined onto the path being
+    // checked, before the leaf itself is lstat'd for the plain-regular-file check. A hostile ancestor or
+    // leaf is therefore rejected here, not followed: nothing it points at is ever opened, read, or written.
     private assertTrustedLiveGenerationEntry(liveLinkPath: string, relativePath: string): void {
-        const entryPath = path.join(liveLinkPath, ...relativePath.split("/"));
         const remediation = `Refusing to rebuild -- remove "${liveLinkPath}" (or the whole "${path.dirname(liveLinkPath)}") and run "pokie build" fresh.`;
+        const segments = relativePath.split("/");
+
+        let currentPath = liveLinkPath;
+        for (let i = 0; i < segments.length - 1; i++) {
+            currentPath = path.join(currentPath, segments[i]);
+
+            let dirStats: fs.Stats;
+            try {
+                dirStats = fs.lstatSync(currentPath);
+            } catch {
+                throw new Error(`"${currentPath}" is missing from the current live generation. ${remediation}`);
+            }
+
+            if (!dirStats.isDirectory()) {
+                throw new Error(
+                    `"${currentPath}" is a ${dirStats.isSymbolicLink() ? "symlink" : "special file"}, ` +
+                        `not the plain directory "pokie build" writes inside a generation directory. ${remediation}`,
+                );
+            }
+        }
+
+        const entryPath = path.join(currentPath, segments[segments.length - 1]);
 
         let stats: fs.Stats;
         try {

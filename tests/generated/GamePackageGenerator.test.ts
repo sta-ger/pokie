@@ -900,6 +900,70 @@ describe("GamePackageGenerator", () => {
                 expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
             });
 
+            it("fails closed, without reading/deleting the escape target, when an intermediate ancestor directory (\"src/generated\") inside the live generation is itself a symlink escaping the output tree", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                generator.generate(buildBlueprint(), cwd);
+                const migrated = generator.generate(
+                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
+                    cwd,
+                );
+                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
+
+                // Plant a convincing-looking external directory -- a plain regular build-info.json sitting
+                // where a leaf-only check would expect one -- so only an ancestor-aware check catches this.
+                const outsideDir = path.join(cwd, "outside-secret");
+                fs.mkdirSync(outsideDir, {recursive: true});
+                fs.writeFileSync(path.join(outsideDir, "build-info.json"), '{"leaked": true}');
+
+                const generationDir = path.join(path.dirname(liveLinkPathOf(migrated.projectRoot)), originalLiveTarget);
+                const srcGeneratedDir = path.join(generationDir, "src", "generated");
+                fs.rmSync(srcGeneratedDir, {recursive: true});
+                fs.symlinkSync(outsideDir, srcGeneratedDir);
+
+                expect(() =>
+                    generator.generate(
+                        buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
+                        cwd,
+                    ),
+                ).toThrow(/is a symlink, not the plain directory/);
+
+                // The escape target is completely untouched -- neither read nor deleted -- and "live" was
+                // never repointed, so the rejection happened before any output mutation.
+                expect(fs.existsSync(path.join(outsideDir, "build-info.json"))).toBe(true);
+                expect(fs.readFileSync(path.join(outsideDir, "build-info.json"), "utf-8")).toBe('{"leaked": true}');
+                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
+            });
+
+            it("fails closed, without reading/deleting the escape target, when an intermediate ancestor directory (\"src\") inside the live generation is itself a symlink escaping the output tree", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                generator.generate(buildBlueprint(), cwd);
+                const migrated = generator.generate(
+                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
+                    cwd,
+                );
+                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
+
+                const outsideDir = path.join(cwd, "outside-secret");
+                fs.mkdirSync(path.join(outsideDir, "generated"), {recursive: true});
+                fs.writeFileSync(path.join(outsideDir, "generated", "build-info.json"), '{"leaked": true}');
+
+                const generationDir = path.join(path.dirname(liveLinkPathOf(migrated.projectRoot)), originalLiveTarget);
+                const srcDir = path.join(generationDir, "src");
+                fs.rmSync(srcDir, {recursive: true});
+                fs.symlinkSync(outsideDir, srcDir);
+
+                expect(() =>
+                    generator.generate(
+                        buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
+                        cwd,
+                    ),
+                ).toThrow(/is a symlink, not the plain directory/);
+
+                expect(fs.existsSync(path.join(outsideDir, "generated", "build-info.json"))).toBe(true);
+                expect(fs.readFileSync(path.join(outsideDir, "generated", "build-info.json"), "utf-8")).toBe('{"leaked": true}');
+                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
+            });
+
             it("fails closed when the live generation's own build-info.json entry is missing", () => {
                 const generator = new GamePackageGenerator("1.3.0");
                 generator.generate(buildBlueprint(), cwd);
