@@ -7,14 +7,33 @@ describe("resolveBrowseStartLocation", () => {
         jest.restoreAllMocks();
     });
 
-    it("uses the current field value once /api/home/fs/browse confirms it resolves", async () => {
+    it("uses the current field value's own resolved absolute path once /api/home/fs/browse confirms it resolves", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games", displayPath: "./games", entries: []}}),
         });
 
         const result = await resolveBrowseStartLocation({fetchImpl, currentValue: "./games", browseId: "create-project-destination"});
 
-        expect(result).toBe("./games");
+        expect(result).toBe("/games");
+    });
+
+    it("resolves a project-relative current value against relevantDirectory to its absolute path, not the original relative text", async () => {
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/home/alice/projects/sample-slot/outcomes", displayPath: "./outcomes", entries: []},
+            }),
+        });
+
+        const result = await resolveBrowseStartLocation({
+            fetchImpl,
+            currentValue: "./outcomes",
+            relevantDirectory: "/home/alice/projects/sample-slot",
+        });
+
+        expect(result).toBe("/home/alice/projects/sample-slot/outcomes");
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Foutcomes&base=%2Fhome%2Falice%2Fprojects%2Fsample-slot")).toBe(true);
     });
 
     it("falls through to the relevant directory when the current value doesn't resolve", async () => {

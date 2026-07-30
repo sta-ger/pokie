@@ -27,7 +27,7 @@ export async function resolveBrowseStartLocation(params: BrowseStartLocationPara
     if (trimmedCurrentValue.length > 0) {
         const hint = await browseFilesystem(params.fetchImpl, trimmedCurrentValue, params.relevantDirectory);
         if (hint.status === "ok") {
-            return trimmedCurrentValue;
+            return hint.resolvedPath;
         }
     }
 

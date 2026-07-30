@@ -240,6 +240,32 @@ describe("PathInput", () => {
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Foutcomes&base=%2Fprojects%2Fsample-slot")).toBe(true);
     });
 
+    it("opens the fallback modal at the resolved absolute project path for a valid relative current value, not Studio's own server root", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/projects/sample-slot/outcomes", displayPath: "/projects/sample-slot/outcomes", entries: []},
+            }),
+            ...UNAVAILABLE_ROUTE,
+        });
+
+        renderWithProviders(<Harness initial="./outcomes" relevantDirectory="/projects/sample-slot" />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        expect(await screen.findByText("Current location: /projects/sample-slot/outcomes")).toBeInTheDocument();
+        // The start-location resolver's own request, resolved against relevantDirectory.
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Foutcomes&base=%2Fprojects%2Fsample-slot")).toBe(true);
+        // The modal's own subsequent directory listing must reuse that already-resolved absolute path --
+        // never re-request the raw relative value with no base, which would resolve it against Studio's
+        // own server root instead of the project.
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fprojects%2Fsample-slot%2Foutcomes")).toBe(true);
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Foutcomes")).toBe(false);
+    });
+
     it("falls back to the Server filesystem browser modal, seeded with the field's current value, when native browsing is unavailable", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
