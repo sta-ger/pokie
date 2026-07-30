@@ -137,6 +137,54 @@ describe("BuildFromBlueprintPanel", () => {
         expect(buildCalls).toEqual([{blueprintPath: "/games/blueprint.json", outDir: undefined}]);
     });
 
+    it("confirms before building into the default destination when the output field is left whitespace-only", async () => {
+        const user = userEvent.setup();
+        const buildCalls: unknown[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/build/preview": () => ({ok: true, status: 200, body: previewOkBody()}),
+            "/api/home/projects/build": (call) => {
+                buildCalls.push(JSON.parse(call.init?.body ?? "{}"));
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "ok",
+                        projectRoot: "/games/sample-slot",
+                        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                        warnings: [],
+                        createdFiles: ["package.json"],
+                        buildInfo: {
+                            schemaVersion: 1,
+                            generatedBy: "pokie build",
+                            pokieVersion: "1.0.0",
+                            generatedAt: "2026-01-01T00:00:00.000Z",
+                            blueprintHash: "sha256:abc",
+                            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                        },
+                        unchanged: false,
+                    },
+                };
+            },
+        });
+
+        renderWithProviders(<BuildFromBlueprintPanel />, {fetchImpl});
+
+        await user.type(screen.getByRole("textbox", {name: "Blueprint JSON path"}), "/games/blueprint.json");
+        await user.type(screen.getByRole("textbox", {name: "Output directory (optional)"}), "   ");
+        await user.click(screen.getByRole("button", {name: "Preview"}));
+        expect(await screen.findByText(/Destination: \/games\/sample-slot/)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Build"}));
+
+        expect(await screen.findByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(buildCalls).toEqual([]);
+
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+
+        expect(await screen.findByText(/"\/games\/sample-slot"\.$/)).toBeInTheDocument();
+        expect(buildCalls).toEqual([{blueprintPath: "/games/blueprint.json", outDir: undefined}]);
+    });
+
     it("never confirms when the outDir was edited after the last Preview -- the stale preview is not trusted", async () => {
         const user = userEvent.setup();
         const buildCalls: unknown[] = [];

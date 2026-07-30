@@ -77,26 +77,26 @@ export function BuildFromBlueprintPanel() {
 
     const runBuild = (): void => {
         const values = form.getValues();
-        const outDir = values.outDir.trim() || undefined;
+        const resolvedOutDir = values.outDir.trim() || undefined;
         const doBuild = (): void => {
             if (!buildGuard.begin()) {
                 return;
             }
             setResult({status: "loading"});
-            buildProject(fetchImpl, {blueprintPath: values.blueprintPath, outDir})
+            buildProject(fetchImpl, {blueprintPath: values.blueprintPath, outDir: resolvedOutDir})
                 .then((view) => {
                     setResult(withBuildResultError(describeBuildResult(view)));
                     if (view.status === "ok") {
                         setLastProjectRoot(view.projectRoot);
-                        lastBuiltOutDir.current = outDir;
+                        lastBuiltOutDir.current = resolvedOutDir;
                     }
                 })
                 .catch((error: unknown) => setResult({status: "error", message: describeBlueprintPathFailure(errorMessage(error))}))
                 .finally(() => buildGuard.end());
         };
 
-        if (lastBuiltOutDir.current !== undefined && lastBuiltOutDir.current === outDir) {
-            const target = outDir ?? "the default output directory";
+        if (lastBuiltOutDir.current !== undefined && lastBuiltOutDir.current === resolvedOutDir) {
+            const target = resolvedOutDir ?? "the default output directory";
             confirm(`A package was already built at "${target}" this session. Rebuild and overwrite it?`, doBuild);
             return;
         }
@@ -106,7 +106,7 @@ export function BuildFromBlueprintPanel() {
         // (against a since-edited outDir) is deliberately never trusted for this -- see previewedOutDir's
         // own doc comment -- so an outDir change without a fresh Preview falls straight through to
         // doBuild(), unchanged from this panel's prior behavior.
-        if (preview.status === "ok" && preview.destinationHasContent && previewedOutDir === outDir) {
+        if (preview.status === "ok" && preview.destinationHasContent && previewedOutDir === resolvedOutDir) {
             confirm(`"${preview.projectRoot}" already has content. Building will create/update files there. Continue?`, doBuild);
             return;
         }
