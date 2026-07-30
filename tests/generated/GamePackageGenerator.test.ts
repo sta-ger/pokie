@@ -580,7 +580,7 @@ describe("GamePackageGenerator", () => {
                 // ever touched by the attacker, and this rejection happened before any write.
                 const {"package.json": _pkg, ...restOriginal} = original;
                 const restNow = readGeneratedFiles(first.projectRoot);
-                delete (restNow as Record<string, string>)["package.json"];
+                Reflect.deleteProperty(restNow as Record<string, string>, "package.json");
                 expect(restNow).toEqual(restOriginal);
             });
 
