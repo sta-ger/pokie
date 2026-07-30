@@ -857,6 +857,77 @@ describe("GamePackageGenerator", () => {
                 expect(restNow).toEqual(restOriginal);
             });
 
+            it("fails closed, without reading/deleting the escape target, when the live generation's own build-info.json entry is itself a symlink escaping the output tree", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                generator.generate(buildBlueprint(), cwd);
+                const migrated = generator.generate(
+                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
+                    cwd,
+                );
+                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
+
+                const outsideDir = path.join(cwd, "outside-secret");
+                fs.mkdirSync(outsideDir, {recursive: true});
+                fs.writeFileSync(path.join(outsideDir, "secret.json"), '{"leaked": true}');
+                const outsideTarget = path.join(outsideDir, "secret.json");
+
+                // Reach past both trusted symlinks -- the public path and "live" itself -- and corrupt the
+                // actual generation-directory entry they resolve to. Every public path's own symlink text
+                // (and "live"'s own target) stays exactly as this generator left it; only what's sitting
+                // *inside* the generation directory is attacker-controlled, which is what this check exists
+                // to catch.
+                const buildInfoInGeneration = path.join(
+                    path.dirname(liveLinkPathOf(migrated.projectRoot)),
+                    originalLiveTarget,
+                    "src",
+                    "generated",
+                    "build-info.json",
+                );
+                fs.rmSync(buildInfoInGeneration);
+                fs.symlinkSync(outsideTarget, buildInfoInGeneration);
+
+                expect(() =>
+                    generator.generate(
+                        buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
+                        cwd,
+                    ),
+                ).toThrow(/build-info\.json.*symlink/);
+
+                // The escape target is completely untouched -- neither read nor deleted -- and "live" was
+                // never repointed, so the rejection happened before any output mutation.
+                expect(fs.existsSync(outsideTarget)).toBe(true);
+                expect(fs.readFileSync(outsideTarget, "utf-8")).toBe('{"leaked": true}');
+                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
+            });
+
+            it("fails closed when the live generation's own build-info.json entry is missing", () => {
+                const generator = new GamePackageGenerator("1.3.0");
+                generator.generate(buildBlueprint(), cwd);
+                const migrated = generator.generate(
+                    buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
+                    cwd,
+                );
+                const originalLiveTarget = fs.readlinkSync(liveLinkPathOf(migrated.projectRoot));
+
+                const buildInfoInGeneration = path.join(
+                    path.dirname(liveLinkPathOf(migrated.projectRoot)),
+                    originalLiveTarget,
+                    "src",
+                    "generated",
+                    "build-info.json",
+                );
+                fs.rmSync(buildInfoInGeneration);
+
+                expect(() =>
+                    generator.generate(
+                        buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe Redux", version: "0.3.0"}}),
+                        cwd,
+                    ),
+                ).toThrow(/build-info\.json.*missing/);
+
+                expect(fs.readlinkSync(liveLinkPathOf(migrated.projectRoot))).toBe(originalLiveTarget);
+            });
+
             it("fails closed when a migrated public path has been replaced with a plain file instead of its expected symlink through \"live\"", () => {
                 const generator = new GamePackageGenerator("1.3.0");
                 generator.generate(buildBlueprint(), cwd);

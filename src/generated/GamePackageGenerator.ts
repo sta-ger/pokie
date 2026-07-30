@@ -629,6 +629,39 @@ export class GamePackageGenerator implements GamePackageGenerating {
                     `"${realPath}" is not the symlink "pokie build" expects through "${liveLinkPath}". ${remediation}`,
                 );
             }
+
+            this.assertTrustedLiveGenerationEntry(liveLinkPath, relativePath);
+        }
+    }
+
+    // Proves what a public path's symlink actually resolves to *inside* the live generation is itself a
+    // plain regular file, before readPreviousBuildInfo (or any future rebuild path) reads through it.
+    // assertTrustedPublicPaths above only checks the public path's own symlink *text* -- that it points
+    // into liveLinkPath at the expected relative location -- which says nothing about what's actually
+    // sitting there: assertTrustedGenerationsLayout vouches for liveLinkPath and the generation directory
+    // containing it, never for the individual files inside that directory. Nothing here planted those
+    // files itself except this generator, but an attacker able to write under GENERATIONS_DIR_NAME
+    // (e.g. directly into a generation directory, before or after "live" is pointed at it) could still
+    // make a leaf entry -- build-info.json, most exploitably, since readPreviousBuildInfo reads it -- a
+    // symlink to an arbitrary external file. lstat (never following the final path component) means that
+    // nested symlink is detected and rejected here, not followed: its referent is never opened, read, or
+    // written.
+    private assertTrustedLiveGenerationEntry(liveLinkPath: string, relativePath: string): void {
+        const entryPath = path.join(liveLinkPath, ...relativePath.split("/"));
+        const remediation = `Refusing to rebuild -- remove "${liveLinkPath}" (or the whole "${path.dirname(liveLinkPath)}") and run "pokie build" fresh.`;
+
+        let stats: fs.Stats;
+        try {
+            stats = fs.lstatSync(entryPath);
+        } catch {
+            throw new Error(`"${entryPath}" is missing from the current live generation. ${remediation}`);
+        }
+
+        if (!stats.isFile()) {
+            throw new Error(
+                `"${entryPath}" is a ${stats.isSymbolicLink() ? "symlink" : stats.isDirectory() ? "directory" : "special file"}, ` +
+                    `not the plain file "pokie build" writes inside a generation directory. ${remediation}`,
+            );
         }
     }
 
