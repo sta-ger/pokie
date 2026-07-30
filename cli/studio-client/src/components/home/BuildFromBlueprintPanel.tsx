@@ -101,17 +101,46 @@ export function BuildFromBlueprintPanel() {
             return;
         }
 
-        // A Build Preview run against this exact outDir already told us the destination isn't empty --
-        // confirm before writing there, same as the same-session-rebuild case above. A stale preview
-        // (against a since-edited outDir) is deliberately never trusted for this -- see previewedOutDir's
-        // own doc comment -- so an outDir change without a fresh Preview falls straight through to
-        // doBuild(), unchanged from this panel's prior behavior.
-        if (preview.status === "ok" && preview.destinationHasContent && previewedOutDir === resolvedOutDir) {
-            confirm(`"${preview.projectRoot}" already has content. Building will create/update files there. Continue?`, doBuild);
+        const confirmIfDestinationHasContent = (view: BuildPreviewView): void => {
+            if (view.status === "ok" && view.destinationHasContent) {
+                confirm(`"${view.projectRoot}" already has content. Building will create/update files there. Continue?`, doBuild);
+            } else {
+                doBuild();
+            }
+        };
+
+        // A Build Preview run against this exact outDir already told us whether the destination is empty
+        // -- reuse that answer instead of asking again. A stale preview (against a since-edited outDir) is
+        // deliberately never trusted for this -- see previewedOutDir's own doc comment -- so it falls
+        // through to the read-only check below instead.
+        if (preview.status === "ok" && previewedOutDir === resolvedOutDir) {
+            confirmIfDestinationHasContent(preview);
             return;
         }
 
-        doBuild();
+        // No Preview has ever been run against this exact outDir -- Build must still know whether it's
+        // about to write into existing content, so it runs the same read-only destination check Preview
+        // does before deciding, rather than silently trusting an empty destination. Setting `preview`/
+        // `previewedOutDir` from the result makes this fresh answer the trustworthy one for any further
+        // Build click against this same outDir, same as if the user had clicked Preview themselves. A
+        // failed check (bad blueprint path, network error, etc.) falls straight through to doBuild(),
+        // whose own error handling already covers that case -- unchanged from this panel's prior
+        // behavior when no destination information was available at all.
+        if (!buildGuard.begin()) {
+            return;
+        }
+        previewBuild(fetchImpl, {blueprintPath: values.blueprintPath, outDir: resolvedOutDir})
+            .then((view) => {
+                const described = withBlueprintPathPreviewError(describeBuildPreview(view));
+                setPreview(described);
+                setPreviewedOutDir(resolvedOutDir);
+                buildGuard.end();
+                confirmIfDestinationHasContent(described);
+            })
+            .catch(() => {
+                buildGuard.end();
+                doBuild();
+            });
     };
 
     const handleOpenFolder = (folderPath: string): void => {
