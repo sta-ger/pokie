@@ -1,5 +1,5 @@
 import {Button, Group, Stack, Text, TextInput, type TextInputProps} from "@mantine/core";
-import {useState} from "react";
+import {useRef, useState} from "react";
 import {browseFilesystem, checkNativePickerAvailability, pickNativePath} from "../../api/apiClient";
 import type {StudioFsBrowseErrorReason, StudioNativePickerFileFilter} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -95,6 +95,7 @@ export function PathInput({
     value,
     defaultValue,
     onFocus,
+    onChange,
     ...rest
 }: PathInputProps) {
     const fetchImpl = useStudioApi();
@@ -102,6 +103,10 @@ export function PathInput({
     const [modalInitialPath, setModalInitialPath] = useState("");
     const [hint, setHint] = useState<HintState>({status: "idle"});
     const [browsing, setBrowsing] = useState(false);
+    // Bumped on every resolveHint/rememberAndSelect call so a response for an earlier value -- one that
+    // arrives after the field has since moved on to a newer value -- can recognize itself as stale (its
+    // captured id no longer matches the latest) and skip setHint instead of clobbering the current hint.
+    const resolveRequestIdRef = useRef(0);
 
     const currentValue = String(value ?? defaultValue ?? "");
 
@@ -116,16 +121,26 @@ export function PathInput({
     const resolveHint = (path: string): void => {
         const auto = path.trim().length === 0;
         const target = auto && autoDestinationPath && autoDestinationPath.trim().length > 0 ? autoDestinationPath : path;
+        const requestId = ++resolveRequestIdRef.current;
         setHint({status: "loading"});
         browseFilesystem(fetchImpl, target, relevantDirectory, kind)
             .then((result) => {
+                if (requestId !== resolveRequestIdRef.current) {
+                    return;
+                }
                 setHint(result.status === "ok" ? {status: "ok", text: result.resolvedPath, auto} : {status: "error", reason: result.reason, path: result.resolvedPath});
             })
-            .catch(() => setHint({status: "error", reason: "network", path: target}));
+            .catch(() => {
+                if (requestId !== resolveRequestIdRef.current) {
+                    return;
+                }
+                setHint({status: "error", reason: "network", path: target});
+            });
     };
 
     const rememberAndSelect = (path: string): void => {
         onPathSelected(path);
+        resolveRequestIdRef.current += 1;
         setHint({status: "ok", text: path, auto: false});
         if (browseId) {
             setRememberedBrowseLocation(browseId, path);
@@ -169,6 +184,10 @@ export function PathInput({
                     onFocus={(event) => {
                         onFocus?.(event);
                         resolveHint(currentValue);
+                    }}
+                    onChange={(event) => {
+                        onChange?.(event);
+                        resolveHint(event.currentTarget.value);
                     }}
                     {...rest}
                     value={value}

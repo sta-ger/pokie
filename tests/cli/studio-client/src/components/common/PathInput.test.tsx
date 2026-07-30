@@ -1,6 +1,7 @@
-import {screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {useState} from "react";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {PathInput} from "../../../../../../cli/studio-client/src/components/common/PathInput";
 import {getRememberedBrowseLocation} from "../../../../../../cli/studio-client/src/domain/rememberedBrowseLocation";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
@@ -187,6 +188,42 @@ describe("PathInput", () => {
 
         expect(await screen.findByText("Auto resolved destination: /studio-root/sample-slot")).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=sample-slot")).toBe(true);
+    });
+
+    it("replaces an already-focused field's resolved hint with the edited value's own resolution, even if the prior value's response arrives late", async () => {
+        const calls: FakeCall[] = [];
+        const respondTo: Array<(body: unknown) => void> = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            calls.push({url, init});
+            return new Promise((resolve) => {
+                respondTo.push((body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}));
+            });
+        };
+
+        renderWithProviders(<Harness initial="a" />, {fetchImpl});
+        const input = screen.getByRole("textbox", {name: "Path"});
+
+        await userEvent.click(input);
+        fireEvent.change(input, {target: {value: "ab"}});
+
+        await waitFor(() => expect(calls.length).toBe(2));
+        expect(calls[0].url).toBe("/api/home/fs/browse?path=a");
+        expect(calls[1].url).toBe("/api/home/fs/browse?path=ab");
+
+        // The newer ("ab") request settles first, then the stale ("a") request settles late -- the stale
+        // response must not overwrite the hint the newer value already produced.
+        respondTo[1]({status: "ok", resolvedPath: "/root/ab", displayPath: "./ab", entries: []});
+        await screen.findByText("Resolves to: /root/ab");
+
+        respondTo[0]({status: "ok", resolvedPath: "/root/a", displayPath: "./a", entries: []});
+        // Flush the stale response's own promise chain (fetch -> .json() -> .then) so a regression --
+        // it overwriting the hint -- would already have happened by the time we assert below.
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+
+        expect(screen.getByText("Resolves to: /root/ab")).toBeInTheDocument();
+        expect(screen.queryByText("Resolves to: /root/a")).not.toBeInTheDocument();
     });
 
     it("resolves the hint against a caller-supplied relevantDirectory (e.g. the open project's root), not Studio's own server root", async () => {
