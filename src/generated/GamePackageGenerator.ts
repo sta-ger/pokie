@@ -327,8 +327,12 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // correctly symlinked there (every rebuild after migration, since publishLiveGeneration is the only
     // thing that ever changes what LIVE_DIR_NAME points to) is left completely untouched — this method's
     // own file-touching work runs at most once per path, only during migrateToLiveScheme. Anything else
-    // already at a path — a legacy plain file, or a symlink pointing somewhere unexpected — is renamed
-    // aside rather than overwritten in place, so a failure partway through this call can restore every
+    // already at a path — a legacy plain file, or a symlink pointing somewhere unexpected — is replaced by
+    // a single rename of a freshly built symlink over it (the same rename-a-throwaway-symlink-into-place
+    // trick publishLiveGeneration uses for "live" itself), never by renaming the existing path away first:
+    // that path therefore always resolves to *something* — its original content, then its new symlink —
+    // and never briefly to nothing. Before that replacing rename, the original content is preserved by
+    // *copying* it aside (not moving it), so a failure partway through this call can still restore every
     // path it already touched back to exactly what it held before, leaving the prior package fully intact
     // with no manual recovery.
     private ensurePublicSymlinks(projectRoot: string, liveLinkPath: string, relativePaths: string[]): void {
@@ -343,23 +347,26 @@ export class GamePackageGenerator implements GamePackageGenerating {
                 continue;
             }
 
-            let stalePath: string | undefined;
-            if (this.pathExists(realPath)) {
-                stalePath = `${realPath}.stale-${crypto.randomBytes(6).toString("hex")}`;
+            const stalePath = this.pathExists(realPath) ? `${realPath}.stale-${crypto.randomBytes(6).toString("hex")}` : undefined;
+            if (stalePath !== undefined) {
                 try {
-                    fs.renameSync(realPath, stalePath);
+                    this.copyPreservingType(realPath, stalePath);
                 } catch (error) {
+                    this.removeBestEffort(stalePath);
                     this.rollBackTouchedSymlinks(touched);
                     throw error;
                 }
             }
 
+            const tempLinkPath = `${realPath}.tmp-${crypto.randomBytes(6).toString("hex")}`;
             try {
                 fs.mkdirSync(path.dirname(realPath), {recursive: true});
-                fs.symlinkSync(expectedTarget, realPath);
+                fs.symlinkSync(expectedTarget, tempLinkPath);
+                fs.renameSync(tempLinkPath, realPath);
             } catch (error) {
+                this.removeBestEffort(tempLinkPath);
                 if (stalePath !== undefined) {
-                    fs.renameSync(stalePath, realPath);
+                    this.removeBestEffort(stalePath);
                 }
                 this.rollBackTouchedSymlinks(touched);
                 throw error;
@@ -372,6 +379,19 @@ export class GamePackageGenerator implements GamePackageGenerating {
                 this.removeBestEffort(stalePath);
             }
         });
+    }
+
+    // Copies whatever is at "sourcePath" to "destinationPath" without disturbing "sourcePath" itself —
+    // used to preserve a public path's pre-migration content for rollback purposes while the real
+    // replacement happens via a rename over "sourcePath" (never a move away from it). A symlink is
+    // recreated pointing at the same target (its referent is never dereferenced/copied); anything else
+    // (the plain files this generator's very first publish always writes) is copied byte for byte.
+    private copyPreservingType(sourcePath: string, destinationPath: string): void {
+        if (fs.lstatSync(sourcePath).isSymbolicLink()) {
+            fs.symlinkSync(fs.readlinkSync(sourcePath), destinationPath);
+        } else {
+            fs.copyFileSync(sourcePath, destinationPath);
+        }
     }
 
     private isAlreadyCorrectSymlink(realPath: string, expectedTarget: string): boolean {
@@ -393,12 +413,17 @@ export class GamePackageGenerator implements GamePackageGenerating {
 
     // Rolls every already-wired symlink back to what its path held before (reverse order) — used when a
     // *different* path in the same publish failed to wire up, so none of the others may end up ahead of
-    // it. A blind restore is safe here: nothing but this generator itself ever writes these paths.
+    // it. Restoring a path that had prior content renames its preserved copy back over the new symlink —
+    // an atomic replace, exactly mirroring how that symlink got wired in the first place, so the path
+    // never resolves to nothing during rollback either. A path that had nothing before (no stalePath) is
+    // simply removed. A blind restore is safe here: nothing but this generator itself ever writes these
+    // paths.
     private rollBackTouchedSymlinks(touched: {realPath: string; stalePath: string | undefined}[]): void {
         for (const {realPath, stalePath} of [...touched].reverse()) {
-            fs.rmSync(realPath, {recursive: true, force: true});
             if (stalePath !== undefined) {
                 fs.renameSync(stalePath, realPath);
+            } else {
+                fs.rmSync(realPath, {recursive: true, force: true});
             }
         }
     }

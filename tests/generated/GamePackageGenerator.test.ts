@@ -522,6 +522,104 @@ describe("GamePackageGenerator", () => {
             // observed disagreeing about which build is live.
         });
 
+        // The other visibility window the reviewer flagged (beyond the single "live" swap covered above):
+        // ensurePublicSymlinks itself replaces each of the four public paths individually while migrating
+        // them onto the live-directory scheme. That replacement must be a single atomic rename of a
+        // freshly built symlink over the existing plain file — never a rename of the plain file away
+        // followed by a separate symlink creation — so a reader following any one of the four paths can
+        // never observe ENOENT while its own conversion is in flight, and (since the structural phase
+        // clones the *current* content byte-for-byte before rewiring) must keep reading its exact prior
+        // content right through that conversion, only actually changing later, at the one live-generation
+        // swap this same migration performs last (see the "never observes a mix" test above).
+        it("never observes ENOENT for any public path, and continues to observe its prior content, at each path's own replacement while migrating onto the live-directory scheme", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const originalContents = readGeneratedFiles(first.projectRoot);
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            const relativePathByRealPath = new Map<string, string>(
+                GENERATED_PACKAGE_FILES.map((relativePath) => [path.join(first.projectRoot, ...relativePath.split("/")), relativePath]),
+            );
+            const observedPerFile: Record<string, {beforeThrew: boolean; before: string; after: string}> = {};
+
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                const relativePath = relativePathByRealPath.get(String(to));
+                if (relativePath === undefined) {
+                    return realRenameSync(from, to);
+                }
+                // Right up to this exact rename -- the one that replaces this single public path's plain
+                // file with its symlink -- the path must still resolve and read as its original content.
+                let beforeThrew = false;
+                let before = "";
+                try {
+                    before = fs.readFileSync(String(to), "utf-8");
+                } catch {
+                    beforeThrew = true;
+                }
+                const result = realRenameSync(from, to);
+                const after = fs.readFileSync(String(to), "utf-8");
+                observedPerFile[relativePath] = {beforeThrew, before, after};
+                return result;
+            });
+
+            generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
+
+            jest.restoreAllMocks();
+            for (const relativePath of GENERATED_PACKAGE_FILES) {
+                const observed = observedPerFile[relativePath];
+                expect(observed).toBeDefined();
+                expect(observed.beforeThrew).toBe(false);
+                expect(observed.before).toBe(originalContents[relativePath]);
+                expect(observed.after).toBe(originalContents[relativePath]);
+            }
+        });
+
+        // A failure partway through migrating the public paths must still leave every path -- including
+        // ones already converted to a symlink by this attempt -- fully resolvable throughout its own
+        // rollback, never briefly missing. This complements the existing "preserves the complete prior
+        // (still plain-file) package" test, which only checks the *end* state after rollback; this one
+        // checks that no public path ever throws ENOENT while the rollback itself is in flight.
+        it("never observes ENOENT for any public path while rolling back a failed migration to the live-directory scheme", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const realPaths = GENERATED_PACKAGE_FILES.map((relativePath) => path.join(first.projectRoot, ...relativePath.split("/")));
+
+            const realSymlinkSync = fs.symlinkSync.bind(fs);
+            let symlinkCalls = 0;
+            jest.spyOn(fs, "symlinkSync").mockImplementation((linkTarget, linkPath) => {
+                symlinkCalls++;
+                // Call 1 bootstraps "live"; calls 2-5 are the four public paths' own replacement symlinks
+                // (each built at a throwaway temp name before being renamed into place). Let two of those
+                // succeed, then fail the third, so rollback has real work to undo.
+                if (symlinkCalls === 4) {
+                    throw new Error("simulated symlink failure migrating a public path");
+                }
+                return realSymlinkSync(linkTarget, linkPath);
+            });
+
+            let observedEnoentDuringRollback = false;
+            const realRenameSync = fs.renameSync.bind(fs);
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                const result = realRenameSync(from, to);
+                for (const realPath of realPaths) {
+                    if (!fs.existsSync(realPath)) {
+                        observedEnoentDuringRollback = true;
+                    }
+                }
+                return result;
+            });
+
+            expect(() => generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd)).toThrow(
+                /simulated symlink failure migrating a public path/,
+            );
+
+            jest.restoreAllMocks();
+            expect(observedEnoentDuringRollback).toBe(false);
+            for (const realPath of realPaths) {
+                expect(fs.existsSync(realPath)).toBe(true);
+            }
+        });
+
         // The positive case: once migrated to the live-directory scheme, a successful rebuild must make
         // the new package visible as one indivisible unit -- package.json, README, the generated module,
         // and build-info always describing the same build, never a mix -- and must do so without ever
