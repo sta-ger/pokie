@@ -266,6 +266,40 @@ describe("PathInput", () => {
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Foutcomes")).toBe(false);
     });
 
+    it("starts Browse for a file control's valid current value in that file's own containing directory, not the file itself", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": (call: FakeCall) =>
+                call.url.includes("kind=file")
+                    ? {
+                          ok: true,
+                          status: 200,
+                          body: {
+                              status: "ok",
+                              resolvedPath: "/projects/sample-slot/blueprints/sample.json",
+                              displayPath: "./blueprints/sample.json",
+                              parentPath: "/projects/sample-slot/blueprints",
+                              entries: [],
+                          },
+                      }
+                    : {
+                          ok: true,
+                          status: 200,
+                          body: {status: "ok", resolvedPath: "/projects/sample-slot/blueprints", displayPath: "/projects/sample-slot/blueprints", entries: []},
+                      },
+            ...UNAVAILABLE_ROUTE,
+        });
+
+        renderWithProviders(<Harness kind="file" initial="./blueprints/sample.json" />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        expect(await screen.findByText("Current location: /projects/sample-slot/blueprints")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Fblueprints%2Fsample.json&kind=file")).toBe(true);
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fprojects%2Fsample-slot%2Fblueprints")).toBe(true);
+    });
+
     it("falls back to the Server filesystem browser modal, seeded with the field's current value, when native browsing is unavailable", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

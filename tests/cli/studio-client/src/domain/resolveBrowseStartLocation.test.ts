@@ -36,6 +36,47 @@ describe("resolveBrowseStartLocation", () => {
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Foutcomes&base=%2Fhome%2Falice%2Fprojects%2Fsample-slot")).toBe(true);
     });
 
+    it("requests kind=file and returns the resolved file's own containing directory (parentPath), not the file path itself, for a file-kind field", async () => {
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/home/alice/blueprints/sample.json", displayPath: "./sample.json", parentPath: "/home/alice/blueprints", entries: []},
+            }),
+        });
+
+        const result = await resolveBrowseStartLocation({fetchImpl, currentValue: "./sample.json", kind: "file"});
+
+        expect(result).toBe("/home/alice/blueprints");
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Fsample.json&kind=file")).toBe(true);
+    });
+
+    it("resolves a project-relative current file value's parentPath to its absolute containing directory, not the raw relative text", async () => {
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    resolvedPath: "/home/alice/projects/sample-slot/blueprints/sample.json",
+                    displayPath: "./blueprints/sample.json",
+                    parentPath: "/home/alice/projects/sample-slot/blueprints",
+                    entries: [],
+                },
+            }),
+        });
+
+        const result = await resolveBrowseStartLocation({
+            fetchImpl,
+            currentValue: "./blueprints/sample.json",
+            relevantDirectory: "/home/alice/projects/sample-slot",
+            kind: "file",
+        });
+
+        expect(result).toBe("/home/alice/projects/sample-slot/blueprints");
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Fblueprints%2Fsample.json&base=%2Fhome%2Falice%2Fprojects%2Fsample-slot&kind=file")).toBe(true);
+    });
+
     it("falls through to the relevant directory when the current value doesn't resolve", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", error: "nope", resolvedPath: "/nope"}}),

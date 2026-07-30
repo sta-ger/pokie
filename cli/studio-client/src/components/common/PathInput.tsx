@@ -150,7 +150,7 @@ export function PathInput({
     const handleBrowseClick = async (): Promise<void> => {
         setBrowsing(true);
         try {
-            const startLocation = await resolveBrowseStartLocation({fetchImpl, currentValue, browseId, relevantDirectory, defaultLocationName});
+            const startLocation = await resolveBrowseStartLocation({fetchImpl, currentValue, browseId, relevantDirectory, defaultLocationName, kind});
             const availability = await checkNativePickerAvailability(fetchImpl);
             if (availability.status === "available") {
                 const result = await pickNativePath(fetchImpl, {kind, startPath: startLocation, fileFilters});

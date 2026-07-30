@@ -88,10 +88,10 @@ describe("StudioFsBrowseService", () => {
         expect(result.reason).toBe("type");
     });
 
-    it("resolves an existing file as ok when kind is 'file', instead of reporting a type mismatch", () => {
+    it("resolves an existing file as ok when kind is 'file', instead of reporting a type mismatch, carrying its own containing directory as parentPath", () => {
         const result = service.browse("readme.txt", undefined, "file");
 
-        expect(result).toMatchObject({status: "ok", resolvedPath: path.join(root, "readme.txt"), displayPath: `.${path.sep}readme.txt`, entries: []});
+        expect(result).toMatchObject({status: "ok", resolvedPath: path.join(root, "readme.txt"), displayPath: `.${path.sep}readme.txt`, parentPath: root, entries: []});
     });
 
     it("reports a directory as a type mismatch when kind is 'file'", () => {

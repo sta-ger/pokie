@@ -59,9 +59,12 @@ export class StudioFsBrowseService {
     // surfaced here so the picker can warn about it before the user ever submits.
     // `kind`, when "file", validates/resolves `requestedPath` as a file instead of a directory -- no
     // readdir is attempted (a file has no children to list), so a `kind: "file"` call's own "ok" always
-    // comes back with an empty `entries`. Defaults to "directory" (every existing caller -- PathBrowseModal's
-    // own directory-listing navigation, and any caller that omits it entirely) so directory browsing/listing
-    // is completely unaffected by this parameter's existence.
+    // comes back with an empty `entries`, but still carries `parentPath` (the file's own containing
+    // directory) so a caller wanting a browsable *location* for a file value -- see
+    // resolveBrowseStartLocation's own doc comment -- doesn't have to derive it itself. Defaults to
+    // "directory" (every existing caller -- PathBrowseModal's own directory-listing navigation, and any
+    // caller that omits it entirely) so directory browsing/listing is completely unaffected by this
+    // parameter's existence.
     public browse(requestedPath: string | undefined, base?: string, kind: "directory" | "file" = "directory"): StudioFsBrowseView {
         const explicitBase = base !== undefined && base.trim().length > 0;
         const resolveBase = explicitBase ? path.resolve(base) : this.root;
@@ -88,7 +91,8 @@ export class StudioFsBrowseService {
         }
 
         if (kind === "file") {
-            return {status: "ok", resolvedPath, displayPath: this.displayPath(resolvedPath, resolveBase), entries: []};
+            const parentPath = path.dirname(resolvedPath);
+            return {status: "ok", resolvedPath, displayPath: this.displayPath(resolvedPath, resolveBase), parentPath: parentPath === resolvedPath ? undefined : parentPath, entries: []};
         }
 
         let names: string[];
