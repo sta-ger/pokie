@@ -410,40 +410,22 @@ describe("GamePackageGenerator", () => {
 
         // A projectRoot that already holds unrelated content of its own (a real first build into a
         // directory an npm install, or a user, already put something in) can't be swapped in one rename
-        // without disturbing that content, so this is the one case that still commits the four public
-        // paths individually -- with the same rollback-on-failure guarantee the whole-directory path gets
-        // for free, since a partial failure here still has no *package* to preserve, just nothing new
-        // left half-written.
-        it("falls back to committing each file individually, rolled back on a mid-publish failure, when the very first publish lands in a non-empty directory", () => {
+        // without disturbing that content, and there's no atomic way to commit several independent public
+        // paths into it either -- so this generator refuses the publish outright rather than ever
+        // committing the four public paths one at a time (which would let a reader observe a subset of
+        // GENERATED_PACKAGE_FILES). Nothing new is written, and the directory's own unrelated content is
+        // left completely untouched.
+        it("fails closed, without publishing any generated files, when the very first publish would land in a non-empty directory", () => {
             const generator = new GamePackageGenerator("1.3.0");
             const projectRoot = path.join(cwd, "sample-slot");
             fs.mkdirSync(projectRoot, {recursive: true});
             fs.writeFileSync(path.join(projectRoot, "LICENSE"), "MIT\n");
 
-            const realRenameSync = fs.renameSync.bind(fs);
-            let readmeCommitAttempts = 0;
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                if (String(to).endsWith(`${path.sep}README.md`)) {
-                    readmeCommitAttempts++;
-                    if (readmeCommitAttempts === 1) {
-                        throw new Error("simulated rename failure committing README.md");
-                    }
-                }
-                return realRenameSync(from, to);
-            });
+            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not empty/);
 
-            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/simulated rename failure committing README\.md/);
-
-            jest.restoreAllMocks();
-            // package.json commits before README.md in GENERATED_PACKAGE_FILES's own declared order, so
-            // it's the one this rollback must undo -- nothing from this failed first publish survives,
-            // but the unrelated LICENSE this directory already held is left completely untouched.
             expect(fs.readdirSync(projectRoot)).toEqual(["LICENSE"]);
-
-            // A clean retry (unmocked) still succeeds afterward -- the failure left nothing in the way.
-            const result = generator.generate(buildBlueprint(), cwd);
-            expect(fs.lstatSync(path.join(result.projectRoot, "package.json")).isSymbolicLink()).toBe(false);
-            expect(fs.existsSync(path.join(result.projectRoot, "LICENSE"))).toBe(true);
+            // No leftover staging directory either.
+            expect(fs.readdirSync(cwd).filter((entry) => entry !== "sample-slot")).toEqual([]);
         });
 
         // The core atomicity guarantee: every rebuild *after* the one-time migration below only ever
@@ -1148,14 +1130,14 @@ describe("GamePackageGenerator", () => {
         expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
     });
 
-    it("builds into an existing directory that only contains unrelated files elsewhere (nothing at a generated path)", () => {
+    it("refuses a first build into an existing directory that already holds unrelated files, leaving them untouched", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const projectRoot = path.join(cwd, "sample-slot");
         fs.mkdirSync(projectRoot, {recursive: true});
         fs.writeFileSync(path.join(projectRoot, "LICENSE"), "MIT\n");
 
-        expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
-        expect(fs.existsSync(path.join(projectRoot, "LICENSE"))).toBe(true);
+        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not empty/);
+        expect(fs.readdirSync(projectRoot)).toEqual(["LICENSE"]);
     });
 
     it("throws a descriptive error when the target path already exists and is not a directory", () => {

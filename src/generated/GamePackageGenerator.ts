@@ -151,15 +151,15 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // commits by picking each of the four files apart and renaming it into the real project individually
     // — a relative symlink surviving that individual relocation would resolve to nothing.
     //
-    // That doesn't mean a concurrent reader of projectRoot is unprotected, though: when projectRoot is
-    // itself fresh (missing, or present but empty — the case every real first build and every one of
-    // applyGameBlueprintToProject's always-fresh staging directories is in), publishFirstBuild commits the
-    // whole package with one directory rename (see publishAtomicFirstBuild), so a reader can only ever see
-    // projectRoot missing/empty or fully populated — never some of the four files without the rest. Only
-    // a first build into a projectRoot that already holds unrelated content (so the whole directory can't
-    // be swapped in one step without disturbing it) falls back to committing the four files individually
-    // (see publishPlainFiles) — there being no way to protect a reader of *that* directory from observing
-    // the files land one at a time without risking the unrelated content it doesn't own.
+    // That first publish is only ever committed when it can be done atomically: projectRoot missing or
+    // present-but-empty (the case every real first build and every one of applyGameBlueprintToProject's
+    // always-fresh staging directories is in) lets publishFirstBuild commit the whole package with one
+    // directory rename (see publishAtomicFirstBuild), so a reader can only ever see projectRoot
+    // missing/empty or fully populated — never some of the four files without the rest. A first build into
+    // a projectRoot that already holds unrelated content has no such single-rename option (the whole
+    // directory can't be swapped without disturbing what's already there) and no atomic per-file
+    // alternative either, so publishFirstBuild fails it closed instead of ever committing the four files
+    // one at a time — no first build may leave a reader able to observe a subset of them.
     //
     // A projectRoot's *second* publish is the other deliberate exception: it migrates the first publish's
     // plain files onto the live-directory/symlink scheme (see migrateToLiveScheme) — every rebuild after
@@ -189,7 +189,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
             relativePaths.some((relativePath) => this.pathExists(path.join(projectRoot, ...relativePath.split("/"))));
 
         if (!hasPriorPublish) {
-            this.publishFirstBuild(tempDir, projectRoot, relativePaths);
+            this.publishFirstBuild(tempDir, projectRoot);
             return;
         }
 
@@ -203,16 +203,29 @@ export class GamePackageGenerator implements GamePackageGenerating {
         this.publishLiveGeneration(tempDir, generationsDir, liveLinkPath);
     }
 
-    // A projectRoot's very first publish, dispatched to whichever of the two paths below can actually
-    // commit it without ever exposing a reader to a subset of GENERATED_PACKAGE_FILES. Both leave the
-    // four public paths as plain, independently relocatable files — never symlinks — for the reasons
+    // A projectRoot's very first publish. The only way to commit it without ever exposing a reader to a
+    // subset of GENERATED_PACKAGE_FILES is the single directory rename publishAtomicFirstBuild performs —
+    // which requires projectRoot to be missing or empty (see isMissingOrEmptyDirectory) — so that's the
+    // only outcome this ever commits. A projectRoot that already holds unrelated content has no atomic way
+    // to add the four public paths to it (there is no single syscall that commits several independent
+    // paths together, and committing them one rename at a time — this method's own prior behavior — is
+    // exactly the partial-package exposure this generator must never allow), so it's refused with an
+    // actionable error instead of ever being partially published. The four public paths themselves are
+    // left as plain, independently relocatable files — never symlinks — for the reasons
     // publishGeneratedFiles documents.
-    private publishFirstBuild(tempDir: string, projectRoot: string, relativePaths: string[]): void {
+    private publishFirstBuild(tempDir: string, projectRoot: string): void {
         if (this.isMissingOrEmptyDirectory(projectRoot)) {
             this.publishAtomicFirstBuild(tempDir, projectRoot);
             return;
         }
-        this.publishPlainFiles(tempDir, projectRoot, relativePaths);
+
+        this.removeBestEffort(tempDir);
+        throw new Error(
+            `"${projectRoot}" already exists and is not empty. The very first "pokie build" into a directory can only be ` +
+                `published atomically when that directory is missing or empty — publishing into a non-empty directory one ` +
+                `file at a time could expose a partial package. Remove or empty "${projectRoot}" first, or build into a ` +
+                `different --out directory, and run "pokie build" again.`,
+        );
     }
 
     // True when projectRoot is either absent or an existing-but-empty directory — the only two states a
@@ -241,30 +254,6 @@ export class GamePackageGenerator implements GamePackageGenerating {
             this.removeBestEffort(tempDir);
             throw error;
         }
-    }
-
-    // Commits every staged file directly into place as a plain file — a straight rename each, rolled
-    // back (in reverse order) if a later one fails. Used only when a projectRoot's very first publish
-    // lands in a directory that already holds unrelated content of its own (so the whole directory can't
-    // be swapped in one step — see publishFirstBuild): there being no previous *package* here means a
-    // partial failure has no package to preserve, just nothing new left half-written; a concurrent reader
-    // watching the individual public paths land one at a time is the one exposure this fallback can't
-    // close without risking the unrelated content it doesn't own.
-    private publishPlainFiles(tempDir: string, projectRoot: string, relativePaths: string[]): void {
-        const committed: string[] = [];
-        for (const relativePath of relativePaths) {
-            const realPath = path.join(projectRoot, ...relativePath.split("/"));
-            try {
-                fs.mkdirSync(path.dirname(realPath), {recursive: true});
-                fs.renameSync(path.join(tempDir, ...relativePath.split("/")), realPath);
-            } catch (error) {
-                committed.forEach((alreadyCommittedPath) => fs.rmSync(alreadyCommittedPath, {recursive: true, force: true}));
-                this.removeBestEffort(tempDir);
-                throw error;
-            }
-            committed.push(realPath);
-        }
-        this.removeBestEffort(tempDir);
     }
 
     // A projectRoot's very first rebuild after its initial (plain-file) publish must move that
@@ -640,8 +629,8 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // convincing build-info.json) is not enough on its own; what's actually sitting at each path right
     // now must independently match what this generator would have put there:
     //  - before migration, every public path that exists must be a plain regular file -- never a
-    //    symlink (publishPlainFiles/ensurePublicSymlinks are the only things that ever create these
-    //    paths, and neither ever writes a symlink before migration has happened) or anything else.
+    //    symlink (publishAtomicFirstBuild/ensurePublicSymlinks are the only things that ever create
+    //    these paths, and neither ever writes a symlink before migration has happened) or anything else.
     //  - once migrated, every public path must exist and be exactly the relative symlink through
     //    LIVE_DIR_NAME that ensurePublicSymlinks would itself have wired up for it.
     // Every check here is lstat/readlink-based -- a symlink's target is never dereferenced, read,
