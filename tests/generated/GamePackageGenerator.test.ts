@@ -306,11 +306,13 @@ describe("GamePackageGenerator", () => {
         // The very first publish for a projectRoot has nothing previously consumable to protect, so it
         // writes plain, independently relocatable files -- exactly what callers like
         // applyGameBlueprintToProject (which stages into a throwaway directory and relocates each
-        // generated file individually) require -- rather than the symlink indirection every later
-        // rebuild uses. When projectRoot itself is fresh (missing, or present but empty -- true of every
-        // real first build and of applyGameBlueprintToProject's own always-fresh staging directories),
-        // that commit is one single directory rename, so a reader can only ever observe projectRoot
-        // missing/empty or fully populated -- never a subset of GENERATED_PACKAGE_FILES.
+        // generated file individually) require. When projectRoot itself is fresh (missing, or present
+        // but empty -- true of every real first build and of applyGameBlueprintToProject's own
+        // always-fresh staging directories), that commit is one single directory rename, so a reader can
+        // only ever observe projectRoot missing/empty or fully populated -- never a subset of
+        // GENERATED_PACKAGE_FILES. A rebuild into a projectRoot that already holds a prior publish
+        // commits through that very same single-rename boundary (see the "rebuild" tests below) --
+        // projectRoot itself is swapped as a whole, rather than one public path at a time.
         it("commits the whole package with a single atomic directory rename on the very first publish into a directory that doesn't exist yet", () => {
             const generator = new GamePackageGenerator("1.3.0");
             const projectRoot = path.join(cwd, "sample-slot");
@@ -430,30 +432,30 @@ describe("GamePackageGenerator", () => {
         });
 
         // The core guarantee for every rebuild into a projectRoot this generator already published to:
-        // each of the four public paths is committed independently (see GamePackageGenerator's own
-        // publishRebuild comment), so a failure partway through must roll every file this attempt already
-        // committed back to its exact previous content, leaving the whole prior package fully intact --
-        // whatever fails, and whenever it fails.
+        // the whole projectRoot is swapped as one unit (see GamePackageGenerator's own publishRebuild
+        // comment), so a failure committing that swap must restore the prior projectRoot exactly as it
+        // was, leaving the whole prior package fully intact -- whatever fails, and whenever it fails.
         it("preserves the complete prior package, with no stale artifacts left, when a rebuild's commit fails partway through", () => {
             const generator = new GamePackageGenerator("1.3.0");
             const first = generator.generate(buildBlueprint(), cwd);
             const original = readGeneratedFiles(first.projectRoot);
-            const buildInfoRealPath = path.join(first.projectRoot, "src", "generated", "build-info.json");
+            const projectRoot = first.projectRoot;
 
             const realRenameSync = fs.renameSync.bind(fs);
             jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                // package.json and README.md commit cleanly first; fail exactly the rename that would
-                // commit build-info.json's freshly staged content over its real path, proving the rollback
-                // undoes every file this attempt already committed, not just the one that failed.
-                if (String(from).includes(".tmp-") && String(to) === buildInfoRealPath) {
-                    throw new Error("simulated rename failure committing build-info.json");
+                // The freshly staged tempDir commits cleanly moving unmanaged entries aside and renaming
+                // projectRoot itself out to its stale backup; fail exactly the rename that would swap the
+                // staged tempDir into projectRoot's now-freed name, proving the rollback restores the
+                // whole prior projectRoot, not just part of it.
+                if (String(from).includes(".tmp-") && String(to) === projectRoot) {
+                    throw new Error("simulated rename failure committing the rebuild");
                 }
                 return realRenameSync(from, to);
             });
 
             expect(() =>
                 generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-            ).toThrow(/simulated rename failure committing build-info\.json/);
+            ).toThrow(/simulated rename failure committing the rebuild/);
 
             jest.restoreAllMocks();
             expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
@@ -491,6 +493,47 @@ describe("GamePackageGenerator", () => {
             // the rebuild's own commit.
             expect(listAllFiles(second.projectRoot)).toEqual([...GENERATED_PACKAGE_FILES].sort());
             expect(fs.readdirSync(path.dirname(second.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
+        });
+
+        // The atomicity claim for a rebuild, mirroring the equivalent first-build test above: right up to
+        // the single rename that swaps the freshly staged package into projectRoot's place, every public
+        // path must still resolve to its complete *old* content (proving no earlier, partial commit ever
+        // touched projectRoot), and immediately after that one call, every public path must already
+        // resolve to its complete *new* content -- so a reader can never observe a mixture of the two
+        // (e.g. a new package.json paired with an old generated module).
+        it("never observes a mixture of the old and new generated files while committing a successful rebuild", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const first = generator.generate(buildBlueprint(), cwd);
+            const projectRoot = first.projectRoot;
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            let observed: {existedBefore: boolean; contentsBefore: Record<string, string> | undefined; contentsAfter: Record<string, string>} | undefined;
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                if (String(to) !== projectRoot) {
+                    return realRenameSync(from, to);
+                }
+                // projectRoot was already renamed aside to its stale backup by an earlier call, so it
+                // must not exist here -- confirming this rename is the sole boundary between old and new.
+                const existedBefore = fs.existsSync(projectRoot);
+                const contentsBefore = existedBefore ? readGeneratedFiles(projectRoot) : undefined;
+                const result = realRenameSync(from, to);
+                const contentsAfter = readGeneratedFiles(projectRoot);
+                observed = {existedBefore, contentsBefore, contentsAfter};
+                return result;
+            });
+
+            const second = generator.generate(
+                buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
+                cwd,
+            );
+
+            jest.restoreAllMocks();
+            expect(observed?.existedBefore).toBe(false);
+            const pkg = JSON.parse(observed!.contentsAfter["package.json"]);
+            const buildInfo = JSON.parse(observed!.contentsAfter["src/generated/build-info.json"]) as GameBuildInfo;
+            expect(pkg.version).toBe("0.2.0");
+            expect(buildInfo.game.version).toBe("0.2.0");
+            expect(observed!.contentsAfter).toEqual(readGeneratedFiles(second.projectRoot));
         });
 
         it("fails closed with an actionable error, before writing anything, when a recognized package is missing a previously generated file", () => {

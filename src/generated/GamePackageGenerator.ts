@@ -124,24 +124,15 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // generator owns — so the generated package stays directly packageable (npm pack, tar, zip, ...)
     // regardless of what "pokie build" itself is doing on disk.
     //
-    // The *very first* publish for a given projectRoot is committed with a single atomic directory
-    // rename (see publishFirstBuild) whenever projectRoot is missing or empty, so a reader can only ever
-    // observe projectRoot missing/empty or fully populated with all four files — never a subset of them.
-    // A first build into a projectRoot that already holds unrelated content has no atomic way to add the
-    // four public paths to it (there is no single syscall that commits several independent paths
-    // together), so it's refused outright instead of ever being published one file at a time.
-    //
-    // Every publish after the first — a rebuild into a projectRoot this generator already published to
-    // — commits each of the four files independently (see publishRebuild): the file already staged in
-    // "tempDir" is renamed directly over its real, fixed path, replacing whatever was there in one
-    // syscall (so that path is only ever its complete old content or its complete new content, never
-    // partially written or briefly missing at rest). Since the four paths are independent, fixed
-    // locations rather than one directory this generator could swap as a whole (package.json and
-    // README.md sit directly in projectRoot, alongside whatever else lives there — node_modules, a
-    // user's own files — that this generator has no business touching), there is no single syscall that
-    // commits all four together; a failure partway through instead rolls every already-committed file in
-    // this publish back to exactly what it held before (see publishRebuild), so the prior package is
-    // always left fully intact and consumable, whatever fails and whenever it fails.
+    // Every publish — the very first one and every rebuild after it — is committed with a single atomic
+    // directory rename onto projectRoot itself (see publishAtomicFirstBuild / publishRebuild), so a
+    // reader can only ever observe projectRoot missing/absent-for-an-instant, or fully populated with all
+    // four files — never a subset of them, and never a mix of a prior publish's files with this one's.
+    // A first build into a projectRoot that already holds unrelated content has no *empty* directory to
+    // swap onto, so it's refused outright instead of ever being published one file at a time. A rebuild's
+    // projectRoot is never empty (a prior publish already lives there), so it instead relocates anything
+    // this generator doesn't itself own out of the way first (see publishRebuild), so the same
+    // single-rename swap carries that untouched content over into the new projectRoot too.
     private publishGeneratedFiles(projectRoot: string, contentsByRelativePath: Record<string, string>): void {
         const relativePaths = Object.keys(contentsByRelativePath);
         const tempDir = `${projectRoot}.tmp-${crypto.randomBytes(6).toString("hex")}`;
@@ -175,7 +166,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
             );
         }
 
-        this.publishRebuild(tempDir, projectRoot, relativePaths);
+        this.publishRebuild(tempDir, projectRoot);
     }
 
     // True when projectRoot is either absent or an existing-but-empty directory — the only two states a
@@ -205,70 +196,109 @@ export class GamePackageGenerator implements GamePackageGenerating {
         }
     }
 
-    // Commits a rebuild into a projectRoot that already holds a prior, consumable publish: each staged
-    // file is moved onto its real, fixed path one at a time — whatever currently sits there is first
-    // renamed aside (never copied; the move itself is what frees the real path's name for the incoming
-    // file), then the staged file is renamed into the now-free name. Both renames replace/create a
-    // single non-directory path each, so the operation as a whole can only ever leave that real path
-    // holding its complete previous content or its complete new content — never truncated or
-    // half-written. A failure at either step — this file's own commit, or a later file's in the same
-    // publish — rolls every file this publish already committed back to its stale copy, in reverse
-    // order, so nothing in this rebuild is ever left ahead of the rest; the whole prior package is left
-    // exactly as it was found. This mirrors the same "rename aside, rename in, restore on failure"
-    // pattern applyGameBlueprintToProject.ts uses (via commitStagedPath.ts) to commit these same four
-    // files into a live project directory it doesn't otherwise control.
-    private publishRebuild(tempDir: string, projectRoot: string, relativePaths: string[]): void {
-        const committed: {realPath: string; stalePath: string | undefined}[] = [];
+    // Commits a rebuild into a projectRoot that already holds a prior, consumable publish, through the
+    // same single-swap boundary publishAtomicFirstBuild uses: projectRoot as a whole is renamed aside to
+    // a ".stale-<random>" sibling, then tempDir (already fully staged with all four fresh files) is
+    // renamed into projectRoot's place. Both are single directory renames, so a reader can only ever
+    // observe the complete prior package, a brief instant where projectRoot doesn't exist at all, or the
+    // complete new package — never a mix of the two, however it orders its checks across the four public
+    // paths.
+    //
+    // Anything under projectRoot this generator doesn't itself own — a sibling of the four public paths
+    // at projectRoot's own top level (node_modules, .git, a user's own files) or a sibling of "generated"
+    // inside "src" — is relocated into tempDir first (see relocateUnmanagedEntries): a plain rename, not
+    // a copy, so this is cheap even for a large node_modules. That's what lets the swap below carry that
+    // content over into the new projectRoot untouched, exactly as every rebuild has always guaranteed.
+    //
+    // A failure relocating that unmanaged content, or renaming projectRoot itself aside, leaves
+    // projectRoot fully restored (everything relocated so far is moved straight back) before the error
+    // propagates — nothing has touched the four public paths yet at that point. A failure renaming
+    // tempDir into projectRoot's freed name — after projectRoot was already renamed aside — restores the
+    // stale copy back to projectRoot (a third rename) before relocated content is moved back and the
+    // error propagates, so the prior package is always left fully intact and consumable, whatever fails
+    // and whenever it fails.
+    private publishRebuild(tempDir: string, projectRoot: string): void {
+        const relocated = this.relocateUnmanagedEntries(projectRoot, tempDir);
 
-        for (const relativePath of relativePaths) {
-            const realPath = path.join(projectRoot, ...relativePath.split("/"));
-            const tempPath = path.join(tempDir, ...relativePath.split("/"));
-
-            let stalePath: string | undefined;
-            if (this.pathExists(realPath)) {
-                stalePath = `${realPath}.stale-${crypto.randomBytes(6).toString("hex")}`;
-                try {
-                    fs.renameSync(realPath, stalePath);
-                } catch (error) {
-                    this.rollBackCommittedFiles(committed);
-                    this.removeBestEffort(tempDir);
-                    throw error;
-                }
-            }
-
-            try {
-                fs.renameSync(tempPath, realPath);
-            } catch (error) {
-                if (stalePath !== undefined) {
-                    fs.renameSync(stalePath, realPath);
-                }
-                this.rollBackCommittedFiles(committed);
-                this.removeBestEffort(tempDir);
-                throw error;
-            }
-
-            committed.push({realPath, stalePath});
+        const stalePath = `${projectRoot}.stale-${crypto.randomBytes(6).toString("hex")}`;
+        try {
+            fs.renameSync(projectRoot, stalePath);
+        } catch (error) {
+            this.restoreRelocatedEntries(relocated);
+            this.removeBestEffort(tempDir);
+            throw error;
         }
 
-        committed.forEach(({stalePath}) => {
-            if (stalePath !== undefined) {
-                this.removeBestEffort(stalePath);
+        try {
+            fs.renameSync(tempDir, projectRoot);
+        } catch (error) {
+            try {
+                fs.renameSync(stalePath, projectRoot);
+            } catch (restoreError) {
+                throw new Error(
+                    `Failed to publish "${projectRoot}", and failed to restore the previous package afterward: ` +
+                        `${error instanceof Error ? error.message : String(error)}; restore failure: ` +
+                        `${restoreError instanceof Error ? restoreError.message : String(restoreError)}. The previous ` +
+                        `package's contents are still intact at "${stalePath}" — rename it back to "${projectRoot}" by ` +
+                        `hand. The freshly staged rebuild is still intact at "${tempDir}".`,
+                );
             }
-        });
-        this.removeBestEffort(tempDir);
+            this.restoreRelocatedEntries(relocated);
+            this.removeBestEffort(tempDir);
+            throw error;
+        }
+
+        this.removeBestEffort(stalePath);
     }
 
-    // Rolls every already-committed file in a failed publishRebuild back to what it held before (reverse
-    // order) — used when a *different* file in the same publish failed to commit, so none of the others
-    // may end up ahead of it. A blind restore is safe here: nothing but this generator itself ever writes
-    // these paths (assertSafeToRebuild already vetted them before this publish began).
-    private rollBackCommittedFiles(committed: {realPath: string; stalePath: string | undefined}[]): void {
-        for (const {realPath, stalePath} of [...committed].reverse()) {
-            if (stalePath !== undefined) {
-                fs.renameSync(stalePath, realPath);
-            } else {
-                fs.rmSync(realPath, {recursive: true, force: true});
+    // Moves every entry under projectRoot that isn't part of the fixed public surface
+    // (GENERATED_PACKAGE_FILES) into tempDir, preserving its exact relative position, so the
+    // whole-directory swap in publishRebuild never disturbs it. Only "package.json", "README.md" and
+    // "src" are recognized at projectRoot's own top level — the only top-level names
+    // GENERATED_PACKAGE_FILES ever touches — and only "generated" is recognized inside "src". Everything
+    // else, however deep, is relocated as a single whole-subtree rename. A failure partway through
+    // rolls every entry already relocated straight back to where it came from before the error
+    // propagates, so projectRoot is left exactly as it was found.
+    private relocateUnmanagedEntries(projectRoot: string, tempDir: string): {from: string; to: string}[] {
+        const relocated: {from: string; to: string}[] = [];
+
+        try {
+            for (const entry of fs.readdirSync(projectRoot)) {
+                if (entry === "package.json" || entry === "README.md" || entry === "src") {
+                    continue;
+                }
+                const from = path.join(projectRoot, entry);
+                const to = path.join(tempDir, entry);
+                fs.renameSync(from, to);
+                relocated.push({from, to});
             }
+
+            const srcDir = path.join(projectRoot, "src");
+            if (fs.existsSync(srcDir)) {
+                for (const entry of fs.readdirSync(srcDir)) {
+                    if (entry === "generated") {
+                        continue;
+                    }
+                    const from = path.join(srcDir, entry);
+                    const to = path.join(tempDir, "src", entry);
+                    fs.renameSync(from, to);
+                    relocated.push({from, to});
+                }
+            }
+        } catch (error) {
+            this.restoreRelocatedEntries(relocated);
+            throw error;
+        }
+
+        return relocated;
+    }
+
+    // Undoes relocateUnmanagedEntries — moves every entry it already relocated back to exactly where it
+    // came from, in reverse order. Used both when relocation itself fails partway through, and when a
+    // later step (the projectRoot swap itself) fails after relocation already succeeded.
+    private restoreRelocatedEntries(relocated: {from: string; to: string}[]): void {
+        for (const {from, to} of [...relocated].reverse()) {
+            fs.renameSync(to, from);
         }
     }
 
