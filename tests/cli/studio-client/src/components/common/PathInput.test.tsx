@@ -15,11 +15,13 @@ function Harness({
     initial = ".",
     browseId,
     relevantDirectory,
+    autoDestinationPath,
 }: {
     kind?: "directory" | "file";
     initial?: string;
     browseId?: string;
     relevantDirectory?: string;
+    autoDestinationPath?: string;
 }) {
     const [value, setValue] = useState(initial);
     return (
@@ -31,6 +33,7 @@ function Harness({
             kind={kind}
             browseId={browseId}
             relevantDirectory={relevantDirectory}
+            autoDestinationPath={autoDestinationPath}
         />
     );
 }
@@ -170,6 +173,20 @@ describe("PathInput", () => {
         expect(await screen.findByText("Auto resolved destination: /home/alice/games/default")).toBeInTheDocument();
         expect(screen.queryByText(/^Resolves to:/)).not.toBeInTheDocument();
         expect(screen.queryByText(/\.\/default/)).not.toBeInTheDocument();
+    });
+
+    it("resolves a blank field's 'Auto resolved destination' hint against a caller-supplied autoDestinationPath (e.g. Build's own manifest.id default), not Studio's bare browse root", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/studio-root/sample-slot", displayPath: "./sample-slot", entries: []}}),
+        });
+
+        renderWithProviders(<Harness initial="" autoDestinationPath="sample-slot" />, {fetchImpl});
+
+        await user.click(screen.getByRole("textbox", {name: "Path"}));
+
+        expect(await screen.findByText("Auto resolved destination: /studio-root/sample-slot")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=sample-slot")).toBe(true);
     });
 
     it("resolves the hint against a caller-supplied relevantDirectory (e.g. the open project's root), not Studio's own server root", async () => {

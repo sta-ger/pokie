@@ -14,6 +14,20 @@ import {PageSection} from "../common/PageSection";
 import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
+// Mirrors GamePackageGenerator.generate's own default -- an omitted outDir lands at
+// "<studio root>/<manifest.id>", never Studio's browse root itself -- so a blank Output directory's
+// "Auto resolved destination" hint (see PathInput's own autoDestinationPath) shows Build's real target
+// instead. Returns undefined for a missing/blank id (still resolves to the root, unchanged behavior) --
+// GameBlueprintValidator itself is what rejects an empty "manifest.id", not this hint.
+function buildOutputAutoDestination(blueprint: Record<string, unknown>): string | undefined {
+    const manifest = blueprint.manifest;
+    if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
+        return undefined;
+    }
+    const id = (manifest as Record<string, unknown>).id;
+    return typeof id === "string" && id.trim().length > 0 ? id : undefined;
+}
+
 export function BlueprintBuildPanel({
     blueprint,
     sourcePath,
@@ -117,6 +131,7 @@ export function BlueprintBuildPanel({
                     kind="directory"
                     browseTitle="Browse for an output directory"
                     browseId="blueprint-build-out-dir"
+                    autoDestinationPath={buildOutputAutoDestination(blueprint)}
                     value={outDir}
                     onChange={(event) => setOutDir(event.currentTarget.value)}
                     onPathSelected={setOutDir}

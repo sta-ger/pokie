@@ -28,6 +28,14 @@ type PathInputProps = TextInputProps & {
     // suggestion) -- every other caller omits it.
     defaultLocationName?: string;
     fileFilters?: StudioNativePickerFileFilter[];
+    // What a blank field actually resolves to once submitted as `undefined` -- e.g. Build's own
+    // "<project root>/<manifest.id>" default output directory. Resolved the same way a typed value
+    // would be (relative to `relevantDirectory`/Studio's root), so the blank-field hint shows the real
+    // destination the action will use instead of just that root, which is merely where resolution
+    // *starts*, not necessarily where the action writes. Omitted entirely (every caller whose blank
+    // value genuinely does resolve to that root, e.g. Init Project's own "current directory" default),
+    // the hint falls back to the root itself -- unchanged prior behavior.
+    autoDestinationPath?: string;
 };
 
 type HintState =
@@ -83,6 +91,7 @@ export function PathInput({
     relevantDirectory,
     defaultLocationName,
     fileFilters,
+    autoDestinationPath,
     value,
     defaultValue,
     onFocus,
@@ -100,15 +109,19 @@ export function PathInput({
     // default value would actually land (e.g. Build's own "use the project's default output directory"),
     // so the hint is worded as "Auto resolved destination" rather than "Resolves to", which would wrongly
     // imply the empty string itself was resolved. Every other value (a relative path, a bare ".", an
-    // already-absolute path) really is the user's own input being resolved, hence "Resolves to".
+    // already-absolute path) really is the user's own input being resolved, hence "Resolves to". A blank
+    // field with a caller-supplied `autoDestinationPath` resolves *that* instead of the blank string
+    // itself -- see its own doc comment for why (the root a blank string resolves to isn't necessarily
+    // where the action actually writes).
     const resolveHint = (path: string): void => {
         const auto = path.trim().length === 0;
+        const target = auto && autoDestinationPath && autoDestinationPath.trim().length > 0 ? autoDestinationPath : path;
         setHint({status: "loading"});
-        browseFilesystem(fetchImpl, path, relevantDirectory, kind)
+        browseFilesystem(fetchImpl, target, relevantDirectory, kind)
             .then((result) => {
                 setHint(result.status === "ok" ? {status: "ok", text: result.resolvedPath, auto} : {status: "error", reason: result.reason, path: result.resolvedPath});
             })
-            .catch(() => setHint({status: "error", reason: "network", path}));
+            .catch(() => setHint({status: "error", reason: "network", path: target}));
     };
 
     const rememberAndSelect = (path: string): void => {
