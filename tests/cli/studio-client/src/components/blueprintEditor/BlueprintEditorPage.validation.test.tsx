@@ -15,14 +15,14 @@ function respond(body: unknown) {
 }
 
 async function dirtyGameId(user: ReturnType<typeof userEvent.setup>, value: string): Promise<void> {
-    const field = screen.getAllByLabelText("Game id")[0];
+    const field = screen.getByLabelText("Game id");
     await user.clear(field);
     await user.type(field, value);
     await user.tab(); // blur -- MetadataFieldset commits on blur
 }
 
 async function validate(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-    await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
+    await user.click(screen.getByRole("button", {name: "Validate"}));
 }
 
 describe("Guided Design & Build: validation staleness and build gating", () => {
@@ -37,17 +37,17 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         };
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
 
         await validate(user);
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
-        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).not.toBeDisabled();
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
 
         await dirtyGameId(user, "changed-after-validate");
 
         expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
         expect(screen.getByText("Configure your game model")).toBeInTheDocument();
-        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
     }, 60000);
 
     it("loading a different blueprint after a successful validate clears it the same way", async () => {
@@ -74,21 +74,17 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         await validate(user);
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
 
-        // The raw/Advanced Tools editor's own instance of every one of these fields/buttons is also
-        // always mounted (hidden via CSS, not unmounted -- see HomePage's own "hide, don't unmount" tabs)
-        // -- [0] is always the guided instance's, matching the pattern established throughout this test
-        // suite (e.g. dirtyTheDesignDraft in the navigation-guard tests). `hidden: true` on the role
-        // query below is needed because Mantine's `Collapse` (transitionDuration > 0, keepMounted) wraps
-        // its expanded content in React's `Activity` API, which jsdom doesn't resolve to "visible" the
-        // way it does for e.g. Tabs.Panel -- so `getByRole` misclassifies genuinely-expanded content as
-        // accessibility-hidden here. `getByLabelText` isn't affected (it doesn't apply the same
-        // hidden-tree filtering), which is why the field itself needs no such flag.
+        // `hidden: true` on the role query below is needed because Mantine's `Collapse` (transitionDuration
+        // > 0, keepMounted) wraps its expanded content in React's `Activity` API, which jsdom doesn't
+        // resolve to "visible" the way it does for e.g. Tabs.Panel -- so `getByRole` misclassifies
+        // genuinely-expanded content as accessibility-hidden here. `getByLabelText` isn't affected (it
+        // doesn't apply the same hidden-tree filtering), which is why the field itself needs no such flag.
         await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
-        await user.type(screen.getAllByLabelText("Load from path", {exact: false})[0], "/games/other.json");
-        await user.click(screen.getAllByRole("button", {name: "Load", exact: true, hidden: true})[0]);
+        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/other.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
 
         await waitFor(() => expect(screen.queryByText("Ready to build")).not.toBeInTheDocument());
-        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
     }, 60000);
 
     it("applying JSON after a successful validate clears it the same way", async () => {
@@ -106,9 +102,8 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
 
         await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
-        // Same Collapse/Activity/jsdom caveat as the "Load" button above -- `hidden: true` needed, and
-        // [0] is the guided instance's own Form/JSON switch.
-        await user.click(screen.getAllByRole("radio", {name: "JSON", hidden: true})[0]);
+        // Same Collapse/Activity/jsdom caveat as the "Load" button above -- `hidden: true` needed.
+        await user.click(screen.getByRole("radio", {name: "JSON", hidden: true}));
         const newBlueprint = {
             manifest: {id: "json-applied", name: "JSON Applied", version: "0.1.0"},
             reels: 5,
@@ -124,7 +119,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         await user.click(screen.getByRole("button", {name: "Apply JSON"}));
 
         await waitFor(() => expect(screen.queryByText("Ready to build")).not.toBeInTheDocument());
-        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
     }, 60000);
 
     it("discards a validate response that resolves after a subsequent edit", async () => {
@@ -159,7 +154,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         expect(screen.queryByText(/stale response, must not apply/)).not.toBeInTheDocument();
         expect(screen.queryByText(/^Invalid/)).not.toBeInTheDocument();
         expect(screen.getByText("Configure your game model")).toBeInTheDocument();
-        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
     }, 60000);
 
     it("a warnings-only validation still allows Build", async () => {
@@ -178,7 +173,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
 
         await validate(user);
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
-        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).not.toBeDisabled();
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
     }, 60000);
 
     it("a field-level issue shows as the field's own Mantine error, not duplicated in the section's generic list", async () => {
@@ -199,7 +194,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         await validate(user);
         await waitFor(() => expect(screen.getByText(/Invalid/)).toBeInTheDocument());
 
-        const idField = screen.getAllByLabelText("Game id")[0];
+        const idField = screen.getByLabelText("Game id");
         expect(idField).toHaveAttribute("aria-invalid", "true");
         // The field's own Mantine error shows the bare message; BlueprintValidationPanel's bottom,
         // unfiltered summary shows the same issue prefixed with its code ("blueprint-manifest-invalid-id:
@@ -296,7 +291,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
 
         await user.click(screen.getByRole("tab", {name: /Layout/}));
-        const reelsField = screen.getAllByLabelText("Reels")[0];
+        const reelsField = screen.getByLabelText("Reels");
         // Mantine only sets aria-invalid when an `error` prop is actually passed -- a warning must never
         // reach that prop (see fieldErrorMessage/fieldWarningMessage's own doc comments), so the attribute
         // is either absent entirely or explicitly "false", never "true".
@@ -305,7 +300,7 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         // Warnings-only still means "ok" -- Build stays enabled (see the dedicated
         // "a warnings-only validation still allows Build" test for the general case; this just confirms
         // a *field-level* warning specifically doesn't accidentally regress that).
-        expect(screen.getAllByRole("button", {name: "Build Package"})[0]).not.toBeDisabled();
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
     }, 60000);
 
     it("neither warning is lost from the UI when two share the same field-level path", async () => {

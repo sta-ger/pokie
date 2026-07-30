@@ -1,10 +1,11 @@
-import {Divider, Stack, Text, Title} from "@mantine/core";
+import {Button, Divider, Stack, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
 import {BlueprintEditorPage} from "../blueprintEditor/BlueprintEditorPage";
 import {DesignNavigationGuardProvider} from "../../context/DesignNavigationGuardContext";
 import {useDesignNavigationGuard} from "../../hooks/useDesignNavigationGuard";
+import {QuickActions} from "../common/QuickActions";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {BuildFromBlueprintPanel} from "./BuildFromBlueprintPanel";
@@ -30,8 +31,17 @@ function isHomeTab(value: string | undefined): value is HomeTab {
 // primary happy path (open-or-create a blueprint -> configure the game model -> validate -> build ->
 // land in the Project Dashboard) and is the default tab; "Open Project" merges what were two separate
 // "ways to open an already-built project" tabs (Recent Projects, Open Existing Project) into one; every
-// other tool (hand-coded scaffold, init-in-place, build-from-an-existing-blueprint-file, the raw/
-// non-guided Blueprint Editor) moves to "Advanced Tools" -- still fully functional, just not featured.
+// other tool (hand-coded scaffold, init-in-place, build-from-an-existing-blueprint-file) moves to
+// "Advanced Tools" -- still fully functional, just not featured.
+//
+// There used to be a second, independent, always-mounted `<BlueprintEditorPage />` instance here too (the
+// "raw"/non-guided Blueprint Editor) -- since HomePage keeps every tab body permanently mounted (see
+// below), that meant two entirely separate useBlueprintEditor() drafts alive at once, with no relationship
+// to each other: edits in one were invisible to the other, and it was possible to have two different
+// unsaved blueprints in memory simultaneously. Design & Build's own JSON mode and Load/Save-by-path
+// (tucked behind its "Show advanced options" disclosure, see BlueprintEditorPage's own `guided` doc
+// comment) already cover everything the raw editor offered, so Advanced Tools now just links over to it
+// instead of mounting a second instance -- one canonical editor, one draft.
 //
 // The active tab comes from the URL (`/home/:tab`, see routes.tsx), not local state, so refresh/back-
 // forward/direct links land on the right section -- an unrecognized or missing `:tab` (e.g. this page
@@ -97,7 +107,7 @@ export function HomePage() {
                             <Title order={2}>Advanced Tools</Title>
                             <Text c="dimmed" size="sm">
                                 Everything outside the guided Design &amp; Build flow: scaffolding hand-coded games, initializing an
-                                existing directory in place, building from a blueprint file directly, and the raw Blueprint Editor.
+                                existing directory in place, and building from a blueprint file directly.
                             </Text>
 
                             <div>
@@ -136,13 +146,18 @@ export function HomePage() {
 
                             <div>
                                 <Title order={4} mb="xs">
-                                    Raw Blueprint Editor
+                                    JSON mode &amp; Load/Save by path
                                 </Title>
                                 <Text c="dimmed" size="sm" mb="sm">
-                                    The Blueprint Editor without the guided step-by-step framing -- JSON mode and Load/Save-by-path
-                                    are always visible.
+                                    Design &amp; Build is the one Blueprint Editor -- JSON mode and Load/Save-by-path live there, behind
+                                    its own &quot;Show advanced options&quot; toggle, so there&apos;s no separate raw editor with its own
+                                    unsaved draft.
                                 </Text>
-                                <BlueprintEditorPage />
+                                <QuickActions>
+                                    <Button variant="default" onClick={() => navigate("/home/design")}>
+                                        Go to Design &amp; Build
+                                    </Button>
+                                </QuickActions>
                             </div>
                         </Stack>
                     </div>

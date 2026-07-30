@@ -15,8 +15,8 @@ const CONFIRM_TEXT = "You have unsaved changes in Design & Build. Leave and lose
 async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first.
     await user.click(screen.getByRole("tab", {name: "Symbols"}));
-    await user.type(screen.getAllByLabelText("New symbol id")[0], "wild-draft");
-    await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
+    await user.type(screen.getByLabelText("New symbol id"), "wild-draft");
+    await user.click(screen.getByRole("button", {name: "Add symbol"}));
 }
 
 describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {

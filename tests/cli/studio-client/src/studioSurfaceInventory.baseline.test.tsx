@@ -78,16 +78,19 @@ describe("Home (/home/:tab) tab inventory baseline", () => {
         expect(within(nav).queryByText("Advanced")).not.toBeInTheDocument();
     });
 
-    it("Design & Build is the default tab, and Advanced Tools hosts the raw (non-guided) Blueprint Editor alongside every other non-featured tool", () => {
+    it("Design & Build is the default tab, and Advanced Tools hosts every other non-featured tool plus a link back to the one canonical Blueprint Editor", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
 
         expect(screen.getByRole("button", {name: "Advanced Tools"})).toHaveAttribute("aria-current", "page");
-        expect(screen.getByRole("heading", {name: "Raw Blueprint Editor"})).toBeInTheDocument();
         expect(screen.getByRole("heading", {name: "Scaffold a hand-coded game"})).toBeInTheDocument();
         expect(screen.getByRole("heading", {name: "Initialize an existing directory"})).toBeInTheDocument();
         expect(screen.getByRole("heading", {name: "Build from an existing blueprint file"})).toBeInTheDocument();
+        // No second, independent Blueprint Editor draft -- Design & Build is the one canonical editor
+        // (see HomePage.tsx's own doc comment), and Advanced Tools just links back to it.
+        expect(screen.getByRole("heading", {name: "JSON mode & Load/Save by path"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Go to Design & Build"})).toBeInTheDocument();
     });
 });
 
@@ -121,19 +124,17 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
 });
 
 describe("New Blueprint action surface baseline", () => {
-    it("both the guided (Design & Build) and raw (Advanced Tools) Blueprint Editor instances expose a 'New Blueprint' action", () => {
+    it("the one canonical (Design & Build) Blueprint Editor instance exposes a 'New Blueprint' action", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        // The raw (Advanced Tools) instance's own "New Blueprint" button is permanently mounted too
-        // (hidden via CSS, not unmounted -- see HomePage's own "hide, don't unmount" tab convention), so
-        // this button always exists exactly twice -- `hidden: true` is needed to count the
-        // currently-inactive tab's copy, which getByRole excludes by default.
-        expect(screen.getAllByRole("button", {name: "New Blueprint", hidden: true})).toHaveLength(2);
+        // Exactly one -- there is no longer a second, independent Blueprint Editor instance under
+        // Advanced Tools (see HomePage.tsx's own doc comment).
+        expect(screen.getAllByRole("button", {name: "New Blueprint", hidden: true})).toHaveLength(1);
     });
 
-    it("only the guided instance offers a 'Show advanced options' disclosure -- the raw editor has no such toggle at all", () => {
+    it("the guided instance offers a 'Show advanced options' disclosure for JSON mode / load-save by path", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
@@ -536,11 +537,14 @@ describe("Scoped path-action error remediation baseline", () => {
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
+        await user.click(screen.getByRole("button", {name: "Validate"}));
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
 
+        // "Output directory (optional)" also labels Build from an existing blueprint file's own field
+        // (Advanced Tools, permanently mounted alongside every other Home tab) -- index 0 is this guided
+        // instance's own, which renders first (HomePage.tsx).
         await user.type(screen.getAllByLabelText("Output directory (optional)")[0], "./no/such/dir");
-        await user.click(screen.getAllByRole("button", {name: "Build Package"})[0]);
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
 
         const alerts = await screen.findAllByRole("alert");
         expect(alerts.some((alert) => alert.textContent === "The output directory could not be found. Check the path and try again.")).toBe(
@@ -622,9 +626,10 @@ describe("Scoped path-action error remediation baseline", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
 
         await user.type(screen.getByLabelText("Blueprint JSON path", {exact: false}), "./blueprint.json");
-        // getAllByLabelText, index 0: "Output directory (optional)" also labels the Raw Editor's own
-        // Build panel further down this same tab -- BuildFromBlueprintPanel renders first (HomePage.tsx),
-        // same convention as the placeholder baseline above.
+        // getAllByLabelText, index 0: "Output directory (optional)" also labels the guided Design & Build
+        // instance's own Build panel (Home keeps every tab permanently mounted, see HomePage.tsx), which
+        // renders first -- harmless either way here, since the mocked response never inspects which field
+        // received the text, only that Build was clicked.
         await user.type(screen.getAllByLabelText("Output directory (optional)")[0], "./no/such/dir");
         await user.click(screen.getByRole("button", {name: "Build"}));
 
@@ -655,41 +660,16 @@ describe("Advanced tab inferable-empty-input baseline", () => {
 });
 
 // The remaining describe blocks extend this baseline to Home's own 3 tabs (Design & Build, Open
-// Project, Advanced Tools -- which itself hosts the Raw Editor alongside Create/Init/Build-from-
-// blueprint) with the same "whole-surface inventory" material the Advanced-tab blocks above pin: the
+// Project, Advanced Tools -- which hosts Create/Init/Build-from-blueprint plus a link back to Design &
+// Build) with the same "whole-surface inventory" material the Advanced-tab blocks above pin: the
 // Stepper/progress control, every path/text field's placeholder (or lack of one), the one and only
 // `disabled`-gated action in this whole group, and a raw-error-surface trigger neither
 // BlueprintEditorPage.*.test.tsx nor CreateProjectForm/InitProjectForm/BuildFromBlueprintPanel.test.tsx
 // nor openProjectGuard.test.tsx already demonstrates end to end -- see
-// docs/studio-phase2-inventory.md's own Design & Build / Raw Editor / Advanced Tools / Open Project
-// sections for the full, line-cited enumeration this only spot-checks executably.
+// docs/studio-phase2-inventory.md's own Design & Build / Advanced Tools / Open Project sections for the
+// full, line-cited enumeration this only spot-checks executably.
 
-describe("Design & Build vs. Raw Editor: Build-gating baseline", () => {
-    it("the Raw Editor's 'Build Package' is enabled before any validation is ever attempted -- Design & Build's guided flow blocks the identical button until a successful validation", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
-            "/api/home/blueprints/validate": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "invalid", errors: [{code: "blueprint-manifest-invalid-id", severity: "error", message: "bad id"}], warnings: []},
-            }),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
-
-        // Idle, never-validated state: the guided instance's own "Build Package" (see
-        // BlueprintEditorPage.guidedProgress.test.tsx) is disabled here; the raw instance's identical
-        // button, gated only by `validationView.status === "invalid"` (BlueprintEditorPage.tsx:378), is not.
-        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
-
-        // A known-invalid result does still block it -- "never blocked before validating" is not "never
-        // blocked at all".
-        await user.click(screen.getByRole("button", {name: "Validate"}));
-        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled());
-    });
-});
-
-describe("Design & Build / Raw Editor / Advanced Tools / Open Project: path-field placeholder baseline", () => {
+describe("Design & Build / Advanced Tools / Open Project: path-field placeholder baseline", () => {
     it("no path/text field across this entire group carries a placeholder -- unlike 6 of the 7 Advanced project tabs", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
@@ -715,7 +695,7 @@ describe("Design & Build / Raw Editor / Advanced Tools / Open Project: path-fiel
     });
 });
 
-describe("Design & Build / Raw Editor: Load/Save raw-error-surface baseline", () => {
+describe("Design & Build: Load/Save raw-error-surface baseline", () => {
     it("Load from path / Save to path have no required-field gating at all -- a blank path is sent straight to the server, whose raw rejection is turned into subject-specific inline remediation, never rendered verbatim", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -724,7 +704,10 @@ describe("Design & Build / Raw Editor: Load/Save raw-error-surface baseline", ()
             // blank/whitespace path -- StudioServer maps that thrown Error to this 400 shape.
             "/api/home/blueprints/load": () => ({ok: false, status: 400, body: {error: '"path" is required.'}}),
         });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        // Load/Save are tucked behind Design & Build's own "Show advanced options" disclosure.
+        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
 
         // Unlike every required PathInput/TextInput elsewhere in this group (Project path, Destination
         // directory, ...), "Load from path" carries no `required` prop -- so clicking Load with a blank

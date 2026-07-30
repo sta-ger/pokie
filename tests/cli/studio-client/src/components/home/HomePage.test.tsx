@@ -3,13 +3,12 @@ import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
-// HomePage keeps all three tab bodies permanently mounted (see HomePage.tsx) -- including two whole
-// BlueprintEditorPage instances -- so a `screen`-wide *ByRole/*ByLabelText query has to walk the entire
-// ~880-element document and run jsdom's getComputedStyle over it to decide what's in the accessibility
-// tree. Measured in the gate container: tens of milliseconds per screen-wide accessibility-tree query
-// (~40ms for `getByRole("heading", {name})`, ~100ms for `getByRole("tab", {name})`) against ~10ms for
-// `getByRole("navigation", {name})`. Real, but an order of magnitude too small to be what this suite's
-// gate failures were about.
+// HomePage keeps all three tab bodies permanently mounted (see HomePage.tsx) -- so a `screen`-wide
+// *ByRole/*ByLabelText query has to walk the entire document and run jsdom's getComputedStyle over it to
+// decide what's in the accessibility tree. Measured in the gate container: tens of milliseconds per
+// screen-wide accessibility-tree query (~40ms for `getByRole("heading", {name})`, ~100ms for
+// `getByRole("tab", {name})`) against ~10ms for `getByRole("navigation", {name})`. Real, but an order of
+// magnitude too small to be what this suite's gate failures were about.
 //
 // Two things were, and neither is a timeout:
 //
@@ -23,18 +22,15 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 //
 // The scoping below is therefore kept for precision, not speed: every query targets the smallest
 // container that still identifies it -- the "Sections" nav for HomePage's own tab buttons, the guided
-// editor's active section panel for its own fields, the open confirm dialog for its buttons. That is
-// strictly *more* precise than the screen-wide query plus a `[0]` index it replaces (the raw Blueprint
-// Editor mounted under Advanced Tools has its own "New symbol id" field, which is exactly why that index
-// was needed before), and no assertion is weakened or removed by it.
+// editor's active section panel for its own fields, the open confirm dialog for its buttons.
 function sectionsNav() {
     return within(screen.getByRole("navigation", {name: "Sections"}));
 }
 
 // The guided editor's own fields are grouped into sections by SectionedFormEditor, which renders only
-// the active section's panel -- and Advanced Tools' raw Blueprint Editor has no such tabs -- so there is
-// exactly one `tabpanel` in the document, the guided editor's. Re-querying it (rather than caching the
-// node) also asserts it is still in the accessibility tree, i.e. that its tab body is really shown.
+// the active section's panel, so there is exactly one `tabpanel` in the document. Re-querying it (rather
+// than caching the node) also asserts it is still in the accessibility tree, i.e. that its tab body is
+// really shown.
 function guidedSection() {
     return within(screen.getByRole("tabpanel"));
 }
@@ -62,8 +58,8 @@ async function expectActiveSection(name: string): Promise<void> {
 
 // One budget for the whole file, because all four tests are in one cost class rather than three cheap ones
 // and a heavy one: each renders the entire routed app (renderRoutedApp -> HomePage with all three tab bodies
-// permanently mounted, two whole BlueprintEditorPage instances among them) and then drives a chain of real
-// userEvent interactions across that ~880-element tree with real timers. Measured in this container at idle:
+// permanently mounted) and then drives a chain of real userEvent interactions across that tree with real
+// timers. Measured in this container at idle:
 // 3.5s / 3.6s / 2.5s / 7.0s -- a 2.8x spread, not a difference in kind. The rest of this lane likewise pins an
 // explicit per-test budget on every test of every such suite (45000ms in the ProjectDashboardPage/
 // navigation-guard/validation suites, 90000ms for happyPath and routing's back/forward).
@@ -111,7 +107,13 @@ describe("HomePage", () => {
         await user.click(sectionsNav().getByRole("button", {name: "Advanced Tools"}));
         await expectActiveSection("Advanced Tools");
         expect(screen.getByRole("heading", {name: "Advanced Tools"})).toBeInTheDocument();
-        expect(screen.getByRole("heading", {name: "Raw Blueprint Editor"})).toBeInTheDocument();
+        // No second, independent Blueprint Editor draft here -- Advanced Tools links back to the one
+        // canonical Design & Build editor instead (see HomePage.tsx's own doc comment).
+        expect(screen.getByRole("button", {name: "Go to Design & Build"})).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Go to Design & Build"}));
+        await expectActiveSection("Design & Build");
+        expect(screen.getByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
     });
 
     it("opens a project from the Open Project tab's form", async () => {

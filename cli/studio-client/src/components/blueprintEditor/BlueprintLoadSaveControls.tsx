@@ -27,10 +27,10 @@ export function BlueprintLoadSaveControls({
     saveView: BlueprintSaveView;
     initialLoadPath: string;
     initialSavePath: string;
-    // When omitted, Load/Save are always shown (today's exact behavior, used by the raw/advanced
-    // editor). When provided, Load/Save fields are only shown while `advancedOptionsOpened` is true --
-    // the guided flow tucks them behind its own "Show advanced options" disclosure, since Build works
-    // directly off the in-memory blueprint and never strictly needs an explicit Load-by-path/Save.
+    // When omitted, Load/Save are always shown (BlueprintEditorPage's own non-guided mode). When
+    // provided, Load/Save fields are only shown while `advancedOptionsOpened` is true -- the guided flow
+    // tucks them behind its own "Show advanced options" disclosure, since Build works directly off the
+    // in-memory blueprint and never strictly needs an explicit Load-by-path/Save.
     advancedOptionsOpened?: boolean;
 }) {
     const [loadPath, setLoadPath] = useState(initialLoadPath);
