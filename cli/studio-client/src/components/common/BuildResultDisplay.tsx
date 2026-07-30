@@ -1,4 +1,5 @@
 import {Button, Stack, Text} from "@mantine/core";
+import {formatTimestamp} from "../../domain/formatTimestamp";
 import type {BuildProjectView} from "../../domain/interpret/Home";
 import {ErrorState} from "./ErrorState";
 import {FileList} from "./FileList";
@@ -24,9 +25,12 @@ export function BuildResultDisplay({view, onOpen}: {view: BuildProjectView; onOp
     return (
         <Stack gap="sm">
             <Text style={{overflowWrap: "anywhere"}}>
-                &quot;{view.manifest.name}&quot; (id: &quot;{view.manifest.id}&quot;, v{view.manifest.version}) built in &quot;
-                {view.projectRoot}&quot;
+                &quot;{view.manifest.name}&quot; (id: &quot;{view.manifest.id}&quot;, v{view.manifest.version}) built at {formatTimestamp(view.buildInfo.generatedAt)} in
+                &quot;{view.projectRoot}&quot;
                 {view.unchanged ? " (unchanged — deterministic rebuild)." : "."}
+            </Text>
+            <Text size="xs" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                Blueprint hash: {view.buildInfo.blueprintHash}
             </Text>
             <IssueList title="Warnings" issues={view.warnings} />
             <FileList title="Created files" files={view.createdFiles} />

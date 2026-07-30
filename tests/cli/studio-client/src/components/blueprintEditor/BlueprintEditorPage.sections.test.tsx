@@ -98,6 +98,13 @@ describe("Guided Design & Build: sectioned layout", () => {
         const openInStudio = await screen.findByRole("button", {name: "Open in Studio"});
         await user.click(openInStudio);
 
+        // The draft was never saved to a source blueprint file (building a package is a distinct fact
+        // from that -- see BlueprintBuildPanel's own `onBuilt` doc comment), so it's still genuinely
+        // dirty -- same guarded-navigation confirm as every other "leave a dirty Design & Build draft"
+        // exit (see openProjectGuard.test.tsx).
+        expect(await screen.findByText("You have unsaved changes in Design & Build. Leave and lose them?")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Leave"}));
+
         expect(await screen.findByRole("heading", {name: "Sectioned"})).toBeInTheDocument();
     }, 60000);
 

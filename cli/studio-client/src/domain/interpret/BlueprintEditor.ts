@@ -71,6 +71,27 @@ export function hasReelStripGenerationDraftChanged(draft: Record<string, unknown
     return JSON.stringify(canonicalize(draft)) !== JSON.stringify(canonicalize(applied));
 }
 
+// Same canonicalized structural comparison as hasReelStripGenerationDraftChanged, generalized to any two
+// blueprints -- the Build panel's own "has the draft changed since the blueprint that was actually
+// built" check. Deliberately content-based rather than BlueprintEditorState.revision-based: "Restore
+// built blueprint" is itself a wholesale replace (see loadBlueprintEditorState's own doc comment), so it
+// always advances `revision` even when it lands back on the exact content that was built -- a
+// revision-number comparison could never read "unchanged" again after that, while this one correctly
+// does the moment the content matches.
+export function hasBlueprintChanged(current: Record<string, unknown>, other: Record<string, unknown>): boolean {
+    return JSON.stringify(canonicalize(current)) !== JSON.stringify(canonicalize(other));
+}
+
+// Which top-level fields differ between two blueprints, canonicalized the same way -- a shallow,
+// field-name-only diff (not a general JSON patch) that's enough to tell the user *what* changed since
+// the last build without reimplementing a full diff algorithm.
+export function diffBlueprintTopLevelFields(current: Record<string, unknown>, other: Record<string, unknown>): string[] {
+    const keys = new Set([...Object.keys(current), ...Object.keys(other)]);
+    return Array.from(keys)
+        .filter((key) => JSON.stringify(canonicalize(current[key])) !== JSON.stringify(canonicalize(other[key])))
+        .sort();
+}
+
 // The Preview-stop-windows step's own visualization: the `rows` consecutive symbols a reel would show if
 // it stopped at position `stop`, wrapping around to the strip's own start once it runs past the end --
 // exactly what a real spin's screen window would look like for a reel that stopped there, for a strip

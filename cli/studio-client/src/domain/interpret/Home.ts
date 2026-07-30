@@ -100,3 +100,20 @@ export function describeBuildResult(result: StudioBuildResult): BuildProjectView
     }
     return result;
 }
+
+// The Blueprint Editor's own Build panel's persistent "last successful build" record -- everything a
+// BuildProjectView "ok" carries, plus the exact blueprint that produced it (so a later edit can be
+// compared against what was actually built, see hasBlueprintChanged/diffBlueprintTopLevelFields in
+// interpretBlueprintEditor.ts). Owned by BlueprintEditorPage, not BlueprintBuildPanel's own local state,
+// specifically so it survives that panel's own key={`build-${formGeneration}`} remount (a "Restore built
+// blueprint" is itself a wholesale replace) and a later failed rebuild attempt -- neither can make a real
+// prior success vanish.
+export type BuiltBlueprintSnapshot = {
+    blueprint: unknown;
+    manifest: PokieGameManifest;
+    projectRoot: string;
+    buildInfo: GameBuildInfo;
+    unchanged: boolean;
+    warnings: ValidationIssue[];
+    createdFiles: string[];
+};
