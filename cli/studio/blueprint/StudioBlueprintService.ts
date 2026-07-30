@@ -11,10 +11,14 @@ import {
     ParSheetExporting,
     ParSheetImporter,
     ParSheetImporting,
+    RandomGameBlueprintGenerating,
+    RandomGameBlueprintGenerator,
+    RandomGameBlueprintVariantStrategy,
     ReelStrip,
     ReelStripAnalyzer,
     ReelStripGenerationSummary,
     resolveReelStripGeneration,
+    SlotGameNameGenerator,
     ValidationIssue,
 } from "pokie";
 import fs from "fs";
@@ -27,6 +31,7 @@ import type {StudioBuildResult} from "../home/StudioBuildResult.js";
 import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
 import type {StudioBlueprintApplyView} from "./StudioBlueprintApplyView.js";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
+import type {StudioBlueprintRandomView} from "./StudioBlueprintRandomView.js";
 import type {StudioBlueprintSaveView} from "./StudioBlueprintSaveView.js";
 import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationView.js";
 import type {StudioParSheetExportView} from "./StudioParSheetExportView.js";
@@ -59,6 +64,8 @@ export class StudioBlueprintService {
     private readonly resolveReelStripGeneration: typeof resolveReelStripGeneration;
     private readonly parSheetImporter: ParSheetImporting;
     private readonly parSheetExporter: ParSheetExporting;
+    private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
+    private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
 
     constructor(
         pokieVersion: string,
@@ -77,6 +84,14 @@ export class StudioBlueprintService {
         // importParSheet()/exportParSheet()'s own doc comments for what this service adds on top.
         parSheetImporter: ParSheetImporting = new ParSheetImporter(),
         parSheetExporter: ParSheetExporting = new ParSheetExporter(pokieVersion),
+        // Same two RandomGameBlueprintGenerator instances CreateCommand/BuildCommand's own "random"
+        // preset selector wires up -- see random()'s own doc comment for why the Blueprint Editor's
+        // "Generate random" reuses these rather than constructing its own strategy.
+        randomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(),
+        variantRandomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(
+            new SlotGameNameGenerator(),
+            new RandomGameBlueprintVariantStrategy(),
+        ),
     ) {
         this.pokieVersion = pokieVersion;
         this.studioRoot = path.resolve(studioRoot);
@@ -87,6 +102,22 @@ export class StudioBlueprintService {
         this.resolveReelStripGeneration = resolveReelStripGenerationFn;
         this.parSheetImporter = parSheetImporter;
         this.parSheetExporter = parSheetExporter;
+        this.randomBlueprintGenerator = randomBlueprintGenerator;
+        this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
+    }
+
+    // Drives the Blueprint Editor's "Generate random" New-flow option via the exact same
+    // RandomGameBlueprintGenerator "pokie build random"/"pokie create --random" already use (see this
+    // class's own doc comment for "no business logic is duplicated") — never writes anything, purely
+    // in-memory generation. "seed", when given, always reproduces the same blueprint for the same
+    // preset/name (RandomGameBlueprintGenerator's own determinism contract); omitted, a fresh seed is
+    // minted and echoed back in the result so "Randomize again" (a follow-up call with no seed) and an
+    // exact-reproduction replay (a follow-up call with the returned seed) both work off the same DTO.
+    public random(seed?: number, preset?: "default" | "variant", name?: string): StudioBlueprintRandomView {
+        const resolvedPreset = preset ?? "default";
+        const generator = resolvedPreset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
+        const {blueprint, seed: usedSeed, provenance} = generator.generate({seed, overrides: name ? {name} : undefined});
+        return {status: "ok", blueprint, seed: usedSeed, preset: resolvedPreset, provenance};
     }
 
     public validate(blueprint: unknown): StudioBlueprintValidationView {

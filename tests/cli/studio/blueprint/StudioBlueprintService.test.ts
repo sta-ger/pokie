@@ -564,6 +564,58 @@ describe("StudioBlueprintService", () => {
         });
     });
 
+    describe("random", () => {
+        it("generates a valid blueprint with a minted seed when none is given", () => {
+            const service = createService();
+
+            const result = service.random();
+
+            expect(result.status).toBe("ok");
+            expect(typeof result.seed).toBe("number");
+            expect(result.preset).toBe("default");
+            expect(result.provenance).toEqual({generatorVersion: expect.any(String), strategy: expect.any(String), seed: result.seed});
+            expect(service.validate(result.blueprint).status).toBe("ok");
+        });
+
+        it("reproduces the exact same blueprint for the same seed and preset", () => {
+            const service = createService();
+
+            const first = service.random(42, "default");
+            const second = service.random(42, "default");
+
+            expect(first.blueprint).toEqual(second.blueprint);
+            expect(first.seed).toBe(42);
+            expect(second.seed).toBe(42);
+        });
+
+        it("uses a different strategy for the variant preset, with its own provenance", () => {
+            const service = createService();
+
+            const result = service.random(7, "variant");
+
+            expect(result.preset).toBe("variant");
+            expect(result.provenance.seed).toBe(7);
+            expect(service.validate(result.blueprint).status).toBe("ok");
+        });
+
+        it("overrides the generated manifest name when given", () => {
+            const service = createService();
+
+            const result = service.random(1, "default", "My Custom Name");
+
+            const blueprint = result.blueprint as GameBlueprint;
+            expect(blueprint.manifest.name).toBe("My Custom Name");
+        });
+
+        it("never touches the filesystem", () => {
+            const service = createService();
+
+            service.random();
+
+            expect(fs.readdirSync(tmpDir)).toEqual([]);
+        });
+    });
+
     describe("save", () => {
         it("writes a new file that doesn't exist yet", () => {
             const service = createService();

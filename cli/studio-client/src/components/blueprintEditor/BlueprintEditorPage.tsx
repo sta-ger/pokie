@@ -16,6 +16,7 @@ import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {NextStepCallout} from "../common/NextStepCallout";
+import {RecoveryNotice} from "../common/RecoveryNotice";
 import {StepProgressList, type StepProgressItem, type StepProgressStatus} from "../common/StepProgressList";
 import {BetsList} from "./BetsList";
 import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
@@ -24,6 +25,7 @@ import {BlueprintLoadSaveControls} from "./BlueprintLoadSaveControls";
 import {BlueprintValidationPanel} from "./BlueprintValidationPanel";
 import {LayoutFieldset} from "./LayoutFieldset";
 import {MetadataFieldset} from "./MetadataFieldset";
+import {NewBlueprintDialog} from "./NewBlueprintDialog";
 import {ParSheetImportExportPanel} from "./ParSheetImportExportPanel";
 import {PaylinesEditor} from "./PaylinesEditor";
 import {PaytableEditor} from "./PaytableEditor";
@@ -103,6 +105,16 @@ export function BlueprintEditorPage({
     const saveGuard = useDoubleSubmitGuard();
     const validateGuard = useDoubleSubmitGuard();
     const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
+    const [newDialogOpened, {open: openNewDialog, close: closeNewDialog}] = useDisclosure(false);
+    // A single-level "undo" for the New flow's own Blank/Generate random replace -- see
+    // handleChooseBlank/handleUseRandomBlueprint below for where this is captured, and
+    // handleUndoReplace for the restore itself. `validAtRevision` is the revision the replace itself
+    // produced (see loadBlueprintEditorState's own "always fromRevision + 1"): any further edit bumps
+    // `editor.state.revision` past it, which is what makes the "Undo" banner disappear on its own the
+    // moment the user commits to the new draft by editing it, without a separate reset effect.
+    const [undoSnapshot, setUndoSnapshot] = useState<
+        {blueprint: unknown; path: string | undefined; overwriteConfirmedForPath: string | undefined; wasClean: boolean; validAtRevision: number} | undefined
+    >(undefined);
 
     // Dirty-tracking: `cleanRevisionRef` is the last revision known to be "safe" (freshly loaded, freshly
     // saved, or freshly built) -- any revision past it means there are edits nothing on disk/in a package
@@ -133,8 +145,15 @@ export function BlueprintEditorPage({
     // inside an effect with no dependency array, runs after every render instead, which for this
     // component is effectively every meaningful state change anyway (a mutate/New/Load/Save/Build always
     // re-renders); onDirtyChange is idempotent, so a few redundant calls with the same value are harmless.
+    // `isDirty` mirrors the same computation into render-readable state -- the New flow's own dialog
+    // needs it synchronously (to decide whether to gate behind a Save/Discard/Cancel confirm) rather
+    // than only as a side-effecting callback.
+    const [isDirty, setIsDirty] = useState(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        onDirtyChange?.(editor.state.revision !== cleanRevisionRef.current);
+        const dirty = editor.state.revision !== cleanRevisionRef.current;
+        setIsDirty(dirty);
+        onDirtyChange?.(dirty);
     });
 
     // A form edit, New, Load, and a successful JSON Apply all bump `revision` (see
@@ -142,7 +161,10 @@ export function BlueprintEditorPage({
     // one place, uniformly makes *any* of those stale a previous validation result: section statuses
     // (describeSectionStatus already returns "neutral" for "idle"), the guided progress list/NextStepCallout
     // ("Ready to build" only shows for "ok"), and guided Build-gating (below, keyed off "ok") all revert for
-    // free, with no separate reset needed at each call site. `handleNew` no longer sets this explicitly.
+    // free, with no separate reset needed at each call site. handleChooseBlank/handleUseRandomBlueprint
+    // set this explicitly too (see their own doc comments) purely to avoid a one-frame stale-validation
+    // flash between their own replace and this effect running; every other bump still relies on this
+    // alone.
     useEffect(() => {
         setValidationView({status: "idle"});
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,13 +184,73 @@ export function BlueprintEditorPage({
     // validate calls) case that guarantee ever changes.
     const validateRequestIdRef = useRef(0);
 
-    const handleNew = (): void => {
+    // Captures whatever's in the editor right now, right before a New-flow replace (Blank or Generate
+    // random) overwrites it -- what handleUndoReplace restores from. `wasClean` records whether *this*
+    // draft itself was a safe checkpoint (freshly loaded/saved/built) so restoring it doesn't misreport
+    // dirtiness in either direction; `validAtRevision` is filled in by the caller once loadFrom/
+    // newBlueprint has actually produced the replace's own new revision (see undoSnapshot's own doc
+    // comment for why that's what gates the "Undo" banner's visibility rather than a separate dismiss).
+    const captureReplaceSnapshot = () => ({
+        blueprint: editor.state.blueprint,
+        path: blueprintPath,
+        overwriteConfirmedForPath: overwriteConfirmedForPath.current,
+        wasClean: editor.state.revision === cleanRevisionRef.current,
+    });
+
+    // New -> Blank: the New flow's minimal option (see NewBlueprintDialog's own doc comment) -- same
+    // wholesale-replace bookkeeping New always did, now reached through the dialog's dirty-confirm gate
+    // instead of directly from the "New Blueprint" button. `setValidationView` here is set explicitly
+    // (rather than relying solely on the revision-bump effect below) so the Validation panel can never
+    // paint even one frame of the *replaced* draft's own errors/warnings still describing the prior one.
+    const handleChooseBlank = (): void => {
+        const snapshot = captureReplaceSnapshot();
+        const revisionBeforeReplace = editor.state.revision;
         nextFormGenerationIsClean.current = true;
         editor.newBlueprint();
         setBlueprintPath(undefined);
         overwriteConfirmedForPath.current = undefined;
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
+        setValidationView({status: "idle"});
+        setUndoSnapshot({...snapshot, validAtRevision: revisionBeforeReplace + 1});
+        closeNewDialog();
+    };
+
+    // New -> Generate random -> Use this blueprint: same wholesale-replace bookkeeping as Blank/Load,
+    // just sourced from NewBlueprintDialog's own POST /api/home/blueprints/random call instead of a
+    // starter object or a loaded file -- see StudioBlueprintService.random()'s own doc comment for why
+    // this is the exact same RandomGameBlueprintGenerator "pokie build random"/"pokie create --random"
+    // use. Never saved to a path of its own (there isn't one yet), so `blueprintPath` clears exactly
+    // like Blank. Explicit `setValidationView` reset for the same reason as handleChooseBlank's own.
+    const handleUseRandomBlueprint = (blueprint: unknown): void => {
+        const snapshot = captureReplaceSnapshot();
+        const revisionBeforeReplace = editor.state.revision;
+        nextFormGenerationIsClean.current = true;
+        editor.loadFrom(blueprint);
+        setBlueprintPath(undefined);
+        overwriteConfirmedForPath.current = undefined;
+        setLoadView({status: "idle"});
+        setSaveView({status: "idle"});
+        setValidationView({status: "idle"});
+        setUndoSnapshot({...snapshot, validAtRevision: revisionBeforeReplace + 1});
+        closeNewDialog();
+    };
+
+    // Restores exactly what a New-flow replace overwrote -- see undoSnapshot's own doc comment for why
+    // this is only ever offered for the revision the replace itself produced (any further edit hides it
+    // instead of this needing its own dismiss). Only ever reachable while that condition holds, so
+    // `undoSnapshot` is never read as possibly-undefined here beyond the type checker's own caution.
+    const handleUndoReplace = (): void => {
+        if (!undoSnapshot) {
+            return;
+        }
+        nextFormGenerationIsClean.current = undoSnapshot.wasClean;
+        editor.loadFrom(undoSnapshot.blueprint);
+        setBlueprintPath(undoSnapshot.path);
+        overwriteConfirmedForPath.current = undoSnapshot.overwriteConfirmedForPath;
+        setLoadView({status: "idle"});
+        setSaveView({status: "idle"});
+        setUndoSnapshot(undefined);
     };
 
     const handleLoad = (path: string): void => {
@@ -328,16 +410,44 @@ export function BlueprintEditorPage({
             )}
 
             <BlueprintLoadSaveControls
-                onNew={handleNew}
+                onNew={openNewDialog}
                 onLoad={handleLoad}
                 onSave={handleSave}
                 onOverwrite={handleOverwrite}
-                loadView={loadView}
-                saveView={saveView}
+                // NewBlueprintDialog reuses these exact same handleLoad/handleSave/handleOverwrite calls
+                // for its own Load existing/dirty-confirm Save steps (see its own doc comment), which
+                // otherwise means an in-dialog load-error/save-conflict would render *twice* -- once
+                // here, once inside the dialog itself, since both would be reading the same loadView/
+                // saveView. Suppressed to "idle" here while the dialog is open (its own copy stays live)
+                // -- the fields behind the modal overlay aren't reachable anyway while it's open.
+                loadView={newDialogOpened ? {status: "idle"} : loadView}
+                saveView={newDialogOpened ? {status: "idle"} : saveView}
                 initialLoadPath=""
                 initialSavePath=""
                 advancedOptionsOpened={guided ? advancedOpened : undefined}
             />
+
+            <NewBlueprintDialog
+                opened={newDialogOpened}
+                onClose={closeNewDialog}
+                isDirty={isDirty}
+                blueprintPath={blueprintPath}
+                saveView={saveView}
+                onSave={handleSave}
+                onOverwrite={handleOverwrite}
+                loadView={loadView}
+                onLoad={handleLoad}
+                onChooseBlank={handleChooseBlank}
+                onUseRandomBlueprint={handleUseRandomBlueprint}
+            />
+
+            {undoSnapshot && undoSnapshot.validAtRevision === revision && (
+                <RecoveryNotice
+                    message="Replaced the current blueprint."
+                    actionLabel="Undo"
+                    onAction={handleUndoReplace}
+                />
+            )}
 
             <Collapse expanded={!guided || advancedOpened}>
                 <SegmentedControl
@@ -367,11 +477,23 @@ export function BlueprintEditorPage({
             {mode === "form" ? (
                 formModeContent
             ) : (
-                <BlueprintJsonPanel jsonText={editor.state.jsonText} jsonError={editor.state.jsonError} onApply={editor.applyJson} />
+                // Keyed the same way ParSheetImportExportPanel above is -- an uncontrolled Textarea (see
+                // BlueprintJsonPanel's own `defaultValue`) would otherwise keep showing the *previous*
+                // blueprint's JSON after a wholesale replace (New/Random/Load), since React never
+                // reapplies `defaultValue` on its own. Prefixed (not bare `editor.formGeneration`, unlike
+                // ParSheetImportExportPanel's own key above): this element and BlueprintBuildPanel below
+                // are direct siblings of `formModeContent` (whose own root already carries a bare
+                // `key={editor.formGeneration}`, see its own definition above) *within the same parent's
+                // children array*, so reusing that same bare value here would collide with it.
+                <BlueprintJsonPanel key={`json-${editor.formGeneration}`} jsonText={editor.state.jsonText} jsonError={editor.state.jsonError} onApply={editor.applyJson} />
             )}
 
             <BlueprintValidationPanel view={validationView} onValidate={handleValidate} />
             <BlueprintBuildPanel
+                // Same reasoning as BlueprintJsonPanel above -- Output directory/Build Preview/Build
+                // Package results are this panel's own local state and would otherwise survive a
+                // wholesale replace, showing a stale build for a blueprint that's no longer current.
+                key={`build-${editor.formGeneration}`}
                 blueprint={blueprint}
                 sourcePath={blueprintPath}
                 revision={revision}

@@ -334,7 +334,12 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
         expect(screen.getByText("Unapplied changes")).toBeInTheDocument();
 
+        // "Add symbol to reel 1" already mutated the blueprint itself (reelStripGeneration is a real
+        // field), so the New flow's own dirty-confirm gate triggers -- Discard then Blank (see
+        // NewBlueprintDialog's own doc comment).
         await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        await user.click(await screen.findByRole("button", {name: "Discard"}));
+        await user.click(await screen.findByRole("button", {name: "Blank"}));
         await goToReelStripModeler(user);
 
         // A fresh remount (via the parent's own key={formGeneration}) -- back to Select reel, with no

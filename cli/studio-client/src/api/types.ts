@@ -218,6 +218,23 @@ export type StudioReelStripGenerationView = {
 // POST /api/project/blueprint/apply call is built from (see StudioBlueprintApplyView).
 export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: unknown; blueprintHash: string} | {status: "load-error"; error: string};
 
+// What produced a randomly generated blueprint and with which algorithm — see
+// cli/studio/blueprint/StudioBlueprintRandomView.ts's own doc comment. Same seed + same
+// generatorVersion always reproduces the same blueprint.
+export type RandomBlueprintProvenance = {generatorVersion: string; strategy: string; seed: number};
+
+// POST /api/home/blueprints/random's own DTO — see cli/studio/blueprint/StudioBlueprintRandomView.ts's
+// own doc comment. Always "ok"; never written to disk. "seed"/"provenance" are what the New flow's
+// "Generate random" step shows and what a follow-up request with the same seed/preset reproduces
+// exactly.
+export type StudioBlueprintRandomView = {
+    status: "ok";
+    blueprint: unknown;
+    seed: number;
+    preset: "default" | "variant";
+    provenance: RandomBlueprintProvenance;
+};
+
 // POST /api/home/blueprints/save's own DTO — see cli/studio/blueprint/StudioBlueprintSaveView.ts's own
 // doc comment. "conflict" means the file already exists and the request needs `overwrite: true` to
 // replace it.

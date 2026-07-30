@@ -10,6 +10,7 @@ import {
     createRuntimeSession,
     exportParSheet,
     FetchLike,
+    generateRandomBlueprint,
     getContext,
     getProjectContext,
     getReplay,
@@ -333,6 +334,40 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "load-error", error: "not found"}}));
 
             expect(await loadBlueprint(fetchImpl, "./missing.json")).toEqual({status: "load-error", error: "not found"});
+        });
+    });
+
+    describe("generateRandomBlueprint", () => {
+        it("POSTs the request and returns the generated blueprint", async () => {
+            const body = {status: "ok", blueprint: {manifest: {id: "a"}}, seed: 42, preset: "default", provenance: {generatorVersion: "1.0.0", strategy: "default", seed: 42}};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await generateRandomBlueprint(fetchImpl, {seed: 42, preset: "default"});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/random",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({seed: 42, preset: "default"})},
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("defaults to an empty request body when none is given", async () => {
+            const body = {status: "ok", blueprint: {manifest: {id: "a"}}, seed: 7, preset: "default", provenance: {generatorVersion: "1.0.0", strategy: "default", seed: 7}};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            await generateRandomBlueprint(fetchImpl);
+
+            expect(calls).toEqual([
+                {url: "/api/home/blueprints/random", init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({})}},
+            ]);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"seed" must be an integer when given.'}}));
+
+            await expect(generateRandomBlueprint(fetchImpl, {seed: 1.5 as unknown as number})).rejects.toThrow('"seed" must be an integer when given.');
         });
     });
 
