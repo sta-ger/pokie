@@ -74,6 +74,7 @@ describe("StudioFsBrowseService", () => {
         }
         expect(result.error).toContain("does not exist");
         expect(result.resolvedPath).toBe(path.join(root, "does-not-exist"));
+        expect(result.reason).toBe("absent");
     });
 
     it("reports a path that resolves to a file (not a directory) as an error", () => {
@@ -84,6 +85,50 @@ describe("StudioFsBrowseService", () => {
             throw new Error("expected an error result");
         }
         expect(result.error).toContain("is not a directory");
+        expect(result.reason).toBe("type");
+    });
+
+    it("resolves an existing file as ok when kind is 'file', instead of reporting a type mismatch, carrying its own containing directory as parentPath", () => {
+        const result = service.browse("readme.txt", undefined, "file");
+
+        expect(result).toMatchObject({status: "ok", resolvedPath: path.join(root, "readme.txt"), displayPath: `.${path.sep}readme.txt`, parentPath: root, entries: []});
+    });
+
+    it("reports a directory as a type mismatch when kind is 'file'", () => {
+        const result = service.browse("games", undefined, "file");
+
+        expect(result.status).toBe("error");
+        if (result.status !== "error") {
+            throw new Error("expected an error result");
+        }
+        expect(result.error).toContain("is a directory, not a file");
+        expect(result.reason).toBe("type");
+    });
+
+    it("still reports a nonexistent path as 'absent' (not 'type') when kind is 'file'", () => {
+        const result = service.browse("does-not-exist", undefined, "file");
+
+        expect(result.status).toBe("error");
+        if (result.status !== "error") {
+            throw new Error("expected an error result");
+        }
+        expect(result.reason).toBe("absent");
+    });
+
+    it("resolves/display-relativizes against an explicit base instead of the constructor root", () => {
+        const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-base-"));
+        fs.mkdirSync(path.join(projectRoot, "outcomes"));
+        try {
+            const result = service.browse("outcomes", projectRoot);
+
+            expect(result).toMatchObject({
+                status: "ok",
+                resolvedPath: path.join(projectRoot, "outcomes"),
+                displayPath: `.${path.sep}outcomes`,
+            });
+        } finally {
+            fs.rmSync(projectRoot, {recursive: true, force: true});
+        }
     });
 
     it("reports a permission-denied readdir failure as a friendly error, not a thrown exception", () => {
@@ -99,8 +144,66 @@ describe("StudioFsBrowseService", () => {
                 throw new Error("expected an error result");
             }
             expect(result.error).toContain("Permission denied");
+            expect(result.reason).toBe("permission");
         } finally {
             spy.mockRestore();
+        }
+    });
+
+    it("reports a dangling symlink as 'unresolved', distinct from a plain nonexistent path", () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-dangling-target-"));
+        fs.rmSync(outside, {recursive: true, force: true});
+        fs.symlinkSync(outside, path.join(root, "broken-link"));
+
+        const result = service.browse("broken-link");
+
+        expect(result.status).toBe("error");
+        if (result.status !== "error") {
+            throw new Error("expected an error result");
+        }
+        expect(result.error).toContain("broken link");
+        expect(result.reason).toBe("unresolved");
+    });
+
+    it("reports a symlink inside an explicit base that points outside it as a 'symlink-escape' error", () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-escape-target-"));
+        try {
+            fs.symlinkSync(outside, path.join(root, "evil"));
+
+            const result = service.browse("evil", root);
+
+            expect(result.status).toBe("error");
+            if (result.status !== "error") {
+                throw new Error("expected an error result");
+            }
+            expect(result.error).toContain("symlink");
+            expect(result.reason).toBe("symlink-escape");
+        } finally {
+            fs.rmSync(outside, {recursive: true, force: true});
+        }
+    });
+
+    it("does not flag an ordinary '..'-style escape out of an explicit base as an error (browsing outside base stays supported)", () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-lexical-outside-"));
+        try {
+            const result = service.browse("..", outside);
+
+            expect(result).toMatchObject({status: "ok", resolvedPath: path.dirname(outside)});
+        } finally {
+            fs.rmSync(outside, {recursive: true, force: true});
+        }
+    });
+
+    it("does not flag a symlink for a request with no explicit base (constructor root browsing stays unrestricted)", () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fs-browse-no-base-target-"));
+        try {
+            fs.symlinkSync(outside, path.join(root, "link-out"));
+
+            const result = service.browse("link-out");
+
+            expect(result).toMatchObject({status: "ok", resolvedPath: path.join(root, "link-out")});
+        } finally {
+            fs.rmSync(outside, {recursive: true, force: true});
         }
     });
 });

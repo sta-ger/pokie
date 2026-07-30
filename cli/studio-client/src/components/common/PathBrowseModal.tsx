@@ -61,7 +61,7 @@ export function PathBrowseModal({opened, onClose, onSelect, kind, initialPath, t
             })
             .catch((error: unknown) => {
                 if (!cancelled) {
-                    setView({status: "loaded", data: {status: "error", error: errorMessage(error), resolvedPath: browsePath ?? ""}});
+                    setView({status: "loaded", data: {status: "error", error: errorMessage(error), resolvedPath: browsePath ?? "", reason: "other"}});
                 }
             });
         return () => {

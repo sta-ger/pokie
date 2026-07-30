@@ -13,6 +13,13 @@ export type BrowseStartLocationParams = {
     relevantDirectory?: string;
     // Forwarded to GET /api/home/fs/default-location's own `name` — see resolveDefaultBrowseLocation.
     defaultLocationName?: string;
+    // Same PathBrowseKind the field itself validates against -- forwarded to browseFilesystem so
+    // `currentValue` is checked as a file, not a directory, for a `kind: "file"` field (e.g. a Blueprint
+    // path). A file has nothing to browse *into*, so a resolved file hint's own containing directory
+    // (StudioFsBrowseService.browse's `parentPath`) is what's actually returned as the start location,
+    // never the file path itself. Omitted (every directory field), the resolved value's `resolvedPath`
+    // is used as-is, same as before this param existed.
+    kind?: "directory" | "file";
 };
 
 // The one shared "where should Browse start looking" policy every PathInput uses, in precedence order:
@@ -25,9 +32,9 @@ export type BrowseStartLocationParams = {
 export async function resolveBrowseStartLocation(params: BrowseStartLocationParams): Promise<string | undefined> {
     const trimmedCurrentValue = params.currentValue.trim();
     if (trimmedCurrentValue.length > 0) {
-        const hint = await browseFilesystem(params.fetchImpl, trimmedCurrentValue);
+        const hint = await browseFilesystem(params.fetchImpl, trimmedCurrentValue, params.relevantDirectory, params.kind);
         if (hint.status === "ok") {
-            return trimmedCurrentValue;
+            return params.kind === "file" ? (hint.parentPath ?? hint.resolvedPath) : hint.resolvedPath;
         }
     }
 

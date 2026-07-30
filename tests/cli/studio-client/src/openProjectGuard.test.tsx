@@ -102,7 +102,10 @@ describe("useOpenProject: guarded side effects", () => {
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Leave"}));
 
-        expect(await screen.findByText("boom")).toBeInTheDocument();
+        // The raw "boom" server message is never rendered verbatim -- see [P2-POLISH-04]'s
+        // describePathActionError, which turns it into subject-specific status + remediation copy.
+        expect(await screen.findByText("The project directory could not be completed. Try again, and check the Studio server logs if the problem persists.")).toBeInTheDocument();
+        expect(screen.queryByText("boom")).not.toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         expect(router.state.location.pathname).toBe("/home/open");
         expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");

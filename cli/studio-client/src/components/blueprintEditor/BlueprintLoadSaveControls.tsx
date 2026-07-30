@@ -1,7 +1,9 @@
-import {Button, Collapse, TextInput} from "@mantine/core";
+import {Button, Collapse} from "@mantine/core";
 import {useState} from "react";
 import type {BlueprintLoadView, BlueprintSaveView} from "../../domain/interpret/BlueprintEditor";
+import {describePathActionError} from "../../domain/pathActionError";
 import {ErrorState} from "../common/ErrorState";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
 import {SuccessResult} from "../common/SuccessResult";
@@ -35,11 +37,29 @@ export function BlueprintLoadSaveControls({
     const [savePath, setSavePath] = useState(initialSavePath);
     const loadSaveFields = (
         <QuickActions>
-            <TextInput label="Load from path" value={loadPath} onChange={(event) => setLoadPath(event.currentTarget.value)} />
+            <PathInput
+                label="Load from path"
+                kind="file"
+                browseTitle="Browse for a blueprint JSON file"
+                browseId="blueprint-load-path"
+                fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                value={loadPath}
+                onChange={(event) => setLoadPath(event.currentTarget.value)}
+                onPathSelected={setLoadPath}
+            />
             <Button variant="default" onClick={() => onLoad(loadPath)} loading={loadView.status === "loading"}>
                 Load
             </Button>
-            <TextInput label="Save to path" value={savePath} onChange={(event) => setSavePath(event.currentTarget.value)} />
+            <PathInput
+                label="Save to path"
+                kind="file"
+                browseTitle="Browse for a blueprint JSON file"
+                browseId="blueprint-save-path"
+                fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                value={savePath}
+                onChange={(event) => setSavePath(event.currentTarget.value)}
+                onPathSelected={setSavePath}
+            />
             <Button variant="default" onClick={() => onSave(savePath)} loading={saveView.status === "loading"}>
                 Save
             </Button>
@@ -55,12 +75,16 @@ export function BlueprintLoadSaveControls({
             </QuickActions>
             {advancedOptionsOpened === undefined ? loadSaveFields : <Collapse expanded={advancedOptionsOpened}>{loadSaveFields}</Collapse>}
 
-            {loadView.status === "error" || loadView.status === "load-error" ? <ErrorState message={loadView.message} /> : null}
+            {(loadView.status === "error" || loadView.status === "load-error") && (
+                <ErrorState message={describePathActionError("The blueprint file", loadView.message)} />
+            )}
 
             {saveView.status === "conflict" && (
                 <RecoveryNotice title={saveView.message} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => onOverwrite(saveView.path)} />
             )}
-            {(saveView.status === "error" || saveView.status === "failed") && <ErrorState message={saveView.message} />}
+            {(saveView.status === "error" || saveView.status === "failed") && (
+                <ErrorState message={describePathActionError("The blueprint file", saveView.message)} />
+            )}
             {saveView.status === "ok" && <SuccessResult message={`Saved to "${saveView.path}".`} />}
         </div>
     );

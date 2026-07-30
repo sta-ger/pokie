@@ -16,6 +16,7 @@ import {
     type FairnessOutcome,
     type FairnessVerifyRequestView,
 } from "../../domain/interpret/Fairness";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
@@ -23,6 +24,7 @@ import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
 const OUTCOME_BANNER: Record<FairnessOutcome, {color: string; icon: ReactNode; title: string}> = {
@@ -63,7 +65,7 @@ function parseJson<T>(text: string): ParsedJson<T> {
 // shown here is computed server-side, never re-derived in this UI. Verify supports both the
 // just-generated proof/commitment and a pasted external proof/commitment -- the latter is the actual
 // real-world Provably Fair use case, independently verifying someone else's round.
-export function ProvablyFairTab() {
+export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
     const fetchImpl = useStudioApi();
     const [activeStep, setActiveStep] = useState(0);
 
@@ -253,11 +255,16 @@ export function ProvablyFairTab() {
 
             {activeStep === 0 && (
                 <div>
-                    <TextInput
+                    <PathInput
                         label="Source outcome-library bundle directory"
                         placeholder="./outcomes/bundle"
+                        kind="directory"
+                        browseTitle="Browse for a source outcome-library bundle directory"
+                        browseId="provably-fair-configure-bundle-dir"
+                        relevantDirectory={projectRoot}
                         value={fields.bundleDir}
                         onChange={(event) => handleFieldsChange({...fields, bundleDir: event.currentTarget.value})}
+                        onPathSelected={(bundleDir) => handleFieldsChange({...fields, bundleDir})}
                         mb="sm"
                     />
                     <TextInput
@@ -293,8 +300,12 @@ export function ProvablyFairTab() {
                             Compute commitments
                         </Button>
                     </QuickActions>
-                    {configureView.status === "error" && <ErrorState message={configureView.message} />}
-                    {configureView.status === "load-error" && <ErrorState message={configureView.error} />}
+                    {configureView.status === "error" && (
+                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", configureView.message)} />
+                    )}
+                    {configureView.status === "load-error" && (
+                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", configureView.error)} />
+                    )}
                     {configureView.status === "invalid" && <ErrorState message={configureView.message} />}
                     {configureView.status === "ok" && (
                         <div>
@@ -346,8 +357,12 @@ export function ProvablyFairTab() {
                                 Generate round proof
                             </Button>
                         </QuickActions>
-                        {generateView.status === "error" && <ErrorState message={generateView.message} />}
-                        {generateView.status === "load-error" && <ErrorState message={generateView.error} />}
+                        {generateView.status === "error" && (
+                            <ErrorState message={describePathActionError("The Provably Fair bundle directory", generateView.message)} />
+                        )}
+                        {generateView.status === "load-error" && (
+                            <ErrorState message={describePathActionError("The Provably Fair bundle directory", generateView.error)} />
+                        )}
                         {generateView.status === "build-error" && <ErrorState message={`${generateView.code}: ${generateView.message}`} />}
                         {generateView.status === "ok" && (
                             <div>
@@ -425,11 +440,19 @@ export function ProvablyFairTab() {
                             {pastedCommitment?.status === "error" && <ErrorState message={`Commitment JSON: ${pastedCommitment.message}`} />}
                         </div>
                     )}
-                    <TextInput
+                    <PathInput
                         label="Source outcome-library bundle directory"
+                        kind="directory"
+                        browseTitle="Browse for a source outcome-library bundle directory"
+                        browseId="provably-fair-verify-bundle-dir"
+                        relevantDirectory={projectRoot}
                         value={verifyBundleDir}
                         onChange={(event) => {
                             setVerifyBundleDir(event.currentTarget.value);
+                            invalidateVerify();
+                        }}
+                        onPathSelected={(path) => {
+                            setVerifyBundleDir(path);
                             invalidateVerify();
                         }}
                         mb="sm"
@@ -439,8 +462,12 @@ export function ProvablyFairTab() {
                             Verify
                         </Button>
                     </QuickActions>
-                    {verifyView.status === "error" && <ErrorState message={verifyView.message} />}
-                    {verifyView.status === "load-error" && <ErrorState message={verifyView.error} />}
+                    {verifyView.status === "error" && (
+                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", verifyView.message)} />
+                    )}
+                    {verifyView.status === "load-error" && (
+                        <ErrorState message={describePathActionError("The Provably Fair bundle directory", verifyView.error)} />
+                    )}
                     {verifyOutcome !== undefined && (
                         <div>
                             <OutcomeBanner

@@ -882,6 +882,7 @@ export function ProjectDashboardPage() {
                             runLoading={deployment.runLoading}
                             selectedArtifactPath={deployment.selectedArtifactPath}
                             onSelectArtifact={deployment.selectArtifact}
+                            projectRoot={projectKey}
                         />
                     )}
                     {activeTab === "outcomeLibraries" && (
@@ -890,6 +891,7 @@ export function ProjectDashboardPage() {
                         // own key above.
                         <OutcomeLibrariesTab
                             key={projectKey ?? "no-project"}
+                            projectRoot={projectKey}
                             onUseInRuntime={(selector, expectedHash) => {
                                 // restart() (not start()) so this always takes effect, whether the
                                 // runtime is currently stopped or already running some other
@@ -912,17 +914,17 @@ export function ProjectDashboardPage() {
                     {activeTab === "certification" && (
                         // Same reasoning as OutcomeLibrariesTab's own key above -- CertificationTab owns
                         // all of its own stepper state locally (no page-level hook).
-                        <CertificationTab key={projectKey ?? "no-project"} />
+                        <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
                     )}
                     {activeTab === "provablyFair" && (
                         // Same reasoning as OutcomeLibrariesTab's own key above -- ProvablyFairTab owns
                         // all of its own stepper state locally (no page-level hook).
-                        <ProvablyFairTab key={projectKey ?? "no-project"} />
+                        <ProvablyFairTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
                     )}
                     {activeTab === "stakeEngineExport" && (
                         // Same reasoning as OutcomeLibrariesTab's own key above -- StakeEngineExportTab
                         // owns all of its own stepper state locally (no page-level hook).
-                        <StakeEngineExportTab key={projectKey ?? "no-project"} />
+                        <StakeEngineExportTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
                     )}
                 </div>
             )}

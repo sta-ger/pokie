@@ -16,6 +16,7 @@ import {
     type OutcomeLibraryOutcome,
     type OutcomeLibrarySelectRequestView,
 } from "../../domain/interpret/OutcomeLibraries";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
@@ -24,6 +25,7 @@ import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
 
@@ -51,7 +53,18 @@ function buildSelector(fields: SelectorFields): OutcomeLibrarySelector | undefin
         : undefined;
 }
 
-function SelectorFieldsInput({fields, onChange, idPrefix}: {fields: SelectorFields; onChange: (fields: SelectorFields) => void; idPrefix: string}) {
+function SelectorFieldsInput({
+    fields,
+    onChange,
+    idPrefix,
+    relevantDirectory,
+}: {
+    fields: SelectorFields;
+    onChange: (fields: SelectorFields) => void;
+    idPrefix: string;
+    relevantDirectory?: string;
+}) {
+    const browseIdSuffix = idPrefix.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     return (
         <div>
             <SegmentedControl
@@ -66,20 +79,31 @@ function SelectorFieldsInput({fields, onChange, idPrefix}: {fields: SelectorFiel
                 aria-label={`${idPrefix} library source`}
             />
             {fields.kind === "json" && (
-                <TextInput
+                <PathInput
                     label="Library JSON path"
                     placeholder="./outcomes/base.json"
+                    kind="file"
+                    browseTitle="Browse for a library JSON file"
+                    browseId={`outcome-library-${browseIdSuffix}-json-path`}
+                    fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                    relevantDirectory={relevantDirectory}
                     value={fields.path}
                     onChange={(event) => onChange({...fields, path: event.currentTarget.value})}
+                    onPathSelected={(path) => onChange({...fields, path})}
                 />
             )}
             {fields.kind === "bundle" && (
                 <Group gap="sm" wrap="wrap">
-                    <TextInput
+                    <PathInput
                         label="Bundle directory"
                         placeholder="./outcomes/bundle"
+                        kind="directory"
+                        browseTitle="Browse for a bundle directory"
+                        browseId={`outcome-library-${browseIdSuffix}-bundle-dir`}
+                        relevantDirectory={relevantDirectory}
                         value={fields.bundleDir}
                         onChange={(event) => onChange({...fields, bundleDir: event.currentTarget.value})}
+                        onPathSelected={(bundleDir) => onChange({...fields, bundleDir})}
                     />
                     <TextInput
                         label="Mode name"
@@ -91,11 +115,16 @@ function SelectorFieldsInput({fields, onChange, idPrefix}: {fields: SelectorFiel
             )}
             {fields.kind === "stakeengine" && (
                 <Group gap="sm" wrap="wrap">
-                    <TextInput
+                    <PathInput
                         label="Stake Engine export directory"
                         placeholder="./stake-export"
+                        kind="directory"
+                        browseTitle="Browse for a Stake Engine export directory"
+                        browseId={`outcome-library-${browseIdSuffix}-stake-dir`}
+                        relevantDirectory={relevantDirectory}
                         value={fields.stakeDir}
                         onChange={(event) => onChange({...fields, stakeDir: event.currentTarget.value})}
+                        onPathSelected={(stakeDir) => onChange({...fields, stakeDir})}
                     />
                     <TextInput
                         label="Mode name"
@@ -118,7 +147,13 @@ function SelectorFieldsInput({fields, onChange, idPrefix}: {fields: SelectorFiel
 // action, an invalidate*() helper that bumps the ref/resets state/releases its own double-submit guard
 // immediately (so a superseded request never blocks a fresh one nor applies its late response), and
 // "Continue" only ever shown after a genuinely successful step.
-export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector: OutcomeLibrarySelector, expectedHash: string) => void}) {
+export function OutcomeLibrariesTab({
+    onUseInRuntime,
+    projectRoot,
+}: {
+    onUseInRuntime: (selector: OutcomeLibrarySelector, expectedHash: string) => void;
+    projectRoot?: string;
+}) {
     const fetchImpl = useStudioApi();
     const [activeStep, setActiveStep] = useState(0);
 
@@ -272,10 +307,10 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
             return <EmptyState message="Select/import a library first." />;
         }
         if (selectView.status === "load-error") {
-            return <ErrorState message={selectView.error} />;
+            return <ErrorState message={describePathActionError("The outcome library", selectView.error)} />;
         }
         if (selectView.status === "error") {
-            return <ErrorState message={selectView.message} />;
+            return <ErrorState message={describePathActionError("The outcome library", selectView.message)} />;
         }
         if (selectOutcome === undefined) {
             return null;
@@ -308,8 +343,12 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                                 Run deep validation
                             </Button>
                         </QuickActions>
-                        {deepValidateView.status === "error" && <ErrorState message={deepValidateView.message} />}
-                        {deepValidateView.status === "load-error" && <ErrorState message={deepValidateView.error} />}
+                        {deepValidateView.status === "error" && (
+                            <ErrorState message={describePathActionError("The outcome library bundle", deepValidateView.message)} />
+                        )}
+                        {deepValidateView.status === "load-error" && (
+                            <ErrorState message={describePathActionError("The outcome library bundle", deepValidateView.error)} />
+                        )}
                         {deepValidateView.status === "ok" && (
                             <div>
                                 <IssueList title="Errors" issues={deepValidateView.errors} />
@@ -366,14 +405,16 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
 
             {activeStep === 0 && (
                 <div>
-                    <SelectorFieldsInput fields={fields} onChange={handleFieldsChange} idPrefix="Library" />
+                    <SelectorFieldsInput fields={fields} onChange={handleFieldsChange} idPrefix="Library" relevantDirectory={projectRoot} />
                     <QuickActions>
                         <Button onClick={runSelect} loading={selectView.status === "loading"} disabled={buildSelector(fields) === undefined}>
                             Load library
                         </Button>
                     </QuickActions>
-                    {selectView.status === "error" && <ErrorState message={selectView.message} />}
-                    {selectView.status === "load-error" && <ErrorState message={selectView.error} />}
+                    {selectView.status === "error" && <ErrorState message={describePathActionError("The outcome library", selectView.message)} />}
+                    {selectView.status === "load-error" && (
+                        <ErrorState message={describePathActionError("The outcome library", selectView.error)} />
+                    )}
                 </div>
             )}
 
@@ -488,7 +529,7 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                 ) : (
                     <div>
                         <PageSection legend="Compare with another library">
-                            <SelectorFieldsInput fields={rightFields} onChange={handleRightFieldsChange} idPrefix="Comparison" />
+                            <SelectorFieldsInput fields={rightFields} onChange={handleRightFieldsChange} idPrefix="Comparison" relevantDirectory={projectRoot} />
                             <QuickActions>
                                 <Button
                                     onClick={runCompare}
@@ -498,7 +539,9 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                                     Compare
                                 </Button>
                             </QuickActions>
-                            {"status" in compareView && compareView.status === "error" && <ErrorState message={compareView.message} />}
+                            {"status" in compareView && compareView.status === "error" && (
+                                <ErrorState message={describePathActionError("The comparison request", compareView.message)} />
+                            )}
                             {compareResult && (
                                 <div>
                                     {compareResult.leftSnapshotStale && (
@@ -510,13 +553,17 @@ export function OutcomeLibrariesTab({onUseInRuntime}: {onUseInRuntime: (selector
                                             onAction={runSelect}
                                         />
                                     )}
-                                    {compareResult.left.status === "load-error" && <ErrorState message={compareResult.left.error} />}
+                                    {compareResult.left.status === "load-error" && (
+                                        <ErrorState message={describePathActionError("The left library", compareResult.left.error)} />
+                                    )}
                                     {compareResult.left.status === "invalid" && (
                                         <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="The loaded library is no longer valid" mb="sm">
                                             <IssueList title="Errors" issues={compareResult.left.errors} />
                                         </Alert>
                                     )}
-                                    {compareResult.right.status === "load-error" && <ErrorState message={compareResult.right.error} />}
+                                    {compareResult.right.status === "load-error" && (
+                                        <ErrorState message={describePathActionError("The right library", compareResult.right.error)} />
+                                    )}
                                     {compareResult.right.status === "invalid" && (
                                         <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="The comparison library is invalid" mb="sm">
                                             <IssueList title="Errors" issues={compareResult.right.errors} />

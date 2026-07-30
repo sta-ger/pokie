@@ -358,6 +358,7 @@ export function BlueprintEditorPage({
                     // Form/JSON content's own key={editor.formGeneration} boundary.
                     key={editor.formGeneration}
                     blueprint={blueprint}
+                    blueprintPath={blueprintPath}
                     revision={revision}
                     onApplyImportedBlueprint={handleApplyImportedBlueprint}
                 />

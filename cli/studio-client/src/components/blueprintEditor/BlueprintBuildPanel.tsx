@@ -1,4 +1,4 @@
-import {Button, Text, TextInput} from "@mantine/core";
+import {Button, Text} from "@mantine/core";
 import {useRef, useState} from "react";
 import {buildBlueprint, previewBlueprintBuild} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -6,11 +6,27 @@ import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {BuildResultDisplay} from "../common/BuildResultDisplay";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeBuildPreview, describeBuildResult, type BuildPreviewView, type BuildProjectView} from "../../domain/interpret/Home";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
+
+// Mirrors GamePackageGenerator.generate's own default -- an omitted outDir lands at
+// "<studio root>/<manifest.id>", never Studio's browse root itself -- so a blank Output directory's
+// "Auto resolved destination" hint (see PathInput's own autoDestinationPath) shows Build's real target
+// instead. Returns undefined for a missing/blank id (still resolves to the root, unchanged behavior) --
+// GameBlueprintValidator itself is what rejects an empty "manifest.id", not this hint.
+function buildOutputAutoDestination(blueprint: Record<string, unknown>): string | undefined {
+    const manifest = blueprint.manifest;
+    if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
+        return undefined;
+    }
+    const id = (manifest as Record<string, unknown>).id;
+    return typeof id === "string" && id.trim().length > 0 ? id : undefined;
+}
 
 export function BlueprintBuildPanel({
     blueprint,
@@ -40,6 +56,19 @@ export function BlueprintBuildPanel({
     // be misleading -- there's no validation error to "fix" yet.
     blockedMessage?: string;
 }) {
+    // Unlike Home's Build-from-Blueprint tab (whose blueprint comes from a user-typed path, so a
+    // "load-error" here can be about that path), this panel's blueprint is always the in-memory editor
+    // model -- the only user-typed path involved anywhere in this panel's own preview/build request is
+    // Output directory, so every error-carrying status below is safely describable with that one fixed
+    // subject.
+    const describeOutDirFailure = (message: string): string => describePathActionError("The output directory", message);
+    const withOutDirPreviewError = (view: BuildPreviewView): BuildPreviewView =>
+        view.status === "error" || view.status === "load-error" ? {...view, message: describeOutDirFailure(view.message)} : view;
+    const withOutDirResultError = (view: BuildProjectView): BuildProjectView =>
+        view.status === "error" || view.status === "load-error" || view.status === "failed"
+            ? {...view, message: describeOutDirFailure(view.message)}
+            : view;
+
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const confirm = useConfirm();
@@ -57,8 +86,8 @@ export function BlueprintBuildPanel({
         }
         setPreview({status: "loading"});
         previewBlueprintBuild(fetchImpl, blueprint, outDir.trim() || undefined, sourcePath)
-            .then((view) => setPreview(describeBuildPreview(view)))
-            .catch((error: unknown) => setPreview({status: "error", message: errorMessage(error)}))
+            .then((view) => setPreview(withOutDirPreviewError(describeBuildPreview(view))))
+            .catch((error: unknown) => setPreview({status: "error", message: describeOutDirFailure(errorMessage(error))}))
             .finally(() => previewGuard.end());
     };
 
@@ -75,14 +104,14 @@ export function BlueprintBuildPanel({
             setResult({status: "loading"});
             buildBlueprint(fetchImpl, blueprint, resolvedOutDir, sourcePath)
                 .then((view) => {
-                    setResult(describeBuildResult(view));
+                    setResult(withOutDirResultError(describeBuildResult(view)));
                     if (view.status === "ok") {
                         setLastProjectRoot(view.projectRoot);
                         lastBuiltOutDir.current = resolvedOutDir;
                         onBuildSuccess?.(builtRevision);
                     }
                 })
-                .catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}))
+                .catch((error: unknown) => setResult({status: "error", message: describeOutDirFailure(errorMessage(error))}))
                 .finally(() => buildGuard.end());
         };
 
@@ -97,7 +126,16 @@ export function BlueprintBuildPanel({
     return (
         <PageSection legend="Build">
             <QuickActions>
-                <TextInput label="Output directory (optional)" value={outDir} onChange={(event) => setOutDir(event.currentTarget.value)} />
+                <PathInput
+                    label="Output directory (optional)"
+                    kind="directory"
+                    browseTitle="Browse for an output directory"
+                    browseId="blueprint-build-out-dir"
+                    autoDestinationPath={buildOutputAutoDestination(blueprint)}
+                    value={outDir}
+                    onChange={(event) => setOutDir(event.currentTarget.value)}
+                    onPathSelected={setOutDir}
+                />
                 <Button variant="default" onClick={runPreview} loading={preview.status === "loading"}>
                     Build Preview
                 </Button>

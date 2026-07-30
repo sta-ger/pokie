@@ -340,15 +340,22 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         expect(loadButton).not.toBeDisabled();
     });
 
-    it("Stake Engine Export's Configure step: outDir defaults to a non-blank 'stakeengine' value, so its own placeholder can never actually be seen", async () => {
+    it("Stake Engine Export's Configure step: outDir is inferable (a real, non-blank 'stakeengine' initial value, not a placeholder) -- Mode name/Outcome library path stay genuinely non-inferable placeholders", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
         renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
+        // [P2-POLISH-04]: outDir's own default output directory is a real code-backed convention (this
+        // tab's own state, mirrored nowhere else) -- it renders as an actual initial *value*, so its
+        // former "./stakeengine" placeholder (structurally unreachable, since the field is never blank)
+        // was removed rather than left as dead/misleading markup. Mode name and Outcome library path have
+        // no such convention anywhere in the CLI (no command derives/writes a per-mode-name library path
+        // -- see docs/studio-phase2-inventory.md's own v5 update) -- genuinely un-inferable, so they
+        // correctly keep their illustrative placeholders.
         const outDirInput = screen.getByLabelText("Output directory") as HTMLInputElement;
         expect(outDirInput.value).toBe("stakeengine");
-        expect(outDirInput).toHaveAttribute("placeholder", "./stakeengine");
+        expect(outDirInput).not.toHaveAttribute("placeholder");
         expect(screen.getByLabelText("Mode name")).toHaveAttribute("placeholder", "base");
         expect(screen.getByLabelText("Outcome library path")).toHaveAttribute("placeholder", "./outcomes/base.json");
 
@@ -396,8 +403,15 @@ describe("Advanced tab raw-error surface baseline", () => {
         const alerts = await screen.findAllByRole("alert");
         expect(alerts.some((alert) => alert.textContent === "replay list endpoint unreachable")).toBe(true);
     });
+});
 
-    it("Certification: a failed Validate call renders the raw server error text verbatim, no retry/remediation copy added", async () => {
+// [P2-POLISH-04]: unlike Runtime/Replay/Deployment's targets fetch above (none of which take a user-typed
+// path -- see docs/studio-phase2-inventory.md's "Raw-error surfaces" per-section notes), every scoped
+// path-based action below now turns its raw backend failure into inline, subject-specific status +
+// remediation copy via `domain/pathActionError.ts`'s `describePathActionError` -- the raw server text is
+// never rendered verbatim. See pathActionError.test.ts for the classifier's own reason-by-reason coverage.
+describe("Scoped path-action error remediation baseline", () => {
+    it("Certification: a failed Validate call is turned into bundle-directory-specific inline remediation, never the raw server error text", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
@@ -411,7 +425,214 @@ describe("Advanced tab raw-error surface baseline", () => {
         await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
 
         const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "bundle directory not found")).toBe(true);
+        expect(
+            alerts.some(
+                (alert) =>
+                    alert.textContent ===
+                    "The certification bundle directory could not be completed. Try again, and check the Studio server logs if the problem persists.",
+            ),
+        ).toBe(true);
+        expect(alerts.some((alert) => alert.textContent === "bundle directory not found")).toBe(false);
+    });
+
+    it("Deployment: a failed Check compatibility & preview call is turned into outcome-library-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const target = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: [target]}),
+            "/api/project/deployment/runs": () => ({ok: false, status: 500, body: {error: 'Could not read "./outcomes/base.json": ENOENT: no such file or directory'}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        await user.click(await screen.findByRole("button", {name: "Select"}));
+        await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Modes & libraries")}));
+        await user.type(screen.getByLabelText("Mode name"), "base");
+        await user.type(screen.getByLabelText("Outcome library path"), "./outcomes/missing.json");
+        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The deployment's outcome library file could not be found. Check the path and try again.")).toBe(
+            true,
+        );
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
+
+    it("Outcome Libraries: a failed Load library call is turned into subject-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/outcome-libraries/select": () => ({ok: false, status: 500, body: {error: "EACCES: permission denied, open '/proj/outcomes/base.json'"}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        await user.type(screen.getByLabelText("Library JSON path"), "./outcomes/base.json");
+        await user.click(screen.getByRole("button", {name: "Load library"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The outcome library isn't readable. Check its permissions and try again.")).toBe(true);
+        expect(alerts.some((alert) => alert.textContent?.includes("EACCES"))).toBe(false);
+    });
+
+    it("Stake Engine Export: a failed Validate diagnostics call is turned into subject-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/stakeengine/validate": () => ({ok: false, status: 500, body: {error: 'mode "base": Could not read "./outcomes/base.json": ENOENT: no such file or directory'}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        await user.type(screen.getByLabelText("Mode name"), "base");
+        await user.type(screen.getByLabelText("Outcome library path"), "./outcomes/missing.json");
+        await user.click(screen.getByRole("button", {name: "Continue to Preview"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
+        await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(
+            alerts.some(
+                (alert) => alert.textContent === "The Stake Engine export's outcome library could not be found. Check the path and try again.",
+            ),
+        ).toBe(true);
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
+
+    it("Provably Fair: a failed Compute commitments call is turned into bundle-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/fairness/configure": () => ({ok: false, status: 500, body: {error: 'Could not read bundle "./outcomes/bundle": ENOENT: no such file or directory'}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/provablyFair"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        await user.type(screen.getByLabelText("Source outcome-library bundle directory"), "./outcomes/bundle-a");
+        await user.type(screen.getByLabelText("Mode name"), "base");
+        await user.type(screen.getByLabelText("Server seed"), "server-seed-1");
+        await user.type(screen.getByLabelText("Client seed"), "client-seed-1");
+        await user.click(screen.getByRole("button", {name: "Compute commitments"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(
+            alerts.some(
+                (alert) => alert.textContent === "The Provably Fair bundle directory could not be found. Check the path and try again.",
+            ),
+        ).toBe(true);
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
+
+    it("Design & Build: a failed Build Package call is turned into output-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            // Matches StudioBlueprintService.build()'s own GamePackageGenerator.generate() rejection
+            // shape for an output directory it can't write to -- reported as a 200 {status: "error"}
+            // domain result, never an HTTP-level failure (see StudioServer's own handleBlueprintBuild).
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir'"}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await user.type(screen.getAllByLabelText("Output directory (optional)")[0], "./no/such/dir");
+        await user.click(screen.getAllByRole("button", {name: "Build Package"})[0]);
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The output directory could not be found. Check the path and try again.")).toBe(
+            true,
+        );
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
+
+    it("Advanced Tools / Create Project: a failed create call is turned into destination-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/create": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir/my-slot-game'"},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        await user.click(screen.getByRole("button", {name: "Create"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The destination directory could not be found. Check the path and try again.")).toBe(
+            true,
+        );
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
+
+    it("Advanced Tools / Initialize: a required-field rejection is turned into project-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            // Matches validateInitProjectRequest's own rejection shape for a missing "directory" --
+            // GamePackageScaffolder.scaffold's raw fs failures share this same "error" status/subject.
+            "/api/home/projects/init": () => ({ok: true, status: 200, body: {status: "error", error: '"directory" is required.'}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        await user.click(screen.getByRole("button", {name: "Initialize"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(
+            alerts.some((alert) => alert.textContent === "The project directory is missing or invalid. Provide a valid value and try again."),
+        ).toBe(true);
+        expect(alerts.some((alert) => alert.textContent === '"directory" is required.')).toBe(false);
+    });
+
+    it("Advanced Tools / Build from Blueprint: a failed Preview call is turned into blueprint-file-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/build/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "load-error", error: "ENOENT: no such file or directory, open './missing.json'"},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        await user.type(screen.getByLabelText("Blueprint JSON path", {exact: false}), "./missing.json");
+        await user.click(screen.getByRole("button", {name: "Preview"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The blueprint file could not be found. Check the path and try again.")).toBe(true);
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+    });
+
+    it("Advanced Tools / Build from Blueprint: a failed Build call is turned into output-directory-specific inline remediation, never the raw server error text", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/build": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir'"},
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+
+        await user.type(screen.getByLabelText("Blueprint JSON path", {exact: false}), "./blueprint.json");
+        // getAllByLabelText, index 0: "Output directory (optional)" also labels the Raw Editor's own
+        // Build panel further down this same tab -- BuildFromBlueprintPanel renders first (HomePage.tsx),
+        // same convention as the placeholder baseline above.
+        await user.type(screen.getAllByLabelText("Output directory (optional)")[0], "./no/such/dir");
+        await user.click(screen.getByRole("button", {name: "Build"}));
+
+        const alerts = await screen.findAllByRole("alert");
+        expect(alerts.some((alert) => alert.textContent === "The output directory could not be found. Check the path and try again.")).toBe(
+            true,
+        );
+        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
     });
 });
 
@@ -495,7 +716,7 @@ describe("Design & Build / Raw Editor / Advanced Tools / Open Project: path-fiel
 });
 
 describe("Design & Build / Raw Editor: Load/Save raw-error-surface baseline", () => {
-    it("Load from path / Save to path have no required-field gating at all -- a blank path is sent straight to the server, which rejects it with a raw, unwrapped error message", async () => {
+    it("Load from path / Save to path have no required-field gating at all -- a blank path is sent straight to the server, whose raw rejection is turned into subject-specific inline remediation, never rendered verbatim", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
@@ -512,8 +733,13 @@ describe("Design & Build / Raw Editor: Load/Save raw-error-surface baseline", ()
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/blueprints/load")).toBe(true));
         expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/load")?.init?.body ?? "{}")).toEqual({path: ""});
+        // [P2-POLISH-04]: describePathActionError turns the raw '"path" is required.' rejection into
+        // subject-specific inline status + remediation -- the raw server text is never shown verbatim.
         const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === '"path" is required.')).toBe(true);
+        expect(alerts.some((alert) => alert.textContent === "The blueprint file is missing or invalid. Provide a valid value and try again.")).toBe(
+            true,
+        );
+        expect(alerts.some((alert) => alert.textContent === '"path" is required.')).toBe(false);
     });
 });
 
@@ -531,5 +757,24 @@ describe("Open Project: required-field baseline", () => {
         expect(calls.some((call) => call.url === "/api/home/projects/open")).toBe(false);
         expect(screen.queryByRole("alert")).not.toBeInTheDocument();
         expect(screen.queryByText("Opening…")).not.toBeInTheDocument();
+    });
+});
+
+describe("[P2-POLISH-04] project-scoped path fields: shared PathInput, resolved against the project's own root", () => {
+    it("Certification's bundle-directory field is a PathInput whose resolved-path hint is requested against the open project's root, not Studio's own server root", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch(PROJECT_ROUTES);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/certification"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        const bundleDirField = screen.getByLabelText("Source outcome-library bundle directory", {exact: false});
+        expect(screen.getByRole("button", {name: "Browse…"})).toBeInTheDocument();
+
+        await user.type(bundleDirField, "./outcomes/bundle");
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        await waitFor(() =>
+            expect(calls.some((call) => call.url.startsWith("/api/home/fs/browse") && call.url.includes("base=%2Fgames%2Fmy-slot"))).toBe(true),
+        );
     });
 });

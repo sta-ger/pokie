@@ -1,9 +1,10 @@
-import {Button, Stepper, Text, TextInput} from "@mantine/core";
+import {Button, Stepper, Text} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import {exportParSheet, importParSheet, previewBlueprintBuild} from "../../api/apiClient";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeBuildPreview, type BuildPreviewView} from "../../domain/interpret/Home";
+import {describePathActionError} from "../../domain/pathActionError";
 import {
     describeParSheetExportOutcome,
     describeParSheetExportResult,
@@ -27,6 +28,7 @@ import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
+import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
 
@@ -42,6 +44,24 @@ const EXPORT_OUTCOME_BANNER: Record<ParSheetExportOutcome, {color: string; icon:
     unsupported: {color: "red", icon: <IconAlertTriangle size={16} />, title: "This blueprint has unsupported data"},
     invalid: {color: "red", icon: <IconAlertTriangle size={16} />, title: "This blueprint is invalid"},
 };
+
+// Mirrors ParCommand.ts's own defaultParSheetPath -- `pokie par export`'s real default output location
+// for a given blueprint source: same directory, same basename with any known blueprint/PAR-sheet suffix
+// stripped, ".par.xlsx" appended (the extra ".par.xlsx" strip, absent from the CLI's own version, covers
+// this panel's own round-trip case: `blueprintPath` here can itself already be a PAR sheet, when the
+// current blueprint was reached via a prior Import + Apply). Undefined when there's no known source path
+// to derive from (a brand-new blueprint, or one only ever edited via New/JSON) -- Export to path stays
+// genuinely unresolvable then, not a fabricated guess.
+function parSheetExportDefaultPath(blueprintPath: string | undefined): string | undefined {
+    if (blueprintPath === undefined || blueprintPath.trim().length === 0) {
+        return undefined;
+    }
+    const lastSlash = Math.max(blueprintPath.lastIndexOf("/"), blueprintPath.lastIndexOf("\\"));
+    const dir = lastSlash >= 0 ? blueprintPath.slice(0, lastSlash + 1) : "";
+    const filename = lastSlash >= 0 ? blueprintPath.slice(lastSlash + 1) : blueprintPath;
+    const base = filename.replace(/\.blueprint\.json$/i, "").replace(/\.par\.xlsx$/i, "").replace(/\.json$/i, "");
+    return `${dir}${base}.par.xlsx`;
+}
 
 // Guided Import -> Diagnose & map -> Preview canonical model -> Apply/Export workflow, built entirely on
 // the same Studio API/pokie services "pokie par import"/"pokie par export" themselves use (see
@@ -61,10 +81,14 @@ const EXPORT_OUTCOME_BANNER: Record<ParSheetExportOutcome, {color: string; icon:
 // useBlueprintEditor's own doc comment), which is what resets every piece of state here back to nothing.
 export function ParSheetImportExportPanel({
     blueprint,
+    blueprintPath,
     revision,
     onApplyImportedBlueprint,
 }: {
     blueprint: Record<string, unknown>;
+    // The path the current blueprint was last loaded/imported from (BlueprintEditorPage's own
+    // `blueprintPath`), if any -- used only to derive Export to path's own real initial value, below.
+    blueprintPath?: string;
     revision: number;
     onApplyImportedBlueprint: (blueprint: unknown, sourcePath: string) => void;
 }) {
@@ -178,7 +202,11 @@ export function ParSheetImportExportPanel({
     }
 
     // ---- Export ----
-    const [exportPath, setExportPath] = useState("");
+    // Initialized once from `blueprintPath` (not re-derived on every prop change): this panel remounts
+    // wholesale via the parent's own `key={formGeneration}` on every wholesale blueprint replace (New/
+    // Load/a successful Import Apply -- see this file's own doc comment above), which is exactly when
+    // `blueprintPath` itself can change, so a fresh mount always sees the current value.
+    const [exportPath, setExportPath] = useState(() => parSheetExportDefaultPath(blueprintPath) ?? "");
     const [exportView, setExportView] = useState<ParSheetExportView>({status: "idle"});
     const exportRequestIdRef = useRef(0);
     const exportGuard = useDoubleSubmitGuard();
@@ -265,19 +293,24 @@ export function ParSheetImportExportPanel({
             {activeStep === 0 && (
                 <div>
                     <QuickActions>
-                        <TextInput
+                        <PathInput
                             label="PAR sheet path"
                             placeholder="./game.par.xlsx"
+                            kind="file"
+                            browseTitle="Browse for a PAR sheet"
+                            browseId="par-sheet-import-path"
+                            fileFilters={[{name: "PAR sheets", extensions: ["xlsx"]}]}
                             value={importPath}
                             onChange={(event) => handleImportPathChange(event.currentTarget.value)}
+                            onPathSelected={handleImportPathChange}
                         />
                         <Button onClick={runImport} loading={importView.status === "loading"}>
                             Import
                         </Button>
                     </QuickActions>
                     {importView.status === "loading" && <LoadingState label="Reading…" />}
-                    {importView.status === "error" && <ErrorState message={importView.message} />}
-                    {importView.status === "load-error" && <ErrorState message={importView.error} />}
+                    {importView.status === "error" && <ErrorState message={describePathActionError("The PAR sheet file", importView.message)} />}
+                    {importView.status === "load-error" && <ErrorState message={describePathActionError("The PAR sheet file", importView.error)} />}
                 </div>
             )}
 
@@ -363,19 +396,28 @@ export function ParSheetImportExportPanel({
 
                     <PageSection legend="Export current blueprint">
                         <QuickActions>
-                            <TextInput
+                            <PathInput
                                 label="Export to path"
                                 placeholder="./game.par.xlsx"
+                                kind="file"
+                                browseTitle="Browse for a PAR sheet destination"
+                                browseId="par-sheet-export-path"
+                                fileFilters={[{name: "PAR sheets", extensions: ["xlsx"]}]}
                                 value={exportPath}
                                 onChange={(event) => handleExportPathChange(event.currentTarget.value)}
+                                onPathSelected={handleExportPathChange}
                             />
                             <Button onClick={() => runExport(false)} loading={exportView.status === "loading"}>
                                 Export
                             </Button>
                         </QuickActions>
                         {exportView.status === "loading" && <LoadingState label="Writing…" />}
-                        {exportView.status === "error" && <ErrorState message={exportView.message} />}
-                        {exportView.status === "failed" && <ErrorState message={exportView.message} />}
+                        {exportView.status === "error" && (
+                            <ErrorState message={describePathActionError("The PAR sheet export destination", exportView.message)} />
+                        )}
+                        {exportView.status === "failed" && (
+                            <ErrorState message={describePathActionError("The PAR sheet export destination", exportView.message)} />
+                        )}
                         {exportView.status === "conflict" && (
                             <RecoveryNotice title={exportView.error} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => runExport(true)} />
                         )}
