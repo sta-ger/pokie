@@ -1,6 +1,7 @@
 import {
     addBet,
     addPayline,
+    applyPaylineSet,
     asBetModesList,
     describeNewBetModeDraft,
     duplicateBetModeAt,
@@ -246,6 +247,42 @@ describe("blueprintFormOps", () => {
             resizePaylinesToReelCount(b);
 
             expect(b.paylines).toEqual([[0, 0, 0, 0, 0]]);
+        });
+
+        describe("applyPaylineSet", () => {
+            it("replace swaps the whole list for the incoming lines", () => {
+                const b: Record<string, unknown> = {reels: 3, paylines: [[0, 2, 0]]};
+
+                applyPaylineSet(b, [[1, 1, 1], [0, 0, 0]], "replace");
+
+                expect(b.paylines).toEqual([[1, 1, 1], [0, 0, 0]]);
+            });
+
+            it("append adds the incoming lines after whatever is already there, never dropping existing manual lines", () => {
+                const b: Record<string, unknown> = {reels: 3, paylines: [[0, 2, 0]]};
+
+                applyPaylineSet(b, [[1, 1, 1], [0, 0, 0]], "append");
+
+                expect(b.paylines).toEqual([[0, 2, 0], [1, 1, 1], [0, 0, 0]]);
+            });
+
+            it("append onto an absent paylines field starts from an empty list", () => {
+                const b: Record<string, unknown> = {reels: 3};
+
+                applyPaylineSet(b, [[1, 1, 1]], "append");
+
+                expect(b.paylines).toEqual([[1, 1, 1]]);
+            });
+
+            it("doesn't alias the incoming lines array -- later mutation of the source doesn't affect the blueprint", () => {
+                const b: Record<string, unknown> = {reels: 3};
+                const incoming = [[1, 1, 1]];
+
+                applyPaylineSet(b, incoming, "replace");
+                incoming[0][0] = 9;
+
+                expect(b.paylines).toEqual([[1, 1, 1]]);
+            });
         });
     });
 
