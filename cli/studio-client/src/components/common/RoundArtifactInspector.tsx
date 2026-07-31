@@ -19,11 +19,32 @@ const DIMENSION_LABELS: Record<keyof ReplayComparisonDimensions, string> = {
     rngReelStops: "RNG / reel stops",
 };
 
+// Shown alongside every dimension's result, match or not -- a reader deciding how much weight to put on
+// one dimension being unavailable (e.g. rngReelStops, which is only ever best-effort) needs to know what
+// that dimension actually stands for, not just its label.
+const DIMENSION_WHY_IT_MATTERS: Record<keyof ReplayComparisonDimensions, string> = {
+    screen: "The visible symbols are what the player actually saw -- a difference means the recreated round landed a different outcome.",
+    wins: "Wins are what turns the outcome into a payout -- a difference here means credits would be awarded differently.",
+    totalPayout: "The round's bottom-line payout is the one number that reaches the player's balance.",
+    steps: "Round steps capture cascades/re-spins/free-game progression -- a difference means the round played out differently even if the final screen and total payout happen to match.",
+    featureEvents: "Feature events (free spins triggered, bonus entered, ...) drive what happens in later rounds -- a difference here can change downstream game state without changing this round's payout.",
+    state: "The session state transition is what every subsequent round is computed from -- a difference here would silently affect every round that follows, not just this one.",
+    rngReelStops: "The underlying RNG/reel-stop trace is the actual source of the outcome -- matching it, when it's recorded at all, is the strongest evidence the recreation is faithful rather than coincidentally similar.",
+};
+
+// Four distinct titles, one per describeReplayComparison outcome -- "incomplete" (some dimensions
+// simply weren't recorded on one side) is deliberately never worded like a real result mismatch, and
+// "exact comparison unavailable" (neither side has enough to compare on any dimension at all) is
+// deliberately never worded like either a match or a difference actually being found.
 const COMPARISON_BANNER: Record<ReplayComparisonView["status"], {color: string; icon: ReactNode; title: string}> = {
-    match: {color: "green", icon: <IconCircleCheck size={16} />, title: "Matches the expected result"},
-    mismatch: {color: "red", icon: <IconAlertTriangle size={16} />, title: "Differs from the expected result"},
-    partial: {color: "yellow", icon: <IconAlertTriangle size={16} />, title: "Partially compared against the expected result"},
-    unavailable: {color: "blue", icon: <IconInfoCircle size={16} />, title: "Comparison unavailable"},
+    match: {color: "green", icon: <IconCircleCheck size={16} />, title: "Match -- recorded and recreated results agree"},
+    mismatch: {color: "red", icon: <IconAlertTriangle size={16} />, title: "Difference -- recorded and recreated results disagree"},
+    partial: {
+        color: "yellow",
+        icon: <IconAlertTriangle size={16} />,
+        title: "Incomplete comparison -- every available dimension agrees, but some couldn't be checked",
+    },
+    unavailable: {color: "blue", icon: <IconInfoCircle size={16} />, title: "Exact comparison unavailable"},
 };
 
 function describeDimensionResult(dimension: ComparisonDimensionResult): string {
@@ -108,16 +129,35 @@ export function RoundArtifactInspector({
                     title={COMPARISON_BANNER[comparison.status].title}
                     mb="md"
                 >
+                    {/* What's actually being compared -- named and dated on both sides -- shown regardless of
+                        `status`, including "unavailable", so a reader can see exactly what each side is before
+                        being told why they couldn't be checked against each other. */}
+                    <Table withRowBorders={false} mb="sm">
+                        <Table.Tbody>
+                            {[comparison.recorded, comparison.recreated].map((side) => (
+                                <Table.Tr key={side.role}>
+                                    <Table.Th>{side.label}</Table.Th>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>
+                                        {side.identities} · seed {side.seed} · {side.versionHash} · {side.timestamp} · {side.completeness}
+                                    </Table.Td>
+                                </Table.Tr>
+                            ))}
+                        </Table.Tbody>
+                    </Table>
+
                     {comparison.status === "unavailable" ? (
                         <Text size="sm">{comparison.unavailableReason}</Text>
                     ) : (
-                        <List size="sm" spacing={2}>
+                        <List size="sm" spacing={4}>
                             {(Object.keys(comparison.dimensions) as (keyof ReplayComparisonDimensions)[]).map((key) => (
                                 <List.Item key={key}>
                                     <Text span fw={600}>
                                         {DIMENSION_LABELS[key]}:
                                     </Text>{" "}
                                     {describeDimensionResult(comparison.dimensions[key])}
+                                    <Text size="xs" c="dimmed">
+                                        {DIMENSION_WHY_IT_MATTERS[key]}
+                                    </Text>
                                 </List.Item>
                             ))}
                         </List>

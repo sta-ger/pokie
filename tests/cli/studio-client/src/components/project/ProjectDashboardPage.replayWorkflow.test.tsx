@@ -379,7 +379,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
-        await waitFor(() => expect(screen.getByText("Matches the expected result")).toBeInTheDocument(), {timeout: 15000});
+        await waitFor(() => expect(screen.getByText("Match -- recorded and recreated results agree")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByText(/RNG \/ reel stops:/)).toBeInTheDocument();
     }, 60000);
 
@@ -423,7 +423,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
-        await waitFor(() => expect(screen.getByText("Differs from the expected result")).toBeInTheDocument(), {timeout: 15000});
+        await waitFor(() => expect(screen.getByText("Difference -- recorded and recreated results disagree")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByText(/Total payout differs \(expected 5, got 9\)\./)).toBeInTheDocument();
         // Dimensions that genuinely coincide (screen/wins) must still say "match", not be swept into the
         // mismatch verdict just because some other dimension differed.
@@ -470,7 +470,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
-        await waitFor(() => expect(screen.getByText("Partially compared against the expected result")).toBeInTheDocument(), {timeout: 15000});
+        await waitFor(
+            () => expect(screen.getByText("Incomplete comparison -- every available dimension agrees, but some couldn't be checked")).toBeInTheDocument(),
+            {timeout: 15000},
+        );
         expect(dimensionRow("State transition:").textContent).toMatch(/unavailable/);
         expect(dimensionRow("RNG / reel stops:").textContent).toMatch(/unavailable/);
         expect(dimensionRow("Visible screen:").textContent).toMatch(/match/);
@@ -736,7 +739,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // No crash: the reproduced round renders fully, with an "unavailable" comparison banner carrying
         // the exact wording plus the original validation diagnostics (never hidden, never silently
         // repaired) -- and Export exposes the download link inline, with nothing further to click.
-        await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Comparison unavailable"), {timeout: 15000});
+        await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Exact comparison unavailable"), {timeout: 15000});
         expect(screen.getByRole("alert")).toHaveTextContent(
             /Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable:.*"screen" does not match.*"wins" must be an array\./,
         );
