@@ -149,15 +149,18 @@ describe("ReplayRecorder (integration, real loadPokieGame + fixture game package
         const first = recorder.record({game, seed: "demo", round: 3});
         const second = recorder.record({game, seed: "demo", round: 3});
 
-        // timestamp/durationMs are wall-clock and expected to vary between runs; everything else
-        // that describes the round itself must match exactly for the same seed + round.
-        const {timestamp: firstTimestamp, durationMs: firstDurationMs, ...firstStable} = first;
-        const {timestamp: secondTimestamp, durationMs: secondDurationMs, ...secondStable} = second;
+        // timestamp/durationMs are wall-clock and expected to vary between runs; sessionId is also
+        // expected to vary since record() mints a brand-new session identity every call (see
+        // ReplayDescriptor.sessionId's own doc comment) -- everything else that describes the round
+        // itself must match exactly for the same seed + round.
+        const {timestamp: firstTimestamp, durationMs: firstDurationMs, sessionId: firstSessionId, ...firstStable} = first;
+        const {timestamp: secondTimestamp, durationMs: secondDurationMs, sessionId: secondSessionId, ...secondStable} = second;
         expect(firstStable).toEqual(secondStable);
         expect(firstTimestamp).toBeGreaterThan(0);
         expect(secondTimestamp).toBeGreaterThan(0);
         expect(firstDurationMs).toBeGreaterThanOrEqual(0);
         expect(secondDurationMs).toBeGreaterThanOrEqual(0);
+        expect(firstSessionId).not.toBe(secondSessionId);
         expect(first.game).toEqual({id: "playable-game", name: "Playable Game", version: "1.0.0"});
         expect(first.round).toBe(3);
         expect(Array.isArray(first.screen)).toBe(true);
