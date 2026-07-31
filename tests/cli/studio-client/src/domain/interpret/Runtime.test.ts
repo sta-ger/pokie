@@ -1,6 +1,8 @@
 import type {RuntimeSessionResult, RuntimeSpinResult, StartRuntimeResult} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {
+    describeDebugAvailability,
     describeRecentSpinsList,
+    describeRetryRequest,
     describeRuntimeScreen,
     describeRuntimeState,
     describeSessionResult,
@@ -169,6 +171,149 @@ describe("interpretRuntime", () => {
             const entries = [session, {...session, sessionId: "session-2"}];
 
             expect(describeRecentSpinsList(entries)).toEqual({status: "loaded", entries});
+        });
+    });
+
+    describe("describeRetryRequest", () => {
+        it("is unavailable when there's no session at all", () => {
+            expect(describeRetryRequest({sessionId: undefined, baseUrl: undefined, lastSpin: {}, selectedRound: undefined})).toEqual({
+                status: "unavailable",
+                reason: "Create or restore a session first.",
+            });
+        });
+
+        it("is unavailable, with an explanation, when a session exists but nothing has been spun or selected", () => {
+            const result = describeRetryRequest({sessionId: "session-1", baseUrl: "http://127.0.0.1:4123", lastSpin: {}, selectedRound: undefined});
+
+            expect(result).toEqual({
+                status: "unavailable",
+                reason: "No request has been made yet in this session -- spin a round, or pick one from history below.",
+            });
+        });
+
+        it("uses this Studio session's own last spin -- exact requestId/expectedVersion -- when nothing else is selected", () => {
+            const result = describeRetryRequest({
+                sessionId: "session-1",
+                baseUrl: "http://127.0.0.1:4123",
+                lastSpin: {requestId: "req-1", expectedVersion: 3},
+                selectedRound: undefined,
+            });
+
+            expect(result.status).toBe("available");
+            if (result.status !== "available") {
+                return;
+            }
+            expect(result.requestId).toBe("req-1");
+            expect(result.expectedVersion).toBe(3);
+            expect(result.command).toContain("http://127.0.0.1:4123/sessions/session-1/spin?debug=1");
+            expect(result.command).toContain('"requestId":"req-1"');
+            expect(result.command).toContain('"expectedSessionVersion":3');
+            expect(result.idempotencyNote).toMatch(/expected session version 3/);
+        });
+
+        it("still uses the last spin's exact detail when the selected round is that same round", () => {
+            const result = describeRetryRequest({
+                sessionId: "session-1",
+                baseUrl: "http://127.0.0.1:4123",
+                lastSpin: {requestId: "req-1", expectedVersion: 3},
+                selectedRound: {...session, studioRequestId: "req-1", studioRound: 2},
+            });
+
+            expect(result.status).toBe("available");
+            if (result.status !== "available") {
+                return;
+            }
+            expect(result.expectedVersion).toBe(3);
+            expect(result.round).toBe(2);
+        });
+
+        it("falls back to a history-selected round's own request id, honestly noting the missing expectedVersion", () => {
+            const result = describeRetryRequest({
+                sessionId: "session-1",
+                baseUrl: "http://127.0.0.1:4123",
+                lastSpin: {requestId: "req-current", expectedVersion: 5},
+                selectedRound: {...session, studioRequestId: "req-older", studioRound: 1, studioRecordedAt: "2026-07-29T00:00:00.000Z"},
+            });
+
+            expect(result).toEqual({
+                status: "available",
+                sessionId: "session-1",
+                requestId: "req-older",
+                expectedVersion: undefined,
+                round: 1,
+                recordedAt: "2026-07-29T00:00:00.000Z",
+                idempotencyNote: expect.stringContaining("optimistic-locking version isn't tracked"),
+                command: expect.stringContaining('"requestId":"req-older"'),
+            });
+            if (result.status === "available") {
+                expect(result.command).not.toContain("expectedSessionVersion");
+            }
+        });
+
+        it("is unavailable when the selected round has no request id on record", () => {
+            const result = describeRetryRequest({
+                sessionId: "session-1",
+                baseUrl: "http://127.0.0.1:4123",
+                lastSpin: {},
+                selectedRound: {...session, studioRequestId: undefined},
+            });
+
+            expect(result).toEqual({
+                status: "unavailable",
+                reason: "The selected round has no request id on record, so there's nothing to retry -- pick a different round from history below.",
+            });
+        });
+    });
+
+    describe("describeDebugAvailability", () => {
+        it("is blocked when there's no session", () => {
+            expect(describeDebugAvailability({sessionReachable: false, selectedRound: undefined, debugEnabled: true})).toEqual({
+                status: "blocked",
+                reason: "Create or restore a session first.",
+                canRestartWithDebug: false,
+            });
+        });
+
+        it("is blocked, offering no restart, when no round is selected", () => {
+            expect(describeDebugAvailability({sessionReachable: true, selectedRound: undefined, debugEnabled: true})).toEqual({
+                status: "blocked",
+                reason: "Select a round from history below to debug.",
+                canRestartWithDebug: false,
+            });
+        });
+
+        it("is blocked, offering no restart, when the selected round has no request id on record", () => {
+            expect(
+                describeDebugAvailability({sessionReachable: true, selectedRound: {...session, studioRequestId: undefined}, debugEnabled: true}),
+            ).toEqual({
+                status: "blocked",
+                reason: "The selected round has no request id on record, so Replay & Debug can't look it up.",
+                canRestartWithDebug: false,
+            });
+        });
+
+        it("offers a restart-with-debug recovery action when a round is selected but debug mode is off", () => {
+            expect(
+                describeDebugAvailability({
+                    sessionReachable: true,
+                    selectedRound: {...session, studioRequestId: "req-1"},
+                    debugEnabled: false,
+                }),
+            ).toEqual({
+                status: "blocked",
+                reason: "This runtime was started without debug mode, so rounds carry no internal trace data to inspect.",
+                canRestartWithDebug: true,
+            });
+        });
+
+        it("is ready once a round is selected and debug mode is on", () => {
+            expect(
+                describeDebugAvailability({
+                    sessionReachable: true,
+                    selectedRound: {...session, studioRequestId: "req-1", studioRound: 4},
+                    debugEnabled: true,
+                }),
+            ).toEqual({status: "ready", requestId: "req-1", round: 4});
         });
     });
 });

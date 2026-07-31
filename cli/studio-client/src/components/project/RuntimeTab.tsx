@@ -1,4 +1,4 @@
-import {Alert, Anchor, Button, Checkbox, List, NumberInput, Select, SegmentedControl, Stepper, Table, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Checkbox, List, NumberInput, Select, SegmentedControl, Table, Text, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState} from "react";
@@ -8,6 +8,8 @@ import type {StudioRuntimeSessionView} from "../../api/types";
 import type {RuntimeHistoryEntry, RuntimeLastSpin} from "../../hooks/useRuntimeManager";
 import {useConfirm} from "../../hooks/useConfirm";
 import {
+    describeDebugAvailability,
+    describeRetryRequest,
     describeRuntimeScreen,
     extractAdditionalRoundFields,
     type RecentSpinsListView,
@@ -59,11 +61,19 @@ function formatFieldValue(value: unknown): string {
     return JSON.stringify(value);
 }
 
-// The Inspect-round step's core view for a settled "ok" session -- a readable balance/bet/win/screen
-// breakdown plus whatever extra public fields the game's own serializer returned (see
-// extractAdditionalRoundFields's own doc comment for why that's the entire "feature progress" story),
-// with the raw public/internal JSON tucked behind Advanced details, same convention as
-// RoundArtifactInspector in the Replay & Debug tab.
+function describeRoundEntry(entry: StudioRuntimeSessionView): string {
+    return (
+        `Round ${entry.studioRound ?? "?"} in session ${entry.sessionId} — credits ${entry.credits.toFixed(2)}, win ${(entry.win ?? 0).toFixed(2)}` +
+        (entry.studioRequestId ? `, request ${entry.studioRequestId}` : "") +
+        (entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : "")
+    );
+}
+
+// The Inspect panel's core view for a selected round (either the just-played one or one picked from
+// history below) -- a readable balance/bet/win/screen breakdown plus whatever extra public fields the
+// game's own serializer returned (see extractAdditionalRoundFields's own doc comment for why that's the
+// entire "feature progress" story), with the raw public/internal JSON tucked behind Advanced details,
+// same convention as RoundArtifactInspector in the Replay & Debug tab.
 function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
     // studioRequestId/studioRound/studioRecordedAt/studioSource are all Studio's own bookkeeping (see
     // StudioRuntimeSessionView's own doc comment), never part of the game's actual public response --
@@ -97,6 +107,10 @@ function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
                     <Table.Tr>
                         <Table.Th>Session id</Table.Th>
                         <Table.Td style={{overflowWrap: "anywhere"}}>{session.sessionId}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Round</Table.Th>
+                        <Table.Td>{session.studioRound ?? "—"}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Credits</Table.Th>
@@ -150,10 +164,12 @@ function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
     );
 }
 
-// Every non-"ok" settled outcome the Inspect-round step can show, in plain language -- distinct from a
-// generic ErrorState so "insufficient funds"/"stale version" read as what they are, not a bare server
-// message. `onCreateNew`/`onReloadSession` give each state its own obvious next action.
-function RoundOutcome({session, onCreateNew, onReloadSession}: {session: Session; onCreateNew: () => void; onReloadSession: () => void}) {
+// Every non-"ok" settled outcome a spin can produce, in plain language -- distinct from a generic
+// ErrorState so "insufficient funds"/"stale version" read as what they are, not a bare server message.
+// `onCreateNew`/`onReloadSession` give each state its own obvious next action. Shown right under the
+// Spin button itself (this is live feedback on the action just taken), never inside the Inspect panel
+// below, which is about a *selected round*'s data, not the in-flight status of the last request.
+function SpinOutcome({session, onCreateNew, onReloadSession}: {session: Session; onCreateNew: () => void; onReloadSession: () => void}) {
     if (session.status === "not-found") {
         return <ErrorState message="Unknown session id." />;
     }
@@ -216,7 +232,13 @@ export function RuntimeTab({
         initialValues: {host: "", port: "", debug: false, repositoryMode: "memory", seed: ""},
     });
 
-    const [activeStep, setActiveStep] = useState(0);
+    // Runtime is a workspace, not a wizard: every panel below is reachable at any time (no forced
+    // Create -> Play -> Inspect -> Continue -> Debug order, no step gating other than "is there a
+    // session/round to act on"), and the same session can cycle through Play/Inspect/Debug indefinitely.
+    // `showSessionSwitcher` merely toggles the create/restore controls' visibility -- true whenever
+    // there's no session to show a card for instead, and reopenable any time via "Create or restore a
+    // different session" even while one is already active.
+    const [showSessionSwitcher, setShowSessionSwitcher] = useState(true);
     const [restoreMethod, setRestoreMethod] = useState<RestoreMethod>("new");
     const [createSeed, setCreateSeed] = useState("");
     const [createInitialBalance, setCreateInitialBalance] = useState("");
@@ -224,27 +246,46 @@ export function RuntimeTab({
     const [manualRequestId, setManualRequestId] = useState("");
     const [manualExpectedVersion, setManualExpectedVersion] = useState<number | string>("");
 
-    // Which step a settled session response should land on -- set by whichever action (create/load/spin)
-    // just kicked off a request, consumed once that request actually settles. Keeps the auto-advance
-    // correct regardless of which of the three actions triggered it, and regardless of stale responses
-    // (a discarded stale response never touches `session`, so this effect only ever fires for the most
-    // recent request -- see useRuntimeManager's own sessionRequestIdRef). A settled *spin* (target step
-    // 2, the only step handleSpin/handleAdvancedSpin ever target) additionally refreshes round history
-    // automatically -- "Continue session"'s own list, and Replay & Debug's "Session Spin" list, both
-    // read the same GET /api/project/runtime/spins data, so a just-played round shows up in either
-    // without the user having to remember to click Refresh.
-    const pendingAdvanceStepRef = useRef<number | undefined>(undefined);
+    // The round Inspect/Retry/Debug all act on -- either the round just played (auto-selected the moment
+    // its spin settles, see the settle effect below) or one explicitly picked from "Round history"
+    // further down. A plain StudioRuntimeSessionView either way (a history entry and a freshly settled
+    // spin's own `session.session` are the exact same shape), so either source can be selected
+    // interchangeably with no adapting.
+    const [selectedRound, setSelectedRound] = useState<StudioRuntimeSessionView | undefined>(undefined);
+
+    // Which in-flight action a "loading" -> settled session transition belongs to -- set right when the
+    // user triggers create/load/spin, consumed once that request actually settles. This is what lets the
+    // settle effect below tell "a session was just created/loaded" (collapse the switcher, nothing to
+    // auto-select yet) apart from "a round was just spun" (auto-select it, refresh round history) --
+    // both share the same `session` state slot. Correct regardless of stale responses (a discarded stale
+    // response never touches `session`, so this effect only ever fires for the most recent request -- see
+    // useRuntimeManager's own sessionRequestIdRef).
+    const pendingActionRef = useRef<"create" | "load" | "spin" | undefined>(undefined);
     const prevSessionStatusRef = useRef<string | undefined>(undefined);
     useEffect(() => {
         const status = session.status;
         const wasLoading = prevSessionStatusRef.current === "loading";
         const nowSettled = status !== "loading" && status !== "idle";
-        if (wasLoading && nowSettled && pendingAdvanceStepRef.current !== undefined) {
-            if (pendingAdvanceStepRef.current === 2 && status === "ok") {
+        if (wasLoading && nowSettled && pendingActionRef.current !== undefined) {
+            if (pendingActionRef.current === "spin") {
+                if (status === "ok") {
+                    // `session.session` is whatever the server's own spin response carries -- Studio's
+                    // real StudioRuntimeManager.spin() always stamps `studioRequestId` onto it (see that
+                    // method's own doc comment), but this must stay correct even against a response that
+                    // doesn't, since the request id actually used for this spin is already known
+                    // client-side regardless (see useRuntimeManager.spin()'s own lastSpin bookkeeping,
+                    // set before the request is even sent).
+                    setSelectedRound({...session.session, studioRequestId: session.session.studioRequestId ?? lastSpin.requestId});
+                }
+                // Round history refreshes automatically after every spin attempt (not just an "ok" one) --
+                // Continue's own list, and Replay & Debug's "Session Spin" find method, both read the same
+                // GET /api/project/runtime/spins data, so a just-played round shows up in either without
+                // the user having to remember to click Refresh.
                 onRefreshRecentSpins();
+            } else {
+                setShowSessionSwitcher(false);
             }
-            setActiveStep(pendingAdvanceStepRef.current);
-            pendingAdvanceStepRef.current = undefined;
+            pendingActionRef.current = undefined;
         }
         prevSessionStatusRef.current = status;
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,12 +293,9 @@ export function RuntimeTab({
 
     // A session change -- a genuinely different session loaded, a fresh one created, or the runtime
     // stopped/restarted (sessionId reset to undefined either way, see useRuntimeManager's own
-    // resetSession()) -- must never leave a manual spin override typed for the *previous* session lying
-    // around to silently apply to the next one. When the session is gone entirely, the Stepper itself no
-    // longer makes sense to leave parked on Play/Inspect/Continue (all of which already gate on
-    // sessionReachable and degrade to an EmptyState, but jumping back to step 0 -- and clearing whatever
-    // advance was still pending for the runtime instance that just went away -- is the honest reflection
-    // of "there's nothing to continue anymore").
+    // resetSession()) -- must never leave a manual spin override, or a round selection, from the
+    // *previous* session lying around to silently apply to the next one. Reopens the session switcher
+    // once there's no session left to show a card for instead.
     const prevSessionIdRef = useRef<string | undefined>(sessionId);
     useEffect(() => {
         if (prevSessionIdRef.current === sessionId) {
@@ -266,9 +304,10 @@ export function RuntimeTab({
         prevSessionIdRef.current = sessionId;
         setManualRequestId("");
         setManualExpectedVersion("");
+        setSelectedRound(undefined);
         if (sessionId === undefined) {
-            setActiveStep(0);
-            pendingAdvanceStepRef.current = undefined;
+            setShowSessionSwitcher(true);
+            pendingActionRef.current = undefined;
         }
     }, [sessionId]);
 
@@ -293,22 +332,36 @@ export function RuntimeTab({
     function handleStop(): void {
         confirm("Stop the running runtime server?", () => {
             pendingRuntimeSpinsRefreshRef.current = true;
+            setSelectedRound(undefined);
             onStop();
         });
     }
 
-    function handleRestart(): void {
+    function handleRestart(options?: StartRuntimeOptions): void {
         pendingRuntimeSpinsRefreshRef.current = true;
-        onRestart();
+        setSelectedRound(undefined);
+        onRestart(options);
+    }
+
+    // The Debug panel's own truthful recovery action when the runtime is up but wasn't started with
+    // debug mode on (see describeDebugAvailability's own doc comment) -- restarts with the same
+    // host/port/session-storage mode (the only prior settings this component can still see once running,
+    // since `state` carries no seed), flipping debug on. A configured default seed, if any, is lost by
+    // this specific action -- the caption next to its button says so rather than silently dropping it.
+    function handleRestartWithDebug(): void {
+        if (state.status !== "running") {
+            return;
+        }
+        handleRestart({host: state.host, port: state.port, repositoryMode: state.repositoryMode, debug: true});
     }
 
     function handleCreateSession(): void {
-        pendingAdvanceStepRef.current = 1;
+        pendingActionRef.current = "create";
         onCreateSession(createSeed.trim() || undefined, createInitialBalance.trim() === "" ? undefined : Number(createInitialBalance));
     }
 
     function handleLoadSession(id: string): void {
-        pendingAdvanceStepRef.current = 1;
+        pendingActionRef.current = "load";
         onLoadSession(id);
     }
 
@@ -319,27 +372,60 @@ export function RuntimeTab({
     // it) -- entirely silent by default. "Advanced spin options" below is the escape hatch for a user who
     // wants to override either by hand (e.g. to deliberately provoke/demonstrate a conflict).
     function handleSpin(): void {
-        pendingAdvanceStepRef.current = 2;
+        pendingActionRef.current = "spin";
         const expectedVersion = session.status === "ok" ? session.session.sessionVersion : undefined;
         onSpin(crypto.randomUUID(), expectedVersion);
     }
 
     function handleAdvancedSpin(): void {
-        pendingAdvanceStepRef.current = 2;
+        pendingActionRef.current = "spin";
         onSpin(manualRequestId.trim() || undefined, manualExpectedVersion === "" ? undefined : Number(manualExpectedVersion));
+    }
+
+    function handleRefreshHistory(): void {
+        // Refreshing the very list a round selection was drawn from can make that selection stale (the
+        // round may have scrolled out of the bounded ring buffer, or simply no longer be the entry the
+        // user meant) -- cleared here rather than left silently pointing at whatever the refreshed list
+        // happens to still contain. Never called from the automatic post-spin refresh above, which is
+        // deliberately refreshing *around* a selection this same settle just made.
+        setSelectedRound(undefined);
+        onRefreshRecentSpins();
+    }
+
+    function handleRetry(detail: {requestId: string; expectedVersion: number | undefined}): void {
+        if (detail.requestId === lastSpin.requestId && detail.expectedVersion === lastSpin.expectedVersion) {
+            pendingActionRef.current = "spin";
+            onRepeatSpin();
+            return;
+        }
+        pendingActionRef.current = "spin";
+        onSpin(detail.requestId, detail.expectedVersion);
     }
 
     const recentSessionIds = recentSpins.status === "loaded" ? Array.from(new Set(recentSpins.entries.map((entry) => entry.sessionId))) : [];
     const sessionRounds = recentSpins.status === "loaded" ? recentSpins.entries.filter((entry) => entry.sessionId === sessionId) : [];
 
     const sessionReachable = sessionId !== undefined;
-    const inspectReachable = session.status !== "idle" && session.status !== "loading";
+
+    const retryDetail = describeRetryRequest({
+        sessionId,
+        baseUrl: state.status === "running" ? state.baseUrl : undefined,
+        lastSpin,
+        selectedRound,
+    });
+    const debugAvailability = describeDebugAvailability({
+        sessionReachable,
+        selectedRound,
+        debugEnabled: state.status === "running" ? state.debug : undefined,
+    });
 
     return (
         <div>
             <Text size="sm" c="dimmed" mb="sm">
                 Starts a local `pokie serve`-equivalent HTTP server for this project, in-process -- never a subprocess --
-                so you can create sessions and spin against it the same way an external client would.
+                so you can create sessions and spin against it the same way an external client would. Create or restore a
+                session, play rounds, inspect and retry/debug any of them, any number of times -- there&apos;s no fixed
+                order to work through.
             </Text>
 
             <PageSection legend="Server">
@@ -371,7 +457,7 @@ export function RuntimeTab({
                         <Button color="red" variant="light" disabled={!running} onClick={handleStop}>
                             Stop
                         </Button>
-                        <Button variant="default" onClick={handleRestart} loading={state.status === "loading"}>
+                        <Button variant="default" onClick={() => handleRestart()} loading={state.status === "loading"}>
                             Restart
                         </Button>
                         <Button variant="default" onClick={onRefresh}>
@@ -413,6 +499,10 @@ export function RuntimeTab({
                                     <Table.Th>Session storage</Table.Th>
                                     <Table.Td>{state.repositoryMode}</Table.Td>
                                 </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Debug mode</Table.Th>
+                                    <Table.Td>{state.debug ? "on" : "off"}</Table.Td>
+                                </Table.Tr>
                             </Table.Tbody>
                         </Table>
                         <Anchor href={state.baseUrl} target="_blank" rel="noreferrer">
@@ -422,250 +512,287 @@ export function RuntimeTab({
                 )}
             </PageSection>
 
-            <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step
-                    label="Create or restore session"
-                    description="Start playing"
-                    aria-current={activeStep === 0 ? "step" : undefined}
-                />
-                <Stepper.Step label="Play" description="Spin" disabled={!sessionReachable} aria-current={activeStep === 1 ? "step" : undefined} />
-                <Stepper.Step
-                    label="Inspect round"
-                    description="See the result"
-                    disabled={!inspectReachable}
-                    aria-current={activeStep === 2 ? "step" : undefined}
-                />
-                <Stepper.Step
-                    label="Continue session"
-                    description="Keep playing"
-                    disabled={!sessionReachable}
-                    aria-current={activeStep === 3 ? "step" : undefined}
-                />
-                <Stepper.Step label="Debug" description="Advanced" aria-current={activeStep === 4 ? "step" : undefined} />
-            </Stepper>
+            <PageSection legend="Current session">
+                {!running && <EmptyState message="Start the runtime server above first." />}
 
-            {activeStep === 0 && (
-                <div>
-                    {!running && <EmptyState message="Start the runtime server above first." />}
-                    {running && (
-                        <div>
-                            <SegmentedControl
-                                value={restoreMethod}
-                                onChange={(value) => setRestoreMethod(value as RestoreMethod)}
-                                data={[
-                                    {label: "New session", value: "new"},
-                                    {label: "Restore existing", value: "restore"},
-                                ]}
-                                mb="md"
-                                aria-label="Create or restore method"
-                            />
-
-                            {restoreMethod === "new" && (
-                                <QuickActions>
-                                    <TextInput
-                                        label="Seed (optional, overrides the server's default)"
-                                        value={createSeed}
-                                        onChange={(event) => setCreateSeed(event.currentTarget.value)}
-                                    />
-                                    {state.status === "running" && state.preGenerated && (
-                                        <NumberInput
-                                            label="Initial balance"
-                                            description="A pre-generated session starts at 0 credits unless funded here"
-                                            value={createInitialBalance}
-                                            onChange={(value) => setCreateInitialBalance(String(value))}
-                                        />
-                                    )}
-                                    <Button loading={session.status === "loading"} onClick={handleCreateSession}>
-                                        Create Session
-                                    </Button>
-                                </QuickActions>
-                            )}
-
-                            {restoreMethod === "restore" && (
-                                <div>
-                                    <QuickActions>
-                                        <TextInput
-                                            label="Session id"
-                                            value={restoreSessionId}
-                                            onChange={(event) => setRestoreSessionId(event.currentTarget.value)}
-                                        />
-                                        <Button
-                                            loading={session.status === "loading"}
-                                            onClick={() => restoreSessionId.trim() && handleLoadSession(restoreSessionId.trim())}
-                                        >
-                                            Load Session
-                                        </Button>
-                                    </QuickActions>
-
-                                    <Text size="sm" fw={600} mt="md" mb={4}>
-                                        Or pick a recent session
-                                    </Text>
-                                    <QuickActions>
-                                        <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
-                                            Refresh
-                                        </Button>
-                                    </QuickActions>
-                                    {recentSpinsError && <ErrorState message={recentSpinsError} />}
-                                    {recentSessionIds.length === 0 ? (
-                                        <EmptyState message="No recent sessions yet in this Studio session." />
-                                    ) : (
-                                        <List listStyleType="none" spacing={4}>
-                                            {recentSessionIds.map((id) => (
-                                                <List.Item key={id}>
-                                                    <Anchor
-                                                        component="button"
-                                                        type="button"
-                                                        onClick={() => handleLoadSession(id)}
-                                                        style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
-                                                    >
-                                                        {id}
-                                                    </Anchor>
-                                                </List.Item>
-                                            ))}
-                                        </List>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {activeStep === 1 && (
-                <div>
-                    {!sessionReachable && <EmptyState message="Create or restore a session first." />}
-                    {sessionReachable && (
-                        <div>
-                            <Text size="sm" c="dimmed" mb="sm">
-                                Session {sessionId}
-                                {session.status === "ok" ? ` — credits ${session.session.credits.toFixed(2)}` : ""}
-                            </Text>
-                            <QuickActions>
-                                <Button onClick={handleSpin} loading={session.status === "loading"}>
-                                    Spin
-                                </Button>
-                            </QuickActions>
-                            {session.status === "loading" && <LoadingState label="Spinning…" />}
-
-                            <AdvancedDisclosure detail="request id, expected version">
-                                <QuickActions>
-                                    <TextInput
-                                        label="Request id override (optional)"
-                                        description="Overrides the automatic idempotency id -- a repeated request id is treated as a retry of the same spin instead of a new one."
-                                        value={manualRequestId}
-                                        onChange={(event) => setManualRequestId(event.currentTarget.value)}
-                                    />
-                                    <NumberInput
-                                        label="Expected session version override (optional)"
-                                        description="Overrides the automatic optimistic-locking check -- the spin is refused as a conflict if the session's version doesn't match this."
-                                        min={1}
-                                        step={1}
-                                        value={manualExpectedVersion}
-                                        onChange={setManualExpectedVersion}
-                                    />
-                                    <Button variant="default" loading={session.status === "loading"} onClick={handleAdvancedSpin}>
-                                        Spin with overrides
-                                    </Button>
-                                </QuickActions>
-                            </AdvancedDisclosure>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {activeStep === 2 && (
-                <div>
-                    {session.status === "idle" && <EmptyState message="Spin a round to see its result here." />}
-                    {session.status === "loading" && <LoadingState />}
-                    {session.status === "ok" && <RoundSummary session={session.session} />}
-                    {session.status !== "idle" && session.status !== "loading" && session.status !== "ok" && (
-                        <RoundOutcome
+                {running && sessionReachable && (
+                    <div>
+                        <Text size="sm" c="dimmed" mb="sm">
+                            Session {sessionId}
+                            {session.status === "ok" ? ` — credits ${session.session.credits.toFixed(2)}` : ""}
+                        </Text>
+                        <QuickActions>
+                            <Button onClick={handleSpin} loading={session.status === "loading"}>
+                                Spin
+                            </Button>
+                            <Button variant="default" onClick={() => setShowSessionSwitcher((value) => !value)}>
+                                {showSessionSwitcher ? "Hide create/restore" : "Create or restore a different session"}
+                            </Button>
+                        </QuickActions>
+                        {session.status === "loading" && <LoadingState label="Spinning…" />}
+                        <SpinOutcome
                             session={session}
                             onCreateNew={() => {
-                                setActiveStep(0);
+                                setShowSessionSwitcher(true);
                                 setRestoreMethod("new");
                             }}
                             onReloadSession={() => sessionId && handleLoadSession(sessionId)}
                         />
-                    )}
-                </div>
-            )}
 
-            {activeStep === 3 && (
-                <div>
-                    {!sessionReachable && <EmptyState message="Create or restore a session first." />}
-                    {sessionReachable && (
-                        <div>
+                        <AdvancedDisclosure detail="request id, expected version">
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(1)}>Spin again</Button>
-                                <Button variant="default" onClick={() => setActiveStep(0)}>
-                                    Switch session
+                                <TextInput
+                                    label="Request id override (optional)"
+                                    description="Overrides the automatic idempotency id -- a repeated request id is treated as a retry of the same spin instead of a new one."
+                                    value={manualRequestId}
+                                    onChange={(event) => setManualRequestId(event.currentTarget.value)}
+                                />
+                                <NumberInput
+                                    label="Expected session version override (optional)"
+                                    description="Overrides the automatic optimistic-locking check -- the spin is refused as a conflict if the session's version doesn't match this."
+                                    min={1}
+                                    step={1}
+                                    value={manualExpectedVersion}
+                                    onChange={setManualExpectedVersion}
+                                />
+                                <Button variant="default" loading={session.status === "loading"} onClick={handleAdvancedSpin}>
+                                    Spin with overrides
                                 </Button>
                             </QuickActions>
-                            <PageSection legend="Round history for this session">
+                        </AdvancedDisclosure>
+                    </div>
+                )}
+
+                {running && (!sessionReachable || showSessionSwitcher) && (
+                    <div>
+                        <SegmentedControl
+                            value={restoreMethod}
+                            onChange={(value) => setRestoreMethod(value as RestoreMethod)}
+                            data={[
+                                {label: "New session", value: "new"},
+                                {label: "Restore existing", value: "restore"},
+                            ]}
+                            mb="md"
+                            aria-label="Create or restore method"
+                        />
+
+                        {restoreMethod === "new" && (
+                            <QuickActions>
+                                <TextInput
+                                    label="Seed (optional, overrides the server's default)"
+                                    value={createSeed}
+                                    onChange={(event) => setCreateSeed(event.currentTarget.value)}
+                                />
+                                {state.status === "running" && state.preGenerated && (
+                                    <NumberInput
+                                        label="Initial balance"
+                                        description="A pre-generated session starts at 0 credits unless funded here"
+                                        value={createInitialBalance}
+                                        onChange={(value) => setCreateInitialBalance(String(value))}
+                                    />
+                                )}
+                                <Button loading={session.status === "loading"} onClick={handleCreateSession}>
+                                    Create Session
+                                </Button>
+                            </QuickActions>
+                        )}
+
+                        {restoreMethod === "restore" && (
+                            <div>
+                                <QuickActions>
+                                    <TextInput
+                                        label="Session id"
+                                        value={restoreSessionId}
+                                        onChange={(event) => setRestoreSessionId(event.currentTarget.value)}
+                                    />
+                                    <Button
+                                        loading={session.status === "loading"}
+                                        onClick={() => restoreSessionId.trim() && handleLoadSession(restoreSessionId.trim())}
+                                    >
+                                        Load Session
+                                    </Button>
+                                </QuickActions>
+
+                                <Text size="sm" fw={600} mt="md" mb={4}>
+                                    Or pick a recent session
+                                </Text>
                                 <QuickActions>
                                     <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
                                         Refresh
                                     </Button>
                                 </QuickActions>
                                 {recentSpinsError && <ErrorState message={recentSpinsError} />}
-                                {sessionRounds.length === 0 ? (
-                                    <EmptyState message="No rounds played yet this session." />
+                                {recentSessionIds.length === 0 ? (
+                                    <EmptyState message="No recent sessions yet in this Studio session." />
                                 ) : (
-                                    <List size="sm" spacing={2}>
-                                        {sessionRounds.map((entry) => (
-                                            // `studioRound` (Studio's own session-local round index, see
-                                            // StudioRuntimeSessionView's own doc comment) is what makes this key
-                                            // stable across a refresh -- unlike the array index it replaces, it
-                                            // never shifts when a newer round is unshifted onto the front of the
-                                            // list, and it stays unique within one session even once an idempotent
-                                            // retry of the same requestId has been deduplicated into it. Falling
-                                            // back to studioRequestId covers an entry that predates studioRound.
-                                            <List.Item key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
-                                                Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits {entry.credits.toFixed(2)}, win{" "}
-                                                {(entry.win ?? 0).toFixed(2)}
-                                                {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
+                                    <List listStyleType="none" spacing={4}>
+                                        {recentSessionIds.map((id) => (
+                                            <List.Item key={id}>
+                                                <Anchor
+                                                    component="button"
+                                                    type="button"
+                                                    onClick={() => handleLoadSession(id)}
+                                                    style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                                >
+                                                    {id}
+                                                </Anchor>
                                             </List.Item>
                                         ))}
                                     </List>
                                 )}
-                            </PageSection>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {activeStep === 4 && (
-                <div>
-                    <QuickActions>
-                        <Button variant="default" disabled={!sessionReachable || lastSpin.requestId === undefined} onClick={onRepeatSpin}>
-                            Retry last request (same request id)
-                        </Button>
-                        <Button
-                            variant="default"
-                            disabled={!sessionReachable || lastSpin.requestId === undefined}
-                            onClick={() =>
-                                navigate("/project/replay", {state: {findMethod: "spin", sessionId, requestId: lastSpin.requestId}})
-                            }
-                        >
-                            Debug this round in Replay &amp; Debug
-                        </Button>
-                    </QuickActions>
-                    <PageSection legend="Request/response history">
-                        {history.length === 0 ? (
-                            <EmptyState message="No requests yet this session." />
-                        ) : (
-                            <List size="sm" spacing={2}>
-                                {history.map((entry, index) => (
-                                    <List.Item key={index}>
-                                        {entry.timestamp} — {entry.action}: {entry.summary}
-                                    </List.Item>
-                                ))}
-                            </List>
+                            </div>
                         )}
-                    </PageSection>
-                </div>
-            )}
+                    </div>
+                )}
+            </PageSection>
+
+            <PageSection legend="Inspect round">
+                {selectedRound === undefined ? (
+                    <EmptyState message="Spin a round, or pick one from round history below, to inspect it here." />
+                ) : (
+                    <RoundSummary session={selectedRound} />
+                )}
+            </PageSection>
+
+            <PageSection legend="Round history for this session">
+                <QuickActions>
+                    <Button variant="default" size="xs" onClick={handleRefreshHistory}>
+                        Refresh
+                    </Button>
+                </QuickActions>
+                {recentSpinsError && <ErrorState message={recentSpinsError} />}
+                {!sessionReachable && <EmptyState message="Create or restore a session first." />}
+                {sessionReachable && sessionRounds.length === 0 && <EmptyState message="No rounds played yet this session." />}
+                {sessionReachable && sessionRounds.length > 0 && (
+                    <List listStyleType="none" spacing={4}>
+                        {sessionRounds.map((entry) => {
+                            const isSelected =
+                                selectedRound !== undefined &&
+                                selectedRound.sessionId === entry.sessionId &&
+                                (selectedRound.studioRound ?? selectedRound.studioRequestId) === (entry.studioRound ?? entry.studioRequestId);
+                            return (
+                                // `studioRound` (Studio's own session-local round index, see
+                                // StudioRuntimeSessionView's own doc comment) is what makes this key stable
+                                // across a refresh -- unlike the array index it replaces, it never shifts
+                                // when a newer round is unshifted onto the front of the list, and it stays
+                                // unique within one session even once an idempotent retry of the same
+                                // requestId has been deduplicated into it. Falling back to studioRequestId
+                                // covers an entry that predates studioRound.
+                                <List.Item key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
+                                    <Anchor
+                                        component="button"
+                                        type="button"
+                                        aria-current={isSelected ? "true" : undefined}
+                                        onClick={() => setSelectedRound(entry)}
+                                        style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                    >
+                                        {describeRoundEntry(entry)}
+                                    </Anchor>
+                                    {isSelected && (
+                                        <Badge ml="xs" size="sm" variant="light">
+                                            Selected
+                                        </Badge>
+                                    )}
+                                </List.Item>
+                            );
+                        })}
+                    </List>
+                )}
+            </PageSection>
+
+            <PageSection legend="Retry & Debug">
+                {retryDetail.status === "unavailable" ? (
+                    <EmptyState message={retryDetail.reason} />
+                ) : (
+                    <div>
+                        <Table withRowBorders={false} mb="sm">
+                            <Table.Tbody>
+                                <Table.Tr>
+                                    <Table.Th>Session</Table.Th>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>{retryDetail.sessionId}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Round</Table.Th>
+                                    <Table.Td>{retryDetail.round ?? "—"}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Request id</Table.Th>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>{retryDetail.requestId}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Expected session version</Table.Th>
+                                    <Table.Td>{retryDetail.expectedVersion ?? "— (none sent)"}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Recorded at</Table.Th>
+                                    <Table.Td>{retryDetail.recordedAt ? new Date(retryDetail.recordedAt).toLocaleString() : "—"}</Table.Td>
+                                </Table.Tr>
+                            </Table.Tbody>
+                        </Table>
+                        <Text size="sm" c="dimmed" mb="sm">
+                            {retryDetail.idempotencyNote}
+                        </Text>
+                        <CodeBlock>{retryDetail.command}</CodeBlock>
+                        <QuickActions>
+                            <Button
+                                mt="sm"
+                                variant="default"
+                                loading={session.status === "loading"}
+                                onClick={() => handleRetry({requestId: retryDetail.requestId, expectedVersion: retryDetail.expectedVersion})}
+                            >
+                                Retry this request
+                            </Button>
+                        </QuickActions>
+                    </div>
+                )}
+
+                <PageSection legend="Debug this round">
+                    {debugAvailability.status === "blocked" && debugAvailability.canRestartWithDebug && (
+                        <RecoveryNotice
+                            title="Debug mode is off"
+                            message={
+                                <>
+                                    {debugAvailability.reason} Restarting with debug mode on resets the runtime (any in-memory sessions and its
+                                    configured default seed are lost) — sessions using file storage survive the restart.
+                                </>
+                            }
+                            actionLabel="Restart with debug mode on"
+                            onAction={handleRestartWithDebug}
+                        />
+                    )}
+                    {debugAvailability.status === "blocked" && !debugAvailability.canRestartWithDebug && (
+                        <EmptyState message={debugAvailability.reason} />
+                    )}
+                    {debugAvailability.status === "ready" && (
+                        <QuickActions>
+                            <Button
+                                variant="default"
+                                onClick={() =>
+                                    navigate("/project/replay", {
+                                        state: {findMethod: "spin", sessionId, requestId: debugAvailability.requestId},
+                                    })
+                                }
+                            >
+                                Debug this round in Replay &amp; Debug
+                            </Button>
+                        </QuickActions>
+                    )}
+                </PageSection>
+
+                <PageSection legend="Request/response history">
+                    {history.length === 0 ? (
+                        <EmptyState message="No requests yet this session." />
+                    ) : (
+                        <List size="sm" spacing={2}>
+                            {history.map((entry, index) => (
+                                <List.Item key={index}>
+                                    {entry.timestamp} — {entry.action}: {entry.summary}
+                                </List.Item>
+                            ))}
+                        </List>
+                    )}
+                </PageSection>
+            </PageSection>
         </div>
     );
 }

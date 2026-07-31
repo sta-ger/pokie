@@ -103,7 +103,6 @@ describe("Stepper wraps onto multiple lines instead of overflowing on a narrow v
             "blueprintEditor/ReelStripGenerationEditor.tsx",
             "project/SimulationTab.tsx",
             "project/OutcomeLibrariesTab.tsx",
-            "project/RuntimeTab.tsx",
             "project/DeploymentTab.tsx",
             "project/MechanicsEditorTab.tsx",
             "project/CertificationTab.tsx",

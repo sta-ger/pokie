@@ -184,22 +184,36 @@ describe("Advanced tab Stepper inventory baseline", () => {
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     });
 
-    it("Runtime: Create or restore session, Play, Inspect round, Continue session, Debug, in that order -- Debug is the only step never gated", async () => {
+    // Runtime's old Create/restore -> Play -> Inspect -> Continue -> Debug Stepper forced a fixed order
+    // and gated Play/Continue behind a session existing -- but a real Runtime session is used cyclically
+    // (spin, inspect, spin again, pick an older round from history, retry or debug it, spin some more),
+    // never a one-way pipeline -- see RuntimeTab.tsx's own doc comment for why it's now a workspace of
+    // always-mounted panels (each degrading to an explanatory EmptyState instead of being gated away)
+    // instead of a Stepper, the same "no forced order" reasoning the Replay redesign above already
+    // established for that tab.
+    it("Runtime: Server, Current session, Inspect round, Round history, Retry & Debug -- a cyclic workspace, not a gated Stepper", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
         renderRoutedApp({fetchImpl, initialEntries: ["/project/runtime"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
-        const steps = [
-            screen.getByRole("button", {name: stepperStep("Create or restore session", "Start playing")}),
-            screen.getByRole("button", {name: stepperStep("Play", "Spin")}),
-            screen.getByRole("button", {name: stepperStep("Inspect round", "See the result")}),
-            screen.getByRole("button", {name: stepperStep("Continue session", "Keep playing")}),
-            screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}),
+        expect(screen.queryByRole("button", {name: stepperStep("Create or restore session", "Start playing")})).not.toBeInTheDocument();
+
+        const panels = [
+            screen.getByRole("group", {name: "Server"}),
+            screen.getByRole("group", {name: "Current session"}),
+            screen.getByRole("group", {name: "Inspect round"}),
+            screen.getByRole("group", {name: "Round history for this session"}),
+            screen.getByRole("group", {name: "Retry & Debug"}),
         ];
-        expectStepsInOrder(steps);
-        expect(steps[1]).toBeDisabled(); // Play -- gated on a session existing
-        expect(steps[3]).toBeDisabled(); // Continue session -- gated on a session existing
-        expect(steps[4]).not.toBeDisabled(); // Debug -- deliberately always reachable
+        expectStepsInOrder(panels);
+
+        // Every panel is visible immediately -- with no session yet, and the runtime not even started,
+        // none of them are hidden behind a prior step the way the old Stepper's Play/Continue/Inspect
+        // were; each just explains what's missing instead.
+        expect(within(panels[1]).getByText("Start the runtime server above first.")).toBeInTheDocument();
+        expect(within(panels[2]).getByText(/Spin a round, or pick one from round history below/)).toBeInTheDocument();
+        expect(within(panels[3]).getByText("Create or restore a session first.")).toBeInTheDocument();
+        expect(within(panels[4]).getAllByText("Create or restore a session first.").length).toBeGreaterThan(0);
     });
 
     it("Certification: Select/configure, Validate, Build bundle, Inspect, Export, in that order", async () => {
