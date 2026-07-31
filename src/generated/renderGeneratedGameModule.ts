@@ -114,6 +114,23 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
     },`
         : "";
 
+    // Optional, feature-detected (see PokieGame.createExactEnumerationSession's own doc comment): a
+    // plain, finite video-slot mechanic (no mechanics.freeGames -- the one currently-generated
+    // stateful/non-reel-enumerable mechanic) always has a finite reel-stop space, so every generated
+    // package for one opts in automatically, driving the exact same session/win-calculation runtime
+    // createSession() does -- just with the caller-supplied deterministic combinationsGenerator in
+    // place of the random one, never a second calculation path. A blueprint with mechanics.freeGames
+    // simply omits this export -- weightedoutcome/generate fails closed rather than guessing at a
+    // strategy for a mechanic whose outcome space isn't a finite set of reel-stop combinations.
+    const exactWinCalculatorArgs = winModel.type === "lines" ? "" : ", winCalculator";
+    const exactEnumerationSessionExport = freeGames
+        ? ""
+        : `
+    createExactEnumerationSession(combinationsGenerator) {
+        const config = createConfig();
+${winCalculatorDeclaration}        return new VideoSlotSession(config, combinationsGenerator${exactWinCalculatorArgs});
+    },`;
+
     return `// ============================================================================
 // GENERATED FILE — do not hand-edit.
 //
@@ -195,7 +212,7 @@ module.exports = {
 ${createSessionBody}    },
     getSessionSerializer() {
         return new VideoSlotSessionSerializer();
-    },${betModesExport}
+    },${betModesExport}${exactEnumerationSessionExport}
 };
 `;
 }

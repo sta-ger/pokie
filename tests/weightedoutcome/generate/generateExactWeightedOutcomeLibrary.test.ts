@@ -1,8 +1,11 @@
 import {
     estimateExactOutcomeSpaceSize,
+    GameBlueprint,
+    GamePackageGenerator,
     generateExactWeightedOutcomeLibrary,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriter,
+    PokieGame,
     streamExactWeightedOutcomes,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
@@ -231,5 +234,112 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         } finally {
             fs.rmSync(outDir, {recursive: true, force: true});
         }
+    });
+
+    // Integration: proves the public producer works against a real "pokie build" package -- loaded
+    // exactly the way loadPokieGame() would, via require() of its generated src/generated/index.js --
+    // not just a hand-built test double (see GenerateTestFixtures.ts). renderGeneratedGameModule.ts
+    // wires createExactEnumerationSession() onto every generated finite video-slot package (any
+    // blueprint without mechanics.freeGames), driving the exact same createConfig()/VideoSlotSession
+    // construction createSession() itself uses.
+    describe("against a real generated \"pokie build\" package", () => {
+        let cwd: string;
+
+        beforeEach(() => {
+            cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-generate-exact-enum-test-"));
+        });
+
+        afterEach(() => {
+            fs.rmSync(cwd, {recursive: true, force: true});
+        });
+
+        // Same hand-computable math model as GenerateTestFixtures's buildFixtureGame() (2 reels, 1 row,
+        // reel 0 = ["A","A","B"], reel 1 = ["A","B"], a 2-of-a-kind "A" pays 5x bet) -- but built and
+        // loaded through the real "pokie build" -> require() pipeline instead of a hand-built PokieGame.
+        function buildRealFiniteSlotGame(cwd: string): PokieGame {
+            const blueprint: GameBlueprint = {
+                manifest: {id: "exact-enum-real-slot", name: "Exact Enum Real Slot", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 5}},
+                reelStrips: [
+                    ["A", "A", "B"],
+                    ["A", "B"],
+                ],
+            };
+            const result = new GamePackageGenerator("1.3.0").generate(blueprint, cwd);
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            return require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        }
+
+        it("implements createExactEnumerationSession and generates an exact library, driven by the real generated session/win-calculation runtime", async () => {
+            const game = buildRealFiniteSlotGame(cwd);
+            expect(typeof game.createExactEnumerationSession).toBe("function");
+
+            const result = await generateExactWeightedOutcomeLibrary({
+                libraryId: "real-slot-lib",
+                game,
+                pokieVersion: "1.3.0",
+                now: () => new Date("2026-01-01T00:00:00.000Z"),
+            });
+
+            expect(result.diagnostics.strategy).toBe("exact");
+            expect(result.diagnostics.algorithm).toBe("pokie-exact-reel-enumeration-v1");
+            expect(result.diagnostics.totalOutcomeSpaceSize).toBe(6);
+            expect(result.diagnostics.sampledRawCount).toBe(6);
+            expect(result.diagnostics.pokieVersion).toBe("1.3.0");
+            expect(result.diagnostics.game).toEqual({id: "exact-enum-real-slot", name: "Exact Enum Real Slot", version: "1.0.0"});
+            expect(result.diagnostics.generatedAt).toBe("2026-01-01T00:00:00.000Z");
+
+            const {library} = result;
+            // 4 distinct grids: (A,A) w=2, (A,B) w=2, (B,A) w=1, (B,B) w=1 -- exact total weight 6,
+            // matching the raw 3*2 reel-stop space exactly (see GenerateTestFixtures's own comment).
+            expect(library.outcomes).toHaveLength(4);
+            expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+
+            const winners = library.outcomes.filter((outcome) => outcome.artifact.payoutMultiplier > 0);
+            expect(winners).toHaveLength(1);
+            expect(winners[0].weight).toBe(2);
+            expect(winners[0].artifact.payoutMultiplier).toBe(5);
+            expect(winners[0].artifact.screen).toEqual([["A"], ["A"]]);
+            // Runtime-derived artifact provenance -- comes straight off the real generated package's own
+            // manifest, not restated/guessed by the generator.
+            expect(winners[0].artifact.provenance.game).toEqual({id: "exact-enum-real-slot", name: "Exact Enum Real Slot", version: "1.0.0"});
+            expect(winners[0].artifact.provenance.pokieVersion).toBe("1.3.0");
+        });
+
+        it("still fails closed with \"weighted-outcome-library-generation-unsupported\" for a real generated package whose mechanic isn't finite reel-enumerable (mechanics.freeGames)", async () => {
+            const blueprint: GameBlueprint = {
+                manifest: {id: "exact-enum-freegames-slot", name: "Exact Enum Free Games Slot", version: "1.0.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B", "S"],
+                scatters: ["S"],
+                paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
+                reelStrips: [
+                    ["A", "A", "A"],
+                    ["A", "A", "A"],
+                    ["A", "A", "A"],
+                ],
+            };
+            const result = new GamePackageGenerator("1.3.0").generate(blueprint, cwd);
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+
+            expect(game.createExactEnumerationSession).toBeUndefined();
+
+            await expect(generateExactWeightedOutcomeLibrary({libraryId: "freegames-lib", game, pokieVersion: "1.3.0"})).rejects.toMatchObject({
+                name: "WeightedOutcomeLibraryGenerationError",
+            });
+
+            try {
+                await generateExactWeightedOutcomeLibrary({libraryId: "freegames-lib", game, pokieVersion: "1.3.0"});
+                fail("expected generation to reject");
+            } catch (error) {
+                expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-unsupported");
+            }
+        });
     });
 });
