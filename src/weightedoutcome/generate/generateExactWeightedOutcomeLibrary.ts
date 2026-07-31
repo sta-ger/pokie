@@ -8,13 +8,14 @@ import type {ValidationRule} from "../../validation/ValidationRule.js";
 import {buildWeightedOutcomeLibrary, type WeightedOutcomeInput} from "../buildWeightedOutcomeLibrary.js";
 import {compareIds} from "../internal/compareIds.js";
 import type {WeightedOutcomeLibrary} from "../WeightedOutcomeLibrary.js";
-import {accumulateUniqueGridWeights} from "./internal/accumulateUniqueGridWeights.js";
+import {accumulateUniqueGridWeights, type UniqueGridWeightEntry} from "./internal/accumulateUniqueGridWeights.js";
 import {ForcedSymbolsCombinationsGenerator} from "./internal/ForcedSymbolsCombinationsGenerator.js";
 import {sampleStopTuples} from "./internal/sampleStopTuples.js";
 import {sweepStopTuples} from "./internal/sweepStopTuples.js";
 import {toBigIntSafeDecimal} from "./internal/toBigIntSafeDecimal.js";
 import {estimateExactOutcomeSpaceSize} from "./estimateExactOutcomeSpaceSize.js";
 import type {OutcomeLibraryGeneratorDiagnostics, OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDiagnostics.js";
+import type {ExactEnumerationCheckpoint} from "./WeightedOutcomeLibraryGenerationCancelledError.js";
 import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGenerationError.js";
 
 // Above this raw reel-stop combination count, generation refuses to sweep exhaustively unless the caller
@@ -47,9 +48,15 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // Explicit opt-in: only consulted once the space actually exceeds maxOutcomeSpaceSize. Its mere presence
     // never downgrades an otherwise-exact run -- a space within maxOutcomeSpaceSize is always swept exactly.
     readonly bounded?: BoundedCoverageGenerationOptions;
-    // Resume point for the "exact" strategy's own raw reel-stop sweep -- see
-    // WeightedOutcomeLibraryGenerationCancelledError.processedRawIndex. Ignored for "bounded-coverage".
-    readonly startIndex?: bigint;
+    // Resumes a previously-cancelled "exact" run from its own ExactEnumerationCheckpoint (see
+    // WeightedOutcomeLibraryGenerationCancelledError.checkpoint) -- both the raw sweep position AND the
+    // grid/weight accumulation already gathered up to that position are carried forward, so a chain of
+    // cancel/resume calls over a single logical sweep merges into the exact same complete library an
+    // uninterrupted sweep would have produced; nothing labelled "exact" is ever returned from a partial
+    // portion of the space alone. Only valid when this run itself resolves to the "exact" strategy -- passing
+    // it alongside a space that now requires "bounded-coverage" fails closed instead of silently discarding
+    // it, and so does a checkpoint whose own progressTotal doesn't match this run's outcome space size.
+    readonly resumeFrom?: ExactEnumerationCheckpoint;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
@@ -67,6 +74,8 @@ type PreparedGeneration = {
     readonly progressTotal: bigint;
     readonly reelWindows: string[][][];
     readonly tuples: Generator<{tuple: number[]; rawIndex: bigint}>;
+    readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
+    readonly initialProcessedRawCount?: bigint;
 };
 
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
@@ -91,6 +100,22 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         );
     }
 
+    if (options.resumeFrom !== undefined && strategy !== "exact") {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-checkpoint-unsupported",
+            `"${game.getManifest().id}"'s outcome space now resolves to the "${strategy}" strategy, which has no resumable raw sweep ` +
+                "position to continue from; resumeFrom is only valid for a run that itself resolves to \"exact\".",
+        );
+    }
+    if (options.resumeFrom !== undefined && options.resumeFrom.progressTotal !== estimate.totalOutcomeSpaceSize) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-checkpoint-mismatch",
+            `resumeFrom's own progressTotal (${options.resumeFrom.progressTotal}) does not match "${game.getManifest().id}"'s current ` +
+                `exact outcome space size (${estimate.totalOutcomeSpaceSize}); it must come from a WeightedOutcomeLibraryGenerationCancelledError ` +
+                "raised by this same game/config's own exact sweep.",
+        );
+    }
+
     // A throwaway probe (its own forced grid is never played) reads the reel strips once, off the exact same
     // executable session type generation later plays for real -- so reelWindows below is guaranteed to match
     // what createExactEnumerationSession actually enumerates over, never a second, independently-derived view.
@@ -108,7 +133,10 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
             progressTotal: estimate.totalOutcomeSpaceSize,
             reelWindows,
-            tuples: sweepStopTuples(reelSizes, options.startIndex ?? BigInt(0)),
+            tuples: sweepStopTuples(reelSizes, options.resumeFrom?.processedRawIndex ?? BigInt(0)),
+            ...(options.resumeFrom !== undefined
+                ? {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex}
+                : {}),
         };
     }
 
@@ -163,6 +191,8 @@ export async function *streamExactWeightedOutcomes(
     const {grids, processedRawCount} = await accumulateUniqueGridWeights<string>(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
         signal: options.signal,
         onProgress: options.onProgress,
+        initialGrids: prepared.initialGrids,
+        initialProcessedRawCount: prepared.initialProcessedRawCount,
     });
 
     const provenance: RoundArtifactProvenance = {

@@ -23,18 +23,34 @@ export type UniqueGridWeightEntry<T extends string | number = string> = {readonl
 // expensive win-calculation step only runs once per unique grid" optimization (see math-modeling.md), just
 // bigint-safe and streamed. Memory is bounded by the number of distinct grids actually reachable, not by the
 // (potentially far larger) raw combination count "tuples" sweeps through.
+//
+// "initialGrids"/"initialProcessedRawCount" seed the accumulation from a prior cancelled run's own
+// ExactEnumerationCheckpoint (see WeightedOutcomeLibraryGenerationCancelledError) -- when provided, the
+// returned "grids"/"processedRawCount" are the MERGED totals across the checkpoint and everything newly swept
+// here, not just what this call itself processed, so a caller resuming a single logical sweep to completion
+// gets back the same accumulation an uninterrupted run would have produced.
 export async function accumulateUniqueGridWeights<T extends string | number = string>(
     reelWindows: readonly T[][][],
     tuples: Generator<{tuple: number[]; rawIndex: bigint}>,
     progressTotal: bigint,
-    options: {readonly signal?: AbortSignal; readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void},
+    options: {
+        readonly signal?: AbortSignal;
+        readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
+        readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<T>>;
+        readonly initialProcessedRawCount?: bigint;
+    },
 ): Promise<{grids: Map<string, UniqueGridWeightEntry<T>>; processedRawCount: bigint}> {
-    const grids = new Map<string, UniqueGridWeightEntry<T>>();
-    let processedRawCount = BigInt(0);
+    const grids = new Map<string, UniqueGridWeightEntry<T>>(
+        Array.from(options.initialGrids ?? [], ([key, entry]) => [key, {grid: entry.grid, weight: entry.weight}]),
+    );
+    let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
 
     for (const {tuple, rawIndex} of tuples) {
         if (options.signal?.aborted) {
-            throw new WeightedOutcomeLibraryGenerationCancelledError(rawIndex, progressTotal);
+            // Cast: ExactEnumerationCheckpoint fixes its grid symbol type at string, matching this module's
+            // only real caller (generateExactWeightedOutcomeLibrary, always T = string); accumulateUniqueGridWeights
+            // itself stays generic over T = string | number for its own, unrelated reasons.
+            throw new WeightedOutcomeLibraryGenerationCancelledError(rawIndex, progressTotal, grids as unknown as ReadonlyMap<string, UniqueGridWeightEntry<string>>);
         }
 
         const grid = tuple.map((position, reelId) => reelWindows[reelId][position]) as T[][];

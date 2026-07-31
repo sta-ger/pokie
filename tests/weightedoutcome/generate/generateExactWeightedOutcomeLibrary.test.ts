@@ -154,18 +154,90 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         );
     });
 
-    it("supports resuming an exact sweep from a caller-supplied startIndex", async () => {
-        const result = await generateExactWeightedOutcomeLibrary({
+    // A signal test double whose own "aborted" getter flips to true only after "count" reads -- lets a test
+    // cancel a sweep after a specific number of raw tuples were already processed, without depending on
+    // accumulateUniqueGridWeights's own YIELD_EVERY progress cadence (far coarser than this fixture's total
+    // raw space of 6).
+    function abortAfterReads(count: number): AbortSignal {
+        let reads = 0;
+        return {
+            get aborted() {
+                reads++;
+                return reads > count;
+            },
+        } as unknown as AbortSignal;
+    }
+
+    it("resumes a cancelled exact sweep, via its own checkpoint, into a complete library identical to an uninterrupted run", async () => {
+        expect.assertions(9);
+
+        let cancelled: WeightedOutcomeLibraryGenerationCancelledError | undefined;
+        try {
+            await generateExactWeightedOutcomeLibrary({
+                libraryId: "fixture-lib",
+                game: buildFixtureGame(),
+                pokieVersion: "1.3.0",
+                signal: abortAfterReads(3),
+            });
+            fail("expected generation to be cancelled");
+        } catch (error) {
+            expect(error).toBeInstanceOf(WeightedOutcomeLibraryGenerationCancelledError);
+            cancelled = error as WeightedOutcomeLibraryGenerationCancelledError;
+        }
+
+        // Cancelled partway through -- neither the full raw space nor zero progress -- and carrying real,
+        // already-accumulated grid weights forward (not just the raw sweep position).
+        expect(cancelled?.processedRawIndex).toBe(BigInt(3));
+        expect(cancelled?.progressTotal).toBe(BigInt(6));
+        expect(cancelled?.checkpoint.grids.size).toBeGreaterThan(0);
+
+        const resumed = await generateExactWeightedOutcomeLibrary({
             libraryId: "fixture-lib",
             game: buildFixtureGame(),
             pokieVersion: "1.3.0",
-            startIndex: BigInt(3),
+            resumeFrom: cancelled?.checkpoint,
+            now: () => new Date("2026-01-01T00:00:00.000Z"),
         });
 
-        expect(result.diagnostics.strategy).toBe("exact");
-        expect(result.diagnostics.totalOutcomeSpaceSize).toBe(6);
-        expect(result.diagnostics.sampledRawCount).toBe(3);
-        expect(result.library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(3);
+        // The merged, resumed result is honestly a complete exact sweep -- never a partial shard mislabeled
+        // "exact".
+        expect(resumed.diagnostics.strategy).toBe("exact");
+        expect(resumed.diagnostics.totalOutcomeSpaceSize).toBe(6);
+        expect(resumed.diagnostics.sampledRawCount).toBe(6);
+        expect(resumed.library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+
+        const uninterrupted = await generateExactWeightedOutcomeLibrary({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            now: () => new Date("2026-01-01T00:00:00.000Z"),
+        });
+
+        // Same outcome ids, weights, and full artifacts as an uninterrupted sweep over the whole space.
+        expect(resumed.library.outcomes).toEqual(uninterrupted.library.outcomes);
+    });
+
+    it("fails closed when resumeFrom's checkpoint doesn't match this run's own outcome space", async () => {
+        await expect(
+            generateExactWeightedOutcomeLibrary({
+                libraryId: "fixture-lib",
+                game: buildFixtureGame(),
+                pokieVersion: "1.3.0",
+                resumeFrom: {processedRawIndex: BigInt(3), progressTotal: BigInt(999), grids: new Map()},
+            }),
+        ).rejects.toMatchObject({name: "WeightedOutcomeLibraryGenerationError"});
+
+        try {
+            await generateExactWeightedOutcomeLibrary({
+                libraryId: "fixture-lib",
+                game: buildFixtureGame(),
+                pokieVersion: "1.3.0",
+                resumeFrom: {processedRawIndex: BigInt(3), progressTotal: BigInt(999), grids: new Map()},
+            });
+            fail("expected generation to reject");
+        } catch (error) {
+            expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-checkpoint-mismatch");
+        }
     });
 
     it("cancels via AbortSignal and reports a resumable raw index", async () => {
