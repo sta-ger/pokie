@@ -415,6 +415,11 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
         if (validateOutcome === "invalid") {
             return ["The source bundle failed validation -- fix the errors above before continuing."];
         }
+        if (hasIncompleteModeRow) {
+            return [
+                "One or more mode rows on Select/configure are incomplete -- fill in mode name, seed, and a positive sample count, or remove the row, before continuing.",
+            ];
+        }
         return [];
     }
 
@@ -499,7 +504,7 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                         warnings={validateView.status === "ok" ? validateView.warnings : []}
                     />
                 )}
-                {buildReachable ? (
+                {buildReachable && !hasIncompleteModeRow ? (
                     <QuickActions>
                         <Button onClick={() => setActiveStep(2)}>Continue to Build bundle</Button>
                     </QuickActions>

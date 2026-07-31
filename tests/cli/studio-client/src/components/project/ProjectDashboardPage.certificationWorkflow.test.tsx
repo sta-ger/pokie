@@ -472,4 +472,45 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         const buildCall = calls.find((call) => call.url === "/api/project/certification/build");
         expect(JSON.parse(buildCall?.init?.body ?? "{}").modes).toEqual([{modeName: "base", seed: "cert-seed-1", sampleCount: 100}]);
     });
+
+    it("blocks Continue to Build bundle and names the mode configuration issue once a mode row is incomplete, and clears once fixed", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+        await fillSelectStep(user, "./bundle");
+
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        expect(screen.getByRole("button", {name: "Continue to Build bundle"})).toBeInTheDocument();
+
+        // Add a second mode row and leave it half-filled -- the source bundle is still valid, but the
+        // unavailable Continue-to-Build state must still explain itself rather than showing an empty list.
+        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        await user.click(screen.getByRole("button", {name: "Add mode"}));
+        const modeNameInputs = screen.getAllByLabelText("Mode name");
+        await user.type(modeNameInputs[1], "bonus");
+        await screen.findByText("Seed is required.");
+
+        await user.click(screen.getByRole("button", {name: /Preflight/i}));
+        expect(screen.queryByRole("button", {name: "Continue to Build bundle"})).not.toBeInTheDocument();
+        expect(
+            await screen.findByText(
+                "One or more mode rows on Select/configure are incomplete -- fill in mode name, seed, and a positive sample count, or remove the row, before continuing.",
+            ),
+        ).toBeInTheDocument();
+
+        // Removing the incomplete row restores the normal continuation behavior.
+        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        const removeButtons = screen.getAllByRole("button", {name: "Remove"});
+        await user.click(removeButtons[removeButtons.length - 1]);
+
+        await user.click(screen.getByRole("button", {name: /Preflight/i}));
+        expect(screen.getByRole("button", {name: "Continue to Build bundle"})).toBeInTheDocument();
+        expect(screen.queryByText(/incomplete/)).not.toBeInTheDocument();
+    });
 });
