@@ -398,7 +398,11 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
             "/api/project/runtime/sessions/sess-1/spins": (call: FakeCall) => {
                 const body = JSON.parse(call.init?.body ?? "{}") as {requestId?: string};
                 capturedRequestId = body.requestId;
-                return {ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}};
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: capturedRequestId}})},
+                };
             },
         });
 
@@ -542,7 +546,11 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
                 createCallCount += 1;
                 return {ok: true, status: 201, body: {status: "ok", session: sessionFor({sessionId: createCallCount === 1 ? "sess-1" : "sess-2"})}};
             },
-            "/api/project/runtime/sessions/sess-1/spins": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: "req-1"}})},
+            }),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -596,7 +604,11 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
                     return Promise.resolve({
                         ok: true,
                         status: 200,
-                        json: () => Promise.resolve({status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}),
+                        json: () =>
+                            Promise.resolve({
+                                status: "ok",
+                                session: sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: requestIds[0]}}),
+                            }),
                     });
                 }
                 // The second (and any later) spin stays pending until released -- this is what lets the
@@ -730,6 +742,45 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         });
     }, 60000);
 
+    it("a round selected from history that predates debug mode being enabled stays blocked for Debug, even though the runtime now reports debug mode on", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            // Already on record before this Studio session ever loaded it, and carrying no `debug` field --
+            // same shape a non-debug runtime would have produced -- even though the runtime this list is
+            // fetched from is *currently* running with debug mode on (RUNNING_STATE_DEBUG below). This is
+            // the exact scenario a purely current-runtime-flag check gets wrong: the round itself never
+            // captured trace data, regardless of what the server reports right now.
+            "/api/project/runtime/spins": () => ({
+                ok: true,
+                status: 200,
+                body: [sessionFor({credits: 700, win: 777, studioRound: 1, studioRequestId: "req-predates-debug"})],
+            }),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE_DEBUG}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await screen.findByRole("button", {name: "Spin"});
+
+        const history = section("Round history for this session");
+        await waitFor(() => expect(within(history).getByText(/req-predates-debug/)).toBeInTheDocument());
+        await user.click(within(history).getByText(/req-predates-debug/));
+
+        // Blocked, with a round-specific explanation -- and, critically, no "restart with debug mode on"
+        // recovery action, since the runtime already has debug mode on and restarting again can't
+        // retroactively give this specific already-recorded round the trace it never captured.
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Restart with debug mode on"})).not.toBeInTheDocument();
+        expect(screen.getByText(/no debug trace data on record/)).toBeInTheDocument();
+        expect(screen.getByText(/can't be produced retroactively/)).toBeInTheDocument();
+    }, 60000);
+
     it("shows a clear fallback instead of a silent generic list when the exact target round has already fallen out of the bounded recent-spin history", async () => {
         const user = userEvent.setup();
         // recentSpins is loaded with *other* rounds, but never the one about to be played -- simulating
@@ -744,7 +795,11 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
             "/api/project/runtime/spins": () => ({ok: true, status: 200, body: unrelatedRounds}),
             "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE_DEBUG}),
             "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
-            "/api/project/runtime/sessions/sess-1/spins": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: "req-1"}})},
+            }),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -796,7 +851,11 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: () => Promise.resolve({status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}),
+                    json: () =>
+                        Promise.resolve({
+                            status: "ok",
+                            session: sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: "req-1"}}),
+                        }),
                 });
             }
             const route = BASE_ROUTES[path];
@@ -848,7 +907,11 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: () => Promise.resolve({status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}),
+                    json: () =>
+                        Promise.resolve({
+                            status: "ok",
+                            session: sessionFor({credits: 1005, win: 15, sessionVersion: 2, debug: {stateAfter: {}, requestId: "req-1"}}),
+                        }),
                 });
             }
             const route = BASE_ROUTES[path];

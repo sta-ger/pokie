@@ -306,12 +306,27 @@ describe("interpretRuntime", () => {
             });
         });
 
-        it("is ready once a round is selected and debug mode is on", () => {
+        it("is blocked, offering no restart, when the runtime is debug-enabled but the selected round itself has no trace data -- e.g. it predates a later restart into debug mode", () => {
             expect(
                 describeDebugAvailability({
                     sessionReachable: true,
                     selectedRound: {...session, studioRequestId: "req-1", studioRound: 4},
                     debugEnabled: true,
+                }),
+            ).toEqual({
+                status: "blocked",
+                reason:
+                    "The selected round has no debug trace data on record -- it was likely played before debug mode was turned on for this runtime, and that trace can't be produced retroactively. Spin a new round, or pick a different one from history below.",
+                canRestartWithDebug: false,
+            });
+        });
+
+        it("is ready once a round with its own trace data is selected, regardless of whether the current runtime happens to report debug mode on", () => {
+            expect(
+                describeDebugAvailability({
+                    sessionReachable: true,
+                    selectedRound: {...session, studioRequestId: "req-1", studioRound: 4, debug: {stateAfter: {}, requestId: "req-1"}},
+                    debugEnabled: false,
                 }),
             ).toEqual({status: "ready", requestId: "req-1", round: 4});
         });

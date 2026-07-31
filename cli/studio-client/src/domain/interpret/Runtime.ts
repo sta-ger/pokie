@@ -168,10 +168,17 @@ function buildSpinCommand(baseUrl: string | undefined, sessionId: string, reques
 }
 
 // "Debug this round"'s own honest gate -- distinct reasons for distinct fixes, since "no round selected"
-// (pick one below) and "no trace data exists to inspect" (restart with debug mode on) call for entirely
+// (pick one below), "the runtime itself never captured trace data" (restart with debug mode on), and "this
+// particular round has no trace data on record" (pick a different round, or spin a new one -- restarting
+// can't retroactively give an already-recorded round the trace it never captured) call for entirely
 // different recovery actions, and conflating them into one generic "can't debug" message would leave the
-// user guessing which applies. `canRestartWithDebug` is only ever true for the latter -- restarting fixes
-// nothing about a missing selection.
+// user guessing which applies. `canRestartWithDebug` is only ever true for the runtime-wide case --
+// restarting fixes nothing about a missing selection nor about a specific round that predates debug mode
+// being turned on. The gate itself is keyed off `selectedRound.debug` -- StudioRuntimeSessionView's own
+// per-round trace payload -- never off whatever the *currently running* server reports, since a round
+// selected from history can predate a later restart that turned debug mode on (see
+// StudioRuntimeSessionView's own doc comment: `debug` reflects whether *that round* was captured with
+// debug mode on, not whether the server is running with it on right now).
 export type DebugAvailability =
     | {status: "ready"; requestId: string; round: number | undefined}
     | {status: "blocked"; reason: string; canRestartWithDebug: boolean};
@@ -191,11 +198,19 @@ export function describeDebugAvailability(params: {
     if (selectedRound.studioRequestId === undefined) {
         return {status: "blocked", reason: "The selected round has no request id on record, so Replay & Debug can't look it up.", canRestartWithDebug: false};
     }
-    if (debugEnabled !== true) {
+    if (selectedRound.debug === undefined) {
+        if (debugEnabled !== true) {
+            return {
+                status: "blocked",
+                reason: "This runtime was started without debug mode, so rounds carry no internal trace data to inspect.",
+                canRestartWithDebug: true,
+            };
+        }
         return {
             status: "blocked",
-            reason: "This runtime was started without debug mode, so rounds carry no internal trace data to inspect.",
-            canRestartWithDebug: true,
+            reason:
+                "The selected round has no debug trace data on record -- it was likely played before debug mode was turned on for this runtime, and that trace can't be produced retroactively. Spin a new round, or pick a different one from history below.",
+            canRestartWithDebug: false,
         };
     }
     return {status: "ready", requestId: selectedRound.studioRequestId, round: selectedRound.studioRound};
