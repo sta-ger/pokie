@@ -839,7 +839,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Runtime"}));
             await user.click(screen.getByRole("button", {name: "Start"}));
-            await waitFor(() => expect(screen.getByText(/running at/)).toBeInTheDocument());
+            await waitFor(() => expect(screen.getAllByText(/running at/).length).toBeGreaterThan(0));
 
             await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
             await makeADirtyEdit(user);
