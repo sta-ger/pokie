@@ -8,13 +8,16 @@ import type {UniqueGridWeightEntry} from "./internal/accumulateUniqueGridWeights
 // the merged result -- once the sweep actually reaches "progressTotal" without cancelling again -- has the
 // exact same outcome ids/weights as an uninterrupted run over the whole space. Only ever pass a checkpoint
 // straight from the WeightedOutcomeLibraryGenerationCancelledError of the SAME logical sweep; nothing here
-// re-derives which game/config it came from, so mixing checkpoints across runs silently produces a wrong
-// (though still internally consistent-looking) result -- the same trust boundary as any other caller-supplied
-// generation input (e.g. configHash).
+// re-derives which game/config it came from on its own -- "sourceEnumerationId" is that derived identity (see
+// computeExactEnumerationSourceId), checked by generateExactWeightedOutcomeLibrary before a checkpoint's grids
+// are ever merged in, so a checkpoint from a different game/config/reel-layout fails closed instead of silently
+// producing a wrong (though still internally consistent-looking) result even when its progressTotal happens to
+// match by coincidence.
 export type ExactEnumerationCheckpoint = {
     readonly processedRawIndex: bigint;
     readonly progressTotal: bigint;
     readonly grids: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
+    readonly sourceEnumerationId: string;
 };
 
 // Thrown when the caller's own AbortSignal fires mid-enumeration. Unlike WeightedOutcomeLibraryGenerationError
@@ -28,11 +31,11 @@ export class WeightedOutcomeLibraryGenerationCancelledError extends Error {
     public readonly progressTotal: bigint;
     public readonly checkpoint: ExactEnumerationCheckpoint;
 
-    constructor(processedRawIndex: bigint, progressTotal: bigint, grids: ExactEnumerationCheckpoint["grids"]) {
+    constructor(processedRawIndex: bigint, progressTotal: bigint, grids: ExactEnumerationCheckpoint["grids"], sourceEnumerationId: string) {
         super(`Weighted outcome library generation was cancelled after ${processedRawIndex} / ${progressTotal} raw draws.`);
         this.name = "WeightedOutcomeLibraryGenerationCancelledError";
         this.processedRawIndex = processedRawIndex;
         this.progressTotal = progressTotal;
-        this.checkpoint = {processedRawIndex, progressTotal, grids};
+        this.checkpoint = {processedRawIndex, progressTotal, grids, sourceEnumerationId};
     }
 }

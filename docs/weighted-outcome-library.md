@@ -277,10 +277,17 @@ the same way — `diagnostics.strategy` and the library it produces are never pr
 `maxOutcomeSpaceSize` is always swept exactly regardless of whether `bounded` was also given.
 
 `options.signal` (an `AbortSignal`) cancels a run in progress, throwing `WeightedOutcomeLibraryGenerationCancelledError`
-with `processedRawIndex`/`progressTotal` — for the `"exact"` strategy, `processedRawIndex` is a genuine resume
-point, safe to pass back in as a later run's own `options.startIndex` (independent, disjoint shards of the same
-space can be swept separately and their weights merged externally, since weights across disjoint shards simply
-add). `options.onProgress` is called periodically with the same `(processedRawIndex, progressTotal)` pair.
+with `processedRawIndex`/`progressTotal` and its own `checkpoint` (an `ExactEnumerationCheckpoint`). For the
+`"exact"` strategy, that checkpoint is a genuine resume point — pass it straight back in as a later run's own
+`options.resumeFrom` and generation seeds its accumulation from the checkpoint's already-gathered grid weights and
+continues sweeping raw tuples from `processedRawIndex`, so a chain of cancel/resume calls over a single logical
+sweep merges into the exact same complete library an uninterrupted sweep would have produced. `resumeFrom` is only
+ever valid for a run that itself resolves back to `"exact"`, and is checked against both the run's freshly-estimated
+`progressTotal` AND a deterministic identity derived from the game/config/reel-layout it actually swept
+(`sourceEnumerationId`) — a checkpoint from a different game or config that coincidentally shares the same raw
+outcome-space size still fails closed with `weighted-outcome-library-generation-checkpoint-mismatch`, never merging
+incompatible grid weights into a falsely "exact" result. `options.onProgress` is called periodically with the same
+`(processedRawIndex, progressTotal)` pair.
 
 ### Generator diagnostics on a bundle
 

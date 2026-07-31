@@ -9,6 +9,7 @@ import {buildWeightedOutcomeLibrary, type WeightedOutcomeInput} from "../buildWe
 import {compareIds} from "../internal/compareIds.js";
 import type {WeightedOutcomeLibrary} from "../WeightedOutcomeLibrary.js";
 import {accumulateUniqueGridWeights, type UniqueGridWeightEntry} from "./internal/accumulateUniqueGridWeights.js";
+import {computeExactEnumerationSourceId} from "./internal/computeExactEnumerationSourceId.js";
 import {ForcedSymbolsCombinationsGenerator} from "./internal/ForcedSymbolsCombinationsGenerator.js";
 import {sampleStopTuples} from "./internal/sampleStopTuples.js";
 import {sweepStopTuples} from "./internal/sweepStopTuples.js";
@@ -55,7 +56,10 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     // uninterrupted sweep would have produced; nothing labelled "exact" is ever returned from a partial
     // portion of the space alone. Only valid when this run itself resolves to the "exact" strategy -- passing
     // it alongside a space that now requires "bounded-coverage" fails closed instead of silently discarding
-    // it, and so does a checkpoint whose own progressTotal doesn't match this run's outcome space size.
+    // it, and so does a checkpoint whose own progressTotal doesn't match this run's outcome space size, or
+    // whose sourceEnumerationId (see computeExactEnumerationSourceId) doesn't match this run's own game/
+    // config/reel-layout -- two games or configs can coincidentally share the same raw outcome-space size, so
+    // progressTotal alone is never enough to trust a checkpoint's accumulated grids.
     readonly resumeFrom?: ExactEnumerationCheckpoint;
     readonly signal?: AbortSignal;
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
@@ -74,16 +78,18 @@ type PreparedGeneration = {
     readonly progressTotal: bigint;
     readonly reelWindows: string[][][];
     readonly tuples: Generator<{tuple: number[]; rawIndex: bigint}>;
+    readonly sourceEnumerationId: string;
     readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<string>>;
     readonly initialProcessedRawCount?: bigint;
 };
 
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
     const {game} = options;
+    const manifest = game.getManifest();
     if (typeof game.createExactEnumerationSession !== "function") {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-unsupported",
-            `"${game.getManifest().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`,
+            `"${manifest.id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`,
         );
     }
 
@@ -94,7 +100,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     if (strategy === "bounded-coverage" && options.bounded === undefined) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-space-exceeded",
-            `"${game.getManifest().id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
+            `"${manifest.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
                 `maxOutcomeSpaceSize (${maxOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
                 'bounded-coverage strategy via the "bounded" option.',
         );
@@ -103,14 +109,14 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     if (options.resumeFrom !== undefined && strategy !== "exact") {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-checkpoint-unsupported",
-            `"${game.getManifest().id}"'s outcome space now resolves to the "${strategy}" strategy, which has no resumable raw sweep ` +
+            `"${manifest.id}"'s outcome space now resolves to the "${strategy}" strategy, which has no resumable raw sweep ` +
                 "position to continue from; resumeFrom is only valid for a run that itself resolves to \"exact\".",
         );
     }
     if (options.resumeFrom !== undefined && options.resumeFrom.progressTotal !== estimate.totalOutcomeSpaceSize) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-checkpoint-mismatch",
-            `resumeFrom's own progressTotal (${options.resumeFrom.progressTotal}) does not match "${game.getManifest().id}"'s current ` +
+            `resumeFrom's own progressTotal (${options.resumeFrom.progressTotal}) does not match "${manifest.id}"'s current ` +
                 `exact outcome space size (${estimate.totalOutcomeSpaceSize}); it must come from a WeightedOutcomeLibraryGenerationCancelledError ` +
                 "raised by this same game/config's own exact sweep.",
         );
@@ -126,6 +132,20 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         Array.from({length: sequence.getSize()}, (_unused, position) => sequence.getSymbols(position, reelsSymbolsNumber)),
     );
     const reelSizes = sequences.map((sequence) => sequence.getSize());
+    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, options.configHash, reelWindows);
+
+    // Same cardinality alone never proves a checkpoint belongs to THIS sweep -- two different games/configs
+    // can coincidentally enumerate the exact same raw combination count while their actual reel layouts (and
+    // therefore the grids/weights a checkpoint accumulated) are completely incompatible. Checked here, before
+    // any of resumeFrom.grids is ever merged into this run's own accumulation.
+    if (options.resumeFrom !== undefined && options.resumeFrom.sourceEnumerationId !== sourceEnumerationId) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-checkpoint-mismatch",
+            `resumeFrom's own sourceEnumerationId does not match "${manifest.id}"'s current game/config/reel-layout identity, even ` +
+                "though its progressTotal happens to match; it must come from a WeightedOutcomeLibraryGenerationCancelledError raised " +
+                "by this same game/config's own exact sweep, not merely one with the same outcome-space size.",
+        );
+    }
 
     if (strategy === "exact") {
         return {
@@ -134,6 +154,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             progressTotal: estimate.totalOutcomeSpaceSize,
             reelWindows,
             tuples: sweepStopTuples(reelSizes, options.resumeFrom?.processedRawIndex ?? BigInt(0)),
+            sourceEnumerationId,
             ...(options.resumeFrom !== undefined
                 ? {initialGrids: options.resumeFrom.grids, initialProcessedRawCount: options.resumeFrom.processedRawIndex}
                 : {}),
@@ -147,6 +168,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         progressTotal: bounded.sampleSize,
         reelWindows,
         tuples: sampleStopTuples(reelSizes, bounded.sampleSize, new SeededWeightedOutcomeRandomSource(bounded.seed)),
+        sourceEnumerationId,
     };
 }
 
@@ -193,6 +215,7 @@ export async function *streamExactWeightedOutcomes(
         onProgress: options.onProgress,
         initialGrids: prepared.initialGrids,
         initialProcessedRawCount: prepared.initialProcessedRawCount,
+        sourceEnumerationId: prepared.sourceEnumerationId,
     });
 
     const provenance: RoundArtifactProvenance = {

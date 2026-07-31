@@ -10,7 +10,7 @@ import {
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
 } from "pokie";
-import {buildFixtureGame, buildUnplayableFixtureGame, buildUnsupportedFixtureGame} from "./GenerateTestFixtures.js";
+import {buildAlternateFixtureGame, buildFixtureGame, buildUnplayableFixtureGame, buildUnsupportedFixtureGame} from "./GenerateTestFixtures.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -217,13 +217,47 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         expect(resumed.library.outcomes).toEqual(uninterrupted.library.outcomes);
     });
 
+    it("fails closed when resumeFrom's checkpoint comes from a different source that merely shares the same outcome-space size", async () => {
+        expect.assertions(2);
+
+        let cancelled: WeightedOutcomeLibraryGenerationCancelledError | undefined;
+        try {
+            await generateExactWeightedOutcomeLibrary({
+                libraryId: "fixture-lib",
+                game: buildFixtureGame(),
+                pokieVersion: "1.3.0",
+                signal: abortAfterReads(3),
+            });
+            fail("expected generation to be cancelled");
+        } catch (error) {
+            cancelled = error as WeightedOutcomeLibraryGenerationCancelledError;
+        }
+
+        // buildAlternateFixtureGame() shares the exact same reel layout/outcome-space size (6) as
+        // buildFixtureGame(), so progressTotal alone would match -- but it's a genuinely different game, so
+        // its own sourceEnumerationId must not match the checkpoint's, and generation must fail closed rather
+        // than silently merging one game's accumulated grid weights into another's "exact" library.
+        try {
+            await generateExactWeightedOutcomeLibrary({
+                libraryId: "fixture-lib",
+                game: buildAlternateFixtureGame(),
+                pokieVersion: "1.3.0",
+                resumeFrom: cancelled?.checkpoint,
+            });
+            fail("expected generation to reject");
+        } catch (error) {
+            expect(error).toBeInstanceOf(WeightedOutcomeLibraryGenerationError);
+            expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-checkpoint-mismatch");
+        }
+    });
+
     it("fails closed when resumeFrom's checkpoint doesn't match this run's own outcome space", async () => {
         await expect(
             generateExactWeightedOutcomeLibrary({
                 libraryId: "fixture-lib",
                 game: buildFixtureGame(),
                 pokieVersion: "1.3.0",
-                resumeFrom: {processedRawIndex: BigInt(3), progressTotal: BigInt(999), grids: new Map()},
+                resumeFrom: {processedRawIndex: BigInt(3), progressTotal: BigInt(999), grids: new Map(), sourceEnumerationId: "irrelevant"},
             }),
         ).rejects.toMatchObject({name: "WeightedOutcomeLibraryGenerationError"});
 
@@ -232,7 +266,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
                 libraryId: "fixture-lib",
                 game: buildFixtureGame(),
                 pokieVersion: "1.3.0",
-                resumeFrom: {processedRawIndex: BigInt(3), progressTotal: BigInt(999), grids: new Map()},
+                resumeFrom: {processedRawIndex: BigInt(3), progressTotal: BigInt(999), grids: new Map(), sourceEnumerationId: "irrelevant"},
             });
             fail("expected generation to reject");
         } catch (error) {

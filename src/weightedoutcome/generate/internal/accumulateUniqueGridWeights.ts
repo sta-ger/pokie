@@ -38,6 +38,7 @@ export async function accumulateUniqueGridWeights<T extends string | number = st
         readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
         readonly initialGrids?: ReadonlyMap<string, UniqueGridWeightEntry<T>>;
         readonly initialProcessedRawCount?: bigint;
+        readonly sourceEnumerationId: string;
     },
 ): Promise<{grids: Map<string, UniqueGridWeightEntry<T>>; processedRawCount: bigint}> {
     const grids = new Map<string, UniqueGridWeightEntry<T>>(
@@ -50,7 +51,12 @@ export async function accumulateUniqueGridWeights<T extends string | number = st
             // Cast: ExactEnumerationCheckpoint fixes its grid symbol type at string, matching this module's
             // only real caller (generateExactWeightedOutcomeLibrary, always T = string); accumulateUniqueGridWeights
             // itself stays generic over T = string | number for its own, unrelated reasons.
-            throw new WeightedOutcomeLibraryGenerationCancelledError(rawIndex, progressTotal, grids as unknown as ReadonlyMap<string, UniqueGridWeightEntry<string>>);
+            throw new WeightedOutcomeLibraryGenerationCancelledError(
+                rawIndex,
+                progressTotal,
+                grids as unknown as ReadonlyMap<string, UniqueGridWeightEntry<string>>,
+                options.sourceEnumerationId,
+            );
         }
 
         const grid = tuple.map((position, reelId) => reelWindows[reelId][position]) as T[][];

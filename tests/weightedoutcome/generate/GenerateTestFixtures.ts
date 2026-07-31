@@ -31,6 +31,18 @@ export function buildFixtureGame(config: VideoSlotConfig<string> = buildFixtureC
     };
 }
 
+// Same reel layout (and therefore the same raw outcome-space size and grids) as buildFixtureGame(), but a
+// different game id -- used to prove a same-cardinality checkpoint from a genuinely different source still
+// fails closed instead of being accepted on progressTotal alone.
+export function buildAlternateFixtureGame(): PokieGame {
+    const config = buildFixtureConfig();
+    return {
+        getManifest: () => ({id: "fixture-slot-alternate", name: "Fixture Slot (alternate)", version: "1.0.0"}),
+        createSession: () => new VideoSlotSession<string>(config),
+        createExactEnumerationSession: (combinationsGenerator: SymbolsCombinationsGenerating) => new VideoSlotSession<string>(config, combinationsGenerator),
+    };
+}
+
 // A game whose createExactEnumerationSession returns a session that can never afford to play a round --
 // exercises generateExactWeightedOutcomeLibrary's own "session-not-playable" fail-closed check.
 export function buildUnplayableFixtureGame(): PokieGame {
