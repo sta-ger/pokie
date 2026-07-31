@@ -373,12 +373,14 @@ export function RuntimeTab({
     // wants to override either by hand (e.g. to deliberately provoke/demonstrate a conflict).
     function handleSpin(): void {
         pendingActionRef.current = "spin";
+        setSelectedRound(undefined);
         const expectedVersion = session.status === "ok" ? session.session.sessionVersion : undefined;
         onSpin(crypto.randomUUID(), expectedVersion);
     }
 
     function handleAdvancedSpin(): void {
         pendingActionRef.current = "spin";
+        setSelectedRound(undefined);
         onSpin(manualRequestId.trim() || undefined, manualExpectedVersion === "" ? undefined : Number(manualExpectedVersion));
     }
 

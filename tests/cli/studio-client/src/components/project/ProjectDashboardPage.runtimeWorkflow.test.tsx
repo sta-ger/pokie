@@ -569,6 +569,89 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
     }, 60000);
 
+    it("a failed subsequent spin can't leave the previous round actionable in Inspect, Retry, or Debug", async () => {
+        const user = userEvent.setup();
+        let spinCallCount = 0;
+        const requestIds: string[] = [];
+        let releaseSecondSpin: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/runtime") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "stopped"})});
+            }
+            if (path === "/api/project/runtime/spins") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+            }
+            if (path === "/api/project/runtime/start") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(RUNNING_STATE_DEBUG)});
+            }
+            if (path === "/api/project/runtime/sessions") {
+                return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor()})});
+            }
+            if (path === "/api/project/runtime/sessions/sess-1/spins") {
+                const body = JSON.parse(init?.body ?? "{}") as {requestId?: string};
+                spinCallCount += 1;
+                requestIds.push(body.requestId ?? "");
+                if (spinCallCount === 1) {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve({status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}),
+                    });
+                }
+                // The second (and any later) spin stays pending until released -- this is what lets the
+                // test assert the prior round is already gone the instant the new spin is issued, not only
+                // once its (failing) response actually lands.
+                return new Promise((resolve) => {
+                    releaseSecondSpin = () =>
+                        resolve({ok: false, status: 400, json: () => Promise.resolve({error: "Session cannot play the next round."})});
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route) {
+                const {ok, status, body} = route({url, init});
+                return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+            }
+            return Promise.reject(new Error(`no fake route for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        expect(screen.getByRole("button", {name: "Retry this request"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Debug this round in Replay & Debug"})).toBeEnabled();
+
+        // Fire a second spin that will fail once it resolves. The prior round must stop being
+        // Inspect/Debug-able the instant this spin is issued, not only once its failure lands.
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument();
+        expect(screen.getByText("Spin a round, or pick one from round history below, to inspect it here.")).toBeInTheDocument();
+
+        releaseSecondSpin?.();
+        expect(await screen.findByText("Session cannot play the next round.")).toBeInTheDocument();
+
+        // Still no trace of the first round now that the failure has actually landed.
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument();
+        expect(screen.getByText("Spin a round, or pick one from round history below, to inspect it here.")).toBeInTheDocument();
+
+        // Retry must target the request that actually just failed, never silently fall back to the
+        // first round's already-succeeded request id.
+        await user.click(screen.getByRole("button", {name: "Retry this request"}));
+        await waitFor(() => expect(spinCallCount).toBe(3));
+        expect(requestIds[1]).not.toBe(requestIds[0]);
+        expect(requestIds[2]).toBe(requestIds[1]);
+    }, 60000);
+
     it("switching projects clears the selected round so Retry/Debug can't act on stale data from the old project", async () => {
         const user = userEvent.setup();
         const {fetchImpl: fetchImplA} = createRoutedFakeFetch({
