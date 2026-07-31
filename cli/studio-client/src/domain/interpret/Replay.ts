@@ -1,4 +1,11 @@
-import type {ReplayDescriptor, RoundArtifactJson, StudioReplayJobView, StudioReplayListEntry} from "../../api/types";
+import type {
+    ReplayDescriptor,
+    RoundArtifactJson,
+    StudioReplayJobView,
+    StudioReplayListEntry,
+    StudioReplayStatus,
+    StudioRuntimeSessionView,
+} from "../../api/types";
 
 // Pure view-model transforms for the Replay tab — same role as interpretSimulation.ts: main.ts/dom.ts
 // consume these instead of branching on the raw job/list shapes themselves, and (being pure) these are
@@ -346,8 +353,17 @@ function screensEqual(a: readonly (readonly (string | number)[])[], b: readonly 
 // papering over an expected side that never had the data to check against in the first place. A record
 // with no artifact at all (just a bare round/seed) has nothing to check state/RNG against, so it's
 // exempt from this — same as the version check below.
+//
+// "bestEffort" is deliberately narrower than "blocked": it's only ever reported for the one condition
+// where reproducing forward is still meaningful, just not *verifiable* -- a missing RNG/reel-stop trace
+// (see the last check in describeReplayReproducibility below). Every other gap (no seed, wrong game
+// build, no state to check the transition against) makes a fresh reproduction either impossible or
+// actively misleading to attempt at all, so those stay hard "blocked". Inspecting the record itself is
+// never gated by any of this -- it only ever governs whether Reproduce is offered, and if so, whether
+// its result can be confirmed to match.
 export type ReplayReproducibilityGate =
     | {status: "ready"}
+    | {status: "bestEffort"; reason: string}
     | {status: "blocked"; reason: string; remediation: string};
 
 export function describeReplayReproducibility(
@@ -396,11 +412,9 @@ export function describeReplayReproducibility(
 
         if (extractDeterministicReelStops(expected.artifact.debug) === undefined) {
             return {
-                status: "blocked",
+                status: "bestEffort",
                 reason:
-                    'This round\'s artifact has no recorded RNG/reel-stop trace (a "reelStops" field under "debug"), so a fresh reproduction\'s own RNG data can\'t be verified against it — likely an incomplete or hand-trimmed record.',
-                remediation:
-                    'Add a "reelStops" field under the artifact\'s "debug" data before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect).',
+                    'This round\'s artifact has no recorded RNG/reel-stop trace (a "reelStops" field under "debug"), so a fresh reproduction\'s own RNG data can\'t be verified against it. Inspection of the recorded round is unaffected -- Reproduce is still offered, but only as a best-effort forward replay: it is explicitly non-verifiable, never presented as an exact match.',
             };
         }
     }
@@ -414,5 +428,319 @@ export function describeReplayReproducibility(
 export type ReplayListView = {status: "empty"} | {status: "loaded"; entries: StudioReplayListEntry[]};
 
 export function describeReplayList(entries: StudioReplayListEntry[]): ReplayListView {
-    return entries.length === 0 ? {status: "empty"} : {status: "loaded", entries};
+    const deduped = dedupeReplayListEntries(entries);
+    return deduped.length === 0 ? {status: "empty"} : {status: "loaded", entries: deduped};
+}
+
+// The canonical identity two "Recent replays" entries are the same reproduction attempt for: the same
+// game build, round, and seed. Undefined for an entry with no game (a job that hasn't loaded far enough
+// to know its game yet) or no seed (the request never named one, so the game generated its own —
+// there's no stable input two such entries could ever be said to share, unlike a genuine retry of the
+// exact same named seed). Mirrors StudioRuntimeManager.recordRecentSpin()'s own canonical
+// (sessionId, studioRequestId) identity for the Session Spin list, applied here to the one identity
+// that actually makes two *replay* entries the same target: reproducing plays a brand-new session
+// forward from round 1 (see StudioReplayExecutionService.run()), so there is no per-round request id to
+// key on the way a live spin has -- (game, round, seed) is the closest thing this list has to one.
+function replayListEntryIdentityKey(entry: StudioReplayListEntry): string | undefined {
+    if (!entry.game || entry.seed === undefined || entry.seed.trim().length === 0) {
+        return undefined;
+    }
+    return `${entry.game.id}@${entry.game.version}::${entry.round}::${entry.seed}`;
+}
+
+// Entries arrive most-recently-started first (see StudioReplayListEntry's own doc comment) -- keeping
+// only the first occurrence of each identity is therefore keeping the most recent attempt at that exact
+// target and dropping older, superseded attempts (e.g. every "Run again with the same parameters"
+// click), never the reverse.
+function dedupeReplayListEntries(entries: StudioReplayListEntry[]): StudioReplayListEntry[] {
+    const seen = new Set<string>();
+    const deduped: StudioReplayListEntry[] = [];
+    for (const entry of entries) {
+        const key = replayListEntryIdentityKey(entry);
+        if (key !== undefined) {
+            if (seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+        }
+        deduped.push(entry);
+    }
+    return deduped;
+}
+
+// Plain, human-readable status for a "Recent replays" entry -- the raw StudioReplayStatus enum
+// ("completed", "cancelled", ...) is job-execution vocabulary, not honest about what this list actually
+// is: every entry here is a *recreated* replay session, never a genuinely recorded one (see
+// describeLoadedReplay's own "Recorded" vs "Recreated" distinction below) -- "Reproduced"/"Reproduction
+// failed" say so plainly instead of implying a generic background job.
+const REPLAY_ENTRY_STATUS_LABEL: Record<StudioReplayStatus, string> = {
+    queued: "Queued to reproduce",
+    running: "Reproducing…",
+    completed: "Reproduced",
+    failed: "Reproduction failed",
+    cancelled: "Reproduction cancelled",
+};
+
+export function describeReplayEntryStatus(status: StudioReplayStatus): string {
+    return REPLAY_ENTRY_STATUS_LABEL[status];
+}
+
+// Whether "Reproduce & compare" from this exact "Recent replays" entry can ever produce anything
+// meaningful -- the same foundational check describeReplayReproducibility applies first, before any
+// artifact/provenance/state completeness check: no recorded seed means a fresh reproduction would
+// create a new, differently-seeded session, not recreate this round at all. The list summary never
+// carries enough (no artifact, no state snapshots) to evaluate the rest of that gate client-side, so
+// this is deliberately only the one check the list itself can answer -- the full gate still applies
+// once a record is actually loaded (see the "artifact" source's own reproducibility check).
+export function isReplayListEntryReproducible(entry: StudioReplayListEntry): boolean {
+    return entry.seed !== undefined && entry.seed.trim().length > 0;
+}
+
+// Requirement (Replay capabilities/degraded mode): every loaded replay, regardless of source, is judged
+// against the same four questions -- can it be inspected, reproduced, compared against a known-good
+// result, and exported -- each with its own honest availability and reason, rather than one page
+// silently omitting an action another page would offer for the same kind of round. "bestEffort" sits
+// between "available" and "unavailable": the capability is offered, but its result is explicitly not
+// verifiable (currently only ever Reproducible, when an artifact is missing its RNG/reel-stop trace —
+// see describeReplayReproducibility's own "bestEffort" status).
+export type ReplayCapabilityStatus = "available" | "bestEffort" | "unavailable";
+
+export type ReplayCapability = {status: ReplayCapabilityStatus; reason: string};
+
+export type ReplayCapabilitiesView = {
+    inspectable: ReplayCapability;
+    reproducible: ReplayCapability;
+    comparable: ReplayCapability;
+    exportable: ReplayCapability;
+};
+
+export function describeReplayCapabilities(input: {
+    source: "seedRound" | "artifact" | "spin" | "simulation";
+    // Something concrete is actually loaded to look at -- for "spin"/"artifact" this is true as soon as
+    // a spin is selected / an artifact is validated (there's already a recorded round or a validated
+    // record to inspect); for "seedRound"/"simulation" (a fresh forward replay with nothing recorded
+    // yet) this only becomes true once Reproduce has actually produced a result.
+    hasResult: boolean;
+    // Only ever meaningful for "artifact" -- the other three sources have no prior-recorded-artifact
+    // gate to check (see describeReplayReproducibility's own doc comment).
+    reproducibility?: ReplayReproducibilityGate;
+    hasComparisonTarget: boolean;
+    comparison?: ReplayComparisonView;
+    canExport: boolean;
+}): ReplayCapabilitiesView {
+    return {
+        inspectable: describeInspectableCapability(input.hasResult),
+        reproducible: describeReproducibleCapability(input.source, input.reproducibility),
+        comparable: describeComparableCapability(input.source, input.hasComparisonTarget, input.comparison),
+        exportable: describeExportableCapability(input.canExport),
+    };
+}
+
+function describeInspectableCapability(hasResult: boolean): ReplayCapability {
+    return hasResult
+        ? {status: "available", reason: "This round's data is loaded and ready to inspect."}
+        : {status: "unavailable", reason: "Nothing loaded yet -- reproduce this round first to inspect its result."};
+}
+
+function describeReproducibleCapability(
+    source: "seedRound" | "artifact" | "spin" | "simulation",
+    reproducibility: ReplayReproducibilityGate | undefined,
+): ReplayCapability {
+    if (source === "spin") {
+        return {status: "unavailable", reason: "This is a live spin's actual recorded result -- there's nothing to reproduce it against."};
+    }
+    if (source !== "artifact") {
+        return {status: "available", reason: "Ready -- plays a fresh session forward from round 1 using the configured seed."};
+    }
+    if (reproducibility === undefined || reproducibility.status === "ready") {
+        return {status: "available", reason: "Ready -- plays a fresh session forward from round 1 using the recorded seed."};
+    }
+    if (reproducibility.status === "bestEffort") {
+        return {status: "bestEffort", reason: reproducibility.reason};
+    }
+    return {status: "unavailable", reason: reproducibility.reason};
+}
+
+function describeComparableCapability(
+    source: "seedRound" | "artifact" | "spin" | "simulation",
+    hasComparisonTarget: boolean,
+    comparison: ReplayComparisonView | undefined,
+): ReplayCapability {
+    if (source !== "artifact") {
+        return {status: "unavailable", reason: "A fresh forward replay with no prior recorded result to compare against."};
+    }
+    if (!hasComparisonTarget) {
+        return {status: "unavailable", reason: "No round artifact recorded on this entry to compare against."};
+    }
+    if (comparison === undefined) {
+        return {status: "available", reason: "Will be verified against the loaded artifact once reproduced."};
+    }
+    if (comparison.status === "unavailable") {
+        return {status: "unavailable", reason: comparison.unavailableReason ?? "Verification unavailable."};
+    }
+    if (comparison.status === "partial") {
+        return {status: "bestEffort", reason: "Partially verified -- at least one dimension was unavailable to compare."};
+    }
+    return {
+        status: "available",
+        reason: comparison.status === "match" ? "Verified -- matches the expected result." : "Verified -- differs from the expected result.",
+    };
+}
+
+function describeExportableCapability(canExport: boolean): ReplayCapability {
+    return canExport
+        ? {status: "available", reason: "Ready to download as JSON."}
+        : {status: "unavailable", reason: "Reproduce this round (or select a spin) to get an exportable result."};
+}
+
+// The Loaded replay card's own view model: every source (Recreate from seed / Replay Artifact / Session
+// Spin / Recent Simulation) renders the exact same six-field summary plus the four capabilities above,
+// rather than each inventing its own ad hoc subset -- what differs between sources is only how each
+// field is derived, which is what the source-specific `describeLoaded*` functions below compute.
+export type LoadedReplayCardView = {
+    // Plainly states whether what's loaded is a genuinely recorded round (Session Spin: an actual past
+    // spin, looked up, never recreated) or a recreated one (every other source: a brand-new session
+    // played forward from round 1 -- see StudioReplayExecutionService.run()) -- the two are never
+    // conflated as if a recreation were the same thing as the original recorded round.
+    source: string;
+    identities: string;
+    seed: string;
+    versionHash: string;
+    timestamp: string;
+    completeness: string;
+    capabilities: ReplayCapabilitiesView;
+};
+
+export type LoadedReplayInput =
+    | {source: "spin"; spin: StudioRuntimeSessionView; canExport: boolean}
+    | {
+          source: "artifact";
+          expected: {seed?: string; artifact?: RoundArtifactJson};
+          reproducibility?: ReplayReproducibilityGate;
+          result?: ReplayResultView;
+          comparison?: ReplayComparisonView;
+          canExport: boolean;
+      }
+    | {
+          source: "seedRound" | "simulation";
+          target: {round: number; seed?: string};
+          currentGame?: {id: string; version: string};
+          result?: ReplayResultView;
+          canExport: boolean;
+      };
+
+export function describeLoadedReplay(input: LoadedReplayInput): LoadedReplayCardView {
+    if (input.source === "spin") {
+        return describeLoadedSpin(input.spin, input.canExport);
+    }
+    if (input.source === "artifact") {
+        return describeLoadedArtifact(input.expected, input.reproducibility, input.result, input.comparison, input.canExport);
+    }
+    return describeLoadedFreshReplay(input.source, input.target, input.currentGame, input.result, input.canExport);
+}
+
+function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean): LoadedReplayCardView {
+    const identityParts = [`session ${spin.sessionId}`];
+    if (spin.studioRound !== undefined) {
+        identityParts.push(`round ${spin.studioRound}`);
+    }
+    if (spin.studioRequestId) {
+        identityParts.push(`request ${spin.studioRequestId}`);
+    }
+    const hasDebugBundle = spin.debug?.debugData !== undefined || spin.debug?.stateBefore !== undefined || spin.debug?.stateAfter !== undefined;
+    let completeness: string;
+    if (hasDebugBundle) {
+        completeness = "Full -- recorded with its debug bundle (state and RNG/debug data).";
+    } else if (spin.screen) {
+        completeness = "Partial -- screen recorded, no debug data (debug mode was off when this spin was made).";
+    } else {
+        completeness = "Minimal -- no screen or debug data was captured for this spin.";
+    }
+    return {
+        source: spin.studioSource === "pre-generated" ? "Recorded -- pre-generated spin" : "Recorded -- live spin",
+        identities: identityParts.join(", "),
+        seed: "(not tracked per spin -- see the runtime session's own seed)",
+        versionHash: `${spin.game.id} v${spin.game.version}`,
+        timestamp: spin.studioRecordedAt ? new Date(spin.studioRecordedAt).toLocaleString() : "(unknown)",
+        completeness,
+        capabilities: describeReplayCapabilities({source: "spin", hasResult: true, hasComparisonTarget: false, canExport}),
+    };
+}
+
+function describeLoadedArtifact(
+    expected: {seed?: string; artifact?: RoundArtifactJson},
+    reproducibility: ReplayReproducibilityGate | undefined,
+    result: ReplayResultView | undefined,
+    comparison: ReplayComparisonView | undefined,
+    canExport: boolean,
+): LoadedReplayCardView {
+    const provenanceGame = expected.artifact?.provenance?.game;
+    const versionHashParts: string[] = [];
+    if (provenanceGame?.id && provenanceGame.version) {
+        versionHashParts.push(`${provenanceGame.id} v${provenanceGame.version}`);
+    }
+    if (expected.artifact?.hash) {
+        versionHashParts.push(`hash ${expected.artifact.hash}`);
+    }
+    let completeness: string;
+    if (reproducibility === undefined) {
+        completeness = "(not yet validated)";
+    } else if (reproducibility.status === "ready") {
+        completeness = "Full -- seed, provenance, state, and RNG trace all recorded.";
+    } else if (reproducibility.status === "bestEffort") {
+        completeness = "Partial -- seed, provenance, and state recorded, but no RNG/reel-stop trace (best-effort reproduction only).";
+    } else {
+        completeness = "Incomplete -- missing data required to verify a reproduction (see below).";
+    }
+    return {
+        source: "Recreated -- replay artifact",
+        identities: result ? `replay session ${result.sessionId}, replay job ${result.id}` : "(assigned once reproduced)",
+        seed: expected.seed ?? "(none)",
+        versionHash: versionHashParts.length > 0 ? versionHashParts.join(", ") : "(not recorded)",
+        timestamp: result ? new Date(result.timestamp).toLocaleString() : "(not yet reproduced)",
+        completeness,
+        capabilities: describeReplayCapabilities({
+            source: "artifact",
+            hasResult: true,
+            reproducibility,
+            hasComparisonTarget: expected.artifact !== undefined,
+            comparison,
+            canExport,
+        }),
+    };
+}
+
+function describeLoadedFreshReplay(
+    source: "seedRound" | "simulation",
+    target: {round: number; seed?: string},
+    currentGame: {id: string; version: string} | undefined,
+    result: ReplayResultView | undefined,
+    canExport: boolean,
+): LoadedReplayCardView {
+    const versionHashParts: string[] = [];
+    if (result) {
+        versionHashParts.push(`${result.game.id} v${result.game.version}`);
+        if (result.artifact?.hash) {
+            versionHashParts.push(`hash ${result.artifact.hash}`);
+        }
+    } else if (currentGame) {
+        versionHashParts.push(`${currentGame.id} v${currentGame.version}`);
+    }
+    let completeness: string;
+    if (!result) {
+        completeness = "Not yet run -- reproduce this round to generate a result.";
+    } else if (result.artifact) {
+        completeness = "Full -- round artifact captured (screen, wins, steps, debug).";
+    } else {
+        completeness = "Partial -- round-level result only, no per-step artifact for this game.";
+    }
+    return {
+        source: source === "seedRound" ? "Recreated -- recreate from seed" : "Recreated -- recent simulation",
+        identities: result ? `replay session ${result.sessionId}, replay job ${result.id}` : "(assigned once reproduced)",
+        seed: (result ? result.seed : target.seed) ?? "(freshly generated)",
+        versionHash: versionHashParts.length > 0 ? versionHashParts.join(", ") : "(unknown)",
+        timestamp: result ? new Date(result.timestamp).toLocaleString() : "(not yet reproduced)",
+        completeness,
+        capabilities: describeReplayCapabilities({source, hasResult: result !== undefined, hasComparisonTarget: false, canExport}),
+    };
 }

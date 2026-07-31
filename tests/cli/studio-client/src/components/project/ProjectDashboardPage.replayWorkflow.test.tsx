@@ -546,9 +546,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed \(none\)\./);
-        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
-        expect(screen.getByText(/no recorded seed/)).toBeInTheDocument();
-        expect(screen.getByText(/Add a "seed" field/)).toBeInTheDocument();
+        const gateAlert = screen.getByRole("alert");
+        expect(gateAlert).toHaveTextContent("Reproduce isn't reliable for this round");
+        expect(gateAlert).toHaveTextContent(/no recorded seed/);
+        expect(gateAlert).toHaveTextContent(/Add a "seed" field/);
         expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
     }, 60000);
 
@@ -569,15 +570,26 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed demo-seed\./);
-        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
-        expect(screen.getByText(/recorded against a v2\.0\.0, but the project currently loaded is a v1\.0\.0/)).toBeInTheDocument();
-        expect(screen.getByText(/Open project "a" at version 2\.0\.0/)).toBeInTheDocument();
+        const gateAlert = screen.getByRole("alert");
+        expect(gateAlert).toHaveTextContent("Reproduce isn't reliable for this round");
+        expect(gateAlert).toHaveTextContent(/recorded against a v2\.0\.0, but the project currently loaded is a v1\.0\.0/);
+        expect(gateAlert).toHaveTextContent(/Open project "a" at version 2\.0\.0/);
         expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
     }, 60000);
 
     it("disables Reproduce with a concrete missing-provenance explanation and remediation for a record whose artifact carries no recorded game id/version, while Inspect/Reproduce-and-compare from Recent Replays remain available", async () => {
         const user = userEvent.setup();
-        const storedEntry: StudioReplayListEntry = {id: "stored-1", round: 1, status: "completed", startedAt: "2026-01-01T00:00:00.000Z", game: GAME};
+        // Carries its own recorded seed -- Reproduce & compare is only ever offered for an entry with
+        // one (see isReplayListEntryReproducible), which this test isn't exercising: it's checking that
+        // the *pasted artifact form's* gate stays scoped to that form alone.
+        const storedEntry: StudioReplayListEntry = {
+            id: "stored-1",
+            round: 1,
+            seed: "stored-seed",
+            status: "completed",
+            startedAt: "2026-01-01T00:00:00.000Z",
+            game: GAME,
+        };
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/replays": (call: FakeCall) => {
@@ -611,9 +623,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed demo-seed\./);
-        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
-        expect(screen.getByText(/no recorded game id\/version provenance/)).toBeInTheDocument();
-        expect(screen.getByText(/Add a "provenance.game" object/)).toBeInTheDocument();
+        const gateAlert = screen.getByRole("alert");
+        expect(gateAlert).toHaveTextContent("Reproduce isn't reliable for this round");
+        expect(gateAlert).toHaveTextContent(/no recorded game id\/version provenance/);
+        expect(gateAlert).toHaveTextContent(/Add a "provenance.game" object/);
         expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
 
         // The gate only blocks *this pasted record's* Reproduce action -- a stored replay's own
@@ -641,13 +654,14 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed demo-seed\./);
-        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
-        expect(screen.getByText(/no recorded session state/)).toBeInTheDocument();
-        expect(screen.getByText(/Add "stateBefore" and "stateAfter" fields/)).toBeInTheDocument();
+        const gateAlert = screen.getByRole("alert");
+        expect(gateAlert).toHaveTextContent("Reproduce isn't reliable for this round");
+        expect(gateAlert).toHaveTextContent(/no recorded session state/);
+        expect(gateAlert).toHaveTextContent(/Add "stateBefore" and "stateAfter" fields/);
         expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
     }, 60000);
 
-    it("disables Reproduce with a concrete missing-RNG-trace explanation and remediation for an incomplete record with no reelStops captured", async () => {
+    it("offers Reproduce as best-effort (not blocked) for an incomplete record with no reelStops captured, explicitly non-verifiable", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -664,10 +678,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed demo-seed\./);
-        expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
-        expect(screen.getByText(/no recorded RNG\/reel-stop trace/)).toBeInTheDocument();
-        expect(screen.getByText(/Add a "reelStops" field/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
+        const bestEffortAlert = screen.getByRole("alert");
+        expect(bestEffortAlert).toHaveTextContent("Best effort only -- not verifiable");
+        expect(bestEffortAlert).toHaveTextContent(/no recorded RNG\/reel-stop trace/);
+        expect(screen.getByRole("button", {name: "Reproduce"})).not.toBeDisabled();
     }, 60000);
 
     it("completes a malformed-expected-artifact replay with no crash: comparison is unavailable with diagnostics, Inspect/Export still work", async () => {
@@ -722,12 +736,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // No crash: the reproduced round renders fully, with an "unavailable" comparison banner carrying
         // the exact wording plus the original validation diagnostics (never hidden, never silently
         // repaired) -- and Export exposes the download link inline, with nothing further to click.
-        await waitFor(() => expect(screen.getByText("Comparison unavailable")).toBeInTheDocument(), {timeout: 15000});
-        expect(
-            screen.getByText(
-                /Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable:.*"screen" does not match.*"wins" must be an array\./,
-            ),
-        ).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Comparison unavailable"), {timeout: 15000});
+        expect(screen.getByRole("alert")).toHaveTextContent(
+            /Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable:.*"screen" does not match.*"wins" must be an array\./,
+        );
 
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-malformed/download");
     }, 60000);
@@ -964,8 +976,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Session Spin"}));
         await user.click(await screen.findByRole("button", {name: /session sess-2/}));
 
-        // Loads straight into its own inspect view -- no Reproduce action exists for this source at all.
+        // Loads straight into its own inspect view -- no Reproduce action exists for this source at all,
+        // as the Loaded replay card's own Reproducible row (Unavailable) says.
         expect(screen.getByText(/there's nothing to reproduce it against/)).toBeInTheDocument();
+        expect(screen.getByRole("row", {name: /Reproducible/})).toHaveTextContent("Unavailable");
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
         expect(screen.getByRole("cell", {name: "sess-2"})).toBeInTheDocument();
 
