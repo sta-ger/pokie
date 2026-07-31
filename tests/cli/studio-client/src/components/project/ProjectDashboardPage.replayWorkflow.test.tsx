@@ -100,12 +100,6 @@ async function goToReplayTab(user: ReturnType<typeof userEvent.setup>): Promise<
     await screen.findByRole("radio", {name: "Seed & Round"});
 }
 
-// Mantine's Stepper.Step packs the step icon + label + description into one <button> -- same
-// convention SimulationTab's own tests already established.
-function stepperStep(label: string, description: string): RegExp {
-    return new RegExp(`${label}.*${description}`);
-}
-
 // Each comparison-dimension row (RoundArtifactInspector's own <List.Item>) renders its label and its
 // match/mismatch/unavailable status as *separate* text nodes (a <Text span> plus a trailing string) --
 // getByText's node-matching heuristic won't span both, so this reads the <li>'s own full textContent
@@ -155,10 +149,12 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToReplayTab(user);
 
-        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
-        await user.click(screen.getByRole("button", {name: "Find"}));
+        // Export is visible but disabled before anything has been loaded/reproduced.
+        expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
 
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
         await waitFor(() => expect(screen.getByText("Step 1 of 2")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByText("No wins on this step.")).toBeInTheDocument();
@@ -168,7 +164,6 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByText("line")).toBeInTheDocument();
         expect(screen.getByText("free-spin-triggered")).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: stepperStep("Export", "Download")}));
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-1/download");
     }, 60000);
 
@@ -203,8 +198,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await goToReplayTab(user);
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
-        await user.click(screen.getByRole("button", {name: "Find"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
         await waitFor(() => expect(screen.getByText(/Snapshot captured for this round/)).toBeInTheDocument(), {timeout: 15000});
         expect(screen.queryByText("State snapshot unavailable for this game/session type.")).not.toBeInTheDocument();
@@ -248,8 +243,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await goToReplayTab(user);
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
-        await user.click(screen.getByRole("button", {name: "Find"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
         await waitFor(() => expect(screen.getByText("State snapshot unavailable for this game/session type.")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.queryByText("Before")).not.toBeInTheDocument();
@@ -281,8 +276,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await goToReplayTab(user);
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
-        await user.click(screen.getByRole("button", {name: "Find"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
         const advancedToggle = await screen.findByRole("button", {name: /Show advanced details/}, {timeout: 15000});
         // Not visible before opening Advanced details -- it's technical/internal, same treatment as the
@@ -332,9 +327,9 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         fireEvent.change(textarea, {target: {value: JSON.stringify(pastedDescriptor)}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
         await waitFor(() => expect(screen.getByText("Matches the expected result")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByText(/RNG \/ reel stops:/)).toBeInTheDocument();
@@ -376,9 +371,9 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         fireEvent.change(textarea, {target: {value: JSON.stringify(pastedDescriptor)}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
         await waitFor(() => expect(screen.getByText("Differs from the expected result")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByText(/Total payout differs \(expected 5, got 9\)\./)).toBeInTheDocument();
@@ -391,7 +386,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         const user = userEvent.setup();
         let pollCount = 0;
         // The expected (pasted) side carries a full state/RNG capture -- required for Reproduce to be
-        // reachable at all -- but the freshly reproduced side (this project's current game/session) simply
+        // enabled at all -- but the freshly reproduced side (this project's current game/session) simply
         // doesn't capture them, an older-style descriptor, or a game without session serialization -- so
         // state/rngReelStops must show "unavailable", and that alone must never demote the verdict to
         // "mismatch".
@@ -423,9 +418,9 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         fireEvent.change(textarea, {target: {value: JSON.stringify(pastedDescriptor)}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
         await waitFor(() => expect(screen.getByText("Partially compared against the expected result")).toBeInTheDocument(), {timeout: 15000});
         expect(dimensionRow("State transition:").textContent).toMatch(/unavailable/);
@@ -433,7 +428,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(dimensionRow("Visible screen:").textContent).toMatch(/match/);
     }, 60000);
 
-    it("blocks continuing past Load for a pasted artifact with an invalid outer round/seed", async () => {
+    it("blocks reproducing a pasted artifact with an invalid outer round/seed", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -446,10 +441,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({round: 0}))}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent('"round" must be a positive integer.'));
-        expect(screen.queryByRole("button", {name: "Continue to Reproduce"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     }, 60000);
 
     it("surfaces non-fatal warnings for a structurally invalid nested artifact but still allows reproducing", async () => {
@@ -479,10 +474,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
                 }),
             },
         });
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await waitFor(() => expect(screen.getByText('"steps" must be an array.')).toBeInTheDocument());
-        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).not.toBeDisabled();
+        expect(screen.getByRole("button", {name: "Reproduce"})).not.toBeDisabled();
     }, 60000);
 
     it("disables Reproduce with a concrete missing-seed explanation and remediation for an imported record with no seed", async () => {
@@ -500,13 +495,13 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         fireEvent.change(textarea, {target: {value: JSON.stringify({round: 1, artifact: artifactFor()})}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed \(none\)\./);
         expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
         expect(screen.getByText(/no recorded seed/)).toBeInTheDocument();
         expect(screen.getByText(/Add a "seed" field/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
     }, 60000);
 
     it("disables Reproduce with a concrete version-mismatch explanation and remediation when the record's game version differs from the loaded project", async () => {
@@ -523,13 +518,13 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({artifact: mismatchedArtifact}))}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed demo-seed\./);
         expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
         expect(screen.getByText(/recorded against a v2\.0\.0, but the project currently loaded is a v1\.0\.0/)).toBeInTheDocument();
         expect(screen.getByText(/Open project "a" at version 2\.0\.0/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
     }, 60000);
 
     it("disables Reproduce with a concrete missing-provenance explanation and remediation for a record whose artifact carries no recorded game id/version, while Inspect/Reproduce-and-compare from Recent Replays remain available", async () => {
@@ -565,13 +560,13 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
                 }),
             },
         });
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed demo-seed\./);
         expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
         expect(screen.getByText(/no recorded game id\/version provenance/)).toBeInTheDocument();
         expect(screen.getByText(/Add a "provenance.game" object/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
 
         // The gate only blocks *this pasted record's* Reproduce action -- a stored replay's own
         // Inspect/Reproduce-and-compare actions in Recent Replays stay fully available regardless.
@@ -595,13 +590,13 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // Carries an RNG trace but no stateBefore/stateAfter -- an incomplete record, distinct from a
         // record that never had a round artifact at all.
         fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({artifact: artifactFor({debug: {reelStops: [1, 2, 3]}})}))}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed demo-seed\./);
         expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
         expect(screen.getByText(/no recorded session state/)).toBeInTheDocument();
         expect(screen.getByText(/Add "stateBefore" and "stateAfter" fields/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
     }, 60000);
 
     it("disables Reproduce with a concrete missing-RNG-trace explanation and remediation for an incomplete record with no reelStops captured", async () => {
@@ -618,13 +613,13 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         // Carries state but no explicit RNG/reel-stop trace under the artifact's debug data.
         fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({stateBefore: {win: 0}, stateAfter: {win: 5}}))}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await screen.findByText(/Round 1, seed demo-seed\./);
         expect(screen.getByText("Reproduce isn't reliable for this round")).toBeInTheDocument();
         expect(screen.getByText(/no recorded RNG\/reel-stop trace/)).toBeInTheDocument();
         expect(screen.getByText(/Add a "reelStops" field/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Continue to Reproduce"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Reproduce"})).toBeDisabled();
     }, 60000);
 
     it("completes a malformed-expected-artifact replay with no crash: comparison is unavailable with diagnostics, Inspect/Export still work", async () => {
@@ -672,12 +667,13 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
                 }),
             },
         });
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
-        // No crash: the Inspect step renders fully, with an "unavailable" comparison banner carrying the
-        // exact wording plus the original validation diagnostics (never hidden, never silently repaired).
+        // No crash: the reproduced round renders fully, with an "unavailable" comparison banner carrying
+        // the exact wording plus the original validation diagnostics (never hidden, never silently
+        // repaired) -- and Export exposes the download link inline, with nothing further to click.
         await waitFor(() => expect(screen.getByText("Comparison unavailable")).toBeInTheDocument(), {timeout: 15000});
         expect(
             screen.getByText(
@@ -685,8 +681,6 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
             ),
         ).toBeInTheDocument();
 
-        // Inspect still shows the reproduced round's own content (screen table etc.) and Export still works.
-        await user.click(screen.getByRole("button", {name: /Export.*Download/}));
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-malformed/download");
     }, 60000);
 
@@ -707,7 +701,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
         const textarea = screen.getByLabelText(/Paste a replay artifact JSON/);
         fireEvent.change(textarea, {target: {value: "{not valid json"}});
-        await user.click(screen.getByRole("button", {name: "Validate & continue"}));
+        await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
         await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("That's not valid JSON."));
         expect(inspectCalled).toBe(false);
@@ -756,11 +750,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         const pickSection = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset") as HTMLElement;
 
         await user.click(within(pickSection).getByRole("button", {name: /round 1/}));
-        // Back to Find to pick a *different* comparison target before replay-x's slow fetch resolves.
-        await user.click(screen.getByRole("button", {name: stepperStep("Find", "Locate a round")}));
-        await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
-        const pickSectionAgain = screen.getByText("Or pick from recent replays to reproduce & compare").closest("fieldset") as HTMLElement;
-        await user.click(within(pickSectionAgain).getByRole("button", {name: /round 2/}));
+        // The picker stays visible (no page to navigate away from), so picking a *different* comparison
+        // target is just another click on the same still-open list -- before replay-x's slow fetch
+        // resolves.
+        await user.click(within(pickSection).getByRole("button", {name: /round 2/}));
 
         await waitFor(() => expect(screen.getByText(/Round 2, seed seed-y\./)).toBeInTheDocument());
 
@@ -858,15 +851,16 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToReplayTab(user);
 
-        const exportStep = stepperStep("Export", "Download");
-        expect(screen.getByRole("button", {name: exportStep})).toBeDisabled();
+        // Export is always visible -- an action, not a page -- but disabled until there's a result.
+        expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
 
-        await user.click(screen.getByRole("button", {name: "Find"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
 
-        await waitFor(() => expect(screen.getByRole("button", {name: exportStep})).not.toBeDisabled(), {timeout: 15000});
-        await user.click(screen.getByRole("button", {name: exportStep}));
-        expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-export/download");
+        await waitFor(() => expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-export/download"), {
+            timeout: 15000,
+        });
+        expect(screen.queryByRole("button", {name: "Download JSON"})).not.toBeInTheDocument();
     }, 60000);
 
     it("gates Export behind picking a live spin, then offers a client-side JSON download for it", async () => {
@@ -888,16 +882,14 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToReplayTab(user);
 
-        const exportStep = stepperStep("Export", "Download");
-        expect(screen.getByRole("button", {name: exportStep})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
 
         await user.click(screen.getByRole("radio", {name: "Session Spin"}));
         await user.click(await screen.findByRole("button", {name: /session sess-1/}));
-        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
 
-        await waitFor(() => expect(screen.getByRole("button", {name: exportStep})).not.toBeDisabled());
-        await user.click(screen.getByRole("button", {name: exportStep}));
-        expect(screen.getByRole("button", {name: "Download JSON"})).toBeInTheDocument();
+        // Picking the spin loads it immediately -- there's nothing to reproduce, so Export is ready as
+        // soon as it's selected, with no separate confirmation click in between.
+        await waitFor(() => expect(screen.getByRole("button", {name: "Download JSON"})).not.toBeDisabled());
         expect(screen.queryByRole("link", {name: "Download JSON"})).not.toBeInTheDocument();
     }, 60000);
 
@@ -924,11 +916,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Session Spin"}));
         await user.click(await screen.findByRole("button", {name: /session sess-2/}));
 
+        // Loads straight into its own inspect view -- no Reproduce action exists for this source at all.
         expect(screen.getByText(/there's nothing to reproduce it against/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: stepperStep("Reproduce", "Run the replay")})).toBeDisabled();
-
-        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
-        expect(screen.getByText("sess-2")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
+        expect(screen.getByRole("cell", {name: "sess-2"})).toBeInTheDocument();
 
         // Raw state before/after now lives under Advanced details, not shown unconditionally -- the
         // region is mounted-but-hidden (see AdvancedDisclosure's own doc comment), so this checks
@@ -984,10 +975,12 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(within(recentReplaysSection).queryByText(/round 1 —/)).not.toBeInTheDocument();
     });
 
-    // Clicking "Inspect" used to always jump to the Inspect step regardless of whether the underlying
-    // fetch actually succeeded -- a failure was silently dropped, landing the user on step 3 with
-    // whatever replay.job happened to already be there (stale or empty), no error, no explanation.
-    it("stays put and shows an error instead of silently jumping to Inspect when loading a stored replay fails", async () => {
+    // Clicking "Inspect" used to always jump to a dedicated Inspect step regardless of whether the
+    // underlying fetch actually succeeded -- a failure was silently dropped, landing the user on a
+    // result view with whatever replay.job happened to already be there (stale or empty), no error, no
+    // explanation. The loaded card/result view now only ever appears once `markLoaded` actually runs,
+    // which only happens after the fetch resolves.
+    it("stays put and shows an error instead of silently showing a loaded result when loading a stored replay fails", async () => {
         const user = userEvent.setup();
         const entry: StudioReplayListEntry = {id: "bad", round: 1, status: "completed", startedAt: "2026-01-01T00:00:00.000Z", game: GAME};
         const fetchImpl: FetchLike = (url, init) => {
@@ -1013,15 +1006,17 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(within(recentReplaysSection).getByRole("button", {name: "Inspect"}));
 
         expect(await within(recentReplaysSection).findByText("That replay no longer exists.")).toBeInTheDocument();
-        // Still on Find -- the Inspect step's own Stepper button was never reached/advanced to.
+        // Still on Seed & Round with nothing loaded -- the failed fetch never marked anything loaded.
         expect(screen.getByRole("radio", {name: "Seed & Round"})).toBeInTheDocument();
+        expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
     });
 
-    // inspectReachable stays true off a *stale* `result` from an earlier, different-method
-    // reproduction, so jumping the Stepper back to Find, switching to "Session Spin", then forward to
-    // Inspect again without picking a spin used to render nothing at all -- none of Inspect's own
-    // branches matched that exact (findMethod, selection) combination.
-    it("shows an explanatory EmptyState, not a blank screen, when Inspect is reached via Session Spin with nothing selected", async () => {
+    // Switching source used to leave a stale `result` from a previous, different-method reproduction
+    // showing under the new source -- jumping the old Stepper back to Find, switching to "Session Spin",
+    // then forward to Inspect again without picking a spin used to render nothing at all (none of
+    // Inspect's own branches matched that exact (findMethod, selection) combination). Now every source
+    // switch resets the loaded/reproduced state outright, so there's nothing stale left to render.
+    it("resets the loaded round/result when the source is switched, showing a source-specific empty prompt instead", async () => {
         const user = userEvent.setup();
         let pollCount = 0;
         const {fetchImpl} = createRoutedFakeFetch({
@@ -1045,47 +1040,96 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await goToReplayTab(user);
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
-        await user.click(screen.getByRole("button", {name: "Find"}));
-        await user.click(await screen.findByRole("button", {name: "Continue to Reproduce"}));
-        await waitFor(() => expect(screen.getByRole("button", {name: stepperStep("Inspect", "See results")})).not.toBeDisabled(), {timeout: 15000});
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await waitFor(() => expect(screen.getByRole("link", {name: "Download JSON"})).toBeInTheDocument(), {timeout: 15000});
 
-        // Back to Find, switch method, then straight to Inspect (still enabled off the stale `result`)
-        // without ever picking a spin.
-        await user.click(screen.getByRole("button", {name: stepperStep("Find", "Locate a round")}));
+        // Switch source -- the just-reproduced round/result must not linger under the new source.
         await user.click(screen.getByRole("radio", {name: "Session Spin"}));
-        await user.click(screen.getByRole("button", {name: stepperStep("Inspect", "See results")}));
 
-        expect(screen.getByText("Pick a spin in the Find step first.")).toBeInTheDocument();
+        expect(screen.getByText("Pick a spin above to view its details.")).toBeInTheDocument();
+        expect(screen.queryByText(/Round 1, seed demo-seed\./)).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
+
+        // Switching back to Seed & Round starts fresh too -- nothing carried over either direction.
+        await user.click(screen.getByRole("radio", {name: "Seed & Round"}));
+        expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     }, 60000);
 
-    it("marks exactly the active Stepper step aria-current=\"step\", moving it as the user jumps back and forth", async () => {
+    // `progress`/`result`/`error` are a single global "last replay job" the parent tracks, not scoped
+    // to any one Replay source/target. Before this fix, reaching a terminal replay and then loading a
+    // *different* target -- without switching source at all, just a fresh Load -- kept presenting that
+    // stale job's terminal progress/retry/result instead of offering Reproduce for the newly loaded
+    // target.
+    it("scopes a terminal replay job to its own target -- a new Load exposes Reproduce again, not stale terminal state", async () => {
         const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+        let pollCountJob1 = 0;
+        let pollCountJob2 = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    const body = JSON.parse(call.init.body ?? "{}") as {round: number; seed?: string};
+                    const jobId = body.seed === "other-seed" ? "job-2" : "job-1";
+                    return {ok: true, status: 200, body: jobFor(jobId, {status: "queued", completedRounds: 0, round: body.round, seed: body.seed})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-1": () => {
+                pollCountJob1 += 1;
+                if (pollCountJob1 < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-1", {status: "running", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: jobFor("job-1", {status: "completed", descriptor: descriptorFor({artifact: artifactFor()})})};
+            },
+            "/api/project/replays/job-2": () => {
+                pollCountJob2 += 1;
+                if (pollCountJob2 < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-2", {status: "running", completedRounds: 0, round: 1, seed: "other-seed"})};
+                }
+                return {
+                    ok: true,
+                    status: 200,
+                    body: jobFor("job-2", {
+                        status: "completed",
+                        round: 1,
+                        seed: "other-seed",
+                        descriptor: descriptorFor({seed: "other-seed", artifact: artifactFor({}, "hash-2")}),
+                    }),
+                };
+            },
+        });
+
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToReplayTab(user);
 
-        const findStep = screen.getByRole("button", {name: stepperStep("Find", "Locate a round")});
-        const loadStep = screen.getByRole("button", {name: stepperStep("Load", "Confirm & validate")});
-        expect(findStep).toHaveAttribute("aria-current", "step");
-        expect(loadStep).not.toHaveAttribute("aria-current");
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument(), {timeout: 15000});
+        expect(screen.getByRole("link", {name: "Download JSON"})).toBeInTheDocument();
 
-        // Reproduce/Inspect/Export haven't got anything to act on yet -- gated, not just inactive.
-        expect(screen.getByRole("button", {name: stepperStep("Inspect", "See results")})).toBeDisabled();
-        expect(screen.getByRole("button", {name: stepperStep("Export", "Download")})).toBeDisabled();
+        // Load a *different* target via the same source (new seed, same round) -- the prior terminal
+        // replay's progress/retry/result must not linger and block reproducing this new target.
+        await user.clear(screen.getByLabelText("Seed (optional)"));
+        await user.type(screen.getByLabelText("Seed (optional)"), "other-seed");
+        await user.click(screen.getByRole("button", {name: "Load"}));
 
-        // "Load" carries no `disabled` guard -- free navigation forward is always allowed, matching the
-        // Stepper's own default `allowNextStepsSelect` behavior used throughout this workflow.
-        await user.click(loadStep);
-        expect(findStep).not.toHaveAttribute("aria-current");
-        expect(loadStep).toHaveAttribute("aria-current", "step");
+        expect(await screen.findByText(/Round 1, seed other-seed\./)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Reproduce"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Run again with the same parameters"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("link", {name: "Download JSON"})).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
 
-        // ...and back again -- revisiting an earlier step is a first-class, intentional path here (see
-        // the free-navigation cases elsewhere in this file), not something the aria-current marker loses
-        // track of.
-        await user.click(findStep);
-        expect(findStep).toHaveAttribute("aria-current", "step");
-        expect(loadStep).not.toHaveAttribute("aria-current");
-    });
+        // The newly loaded target's own reproduction still works end to end -- scoping the stale job
+        // away doesn't break the cancel/terminal/result/export behavior of the reproduction that
+        // *does* belong to it.
+        await user.click(screen.getByRole("button", {name: "Reproduce"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument(), {timeout: 15000});
+        expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-2/download");
+    }, 60000);
 
     it("keeps distinct sessions separately visible in the recent spins list and lets the session filter narrow to just one at a time", async () => {
         const user = userEvent.setup();
@@ -1209,18 +1253,15 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "sess-imported"}));
         expect(screen.queryByRole("button", {name: /session sess-live/})).not.toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: /session sess-imported/}));
-        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
         expect(screen.getByText("Pre-generated outcome library")).toBeInTheDocument();
         expect(screen.queryByText("Live spin")).not.toBeInTheDocument();
 
-        // Back to Find, switch the filter to the live session, and confirm its own Source is truthfully
-        // reported too, distinct from the imported one above.
-        await user.click(screen.getByRole("button", {name: stepperStep("Find", "Locate a round")}));
+        // Switch the filter to the live session (the picker stays visible, no navigation needed) and
+        // confirm its own Source is truthfully reported too, distinct from the imported one above.
         await user.click(screen.getByRole("radio", {name: "All sessions"}));
         await user.click(screen.getByRole("radio", {name: "sess-live"}));
         expect(screen.queryByRole("button", {name: /session sess-imported/})).not.toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: /session sess-live/}));
-        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
         expect(screen.getByText("Live spin")).toBeInTheDocument();
         expect(screen.queryByText("Pre-generated outcome library")).not.toBeInTheDocument();
     }, 60000);

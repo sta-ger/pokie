@@ -405,11 +405,11 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
         await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
 
-        // Auto-selected straight to the Inspect step's own detail table -- no Find-step radio in the
-        // DOM at all, since there was nothing left to pick manually.
-        expect(await screen.findByText("sess-1")).toBeInTheDocument();
+        // Auto-selected straight to the loaded round card -- no manual pick needed, even though the
+        // source-choice control (and the recent-spin picker beneath it) both stay visible per Replay's
+        // information architecture (there's no "Find step" that gets left behind once loaded).
+        expect(await screen.findByRole("cell", {name: "sess-1"})).toBeInTheDocument();
         expect(screen.getByText(capturedRequestId as string)).toBeInTheDocument();
-        expect(screen.queryByRole("radio", {name: "Session Spin"})).not.toBeInTheDocument();
     }, 60000);
 
     it("shows round history in Continue session without a manual Refresh click", async () => {
@@ -637,9 +637,8 @@ describe("ProjectDashboardPage - Runtime Preview & Sessions workflow", () => {
         await user.click(screen.getByRole("button", {name: stepperStep("Debug", "Advanced")}));
         await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
 
-        expect(await screen.findByText("sess-1")).toBeInTheDocument();
+        expect(await screen.findByRole("cell", {name: "sess-1"})).toBeInTheDocument();
         expect(screen.getByText(capturedRequestId as string)).toBeInTheDocument();
-        expect(screen.queryByRole("radio", {name: "Session Spin"})).not.toBeInTheDocument();
     }, 60000);
 
     it("shows a clear fallback instead of a silent generic list when the exact target round has already fallen out of the bounded recent-spin history", async () => {
