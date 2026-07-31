@@ -101,7 +101,7 @@ export function ensureCompiledTestOutput(options: {
         }
 
         if (Date.now() >= deadline) {
-            throw new Error(`Timed out waiting for another Jest worker to build ${outputPath}.`);
+            throw new Error(`Timed out waiting for another Jest worker to build required outputs: ${outputPaths.join(", ")}.`);
         }
         wait(WAIT_FOR_BUILD_MS);
     }
