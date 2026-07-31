@@ -1,5 +1,7 @@
 import type {GameSessionSerializing} from "../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
+import type {SymbolsCombinationsGenerating} from "../session/videoslot/combinations/SymbolsCombinationsGenerating.js";
+import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import type {BetMode} from "./BetMode.js";
 import type {PokieGameContext} from "./PokieGameContext.js";
 import type {PokieGameManifest} from "./PokieGameManifest.js";
@@ -23,4 +25,15 @@ export interface PokieGame {
     // against real declared data instead of guessing. A game that doesn't implement this simply has
     // no declared bet modes -- absence is not an error.
     getBetModes?(): BetMode[];
+
+    // Optional, feature-detected (same pattern as getSessionSerializer/getBetModes above): a game whose
+    // entire outcome space is a finite, enumerable set of reel-stop combinations MAY implement this so
+    // weightedoutcome/generate can build a canonical, exact WeightedOutcomeLibrary straight off this
+    // executable package — driving the exact same session/win-calculation runtime a live round uses
+    // (createSession's own concrete VideoSlotSessionHandling), just with its randomness-backed
+    // SymbolsCombinationsGenerating swapped for the caller-supplied deterministic one, never a second
+    // calculation path. A game that doesn't implement this — any stateful or otherwise non-reel-enumerable
+    // mechanic (free games, cascades, hold-and-win, ...) — simply has no exact strategy: generation fails
+    // closed rather than guessing at one. See docs/weighted-outcome-library.md#generation.
+    createExactEnumerationSession?(combinationsGenerator: SymbolsCombinationsGenerating): VideoSlotSessionHandling;
 }

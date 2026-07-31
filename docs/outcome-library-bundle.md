@@ -63,8 +63,15 @@ type OutcomeLibraryBundleManifestModeEntry = {
     analysis: WeightedOutcomeLibraryAnalysis; // WeightedOutcomeLibraryAnalyzer output, embedded verbatim
     indexFile: string;                       // "index_<modeName>.json"
     outcomesFile: string;                    // "outcomes_<modeName>.jsonl"
+    generator?: OutcomeLibraryGeneratorDiagnostics; // present only for a mode built via generateExactWeightedOutcomeLibrary
 };
 ```
+
+`generator`, when present, is copied verbatim from a [`generateExactWeightedOutcomeLibrary`/`streamExactWeightedOutcomes`](weighted-outcome-library.md#generation)
+run's own diagnostics (algorithm/strategy/seed/build/provenance, `totalOutcomeSpaceSize`/`sampledRawCount` using the
+same bigint-safe number-or-decimal-string convention as [Stake Engine Standalone](stake-engine-standalone.md)'s own
+`StakeEngineStandaloneExactDecimal`) — never recomputed by the writer, and absent for a mode built from any other
+outcome source.
 
 The manifest also carries two distinct, deliberately-never-conflated pokie-version fields:
 
@@ -214,6 +221,7 @@ type OutcomeLibraryBundleModeInput<T extends string | number = string> = {
     libraryId: string;
     schemaVersion?: number;
     outcomes: Iterable<WeightedOutcomeInput<T>> | AsyncIterable<WeightedOutcomeInput<T>>;
+    generator?: OutcomeLibraryGeneratorDiagnostics; // copied verbatim into this mode's own manifest entry, see above
 };
 ```
 

@@ -1,4 +1,5 @@
 import type {WeightedOutcomeInput} from "../buildWeightedOutcomeLibrary.js";
+import type {OutcomeLibraryGeneratorDiagnostics} from "../generate/OutcomeLibraryGeneratorDiagnostics.js";
 
 // One mode to persist into an outcome-library bundle — a streaming *source* of outcomes, not an already-built
 // WeightedOutcomeLibrary: the writer consumes "outcomes" exactly once, in the order it arrives, validating and
@@ -17,4 +18,9 @@ export type OutcomeLibraryBundleModeInput<T extends string | number = string> = 
     readonly libraryId: string;
     readonly schemaVersion?: number;
     readonly outcomes: Iterable<WeightedOutcomeInput<T>> | AsyncIterable<WeightedOutcomeInput<T>>;
+    // Only ever present when "outcomes" is itself streamExactWeightedOutcomes's own AsyncGenerator (or its
+    // return value, gathered by the caller) — see generateExactWeightedOutcomeLibrary. Copied verbatim into
+    // this mode's own manifest entry (see OutcomeLibraryBundleManifestModeEntry.generator); never inferred or
+    // recomputed by the writer, and never required for a mode built from any other outcome source.
+    readonly generator?: OutcomeLibraryGeneratorDiagnostics;
 };

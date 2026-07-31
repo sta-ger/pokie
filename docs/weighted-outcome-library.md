@@ -197,3 +197,103 @@ if (issues.some((issue) => issue.severity === "error")) {
     // ...
 }
 ```
+
+## Generation
+
+Everything above assumes a `WeightedOutcomeLibrary` already exists. `weightedoutcome/generate/` is the one place
+this package builds one *from* an executable built package (see [Game Packages](game-packages.md)) — exhaustively
+enumerating a game's own reel-stop combination space, exact whenever that space is finite and within bounds, and
+only ever an explicitly-labelled statistical sample otherwise. It never introduces a second calculation path: every
+generated outcome is produced by driving the exact same session/win-calculation runtime a live round uses.
+
+### Opting a game into exact enumeration
+
+```ts
+interface PokieGame {
+    // ...
+    createExactEnumerationSession?(combinationsGenerator: SymbolsCombinationsGenerating): VideoSlotSessionHandling;
+}
+```
+
+Optional and feature-detected, same convention as `getSessionSerializer`/`getBetModes`. A game whose entire outcome
+space is a finite, enumerable set of reel-stop combinations (a base-game video slot with fixed reel strips) MAY
+implement this: the returned session must be the same concrete `VideoSlotSessionHandling` `createSession()` itself
+builds, just constructed with the caller-supplied `combinationsGenerator` swapped in for the game's own
+randomness-backed one — the DI seam `VideoSlotSession`'s own constructor already exposes. A game that doesn't
+implement this — any stateful or otherwise non-reel-enumerable mechanic (free games, cascades, hold-and-win, a
+resizable grid, ...) — simply has no exact strategy: generation fails closed with a
+`WeightedOutcomeLibraryGenerationError` (`weighted-outcome-library-generation-unsupported`) rather than guessing
+at one.
+
+### Estimating before generating
+
+```ts
+function estimateExactOutcomeSpaceSize(game: PokieGame): OutcomeSpaceEstimate; // {reelsNumber, reelsSymbolsNumber, reelSizes, totalOutcomeSpaceSize: bigint}
+```
+
+Reads reel-strip sizes off a throwaway probe session — never enumerates, never plays a round — so it's cheap
+enough to call as a dry run before committing to a full generation. `totalOutcomeSpaceSize` is the *raw*
+(pre-dedup) reel-stop tuple count, an upper bound on the eventual library's own outcome count (distinct reel-stop
+tuples routinely render the same visible grid).
+
+### Generating
+
+```ts
+function generateExactWeightedOutcomeLibrary(options: GenerateExactWeightedOutcomeLibraryOptions): Promise<{
+    library: WeightedOutcomeLibrary;
+    diagnostics: OutcomeLibraryGeneratorDiagnostics;
+}>;
+
+function streamExactWeightedOutcomes(options: GenerateExactWeightedOutcomeLibraryOptions): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics>;
+```
+
+`options` always includes `libraryId`, the loaded `game`/`pokieVersion` (and optionally `configHash`/`betMode`/
+`stake`, threaded onto every generated artifact). Generation runs in two phases: it streams every raw reel-stop
+tuple (an odometer sweep over each reel's own strip, never materializing the whole space as an array — memory is
+bounded by the number of *distinct* grids actually reachable, not the raw combination count), resolves each into
+its visible grid, and accumulates an exact `bigint` weight per distinct grid — the same "dedupe identical grids
+before the expensive win-calculation step" optimization `math-modeling.md`'s own ad hoc `SymbolsCombinationsAnalyzer`
+walkthrough already uses, just streamed and bigint-safe. Only then, for each *unique* grid, does it build a real
+session via `createExactEnumerationSession`, force that grid in, call `play()` for real, and build a canonical
+`RoundArtifact` via `buildRoundArtifactFromSession` — no second calculation path anywhere. A count that would lose
+precision crossing into `WeightedOutcome.weight`'s own `number` type fails fast
+(`weighted-outcome-library-generation-weight-not-representable`) instead of silently rounding. The resulting
+outcomes are handed to `buildWeightedOutcomeLibrary` unchanged, so homogeneous provenance/`betMode`/`stake`,
+JSON-safety, and every other existing invariant are still checked by that one real builder.
+
+`generateExactWeightedOutcomeLibrary` collects the whole stream and returns an already-built library;
+`streamExactWeightedOutcomes` is the lower-level `AsyncGenerator` form, usable directly as an
+`OutcomeLibraryBundleModeInput`'s own `outcomes` (see [Outcome Library Bundle](outcome-library-bundle.md)) — both
+are the exact same underlying generation.
+
+### Large spaces: bounds, bounded-coverage, cancel/resume/progress
+
+Above `maxOutcomeSpaceSize` (a `bigint`, defaulting to 20,000,000 raw combinations), generation refuses to sweep
+exhaustively unless the caller explicitly opts in via the `bounded: {sampleSize, seed}` option — otherwise it fails
+closed with `weighted-outcome-library-generation-space-exceeded`, never silently truncating. Opting into `bounded`
+switches to an honestly-labelled `"bounded-coverage"` strategy: `sampleSize` independent reel-stop draws (with
+replacement, seeded and therefore reproducible) through the exact same calculation path, deduplicated and summed
+the same way — `diagnostics.strategy` and the library it produces are never presented as `"exact"`. A space within
+`maxOutcomeSpaceSize` is always swept exactly regardless of whether `bounded` was also given.
+
+`options.signal` (an `AbortSignal`) cancels a run in progress, throwing `WeightedOutcomeLibraryGenerationCancelledError`
+with `processedRawIndex`/`progressTotal` and its own `checkpoint` (an `ExactEnumerationCheckpoint`). For the
+`"exact"` strategy, that checkpoint is a genuine resume point — pass it straight back in as a later run's own
+`options.resumeFrom` and generation seeds its accumulation from the checkpoint's already-gathered grid weights and
+continues sweeping raw tuples from `processedRawIndex`, so a chain of cancel/resume calls over a single logical
+sweep merges into the exact same complete library an uninterrupted sweep would have produced. `resumeFrom` is only
+ever valid for a run that itself resolves back to `"exact"`, and is checked against both the run's freshly-estimated
+`progressTotal` AND a deterministic identity derived from the game/config/reel-layout it actually swept
+(`sourceEnumerationId`) — a checkpoint from a different game or config that coincidentally shares the same raw
+outcome-space size still fails closed with `weighted-outcome-library-generation-checkpoint-mismatch`, never merging
+incompatible grid weights into a falsely "exact" result. `options.onProgress` is called periodically with the same
+`(processedRawIndex, progressTotal)` pair.
+
+### Generator diagnostics on a bundle
+
+`OutcomeLibraryGeneratorDiagnostics` (`algorithm`, `strategy`, `totalOutcomeSpaceSize`/`sampledRawCount` — using the
+same bigint-safe number-or-decimal-string convention `stake-engine-standalone.md`'s own `StakeEngineStandaloneExactDecimal`
+uses, `seed` when `"bounded-coverage"`, `pokieVersion`/`game`/`configHash`/`generatedAt`) is returned alongside every
+generated library. Threading it into `OutcomeLibraryBundleModeInput.generator` copies it verbatim into that mode's
+own bundle manifest entry (see [Outcome Library Bundle](outcome-library-bundle.md)) — present only for a mode
+actually built by this generator, absent for one built from an already-computed outcome source.
