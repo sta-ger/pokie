@@ -375,4 +375,57 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const report = JSON.parse(fs.readFileSync(simFile, "utf-8")) as {rounds: number};
         expect(report.rounds).toBe(200);
     });
+
+    it("runs `pokie outcomelibrary generate` against a package built by the installed binary itself, then bundles and validates the result", () => {
+        // Same small, hand-computable, exactly-enumerable blueprint as
+        // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
+        // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
+        const blueprintPath = path.join(installDir!, "outcomelibrary-blueprint.json");
+        fs.writeFileSync(
+            blueprintPath,
+            JSON.stringify({
+                manifest: {id: "packed-outcomelibrary-slot", name: "Packed Outcomelibrary Slot", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 5}},
+                reelStrips: [
+                    ["A", "A", "B"],
+                    ["A", "B"],
+                ],
+            }),
+        );
+        const packageRoot = path.join(installDir!, "outcomelibrary-pkg");
+        const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--out", packageRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expect(build.status).toBe(0);
+
+        const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
+        const generate = spawnSync(
+            pokieBinPath,
+            ["outcomelibrary", "generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"],
+            {cwd: installDir, encoding: "utf-8", timeout: 60000},
+        );
+        expect(generate.status).toBe(0);
+
+        const library = JSON.parse(fs.readFileSync(libraryFile, "utf-8")) as {outcomes: Array<{weight: number}>};
+        expect(library.outcomes).toHaveLength(4);
+        expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
+
+        const bundleConfigPath = path.join(installDir!, "outcomelibrary-bundle-config.json");
+        fs.writeFileSync(bundleConfigPath, JSON.stringify({modes: [{modeName: "base", libraryPath: "outcomelibrary-base.json"}]}));
+        const bundleDir = path.join(installDir!, "outcomelibrary-bundle");
+        const bundleBuild = spawnSync(pokieBinPath, ["outcomelibrary", "build", bundleConfigPath, "--out", bundleDir], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
+        expect(bundleBuild.status).toBe(0);
+
+        const bundleValidate = spawnSync(pokieBinPath, ["outcomelibrary", "validate", bundleDir, "--deep"], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
+        expect(bundleValidate.status).toBe(0);
+    });
 });

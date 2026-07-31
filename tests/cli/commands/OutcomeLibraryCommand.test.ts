@@ -1,4 +1,16 @@
-import {OutcomeLibraryBundleModeInput, OutcomeLibraryBundleValidateOptions, OutcomeLibraryBundleWriteResult, ValidationIssue} from "pokie";
+import {EventEmitter} from "events";
+import {
+    GenerateExactWeightedOutcomeLibraryOptions,
+    GenerateExactWeightedOutcomeLibraryResult,
+    OutcomeLibraryBundleModeInput,
+    OutcomeLibraryBundleValidateOptions,
+    OutcomeLibraryBundleWriteResult,
+    OutcomeSpaceEstimate,
+    PokieGame,
+    ValidationIssue,
+    WeightedOutcomeLibraryGenerationCancelledError,
+    WeightedOutcomeLibraryGenerationError,
+} from "pokie";
 import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
 
 const CONFIG_PATH = "/project/outcomelibrary-config.json";
@@ -76,13 +88,13 @@ describe("OutcomeLibraryCommand", () => {
     it("rejects when run with no subcommand", async () => {
         const command = new OutcomeLibraryCommand("1.3.0");
 
-        await expect(command.run([])).rejects.toThrow(/Usage: pokie outcomelibrary build/);
+        await expect(command.run([])).rejects.toThrow(/Usage: pokie outcomelibrary generate/);
     });
 
     it("rejects on an unknown subcommand", async () => {
         const command = new OutcomeLibraryCommand("1.3.0");
 
-        await expect(command.run(["bogus"])).rejects.toThrow(/Usage: pokie outcomelibrary build/);
+        await expect(command.run(["bogus"])).rejects.toThrow(/Usage: pokie outcomelibrary generate/);
     });
 
     describe("build", () => {
@@ -280,6 +292,315 @@ describe("OutcomeLibraryCommand", () => {
             const command = new OutcomeLibraryCommand("1.3.0");
 
             await expect(command.run(["validate", "/project/bundle", "--bogus"])).rejects.toThrow(/Unknown option/);
+        });
+    });
+
+    describe("generate", () => {
+        const FAKE_GAME: PokieGame = {
+            getManifest: () => ({id: "slot-1", name: "Slot 1", version: "1.0.0"}),
+            createSession: () => {
+                throw new Error("createSession() should never be called by the generate CLI path");
+            },
+        };
+
+        function defaultGenerateResult(): GenerateExactWeightedOutcomeLibraryResult {
+            return {
+                library: {schemaVersion: 1, libraryId: "slot-1", outcomes: [{id: "o1", weight: 6, artifact: {}}]},
+                diagnostics: {
+                    algorithm: "pokie-exact-reel-enumeration-v1",
+                    strategy: "exact",
+                    totalOutcomeSpaceSize: 6,
+                    sampledRawCount: 6,
+                    pokieVersion: "1.3.0",
+                    game: {id: "slot-1", name: "Slot 1", version: "1.0.0"},
+                    generatedAt: "2026-01-01T00:00:00.000Z",
+                },
+            } as unknown as GenerateExactWeightedOutcomeLibraryResult;
+        }
+
+        function createGenerateCommand(overrides: {
+            loadGame?: (packageRoot: string) => Promise<PokieGame>;
+            generate?: (options: GenerateExactWeightedOutcomeLibraryOptions) => Promise<GenerateExactWeightedOutcomeLibraryResult>;
+            estimateSpace?: (game: PokieGame) => OutcomeSpaceEstimate;
+            writeFile?: (filePath: string, contents: string) => void;
+            loadJson?: (filePath: string) => unknown;
+            fileExists?: (filePath: string) => boolean;
+            removeFile?: (filePath: string) => void;
+            processHandle?: NodeJS.Process;
+        } = {}): OutcomeLibraryCommand {
+            return new OutcomeLibraryCommand(
+                "1.3.0",
+                undefined,
+                undefined,
+                overrides.loadJson ??
+                    (() => {
+                        throw new Error("no stub JSON configured");
+                    }),
+                undefined,
+                overrides.loadGame ?? (() => Promise.resolve(FAKE_GAME)),
+                overrides.generate ?? jest.fn(() => Promise.resolve(defaultGenerateResult())),
+                overrides.estimateSpace ?? (() => ({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)})),
+                overrides.writeFile ?? jest.fn(),
+                overrides.fileExists ?? (() => false),
+                overrides.removeFile ?? jest.fn(),
+                overrides.processHandle ?? (new EventEmitter() as unknown as NodeJS.Process),
+            );
+        }
+
+        it("loads the package, drives generation with contract-consistent options, writes --out and prints machine JSON", async () => {
+            const loadGame = jest.fn(() => Promise.resolve(FAKE_GAME));
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const writeFile = jest.fn();
+            const command = createGenerateCommand({loadGame, generate, writeFile});
+
+            const exitCode = await command.run([
+                "generate",
+                "/project/slot",
+                "--mode",
+                "base",
+                "--stake",
+                "1.5",
+                "--config-hash",
+                "sha256:abc",
+                "--library-id",
+                "custom-lib",
+                "--out",
+                "/project/base.json",
+                "--format",
+                "json",
+            ]);
+
+            expect(exitCode).toBe(0);
+            expect(loadGame).toHaveBeenCalledWith("/project/slot");
+            expect(generate).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    libraryId: "custom-lib",
+                    game: FAKE_GAME,
+                    pokieVersion: "1.3.0",
+                    configHash: "sha256:abc",
+                    betMode: "base",
+                    stake: 1.5,
+                }),
+            );
+            expect(writeFile).toHaveBeenCalledWith("/project/base.json", expect.stringContaining("slot-1"));
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain('"algorithm"');
+            expect(printed).toContain("pokie-exact-reel-enumeration-v1");
+        });
+
+        it("derives a default library id from the game manifest and --mode when --library-id is omitted", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            await command.run(["generate", "/project/slot", "--mode", "bonus"]);
+
+            expect(generate).toHaveBeenCalledWith(expect.objectContaining({libraryId: "slot-1-bonus"}));
+        });
+
+        it("prints a summary and the location of the written library when --format is the default", async () => {
+            const writeFile = jest.fn();
+            const command = createGenerateCommand({writeFile});
+
+            const exitCode = await command.run(["generate", "/project/slot", "--out", "/project/base.json"]);
+
+            expect(exitCode).toBe(0);
+            const printed = logSpy.mock.calls.flat().join("\n");
+            expect(printed).toContain("Generated outcome library");
+            expect(printed).toContain('Library written to "/project/base.json"');
+        });
+
+        it("--estimate reports the outcome space without invoking generation", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            const exitCode = await command.run(["generate", "/project/slot", "--estimate", "--format", "json"]);
+
+            expect(exitCode).toBe(0);
+            expect(generate).not.toHaveBeenCalled();
+            const printed = JSON.parse(logSpy.mock.calls[0][0]);
+            expect(printed).toMatchObject({
+                game: {id: "slot-1"},
+                reelSizes: [3, 2],
+                totalOutcomeSpaceSize: 6,
+                strategy: "exact",
+                requiresBounded: false,
+            });
+        });
+
+        it("--dry-run behaves the same as --estimate", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            const exitCode = await command.run(["generate", "/project/slot", "--dry-run", "--format", "json"]);
+
+            expect(exitCode).toBe(0);
+            expect(generate).not.toHaveBeenCalled();
+            const printed = JSON.parse(logSpy.mock.calls[0][0]);
+            expect(printed.strategy).toBe("exact");
+        });
+
+        it("flags the estimate as requiring --bounded once the space exceeds --max-outcome-space-size", async () => {
+            const command = createGenerateCommand();
+
+            await command.run(["generate", "/project/slot", "--estimate", "--max-outcome-space-size", "3", "--format", "json"]);
+
+            const printed = JSON.parse(logSpy.mock.calls[0][0]);
+            expect(printed.strategy).toBe("bounded-coverage");
+            expect(printed.requiresBounded).toBe(true);
+        });
+
+        it("requires --sample-size and --seed together with --bounded", async () => {
+            const command = createGenerateCommand();
+
+            await expect(command.run(["generate", "/project/slot", "--bounded", "--sample-size", "1000"])).rejects.toThrow(
+                /--bounded requires both --sample-size and --seed/,
+            );
+        });
+
+        it("rejects --sample-size/--seed given without --bounded", async () => {
+            const command = createGenerateCommand();
+
+            await expect(command.run(["generate", "/project/slot", "--sample-size", "1000", "--seed", "abc"])).rejects.toThrow(
+                /--sample-size and --seed require --bounded/,
+            );
+        });
+
+        it("passes bounded-coverage options through when --bounded/--sample-size/--seed are all given", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            await command.run(["generate", "/project/slot", "--bounded", "--sample-size", "1000", "--seed", "seed-1"]);
+
+            expect(generate).toHaveBeenCalledWith(expect.objectContaining({bounded: {sampleSize: BigInt(1000), seed: "seed-1"}}));
+        });
+
+        it("returns 1 and prints the failure code when generation fails closed with a WeightedOutcomeLibraryGenerationError", async () => {
+            const generate = jest.fn(() => {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-unsupported",
+                    '"slot-1" does not implement createExactEnumerationSession()',
+                );
+            });
+            const command = createGenerateCommand({generate});
+
+            const exitCode = await command.run(["generate", "/project/slot"]);
+
+            expect(exitCode).toBe(1);
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("weighted-outcome-library-generation-unsupported");
+        });
+
+        it("writes a resumable checkpoint and returns 130 when SIGINT cancels a run mid-sweep, given --resume", async () => {
+            const processHandle = new EventEmitter() as unknown as NodeJS.Process;
+            const grids = new Map([["[[\"A\"]]", {grid: [["A"]], weight: BigInt(2)}]]);
+            // The generate stub emits SIGINT itself, from inside the promise executor -- by this
+            // point executeGenerate has already registered its SIGINT listener (synchronously, before
+            // calling this.generate), so this is fully deterministic: no reliance on real timers or
+            // microtask ordering to land the signal "mid-sweep".
+            const generate = jest.fn(
+                (options: GenerateExactWeightedOutcomeLibraryOptions) =>
+                    new Promise<GenerateExactWeightedOutcomeLibraryResult>((_resolve, reject) => {
+                        options.signal?.addEventListener("abort", () => {
+                            reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), grids, "src-1"));
+                        });
+                        processHandle.emit("SIGINT");
+                    }),
+            );
+            const writeFile = jest.fn();
+            const command = createGenerateCommand({processHandle, generate, writeFile});
+
+            const exitCode = await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json"]);
+
+            expect(exitCode).toBe(130);
+            expect(writeFile).toHaveBeenCalledWith("/project/checkpoint.json", expect.any(String));
+            const written = JSON.parse((writeFile.mock.calls[0] as [string, string])[1]);
+            expect(written).toEqual({
+                processedRawIndex: "3",
+                progressTotal: "6",
+                sourceEnumerationId: "src-1",
+                grids: [["[[\"A\"]]", {grid: [["A"]], weight: "2"}]],
+            });
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("Checkpoint written");
+            // The SIGINT listener registered for this run must not leak into the next one.
+            expect((processHandle as unknown as EventEmitter).listenerCount("SIGINT")).toBe(0);
+        });
+
+        it("returns 130 without writing a checkpoint when SIGINT cancels a run with no --resume given", async () => {
+            const processHandle = new EventEmitter() as unknown as NodeJS.Process;
+            const generate = jest.fn(
+                (options: GenerateExactWeightedOutcomeLibraryOptions) =>
+                    new Promise<GenerateExactWeightedOutcomeLibraryResult>((_resolve, reject) => {
+                        options.signal?.addEventListener("abort", () => {
+                            reject(new WeightedOutcomeLibraryGenerationCancelledError(BigInt(3), BigInt(6), new Map(), "src-1"));
+                        });
+                        processHandle.emit("SIGINT");
+                    }),
+            );
+            const writeFile = jest.fn();
+            const command = createGenerateCommand({processHandle, generate, writeFile});
+
+            const exitCode = await command.run(["generate", "/project/slot"]);
+
+            expect(exitCode).toBe(130);
+            expect(writeFile).not.toHaveBeenCalled();
+            expect(errorSpy.mock.calls.flat().join("\n")).toContain("no --resume");
+        });
+
+        it("reads an existing --resume checkpoint file and threads it into resumeFrom, re-hydrating its bigints", async () => {
+            const serialized = {
+                processedRawIndex: "3",
+                progressTotal: "6",
+                sourceEnumerationId: "src-1",
+                grids: [["[[\"A\"]]", {grid: [["A"]], weight: "2"}]],
+            };
+            const loadJson = jest.fn((filePath: string) => {
+                if (filePath !== "/project/checkpoint.json") {
+                    throw new Error(`no stub JSON for "${filePath}"`);
+                }
+                return serialized;
+            });
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({loadJson, generate, fileExists: () => true});
+
+            await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json"]);
+
+            expect(generate).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    resumeFrom: {
+                        processedRawIndex: BigInt(3),
+                        progressTotal: BigInt(6),
+                        sourceEnumerationId: "src-1",
+                        grids: new Map([["[[\"A\"]]", {grid: [["A"]], weight: BigInt(2)}]]),
+                    },
+                }),
+            );
+        });
+
+        it("removes a stale --resume checkpoint file once generation completes successfully", async () => {
+            const removeFile = jest.fn();
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({
+                generate,
+                removeFile,
+                fileExists: () => true,
+                loadJson: () => ({processedRawIndex: "0", progressTotal: "6", sourceEnumerationId: "src-1", grids: []}),
+            });
+
+            const exitCode = await command.run(["generate", "/project/slot", "--resume", "/project/checkpoint.json"]);
+
+            expect(exitCode).toBe(0);
+            expect(removeFile).toHaveBeenCalledWith("/project/checkpoint.json");
+        });
+
+        it("throws a descriptive error when no packageRoot is given", async () => {
+            const command = createGenerateCommand();
+
+            await expect(command.run(["generate"])).rejects.toThrow(/Usage: pokie outcomelibrary generate/);
+        });
+
+        it("throws on an unknown option", async () => {
+            const command = createGenerateCommand();
+
+            await expect(command.run(["generate", "/project/slot", "--bogus"])).rejects.toThrow(/Unknown option/);
         });
     });
 });

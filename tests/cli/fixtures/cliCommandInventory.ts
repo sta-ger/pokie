@@ -323,8 +323,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "outcomelibrary",
         description:
-            "Build a canonical POKIE outcome-library persistence bundle from WeightedOutcomeLibrary JSON files, or validate one " +
-            '("pokie outcomelibrary build <config.json>" / "pokie outcomelibrary validate <bundleDir>").',
+            "Generate a WeightedOutcomeLibrary from a built package's own runtime (exact reel-stop enumeration), or " +
+            "build a canonical outcome-library persistence bundle from WeightedOutcomeLibrary JSON files, or validate one " +
+            '("pokie outcomelibrary generate <packageRoot>" / "pokie outcomelibrary build <config.json>" / ' +
+            '"pokie outcomelibrary validate <bundleDir>").',
         verbs: [
             {
                 verb: "build",
@@ -339,6 +341,46 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage: "Usage: pokie outcomelibrary validate <bundleDir> [--deep]",
                 positionals: ["bundleDir"],
                 options: [{flag: "--deep", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"}],
+            },
+            {
+                verb: "generate",
+                usage:
+                    "Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>] " +
+                    "[--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+                    "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+                    "[--resume <file>] [--progress] [--format json]",
+                positionals: ["packageRoot"],
+                options: [
+                    {flag: "--mode", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "base"},
+                    {flag: "--stake", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "1.5"},
+                    {flag: "--config-hash", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "sha256:abc"},
+                    // defaultValue "fixture-slot": with no --mode/--library-id, executeGenerate derives libraryId from
+                    // the loaded game's own manifest.id alone (see OutcomeLibraryCommand's own comment) -- observed at
+                    // the injected generate() call's own options.libraryId.
+                    {flag: "--library-id", required: false, kind: "unvalidated", defaultValue: "fixture-slot", acceptedValue: "custom-lib"},
+                    {flag: "--max-outcome-space-size", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "1000000"},
+                    {flag: "--bounded", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    // --sample-size/--seed are only meaningfully required together with --bounded (a cross-field,
+                    // all-or-nothing group, already frozen by this file's own dedicated group-level invalid cases) --
+                    // same "grouped" convention as sim's own --min-rounds/--rtp-tolerance/--check-interval/--stable-checks.
+                    {flag: "--sample-size", required: false, kind: "grouped", defaultValue: "undefined", acceptedValue: "1000"},
+                    {flag: "--seed", required: false, kind: "grouped", defaultValue: "undefined", acceptedValue: "seed-1"},
+                    // --estimate/--dry-run have no dependency-argument seam of their own (both short-circuit to the
+                    // same estimateSpace probe, observed inline from that stub); default "false" is observed from
+                    // inside the real generate() stub instead, since reaching it at all proves neither flag fired.
+                    {flag: "--estimate", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    // defaultValue "undefined": no --out means printGenerateResult never calls writeFile at all --
+                    // observed via deferValueUnlessCalled, same convention as replay/report/par's own --out.
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "out.json"},
+                    // defaultValue "undefined": no --resume means fileExists(options.resume) is never called at all
+                    // (guarded on options.resume !== undefined) -- observed via deferValueUnlessCalled.
+                    {flag: "--resume", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "checkpoint.json"},
+                    {flag: "--progress", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    // --format has no dependency seam (json vs the human summary) -- observed via stdout shape, same
+                    // STDOUT_FORMAT_FLAGS convention diff/par/sim/stakeengine/validate already use.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                ],
             },
         ],
     },
@@ -1277,7 +1319,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: [],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie outcomelibrary build <config.json> [--out <dir>]\n" +
+            "Usage: pokie outcomelibrary generate <packageRoot> [options]\n" +
+            "   or: pokie outcomelibrary build <config.json> [--out <dir>]\n" +
             "   or: pokie outcomelibrary validate <bundleDir> [--deep]\n" +
             '<config.json> lists one outcome source per mode, either a plain WeightedOutcomeLibrary JSON file — ' +
             '{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}, ...]} — which is fully loaded into ' +
@@ -1340,6 +1383,262 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "validate <bundleDir> --deep (accepted --deep flag)",
         args: ["validate", "bundleDir", "--deep"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate missing <packageRoot>",
+        args: ["generate"],
+        expectedExitCode: 1,
+        expectedError:
+            "Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>] " +
+            "[--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]\n" +
+            '<packageRoot> is a package built by "pokie build" (or any package loadPokieGame() can require) whose game ' +
+            "opts into exact enumeration via PokieGame.createExactEnumerationSession -- see docs/weighted-outcome-library.md#generation. " +
+            "Drives the same session/win-calculation runtime a live round uses; a stateful/unbounded mechanic (e.g. free " +
+            "games) has no exact strategy and fails closed instead of guessing.",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --stake must be a positive number",
+        args: ["generate", "pkg", "--stake", "0"],
+        expectedExitCode: 1,
+        expectedError:
+            "--stake must be a positive number. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --max-outcome-space-size must be a positive integer",
+        args: ["generate", "pkg", "--max-outcome-space-size", "abc"],
+        expectedExitCode: 1,
+        expectedError:
+            "--max-outcome-space-size must be a positive integer. Usage: pokie outcomelibrary generate <packageRoot> " +
+            "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
+            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--out <file>] [--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --format only supports json",
+        args: ["generate", "pkg", "--format", "xml"],
+        expectedExitCode: 1,
+        expectedError:
+            '--format only supports "json". Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] ' +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --bounded requires --sample-size and --seed together",
+        args: ["generate", "pkg", "--bounded", "--sample-size", "1000"],
+        expectedExitCode: 1,
+        expectedError:
+            "--bounded requires both --sample-size and --seed. Usage: pokie outcomelibrary generate <packageRoot> " +
+            "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
+            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--out <file>] [--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --sample-size/--seed given without --bounded",
+        args: ["generate", "pkg", "--sample-size", "1000", "--seed", "abc"],
+        expectedExitCode: 1,
+        expectedError:
+            "--sample-size and --seed require --bounded. Usage: pokie outcomelibrary generate <packageRoot> " +
+            "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
+            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--out <file>] [--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --mode given with no value",
+        args: ["generate", "pkg", "--mode"],
+        expectedExitCode: 1,
+        expectedError:
+            "--mode requires a bet mode id. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --stake given with no value",
+        args: ["generate", "pkg", "--stake"],
+        expectedExitCode: 1,
+        expectedError:
+            "--stake must be a positive number. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --config-hash given with no value",
+        args: ["generate", "pkg", "--config-hash"],
+        expectedExitCode: 1,
+        expectedError:
+            "--config-hash requires a value. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --library-id given with no value",
+        args: ["generate", "pkg", "--library-id"],
+        expectedExitCode: 1,
+        expectedError:
+            "--library-id requires a value. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --max-outcome-space-size given with no value",
+        args: ["generate", "pkg", "--max-outcome-space-size"],
+        expectedExitCode: 1,
+        expectedError:
+            "--max-outcome-space-size must be a positive integer. Usage: pokie outcomelibrary generate <packageRoot> " +
+            "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
+            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--out <file>] [--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --sample-size given with no value",
+        args: ["generate", "pkg", "--sample-size"],
+        expectedExitCode: 1,
+        expectedError:
+            "--sample-size must be a positive integer. Usage: pokie outcomelibrary generate <packageRoot> " +
+            "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
+            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--out <file>] [--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --seed given with no value",
+        args: ["generate", "pkg", "--seed"],
+        expectedExitCode: 1,
+        expectedError:
+            "--seed requires a value. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --out given with no value",
+        args: ["generate", "pkg", "--out"],
+        expectedExitCode: 1,
+        expectedError:
+            "--out requires a file path. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --resume given with no value",
+        args: ["generate", "pkg", "--resume"],
+        expectedExitCode: 1,
+        expectedError:
+            "--resume requires a file path. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --format given with no value",
+        args: ["generate", "pkg", "--format"],
+        expectedExitCode: 1,
+        expectedError:
+            '--format only supports "json". Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] ' +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "valid",
+        label: "generate <packageRoot> (no options — default output/estimate off, human summary)",
+        args: ["generate", "pkg"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "valid",
+        label: "generate <packageRoot> --mode --stake --config-hash --library-id --max-outcome-space-size --out --resume --progress --format json (accepted values, main flow)",
+        args: [
+            "generate",
+            "pkg",
+            "--mode",
+            "base",
+            "--stake",
+            "1.5",
+            "--config-hash",
+            "sha256:abc",
+            "--library-id",
+            "custom-lib",
+            "--max-outcome-space-size",
+            "1000000",
+            "--out",
+            "out.json",
+            "--resume",
+            "checkpoint.json",
+            "--progress",
+            "--format",
+            "json",
+        ],
+        expectedExitCode: 0,
+        expectStdout: "json",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "valid",
+        label: "generate <packageRoot> --bounded --sample-size --seed (accepted bounded-coverage options)",
+        args: ["generate", "pkg", "--bounded", "--sample-size", "1000", "--seed", "seed-1"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "valid",
+        label: "generate <packageRoot> --estimate (accepted --estimate flag)",
+        args: ["generate", "pkg", "--estimate"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "valid",
+        label: "generate <packageRoot> --dry-run (accepted --dry-run flag)",
+        args: ["generate", "pkg", "--dry-run"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
