@@ -85,6 +85,137 @@ function formatScreenCell(cell: unknown): string {
     return JSON.stringify(cell);
 }
 
+// The Runtime tab's own "Retry last request" panel needs an honest answer to "what, exactly, would
+// retrying send" -- not just a disabled/enabled button. `lastSpin` (the most recent spin actually made
+// by useRuntimeManager in *this* Studio session) is the only source that carries the original
+// `expectedVersion` alongside the request id, since that value is never persisted server-side onto a
+// recorded round -- so a byte-for-byte resend is only ever possible for it. A round picked from history
+// instead (any entry in the session's own recentSpins list, including one from *before* this Studio
+// session even loaded it) still carries its own `studioRequestId`, which is enough for a genuine
+// idempotent replay (the server dedupes purely on (sessionId, requestId), see
+// StudioRuntimeManager.recordRecentSpin()'s own doc comment) -- just without the optimistic-locking
+// version, which this is honest about rather than fabricating a plausible-looking value.
+export type RetryRequestDetail =
+    | {status: "unavailable"; reason: string}
+    | {
+          status: "available";
+          sessionId: string;
+          requestId: string;
+          expectedVersion: number | undefined;
+          round: number | undefined;
+          recordedAt: string | undefined;
+          idempotencyNote: string;
+          command: string;
+      };
+
+export function describeRetryRequest(params: {
+    sessionId: string | undefined;
+    baseUrl: string | undefined;
+    lastSpin: {requestId?: string; expectedVersion?: number};
+    selectedRound: StudioRuntimeSessionView | undefined;
+}): RetryRequestDetail {
+    const {sessionId, baseUrl, lastSpin, selectedRound} = params;
+    if (sessionId === undefined) {
+        return {status: "unavailable", reason: "Create or restore a session first."};
+    }
+
+    // The literal last spin this Studio session made -- exact, including its original expectedVersion --
+    // whenever the selected round agrees with it (or nothing else was ever selected).
+    if (lastSpin.requestId !== undefined && (selectedRound === undefined || selectedRound.studioRequestId === lastSpin.requestId)) {
+        return {
+            status: "available",
+            sessionId,
+            requestId: lastSpin.requestId,
+            expectedVersion: lastSpin.expectedVersion,
+            round: selectedRound?.studioRound,
+            recordedAt: selectedRound?.studioRecordedAt,
+            idempotencyNote:
+                lastSpin.expectedVersion === undefined
+                    ? "Resending the same request id replays this exact result instead of playing a new round -- no optimistic-locking version was sent with the original request."
+                    : `Resending the same request id and expected session version ${lastSpin.expectedVersion} replays this exact result instead of playing a new round.`,
+            command: buildSpinCommand(baseUrl, sessionId, lastSpin.requestId, lastSpin.expectedVersion),
+        };
+    }
+
+    if (selectedRound?.studioRequestId !== undefined) {
+        return {
+            status: "available",
+            sessionId,
+            requestId: selectedRound.studioRequestId,
+            expectedVersion: undefined,
+            round: selectedRound.studioRound,
+            recordedAt: selectedRound.studioRecordedAt,
+            idempotencyNote:
+                "Selected from round history rather than this Studio session's own last spin, so its original optimistic-locking version isn't tracked -- resending its request id still replays this exact round (the server dedupes on request id alone), just without a version check.",
+            command: buildSpinCommand(baseUrl, sessionId, selectedRound.studioRequestId, undefined),
+        };
+    }
+
+    if (selectedRound !== undefined) {
+        return {status: "unavailable", reason: "The selected round has no request id on record, so there's nothing to retry -- pick a different round from history below."};
+    }
+
+    return {status: "unavailable", reason: "No request has been made yet in this session -- spin a round, or pick one from history below."};
+}
+
+function buildSpinCommand(baseUrl: string | undefined, sessionId: string, requestId: string, expectedVersion: number | undefined): string {
+    const body: Record<string, unknown> = {requestId};
+    if (expectedVersion !== undefined) {
+        body.expectedSessionVersion = expectedVersion;
+    }
+    const url = `${baseUrl ?? "http://<runtime-not-running>"}/sessions/${encodeURIComponent(sessionId)}/spin?debug=1`;
+    return `curl -s -X POST '${url}' -H 'Content-Type: application/json' -d '${JSON.stringify(body)}'`;
+}
+
+// "Debug this round"'s own honest gate -- distinct reasons for distinct fixes, since "no round selected"
+// (pick one below), "the runtime itself never captured trace data" (restart with debug mode on), and "this
+// particular round has no trace data on record" (pick a different round, or spin a new one -- restarting
+// can't retroactively give an already-recorded round the trace it never captured) call for entirely
+// different recovery actions, and conflating them into one generic "can't debug" message would leave the
+// user guessing which applies. `canRestartWithDebug` is only ever true for the runtime-wide case --
+// restarting fixes nothing about a missing selection nor about a specific round that predates debug mode
+// being turned on. The gate itself is keyed off `selectedRound.debug` -- StudioRuntimeSessionView's own
+// per-round trace payload -- never off whatever the *currently running* server reports, since a round
+// selected from history can predate a later restart that turned debug mode on (see
+// StudioRuntimeSessionView's own doc comment: `debug` reflects whether *that round* was captured with
+// debug mode on, not whether the server is running with it on right now).
+export type DebugAvailability =
+    | {status: "ready"; requestId: string; round: number | undefined}
+    | {status: "blocked"; reason: string; canRestartWithDebug: boolean};
+
+export function describeDebugAvailability(params: {
+    sessionReachable: boolean;
+    selectedRound: StudioRuntimeSessionView | undefined;
+    debugEnabled: boolean | undefined;
+}): DebugAvailability {
+    const {sessionReachable, selectedRound, debugEnabled} = params;
+    if (!sessionReachable) {
+        return {status: "blocked", reason: "Create or restore a session first.", canRestartWithDebug: false};
+    }
+    if (selectedRound === undefined) {
+        return {status: "blocked", reason: "Select a round from history below to debug.", canRestartWithDebug: false};
+    }
+    if (selectedRound.studioRequestId === undefined) {
+        return {status: "blocked", reason: "The selected round has no request id on record, so Replay & Debug can't look it up.", canRestartWithDebug: false};
+    }
+    if (selectedRound.debug === undefined) {
+        if (debugEnabled !== true) {
+            return {
+                status: "blocked",
+                reason: "This runtime was started without debug mode, so rounds carry no internal trace data to inspect.",
+                canRestartWithDebug: true,
+            };
+        }
+        return {
+            status: "blocked",
+            reason:
+                "The selected round has no debug trace data on record -- it was likely played before debug mode was turned on for this runtime, and that trace can't be produced retroactively. Spin a new round, or pick a different one from history below.",
+            canRestartWithDebug: false,
+        };
+    }
+    return {status: "ready", requestId: selectedRound.studioRequestId, round: selectedRound.studioRound};
+}
+
 // Same role as interpretReplay.ts's own ReplayListView — distinguishes "no spins recorded yet this
 // runtime instance" from "here's the list". Shared by both the Runtime tab's own "round history for
 // this session" and the Replay & Debug tab's "Session Spin" find method, since both read the exact same
