@@ -32,6 +32,14 @@ export type ExpectedReplayState =
           stateAfter?: unknown;
       };
 
+// Two genuinely different kinds of source, kept as separate modes rather than folded into one picker
+// state: "seedRound"/"simulation"/"artifact" all reproduce forward -- Reproduce below always creates a
+// brand-new game session and replays it from round 1 through the target round (confirmed against
+// StudioReplayExecutionService.run()), whether or not the seed happens to match something recorded
+// before. "spin" is the opposite: an *existing* recorded round, looked up (not recreated) by the
+// runtime session's own identity -- sessionId + studioRequestId (and studioRound as that session's own
+// round index) -- with nothing to reproduce at all. Conflating the two would misrepresent a fresh
+// replay as if it were retrieving the original round's actual history.
 type FindMethod = "seedRound" | "artifact" | "spin" | "simulation";
 type FindFormValues = {round: number; seed: string};
 
@@ -44,6 +52,19 @@ const SOURCE_EMPTY_PROMPT: Record<FindMethod, string> = {
     artifact: "Paste a replay artifact, or pick one from Recent Replays above, to validate it.",
     spin: "Pick a spin above to view its details.",
     simulation: "Pick a simulation and round above to load it.",
+};
+
+// Short labels for the run result's own "Reproducibility" row -- distinct wording (never the exact
+// COMPARISON_BANNER title RoundArtifactInspector renders for the same comparison, which stays the
+// authoritative detail view just below) so the two never collide as duplicate text in the same page.
+// Only "Replay Artifact" ever has a known prior result to compare against at all (see reproduceTarget's
+// own doc comment) -- every other source's run is honestly "not verified" rather than silently omitting
+// the row.
+const COMPARISON_STATUS_LABEL: Record<ReplayComparisonView["status"], string> = {
+    match: "Verified -- matches the expected result",
+    mismatch: "Verified -- differs from the expected result",
+    partial: "Partially verified against the expected result",
+    unavailable: "Verification unavailable",
 };
 
 function downloadJsonBlob(filename: string, data: unknown): void {
@@ -59,8 +80,8 @@ function downloadJsonBlob(filename: string, data: unknown): void {
 // Replay has no single sequential order shared by every source, so this doesn't use a Stepper (the
 // previous design's Find -> Load -> Reproduce -> Inspect -> Export pages). "Session Spin" is already
 // a recorded result with nothing to reproduce; "Replay Artifact" adds a validate-then-optionally-
-// reproduce gate the other three don't have; "Seed & Round"/"Recent Simulation" are fresh attempts
-// with no prior result to compare against at all. Forcing all four through the same five-page
+// reproduce gate the other three don't have; "Recreate from seed"/"Recent Simulation" are fresh
+// attempts with no prior result to compare against at all. Forcing all four through the same five-page
 // sequence meant most sources skipped or faked pages that didn't apply to them (a permanently-
 // disabled Reproduce page for Session Spin, an inert confirm page for the others). This instead
 // renders one page: a source choice, that source's own configuration/load controls, then -- once
@@ -237,7 +258,7 @@ export function ReplayTab({
     }
 
     // `resultReady` distinguishes "just configured/validated, nothing reproduced yet" (false --
-    // Seed & Round/Recent Simulation loading a target, Replay Artifact validating) from "already has
+    // Recreate from seed/Recent Simulation loading a target, Replay Artifact validating) from "already has
     // a concrete result to show" (true -- only the Recent Replays "Inspect" shortcut, which loads a
     // completed result directly with no reproduce step at all). It doubles as the initial value of
     // `jobLoaded`: false correctly means this fresh target has no job of its own yet (any progress/
@@ -254,13 +275,13 @@ export function ReplayTab({
     }
 
     const isCurrentSourceLoaded = findMethod === loadedForMethod;
-    // Seed & Round / Recent Simulation share one "loaded target" shape: the round/seed the user
+    // Recreate from seed / Recent Simulation share one "loaded target" shape: the round/seed the user
     // configured, or -- reached via Recent Replays' "Inspect" shortcut, which loads a result directly
     // without going through Load -- the round/seed of the result itself.
     const target = pending ?? (result ? {round: result.round, seed: result.seed ?? undefined} : undefined);
 
     // Only a "Replay Artifact" record (pasted or picked from Recent Replays) carries known
-    // seed/provenance to check up front — Seed & Round/Recent Simulation are fresh attempts that never
+    // seed/provenance to check up front — Recreate from seed/Recent Simulation are fresh attempts that never
     // claim to reproduce one *specific* prior result, and Session Spin has nothing to reproduce at all.
     const artifactReproducibility =
         expected.status === "loaded"
@@ -277,6 +298,14 @@ export function ReplayTab({
         reproduceTarget = target ? {round: target.round, seed: target.seed} : undefined;
     }
     const reproduceDisabled = findMethod === "artifact" && artifactReproducibility?.status === "blocked";
+    // What the run result's own "Reproducibility" row (below) reports -- only "Replay Artifact" ever
+    // has a known prior result loaded to actually compare a fresh run against (`comparison`, built from
+    // `expected`); Recreate from seed/Recent Simulation are always a fresh forward replay with nothing to
+    // compare, so their honest status is "not verified", never a guessed match/mismatch.
+    const runReproducibilityLabel =
+        findMethod === "artifact" && comparison
+            ? COMPARISON_STATUS_LABEL[comparison.status]
+            : "Not verified -- a fresh forward replay with no prior recorded result to compare against.";
     // Export is an action, not a page: always visible (disabled until there's something to export)
     // rather than gated behind navigating anywhere. Ready exactly once the *currently loaded* source
     // has something to export -- `isCurrentSourceLoaded` keeps this from staying enabled off a stale
@@ -297,7 +326,7 @@ export function ReplayTab({
                 value={findMethod}
                 onChange={(value) => switchSource(value as FindMethod)}
                 data={[
-                    {label: "Seed & Round", value: "seedRound"},
+                    {label: "Recreate from seed", value: "seedRound"},
                     {label: "Replay Artifact", value: "artifact"},
                     {label: "Session Spin", value: "spin"},
                     {label: "Recent Simulation", value: "simulation"},
@@ -309,7 +338,19 @@ export function ReplayTab({
             {findMethod === "seedRound" && (
                 <form onSubmit={form.onSubmit((values) => loadTarget(values.round, values.seed.trim() || undefined))}>
                     <QuickActions>
-                        <NumberInput label="Round" min={1} step={1} required {...form.getInputProps("round")} key={form.key("round")} />
+                        {/* Confirmed against StudioReplayExecutionService.run(): Reproduce below creates a brand-new
+                            game session (game.createSession()) and plays it forward through round 1, 2, ... up to
+                            this number -- it never seeks into or looks up an existing session's history, so the
+                            label/description here say so plainly rather than reading like a round lookup. */}
+                        <NumberInput
+                            label="Target round number in a new replay session"
+                            description="Reproducing plays a brand-new session forward from round 1 up to this round -- it doesn't look up an existing recorded round."
+                            min={1}
+                            step={1}
+                            required
+                            {...form.getInputProps("round")}
+                            key={form.key("round")}
+                        />
                         <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
                         <Button type="submit">Load</Button>
                     </QuickActions>
@@ -639,9 +680,20 @@ export function ReplayTab({
                     )}
 
                     {(findMethod === "seedRound" || findMethod === "simulation") && target && (
-                        <Text size="sm" mb="sm">
-                            Round {target.round}, seed {target.seed ?? "(none)"}.
-                        </Text>
+                        <div>
+                            <Text size="sm" mb={4}>
+                                Round {target.round}, seed {target.seed ?? "(none)"}.
+                            </Text>
+                            {/* The pre-run summary: honest about what Reproduce below actually does (confirmed
+                                against StudioReplayExecutionService.run()) -- a brand-new game session, played
+                                forward from round 1 through the target round. Never a lookup of any existing
+                                session/round, even when the seed matches one that was recorded before. */}
+                            <Text size="sm" c="dimmed" mb="sm">
+                                Reproducing will create a new replay session and play it forward from round 1 through
+                                round {target.round}, using {target.seed ? `seed "${target.seed}"` : "a freshly generated seed"}, to
+                                reach round {target.round}.
+                            </Text>
+                        </div>
                     )}
 
                     {/* Shared action bar + progress + result view for every non-spin source once its own
@@ -685,6 +737,44 @@ export function ReplayTab({
                                 </div>
                             )}
 
+                            {/* The run's own record, honest about what actually ran (see runReproducibilityLabel's
+                                own doc comment): which replay session produced this, the round the caller asked
+                                for vs. the round the session actually reached, the seed used, when it ran, and
+                                whether it was ever checked against a known-good prior result. Shown once for
+                                every source here rather than duplicated per-branch below (RoundArtifactInspector
+                                itself is shared with Runtime/Deployment and has no notion of a "replay session"
+                                to show this for). */}
+                            {jobLoaded && !active && result && (
+                                <Table withRowBorders={false} mb="sm">
+                                    <Table.Tbody>
+                                        <Table.Tr>
+                                            <Table.Th>Replay session</Table.Th>
+                                            <Table.Td style={{overflowWrap: "anywhere"}}>{result.id}</Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Requested round</Table.Th>
+                                            <Table.Td>{reproduceTarget.round}</Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Actual round reached</Table.Th>
+                                            <Table.Td>{result.round}</Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Seed</Table.Th>
+                                            <Table.Td>{result.seed ?? "(none)"}</Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Run at</Table.Th>
+                                            <Table.Td>{new Date(result.timestamp).toLocaleString()}</Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Reproducibility</Table.Th>
+                                            <Table.Td>{runReproducibilityLabel}</Table.Td>
+                                        </Table.Tr>
+                                    </Table.Tbody>
+                                </Table>
+                            )}
+
                             {jobLoaded && !active && result?.artifact && (
                                 <RoundArtifactInspector
                                     artifact={result.artifact}
@@ -704,24 +794,12 @@ export function ReplayTab({
                                                 </Table.Td>
                                             </Table.Tr>
                                             <Table.Tr>
-                                                <Table.Th>Round</Table.Th>
-                                                <Table.Td>{result.round}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Seed</Table.Th>
-                                                <Table.Td>{result.seed ?? "(none)"}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
                                                 <Table.Th>Total bet</Table.Th>
                                                 <Table.Td>{result.totalBet.toFixed(2)}</Table.Td>
                                             </Table.Tr>
                                             <Table.Tr>
                                                 <Table.Th>Total payout</Table.Th>
                                                 <Table.Td>{result.totalWin.toFixed(2)}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Timestamp</Table.Th>
-                                                <Table.Td>{new Date(result.timestamp).toLocaleString()}</Table.Td>
                                             </Table.Tr>
                                             <Table.Tr>
                                                 <Table.Th>Duration</Table.Th>

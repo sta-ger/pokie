@@ -97,7 +97,7 @@ function listEntryFor(id: string, overrides: Partial<StudioReplayListEntry> = {}
 async function goToReplayTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Replay"}));
-    await screen.findByRole("radio", {name: "Seed & Round"});
+    await screen.findByRole("radio", {name: "Recreate from seed"});
 }
 
 // Each comparison-dimension row (RoundArtifactInspector's own <List.Item>) renders its label and its
@@ -113,7 +113,7 @@ function dimensionRow(label: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Replay & Debug workflow", () => {
-    it("runs a Seed & Round replay, inspects the full artifact with step navigation, and exports it", async () => {
+    it("runs a Recreate from seed replay, inspects the full artifact with step navigation, and exports it", async () => {
         const user = userEvent.setup();
         let pollCount = 0;
         const twoStepArtifact = artifactFor({
@@ -822,7 +822,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
         await user.click(screen.getByRole("button", {name: "Replay"}));
-        await screen.findByRole("radio", {name: "Seed & Round"});
+        await screen.findByRole("radio", {name: "Recreate from seed"});
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
 
         // Project A's slow response finally resolves -- must never reach project B's now-mounted UI.
@@ -1006,8 +1006,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(within(recentReplaysSection).getByRole("button", {name: "Inspect"}));
 
         expect(await within(recentReplaysSection).findByText("That replay no longer exists.")).toBeInTheDocument();
-        // Still on Seed & Round with nothing loaded -- the failed fetch never marked anything loaded.
-        expect(screen.getByRole("radio", {name: "Seed & Round"})).toBeInTheDocument();
+        // Still on Recreate from seed with nothing loaded -- the failed fetch never marked anything loaded.
+        expect(screen.getByRole("radio", {name: "Recreate from seed"})).toBeInTheDocument();
         expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
     });
 
@@ -1051,8 +1051,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.queryByText(/Round 1, seed demo-seed\./)).not.toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
 
-        // Switching back to Seed & Round starts fresh too -- nothing carried over either direction.
-        await user.click(screen.getByRole("radio", {name: "Seed & Round"}));
+        // Switching back to Recreate from seed starts fresh too -- nothing carried over either direction.
+        await user.click(screen.getByRole("radio", {name: "Recreate from seed"}));
         expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     }, 60000);

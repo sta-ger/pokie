@@ -325,7 +325,7 @@ function screensEqual(a: readonly (readonly (string | number)[])[], b: readonly 
 }
 
 // Gates the Reproduce step for a "Replay Artifact" record (a pasted or previously-stored replay,
-// as opposed to a fresh Seed & Round/Recent Simulation attempt, which never claims to reproduce a
+// as opposed to a fresh Recreate from seed/Recent Simulation attempt, which never claims to reproduce a
 // *specific* prior result and so is never gated by this) — reproducing forward from round 1 is only
 // ever a faithful, *verifiable* match of the original result when the seed and exact game build that
 // produced it are known, AND — whenever the record carries a round artifact at all — its own game

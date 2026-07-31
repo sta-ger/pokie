@@ -163,7 +163,7 @@ describe("Advanced tab Stepper inventory baseline", () => {
     // Find -> Load -> Reproduce -> Inspect -> Export Stepper was replaced with a source choice, whose
     // own configuration/load controls, loaded card, action bar, and result view render inline instead
     // of behind separate pages.
-    it("Replay: a source choice (Seed & Round, Replay Artifact, Session Spin, Recent Simulation), not a linear Stepper", async () => {
+    it("Replay: a source choice (Recreate from seed, Replay Artifact, Session Spin, Recent Simulation), not a linear Stepper", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
         renderRoutedApp({fetchImpl, initialEntries: ["/project/replay"]});
         await screen.findByRole("heading", {name: "My Slot"});
@@ -172,12 +172,12 @@ describe("Advanced tab Stepper inventory baseline", () => {
 
         const sourcePicker = screen.getByRole("radiogroup", {name: "Find method"});
         expectStepsInOrder([
-            within(sourcePicker).getByRole("radio", {name: "Seed & Round"}),
+            within(sourcePicker).getByRole("radio", {name: "Recreate from seed"}),
             within(sourcePicker).getByRole("radio", {name: "Replay Artifact"}),
             within(sourcePicker).getByRole("radio", {name: "Session Spin"}),
             within(sourcePicker).getByRole("radio", {name: "Recent Simulation"}),
         ]);
-        expect(screen.getByRole("radio", {name: "Seed & Round"})).toBeChecked();
+        expect(screen.getByRole("radio", {name: "Recreate from seed"})).toBeChecked();
         // Nothing loaded yet under the default source -- the source-specific empty prompt shows instead
         // of a loaded card/action bar/result view.
         expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
