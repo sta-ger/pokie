@@ -4,7 +4,19 @@ import {useEffect, useState} from "react";
 import {useLocation} from "react-router-dom";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
-import {describeReplayReproducibility, type ReplayComparisonView, type ReplayListView, type ReplayProgressView, type ReplayResultView} from "../../domain/interpret/Replay";
+import {
+    describeLoadedReplay,
+    describeReplayEntryStatus,
+    describeReplayReproducibility,
+    isReplayListEntryReproducible,
+    type LoadedReplayCardView,
+    type ReplayCapabilitiesView,
+    type ReplayCapabilityStatus,
+    type ReplayComparisonView,
+    type ReplayListView,
+    type ReplayProgressView,
+    type ReplayResultView,
+} from "../../domain/interpret/Replay";
 import type {ReportListView} from "../../domain/interpret/Reports";
 import {describeRuntimeScreen, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {useConfirm} from "../../hooks/useConfirm";
@@ -65,6 +77,28 @@ const COMPARISON_STATUS_LABEL: Record<ReplayComparisonView["status"], string> = 
     mismatch: "Verified -- differs from the expected result",
     partial: "Partially verified against the expected result",
     unavailable: "Verification unavailable",
+};
+
+// The four capabilities the Loaded replay card below shows for every source -- same order regardless
+// of which is actually available, so a reader can compare across a source switch without the rows
+// reshuffling.
+const CAPABILITY_ROWS: {key: keyof ReplayCapabilitiesView; label: string}[] = [
+    {key: "inspectable", label: "Inspectable"},
+    {key: "reproducible", label: "Reproducible"},
+    {key: "comparable", label: "Comparable"},
+    {key: "exportable", label: "Exportable"},
+];
+
+const CAPABILITY_STATUS_LABEL: Record<ReplayCapabilityStatus, string> = {
+    available: "Available",
+    bestEffort: "Best effort",
+    unavailable: "Unavailable",
+};
+
+const CAPABILITY_STATUS_COLOR: Record<ReplayCapabilityStatus, string> = {
+    available: "teal",
+    bestEffort: "yellow",
+    unavailable: "gray",
 };
 
 function downloadJsonBlob(filename: string, data: unknown): void {
@@ -314,6 +348,31 @@ export function ReplayTab({
         (findMethod === "spin" && isCurrentSourceLoaded && selectedSpin !== undefined) ||
         (findMethod !== "spin" && isCurrentSourceLoaded && jobLoaded && result !== undefined);
 
+    // The Loaded replay card's single source of truth for source/identities/seed/version-hash/
+    // timestamp/completeness/capabilities (requirement: every loaded replay is judged the same way,
+    // regardless of source) -- undefined whenever nothing is actually loaded for the currently-selected
+    // source, in which case SOURCE_EMPTY_PROMPT below covers it instead.
+    let loadedReplayCard: LoadedReplayCardView | undefined;
+    if (isCurrentSourceLoaded) {
+        // Only a *finished* job's own result counts as "loaded" here -- a still-active (queued/running)
+        // job belongs to the progress bar below, not to a card claiming a result is ready to inspect.
+        const finishedResult = jobLoaded && !active ? result : undefined;
+        if (findMethod === "spin" && selectedSpin) {
+            loadedReplayCard = describeLoadedReplay({source: "spin", spin: selectedSpin, canExport: exportReady});
+        } else if (findMethod === "artifact") {
+            loadedReplayCard = describeLoadedReplay({
+                source: "artifact",
+                expected: expected.status === "loaded" ? {seed: expected.seed, artifact: expected.artifact} : {},
+                reproducibility: artifactReproducibility,
+                result: finishedResult,
+                comparison,
+                canExport: exportReady,
+            });
+        } else if ((findMethod === "seedRound" || findMethod === "simulation") && target) {
+            loadedReplayCard = describeLoadedReplay({source: findMethod, target, currentGame, result: finishedResult, canExport: exportReady});
+        }
+    }
+
     return (
         <div>
             <Text size="sm" c="dimmed" mb="sm">
@@ -390,21 +449,30 @@ export function ReplayTab({
                         {listView.status === "empty" && <EmptyState message="No replays run yet." />}
                         {listView.status === "loaded" && (
                             <List listStyleType="none" spacing={4}>
-                                {listView.entries.map((entry) => (
-                                    <List.Item key={entry.id}>
-                                        <Anchor
-                                            component="button"
-                                            type="button"
-                                            onClick={() => {
-                                                onCompareStored(entry.id);
-                                                markLoaded("artifact", false);
-                                            }}
-                                            style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
-                                        >
-                                            {entry.game?.id ?? "?"} round {entry.round} — {entry.status}
-                                        </Anchor>
-                                    </List.Item>
-                                ))}
+                                {listView.entries.map((entry) =>
+                                    isReplayListEntryReproducible(entry) ? (
+                                        <List.Item key={entry.id}>
+                                            <Anchor
+                                                component="button"
+                                                type="button"
+                                                onClick={() => {
+                                                    onCompareStored(entry.id);
+                                                    markLoaded("artifact", false);
+                                                }}
+                                                style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                            >
+                                                {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
+                                            </Anchor>
+                                        </List.Item>
+                                    ) : (
+                                        <List.Item key={entry.id}>
+                                            <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                                                {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)} (reproduce
+                                                unavailable — no recorded seed; use Recent replays below to inspect it instead)
+                                            </Text>
+                                        </List.Item>
+                                    ),
+                                )}
                             </List>
                         )}
                     </PageSection>
@@ -541,11 +609,57 @@ export function ReplayTab({
 
             {isCurrentSourceLoaded ? (
                 <div>
+                    {loadedReplayCard &&
+                        (() => {
+                            const card: LoadedReplayCardView = loadedReplayCard;
+                            return (
+                                <PageSection legend="Loaded replay">
+                                    <Table withRowBorders={false} mb="sm">
+                                        <Table.Tbody>
+                                            <Table.Tr>
+                                                <Table.Th>Source</Table.Th>
+                                                <Table.Td>{card.source}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Identities</Table.Th>
+                                                <Table.Td style={{overflowWrap: "anywhere"}}>{card.identities}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Seed</Table.Th>
+                                                <Table.Td style={{overflowWrap: "anywhere"}}>{card.seed}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Version / hash</Table.Th>
+                                                <Table.Td style={{overflowWrap: "anywhere"}}>{card.versionHash}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Timestamp</Table.Th>
+                                                <Table.Td>{card.timestamp}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Completeness</Table.Th>
+                                                <Table.Td>{card.completeness}</Table.Td>
+                                            </Table.Tr>
+                                            {CAPABILITY_ROWS.map(({key, label}) => (
+                                                <Table.Tr key={key}>
+                                                    <Table.Th>{label}</Table.Th>
+                                                    <Table.Td>
+                                                        <Badge size="xs" variant="light" color={CAPABILITY_STATUS_COLOR[card.capabilities[key].status]} mr={6}>
+                                                            {CAPABILITY_STATUS_LABEL[card.capabilities[key].status]}
+                                                        </Badge>
+                                                        {card.capabilities[key].reason}
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                            ))}
+                                        </Table.Tbody>
+                                    </Table>
+                                </PageSection>
+                            );
+                        })()}
+
                     {findMethod === "spin" && selectedSpin && (
                         <div>
-                            <Text size="sm" c="dimmed" mb="sm">
-                                This is a live spin&apos;s actual recorded result — there&apos;s nothing to reproduce it against.
-                            </Text>
+                            {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce. */}
                             <Table withRowBorders={false} mb="sm">
                                 <Table.Tbody>
                                     <Table.Tr>
@@ -665,6 +779,11 @@ export function ReplayTab({
                                                 <List.Item key={index}>{warning}</List.Item>
                                             ))}
                                         </List>
+                                    )}
+                                    {artifactReproducibility?.status === "bestEffort" && (
+                                        <Alert color="blue" variant="light" title="Best effort only -- not verifiable" mb="sm">
+                                            <Text size="sm">{artifactReproducibility.reason}</Text>
+                                        </Alert>
                                     )}
                                     {artifactReproducibility?.status === "blocked" && (
                                         <Alert color="yellow" variant="light" title="Reproduce isn't reliable for this round" mb="sm">
@@ -861,7 +980,7 @@ export function ReplayTab({
                             <List.Item key={entry.id}>
                                 <Group gap="xs" wrap="wrap" align="baseline">
                                     <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                                        {entry.game?.id ?? "?"} round {entry.round} — {entry.status}
+                                        {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
                                     </Text>
                                     <Anchor
                                         component="button"
@@ -878,17 +997,23 @@ export function ReplayTab({
                                     >
                                         Inspect
                                     </Anchor>
-                                    <Anchor
-                                        component="button"
-                                        type="button"
-                                        onClick={() => {
-                                            switchSource("artifact");
-                                            onCompareStored(entry.id);
-                                            markLoaded("artifact", false);
-                                        }}
-                                    >
-                                        Reproduce &amp; compare
-                                    </Anchor>
+                                    {isReplayListEntryReproducible(entry) ? (
+                                        <Anchor
+                                            component="button"
+                                            type="button"
+                                            onClick={() => {
+                                                switchSource("artifact");
+                                                onCompareStored(entry.id);
+                                                markLoaded("artifact", false);
+                                            }}
+                                        >
+                                            Reproduce &amp; compare
+                                        </Anchor>
+                                    ) : (
+                                        <Text size="sm" c="dimmed">
+                                            Reproduce unavailable — no recorded seed
+                                        </Text>
+                                    )}
                                 </Group>
                             </List.Item>
                         ))}

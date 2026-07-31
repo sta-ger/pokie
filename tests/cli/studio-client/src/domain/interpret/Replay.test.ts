@@ -1,14 +1,24 @@
 import {
+    describeReplayCapabilities,
     describeReplayComparison,
+    describeReplayEntryStatus,
     describeReplayList,
     describeReplayProgress,
     describeReplayReproducibility,
     describeReplayResult,
+    describeLoadedReplay,
     isReplayActive,
+    isReplayListEntryReproducible,
     isReplayTerminal,
     type ComparableReplayResult,
 } from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
-import type {ReplayDescriptor, RoundArtifactJson, StudioReplayJobView, StudioReplayListEntry} from "../../../../../../cli/studio-client/src/api/types";
+import type {
+    ReplayDescriptor,
+    RoundArtifactJson,
+    StudioReplayJobView,
+    StudioReplayListEntry,
+    StudioRuntimeSessionView,
+} from "../../../../../../cli/studio-client/src/api/types";
 
 function createDescriptor(overrides: Partial<ReplayDescriptor> = {}): ReplayDescriptor {
     return {
@@ -547,22 +557,23 @@ describe("describeReplayReproducibility", () => {
         expect(gate).toMatchObject({reason: expect.stringContaining("no recorded session state")});
     });
 
-    it("blocks an incomplete record missing an RNG/reel-stop trace, naming it as the concrete missing input, with a remediation path", () => {
+    it("is bestEffort (not blocked) for a record missing only its RNG/reel-stop trace -- Reproduce stays offered, but explicitly non-verifiable", () => {
         const artifact = createArtifact(); // no debug at all
         const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
 
-        expect(gate.status).toBe("blocked");
+        expect(gate.status).toBe("bestEffort");
         expect(gate).toMatchObject({
             reason: expect.stringContaining("no recorded RNG/reel-stop trace"),
-            remediation: expect.stringContaining("reelStops"),
         });
+        expect(gate).toMatchObject({reason: expect.stringContaining("best-effort")});
+        expect("remediation" in gate).toBe(false);
     });
 
-    it("blocks an incomplete record whose debug data exists but carries no explicit reelStops field", () => {
+    it("is bestEffort for a record whose debug data exists but carries no explicit reelStops field", () => {
         const artifact = createArtifact({debug: {rngEngine: "engine-a"}});
         const gate = describeReplayReproducibility({seed: "demo", artifact, ...EXACT_STATE}, CURRENT_GAME);
 
-        expect(gate.status).toBe("blocked");
+        expect(gate.status).toBe("bestEffort");
         expect(gate).toMatchObject({reason: expect.stringContaining("no recorded RNG/reel-stop trace")});
     });
 
@@ -587,9 +598,271 @@ describe("describeReplayList", () => {
         expect(describeReplayList([])).toEqual({status: "empty"});
     });
 
-    it("wraps a non-empty list as loaded, unchanged", () => {
-        const entries = [createListEntry({id: "replay-1"}), createListEntry({id: "replay-2", status: "running"})];
+    it("wraps a non-empty list of entries with distinct ids as loaded, unchanged", () => {
+        const entries = [createListEntry({id: "replay-1", round: 1}), createListEntry({id: "replay-2", round: 2, status: "running"})];
 
         expect(describeReplayList(entries)).toEqual({status: "loaded", entries});
+    });
+
+    it("canonically deduplicates entries sharing the same job id, keeping only the newest (first) occurrence", () => {
+        const newest = {...createListEntry({id: "retry-1", status: "completed"})};
+        const olderDuplicateRow = {...createListEntry({id: "retry-1", status: "running"})};
+
+        expect(describeReplayList([newest, olderDuplicateRow])).toEqual({status: "loaded", entries: [newest]});
+    });
+
+    it("never collapses two distinct replay sessions/jobs that happen to share the same game, round, and seed", () => {
+        const firstAttempt = createListEntry({id: "retry-1", status: "failed"});
+        const secondAttempt = createListEntry({id: "retry-2", status: "completed"});
+
+        expect(describeReplayList([secondAttempt, firstAttempt])).toEqual({status: "loaded", entries: [secondAttempt, firstAttempt]});
+    });
+
+    it("does not dedupe entries with no recorded seed -- each is its own distinct attempt with a distinct id", () => {
+        const entries = [createListEntry({id: "a", seed: undefined}), createListEntry({id: "b", seed: undefined})];
+
+        expect(describeReplayList(entries)).toEqual({status: "loaded", entries});
+    });
+
+    it("does not dedupe entries with no known game yet", () => {
+        const entries = [createListEntry({id: "a", game: undefined}), createListEntry({id: "b", game: undefined})];
+
+        expect(describeReplayList(entries)).toEqual({status: "loaded", entries});
+    });
+
+    it("does not dedupe entries that share a round/seed but differ in game id or version", () => {
+        const sameGame = createListEntry({id: "a"});
+        const differentId = createListEntry({id: "b", game: {id: "other-slot", name: "Other Slot", version: "0.1.0"}});
+        const differentVersion = createListEntry({id: "c", game: {id: "sample-slot", name: "Sample Slot", version: "0.2.0"}});
+
+        expect(describeReplayList([sameGame, differentId, differentVersion])).toEqual({
+            status: "loaded",
+            entries: [sameGame, differentId, differentVersion],
+        });
+    });
+});
+
+describe("describeReplayEntryStatus", () => {
+    it("maps every StudioReplayStatus to a plain, honest-about-recreation label", () => {
+        expect(describeReplayEntryStatus("queued")).toBe("Queued to reproduce");
+        expect(describeReplayEntryStatus("running")).toBe("Reproducing…");
+        expect(describeReplayEntryStatus("completed")).toBe("Reproduced");
+        expect(describeReplayEntryStatus("failed")).toBe("Reproduction failed");
+        expect(describeReplayEntryStatus("cancelled")).toBe("Reproduction cancelled");
+    });
+});
+
+describe("isReplayListEntryReproducible", () => {
+    it("is true for an entry with a recorded, non-blank seed", () => {
+        expect(isReplayListEntryReproducible(createListEntry({seed: "demo"}))).toBe(true);
+    });
+
+    it("is false for an entry with no recorded seed -- reproducing it would create a differently-seeded session, not recreate this round", () => {
+        expect(isReplayListEntryReproducible(createListEntry({seed: undefined}))).toBe(false);
+    });
+
+    it("is false for an entry with a blank seed", () => {
+        expect(isReplayListEntryReproducible(createListEntry({seed: "   "}))).toBe(false);
+    });
+});
+
+describe("describeReplayCapabilities", () => {
+    it("Session Spin: inspectable and exportable, never reproducible or comparable -- it's the actual recorded result, nothing to reproduce it against", () => {
+        const capabilities = describeReplayCapabilities({source: "spin", hasResult: true, hasComparisonTarget: false, canExport: true});
+
+        expect(capabilities.inspectable.status).toBe("available");
+        expect(capabilities.reproducible).toMatchObject({status: "unavailable", reason: expect.stringContaining("nothing to reproduce")});
+        expect(capabilities.comparable.status).toBe("unavailable");
+        expect(capabilities.exportable.status).toBe("available");
+    });
+
+    it("Recreate from seed / Recent Simulation: not inspectable until a result exists, always reproducible, never comparable", () => {
+        const beforeRun = describeReplayCapabilities({source: "seedRound", hasResult: false, hasComparisonTarget: false, canExport: false});
+        expect(beforeRun.inspectable.status).toBe("unavailable");
+        expect(beforeRun.reproducible.status).toBe("available");
+        expect(beforeRun.comparable.status).toBe("unavailable");
+        expect(beforeRun.exportable.status).toBe("unavailable");
+
+        const afterRun = describeReplayCapabilities({source: "simulation", hasResult: true, hasComparisonTarget: false, canExport: true});
+        expect(afterRun.inspectable.status).toBe("available");
+        expect(afterRun.exportable.status).toBe("available");
+    });
+
+    it("Replay Artifact: reproducible/comparable follow the reproducibility gate and comparison outcome", () => {
+        const ready = describeReplayCapabilities({
+            source: "artifact",
+            hasResult: true,
+            reproducibility: {status: "ready"},
+            hasComparisonTarget: true,
+            canExport: true,
+        });
+        expect(ready.reproducible.status).toBe("available");
+        expect(ready.comparable).toMatchObject({status: "available", reason: expect.stringContaining("once reproduced")});
+
+        const bestEffort = describeReplayCapabilities({
+            source: "artifact",
+            hasResult: true,
+            reproducibility: {status: "bestEffort", reason: "no RNG trace"},
+            hasComparisonTarget: true,
+            canExport: false,
+        });
+        expect(bestEffort.reproducible).toEqual({status: "bestEffort", reason: "no RNG trace"});
+
+        const blocked = describeReplayCapabilities({
+            source: "artifact",
+            hasResult: true,
+            reproducibility: {status: "blocked", reason: "no seed", remediation: "add a seed"},
+            hasComparisonTarget: false,
+            canExport: false,
+        });
+        expect(blocked.reproducible).toEqual({status: "unavailable", reason: "no seed"});
+        expect(blocked.comparable).toMatchObject({status: "unavailable", reason: expect.stringContaining("No round artifact")});
+
+        const matched = describeReplayCapabilities({
+            source: "artifact",
+            hasResult: true,
+            hasComparisonTarget: true,
+            comparison: {status: "match", dimensions: {} as never},
+            canExport: true,
+        });
+        expect(matched.comparable).toMatchObject({status: "available", reason: expect.stringContaining("Verified -- matches")});
+
+        const partial = describeReplayCapabilities({
+            source: "artifact",
+            hasResult: true,
+            hasComparisonTarget: true,
+            comparison: {status: "partial", dimensions: {} as never},
+            canExport: true,
+        });
+        expect(partial.comparable.status).toBe("bestEffort");
+
+        const unavailable = describeReplayCapabilities({
+            source: "artifact",
+            hasResult: true,
+            hasComparisonTarget: true,
+            comparison: {status: "unavailable", unavailableReason: "malformed", dimensions: {} as never},
+            canExport: true,
+        });
+        expect(unavailable.comparable).toEqual({status: "unavailable", reason: "malformed"});
+    });
+});
+
+describe("describeLoadedReplay", () => {
+    function createSpin(overrides: Partial<StudioRuntimeSessionView> = {}): StudioRuntimeSessionView {
+        return {
+            sessionId: "session-1",
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            credits: 100,
+            studioRound: 3,
+            studioRequestId: "req-1",
+            studioRecordedAt: "2026-01-01T00:00:00.000Z",
+            studioSource: "live",
+            ...overrides,
+        };
+    }
+
+    it("labels a live spin as Recorded, never Recreated, with no seed tracked per spin", () => {
+        const card = describeLoadedReplay({source: "spin", spin: createSpin(), canExport: true});
+
+        expect(card.source).toBe("Recorded -- live spin");
+        expect(card.identities).toContain("session-1");
+        expect(card.identities).toContain("round 3");
+        expect(card.identities).toContain("request req-1");
+        expect(card.capabilities.reproducible.status).toBe("unavailable");
+    });
+
+    it("labels a pre-generated spin distinctly from a live one", () => {
+        const card = describeLoadedReplay({source: "spin", spin: createSpin({studioSource: "pre-generated"}), canExport: true});
+
+        expect(card.source).toBe("Recorded -- pre-generated spin");
+    });
+
+    it("reports spin completeness from whether a debug bundle was captured", () => {
+        const noDebug = describeLoadedReplay({source: "spin", spin: createSpin(), canExport: true});
+        expect(noDebug.completeness).toContain("Minimal");
+
+        const withScreen = describeLoadedReplay({source: "spin", spin: createSpin({screen: [["cherry"]]}), canExport: true});
+        expect(withScreen.completeness).toContain("Partial");
+
+        const withDebug = describeLoadedReplay({
+            source: "spin",
+            spin: createSpin({debug: {stateAfter: {win: 0}}}),
+            canExport: true,
+        });
+        expect(withDebug.completeness).toContain("Full");
+    });
+
+    it("labels every fresh-forward source as Recreated, never Recorded", () => {
+        const seedRoundCard = describeLoadedReplay({source: "seedRound", target: {round: 1, seed: "demo"}, canExport: false});
+        expect(seedRoundCard.source).toBe("Recreated -- recreate from seed");
+
+        const simulationCard = describeLoadedReplay({source: "simulation", target: {round: 1, seed: "demo"}, canExport: false});
+        expect(simulationCard.source).toBe("Recreated -- recent simulation");
+    });
+
+    it("shows no identities/timestamp yet for a configured-but-not-reproduced target, then the replay session/job once reproduced", () => {
+        const beforeRun = describeLoadedReplay({source: "seedRound", target: {round: 5, seed: "demo"}, currentGame: {id: "a", version: "1.0.0"}, canExport: false});
+        expect(beforeRun.identities).toBe("(assigned once reproduced)");
+        expect(beforeRun.timestamp).toBe("(not yet reproduced)");
+        expect(beforeRun.completeness).toContain("Not yet run");
+
+        const result = {
+            id: "job-1",
+            sessionId: "sess-1",
+            game: {id: "a", name: "A", version: "1.0.0"},
+            round: 5,
+            seed: "demo",
+            totalBet: 1,
+            totalWin: 0,
+            timestamp: 1735707845000,
+            durationMs: 5,
+        };
+        const afterRun = describeLoadedReplay({source: "seedRound", target: {round: 5, seed: "demo"}, result, canExport: true});
+        expect(afterRun.identities).toBe("replay session sess-1, replay job job-1");
+        expect(afterRun.completeness).toContain("Partial -- round-level result only");
+    });
+
+    it("labels a Replay Artifact as Recorded/reference before reproduction, then Recreated (naming the recorded artifact) once a result exists", () => {
+        const beforeRun = describeLoadedReplay({
+            source: "artifact",
+            expected: {seed: "demo", artifact: createArtifact()},
+            reproducibility: {status: "ready"},
+            canExport: false,
+        });
+        expect(beforeRun.source).toBe("Recorded -- replay artifact (reference, not yet reproduced)");
+        expect(beforeRun.source).not.toContain("Recreated");
+
+        const result = {
+            id: "job-1",
+            sessionId: "sess-1",
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            round: 5,
+            seed: "demo",
+            totalBet: 1,
+            totalWin: 0,
+            timestamp: 1735707845000,
+            durationMs: 5,
+        };
+        const afterRun = describeLoadedReplay({
+            source: "artifact",
+            expected: {seed: "demo", artifact: createArtifact()},
+            reproducibility: {status: "ready"},
+            result,
+            canExport: true,
+        });
+        expect(afterRun.source).toContain("Recreated");
+        expect(afterRun.source).toContain("recorded replay artifact");
+        expect(afterRun.identities).toBe("replay session sess-1, replay job job-1");
+    });
+
+    it("shows the artifact's own hash alongside game/version once recorded", () => {
+        const card = describeLoadedReplay({
+            source: "artifact",
+            expected: {seed: "demo", artifact: createArtifact({debug: {reelStops: [1, 2, 3]}})},
+            reproducibility: {status: "ready"},
+            canExport: false,
+        });
+
+        expect(card.versionHash).toBe("sample-slot v0.1.0, hash sha256:fixed-for-tests");
     });
 });
