@@ -524,8 +524,9 @@ export function OutcomeLibrariesTab({
                 <Text size="sm" c="dimmed" mb="sm">
                     Whether a compatible outcome library already exists for this project&apos;s own current
                     build (the currently open, loadable package) — discovered from the conventional{" "}
-                    <code>{StudioOutcomeLibraryDefaultBundleDir}</code> bundle Generate itself writes to,
-                    never a static blueprint JSON.
+                    <code>{StudioOutcomeLibraryDefaultBundleDir}</code> bundle Generate writes to by default,
+                    or any other output directory a Generate run in this session was pointed at, never a
+                    static blueprint JSON.
                 </Text>
                 <QuickActions>
                     <Button onClick={fetchRegistry} loading={registryView.status === "loading"} variant="default">
@@ -551,6 +552,7 @@ export function OutcomeLibrariesTab({
                                 <Table.Thead>
                                     <Table.Tr>
                                         <Table.Th>Mode</Table.Th>
+                                        <Table.Th>Location</Table.Th>
                                         <Table.Th>Outcomes</Table.Th>
                                         <Table.Th>RTP</Table.Th>
                                         <Table.Th>Generated</Table.Th>
@@ -560,6 +562,7 @@ export function OutcomeLibrariesTab({
                                     {registryResult.modes.map((mode) => (
                                         <Table.Tr key={mode.modeName}>
                                             <Table.Th style={{overflowWrap: "anywhere"}}>{mode.modeName}</Table.Th>
+                                            <Table.Td style={{overflowWrap: "anywhere"}}>{mode.bundleDir}</Table.Td>
                                             <Table.Td>{mode.outcomeCount.toLocaleString()}</Table.Td>
                                             <Table.Td>{(mode.rtp * 100).toFixed(2)}%</Table.Td>
                                             <Table.Td>{mode.generatedAt ?? "—"}</Table.Td>

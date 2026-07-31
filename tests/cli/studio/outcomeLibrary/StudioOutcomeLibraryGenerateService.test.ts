@@ -1,4 +1,4 @@
-import {OutcomeLibraryBundleReader, PokieGame} from "pokie";
+import {OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, PokieGame} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -153,6 +153,52 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             fs.writeFileSync(path.join(projectRoot, "outcomelibrary", "not-a-manifest.txt"), "nope");
             const result = await service().registry(projectRoot);
             expect(result.status).toBe("load-error");
+        });
+
+        it("discovers a library generated to a non-default, user-selected output directory", async () => {
+            const svc = service();
+            const generated = await svc.generate(projectRoot, {outDir: "custom-outcomes"});
+            expect(generated.status).toBe("ok");
+
+            const result = await svc.registry(projectRoot);
+            if (result.status !== "ok" || result.buildStatus === "missing") {
+                throw new Error(`expected a compatible build, got ${JSON.stringify(result)}`);
+            }
+            expect(result.buildStatus).toBe("compatible");
+            expect(result.bundleDir).toBe("custom-outcomes");
+            expect(result.modes).toHaveLength(1);
+            expect(result.modes[0]).toMatchObject({modeName: "base", bundleDir: "custom-outcomes", buildStatus: "compatible"});
+        });
+
+        it("merges modes discovered across the default directory and a custom output directory", async () => {
+            const svc = service();
+            await svc.generate(projectRoot, {mode: "base"});
+            await svc.generate(projectRoot, {mode: "bonus", outDir: "custom-outcomes"});
+
+            const result = await svc.registry(projectRoot);
+            if (result.status !== "ok" || result.buildStatus === "missing") {
+                throw new Error(`expected a compatible build, got ${JSON.stringify(result)}`);
+            }
+            const byMode = Object.fromEntries(result.modes.map((mode) => [mode.modeName, mode]));
+            expect(byMode.base).toMatchObject({bundleDir: "outcomelibrary", buildStatus: "compatible"});
+            expect(byMode.bonus).toMatchObject({bundleDir: "custom-outcomes", buildStatus: "compatible"});
+        });
+
+        it("keeps only the most recently generated occurrence when the same mode is later regenerated into a different output directory", async () => {
+            let clock = new Date("2026-01-01T00:00:00.000Z");
+            const writer = new OutcomeLibraryBundleWriter<string>(POKIE_VERSION, undefined, () => clock);
+            const svc = new StudioOutcomeLibraryGenerateService(POKIE_VERSION, () => Promise.resolve(buildFixtureGame()), undefined, undefined, writer);
+
+            await svc.generate(projectRoot, {mode: "base", outDir: "first-out"});
+            clock = new Date("2026-01-02T00:00:00.000Z");
+            await svc.generate(projectRoot, {mode: "base", outDir: "second-out"});
+
+            const result = await svc.registry(projectRoot);
+            if (result.status !== "ok" || result.buildStatus === "missing") {
+                throw new Error(`expected a compatible build, got ${JSON.stringify(result)}`);
+            }
+            expect(result.modes).toHaveLength(1);
+            expect(result.modes[0]).toMatchObject({modeName: "base", bundleDir: "second-out"});
         });
     });
 });

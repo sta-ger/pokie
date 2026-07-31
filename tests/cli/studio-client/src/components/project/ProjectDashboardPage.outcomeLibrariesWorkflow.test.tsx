@@ -543,4 +543,75 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
         // Back on the Generate step -- its own Mode field is now visible again.
         expect(await screen.findByLabelText("Mode")).toBeInTheDocument();
     });
+
+    // Reproduces the discoverability gap this step closes: the server-side registry used to only ever
+    // look at the conventional "outcomelibrary" directory, so a generate() run pointed at a caller-chosen
+    // output directory was invisible to it -- the Registry panel kept showing "No library built yet" even
+    // though a perfectly good, compatible library had just been generated. Both fake responses below are
+    // exactly what StudioOutcomeLibraryGenerateService.registry() now actually returns once it discovers a
+    // custom outDir (see its own test coverage) -- this only asserts the client renders that faithfully.
+    it("shows the discovered library in the Registry panel after generating to a custom, non-default output directory", async () => {
+        const user = userEvent.setup();
+        let registryCallCount = 0;
+        const customGenerateResult: StudioOutcomeLibraryGenerateResultView = {
+            ...GENERATE_RESULT,
+            bundleDir: "custom-outcomes",
+            selector: {kind: "bundle", bundleDir: "custom-outcomes", modeName: "base"},
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate": () => ({ok: true, status: 200, body: customGenerateResult}),
+            "/api/project/outcome-libraries/registry": () => {
+                registryCallCount += 1;
+                if (registryCallCount === 1) {
+                    return {ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}};
+                }
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "ok",
+                        bundleDir: "custom-outcomes",
+                        buildStatus: "compatible",
+                        game: GAME,
+                        currentGame: GAME,
+                        artifactPokieVersion: "9.9.9",
+                        currentPokieVersion: "9.9.9",
+                        generatedAt: "2026-01-01T00:00:00.000Z",
+                        modes: [
+                            {
+                                modeName: "base",
+                                libraryId: "a-base",
+                                bundleDir: "custom-outcomes",
+                                buildStatus: "compatible",
+                                outcomeCount: 4,
+                                totalWeight: 6,
+                                rtp: 0.8333,
+                                hash: "sha256:generated",
+                            },
+                        ],
+                    },
+                };
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+
+        expect(await screen.findByText("No library built yet")).toBeInTheDocument();
+
+        await user.type(screen.getByLabelText("Mode"), "base");
+        await user.type(screen.getByLabelText("Output bundle directory"), "custom-outcomes");
+        await user.click(screen.getByRole("button", {name: "Generate"}));
+        await screen.findByText(/Generated "a-base"/);
+
+        // The custom-output generation is now discoverable -- never mistaken for "nothing built".
+        expect(await screen.findByText("Compatible with the current build")).toBeInTheDocument();
+        expect(screen.queryByText("No library built yet")).not.toBeInTheDocument();
+        // "custom-outcomes" appears both in the Result section's own path/files table and in the Registry
+        // panel's Location column -- same double-rendering the conventional "outcomelibrary" bundleDir
+        // already gets above (see the "outcomelibrary" assertion earlier in this file).
+        expect(screen.getAllByText("custom-outcomes").length).toBeGreaterThan(1);
+    });
 });

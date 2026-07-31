@@ -3,6 +3,7 @@ import {
     GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
     loadPokieGame,
+    OutcomeLibraryBundleManifest,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
@@ -41,11 +42,12 @@ type OtherModesResult = {readonly status: "ok"; readonly modes: readonly Outcome
 // (generateExactWeightedOutcomeLibrary / estimateExactOutcomeSpaceSize / OutcomeLibraryBundleWriter) --
 // this class never computes an outcome space, sweeps a reel-stop tuple, or plays a round itself; it only
 // owns Studio-specific plumbing: resolving the project's own build (packageRoot === projectRoot, same
-// convention as StudioSimulationService), writing straight into the project's one conventional bundle
-// directory rather than a caller-chosen --out file, and preserving any of that bundle's OTHER modes across
-// a single-mode regenerate (the writer's own writeToDirectory always atomically replaces the whole
-// directory -- see its own doc comment -- so every mode not being regenerated is first read back in full
-// and re-supplied alongside the freshly generated one).
+// convention as StudioSimulationService), writing into the project's conventional bundle directory by
+// default or a caller-chosen outDir when given (both are tracked and later discoverable by registry(), see
+// its own doc comment), and preserving any of that bundle's OTHER modes across a single-mode regenerate
+// (the writer's own writeToDirectory always atomically replaces the whole directory -- see its own doc
+// comment -- so every mode not being regenerated is first read back in full and re-supplied alongside the
+// freshly generated one).
 //
 // Deliberately synchronous request/response, unlike StudioSimulationService's own queued background jobs:
 // exact enumeration already fails closed (via maxOutcomeSpaceSize/--bounded) well before a space too large
@@ -63,6 +65,12 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly bundleReader: OutcomeLibraryBundleReading<string>;
     private readonly realpath: (resolvedPath: string) => string;
     private readonly directoryExists: (dirPath: string) => boolean;
+    // Every project-relative bundle directory a successful generate() call in this Studio server's own
+    // lifetime has written to, DEFAULT_BUNDLE_DIR included -- registry()'s own discovery set (see its doc
+    // comment). In-memory only, same "lives for exactly this server process" convention as
+    // StudioRuntimeManager's own state: a fresh Studio server re-derives it from scratch as generate() is
+    // called again, never from a persisted index file.
+    private readonly generatedBundleDirs = new Set<string>([StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR]);
 
     constructor(
         pokieVersion: string,
@@ -193,6 +201,11 @@ export class StudioOutcomeLibraryGenerateService {
 
         const coverage = generated.diagnostics.strategy === "exact" ? 1 : toNumberApprox(generated.diagnostics.sampledRawCount) / toNumberApprox(generated.diagnostics.totalOutcomeSpaceSize);
 
+        // Makes this write discoverable by registry() regardless of whether it landed in the conventional
+        // DEFAULT_BUNDLE_DIR or a caller-chosen outDir -- see this class's own doc comment on
+        // generatedBundleDirs.
+        this.generatedBundleDirs.add(outDirRelative);
+
         return {
             status: "ok",
             bundleDir: outDirRelative,
@@ -214,7 +227,11 @@ export class StudioOutcomeLibraryGenerateService {
 
     // The Registry's own "does a compatible library already exist for this build?" check -- see
     // StudioOutcomeLibraryRegistryView's own doc comment for what "compatible"/"stale"/"wrong"/"missing"
-    // mean here.
+    // mean here. Never limited to the conventional DEFAULT_BUNDLE_DIR: every bundle directory generate()
+    // has written to in this Studio server's own lifetime (see generatedBundleDirs) is read, and for each
+    // mode name encountered anywhere, only the most recently generated occurrence of it is kept -- so a
+    // mode regenerated into a fresh caller-chosen outDir is reported from there, while a different mode
+    // still sitting untouched in an earlier bundle dir keeps being reported from that one.
     public async registry(projectRoot: string): Promise<StudioOutcomeLibraryRegistryView> {
         let game: PokieGame;
         try {
@@ -224,46 +241,75 @@ export class StudioOutcomeLibraryGenerateService {
         }
         const currentGame = game.getManifest();
 
-        const resolved = resolveProjectDirectory(projectRoot, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, this.realpath);
-        if (resolved.status === "error") {
-            return {status: "load-error", error: resolved.message};
+        const discovered: {bundleDir: string; manifest: OutcomeLibraryBundleManifest}[] = [];
+        for (const bundleDir of this.generatedBundleDirs) {
+            const resolved = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
+            if (resolved.status === "error") {
+                return {status: "load-error", error: resolved.message};
+            }
+            if (!this.directoryExists(resolved.resolvedPath)) {
+                continue;
+            }
+
+            let manifest: OutcomeLibraryBundleManifest;
+            try {
+                manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
+            } catch (error) {
+                return {
+                    status: "load-error",
+                    error: `Could not read the outcome library bundle at "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`,
+                };
+            }
+            discovered.push({bundleDir, manifest});
         }
-        if (!this.directoryExists(resolved.resolvedPath)) {
+
+        if (discovered.length === 0) {
             return {status: "ok", bundleDir: StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, buildStatus: "missing"};
         }
 
-        let manifest;
-        try {
-            manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
-        } catch (error) {
-            return {
-                status: "load-error",
-                error: `Could not read the outcome library bundle at "${StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR}": ${error instanceof Error ? error.message : String(error)}`,
-            };
+        const classify = (manifest: OutcomeLibraryBundleManifest): "compatible" | "stale" | "wrong" => {
+            if (manifest.game.id !== currentGame.id) {
+                return "wrong";
+            }
+            if (manifest.game.version !== currentGame.version || manifest.artifactPokieVersion !== this.pokieVersion) {
+                return "stale";
+            }
+            return "compatible";
+        };
+
+        type ModeCandidate = {bundleDir: string; manifest: OutcomeLibraryBundleManifest; entry: OutcomeLibraryBundleManifest["modes"][number]};
+        const latestByMode = new Map<string, ModeCandidate>();
+        for (const {bundleDir, manifest} of discovered) {
+            for (const entry of manifest.modes) {
+                const generatedAt = entry.generator?.generatedAt ?? manifest.generatedAt;
+                const existing = latestByMode.get(entry.modeName);
+                if (existing === undefined || generatedAt > (existing.entry.generator?.generatedAt ?? existing.manifest.generatedAt)) {
+                    latestByMode.set(entry.modeName, {bundleDir, manifest, entry});
+                }
+            }
         }
 
-        let buildStatus: "compatible" | "stale" | "wrong";
-        if (manifest.game.id !== currentGame.id) {
-            buildStatus = "wrong";
-        } else if (manifest.game.version !== currentGame.version || manifest.artifactPokieVersion !== this.pokieVersion) {
-            buildStatus = "stale";
-        } else {
-            buildStatus = "compatible";
-        }
+        // The top-level game/version/buildStatus snapshot mirrors whichever discovered bundle was itself
+        // generated most recently overall -- the Registry panel's own badge/"compatible with the current
+        // build" summary, while each mode's own buildStatus below (evaluated against its own source
+        // bundle) is what actually drives per-mode correctness.
+        const primary = discovered.reduce((latest, candidate) => (candidate.manifest.generatedAt > latest.manifest.generatedAt ? candidate : latest));
 
         return {
             status: "ok",
-            bundleDir: StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
-            buildStatus,
-            game: manifest.game,
+            bundleDir: primary.bundleDir,
+            buildStatus: classify(primary.manifest),
+            game: primary.manifest.game,
             currentGame,
-            ...(manifest.configHash !== undefined ? {configHash: manifest.configHash} : {}),
-            artifactPokieVersion: manifest.artifactPokieVersion,
+            ...(primary.manifest.configHash !== undefined ? {configHash: primary.manifest.configHash} : {}),
+            artifactPokieVersion: primary.manifest.artifactPokieVersion,
             currentPokieVersion: this.pokieVersion,
-            generatedAt: manifest.generatedAt,
-            modes: manifest.modes.map((entry) => ({
+            generatedAt: primary.manifest.generatedAt,
+            modes: Array.from(latestByMode.values()).map(({bundleDir, manifest, entry}) => ({
                 modeName: entry.modeName,
                 libraryId: entry.libraryId,
+                bundleDir,
+                buildStatus: classify(manifest),
                 outcomeCount: entry.outcomeCount,
                 totalWeight: entry.totalWeight,
                 rtp: entry.analysis.rtp,

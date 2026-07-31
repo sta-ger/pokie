@@ -777,6 +777,8 @@ export type StudioOutcomeLibraryGenerateResultView =
 export type StudioOutcomeLibraryRegistryModeEntry = {
     modeName: string;
     libraryId: string;
+    bundleDir: string;
+    buildStatus: "compatible" | "stale" | "wrong";
     outcomeCount: number;
     totalWeight: number;
     rtp: number;
