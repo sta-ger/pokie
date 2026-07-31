@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
@@ -30,9 +31,6 @@ export function ensureFixturesCanRequirePokie(): void {
         command: ["npm", "run", "build-test-runtime"],
     });
     fs.mkdirSync(FIXTURES_NODE_MODULES, {recursive: true});
-    // Parallel jest workers (--maxWorkers=2) can each pass the existsSync check before either has
-    // created the link, so guard the creation itself: whoever loses the race sees EEXIST for the
-    // link the winner already made, which is exactly the state we wanted, so treat it as success.
     // A task clone may inherit a fixture symlink created inside a disposable
     // container (`/workspace`).  Treat that stale target as absent: otherwise
     // real worker tests fail only after a clone/container boundary.
@@ -45,13 +43,23 @@ export function ensureFixturesCanRequirePokie(): void {
         }
     }
     if (needsLink) {
-        fs.rmSync(POKIE_SYMLINK, {force: true, recursive: true});
+        // Parallel jest workers (--maxWorkers=2) can each pass the existsSync check before either
+        // has created the link. A remove-then-create here would leave a window where the path
+        // resolves to nothing at all -- and by the time any worker reaches this point, an *earlier*
+        // suite's real worker_thread may already be mid-flight and doing its own `require("pokie")`
+        // through this same symlink, so that window is a genuine transient failure, not just an
+        // EEXIST race to swallow. Build the replacement at a private temp path and fs.renameSync it
+        // into place: rename() atomically replaces whatever is at POKIE_SYMLINK, so every observer
+        // sees either the old link or the new one, never neither. Both targets are REPO_ROOT anyway,
+        // so whichever worker's rename lands last is harmless.
+        const tempLink = path.join(FIXTURES_NODE_MODULES, `.pokie.tmp-${process.pid}-${crypto.randomUUID()}`);
+        fs.rmSync(tempLink, {force: true, recursive: true});
+        fs.symlinkSync(REPO_ROOT, tempLink, "dir");
         try {
-            fs.symlinkSync(REPO_ROOT, POKIE_SYMLINK, "dir");
+            fs.renameSync(tempLink, POKIE_SYMLINK);
         } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-                throw error;
-            }
+            fs.rmSync(tempLink, {force: true, recursive: true});
+            throw error;
         }
     }
 }
