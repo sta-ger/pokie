@@ -693,7 +693,12 @@ function describeLoadedArtifact(
         completeness = "Incomplete -- missing data required to verify a reproduction (see below).";
     }
     return {
-        source: "Recreated -- replay artifact",
+        // Before a fresh reproduction exists, what's loaded is only the recorded/reference artifact
+        // itself -- never claim "Recreated" for that. Once `result` exists, a genuinely new session has
+        // been played forward from it (see StudioReplayExecutionService.run()), so the label says so
+        // while still naming the recorded artifact it was reproduced from -- `identities` below then
+        // carries the recreated session/job's own identity, distinct from this recorded reference.
+        source: result ? "Recreated -- reproduced from a recorded replay artifact" : "Recorded -- replay artifact (reference, not yet reproduced)",
         identities: result ? `replay session ${result.sessionId}, replay job ${result.id}` : "(assigned once reproduced)",
         seed: expected.seed ?? "(none)",
         versionHash: versionHashParts.length > 0 ? versionHashParts.join(", ") : "(not recorded)",

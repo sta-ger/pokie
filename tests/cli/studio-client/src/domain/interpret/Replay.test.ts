@@ -815,6 +815,39 @@ describe("describeLoadedReplay", () => {
         expect(afterRun.completeness).toContain("Partial -- round-level result only");
     });
 
+    it("labels a Replay Artifact as Recorded/reference before reproduction, then Recreated (naming the recorded artifact) once a result exists", () => {
+        const beforeRun = describeLoadedReplay({
+            source: "artifact",
+            expected: {seed: "demo", artifact: createArtifact()},
+            reproducibility: {status: "ready"},
+            canExport: false,
+        });
+        expect(beforeRun.source).toBe("Recorded -- replay artifact (reference, not yet reproduced)");
+        expect(beforeRun.source).not.toContain("Recreated");
+
+        const result = {
+            id: "job-1",
+            sessionId: "sess-1",
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            round: 5,
+            seed: "demo",
+            totalBet: 1,
+            totalWin: 0,
+            timestamp: 1735707845000,
+            durationMs: 5,
+        };
+        const afterRun = describeLoadedReplay({
+            source: "artifact",
+            expected: {seed: "demo", artifact: createArtifact()},
+            reproducibility: {status: "ready"},
+            result,
+            canExport: true,
+        });
+        expect(afterRun.source).toContain("Recreated");
+        expect(afterRun.source).toContain("recorded replay artifact");
+        expect(afterRun.identities).toBe("replay session sess-1, replay job job-1");
+    });
+
     it("shows the artifact's own hash alongside game/version once recorded", () => {
         const card = describeLoadedReplay({
             source: "artifact",
