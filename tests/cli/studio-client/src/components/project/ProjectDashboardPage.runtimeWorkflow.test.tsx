@@ -1071,4 +1071,131 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
         expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument();
     }, 60000);
+
+    it("Server Refresh immediately drops a round selected from history, falling back to the real last spin for Retry", async () => {
+        const user = userEvent.setup();
+        let capturedRequestId: string | undefined;
+        let started = false;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            // Stateful, unlike the other tests' static stub -- Server Refresh re-issues this same GET, so
+            // it must keep reporting "running" once Start has actually happened, or the assertions below
+            // would be confounded by the whole session card disappearing along with the round selection.
+            "/api/project/runtime": () => ({ok: true, status: 200, body: started ? RUNNING_STATE_DEBUG : {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({
+                ok: true,
+                status: 200,
+                body:
+                    capturedRequestId === undefined
+                        ? []
+                        : [
+                            sessionFor({credits: 1005, win: 15, sessionVersion: 2, studioRound: 1, studioRequestId: capturedRequestId, debug: {stateAfter: {}, requestId: capturedRequestId}}),
+                            sessionFor({credits: 700, win: 777, studioRound: 0, studioRequestId: "req-older-decoy", debug: {stateAfter: {}, requestId: "req-older-decoy"}}),
+                        ],
+            }),
+            "/api/project/runtime/start": () => {
+                started = true;
+                return {ok: true, status: 200, body: RUNNING_STATE_DEBUG};
+            },
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": (call: FakeCall) => {
+                const body = JSON.parse(call.init?.body ?? "{}") as {requestId?: string};
+                capturedRequestId = body.requestId;
+                return {ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        // Pick the *older* decoy round from history, not the one just spun -- its requestId disagrees
+        // with lastSpin, so Retry & Debug are now keyed off this selection instead (same setup as
+        // "Retry immediately drops a round selected from history" above).
+        const history = section("Round history for this session");
+        await waitFor(() => expect(within(history).getByText(/req-older-decoy/)).toBeInTheDocument());
+        await user.click(within(history).getByText(/req-older-decoy/));
+        expect(await screen.findByRole("button", {name: "Debug this round in Replay & Debug"})).toBeEnabled();
+        expect(within(section("Retry & Debug")).getByText("req-older-decoy")).toBeInTheDocument();
+
+        const server = section("Server");
+        await user.click(within(server).getByRole("button", {name: "Refresh"}));
+
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(screen.getByText("Spin a round, or pick one from round history below, to inspect it here.")).toBeInTheDocument();
+        // Retry & Debug falls back to the real last spin, not the stale round selection -- same
+        // "unavailable to the previous round, not to Retry itself" contract every other selection-clearing
+        // action in this file already honors (see e.g. the "Create Session and Load Session immediately
+        // drop..." test above).
+        expect(within(section("Retry & Debug")).queryByText("req-older-decoy")).not.toBeInTheDocument();
+        expect(within(section("Retry & Debug")).getByText(capturedRequestId as string)).toBeInTheDocument();
+
+        // The running session itself is untouched -- Server Refresh only drops the stale round selection.
+        expect(screen.getByText(/Session sess-1/)).toBeInTheDocument();
+        expect(await within(server).findByText("running at http://127.0.0.1:4123")).toBeInTheDocument();
+    }, 60000);
+
+    it("the recent-session-list Refresh immediately drops a round selected from history, falling back to the real last spin for Retry", async () => {
+        const user = userEvent.setup();
+        let capturedRequestId: string | undefined;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({
+                ok: true,
+                status: 200,
+                body:
+                    capturedRequestId === undefined
+                        ? []
+                        : [
+                            sessionFor({credits: 1005, win: 15, sessionVersion: 2, studioRound: 1, studioRequestId: capturedRequestId, debug: {stateAfter: {}, requestId: capturedRequestId}}),
+                            sessionFor({credits: 700, win: 777, studioRound: 0, studioRequestId: "req-older-decoy", debug: {stateAfter: {}, requestId: "req-older-decoy"}}),
+                        ],
+            }),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE_DEBUG}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": (call: FakeCall) => {
+                const body = JSON.parse(call.init?.body ?? "{}") as {requestId?: string};
+                capturedRequestId = body.requestId;
+                return {ok: true, status: 200, body: {status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})}};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        const history = section("Round history for this session");
+        await waitFor(() => expect(within(history).getByText(/req-older-decoy/)).toBeInTheDocument());
+        await user.click(within(history).getByText(/req-older-decoy/));
+        expect(await screen.findByRole("button", {name: "Debug this round in Replay & Debug"})).toBeEnabled();
+        expect(within(section("Retry & Debug")).getByText("req-older-decoy")).toBeInTheDocument();
+
+        // Reopens the create/restore switcher (selection persists across this, it only toggles
+        // visibility) and lands on "Restore existing" to reach the recent-session-list's own Refresh --
+        // distinct from both "Server" Refresh and "Round history for this session" Refresh.
+        await user.click(screen.getByRole("button", {name: "Create or restore a different session"}));
+        await user.click(screen.getByRole("radio", {name: "Restore existing"}));
+
+        const currentSession = section("Current session");
+        await user.click(within(currentSession).getByRole("button", {name: "Refresh"}));
+
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(screen.getByText("Spin a round, or pick one from round history below, to inspect it here.")).toBeInTheDocument();
+        expect(within(section("Retry & Debug")).queryByText("req-older-decoy")).not.toBeInTheDocument();
+        expect(within(section("Retry & Debug")).getByText(capturedRequestId as string)).toBeInTheDocument();
+
+        // The current session itself is untouched -- still sess-1, no create/load request was fired.
+        expect(screen.getByText(/Session sess-1/)).toBeInTheDocument();
+    }, 60000);
 });

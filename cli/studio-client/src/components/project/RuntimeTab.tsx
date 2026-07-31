@@ -343,6 +343,22 @@ export function RuntimeTab({
         onRestart(options);
     }
 
+    // Server Refresh re-reads runtime status from the server -- a genuinely different runtime instance (or
+    // the same one in a different state) can come back, so any round selected against whatever was showing
+    // before must not linger as if it still applied.
+    function handleServerRefresh(): void {
+        setSelectedRound(undefined);
+        onRefresh();
+    }
+
+    // The restore-session picker's own Refresh re-reads the recent-spins list a round selection may have
+    // been drawn from (see handleRefreshHistory's own doc comment for the same reasoning) -- cleared here
+    // too rather than left pointing at a round the refreshed list may no longer even contain.
+    function handleRefreshRecentSessions(): void {
+        setSelectedRound(undefined);
+        onRefreshRecentSpins();
+    }
+
     // The Debug panel's own truthful recovery action when the runtime is up but wasn't started with
     // debug mode on (see describeDebugAvailability's own doc comment) -- restarts with the same
     // host/port/session-storage mode (the only prior settings this component can still see once running,
@@ -464,7 +480,7 @@ export function RuntimeTab({
                         <Button variant="default" onClick={() => handleRestart()} loading={state.status === "loading"}>
                             Restart
                         </Button>
-                        <Button variant="default" onClick={onRefresh}>
+                        <Button variant="default" onClick={handleServerRefresh}>
                             Refresh
                         </Button>
                     </QuickActions>
@@ -621,7 +637,7 @@ export function RuntimeTab({
                                     Or pick a recent session
                                 </Text>
                                 <QuickActions>
-                                    <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
+                                    <Button variant="default" size="xs" onClick={handleRefreshRecentSessions}>
                                         Refresh
                                     </Button>
                                 </QuickActions>
