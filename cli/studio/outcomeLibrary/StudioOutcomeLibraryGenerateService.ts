@@ -16,6 +16,7 @@ import {
     generateExactWeightedOutcomeLibrary,
 } from "pokie";
 import fs from "fs";
+import path from "path";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import type {StudioOutcomeLibraryGenerateEstimateView} from "./StudioOutcomeLibraryGenerateEstimateView.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "./StudioOutcomeLibraryGenerateResultView.js";
@@ -56,6 +57,13 @@ type OtherModesResult = {readonly status: "ok"; readonly modes: readonly Outcome
 // did.
 export class StudioOutcomeLibraryGenerateService {
     public static readonly DEFAULT_BUNDLE_DIR = "outcomelibrary";
+    // Project-scoped, persisted on disk -- deliberately NOT inside DEFAULT_BUNDLE_DIR or any
+    // caller-chosen outDir (a bundle directory is always atomically replaced wholesale by the writer, see
+    // this class's own doc comment, so anything living inside one would be silently destroyed the next
+    // time that directory is regenerated). Holds only the discovery index (see readRegistryIndex/
+    // recordDiscoveredBundleDir's own doc comments) -- never outcome data itself, so losing or hand-editing
+    // this file can at worst make a real bundle temporarily undiscoverable, never corrupt one.
+    private static readonly REGISTRY_INDEX_RELATIVE_PATH = path.join(".pokie", "outcome-library-registry.json");
 
     private readonly pokieVersion: string;
     private readonly loadGame: typeof loadPokieGame;
@@ -65,12 +73,9 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly bundleReader: OutcomeLibraryBundleReading<string>;
     private readonly realpath: (resolvedPath: string) => string;
     private readonly directoryExists: (dirPath: string) => boolean;
-    // Every project-relative bundle directory a successful generate() call in this Studio server's own
-    // lifetime has written to, DEFAULT_BUNDLE_DIR included -- registry()'s own discovery set (see its doc
-    // comment). In-memory only, same "lives for exactly this server process" convention as
-    // StudioRuntimeManager's own state: a fresh Studio server re-derives it from scratch as generate() is
-    // called again, never from a persisted index file.
-    private readonly generatedBundleDirs = new Set<string>([StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR]);
+    private readonly readTextFile: (filePath: string) => string;
+    private readonly writeTextFile: (filePath: string, contents: string) => void;
+    private readonly ensureDirectory: (dirPath: string) => void;
 
     constructor(
         pokieVersion: string,
@@ -81,6 +86,9 @@ export class StudioOutcomeLibraryGenerateService {
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
         directoryExists: (dirPath: string) => boolean = (dirPath) => fs.existsSync(dirPath),
+        readTextFile: (filePath: string) => string = (filePath) => fs.readFileSync(filePath, "utf-8"),
+        writeTextFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
+        ensureDirectory: (dirPath: string) => void = (dirPath) => fs.mkdirSync(dirPath, {recursive: true}),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadGame = loadGame;
@@ -90,6 +98,9 @@ export class StudioOutcomeLibraryGenerateService {
         this.bundleReader = bundleReader;
         this.realpath = realpath;
         this.directoryExists = directoryExists;
+        this.readTextFile = readTextFile;
+        this.writeTextFile = writeTextFile;
+        this.ensureDirectory = ensureDirectory;
     }
 
     // The cheap, non-enumerating dry run over estimateExactOutcomeSpaceSize -- exactly the probe "pokie
@@ -202,9 +213,10 @@ export class StudioOutcomeLibraryGenerateService {
         const coverage = generated.diagnostics.strategy === "exact" ? 1 : toNumberApprox(generated.diagnostics.sampledRawCount) / toNumberApprox(generated.diagnostics.totalOutcomeSpaceSize);
 
         // Makes this write discoverable by registry() regardless of whether it landed in the conventional
-        // DEFAULT_BUNDLE_DIR or a caller-chosen outDir -- see this class's own doc comment on
-        // generatedBundleDirs.
-        this.generatedBundleDirs.add(outDirRelative);
+        // DEFAULT_BUNDLE_DIR or a caller-chosen outDir, and regardless of which Studio server process (or
+        // restart of the same one) later calls registry() -- see recordDiscoveredBundleDir's own doc
+        // comment.
+        this.recordDiscoveredBundleDir(projectRoot, outDirRelative);
 
         return {
             status: "ok",
@@ -228,10 +240,13 @@ export class StudioOutcomeLibraryGenerateService {
     // The Registry's own "does a compatible library already exist for this build?" check -- see
     // StudioOutcomeLibraryRegistryView's own doc comment for what "compatible"/"stale"/"wrong"/"missing"
     // mean here. Never limited to the conventional DEFAULT_BUNDLE_DIR: every bundle directory generate()
-    // has written to in this Studio server's own lifetime (see generatedBundleDirs) is read, and for each
-    // mode name encountered anywhere, only the most recently generated occurrence of it is kept -- so a
-    // mode regenerated into a fresh caller-chosen outDir is reported from there, while a different mode
-    // still sitting untouched in an earlier bundle dir keeps being reported from that one.
+    // has ever written to for this project, DEFAULT_BUNDLE_DIR included, is read (see
+    // discoverBundleDirs's own doc comment) -- persisted on disk, so this keeps finding a caller-chosen
+    // outDir's library even from a brand-new StudioOutcomeLibraryGenerateService/Studio server process, not
+    // only the one that generated it. For each mode name encountered anywhere, only the most recently
+    // generated occurrence of it is kept -- so a mode regenerated into a fresh caller-chosen outDir is
+    // reported from there, while a different mode still sitting untouched in an earlier bundle dir keeps
+    // being reported from that one.
     public async registry(projectRoot: string): Promise<StudioOutcomeLibraryRegistryView> {
         let game: PokieGame;
         try {
@@ -242,7 +257,7 @@ export class StudioOutcomeLibraryGenerateService {
         const currentGame = game.getManifest();
 
         const discovered: {bundleDir: string; manifest: OutcomeLibraryBundleManifest}[] = [];
-        for (const bundleDir of this.generatedBundleDirs) {
+        for (const bundleDir of this.discoverBundleDirs(projectRoot)) {
             const resolved = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
             if (resolved.status === "error") {
                 return {status: "load-error", error: resolved.message};
@@ -355,5 +370,58 @@ export class StudioOutcomeLibraryGenerateService {
             });
         }
         return {status: "ok", modes};
+    }
+
+    // registry()'s own discovery set: DEFAULT_BUNDLE_DIR (always checked, generated into or not) plus
+    // every project-relative outDir the persisted registry index (see REGISTRY_INDEX_RELATIVE_PATH) has
+    // recorded a successful generate() into, for this project, across every Studio server process that has
+    // ever run against it. Deduplicated; DEFAULT_BUNDLE_DIR sorts first when also present in the index.
+    private discoverBundleDirs(projectRoot: string): string[] {
+        return Array.from(new Set([StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, ...this.readRegistryIndex(projectRoot)]));
+    }
+
+    // Reads the persisted list of project-relative bundle directories generate() has ever successfully
+    // written to for this project. Deliberately fails open rather than surfacing a load-error: this index
+    // is a discovery aid only, never the source of truth for what a bundle actually contains (registry()'s
+    // own manifest read of each directory is), so a missing file (nothing generated into a custom outDir
+    // yet, or an older bundle predating this index), a corrupt one, or a symlink escape under the project
+    // root all simply fall back to reporting an empty list of *additional* dirs -- DEFAULT_BUNDLE_DIR
+    // itself is always still checked directly by discoverBundleDirs.
+    private readRegistryIndex(projectRoot: string): string[] {
+        const resolved = resolveProjectDirectory(projectRoot, StudioOutcomeLibraryGenerateService.REGISTRY_INDEX_RELATIVE_PATH, this.realpath);
+        if (resolved.status === "error" || !this.directoryExists(resolved.resolvedPath)) {
+            return [];
+        }
+        try {
+            const parsed: unknown = JSON.parse(this.readTextFile(resolved.resolvedPath));
+            return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [];
+        } catch {
+            return [];
+        }
+    }
+
+    // Persists `bundleDir` into the project-scoped registry index (creating it, and its parent directory,
+    // on first use) so a later registry() call -- from this same service instance or a fresh one entirely,
+    // e.g. after a Studio server restart -- still discovers it. Holds only directory names, never outcome
+    // data itself (see REGISTRY_INDEX_RELATIVE_PATH's own doc comment), and is deliberately best-effort:
+    // called after generate()'s own bundle write has already succeeded, so a failure to persist discovery
+    // (a read-only project checkout, an unresolvable index path) must not turn that already-successful
+    // generate() into a reported failure -- it only means this one library stays discoverable exclusively
+    // from within the current process, same as before this index existed.
+    private recordDiscoveredBundleDir(projectRoot: string, bundleDir: string): void {
+        try {
+            const resolved = resolveProjectDirectory(projectRoot, StudioOutcomeLibraryGenerateService.REGISTRY_INDEX_RELATIVE_PATH, this.realpath);
+            if (resolved.status === "error") {
+                return;
+            }
+            const existing = this.readRegistryIndex(projectRoot);
+            if (existing.includes(bundleDir)) {
+                return;
+            }
+            this.ensureDirectory(path.dirname(resolved.resolvedPath));
+            this.writeTextFile(resolved.resolvedPath, JSON.stringify([...existing, bundleDir]));
+        } catch {
+            // Best-effort persistence -- see this method's own doc comment.
+        }
     }
 }

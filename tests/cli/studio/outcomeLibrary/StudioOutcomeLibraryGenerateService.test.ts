@@ -170,6 +170,24 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(result.modes[0]).toMatchObject({modeName: "base", bundleDir: "custom-outcomes", buildStatus: "compatible"});
         });
 
+        it("keeps discovering a custom output directory's library after a fresh service instance is constructed", async () => {
+            const first = service();
+            const generated = await first.generate(projectRoot, {outDir: "custom-outcomes"});
+            expect(generated.status).toBe("ok");
+
+            // Simulates a Studio server restart: a brand-new service instance, carrying none of `first`'s
+            // in-memory state, against the same project directory on disk.
+            const restarted = service();
+            const result = await restarted.registry(projectRoot);
+            if (result.status !== "ok" || result.buildStatus === "missing") {
+                throw new Error(`expected a compatible build, got ${JSON.stringify(result)}`);
+            }
+            expect(result.buildStatus).toBe("compatible");
+            expect(result.bundleDir).toBe("custom-outcomes");
+            expect(result.modes).toHaveLength(1);
+            expect(result.modes[0]).toMatchObject({modeName: "base", bundleDir: "custom-outcomes", buildStatus: "compatible"});
+        });
+
         it("merges modes discovered across the default directory and a custom output directory", async () => {
             const svc = service();
             await svc.generate(projectRoot, {mode: "base"});
