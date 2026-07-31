@@ -926,6 +926,7 @@ export function ProjectDashboardPage() {
                                 runtime.restart({preGeneratedLibrarySelector: selector, preGeneratedLibraryExpectedHash: expectedHash});
                                 setActiveTab("runtime");
                             }}
+                            onNavigateToTab={setActiveTab}
                         />
                     )}
                     {activeTab === "mechanicsEditor" && (

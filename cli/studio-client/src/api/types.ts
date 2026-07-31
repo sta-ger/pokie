@@ -720,6 +720,90 @@ export type StudioOutcomeLibraryDeepValidateView =
     | {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "load-error"; error: string};
 
+export type OutcomeLibraryGenerationStrategy = "exact" | "bounded-coverage";
+
+// POST /api/project/outcome-libraries/generate/estimate's own DTO — see
+// cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateEstimateView.ts's own doc comment. Mirrors "pokie
+// outcomelibrary generate --estimate" exactly; totalOutcomeSpaceSize/maxOutcomeSpaceSize are bigint-safe
+// (a plain number when it fits Number.MAX_SAFE_INTEGER, a decimal string otherwise).
+export type StudioOutcomeLibraryGenerateEstimateView =
+    | {
+          status: "ok";
+          game: {id: string; name: string; version: string};
+          reelsNumber: number;
+          reelsSymbolsNumber: number;
+          reelSizes: number[];
+          totalOutcomeSpaceSize: number | string;
+          maxOutcomeSpaceSize: number | string;
+          strategy: OutcomeLibraryGenerationStrategy;
+          requiresBounded: boolean;
+      }
+    | {status: "unsupported"; error: string}
+    | {status: "load-error"; error: string};
+
+// OutcomeLibraryGeneratorDiagnostics, embedded verbatim -- see its own doc comment
+// (src/weightedoutcome/generate/OutcomeLibraryGeneratorDiagnostics.ts).
+export type OutcomeLibraryGeneratorDiagnostics = {
+    algorithm: string;
+    strategy: OutcomeLibraryGenerationStrategy;
+    totalOutcomeSpaceSize: number | string;
+    sampledRawCount: number | string;
+    seed?: string;
+    pokieVersion: string;
+    game: {id: string; name: string; version: string};
+    configHash?: string;
+    generatedAt: string;
+};
+
+// POST /api/project/outcome-libraries/generate's own DTO — see
+// cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.ts's own doc comment. `selector` chains
+// straight into selectOutcomeLibrary/compareOutcomeLibraries/the Runtime tab's pre-generated handoff.
+export type StudioOutcomeLibraryGenerateResultView =
+    | {
+          status: "ok";
+          bundleDir: string;
+          files: string[];
+          warnings: ValidationIssue[];
+          mode: {modeName: string; libraryId: string; hash: string; outcomeCount: number; totalWeight: number; rtp: number};
+          generator: OutcomeLibraryGeneratorDiagnostics;
+          coverage: number;
+          selector: OutcomeLibrarySelector;
+      }
+    | {status: "unsupported"; error: string}
+    | {status: "generation-error"; code: string; error: string}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
+    | {status: "load-error"; error: string};
+
+export type StudioOutcomeLibraryRegistryModeEntry = {
+    modeName: string;
+    libraryId: string;
+    outcomeCount: number;
+    totalWeight: number;
+    rtp: number;
+    hash: string;
+    strategy?: OutcomeLibraryGenerationStrategy;
+    generatedAt?: string;
+};
+
+// GET /api/project/outcome-libraries/registry's own DTO — see
+// cli/studio/outcomeLibrary/StudioOutcomeLibraryRegistryView.ts's own doc comment for what
+// "compatible"/"stale"/"wrong"/"missing" mean.
+export type StudioOutcomeLibraryRegistryView =
+    | {status: "ok"; bundleDir: string; buildStatus: "missing"}
+    | {
+          status: "ok";
+          bundleDir: string;
+          buildStatus: "compatible" | "stale" | "wrong";
+          game: {id: string; name: string; version: string};
+          currentGame: {id: string; name: string; version: string};
+          configHash?: string;
+          artifactPokieVersion: string;
+          currentPokieVersion: string;
+          generatedAt: string;
+          modes: StudioOutcomeLibraryRegistryModeEntry[];
+      }
+    | {status: "load-error"; error: string};
+
 // POST /api/project/certification/validate-source's own DTO — see
 // cli/studio/certification/StudioCertificationSourceValidateView.ts's own doc comment.
 export type StudioCertificationSourceValidateView = {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]} | {status: "load-error"; error: string};

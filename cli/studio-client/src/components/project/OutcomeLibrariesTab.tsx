@@ -1,19 +1,36 @@
-import {Alert, Button, Group, SegmentedControl, Stepper, Table, Text, TextInput} from "@mantine/core";
+import {Alert, Badge, Button, Checkbox, Group, NumberInput, SegmentedControl, Stepper, Table, Text, TextInput} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
-import {useRef, useState, type ReactNode} from "react";
-import {compareOutcomeLibraries, selectOutcomeLibrary, validateOutcomeLibraryDeep} from "../../api/apiClient";
+import {useEffect, useRef, useState, type ReactNode} from "react";
+import {
+    compareOutcomeLibraries,
+    estimateOutcomeLibraryGeneration,
+    generateOutcomeLibrary,
+    getOutcomeLibraryRegistry,
+    selectOutcomeLibrary,
+    validateOutcomeLibraryDeep,
+    type OutcomeLibraryGenerateRequestOptions,
+} from "../../api/apiClient";
 import type {OutcomeLibrarySelector} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
     describeOutcomeLibraryCompareResult,
     describeOutcomeLibraryDeepValidateResult,
+    describeOutcomeLibraryEstimateSummary,
+    describeOutcomeLibraryGenerateEstimateResult,
+    describeOutcomeLibraryGenerateResult,
+    describeOutcomeLibraryGenerateSummary,
     describeOutcomeLibraryOutcome,
     describeOutcomeLibraryProvenanceSummary,
+    describeOutcomeLibraryRegistryBuildStatus,
+    describeOutcomeLibraryRegistryResult,
     describeOutcomeLibrarySelectResult,
     type OutcomeLibraryCompareRequestView,
     type OutcomeLibraryDeepValidateRequestView,
+    type OutcomeLibraryGenerateEstimateRequestView,
+    type OutcomeLibraryGenerateRequestView,
     type OutcomeLibraryOutcome,
+    type OutcomeLibraryRegistryRequestView,
     type OutcomeLibrarySelectRequestView,
 } from "../../domain/interpret/OutcomeLibraries";
 import {describePathActionError} from "../../domain/pathActionError";
@@ -28,6 +45,10 @@ import {PageSection} from "../common/PageSection";
 import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
+
+// Mirrors StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR -- the conventional bundle directory
+// Generate itself writes to (and the Registry panel reads from) when no output directory is given.
+const StudioOutcomeLibraryDefaultBundleDir = "outcomelibrary";
 
 const OUTCOME_BANNER: Record<OutcomeLibraryOutcome, {color: string; icon: ReactNode; title: string}> = {
     success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Loaded successfully"},
@@ -149,13 +170,133 @@ function SelectorFieldsInput({
 // "Continue" only ever shown after a genuinely successful step.
 export function OutcomeLibrariesTab({
     onUseInRuntime,
+    onNavigateToTab,
     projectRoot,
 }: {
     onUseInRuntime: (selector: OutcomeLibrarySelector, expectedHash: string) => void;
+    // Deploy/Stake export actions on a freshly generated library hand off to those tabs' own workflows
+    // rather than duplicating them here -- same "one real workflow, not a second" discipline as
+    // onUseInRuntime handing off to the Runtime tab.
+    onNavigateToTab?: (tab: "deployment" | "stakeEngineExport") => void;
     projectRoot?: string;
 }) {
     const fetchImpl = useStudioApi();
     const [activeStep, setActiveStep] = useState(0);
+
+    // ---- Registry ----
+    const [registryView, setRegistryView] = useState<OutcomeLibraryRegistryRequestView>({status: "idle"});
+    const registryRequestIdRef = useRef(0);
+
+    function fetchRegistry(): void {
+        const requestId = ++registryRequestIdRef.current;
+        setRegistryView({status: "loading"});
+        getOutcomeLibraryRegistry(fetchImpl)
+            .then((result) => {
+                if (requestId !== registryRequestIdRef.current) {
+                    return;
+                }
+                setRegistryView(describeOutcomeLibraryRegistryResult(result));
+            })
+            .catch((error: unknown) => {
+                if (requestId !== registryRequestIdRef.current) {
+                    return;
+                }
+                setRegistryView({status: "error", message: errorMessage(error)});
+            });
+    }
+
+    // Fetched once per mount (the same "forces a full remount on a genuine project switch" key the
+    // parent already gives this component -- see ProjectDashboardPage's own doc comment on this tab's
+    // `key`), not re-polled -- a fresh answer is always one click of "Refresh" away, and a completed
+    // Generate run already refreshes it itself (see runGenerate).
+    useEffect(() => {
+        fetchRegistry();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // ---- Generate ----
+    const [generateMode, setGenerateMode] = useState("");
+    const [generateStake, setGenerateStake] = useState<number | "">("");
+    const [generateConfigHash, setGenerateConfigHash] = useState("");
+    const [generateLibraryId, setGenerateLibraryId] = useState("");
+    const [generateOutDir, setGenerateOutDir] = useState("");
+    const [generateMaxOutcomeSpaceSize, setGenerateMaxOutcomeSpaceSize] = useState("");
+    const [generateBounded, setGenerateBounded] = useState(false);
+    const [generateSampleSize, setGenerateSampleSize] = useState("");
+    const [generateSeed, setGenerateSeed] = useState("");
+    const [estimateView, setEstimateView] = useState<OutcomeLibraryGenerateEstimateRequestView>({status: "idle"});
+    const estimateRequestIdRef = useRef(0);
+    const estimateGuard = useDoubleSubmitGuard();
+    const [generateView, setGenerateView] = useState<OutcomeLibraryGenerateRequestView>({status: "idle"});
+    const generateRequestIdRef = useRef(0);
+    const generateGuard = useDoubleSubmitGuard();
+
+    function buildGenerateOptions(): OutcomeLibraryGenerateRequestOptions {
+        return {
+            ...(generateMode.trim().length > 0 ? {mode: generateMode.trim()} : {}),
+            ...(generateStake !== "" ? {stake: generateStake} : {}),
+            ...(generateConfigHash.trim().length > 0 ? {configHash: generateConfigHash.trim()} : {}),
+            ...(generateLibraryId.trim().length > 0 ? {libraryId: generateLibraryId.trim()} : {}),
+            ...(generateMaxOutcomeSpaceSize.trim().length > 0 ? {maxOutcomeSpaceSize: generateMaxOutcomeSpaceSize.trim()} : {}),
+            ...(generateBounded ? {bounded: {sampleSize: generateSampleSize.trim(), seed: generateSeed.trim()}} : {}),
+            ...(generateOutDir.trim().length > 0 ? {outDir: generateOutDir.trim()} : {}),
+        };
+    }
+
+    function runEstimate(): void {
+        if (!estimateGuard.begin()) {
+            return;
+        }
+        const requestId = ++estimateRequestIdRef.current;
+        setEstimateView({status: "loading"});
+        estimateOutcomeLibraryGeneration(fetchImpl, generateMode.trim().length > 0 ? generateMode.trim() : undefined, generateMaxOutcomeSpaceSize.trim().length > 0 ? generateMaxOutcomeSpaceSize.trim() : undefined)
+            .then((result) => {
+                if (requestId !== estimateRequestIdRef.current) {
+                    return;
+                }
+                estimateGuard.end();
+                setEstimateView(describeOutcomeLibraryGenerateEstimateResult(result));
+            })
+            .catch((error: unknown) => {
+                if (requestId !== estimateRequestIdRef.current) {
+                    return;
+                }
+                estimateGuard.end();
+                setEstimateView({status: "error", message: errorMessage(error)});
+            });
+    }
+
+    // A successful generate() both invalidates the Registry's own stale answer (this build now has a
+    // fresher library than what fetchRegistry last reported) and, since the writer already validated the
+    // bundle it just wrote, immediately loads it through the exact same select() path Select/import uses
+    // -- so the result step's own "Inspect"/"Validate & analyze" actions land on already-populated,
+    // already-analyzed state instead of asking the user to re-enter the selector they just generated.
+    function runGenerate(): void {
+        if (!generateGuard.begin()) {
+            return;
+        }
+        const requestId = ++generateRequestIdRef.current;
+        setGenerateView({status: "loading"});
+        generateOutcomeLibrary(fetchImpl, buildGenerateOptions())
+            .then((result) => {
+                if (requestId !== generateRequestIdRef.current) {
+                    return;
+                }
+                generateGuard.end();
+                setGenerateView(describeOutcomeLibraryGenerateResult(result));
+                if (result.status === "ok") {
+                    fetchRegistry();
+                    setFields({kind: "bundle", bundleDir: result.bundleDir, modeName: result.mode.modeName, path: "", stakeDir: ""});
+                }
+            })
+            .catch((error: unknown) => {
+                if (requestId !== generateRequestIdRef.current) {
+                    return;
+                }
+                generateGuard.end();
+                setGenerateView({status: "error", message: errorMessage(error)});
+            });
+    }
 
     // ---- Select/import ----
     const [fields, setFields] = useState<SelectorFields>(EMPTY_SELECTOR_FIELDS);
@@ -211,7 +352,10 @@ export function OutcomeLibrariesTab({
         }
     }
 
-    function runSelect(): void {
+    // `targetStep` lets a caller that already knows the selector is good (Generate's own "Inspect"/
+    // "Validate & analyze" result actions -- see runGenerate) jump straight past Select/import to
+    // wherever it actually wants to land, rather than always landing on Validate & analyze (step 2).
+    function runSelect(targetStep = 2): void {
         const selector = buildSelector(fields);
         if (selector === undefined || !selectGuard.begin()) {
             return;
@@ -231,7 +375,7 @@ export function OutcomeLibrariesTab({
                 // has errors/warnings worth showing on Validate & analyze, only "error"/"load-error"
                 // (a request-level failure) should keep the user on Select/import to retry.
                 if (result.status === "ok" || result.status === "invalid") {
-                    setActiveStep(1);
+                    setActiveStep(result.status === "ok" ? targetStep : 2);
                 }
             })
             .catch((error: unknown) => {
@@ -365,8 +509,223 @@ export function OutcomeLibrariesTab({
 
                 {selectOutcome !== "invalid" && (
                     <QuickActions>
-                        <Button onClick={() => setActiveStep(2)}>Continue to Inspect</Button>
+                        <Button onClick={() => setActiveStep(3)}>Continue to Inspect</Button>
                     </QuickActions>
+                )}
+            </div>
+        );
+    }
+
+    const registryResult = registryView.status === "ok" ? registryView : undefined;
+
+    function renderRegistryPanel(): ReactNode {
+        return (
+            <PageSection legend="Registry">
+                <Text size="sm" c="dimmed" mb="sm">
+                    Whether a compatible outcome library already exists for this project&apos;s own current
+                    build (the currently open, loadable package) — discovered from the conventional{" "}
+                    <code>{StudioOutcomeLibraryDefaultBundleDir}</code> bundle Generate itself writes to,
+                    never a static blueprint JSON.
+                </Text>
+                <QuickActions>
+                    <Button onClick={fetchRegistry} loading={registryView.status === "loading"} variant="default">
+                        Refresh
+                    </Button>
+                </QuickActions>
+                {registryView.status === "error" && <ErrorState message={describePathActionError("The outcome library registry", registryView.message)} />}
+                {registryView.status === "load-error" && <ErrorState message={describePathActionError("The outcome library registry", registryView.error)} />}
+                {registryResult && (
+                    <div>
+                        <Group gap="xs" mb="sm">
+                            <Badge color={describeOutcomeLibraryRegistryBuildStatus(registryResult.buildStatus).color}>
+                                {describeOutcomeLibraryRegistryBuildStatus(registryResult.buildStatus).label}
+                            </Badge>
+                            {describeOutcomeLibraryRegistryBuildStatus(registryResult.buildStatus).action !== "none" && (
+                                <Button size="xs" variant="light" onClick={() => setActiveStep(0)}>
+                                    {describeOutcomeLibraryRegistryBuildStatus(registryResult.buildStatus).action === "build" ? "Build" : "Rebuild"}
+                                </Button>
+                            )}
+                        </Group>
+                        {registryResult.buildStatus !== "missing" && (
+                            <Table withRowBorders={false}>
+                                <Table.Thead>
+                                    <Table.Tr>
+                                        <Table.Th>Mode</Table.Th>
+                                        <Table.Th>Outcomes</Table.Th>
+                                        <Table.Th>RTP</Table.Th>
+                                        <Table.Th>Generated</Table.Th>
+                                    </Table.Tr>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                    {registryResult.modes.map((mode) => (
+                                        <Table.Tr key={mode.modeName}>
+                                            <Table.Th style={{overflowWrap: "anywhere"}}>{mode.modeName}</Table.Th>
+                                            <Table.Td>{mode.outcomeCount.toLocaleString()}</Table.Td>
+                                            <Table.Td>{(mode.rtp * 100).toFixed(2)}%</Table.Td>
+                                            <Table.Td>{mode.generatedAt ?? "—"}</Table.Td>
+                                        </Table.Tr>
+                                    ))}
+                                </Table.Tbody>
+                            </Table>
+                        )}
+                    </div>
+                )}
+            </PageSection>
+        );
+    }
+
+    function renderGenerateStep(): ReactNode {
+        const estimateResult = estimateView.status === "ok" ? estimateView : undefined;
+        const generateResult = generateView.status === "ok" ? generateView : undefined;
+
+        return (
+            <div>
+                <Text size="sm" c="dimmed" mb="sm">
+                    Generates a real WeightedOutcomeLibrary by actually running this project&apos;s own
+                    currently built package (drives the same session/win-calculation runtime a live round
+                    uses) — it is never a static blueprint JSON, and never a second, independently-derived
+                    calculation.
+                </Text>
+
+                <PageSection legend="Mode/settings/seed">
+                    <Group gap="sm" wrap="wrap" mb="sm">
+                        <TextInput label="Mode" placeholder="base" value={generateMode} onChange={(event) => setGenerateMode(event.currentTarget.value)} />
+                        <NumberInput label="Stake" placeholder="1" value={generateStake} onChange={(value) => setGenerateStake(typeof value === "number" ? value : "")} />
+                        <TextInput label="Library id" placeholder="(derived from the game id and mode)" value={generateLibraryId} onChange={(event) => setGenerateLibraryId(event.currentTarget.value)} />
+                        <TextInput label="Config hash" placeholder="(optional)" value={generateConfigHash} onChange={(event) => setGenerateConfigHash(event.currentTarget.value)} />
+                    </Group>
+                    <Group gap="sm" wrap="wrap" mb="sm">
+                        <TextInput
+                            label="Max outcome space size"
+                            placeholder="(defaults to the generator's own exact-sweep limit)"
+                            value={generateMaxOutcomeSpaceSize}
+                            onChange={(event) => setGenerateMaxOutcomeSpaceSize(event.currentTarget.value.replace(/[^0-9]/g, ""))}
+                        />
+                        <Checkbox
+                            label="Bounded coverage (required once the space exceeds the max above)"
+                            checked={generateBounded}
+                            onChange={(event) => setGenerateBounded(event.currentTarget.checked)}
+                            mt={24}
+                        />
+                    </Group>
+                    {generateBounded && (
+                        <Group gap="sm" wrap="wrap" mb="sm">
+                            <TextInput label="Sample size" placeholder="1000000" value={generateSampleSize} onChange={(event) => setGenerateSampleSize(event.currentTarget.value.replace(/[^0-9]/g, ""))} />
+                            <TextInput label="Seed" placeholder="a deterministic seed string" value={generateSeed} onChange={(event) => setGenerateSeed(event.currentTarget.value)} />
+                        </Group>
+                    )}
+                    <PathInput
+                        label="Output bundle directory"
+                        placeholder={StudioOutcomeLibraryDefaultBundleDir}
+                        kind="directory"
+                        browseTitle="Browse for an output bundle directory"
+                        browseId="outcome-library-generate-out-dir"
+                        relevantDirectory={projectRoot}
+                        autoDestinationPath={StudioOutcomeLibraryDefaultBundleDir}
+                        value={generateOutDir}
+                        onChange={(event) => setGenerateOutDir(event.currentTarget.value)}
+                        onPathSelected={setGenerateOutDir}
+                    />
+                </PageSection>
+
+                <PageSection legend="Estimate/cost">
+                    <QuickActions>
+                        <Button onClick={runEstimate} loading={estimateView.status === "loading"} variant="default">
+                            Estimate
+                        </Button>
+                    </QuickActions>
+                    {estimateView.status === "error" && <ErrorState message={describePathActionError("The outcome space estimate", estimateView.message)} />}
+                    {estimateView.status === "load-error" && <ErrorState message={describePathActionError("The outcome space estimate", estimateView.error)} />}
+                    {estimateView.status === "unsupported" && <ErrorState message={estimateView.error} />}
+                    {estimateResult && (
+                        <Alert color={estimateResult.requiresBounded ? "yellow" : "blue"} icon={<IconAlertTriangle size={16} />} mt="sm">
+                            {describeOutcomeLibraryEstimateSummary(estimateResult)}
+                        </Alert>
+                    )}
+                </PageSection>
+
+                <QuickActions>
+                    <Button onClick={runGenerate} loading={generateView.status === "loading"}>
+                        Generate
+                    </Button>
+                </QuickActions>
+                {generateView.status === "error" && <ErrorState message={describePathActionError("The outcome library generation", generateView.message)} />}
+                {generateView.status === "load-error" && <ErrorState message={describePathActionError("The outcome library generation", generateView.error)} />}
+                {generateView.status === "unsupported" && <ErrorState message={generateView.error} />}
+                {generateView.status === "generation-error" && <ErrorState message={generateView.error} />}
+                {generateView.status === "invalid" && (
+                    <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="The generated library failed to write" mt="sm">
+                        <IssueList title="Errors" issues={generateView.errors} />
+                        <IssueList title="Warnings" issues={generateView.warnings} />
+                    </Alert>
+                )}
+
+                {generateResult && (
+                    <PageSection legend="Result">
+                        <Alert color="green" icon={<IconCircleCheck size={16} />} mb="sm">
+                            {describeOutcomeLibraryGenerateSummary(generateResult)}
+                        </Alert>
+                        <Table withRowBorders={false} mb="sm">
+                            <Table.Tbody>
+                                <Table.Tr>
+                                    <Table.Th>Path</Table.Th>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>{generateResult.bundleDir}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Files</Table.Th>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>{generateResult.files.join(", ")}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Hash</Table.Th>
+                                    <Table.Td style={{overflowWrap: "anywhere"}}>{generateResult.mode.hash}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Generator</Table.Th>
+                                    <Table.Td>
+                                        {generateResult.generator.algorithm} ({generateResult.generator.strategy}), pokie v{generateResult.generator.pokieVersion}
+                                    </Table.Td>
+                                </Table.Tr>
+                                {generateResult.generator.seed !== undefined && (
+                                    <Table.Tr>
+                                        <Table.Th>Seed</Table.Th>
+                                        <Table.Td style={{overflowWrap: "anywhere"}}>{generateResult.generator.seed}</Table.Td>
+                                    </Table.Tr>
+                                )}
+                                <Table.Tr>
+                                    <Table.Th>Count</Table.Th>
+                                    <Table.Td>{generateResult.mode.outcomeCount.toLocaleString()}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Total weight</Table.Th>
+                                    <Table.Td>{generateResult.mode.totalWeight.toLocaleString()}</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>RTP</Table.Th>
+                                    <Table.Td>{(generateResult.mode.rtp * 100).toFixed(2)}%</Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Coverage</Table.Th>
+                                    <Table.Td>{(generateResult.coverage * 100).toFixed(4)}%</Table.Td>
+                                </Table.Tr>
+                            </Table.Tbody>
+                        </Table>
+                        {generateResult.warnings.length > 0 && <IssueList title="Warnings" issues={generateResult.warnings} />}
+                        <QuickActions>
+                            <Button variant="default" onClick={() => runSelect(3)}>
+                                Inspect
+                            </Button>
+                            <Button variant="default" onClick={() => runSelect(2)}>
+                                Validate/analyze
+                            </Button>
+                            <Button variant="default" onClick={() => onNavigateToTab?.("deployment")} disabled={onNavigateToTab === undefined}>
+                                Deploy
+                            </Button>
+                            <Button variant="default" onClick={() => onNavigateToTab?.("stakeEngineExport")} disabled={onNavigateToTab === undefined}>
+                                Stake export
+                            </Button>
+                            <Button onClick={() => onUseInRuntime(generateResult.selector, generateResult.mode.hash)}>Serve pre-generated outcomes</Button>
+                        </QuickActions>
+                    </PageSection>
                 )}
             </div>
         );
@@ -375,39 +734,45 @@ export function OutcomeLibrariesTab({
     return (
         <PageSection legend="Outcome Libraries">
             <Text size="sm" c="dimmed" mb="sm">
-                Load a POKIE outcome library (or a supported external export) purely in memory, validate and
-                analyze it, inspect its distribution and feature breakdown, and compare it against another
-                library — everything shown here is computed by pokie&apos;s own WeightedOutcomeLibrary
-                services, never re-derived in this UI.
+                POKIE&apos;s canonical outcome-library hub: generate a library straight from this project&apos;s
+                own current build, or load a POKIE outcome library (or a supported external export) purely
+                in memory, validate and analyze it, inspect its distribution and feature breakdown, and
+                compare it against another library — everything shown here is computed by pokie&apos;s own
+                WeightedOutcomeLibrary services, never re-derived in this UI.
             </Text>
 
+            {renderRegistryPanel()}
+
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Select/import" description="Choose a library" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step label="Generate" description="From the current build" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step label="Select/import" description="Choose a library" aria-current={activeStep === 1 ? "step" : undefined} />
                 <Stepper.Step
                     label="Validate & analyze"
                     description="Diagnostics"
                     disabled={!analyzeReachable}
-                    aria-current={activeStep === 1 ? "step" : undefined}
+                    aria-current={activeStep === 2 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Inspect"
                     description="Distribution & features"
                     disabled={!inspectReachable}
-                    aria-current={activeStep === 2 ? "step" : undefined}
+                    aria-current={activeStep === 3 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Compare or use"
                     description="Diff & hand-off"
                     disabled={!inspectReachable}
-                    aria-current={activeStep === 3 ? "step" : undefined}
+                    aria-current={activeStep === 4 ? "step" : undefined}
                 />
             </Stepper>
 
-            {activeStep === 0 && (
+            {activeStep === 0 && renderGenerateStep()}
+
+            {activeStep === 1 && (
                 <div>
                     <SelectorFieldsInput fields={fields} onChange={handleFieldsChange} idPrefix="Library" relevantDirectory={projectRoot} />
                     <QuickActions>
-                        <Button onClick={runSelect} loading={selectView.status === "loading"} disabled={buildSelector(fields) === undefined}>
+                        <Button onClick={() => runSelect()} loading={selectView.status === "loading"} disabled={buildSelector(fields) === undefined}>
                             Load library
                         </Button>
                     </QuickActions>
@@ -418,9 +783,9 @@ export function OutcomeLibrariesTab({
                 </div>
             )}
 
-            {activeStep === 1 && renderAnalyzeStep()}
+            {activeStep === 2 && renderAnalyzeStep()}
 
-            {activeStep === 2 &&
+            {activeStep === 3 &&
                 (selectResult === undefined ? (
                     <EmptyState message="Select/import a valid library first." />
                 ) : (
@@ -518,12 +883,12 @@ export function OutcomeLibrariesTab({
                         </AdvancedDisclosure>
 
                         <QuickActions>
-                            <Button onClick={() => setActiveStep(3)}>Continue to Compare or use</Button>
+                            <Button onClick={() => setActiveStep(4)}>Continue to Compare or use</Button>
                         </QuickActions>
                     </div>
                 ))}
 
-            {activeStep === 3 &&
+            {activeStep === 4 &&
                 (selectResult === undefined ? (
                     <EmptyState message="Select/import a valid library first." />
                 ) : (
@@ -550,7 +915,7 @@ export function OutcomeLibrariesTab({
                                             message="Its content on disk no longer matches what Inspect showed you, so it wasn't compared against the right library. Re-select it to refresh, then compare again."
                                             actionLabel="Re-select the left library"
                                             actionVariant="light"
-                                            onAction={runSelect}
+                                            onAction={() => runSelect(4)}
                                         />
                                     )}
                                     {compareResult.left.status === "load-error" && (

@@ -1,7 +1,13 @@
 import {screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
-import type {StudioOutcomeLibraryCompareView, StudioOutcomeLibrarySelectView, WeightedOutcomeLibraryAnalysis} from "../../../../../../cli/studio-client/src/api/types";
+import type {
+    StudioOutcomeLibraryCompareView,
+    StudioOutcomeLibraryGenerateEstimateView,
+    StudioOutcomeLibraryGenerateResultView,
+    StudioOutcomeLibrarySelectView,
+    WeightedOutcomeLibraryAnalysis,
+} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
@@ -14,7 +20,18 @@ const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: numb
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+    // Fetched once on mount by the Registry panel (see OutcomeLibrariesTab's own fetchRegistry) --
+    // registered here so every test in this file gets a deterministic "missing" answer instead of a
+    // fake-route error, unless a test overrides it.
+    "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
 };
+
+// Mantine's Stepper.Step packs the step icon + label + description into one <button> -- same convention
+// every other Stepper-driving workflow test in this suite uses (see e.g.
+// ProjectDashboardPage.deploymentWorkflow.test.tsx's own stepperStep()).
+function stepperStep(label: string, description: string): RegExp {
+    return new RegExp(`${label}.*${description}`);
+}
 
 function jsonResponse(body: unknown, status = 200) {
     return Promise.resolve({ok: status < 400, status, json: () => Promise.resolve(body)});
@@ -51,9 +68,13 @@ function okSelectView(libraryId: string, analysis: WeightedOutcomeLibraryAnalysi
     };
 }
 
+// The tab now opens on its new primary Generate step (see OutcomeLibrariesTab's own Stepper) -- every
+// test in this file exercises the pre-existing Select/import -> ... flow, so this jumps straight past
+// Generate the same way a user clicking the Stepper's own "Select/import" step would.
 async function goToOutcomeLibrariesTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+    await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
     await screen.findByLabelText("Library JSON path");
 }
 
@@ -229,10 +250,12 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
             "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
         await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
 
         // A brand new project's Outcome Libraries tab must show no trace of the previous project's
         // loaded library -- back to a clean Select/import step, path field empty.
@@ -362,5 +385,162 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"},
             preGeneratedLibraryExpectedHash: "sha256:lib-a",
         });
+    });
+});
+
+const ESTIMATE_RESULT: StudioOutcomeLibraryGenerateEstimateView = {
+    status: "ok",
+    game: GAME,
+    reelsNumber: 2,
+    reelsSymbolsNumber: 1,
+    reelSizes: [3, 2],
+    totalOutcomeSpaceSize: 6,
+    maxOutcomeSpaceSize: 20_000_000,
+    strategy: "exact",
+    requiresBounded: false,
+};
+
+const GENERATE_RESULT: StudioOutcomeLibraryGenerateResultView = {
+    status: "ok",
+    bundleDir: "outcomelibrary",
+    files: ["manifest.json", "index_base.json", "outcomes_base.jsonl"],
+    warnings: [],
+    mode: {modeName: "base", libraryId: "a-base", hash: "sha256:generated", outcomeCount: 4, totalWeight: 6, rtp: 0.8333},
+    generator: {
+        algorithm: "pokie-exact-reel-enumeration-v1",
+        strategy: "exact",
+        totalOutcomeSpaceSize: 6,
+        sampledRawCount: 6,
+        pokieVersion: "9.9.9",
+        game: GAME,
+        generatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    coverage: 1,
+    selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+};
+
+async function generateFromCurrentBuild(user: ReturnType<typeof userEvent.setup>, fetchImpl: FetchLike): Promise<void> {
+    renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+    await screen.findByRole("heading", {name: "A"});
+    await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+
+    // Opens directly on the new primary Generate step -- no navigation needed to reach it.
+    await user.type(screen.getByLabelText("Mode"), "base");
+    await user.click(screen.getByRole("button", {name: "Generate"}));
+    await screen.findByText(/Generated "a-base"/);
+}
+
+describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry panel", () => {
+    it("generates a library from the current build, showing path/files/hash/generator/count/weight/RTP/coverage, and Inspect chains into the existing select() pipeline", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate/estimate": () => ({ok: true, status: 200, body: ESTIMATE_RESULT}),
+            "/api/project/outcome-libraries/generate": () => ({ok: true, status: 200, body: GENERATE_RESULT}),
+            "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("a-base")}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+
+        // Opens directly on the new primary Generate step -- no navigation needed to reach it.
+        await user.type(screen.getByLabelText("Mode"), "base");
+
+        await user.click(screen.getByRole("button", {name: "Estimate"}));
+        expect(await screen.findByText(/Exact: every one of the 6 raw reel-stop combinations/)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Generate"}));
+
+        expect(await screen.findByText(/Generated "a-base"/)).toBeInTheDocument();
+        expect(screen.getByText(/This is computed by actually running the project's own built package/)).toBeInTheDocument();
+        // "outcomelibrary" also appears in the Registry panel's own descriptive text above the Stepper --
+        // this only asserts the Result section's own path/files table rendered at all.
+        expect(screen.getAllByText("outcomelibrary").length).toBeGreaterThan(1);
+        expect(screen.getByText("sha256:generated")).toBeInTheDocument();
+        expect(screen.getByText(/pokie-exact-reel-enumeration-v1/)).toBeInTheDocument();
+
+        const generateCall = calls.find((call) => call.url === "/api/project/outcome-libraries/generate");
+        expect(JSON.parse(generateCall?.init?.body ?? "{}")).toMatchObject({mode: "base"});
+
+        // Inspect chains straight into the existing select() pipeline against the just-generated bundle,
+        // landing directly on the Inspect step (distribution/features), not Validate & analyze.
+        await user.click(screen.getByRole("button", {name: "Inspect"}));
+        expect(await screen.findByText("95.00%")).toBeInTheDocument();
+        const selectCall = calls.find((call) => call.url === "/api/project/outcome-libraries/select");
+        expect(JSON.parse(selectCall?.init?.body ?? "{}")).toEqual({selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}});
+    });
+
+    it("hands off Deploy to the Deployment tab's own workflow instead of duplicating it", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate": () => ({ok: true, status: 200, body: GENERATE_RESULT}),
+        });
+
+        await generateFromCurrentBuild(user, fetchImpl);
+        await user.click(screen.getByRole("button", {name: "Deploy"}));
+
+        expect(await screen.findByRole("button", {name: stepperStep("Select target", "Where to publish")})).toBeInTheDocument();
+    });
+
+    it("hands off Stake export to the Stake Engine Export tab's own workflow instead of duplicating it", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate": () => ({ok: true, status: 200, body: GENERATE_RESULT}),
+        });
+
+        await generateFromCurrentBuild(user, fetchImpl);
+        await user.click(screen.getByRole("button", {name: "Stake export"}));
+
+        expect(await screen.findByRole("button", {name: stepperStep("Configure", "Source, modes & output")})).toBeInTheDocument();
+    });
+
+    it("serves the freshly generated library in the Runtime tab via 'Serve pre-generated outcomes'", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate": () => ({ok: true, status: 200, body: GENERATE_RESULT}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/restart": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "running",
+                    host: "127.0.0.1",
+                    port: 4321,
+                    baseUrl: "http://127.0.0.1:4321",
+                    debug: false,
+                    repositoryMode: "memory",
+                    startedAt: "2026-01-01T00:00:00.000Z",
+                    preGenerated: {libraryId: "a-base", hash: "sha256:generated"},
+                },
+            }),
+        });
+
+        await generateFromCurrentBuild(user, fetchImpl);
+        await user.click(screen.getByRole("button", {name: "Serve pre-generated outcomes"}));
+
+        expect(await screen.findByText("Running against a pre-generated outcome library")).toBeInTheDocument();
+        const restartCall = calls.find((call) => call.url === "/api/project/runtime/restart");
+        expect(JSON.parse(restartCall?.init?.body ?? "{}")).toEqual({
+            preGeneratedLibrarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+            preGeneratedLibraryExpectedHash: "sha256:generated",
+        });
+    });
+
+    it("Registry reports a missing build and its Build action jumps back to the Generate step", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToOutcomeLibrariesTab(user);
+
+        expect(await screen.findByText("No library built yet")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build"}));
+
+        // Back on the Generate step -- its own Mode field is now visible again.
+        expect(await screen.findByLabelText("Mode")).toBeInTheDocument();
     });
 });
