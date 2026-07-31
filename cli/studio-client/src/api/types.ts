@@ -461,6 +461,10 @@ export type RoundArtifactJson = RoundArtifact & {readonly hash: string};
 // The server's copy of this same type lives in "pokie" itself (src/replay/ReplayDescriptor.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type ReplayDescriptor = {
+    // The identity of the actual game session this replay created and played forward -- distinct from
+    // the replay job id (StudioReplayJobView.id, minted before this session even exists) that tracks the
+    // run itself. See src/replay/ReplayDescriptor.ts's own doc comment.
+    sessionId: string;
     game: {id: string; name: string; version: string};
     seed: string | null;
     round: number;

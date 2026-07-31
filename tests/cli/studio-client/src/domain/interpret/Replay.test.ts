@@ -12,6 +12,7 @@ import type {ReplayDescriptor, RoundArtifactJson, StudioReplayJobView, StudioRep
 
 function createDescriptor(overrides: Partial<ReplayDescriptor> = {}): ReplayDescriptor {
     return {
+        sessionId: "session-1",
         game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         seed: "demo",
         round: 42,
@@ -140,6 +141,7 @@ describe("describeReplayResult", () => {
 
         expect(describeReplayResult(job)).toEqual({
             id: "replay-1",
+            sessionId: "session-1",
             game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
             round: 42,
             seed: "demo",

@@ -738,8 +738,9 @@ export function ReplayTab({
                             )}
 
                             {/* The run's own record, honest about what actually ran (see runReproducibilityLabel's
-                                own doc comment): which replay session produced this, the round the caller asked
-                                for vs. the round the session actually reached, the seed used, when it ran, and
+                                own doc comment): the actual newly-created replay session this run produced (never
+                                the job/request id -- see result.sessionId's own doc comment), the round the caller
+                                asked for vs. the round the session actually reached, the seed used, when it ran, and
                                 whether it was ever checked against a known-good prior result. Shown once for
                                 every source here rather than duplicated per-branch below (RoundArtifactInspector
                                 itself is shared with Runtime/Deployment and has no notion of a "replay session"
@@ -749,6 +750,10 @@ export function ReplayTab({
                                     <Table.Tbody>
                                         <Table.Tr>
                                             <Table.Th>Replay session</Table.Th>
+                                            <Table.Td style={{overflowWrap: "anywhere"}}>{result.sessionId}</Table.Td>
+                                        </Table.Tr>
+                                        <Table.Tr>
+                                            <Table.Th>Replay job</Table.Th>
                                             <Table.Td style={{overflowWrap: "anywhere"}}>{result.id}</Table.Td>
                                         </Table.Tr>
                                         <Table.Tr>

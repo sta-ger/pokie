@@ -315,11 +315,17 @@ describe("StudioReplayExecutionService", () => {
         }
         const second = await waitForTerminal(service, "/a", secondStart.job.id);
 
+        // sessionId is deliberately excluded from this comparison: each run creates a genuinely new
+        // session (see StudioReplayExecutionService.run()'s own doc comment on `sessionId`), so two
+        // reproductions of the same seed/round get two different session identities even though every
+        // other field of the descriptor is identical.
         expect(second.descriptor).toEqual({
             ...first.descriptor,
+            sessionId: second.descriptor?.sessionId,
             timestamp: second.descriptor?.timestamp,
             durationMs: second.descriptor?.durationMs,
         });
+        expect(second.descriptor?.sessionId).not.toBe(first.descriptor?.sessionId);
     });
 
     it("produces a different result for a different seed", async () => {
@@ -974,7 +980,15 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         // StudioReplayExecutionService.buildArtifact()/captureBoundaryState()) -- so those fields are
         // compared separately below rather than expected to match directDescriptor exactly.
         const {artifact, stateBefore, stateAfter, ...descriptorWithoutExtras} = job.descriptor ?? {};
-        expect(descriptorWithoutExtras).toEqual({...directDescriptor, timestamp: job.descriptor?.timestamp, durationMs: job.descriptor?.durationMs});
+        // sessionId is excluded too: both StudioReplayExecutionService and ReplayRecorder each mint
+        // their own fresh session identity independently (see each one's own doc comment on
+        // `sessionId`), so two separate replays of the same seed/round never share one.
+        expect(descriptorWithoutExtras).toEqual({
+            ...directDescriptor,
+            sessionId: job.descriptor?.sessionId,
+            timestamp: job.descriptor?.timestamp,
+            durationMs: job.descriptor?.durationMs,
+        });
         expect(artifact?.screen).toEqual(job.descriptor?.screen);
         expect(stateAfter?.screen).toEqual(job.descriptor?.screen);
         expect(stateBefore).toBeDefined();

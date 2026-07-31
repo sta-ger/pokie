@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {ReplayDescriptor} from "./ReplayDescriptor.js";
 import type {ReplayRecording} from "./ReplayRecording.js";
@@ -34,6 +35,7 @@ export class ReplayRecorder implements ReplayRecording {
         const durationMs = Date.now() - startedAt;
 
         return {
+            sessionId: crypto.randomUUID(),
             game: {id: manifest.id, name: manifest.name, version: manifest.version},
             seed: seed ?? null,
             round,
