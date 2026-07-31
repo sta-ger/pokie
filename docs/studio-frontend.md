@@ -285,7 +285,7 @@ npx jest --selectProjects studio-client-components  # just the React component t
   up"); nav tabs render as real `<button>`s (not an `href`-less `<a>`, which isn't keyboard-focusable).
 - `AppShell`'s navbar collapses behind a `Burger` below Mantine's `sm` breakpoint; wide tables (Paytable,
   simulation breakdown) scroll within their own container rather than the page.
-- Every `Stepper.Step` across Studio (all 11 interactive Steppers, see the audit below) carries an explicit
+- Every `Stepper.Step` across Studio (all 10 interactive Steppers, see the audit below) carries an explicit
   `aria-current={activeStep === N ? "step" : undefined}` -- Mantine's own `Stepper` has no built-in
   current-step ARIA semantics (only a `data-progress` styling hook), so without this a screen reader had no
   way to tell which step is active beyond visual styling.
@@ -306,7 +306,7 @@ for a flow with no order dependency at all (that belongs in tabs) or for a flow 
 
 | Workflow | File | Classification | Disposition |
 |---|---|---|---|
-| Replay | `project/ReplayTab.tsx` | Partially linear | Kept as `Stepper` -- reachability is gated (`inspectReachable`/`exportReachable`), but jumping back to Find then forward again is an explicit, tested re-entry path (see `ProjectDashboardPage.replayWorkflow.test.tsx`), not an edge case to prevent. |
+| Replay | `project/ReplayTab.tsx` | Nonlinear | **Changed.** The prior `Stepper` forced every source (fresh seed/round, pasted artifact, live spin, simulation round) through the same Find → Load → Reproduce → Inspect → Export sequence, even though the sources don't share one order at all (Session Spin has nothing to reproduce; Replay Artifact adds a validate-then-optionally-reproduce gate the others don't have). Replaced with a source choice (`SegmentedControl`) plus, once loaded, an inline loaded card/action bar/result view -- no page to click "continue" to. Switching source resets every per-source selection and any loaded/reproduced state (see `ReplayTab.tsx`'s own doc comment and `ProjectDashboardPage.replayWorkflow.test.tsx`'s source-switch coverage). |
 | Deployment | `project/DeploymentTab.tsx` | Partially linear | Kept as `Stepper`. Most heavily guarded of the group: `pendingAdvanceStepRef` only actually advances once a non-stale async result lands, and losing `selectedTarget`/an invalidated `runResult` snaps the stepper back a stage -- backward-correcting guards, not backward-*blocking* ones. |
 | Certification | `project/CertificationTab.tsx` | Partially linear | Kept as `Stepper`. Forward-gated (`validateReachable`/`buildReachable`/`inspectReachable`) with no backward lock. |
 | Runtime | `project/RuntimeTab.tsx` | Partially linear | Kept as `Stepper`. Same `pendingAdvanceStepRef` pattern as Deployment; a session teardown resets to step 0. "Debug" is deliberately always reachable regardless of session state. |

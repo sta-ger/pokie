@@ -1,6 +1,6 @@
-import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Stepper, Table, Text, Textarea, TextInput} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useState} from "react";
 import {useLocation} from "react-router-dom";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
@@ -35,6 +35,17 @@ export type ExpectedReplayState =
 type FindMethod = "seedRound" | "artifact" | "spin" | "simulation";
 type FindFormValues = {round: number; seed: string};
 
+// Shown in place of the loaded card/action bar/result view below while the currently-selected
+// source has nothing loaded yet -- one message per source rather than a single generic one, since
+// what "load something" means differs by source (configure a round, paste/pick an artifact, pick a
+// spin, pick a simulation round).
+const SOURCE_EMPTY_PROMPT: Record<FindMethod, string> = {
+    seedRound: "Load a round above to reproduce it.",
+    artifact: "Paste a replay artifact, or pick one from Recent Replays above, to validate it.",
+    spin: "Pick a spin above to view its details.",
+    simulation: "Pick a simulation and round above to load it.",
+};
+
 function downloadJsonBlob(filename: string, data: unknown): void {
     const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
     const url = URL.createObjectURL(blob);
@@ -45,11 +56,21 @@ function downloadJsonBlob(filename: string, data: unknown): void {
     URL.revokeObjectURL(url);
 }
 
-// The Find -> Load -> Reproduce -> Inspect -> Export workflow. All data-fetching still lives in
-// ProjectDashboardPage (useReplayPoll, the replay/recent-spins/recent-runs lists, the "expected artifact"
-// fetch used for match/mismatch comparison) -- this component only owns which step is showing and the
-// small transient Find-step selections (which method, which list entry, the pasted JSON text), same split
-// SimulationTab already established.
+// Replay has no single sequential order shared by every source, so this doesn't use a Stepper (the
+// previous design's Find -> Load -> Reproduce -> Inspect -> Export pages). "Session Spin" is already
+// a recorded result with nothing to reproduce; "Replay Artifact" adds a validate-then-optionally-
+// reproduce gate the other three don't have; "Seed & Round"/"Recent Simulation" are fresh attempts
+// with no prior result to compare against at all. Forcing all four through the same five-page
+// sequence meant most sources skipped or faked pages that didn't apply to them (a permanently-
+// disabled Reproduce page for Session Spin, an inert confirm page for the others). This instead
+// renders one page: a source choice, that source's own configuration/load controls, then -- once
+// loaded -- a card showing what's loaded, an action bar for whatever's actually available
+// (reproduce/cancel/retry/export), and the result view inline, with nothing gated behind a click.
+//
+// `loadedForMethod`/`resultVisible` are the two flags that tie the loaded card/action bar/result
+// section to the source and load action that produced it: `switchSource` (the source picker) and
+// every per-source load action reset them, so a stale card or result from a previous source or a
+// previous load never lingers under a newly-picked one.
 export function ReplayTab({
     progress,
     result,
@@ -113,8 +134,12 @@ export function ReplayTab({
     const initialFindMethod = locationState?.findMethod ?? "seedRound";
     const autoSelectSpin = locationState?.sessionId !== undefined && locationState?.requestId !== undefined ? {sessionId: locationState.sessionId, requestId: locationState.requestId} : undefined;
 
-    const [activeStep, setActiveStep] = useState(0);
     const [findMethod, setFindMethod] = useState<FindMethod>(initialFindMethod);
+    // Which source a load action last actually completed for, and whether that load already has a
+    // result worth showing -- the two flags the loaded card/action bar/result section below is gated
+    // on. `markLoaded` is the only way either changes outside of `switchSource` resetting both.
+    const [loadedForMethod, setLoadedForMethod] = useState<FindMethod>();
+    const [resultVisible, setResultVisible] = useState(false);
     const [pending, setPending] = useState<{round: number; seed?: string}>();
     const [artifactText, setArtifactText] = useState("");
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
@@ -139,20 +164,6 @@ export function ReplayTab({
     const active = progress !== undefined && (progress.status === "queued" || progress.status === "running");
     const terminal = progress !== undefined && !active;
 
-    // Auto-advances from Reproduce to Inspect the moment a run that was actually active goes terminal --
-    // mirrors SimulationTab's own Run -> Review effect. Session Spin never populates `progress`, so this
-    // never fires for that method (its Load step jumps straight to Inspect instead).
-    const prevStatusRef = useRef<string | undefined>(undefined);
-    useEffect(() => {
-        const status = progress?.status;
-        const wasActive = prevStatusRef.current === "queued" || prevStatusRef.current === "running";
-        const nowTerminal = status === "completed" || status === "failed" || status === "cancelled";
-        if (wasActive && nowTerminal) {
-            setActiveStep(3);
-        }
-        prevStatusRef.current = status;
-    }, [progress?.status]);
-
     // The Runtime tab's "Debug this round" handoff names one exact (sessionId, requestId) pair -- matched
     // against each entry's own `studioRequestId` (Studio's own bookkeeping, recorded regardless of debug
     // mode -- see StudioRuntimeSessionView's own doc comment -- unlike `debug.requestId`, which only
@@ -163,11 +174,12 @@ export function ReplayTab({
     //
     // recentSpins can genuinely not contain the exact round this handoff named -- e.g. it's bounded
     // (StudioRuntimeManager.MAX_RECENT_SPINS) and a burst of later spins pushed it out. `spinNotFound`
-    // tracks that outcome so the Find step can show an honest "no longer available" message instead of
-    // silently sitting on an empty/generic picker forever with no explanation -- but only once a fetch has
-    // actually *settled* into a real answer. While the list is still loading, or the fetch itself failed,
-    // there's no answer yet either way, so this must stay false: a "not found" verdict is only warranted
-    // after a successfully loaded list has been checked and genuinely doesn't contain the target.
+    // tracks that outcome so the Find controls can show an honest "no longer available" message instead
+    // of silently sitting on an empty/generic picker forever with no explanation -- but only once a fetch
+    // has actually *settled* into a real answer. While the list is still loading, or the fetch itself
+    // failed, there's no answer yet either way, so this must stay false: a "not found" verdict is only
+    // warranted after a successfully loaded list has been checked and genuinely doesn't contain the
+    // target.
     const [spinNotFound, setSpinNotFound] = useState(false);
     useEffect(() => {
         if (!autoSelectSpin || selectedSpin !== undefined) {
@@ -186,7 +198,7 @@ export function ReplayTab({
         );
         if (match) {
             setSelectedSpin(match);
-            setActiveStep(3);
+            setLoadedForMethod("spin");
             setSpinNotFound(false);
         } else {
             setSpinNotFound(true);
@@ -194,21 +206,67 @@ export function ReplayTab({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [recentSpins, recentSpinsError]);
 
-    function goToLoad(round: number, seed: string | undefined): void {
-        setPending({round, seed});
-        setActiveStep(1);
+    // Resets every per-source selection, plus the source-agnostic "expected artifact" the parent
+    // owns, so a source switch can never leave a stale loaded card, in-flight reproduction, or result
+    // behind under the newly-selected source.
+    function switchSource(next: FindMethod): void {
+        setFindMethod(next);
+        setLoadedForMethod(undefined);
+        setResultVisible(false);
+        setPending(undefined);
+        setArtifactText("");
+        setSelectedSpin(undefined);
+        setSelectedSimEntry(undefined);
+        setSimRound(1);
+        setSpinSessionFilter("all");
+        onClearExpected();
     }
 
-    const inspectReachable = (findMethod === "spin" && selectedSpin !== undefined) || result !== undefined;
-    const exportReachable = inspectReachable;
+    // `resultReady` distinguishes "just configured/validated, nothing reproduced yet" (false --
+    // Seed & Round/Recent Simulation loading a target, Replay Artifact validating) from "already has
+    // a concrete result to show" (true -- only the Recent Replays "Inspect" shortcut, which loads a
+    // completed result directly with no reproduce step at all).
+    function markLoaded(method: FindMethod, resultReady: boolean): void {
+        setLoadedForMethod(method);
+        setResultVisible(resultReady);
+    }
+
+    function loadTarget(round: number, seed: string | undefined): void {
+        setPending({round, seed});
+        markLoaded(findMethod, false);
+    }
+
+    const isCurrentSourceLoaded = findMethod === loadedForMethod;
+    // Seed & Round / Recent Simulation share one "loaded target" shape: the round/seed the user
+    // configured, or -- reached via Recent Replays' "Inspect" shortcut, which loads a result directly
+    // without going through Load -- the round/seed of the result itself.
+    const target = pending ?? (result ? {round: result.round, seed: result.seed ?? undefined} : undefined);
 
     // Only a "Replay Artifact" record (pasted or picked from Recent Replays) carries known
     // seed/provenance to check up front — Seed & Round/Recent Simulation are fresh attempts that never
-    // claim to reproduce one *specific* prior result, and Session Spin is already fully disabled above.
+    // claim to reproduce one *specific* prior result, and Session Spin has nothing to reproduce at all.
     const artifactReproducibility =
         expected.status === "loaded"
             ? describeReplayReproducibility({seed: expected.seed, artifact: expected.artifact, stateBefore: expected.stateBefore, stateAfter: expected.stateAfter}, currentGame)
             : undefined;
+
+    // The round/seed to reproduce, shared across every non-spin source once its own load step has
+    // produced one -- undefined until then, which is what gates the shared action bar/result view
+    // below (Session Spin never has one at all: there's nothing to reproduce).
+    let reproduceTarget: {round: number; seed: string | undefined} | undefined;
+    if (findMethod === "artifact") {
+        reproduceTarget = expected.status === "loaded" ? {round: expected.round, seed: expected.seed} : undefined;
+    } else if (findMethod === "seedRound" || findMethod === "simulation") {
+        reproduceTarget = target ? {round: target.round, seed: target.seed} : undefined;
+    }
+    const reproduceDisabled = findMethod === "artifact" && artifactReproducibility?.status === "blocked";
+    // Export is an action, not a page: always visible (disabled until there's something to export)
+    // rather than gated behind navigating anywhere. Ready exactly once the *currently loaded* source
+    // has something to export -- `isCurrentSourceLoaded` keeps this from staying enabled off a stale
+    // spin/result left over from a source that's no longer selected.
+    const exportReady =
+        (findMethod === "spin" && isCurrentSourceLoaded && selectedSpin !== undefined) ||
+        (findMethod !== "spin" && isCurrentSourceLoaded && resultVisible && result !== undefined);
 
     return (
         <div>
@@ -218,355 +276,218 @@ export function ReplayTab({
                 reads external state) may not reproduce the original round.
             </Text>
 
-            <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Find" description="Locate a round" aria-current={activeStep === 0 ? "step" : undefined} />
-                <Stepper.Step label="Load" description="Confirm & validate" aria-current={activeStep === 1 ? "step" : undefined} />
-                <Stepper.Step
-                    label="Reproduce"
-                    description="Run the replay"
-                    disabled={findMethod === "spin"}
-                    aria-current={activeStep === 2 ? "step" : undefined}
-                />
-                <Stepper.Step
-                    label="Inspect"
-                    description="See results"
-                    disabled={!inspectReachable}
-                    aria-current={activeStep === 3 ? "step" : undefined}
-                />
-                <Stepper.Step label="Export" description="Download" disabled={!exportReachable} aria-current={activeStep === 4 ? "step" : undefined} />
-            </Stepper>
+            <SegmentedControl
+                value={findMethod}
+                onChange={(value) => switchSource(value as FindMethod)}
+                data={[
+                    {label: "Seed & Round", value: "seedRound"},
+                    {label: "Replay Artifact", value: "artifact"},
+                    {label: "Session Spin", value: "spin"},
+                    {label: "Recent Simulation", value: "simulation"},
+                ]}
+                mb="md"
+                aria-label="Find method"
+            />
 
-            {activeStep === 0 && (
+            {findMethod === "seedRound" && (
+                <form onSubmit={form.onSubmit((values) => loadTarget(values.round, values.seed.trim() || undefined))}>
+                    <QuickActions>
+                        <NumberInput label="Round" min={1} step={1} required {...form.getInputProps("round")} key={form.key("round")} />
+                        <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
+                        <Button type="submit">Load</Button>
+                    </QuickActions>
+                </form>
+            )}
+
+            {findMethod === "artifact" && (
                 <div>
-                    <SegmentedControl
-                        value={findMethod}
-                        onChange={(value) => {
-                            setFindMethod(value as FindMethod);
-                            onClearExpected();
-                        }}
-                        data={[
-                            {label: "Seed & Round", value: "seedRound"},
-                            {label: "Replay Artifact", value: "artifact"},
-                            {label: "Session Spin", value: "spin"},
-                            {label: "Recent Simulation", value: "simulation"},
-                        ]}
-                        mb="md"
-                        aria-label="Find method"
+                    <Textarea
+                        label="Paste a replay artifact JSON (downloaded from Export)"
+                        minRows={6}
+                        autosize
+                        maxRows={16}
+                        value={artifactText}
+                        onChange={(event) => setArtifactText(event.currentTarget.value)}
+                        mb="sm"
                     />
+                    <QuickActions>
+                        <Button
+                            disabled={artifactText.trim() === ""}
+                            onClick={() => {
+                                onLoadExpectedFromPaste(artifactText);
+                                markLoaded("artifact", false);
+                            }}
+                        >
+                            Validate &amp; load
+                        </Button>
+                    </QuickActions>
 
-                    {findMethod === "seedRound" && (
-                        <form onSubmit={form.onSubmit((values) => goToLoad(values.round, values.seed.trim() || undefined))}>
-                            <QuickActions>
-                                <NumberInput label="Round" min={1} step={1} required {...form.getInputProps("round")} key={form.key("round")} />
-                                <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
-                                <Button type="submit">Find</Button>
-                            </QuickActions>
-                        </form>
+                    <PageSection legend="Or pick from recent replays to reproduce & compare">
+                        <QuickActions>
+                            <Button variant="default" size="xs" onClick={onRefreshList}>
+                                Refresh
+                            </Button>
+                        </QuickActions>
+                        {listError && <ErrorState message={listError} />}
+                        {listView.status === "empty" && <EmptyState message="No replays run yet." />}
+                        {listView.status === "loaded" && (
+                            <List listStyleType="none" spacing={4}>
+                                {listView.entries.map((entry) => (
+                                    <List.Item key={entry.id}>
+                                        <Anchor
+                                            component="button"
+                                            type="button"
+                                            onClick={() => {
+                                                onCompareStored(entry.id);
+                                                markLoaded("artifact", false);
+                                            }}
+                                            style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                        >
+                                            {entry.game?.id ?? "?"} round {entry.round} — {entry.status}
+                                        </Anchor>
+                                    </List.Item>
+                                ))}
+                            </List>
+                        )}
+                    </PageSection>
+                </div>
+            )}
+
+            {findMethod === "spin" && (
+                <div>
+                    {spinNotFound && autoSelectSpin && selectedSpin === undefined && (
+                        <Alert color="yellow" variant="light" title="Round no longer available" mb="sm">
+                            The exact round handed off here (session {autoSelectSpin.sessionId}, request{" "}
+                            {autoSelectSpin.requestId}) isn&apos;t available in the recent spin history anymore. Pick
+                            a spin below instead, if it&apos;s still listed.
+                        </Alert>
                     )}
-
-                    {findMethod === "artifact" && (
+                    <QuickActions>
+                        <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
+                            Refresh
+                        </Button>
+                    </QuickActions>
+                    {recentSpins.status === "loading" && recentSpinsError === undefined && <LoadingState label="Loading recent spins…" />}
+                    {recentSpinsError && <ErrorState message={recentSpinsError} />}
+                    {recentSpins.status === "empty" && (
+                        <EmptyState message="No spins recorded yet in this Studio session — start the runtime and spin a session first." />
+                    )}
+                    {recentSpins.status === "loaded" && (
                         <div>
-                            <Textarea
-                                label="Paste a replay artifact JSON (downloaded from Export)"
-                                minRows={6}
-                                autosize
-                                maxRows={16}
-                                value={artifactText}
-                                onChange={(event) => setArtifactText(event.currentTarget.value)}
+                            {/* Distinct session ids in first-seen order -- recentSpins.entries is already
+                                newest-first, so this naturally lists the most recently active session first
+                                too. Rendered even with a single session so the control never disappears out
+                                from under an already-picked filter value (see the reset effect above). */}
+                            <SegmentedControl
+                                value={spinSessionFilter}
+                                onChange={setSpinSessionFilter}
+                                data={[
+                                    {label: "All sessions", value: "all"},
+                                    ...Array.from(new Set(recentSpins.entries.map((entry) => entry.sessionId))).map((sessionId) => ({
+                                        label: sessionId,
+                                        value: sessionId,
+                                    })),
+                                ]}
                                 mb="sm"
+                                aria-label="Filter by session"
                             />
-                            <QuickActions>
-                                <Button
-                                    disabled={artifactText.trim() === ""}
-                                    onClick={() => {
-                                        onLoadExpectedFromPaste(artifactText);
-                                        setActiveStep(1);
-                                    }}
-                                >
-                                    Validate &amp; continue
-                                </Button>
-                            </QuickActions>
-
-                            <PageSection legend="Or pick from recent replays to reproduce & compare">
-                                <QuickActions>
-                                    <Button variant="default" size="xs" onClick={onRefreshList}>
-                                        Refresh
-                                    </Button>
-                                </QuickActions>
-                                {listError && <ErrorState message={listError} />}
-                                {listView.status === "empty" && <EmptyState message="No replays run yet." />}
-                                {listView.status === "loaded" && (
+                            {(() => {
+                                const filteredSpins =
+                                    spinSessionFilter === "all"
+                                        ? recentSpins.entries
+                                        : recentSpins.entries.filter((entry) => entry.sessionId === spinSessionFilter);
+                                return filteredSpins.length === 0 ? (
+                                    <EmptyState message="No spins recorded for the selected session." />
+                                ) : (
                                     <List listStyleType="none" spacing={4}>
-                                        {listView.entries.map((entry) => (
-                                            <List.Item key={entry.id}>
+                                        {filteredSpins.map((entry) => (
+                                            // `studioRound` (this session's own stable round index -- see
+                                            // StudioRuntimeSessionView's own doc comment) makes this key stable across
+                                            // a refresh, unlike the array index it replaces: a duplicate (sessionId,
+                                            // studioRequestId) pair (an idempotency-protected retry) is deduplicated
+                                            // into the *same* round by StudioRuntimeManager.recordRecentSpin() before
+                                            // it ever reaches this list, so (sessionId, studioRound) alone is already
+                                            // unique here -- never conflated with a legitimate round from a different
+                                            // session, since the pairing always includes sessionId. Falling back to
+                                            // studioRequestId (still per-session-unique by construction) covers an
+                                            // entry that predates studioRound existing at all.
+                                            <List.Item key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
                                                 <Anchor
                                                     component="button"
                                                     type="button"
                                                     onClick={() => {
-                                                        onCompareStored(entry.id);
-                                                        setActiveStep(1);
+                                                        setSelectedSpin(entry);
+                                                        markLoaded("spin", false);
                                                     }}
                                                     style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                                 >
-                                                    {entry.game?.id ?? "?"} round {entry.round} — {entry.status}
+                                                    Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits {entry.credits}, win{" "}
+                                                    {entry.win ?? 0}
+                                                    {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
+                                                    {entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : ""}
                                                 </Anchor>
                                             </List.Item>
                                         ))}
                                     </List>
-                                )}
-                            </PageSection>
-                        </div>
-                    )}
-
-                    {findMethod === "spin" && (
-                        <div>
-                            {spinNotFound && autoSelectSpin && selectedSpin === undefined && (
-                                <Alert color="yellow" variant="light" title="Round no longer available" mb="sm">
-                                    The exact round handed off here (session {autoSelectSpin.sessionId}, request{" "}
-                                    {autoSelectSpin.requestId}) isn&apos;t available in the recent spin history anymore. Pick
-                                    a spin below instead, if it&apos;s still listed.
-                                </Alert>
-                            )}
-                            <QuickActions>
-                                <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
-                                    Refresh
-                                </Button>
-                            </QuickActions>
-                            {recentSpins.status === "loading" && recentSpinsError === undefined && <LoadingState label="Loading recent spins…" />}
-                            {recentSpinsError && <ErrorState message={recentSpinsError} />}
-                            {recentSpins.status === "empty" && (
-                                <EmptyState message="No spins recorded yet in this Studio session — start the runtime and spin a session first." />
-                            )}
-                            {recentSpins.status === "loaded" && (
-                                <div>
-                                    {/* Distinct session ids in first-seen order -- recentSpins.entries is already
-                                        newest-first, so this naturally lists the most recently active session first
-                                        too. Rendered even with a single session so the control never disappears out
-                                        from under an already-picked filter value (see the reset effect above). */}
-                                    <SegmentedControl
-                                        value={spinSessionFilter}
-                                        onChange={setSpinSessionFilter}
-                                        data={[
-                                            {label: "All sessions", value: "all"},
-                                            ...Array.from(new Set(recentSpins.entries.map((entry) => entry.sessionId))).map((sessionId) => ({
-                                                label: sessionId,
-                                                value: sessionId,
-                                            })),
-                                        ]}
-                                        mb="sm"
-                                        aria-label="Filter by session"
-                                    />
-                                    {(() => {
-                                        const filteredSpins =
-                                            spinSessionFilter === "all"
-                                                ? recentSpins.entries
-                                                : recentSpins.entries.filter((entry) => entry.sessionId === spinSessionFilter);
-                                        return filteredSpins.length === 0 ? (
-                                            <EmptyState message="No spins recorded for the selected session." />
-                                        ) : (
-                                            <List listStyleType="none" spacing={4}>
-                                                {filteredSpins.map((entry) => (
-                                                    // `studioRound` (this session's own stable round index -- see
-                                                    // StudioRuntimeSessionView's own doc comment) makes this key stable across
-                                                    // a refresh, unlike the array index it replaces: a duplicate (sessionId,
-                                                    // studioRequestId) pair (an idempotency-protected retry) is deduplicated
-                                                    // into the *same* round by StudioRuntimeManager.recordRecentSpin() before
-                                                    // it ever reaches this list, so (sessionId, studioRound) alone is already
-                                                    // unique here -- never conflated with a legitimate round from a different
-                                                    // session, since the pairing always includes sessionId. Falling back to
-                                                    // studioRequestId (still per-session-unique by construction) covers an
-                                                    // entry that predates studioRound existing at all.
-                                                    <List.Item key={`${entry.sessionId}-${entry.studioRound ?? entry.studioRequestId ?? "unknown"}`}>
-                                                        <Anchor
-                                                            component="button"
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setSelectedSpin(entry);
-                                                                setActiveStep(1);
-                                                            }}
-                                                            style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
-                                                        >
-                                                            Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits {entry.credits}, win{" "}
-                                                            {entry.win ?? 0}
-                                                            {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
-                                                            {entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : ""}
-                                                        </Anchor>
-                                                    </List.Item>
-                                                ))}
-                                            </List>
-                                        );
-                                    })()}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {findMethod === "simulation" && (
-                        <div>
-                            <QuickActions>
-                                <Button variant="default" size="xs" onClick={onRefreshRecentRuns}>
-                                    Refresh
-                                </Button>
-                            </QuickActions>
-                            {recentRunsError && <ErrorState message={recentRunsError} />}
-                            {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
-                            {recentRuns.status === "loaded" && (
-                                <List listStyleType="none" spacing={4} mb="sm">
-                                    {recentRuns.entries.map((entry) => (
-                                        <List.Item key={entry.id}>
-                                            <Anchor
-                                                component="button"
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedSimEntry(entry);
-                                                    setSimRound(1);
-                                                }}
-                                                style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
-                                            >
-                                                {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds} rounds,{" "}
-                                                {new Date(entry.startedAt).toLocaleString()}
-                                            </Anchor>
-                                        </List.Item>
-                                    ))}
-                                </List>
-                            )}
-                            {selectedSimEntry && (
-                                <QuickActions>
-                                    <NumberInput
-                                        label="Round"
-                                        min={1}
-                                        max={selectedSimEntry.actualRounds}
-                                        step={1}
-                                        value={simRound}
-                                        onChange={(value) => setSimRound(typeof value === "number" ? value : 1)}
-                                    />
-                                    <Button onClick={() => goToLoad(simRound, selectedSimEntry.seed)}>Find</Button>
-                                </QuickActions>
-                            )}
+                                );
+                            })()}
                         </div>
                     )}
                 </div>
             )}
 
-            {activeStep === 1 && (
+            {findMethod === "simulation" && (
                 <div>
-                    {findMethod === "spin" &&
-                        (selectedSpin ? (
-                            <div>
-                                <Text size="sm" mb="sm">
-                                    This is a live spin&apos;s actual recorded result — there&apos;s nothing to reproduce it against.
-                                </Text>
-                                <QuickActions>
-                                    <Button onClick={() => setActiveStep(3)}>Continue to Inspect</Button>
-                                </QuickActions>
-                            </div>
-                        ) : (
-                            <EmptyState message="Pick a spin in the Find step first." />
-                        ))}
-
-                    {findMethod === "artifact" && (
-                        <div>
-                            {expected.status === "empty" && (
-                                <EmptyState message="Paste a replay artifact or pick one from Recent Replays in the Find step first." />
-                            )}
-                            {expected.status === "loading" && <LoadingState label="Validating artifact…" />}
-                            {expected.status === "error" && <ErrorState message={expected.message} />}
-                            {expected.status === "loaded" && (
-                                <div>
-                                    <Text size="sm" mb="xs">
-                                        Round {expected.round}, seed {expected.seed ?? "(none)"}.
-                                    </Text>
-                                    {expected.artifactWarnings.length > 0 && (
-                                        <List size="sm" mb="sm">
-                                            {expected.artifactWarnings.map((warning, index) => (
-                                                <List.Item key={index}>{warning}</List.Item>
-                                            ))}
-                                        </List>
-                                    )}
-                                    {artifactReproducibility?.status === "blocked" && (
-                                        <Alert color="yellow" variant="light" title="Reproduce isn't reliable for this round" mb="sm">
-                                            <Text size="sm">{artifactReproducibility.reason}</Text>
-                                            <Text size="sm" mt={4}>
-                                                {artifactReproducibility.remediation}
-                                            </Text>
-                                        </Alert>
-                                    )}
-                                    <QuickActions>
-                                        <Button
-                                            disabled={artifactReproducibility?.status === "blocked"}
-                                            onClick={() => {
-                                                onRun(expected.round, expected.seed, true);
-                                                setActiveStep(2);
-                                            }}
-                                        >
-                                            Continue to Reproduce
-                                        </Button>
-                                    </QuickActions>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {(findMethod === "seedRound" || findMethod === "simulation") &&
-                        (pending ? (
-                            <div>
-                                <Text size="sm" mb="sm">
-                                    About to reproduce round {pending.round} with seed {pending.seed ?? "(none)"}.
-                                </Text>
-                                <QuickActions>
-                                    <Button
+                    <QuickActions>
+                        <Button variant="default" size="xs" onClick={onRefreshRecentRuns}>
+                            Refresh
+                        </Button>
+                    </QuickActions>
+                    {recentRunsError && <ErrorState message={recentRunsError} />}
+                    {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
+                    {recentRuns.status === "loaded" && (
+                        <List listStyleType="none" spacing={4} mb="sm">
+                            {recentRuns.entries.map((entry) => (
+                                <List.Item key={entry.id}>
+                                    <Anchor
+                                        component="button"
+                                        type="button"
                                         onClick={() => {
-                                            onRun(pending.round, pending.seed);
-                                            setActiveStep(2);
+                                            setSelectedSimEntry(entry);
+                                            setSimRound(1);
                                         }}
+                                        style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                     >
-                                        Continue to Reproduce
-                                    </Button>
-                                </QuickActions>
-                            </div>
-                        ) : (
-                            <EmptyState message="Find a round first." />
-                        ))}
-                </div>
-            )}
-
-            {activeStep === 2 && (
-                <div>
-                    {progress === undefined && <EmptyState message="Nothing to reproduce yet." />}
-                    {progress?.status === "failed" && error === undefined && <ErrorState message={progress.error ?? "Replay failed."} />}
-                    {error && <ErrorState message={error} />}
-                    {progress !== undefined && (
-                        <div>
-                            <Text size="sm" mb={4}>
-                                {progress.status} — {progress.completedRounds}/{progress.round} rounds
-                            </Text>
-                            <Progress value={progress.percent} mb="sm" />
-                            <QuickActions>
-                                {active && (
-                                    <Button color="red" variant="light" onClick={() => confirm("Cancel the running replay?", onCancel)}>
-                                        Cancel
-                                    </Button>
-                                )}
-                                {terminal && (
-                                    <Button variant="default" onClick={onRetry}>
-                                        Run again with the same parameters
-                                    </Button>
-                                )}
-                                {terminal && (
-                                    <Button variant="default" onClick={() => setActiveStep(3)}>
-                                        View results
-                                    </Button>
-                                )}
-                            </QuickActions>
-                        </div>
+                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds} rounds,{" "}
+                                        {new Date(entry.startedAt).toLocaleString()}
+                                    </Anchor>
+                                </List.Item>
+                            ))}
+                        </List>
+                    )}
+                    {selectedSimEntry && (
+                        <QuickActions>
+                            <NumberInput
+                                label="Round"
+                                min={1}
+                                max={selectedSimEntry.actualRounds}
+                                step={1}
+                                value={simRound}
+                                onChange={(value) => setSimRound(typeof value === "number" ? value : 1)}
+                            />
+                            <Button onClick={() => loadTarget(simRound, selectedSimEntry.seed)}>Load</Button>
+                        </QuickActions>
                     )}
                 </div>
             )}
 
-            {activeStep === 3 && (
+            {isCurrentSourceLoaded ? (
                 <div>
                     {findMethod === "spin" && selectedSpin && (
                         <div>
+                            <Text size="sm" c="dimmed" mb="sm">
+                                This is a live spin&apos;s actual recorded result — there&apos;s nothing to reproduce it against.
+                            </Text>
                             <Table withRowBorders={false} mb="sm">
                                 <Table.Tbody>
                                     <Table.Tr>
@@ -671,93 +592,160 @@ export function ReplayTab({
                         </div>
                     )}
 
-                    {findMethod !== "spin" && result?.artifact && (
-                        <RoundArtifactInspector
-                            artifact={result.artifact}
-                            comparison={comparison}
-                            stateBefore={result.stateBefore}
-                            stateAfter={result.stateAfter}
-                        />
-                    )}
-
-                    {findMethod !== "spin" && result && !result.artifact && (
+                    {findMethod === "artifact" && (
                         <div>
-                            <Table withRowBorders={false} mb="sm">
-                                <Table.Tbody>
-                                    <Table.Tr>
-                                        <Table.Th>Game</Table.Th>
-                                        <Table.Td style={{overflowWrap: "anywhere"}}>
-                                            {result.game.name} (id: &quot;{result.game.id}&quot;, v{result.game.version})
-                                        </Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Round</Table.Th>
-                                        <Table.Td>{result.round}</Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Seed</Table.Th>
-                                        <Table.Td>{result.seed ?? "(none)"}</Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Total bet</Table.Th>
-                                        <Table.Td>{result.totalBet.toFixed(2)}</Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Total payout</Table.Th>
-                                        <Table.Td>{result.totalWin.toFixed(2)}</Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Timestamp</Table.Th>
-                                        <Table.Td>{new Date(result.timestamp).toLocaleString()}</Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Duration</Table.Th>
-                                        <Table.Td>{result.durationMs}ms</Table.Td>
-                                    </Table.Tr>
-                                </Table.Tbody>
-                            </Table>
-                            {result.screen ? (
-                                <ScreenTable screen={result.screen} />
-                            ) : (
-                                <Text size="sm" c="dimmed">
-                                    No screen available — this game&apos;s session doesn&apos;t expose a symbols combination.
-                                </Text>
+                            {expected.status === "loading" && <LoadingState label="Validating artifact…" />}
+                            {expected.status === "error" && <ErrorState message={expected.message} />}
+                            {expected.status === "loaded" && (
+                                <div>
+                                    <Text size="sm" mb="xs">
+                                        Round {expected.round}, seed {expected.seed ?? "(none)"}.
+                                    </Text>
+                                    {expected.artifactWarnings.length > 0 && (
+                                        <List size="sm" mb="sm">
+                                            {expected.artifactWarnings.map((warning, index) => (
+                                                <List.Item key={index}>{warning}</List.Item>
+                                            ))}
+                                        </List>
+                                    )}
+                                    {artifactReproducibility?.status === "blocked" && (
+                                        <Alert color="yellow" variant="light" title="Reproduce isn't reliable for this round" mb="sm">
+                                            <Text size="sm">{artifactReproducibility.reason}</Text>
+                                            <Text size="sm" mt={4}>
+                                                {artifactReproducibility.remediation}
+                                            </Text>
+                                        </Alert>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}
 
-                    {findMethod !== "spin" && !result && <EmptyState message="Reproduce a round to inspect it." />}
-                    {/* Reachable by jumping the Stepper back to Find, switching the method to "Session
-                        Spin", then forward to Inspect again without picking a spin -- inspectReachable
-                        stays true off a *stale* `result` from a previous, different-method reproduction,
-                        so this step must still have a fallback for its own method/selection combination
-                        rather than rendering nothing (every other findMethod/data combination above
-                        already has one). */}
-                    {findMethod === "spin" && !selectedSpin && <EmptyState message="Pick a spin in the Find step first." />}
+                    {(findMethod === "seedRound" || findMethod === "simulation") && target && (
+                        <Text size="sm" mb="sm">
+                            Round {target.round}, seed {target.seed ?? "(none)"}.
+                        </Text>
+                    )}
+
+                    {/* Shared action bar + progress + result view for every non-spin source once its own
+                        controls above have produced a concrete round/seed to reproduce -- Session Spin
+                        never reaches here (its own block above is self-contained: nothing to reproduce,
+                        nothing to gate). */}
+                    {findMethod !== "spin" && reproduceTarget && (
+                        <div>
+                            <QuickActions>
+                                {progress === undefined && (
+                                    <Button
+                                        disabled={reproduceDisabled}
+                                        onClick={() => {
+                                            onRun(reproduceTarget.round, reproduceTarget.seed, findMethod === "artifact" ? true : undefined);
+                                            setResultVisible(true);
+                                        }}
+                                    >
+                                        Reproduce
+                                    </Button>
+                                )}
+                                {active && (
+                                    <Button color="red" variant="light" onClick={() => confirm("Cancel the running replay?", onCancel)}>
+                                        Cancel
+                                    </Button>
+                                )}
+                                {terminal && (
+                                    <Button variant="default" onClick={onRetry}>
+                                        Run again with the same parameters
+                                    </Button>
+                                )}
+                            </QuickActions>
+
+                            {progress !== undefined && (
+                                <div>
+                                    {progress.status === "failed" && error === undefined && <ErrorState message={progress.error ?? "Replay failed."} />}
+                                    {error && <ErrorState message={error} />}
+                                    <Text size="sm" mb={4}>
+                                        {progress.status} — {progress.completedRounds}/{progress.round} rounds
+                                    </Text>
+                                    <Progress value={progress.percent} mb="sm" />
+                                </div>
+                            )}
+
+                            {resultVisible && !active && result?.artifact && (
+                                <RoundArtifactInspector
+                                    artifact={result.artifact}
+                                    comparison={findMethod === "artifact" ? comparison : undefined}
+                                    stateBefore={result.stateBefore}
+                                    stateAfter={result.stateAfter}
+                                />
+                            )}
+                            {resultVisible && !active && result && !result.artifact && (
+                                <div>
+                                    <Table withRowBorders={false} mb="sm">
+                                        <Table.Tbody>
+                                            <Table.Tr>
+                                                <Table.Th>Game</Table.Th>
+                                                <Table.Td style={{overflowWrap: "anywhere"}}>
+                                                    {result.game.name} (id: &quot;{result.game.id}&quot;, v{result.game.version})
+                                                </Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Round</Table.Th>
+                                                <Table.Td>{result.round}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Seed</Table.Th>
+                                                <Table.Td>{result.seed ?? "(none)"}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Total bet</Table.Th>
+                                                <Table.Td>{result.totalBet.toFixed(2)}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Total payout</Table.Th>
+                                                <Table.Td>{result.totalWin.toFixed(2)}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Timestamp</Table.Th>
+                                                <Table.Td>{new Date(result.timestamp).toLocaleString()}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Duration</Table.Th>
+                                                <Table.Td>{result.durationMs}ms</Table.Td>
+                                            </Table.Tr>
+                                        </Table.Tbody>
+                                    </Table>
+                                    {result.screen ? (
+                                        <ScreenTable screen={result.screen} />
+                                    ) : (
+                                        <Text size="sm" c="dimmed">
+                                            No screen available — this game&apos;s session doesn&apos;t expose a symbols combination.
+                                        </Text>
+                                    )}
+                                </div>
+                            )}
+                            {resultVisible && !active && !result && <EmptyState message="Reproduce a round to inspect it." />}
+                        </div>
+                    )}
                 </div>
+            ) : (
+                <EmptyState message={SOURCE_EMPTY_PROMPT[findMethod]} />
             )}
 
-            {activeStep === 4 && (
-                <div>
-                    {findMethod === "spin" && selectedSpin && (
-                        <QuickActions>
-                            <Button variant="default" onClick={() => downloadJsonBlob(`spin-${selectedSpin.sessionId}.json`, selectedSpin)}>
-                                Download JSON
-                            </Button>
-                        </QuickActions>
-                    )}
-                    {findMethod !== "spin" && result && (
-                        <QuickActions>
-                            <Anchor href={buildReplayDownloadUrl(result.id)} download>
-                                Download JSON
-                            </Anchor>
-                        </QuickActions>
-                    )}
-                    {((findMethod === "spin" && !selectedSpin) || (findMethod !== "spin" && !result)) && (
-                        <EmptyState message="Complete a replay to export it." />
-                    )}
-                </div>
-            )}
+            <QuickActions>
+                {findMethod === "spin" && selectedSpin && exportReady && (
+                    <Button variant="default" onClick={() => downloadJsonBlob(`spin-${selectedSpin.sessionId}.json`, selectedSpin)}>
+                        Download JSON
+                    </Button>
+                )}
+                {findMethod !== "spin" && result && exportReady && (
+                    <Anchor href={buildReplayDownloadUrl(result.id)} download>
+                        Download JSON
+                    </Anchor>
+                )}
+                {!exportReady && (
+                    <Button variant="default" disabled>
+                        Download JSON
+                    </Button>
+                )}
+            </QuickActions>
 
             <PageSection legend="Recent replays">
                 <QuickActions>
@@ -779,12 +767,12 @@ export function ReplayTab({
                                         component="button"
                                         type="button"
                                         onClick={() => {
-                                            setFindMethod("seedRound");
-                                            // Only advance to Inspect once the fetch actually succeeds --
-                                            // a failure is surfaced below via listError instead of
-                                            // silently landing on a stale or empty Inspect step.
+                                            switchSource("seedRound");
+                                            // Only mark it loaded once the fetch actually succeeds -- a
+                                            // failure is surfaced below via listError instead of silently
+                                            // showing a loaded card/result for a round that never loaded.
                                             onInspectStored(entry.id)
-                                                .then(() => setActiveStep(3))
+                                                .then(() => markLoaded("seedRound", true))
                                                 .catch(() => undefined);
                                         }}
                                     >
@@ -794,9 +782,9 @@ export function ReplayTab({
                                         component="button"
                                         type="button"
                                         onClick={() => {
-                                            setFindMethod("artifact");
+                                            switchSource("artifact");
                                             onCompareStored(entry.id);
-                                            setActiveStep(1);
+                                            markLoaded("artifact", false);
                                         }}
                                     >
                                         Reproduce &amp; compare

@@ -2897,84 +2897,92 @@ process-local, in-memory limit (same as the simulation jobs themselves): restart
 
 The **Replay** tab (also called Replay & Debug) runs a [`pokie replay`](#pokie-replay-packageroot)-equivalent
 replay against the active project — reusing `loadPokieGame`/`GameSessionHandling.play()` directly (the same
-primitives `ReplayRecorder` itself uses), never shelling out to `pokie replay` or reimplementing its logic. It's
-organized as a **Find → Load → Reproduce → Inspect → Export** `Stepper` (`ReplayTab.tsx`), partially linear —
-Inspect/Export are reachable only once a round has actually been produced, but jumping back to Find and forward
-again with a different method is an explicit, supported re-entry path, not an edge case.
+primitives `ReplayRecorder` itself uses), never shelling out to `pokie replay` or reimplementing its logic.
 
-**Find** offers four methods (a segmented control):
+Replay has no single sequential order shared by every source — a live spin has nothing to reproduce, a pasted
+artifact validates before it can (optionally) reproduce, and a fresh seed/round or simulation round has no prior
+result to compare against at all — so `ReplayTab.tsx` doesn't force any of this through a `Stepper`. Instead it
+renders one page: a **source choice** (a segmented control), that source's own configuration/load controls, then —
+once something's loaded — a card showing what's loaded, an action bar for whatever's actually available
+(reproduce/cancel/retry), and the result view, all inline with nothing gated behind a click to "continue". Export
+is likewise an action, not a page: a **Download JSON** button is always visible, just disabled until the
+currently-selected source has something to export. Switching the source resets every per-source selection and any
+loaded/reproduced state outright, so a stale card or result from a previous source never lingers under a newly
+picked one.
+
+The source choice offers four methods:
 
 - **Seed & Round** — a **round** (required, a positive integer) and an optional **seed**, same as `pokie replay
-  --round/--seed`.
-- **Replay Artifact** — paste a replay artifact JSON (as produced by this same tab's own Export step) into a
-  textarea; **Validate & continue** posts it to `POST /api/project/replays/inspect-artifact` (see below), which
-  applies the exact same round/seed validation `POST /api/project/replays` itself would. A structurally invalid
-  nested artifact is reported back as non-fatal warnings rather than blocking outright — round/seed alone are
-  enough to attempt a reproduction. Or pick one directly from a **Recent Replays** list to both load and mark it
-  as the "expected" side for comparison.
+  --round/--seed`. **Load** stages it as the round/seed to reproduce.
+- **Replay Artifact** — paste a replay artifact JSON (as produced by this same tab's own Export) into a textarea;
+  **Validate & load** posts it to `POST /api/project/replays/inspect-artifact` (see below), which applies the exact
+  same round/seed validation `POST /api/project/replays` itself would. A structurally invalid nested artifact is
+  reported back as non-fatal warnings rather than blocking outright — round/seed alone are enough to attempt a
+  reproduction. Or pick one directly from a **Recent Replays** list to both load it and mark it as the "expected"
+  side for comparison.
 - **Session Spin** — pick a round from the Runtime tab's recent-spins list (see [Runtime](#runtime) below),
   optionally filtered down to one session; this is a live spin's own already-recorded result, so there's nothing to
-  reproduce — Reproduce is disabled for this method and Load jumps straight to Inspect. Following the Runtime tab's
-  "Debug this round in Replay & Debug" link lands here with the exact (session, request) pair pre-selected.
-- **Recent Simulation** — pick a completed simulation report, then a round number within it, to reproduce that
-  round with the simulation's own seed.
+  reproduce — picking one loads straight into its own inspect view, with no Reproduce action at all. Following the
+  Runtime tab's "Debug this round in Replay & Debug" link lands here with the exact (session, request) pair
+  pre-selected.
+- **Recent Simulation** — pick a completed simulation report, then a round number within it, and **Load** stages
+  that round to reproduce with the simulation's own seed.
 
-**Load** confirms the pending round/seed before running (Seed & Round/Recent Simulation), or, for a **Replay
-Artifact** record, first runs it through a reproducibility gate (`describeReplayReproducibility`): reproducing
-forward from round 1 is only a *verifiable* match of the original result when the record's seed and game
-id/version provenance are known and match the currently loaded project, and — whenever the record carries a round
-artifact at all — its `stateBefore`/`stateAfter` and a `debug.reelStops` RNG trace are present to check a fresh
-reproduction against. An artifact missing any of these (e.g. an import that only kept the round-level result, or a
-hand-trimmed record) blocks **Continue to Reproduce** with a specific reason and remediation (add the missing
-field, or skip Reproduce and go straight to Inspect for inspection only) rather than silently running an
-unverifiable replay.
+For a loaded **Replay Artifact** record, the loaded card first runs it through a reproducibility gate
+(`describeReplayReproducibility`): reproducing forward from round 1 is only a *verifiable* match of the original
+result when the record's seed and game id/version provenance are known and match the currently loaded project, and
+— whenever the record carries a round artifact at all — its `stateBefore`/`stateAfter` and a `debug.reelStops` RNG
+trace are present to check a fresh reproduction against. An artifact missing any of these (e.g. an import that only
+kept the round-level result, or a hand-trimmed record) disables **Reproduce** with a specific reason and
+remediation (add the missing field) rather than silently running an unverifiable replay.
 
-**Reproduce** (unreachable for Session Spin) runs the replay as a background job, in bounded chunks against one
-long-lived session — the exact same reason [Simulation](#simulation) is chunked: replaying a large `round` in a
-single call would block the whole HTTP server's event loop for as long as it took. `POST /api/project/replays`
-therefore returns immediately (`202`) with a **queued** job; the tab then shows **queued** → **running** (with a
-live completed-rounds/requested-round progress line and elapsed duration) → **completed**/**failed**/**cancelled**,
-auto-advancing to Inspect the moment an active run goes terminal. A **Cancel** button is available while
-queued/running (asking for confirmation first), and once terminal, **Run again with the same parameters**
-re-submits the exact same round/seed. Only one replay may be queued/running per project at a time — starting a
-second one while the first is still active returns a `409` naming the already-active job's id. Cancellation, like
-Simulation's, can only take effect between chunks, not mid-chunk. The session itself is created exactly once per
-job and reused across every chunk — never recreated, and its RNG/game state is never reset — so the sequence of
-rounds actually played, and therefore the resulting descriptor, is identical to what `ReplayRecorder`'s own
-uninterrupted loop would produce for the same seed/round; only the *scheduling* differs. Studio bounds `round` to
-an explicit safety ceiling (`MAX_STUDIO_REPLAY_ROUND`, 100,000) — `pokie replay` itself has no such limit; this
-mostly bounds how long a single replay job can occupy its project's one-active-replay-at-a-time slot.
+**Reproduce** (not offered for Session Spin, which has nothing to reproduce) runs the replay as a background job,
+in bounded chunks against one long-lived session — the exact same reason [Simulation](#simulation) is chunked:
+replaying a large `round` in a single call would block the whole HTTP server's event loop for as long as it took.
+`POST /api/project/replays` therefore returns immediately (`202`) with a **queued** job; the action bar then shows
+**queued** → **running** (with a live completed-rounds/requested-round progress line and elapsed duration) →
+**completed**/**failed**/**cancelled**, with the result view appearing inline the moment an active run goes
+terminal. A **Cancel** button is available while queued/running (asking for confirmation first), and once
+terminal, **Run again with the same parameters** re-submits the exact same round/seed. Only one replay may be
+queued/running per project at a time — starting a second one while the first is still active returns a `409`
+naming the already-active job's id. Cancellation, like Simulation's, can only take effect between chunks, not
+mid-chunk. The session itself is created exactly once per job and reused across every chunk — never recreated, and
+its RNG/game state is never reset — so the sequence of rounds actually played, and therefore the resulting
+descriptor, is identical to what `ReplayRecorder`'s own uninterrupted loop would produce for the same seed/round;
+only the *scheduling* differs. Studio bounds `round` to an explicit safety ceiling (`MAX_STUDIO_REPLAY_ROUND`,
+100,000) — `pokie replay` itself has no such limit; this mostly bounds how long a single replay job can occupy its
+project's one-active-replay-at-a-time slot.
 
-**Inspect** shows, for **Session Spin**: a read-only table (game, session id, this session's own round number,
+The result view shows, for **Session Spin**: a read-only table (game, session id, this session's own round number,
 request id, recorded-at timestamp, source — live spin vs. pre-generated outcome library — credits, bet, win), the
 spin's own **screen** grid, and an Advanced disclosure with debug data/raw before-after state/the full session JSON.
-For every other method, a video-slot round's full `RoundArtifactJson` (see [Round Artifacts](round-artifacts.md))
-renders through the same `RoundArtifactInspector` component every other artifact-viewing tab uses, plus — whenever
-an "expected" artifact is loaded (a pasted/picked Replay Artifact) — a match/mismatch comparison banner covering **screen**, **wins**,
-**totalPayout**, **steps**, **featureEvents**, **state** (the before/after transition), and **rngReelStops**
-(an explicit `debug.reelStops` field only) as independent dimensions, each `match`/`mismatch`/`unavailable` (a
-dimension missing or malformed on either side is `unavailable`, never silently folded into a match or a thrown
-error). A non-video-slot session instead shows the plain round summary (game, round, seed, total bet/payout,
-timestamp, duration) and screen (or a "no screen available" notice for a session without
-`getSymbolsCombination()`).
+For every other method, once a round has actually been reproduced, a video-slot round's full `RoundArtifactJson`
+(see [Round Artifacts](round-artifacts.md)) renders through the same `RoundArtifactInspector` component every
+other artifact-viewing tab uses, plus — whenever an "expected" artifact is loaded (a pasted/picked Replay Artifact)
+— a match/mismatch comparison banner covering **screen**, **wins**, **totalPayout**, **steps**, **featureEvents**,
+**state** (the before/after transition), and **rngReelStops** (an explicit `debug.reelStops` field only) as
+independent dimensions, each `match`/`mismatch`/`unavailable` (a dimension missing or malformed on either side is
+`unavailable`, never silently folded into a match or a thrown error). A non-video-slot session instead shows the
+plain round summary (game, round, seed, total bet/payout, timestamp, duration) and screen (or a "no screen
+available" notice for a session without `getSymbolsCombination()`).
 
-**Export** downloads the result as JSON: for Session Spin, a client-built blob of the full session view; for every
-other method, **Download JSON** links to `GET /api/project/replays/:id/download` — only available once the job is
+**Download JSON** downloads the result as JSON: for Session Spin, a client-built blob of the full session view; for
+every other method, it links to `GET /api/project/replays/:id/download` — only available once the job is
 `"completed"`; a failed/cancelled job has no descriptor to download, same as a failed/cancelled simulation having
 no report.
 
 The tab also carries a standing notice that replay reproducibility is best-effort: a deterministic game reproduces
 exactly for the same seed/round, but a game whose outcome doesn't depend solely on the seed may not.
 
-A **Recent Replays** list (shown at the bottom of every step) lists every replay job for the active project
-regardless of status (including a still-running one, unlike Simulation's Reports list which only ever shows
-completed jobs), most-recently-started first, each with **Inspect** (fetch and jump straight to Inspect) and
-**Reproduce & compare** (load it as the Replay Artifact "expected" side and continue from Load) actions. Studio
-keeps at most the 20 most recent *terminal* (completed/failed/cancelled) replays per project (oldest evicted
-first) — a queued/running job is never evicted. This is a process-local, in-memory limit, same as Reports:
-restarting Studio clears it, and a replay from one project becomes unreachable (a `404`, indistinguishable from an
-unknown id) once Studio switches to a different project. Stopping Studio itself (`Ctrl+C`) cancels every
-still-active replay the same way it cancels every still-active simulation.
+A **Recent Replays** list (shown at the bottom of the page, below the source choice/loaded card/action bar) lists
+every replay job for the active project regardless of status (including a still-running one, unlike Simulation's
+Reports list which only ever shows completed jobs), most-recently-started first, each with **Inspect** (fetch and
+load it straight into the loaded card/result view) and **Reproduce & compare** (switch to Replay Artifact, load it
+as the "expected" side) actions. Studio keeps at most the 20 most recent *terminal* (completed/failed/cancelled)
+replays per project (oldest evicted first) — a queued/running job is never evicted. This is a process-local,
+in-memory limit, same as Reports: restarting Studio clears it, and a replay from one project becomes unreachable (a
+`404`, indistinguishable from an unknown id) once Studio switches to a different project. Stopping Studio itself
+(`Ctrl+C`) cancels every still-active replay the same way it cancels every still-active simulation.
 
 #### Runtime
 

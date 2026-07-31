@@ -157,18 +157,31 @@ describe("New Blueprint action surface baseline", () => {
 // tabs, including the ones not re-demonstrated here as an executable fixture).
 
 describe("Advanced tab Stepper inventory baseline", () => {
-    it("Replay: Find, Load, Reproduce, Inspect, Export, in that order", async () => {
+    // Replay has no single sequential order shared by every source (a live spin has nothing to
+    // reproduce; a pasted artifact validates before it can reproduce; a fresh seed/round or simulation
+    // round has no prior result to compare against) -- see ReplayTab's own doc comment for why the old
+    // Find -> Load -> Reproduce -> Inspect -> Export Stepper was replaced with a source choice, whose
+    // own configuration/load controls, loaded card, action bar, and result view render inline instead
+    // of behind separate pages.
+    it("Replay: a source choice (Seed & Round, Replay Artifact, Session Spin, Recent Simulation), not a linear Stepper", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
         renderRoutedApp({fetchImpl, initialEntries: ["/project/replay"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
+        expect(screen.queryByRole("button", {name: stepperStep("Find", "Locate a round")})).not.toBeInTheDocument();
+
+        const sourcePicker = screen.getByRole("radiogroup", {name: "Find method"});
         expectStepsInOrder([
-            screen.getByRole("button", {name: stepperStep("Find", "Locate a round")}),
-            screen.getByRole("button", {name: stepperStep("Load", "Confirm & validate")}),
-            screen.getByRole("button", {name: stepperStep("Reproduce", "Run the replay")}),
-            screen.getByRole("button", {name: stepperStep("Inspect", "See results")}),
-            screen.getByRole("button", {name: stepperStep("Export", "Download")}),
+            within(sourcePicker).getByRole("radio", {name: "Seed & Round"}),
+            within(sourcePicker).getByRole("radio", {name: "Replay Artifact"}),
+            within(sourcePicker).getByRole("radio", {name: "Session Spin"}),
+            within(sourcePicker).getByRole("radio", {name: "Recent Simulation"}),
         ]);
+        expect(screen.getByRole("radio", {name: "Seed & Round"})).toBeChecked();
+        // Nothing loaded yet under the default source -- the source-specific empty prompt shows instead
+        // of a loaded card/action bar/result view.
+        expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     });
 
     it("Runtime: Create or restore session, Play, Inspect round, Continue session, Debug, in that order -- Debug is the only step never gated", async () => {
