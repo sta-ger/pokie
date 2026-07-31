@@ -35,6 +35,7 @@
         "check:release": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:packaging",
         "build-esm": "npm run generate-barrels && tsc --project tsconfig.prod.json && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs",
         "build-cjs": "npm run generate-barrels && tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs",
+        "build-test-runtime": "npm run build-esm && npm run build-cjs",
         "build-client": "tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/",
         "typecheck-studio-client": "tsc --project cli/studio-client/tsconfig.json --noEmit",
         "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts",

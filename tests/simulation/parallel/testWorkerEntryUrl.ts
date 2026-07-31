@@ -1,5 +1,3 @@
-import {execFileSync} from "child_process";
-import fs from "fs";
 import path from "path";
 import {pathToFileURL} from "url";
 import {ensureFixturesCanRequirePokie} from "../../cli/fixtures/ensureFixturesCanRequirePokie.js";
@@ -13,9 +11,10 @@ const COMPILED_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", 
 // `./foo.js` imports resolve to a sibling `foo.ts`). So this points at the real compiled
 // dist/esm/simulation/parallel/internal/simulationWorkerEntry.js — the exact file
 // ParallelSimulationRunner's own default resolution (see src/simulation/parallel/internal/
-// defaultWorkerEntryUrl.ts) points at in a real build — building it on demand if it isn't already
-// present (e.g. a fresh checkout that hasn't run `npm run build` yet). If you're iterating on
-// src/simulation/parallel/*.ts locally, re-run `npm run build-esm` yourself so these tests pick up
+// defaultWorkerEntryUrl.ts) points at in a real build. ensureFixturesCanRequirePokie performs that
+// one shared runtime build when it is missing (e.g. a fresh checkout), including the CJS output its
+// fixture packages require. If you're iterating on
+// src/simulation/parallel/*.ts locally, re-run `npm run build` yourself so these tests pick up
 // your changes — this module only builds when the compiled file is missing, not when it's merely
 // stale.
 //
@@ -27,9 +26,6 @@ const COMPILED_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", 
 // tarball smoke test (tests/packaging/npmPackSmoke.test.ts), which installs and runs the actual
 // published package.
 function resolveCompiledWorkerEntryUrl(): URL {
-    if (!fs.existsSync(COMPILED_WORKER_ENTRY)) {
-        execFileSync("npm", ["run", "build-esm"], {cwd: REPO_ROOT, stdio: "inherit"});
-    }
     return pathToFileURL(COMPILED_WORKER_ENTRY);
 }
 

@@ -83,6 +83,22 @@ nothing about what the test verifies got weaker.
 These tests (plus `simulationWorkerEntry.test.ts`) also needed a fixture-resolution fix — see
 "Fixed in this pass" below.
 
+### One compiled runtime build per test run
+
+Real `worker_threads` cannot load ts-jest source files, so their test fixture needs real CJS and ESM
+`dist/` entries. A clean task clone can evaluate that fixture in more than one Jest worker at once.
+Those workers must not independently run `build-cjs`/`build-esm`: besides wasting CPU, concurrent
+writers to the same disposable `dist/` directory make timing and failures nondeterministic.
+
+`ensureFixturesCanRequirePokie` therefore uses a small cross-process lock in Jest's disposable
+`node_modules/.cache` area and requests one complete `npm run build-test-runtime` (CJS + ESM only;
+it deliberately does not pay for lint or the unrelated CLI/client build). Every waiter checks for the
+required CJS and ESM entries, then cheaply waits for that owner instead of starting another compiler.
+The lock is removed on success or failure;
+a dead owner's lock is reclaimed after a short grace period, so an interrupted Jest worker cannot
+strand later runs. This is test setup only — source freshness remains explicit: as before, tests build
+only when outputs are absent, not when source files are merely newer.
+
 ## Benchmarks
 
 `npm run bench` runs `benchmarks/**/*.bench.ts`: representative baselines for simulation

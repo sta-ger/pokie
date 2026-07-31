@@ -1,9 +1,10 @@
-import {execFileSync} from "child_process";
 import fs from "fs";
 import path from "path";
+import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
+const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
 const FIXTURES_NODE_MODULES = path.join(__dirname, "node_modules");
 const POKIE_SYMLINK = path.join(FIXTURES_NODE_MODULES, "pokie");
 
@@ -17,12 +18,17 @@ const POKIE_SYMLINK = path.join(FIXTURES_NODE_MODULES, "pokie");
 // fixture, so self-reference never fires, and with no node_modules/pokie anywhere, resolution fails
 // deterministically (not intermittently) every time. This gives fixtures a real, resolvable "pokie"
 // without touching their bare `require("pokie")` (which would make them less representative of a
-// real consumer), mirroring testWorkerEntryUrl.ts's own "build on demand only if missing, never if
-// merely stale" pattern for the compiled worker entry point.
+// real consumer). The real-worker tests need both CJS (the fixture's bare require) and ESM (their
+// worker entry), so build the package once as one atomic test prerequisite. In a fresh clone two Jest
+// workers used to race and launch multiple overlapping CJS/ESM compilers; the shared lock below makes
+// all waiters reuse one complete runtime build instead.
 export function ensureFixturesCanRequirePokie(): void {
-    if (!fs.existsSync(COMPILED_CJS_ENTRY)) {
-        execFileSync("npm", ["run", "build-cjs"], {cwd: REPO_ROOT, stdio: "inherit"});
-    }
+    ensureCompiledTestOutput({
+        repositoryRoot: REPO_ROOT,
+        outputPaths: [COMPILED_CJS_ENTRY, COMPILED_ESM_WORKER_ENTRY],
+        lockName: "compiled-runtime",
+        command: ["npm", "run", "build-test-runtime"],
+    });
     fs.mkdirSync(FIXTURES_NODE_MODULES, {recursive: true});
     // Parallel jest workers (--maxWorkers=2) can each pass the existsSync check before either has
     // created the link, so guard the creation itself: whoever loses the race sees EEXIST for the
