@@ -3,9 +3,12 @@ import {
     computeFairnessServerSeedCommitment,
     FairnessRoundProof,
     GamePackageGenerating,
+    GenerateExactWeightedOutcomeLibraryOptions,
+    GenerateExactWeightedOutcomeLibraryResult,
     HtmlSimulationReportRenderer,
     MarkdownSimulationReportRenderer,
     OutcomeLibraryBundleReading,
+    OutcomeSpaceEstimate,
     ParallelSimulationRunner,
     PokieGame,
     RandomGameBlueprintGenerator,
@@ -99,7 +102,7 @@ function stubAddressServer(port: number): {start: () => Promise<{host: string; p
 // is what keeps a "valid" dispatch case in this file from leaking a listener onto the actual test
 // process (see DevCommand.ts/StudioCommand.ts's own registerShutdown()).
 function fakeProcess(): NodeJS.Process {
-    return {once: () => undefined, exit: () => undefined} as unknown as NodeJS.Process;
+    return {once: () => undefined, off: () => undefined, exit: () => undefined} as unknown as NodeJS.Process;
 }
 
 // A minimal-but-complete SimulationReport (every field SimulationReport itself requires — see
@@ -186,6 +189,7 @@ function resolveDeferredValues(caseKey: string): void {
 const STDOUT_FORMAT_FLAGS: Record<string, {flag: string; jsonValue: string; nonJsonValue: string}> = {
     diff: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
     name: {flag: "--json", jsonValue: "true", nonJsonValue: "false"},
+    outcomelibrary: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
     par: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
     replay: {flag: "--format", jsonValue: "json", nonJsonValue: "json"},
     sim: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
@@ -1036,6 +1040,183 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     return Promise.resolve([]);
                 },
             }),
+
+        // "generate" drives a real, loaded PokieGame's runtime -- FIXTURE_GENERATE_GAME stands in for
+        // loadPokieGame's own result (7th ctor param onward: loadGame/generate/estimateSpace/writeFile/
+        // fileExists/removeFile/process). --out/--resume have no seam inside generate() itself (they only
+        // ever gate writeFile/fileExists calls that are skipped outright when the flag is omitted), so both
+        // use the same deferValueUnlessCalled convention replay/report/par's own --out already does.
+        // --estimate/--dry-run's "false" default is observed from INSIDE the real generate() stub, since
+        // reaching it at all (rather than short-circuiting to estimateSpace) already proves neither fired.
+        "outcomelibrary::generate <packageRoot> (no options — default output/estimate off, human summary)": (key) => {
+            let writeFileCalled = false;
+            let fileExistsCalled = false;
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
+            deferValueUnlessCalled(key, "--resume", () => fileExistsCalled, "undefined");
+            return new OutcomeLibraryCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
+                (options: GenerateExactWeightedOutcomeLibraryOptions) => {
+                    observe(key, "--mode", options.betMode);
+                    observe(key, "--stake", options.stake);
+                    observe(key, "--config-hash", options.configHash);
+                    observe(key, "--library-id", options.libraryId);
+                    observe(key, "--max-outcome-space-size", options.maxOutcomeSpaceSize);
+                    observe(key, "--bounded", options.bounded !== undefined);
+                    observe(key, "--sample-size", options.bounded?.sampleSize);
+                    observe(key, "--seed", options.bounded?.seed);
+                    observe(key, "--progress", options.onProgress !== undefined);
+                    observe(key, "--estimate", false);
+                    observe(key, "--dry-run", false);
+                    return Promise.resolve(
+                        stub<GenerateExactWeightedOutcomeLibraryResult>({
+                            library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: [{id: "o1", weight: 6, artifact: {}}]},
+                            diagnostics: {
+                                algorithm: "pokie-exact-reel-enumeration-v1",
+                                strategy: "exact",
+                                totalOutcomeSpaceSize: 6,
+                                sampledRawCount: 6,
+                                pokieVersion: TEST_VERSION,
+                                game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"},
+                                generatedAt: "2026-01-01T00:00:00.000Z",
+                            },
+                        }),
+                    );
+                },
+                () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
+                (filePath) => {
+                    writeFileCalled = true;
+                    observe(key, "--out", filePath);
+                },
+                (filePath) => {
+                    fileExistsCalled = true;
+                    observe(key, "--resume", filePath);
+                    return false;
+                },
+                () => undefined,
+                fakeProcess(),
+            );
+        },
+        "outcomelibrary::generate <packageRoot> --mode --stake --config-hash --library-id --max-outcome-space-size --out --resume --progress --format json (accepted values, main flow)":
+            (key) =>
+                new OutcomeLibraryCommand(
+                    TEST_VERSION,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
+                    (options: GenerateExactWeightedOutcomeLibraryOptions) => {
+                        observe(key, "--mode", options.betMode);
+                        observe(key, "--stake", options.stake);
+                        observe(key, "--config-hash", options.configHash);
+                        observe(key, "--library-id", options.libraryId);
+                        observe(key, "--max-outcome-space-size", options.maxOutcomeSpaceSize);
+                        observe(key, "--progress", options.onProgress !== undefined);
+                        return Promise.resolve(
+                            stub<GenerateExactWeightedOutcomeLibraryResult>({
+                                library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: [{id: "o1", weight: 6, artifact: {}}]},
+                                diagnostics: {
+                                    algorithm: "pokie-exact-reel-enumeration-v1",
+                                    strategy: "exact",
+                                    totalOutcomeSpaceSize: 6,
+                                    sampledRawCount: 6,
+                                    pokieVersion: TEST_VERSION,
+                                    game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"},
+                                    generatedAt: "2026-01-01T00:00:00.000Z",
+                                },
+                            }),
+                        );
+                    },
+                    () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
+                    (filePath) => observe(key, "--out", filePath),
+                    (filePath) => {
+                        observe(key, "--resume", filePath);
+                        return false;
+                    },
+                    () => undefined,
+                    fakeProcess(),
+                ),
+        "outcomelibrary::generate <packageRoot> --bounded --sample-size --seed (accepted bounded-coverage options)": (key) =>
+            new OutcomeLibraryCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
+                (options: GenerateExactWeightedOutcomeLibraryOptions) => {
+                    observe(key, "--bounded", options.bounded !== undefined);
+                    observe(key, "--sample-size", options.bounded?.sampleSize);
+                    observe(key, "--seed", options.bounded?.seed);
+                    return Promise.resolve(
+                        stub<GenerateExactWeightedOutcomeLibraryResult>({
+                            library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: [{id: "o1", weight: 6, artifact: {}}]},
+                            diagnostics: {
+                                algorithm: "pokie-exact-reel-enumeration-v1",
+                                strategy: "bounded-coverage",
+                                totalOutcomeSpaceSize: 6,
+                                sampledRawCount: 1000,
+                                seed: "seed-1",
+                                pokieVersion: TEST_VERSION,
+                                game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"},
+                                generatedAt: "2026-01-01T00:00:00.000Z",
+                            },
+                        }),
+                    );
+                },
+                () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
+                undefined,
+                undefined,
+                undefined,
+                fakeProcess(),
+            ),
+        // --estimate/--dry-run's own accepted "true" is observed from inside the estimateSpace stub itself --
+        // the real generate() call must never fire for either, so it throws if it ever is.
+        "outcomelibrary::generate <packageRoot> --estimate (accepted --estimate flag)": (key) =>
+            new OutcomeLibraryCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
+                () => {
+                    throw new Error("generate() must not run for --estimate");
+                },
+                () => {
+                    observe(key, "--estimate", true);
+                    return stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)});
+                },
+                undefined,
+                undefined,
+                undefined,
+                fakeProcess(),
+            ),
+        "outcomelibrary::generate <packageRoot> --dry-run (accepted --dry-run flag)": (key) =>
+            new OutcomeLibraryCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
+                () => {
+                    throw new Error("generate() must not run for --dry-run");
+                },
+                () => {
+                    observe(key, "--dry-run", true);
+                    return stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)});
+                },
+                undefined,
+                undefined,
+                undefined,
+                fakeProcess(),
+            ),
 
         // par import always calls writeFile (5th ctor param), so --out is observed at its path argument in both
         // cases (default resolves to defaultBlueprintPath("input.xlsx")); --format is observed via stdout shape.
