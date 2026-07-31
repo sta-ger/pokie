@@ -432,37 +432,32 @@ export function describeReplayList(entries: StudioReplayListEntry[]): ReplayList
     return deduped.length === 0 ? {status: "empty"} : {status: "loaded", entries: deduped};
 }
 
-// The canonical identity two "Recent replays" entries are the same reproduction attempt for: the same
-// game build, round, and seed. Undefined for an entry with no game (a job that hasn't loaded far enough
-// to know its game yet) or no seed (the request never named one, so the game generated its own —
-// there's no stable input two such entries could ever be said to share, unlike a genuine retry of the
-// exact same named seed). Mirrors StudioRuntimeManager.recordRecentSpin()'s own canonical
-// (sessionId, studioRequestId) identity for the Session Spin list, applied here to the one identity
-// that actually makes two *replay* entries the same target: reproducing plays a brand-new session
-// forward from round 1 (see StudioReplayExecutionService.run()), so there is no per-round request id to
-// key on the way a live spin has -- (game, round, seed) is the closest thing this list has to one.
-function replayListEntryIdentityKey(entry: StudioReplayListEntry): string | undefined {
-    if (!entry.game || entry.seed === undefined || entry.seed.trim().length === 0) {
-        return undefined;
-    }
-    return `${entry.game.id}@${entry.game.version}::${entry.round}::${entry.seed}`;
+// The canonical identity of a "Recent replays" entry is its own job id -- a fresh id minted by
+// StudioReplayExecutionService.start() for every replay request (see ReplayResultView.id's own doc
+// comment: "the job/request tracking id minted before that session ever existed") and never reused
+// across two distinct requests, even ones started with identical (game, round, seed) parameters (e.g.
+// two separate "Run again with the same parameters" clicks). Deduplicating on (game, round, seed)
+// instead would incorrectly collapse those into one entry even though each is its own genuinely
+// distinct replay session -- id is the one field this list actually carries that uniquely names a
+// single request the way (sessionId, studioRequestId) does for the Session Spin list in
+// StudioRuntimeManager.recordRecentSpin().
+function replayListEntryIdentityKey(entry: StudioReplayListEntry): string {
+    return entry.id;
 }
 
 // Entries arrive most-recently-started first (see StudioReplayListEntry's own doc comment) -- keeping
-// only the first occurrence of each identity is therefore keeping the most recent attempt at that exact
-// target and dropping older, superseded attempts (e.g. every "Run again with the same parameters"
-// click), never the reverse.
+// only the first occurrence of each identity is therefore keeping the newest representation of a given
+// job id and dropping any older duplicate rows for that exact same job, never a different job that
+// merely shares its game/round/seed with another.
 function dedupeReplayListEntries(entries: StudioReplayListEntry[]): StudioReplayListEntry[] {
     const seen = new Set<string>();
     const deduped: StudioReplayListEntry[] = [];
     for (const entry of entries) {
         const key = replayListEntryIdentityKey(entry);
-        if (key !== undefined) {
-            if (seen.has(key)) {
-                continue;
-            }
-            seen.add(key);
+        if (seen.has(key)) {
+            continue;
         }
+        seen.add(key);
         deduped.push(entry);
     }
     return deduped;

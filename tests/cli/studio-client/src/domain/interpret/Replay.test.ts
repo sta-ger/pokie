@@ -598,26 +598,33 @@ describe("describeReplayList", () => {
         expect(describeReplayList([])).toEqual({status: "empty"});
     });
 
-    it("wraps a non-empty list of entries with distinct (game, round, seed) identities as loaded, unchanged", () => {
+    it("wraps a non-empty list of entries with distinct ids as loaded, unchanged", () => {
         const entries = [createListEntry({id: "replay-1", round: 1}), createListEntry({id: "replay-2", round: 2, status: "running"})];
 
         expect(describeReplayList(entries)).toEqual({status: "loaded", entries});
     });
 
-    it("canonically deduplicates entries sharing the same (game, round, seed) identity, keeping only the newest (first) occurrence", () => {
-        const newest = createListEntry({id: "retry-2", status: "completed"});
-        const older = createListEntry({id: "retry-1", status: "failed"});
+    it("canonically deduplicates entries sharing the same job id, keeping only the newest (first) occurrence", () => {
+        const newest = {...createListEntry({id: "retry-1", status: "completed"})};
+        const olderDuplicateRow = {...createListEntry({id: "retry-1", status: "running"})};
 
-        expect(describeReplayList([newest, older])).toEqual({status: "loaded", entries: [newest]});
+        expect(describeReplayList([newest, olderDuplicateRow])).toEqual({status: "loaded", entries: [newest]});
     });
 
-    it("never dedupes entries with no recorded seed -- each is its own distinct attempt with no shared identity to key on", () => {
+    it("never collapses two distinct replay sessions/jobs that happen to share the same game, round, and seed", () => {
+        const firstAttempt = createListEntry({id: "retry-1", status: "failed"});
+        const secondAttempt = createListEntry({id: "retry-2", status: "completed"});
+
+        expect(describeReplayList([secondAttempt, firstAttempt])).toEqual({status: "loaded", entries: [secondAttempt, firstAttempt]});
+    });
+
+    it("does not dedupe entries with no recorded seed -- each is its own distinct attempt with a distinct id", () => {
         const entries = [createListEntry({id: "a", seed: undefined}), createListEntry({id: "b", seed: undefined})];
 
         expect(describeReplayList(entries)).toEqual({status: "loaded", entries});
     });
 
-    it("never dedupes entries with no known game yet", () => {
+    it("does not dedupe entries with no known game yet", () => {
         const entries = [createListEntry({id: "a", game: undefined}), createListEntry({id: "b", game: undefined})];
 
         expect(describeReplayList(entries)).toEqual({status: "loaded", entries});
