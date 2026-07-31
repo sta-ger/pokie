@@ -169,6 +169,12 @@ export type ReplayComparisonView = {
     status: "match" | "mismatch" | "partial" | "unavailable";
     unavailableReason?: string;
     dimensions: ReplayComparisonDimensions;
+    // The recorded/reference side (a stored replay job or a pasted/selected artifact) and the recreated
+    // side (the fresh forward replay just run against it) — always populated, even when `status` is
+    // "unavailable", so a reader can see exactly what each side actually is before asking why they
+    // couldn't be compared.
+    recorded: ReplayComparisonSide;
+    recreated: ReplayComparisonSide;
 };
 
 // What describeReplayComparison needs from each side — a slice of ReplayDescriptor (or the pasted
@@ -184,16 +190,74 @@ export type ComparableReplayResult = {
     artifactWarnings?: string[];
     stateBefore?: unknown;
     stateAfter?: unknown;
+    // Optional identity/timing the caller already knows about this side (a stored replay job's own
+    // session/job ids and completion time, or a pasted artifact's round/seed) — never required for the
+    // dimension-by-dimension comparison itself, only for describeComparisonSide below to render an
+    // honest "what is this side, exactly" summary alongside the diff.
+    identity?: {label: string; seed?: string; timestamp?: number};
 };
 
+// The comparison's own summary of one side (recorded/reference or recreated) — same five fields the
+// Loaded replay card already shows for a single source (identities/seed/versionHash/timestamp/
+// completeness), so a reader comparing two rounds gets the same vocabulary as comparing one. Built
+// entirely from what `describeReplayComparison` already has on hand for that side; never requires a
+// dimension result to already be known, so it's populated even when every dimension turns out
+// "unavailable" (a reader should still see *what* couldn't be compared, not just that it couldn't).
+export type ReplayComparisonSide = {
+    role: "recorded" | "recreated";
+    label: string;
+    identities: string;
+    seed: string;
+    versionHash: string;
+    timestamp: string;
+    completeness: string;
+};
+
+function describeComparisonSide(role: "recorded" | "recreated", side: ComparableReplayResult): ReplayComparisonSide {
+    const provenanceGame = side.artifact?.provenance?.game;
+    const versionHashParts: string[] = [];
+    if (provenanceGame?.id && provenanceGame.version) {
+        versionHashParts.push(`${provenanceGame.id} v${provenanceGame.version}`);
+    }
+    if (side.artifact?.hash) {
+        versionHashParts.push(`hash ${side.artifact.hash}`);
+    }
+
+    let completeness: string;
+    if (side.artifactWarnings && side.artifactWarnings.length > 0) {
+        completeness = `Incomplete -- artifact is malformed: ${side.artifactWarnings.join(" ")}`;
+    } else if (side.artifact === undefined) {
+        completeness = "Minimal -- no round artifact recorded for this side.";
+    } else if (side.stateBefore === undefined || side.stateAfter === undefined) {
+        completeness = "Partial -- round artifact recorded, but no session state captured.";
+    } else if (extractDeterministicReelStops(side.artifact.debug) === undefined) {
+        completeness = "Partial -- artifact and state recorded, but no RNG/reel-stop trace.";
+    } else {
+        completeness = "Full -- artifact, state, and RNG/reel-stop trace all recorded.";
+    }
+
+    return {
+        role,
+        label: role === "recorded" ? "Recorded / reference" : "Recreated",
+        identities: side.identity?.label ?? "(identity not recorded)",
+        seed: side.identity?.seed ?? "(none)",
+        versionHash: versionHashParts.length > 0 ? versionHashParts.join(", ") : "(not recorded)",
+        timestamp: side.identity?.timestamp !== undefined ? new Date(side.identity.timestamp).toLocaleString() : "(unknown)",
+        completeness,
+    };
+}
+
 export function describeReplayComparison(expected: ComparableReplayResult, reproduced: ComparableReplayResult): ReplayComparisonView {
+    const recorded = describeComparisonSide("recorded", expected);
+    const recreated = describeComparisonSide("recreated", reproduced);
+
     if (expected.artifactWarnings && expected.artifactWarnings.length > 0) {
         const unavailableReason = `Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable: ${expected.artifactWarnings.join(" ")}`;
-        return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason)};
+        return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
     if (expected.artifact === undefined || reproduced.artifact === undefined) {
         const unavailableReason = "No round artifact is available on one or both sides to compare.";
-        return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason)};
+        return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
 
     const expectedArtifact = expected.artifact;
@@ -228,7 +292,7 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
     } else if (hasUnavailable) {
         status = "partial";
     }
-    return {status, dimensions};
+    return {status, dimensions, recorded, recreated};
 }
 
 function unavailableDimensions(reason: string): ReplayComparisonDimensions {
@@ -578,7 +642,7 @@ function describeComparableCapability(
     }
     return {
         status: "available",
-        reason: comparison.status === "match" ? "Verified -- matches the expected result." : "Verified -- differs from the expected result.",
+        reason: comparison.status === "match" ? "Verified -- matches the recorded result." : "Verified -- differs from the recorded result.",
     };
 }
 

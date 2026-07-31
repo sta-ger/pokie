@@ -42,6 +42,12 @@ export type ExpectedReplayState =
           artifactWarnings: string[];
           stateBefore?: unknown;
           stateAfter?: unknown;
+          // Whatever this record's own identity/timing is known to be -- a stored replay job's session/job
+          // ids and completion time, or a pasted artifact's own round/session/timestamp fields, when
+          // present. Threaded straight through to describeReplayComparison's "recorded" side summary
+          // (ProjectDashboardPage.tsx) -- undefined only means the comparison shows an honest "identity not
+          // recorded" rather than guessing at one.
+          identity?: {label: string; seed?: string; timestamp?: number};
       };
 
 // Two genuinely different kinds of source, kept as separate modes rather than folded into one picker
@@ -73,10 +79,10 @@ const SOURCE_EMPTY_PROMPT: Record<FindMethod, string> = {
 // own doc comment) -- every other source's run is honestly "not verified" rather than silently omitting
 // the row.
 const COMPARISON_STATUS_LABEL: Record<ReplayComparisonView["status"], string> = {
-    match: "Verified -- matches the expected result",
-    mismatch: "Verified -- differs from the expected result",
-    partial: "Partially verified against the expected result",
-    unavailable: "Verification unavailable",
+    match: "Verified -- matches the recorded result",
+    mismatch: "Verified -- differs from the recorded result",
+    partial: "Incomplete -- every available dimension matches the recorded result, but some couldn't be checked",
+    unavailable: "Exact comparison unavailable",
 };
 
 // The four capabilities the Loaded replay card below shows for every source -- same order regardless

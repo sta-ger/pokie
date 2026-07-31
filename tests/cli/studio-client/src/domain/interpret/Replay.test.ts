@@ -224,6 +224,60 @@ describe("describeReplayComparison", () => {
         }
     });
 
+    it("identifies the recorded/reference and recreated sides with their own identity, seed, version/hash, time, and completeness", () => {
+        const artifact = createArtifact({debug: {reelStops: [1, 2, 3]}});
+        const expected = createComparable({
+            artifact,
+            stateBefore: {win: 0},
+            stateAfter: {win: 5},
+            identity: {label: "pasted replay artifact, round 42", seed: "demo", timestamp: 1735707845000},
+        });
+        const reproduced = createComparable({
+            artifact,
+            stateBefore: {win: 0},
+            stateAfter: {win: 5},
+            identity: {label: "replay session session-9, replay job job-9", seed: "demo", timestamp: 1735707900000},
+        });
+
+        const result = describeReplayComparison(expected, reproduced);
+
+        expect(result.recorded).toEqual({
+            role: "recorded",
+            label: "Recorded / reference",
+            identities: "pasted replay artifact, round 42",
+            seed: "demo",
+            versionHash: "sample-slot v0.1.0, hash sha256:fixed-for-tests",
+            timestamp: new Date(1735707845000).toLocaleString(),
+            completeness: "Full -- artifact, state, and RNG/reel-stop trace all recorded.",
+        });
+        expect(result.recreated).toEqual({
+            role: "recreated",
+            label: "Recreated",
+            identities: "replay session session-9, replay job job-9",
+            seed: "demo",
+            versionHash: "sample-slot v0.1.0, hash sha256:fixed-for-tests",
+            timestamp: new Date(1735707900000).toLocaleString(),
+            completeness: "Full -- artifact, state, and RNG/reel-stop trace all recorded.",
+        });
+    });
+
+    it("still identifies both sides (with an honest 'not recorded'/'unknown' fallback) when identity is never supplied or comparison is unavailable", () => {
+        const result = describeReplayComparison({artifact: undefined}, createComparable());
+
+        expect(result.status).toBe("unavailable");
+        expect(result.recorded).toEqual({
+            role: "recorded",
+            label: "Recorded / reference",
+            identities: "(identity not recorded)",
+            seed: "(none)",
+            versionHash: "(not recorded)",
+            timestamp: "(unknown)",
+            completeness: "Minimal -- no round artifact recorded for this side.",
+        });
+        expect(result.recreated.role).toBe("recreated");
+        expect(result.recreated.completeness).toBe("Partial -- round artifact recorded, but no session state captured.");
+    });
+
     it("flags exactly the screen dimension as a mismatch when only the screen differs", () => {
         const expected = createComparable();
         const reproduced = createComparable({artifact: createArtifact({screen: [["lemon", "lemon"]]})});

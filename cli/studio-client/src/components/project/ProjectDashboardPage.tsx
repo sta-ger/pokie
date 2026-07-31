@@ -439,6 +439,11 @@ export function ProjectDashboardPage() {
                         artifactWarnings: [],
                         stateBefore: job.descriptor.stateBefore,
                         stateAfter: job.descriptor.stateAfter,
+                        identity: {
+                            label: `replay session ${job.descriptor.sessionId}, replay job ${job.id}`,
+                            seed: job.descriptor.seed ?? undefined,
+                            timestamp: job.descriptor.timestamp,
+                        },
                     });
                 })
                 .catch((error: unknown) => {
@@ -468,7 +473,7 @@ export function ProjectDashboardPage() {
                     }
                     const parsedDescriptor =
                         typeof parsed === "object" && parsed !== null
-                            ? (parsed as {artifact?: RoundArtifactJson; stateBefore?: unknown; stateAfter?: unknown})
+                            ? (parsed as {artifact?: RoundArtifactJson; stateBefore?: unknown; stateAfter?: unknown; sessionId?: string; timestamp?: number})
                             : undefined;
                     setExpectedReplay({
                         status: "loaded",
@@ -478,6 +483,11 @@ export function ProjectDashboardPage() {
                         artifactWarnings: response.artifactWarnings,
                         stateBefore: parsedDescriptor?.stateBefore,
                         stateAfter: parsedDescriptor?.stateAfter,
+                        identity: {
+                            label: `pasted replay artifact${parsedDescriptor?.sessionId ? `, session ${parsedDescriptor.sessionId}` : ""}, round ${response.round}`,
+                            seed: response.seed,
+                            timestamp: parsedDescriptor?.timestamp,
+                        },
                     });
                 })
                 .catch((error: unknown) => {
@@ -539,11 +549,19 @@ export function ProjectDashboardPage() {
                     artifactWarnings: expectedReplay.artifactWarnings,
                     stateBefore: expectedReplay.stateBefore,
                     stateAfter: expectedReplay.stateAfter,
+                    identity: expectedReplay.identity,
                 },
                 {
                     artifact: replay.job.descriptor?.artifact,
                     stateBefore: replay.job.descriptor?.stateBefore,
                     stateAfter: replay.job.descriptor?.stateAfter,
+                    identity: replay.job.descriptor
+                        ? {
+                            label: `replay session ${replay.job.descriptor.sessionId}, replay job ${replay.job.id}`,
+                            seed: replay.job.descriptor.seed ?? undefined,
+                            timestamp: replay.job.descriptor.timestamp,
+                        }
+                        : undefined,
                 },
             )
             : undefined;
