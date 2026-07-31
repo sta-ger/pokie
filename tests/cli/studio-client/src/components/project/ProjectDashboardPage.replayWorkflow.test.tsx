@@ -1057,6 +1057,80 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     }, 60000);
 
+    // `progress`/`result`/`error` are a single global "last replay job" the parent tracks, not scoped
+    // to any one Replay source/target. Before this fix, reaching a terminal replay and then loading a
+    // *different* target -- without switching source at all, just a fresh Load -- kept presenting that
+    // stale job's terminal progress/retry/result instead of offering Reproduce for the newly loaded
+    // target.
+    it("scopes a terminal replay job to its own target -- a new Load exposes Reproduce again, not stale terminal state", async () => {
+        const user = userEvent.setup();
+        let pollCountJob1 = 0;
+        let pollCountJob2 = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    const body = JSON.parse(call.init.body ?? "{}") as {round: number; seed?: string};
+                    const jobId = body.seed === "other-seed" ? "job-2" : "job-1";
+                    return {ok: true, status: 200, body: jobFor(jobId, {status: "queued", completedRounds: 0, round: body.round, seed: body.seed})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-1": () => {
+                pollCountJob1 += 1;
+                if (pollCountJob1 < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-1", {status: "running", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: jobFor("job-1", {status: "completed", descriptor: descriptorFor({artifact: artifactFor()})})};
+            },
+            "/api/project/replays/job-2": () => {
+                pollCountJob2 += 1;
+                if (pollCountJob2 < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-2", {status: "running", completedRounds: 0, round: 1, seed: "other-seed"})};
+                }
+                return {
+                    ok: true,
+                    status: 200,
+                    body: jobFor("job-2", {
+                        status: "completed",
+                        round: 1,
+                        seed: "other-seed",
+                        descriptor: descriptorFor({seed: "other-seed", artifact: artifactFor({}, "hash-2")}),
+                    }),
+                };
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument(), {timeout: 15000});
+        expect(screen.getByRole("link", {name: "Download JSON"})).toBeInTheDocument();
+
+        // Load a *different* target via the same source (new seed, same round) -- the prior terminal
+        // replay's progress/retry/result must not linger and block reproducing this new target.
+        await user.clear(screen.getByLabelText("Seed (optional)"));
+        await user.type(screen.getByLabelText("Seed (optional)"), "other-seed");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+
+        expect(await screen.findByText(/Round 1, seed other-seed\./)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Reproduce"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Run again with the same parameters"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("link", {name: "Download JSON"})).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
+
+        // The newly loaded target's own reproduction still works end to end -- scoping the stale job
+        // away doesn't break the cancel/terminal/result/export behavior of the reproduction that
+        // *does* belong to it.
+        await user.click(screen.getByRole("button", {name: "Reproduce"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument(), {timeout: 15000});
+        expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-2/download");
+    }, 60000);
+
     it("keeps distinct sessions separately visible in the recent spins list and lets the session filter narrow to just one at a time", async () => {
         const user = userEvent.setup();
         const spins: StudioRuntimeSessionView[] = [

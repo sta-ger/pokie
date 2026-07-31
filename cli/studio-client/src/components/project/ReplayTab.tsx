@@ -67,10 +67,14 @@ function downloadJsonBlob(filename: string, data: unknown): void {
 // loaded -- a card showing what's loaded, an action bar for whatever's actually available
 // (reproduce/cancel/retry/export), and the result view inline, with nothing gated behind a click.
 //
-// `loadedForMethod`/`resultVisible` are the two flags that tie the loaded card/action bar/result
+// `loadedForMethod`/`jobLoaded` are the two flags that tie the loaded card/action bar/progress/result
 // section to the source and load action that produced it: `switchSource` (the source picker) and
-// every per-source load action reset them, so a stale card or result from a previous source or a
-// previous load never lingers under a newly-picked one.
+// every per-source load action reset them, so a stale card, in-flight/terminal job, or result from a
+// previous source or a previous load never lingers under a newly-picked one. `jobLoaded` in particular
+// is what the shared action bar below keys off of instead of the parent's raw `progress`/`result`/
+// `error` -- those are a single global in-flight-or-last-completed replay job the parent tracks across
+// every source, so without this flag a terminal job from one target would keep presenting its
+// retry/result/error as if it belonged to a different target loaded afterward.
 export function ReplayTab({
     progress,
     result,
@@ -135,11 +139,18 @@ export function ReplayTab({
     const autoSelectSpin = locationState?.sessionId !== undefined && locationState?.requestId !== undefined ? {sessionId: locationState.sessionId, requestId: locationState.requestId} : undefined;
 
     const [findMethod, setFindMethod] = useState<FindMethod>(initialFindMethod);
-    // Which source a load action last actually completed for, and whether that load already has a
-    // result worth showing -- the two flags the loaded card/action bar/result section below is gated
-    // on. `markLoaded` is the only way either changes outside of `switchSource` resetting both.
+    // Which source a load action last actually completed for -- the loaded card/action bar/result
+    // section below is gated on this matching `findMethod`. `markLoaded` is the only way it changes
+    // outside of `switchSource` resetting it.
     const [loadedForMethod, setLoadedForMethod] = useState<FindMethod>();
-    const [resultVisible, setResultVisible] = useState(false);
+    // Whether the parent's `progress`/`result`/`error` -- a single global in-flight-or-last-completed
+    // replay job, not scoped to any source -- actually belongs to the currently loaded target. Only
+    // ever set true by an action that ties a real job to that exact target: clicking Reproduce below
+    // (which calls onRun for it), or the Recent Replays "Inspect" shortcut (which loads an already-
+    // completed job for it directly, with nothing left to reproduce). Every fresh load resets it via
+    // `markLoaded(method, false)`, which is what keeps a prior target's terminal progress/retry/error/
+    // result from being presented as this target's state.
+    const [jobLoaded, setJobLoaded] = useState(false);
     const [pending, setPending] = useState<{round: number; seed?: string}>();
     const [artifactText, setArtifactText] = useState("");
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
@@ -161,8 +172,11 @@ export function ReplayTab({
         }
     }, [recentSpins, spinSessionFilter]);
 
-    const active = progress !== undefined && (progress.status === "queued" || progress.status === "running");
-    const terminal = progress !== undefined && !active;
+    // Gated on `jobLoaded` (not just `progress !== undefined`) so a prior target's still-active or
+    // terminal job is never presented as the currently loaded target's state -- see `jobLoaded`'s own
+    // doc comment above.
+    const active = jobLoaded && progress !== undefined && (progress.status === "queued" || progress.status === "running");
+    const terminal = jobLoaded && progress !== undefined && !active;
 
     // The Runtime tab's "Debug this round" handoff names one exact (sessionId, requestId) pair -- matched
     // against each entry's own `studioRequestId` (Studio's own bookkeeping, recorded regardless of debug
@@ -212,7 +226,7 @@ export function ReplayTab({
     function switchSource(next: FindMethod): void {
         setFindMethod(next);
         setLoadedForMethod(undefined);
-        setResultVisible(false);
+        setJobLoaded(false);
         setPending(undefined);
         setArtifactText("");
         setSelectedSpin(undefined);
@@ -225,10 +239,13 @@ export function ReplayTab({
     // `resultReady` distinguishes "just configured/validated, nothing reproduced yet" (false --
     // Seed & Round/Recent Simulation loading a target, Replay Artifact validating) from "already has
     // a concrete result to show" (true -- only the Recent Replays "Inspect" shortcut, which loads a
-    // completed result directly with no reproduce step at all).
+    // completed result directly with no reproduce step at all). It doubles as the initial value of
+    // `jobLoaded`: false correctly means this fresh target has no job of its own yet (any progress/
+    // result still showing belongs to whatever was loaded before), true means the job now backing
+    // `progress`/`result` genuinely is this target's.
     function markLoaded(method: FindMethod, resultReady: boolean): void {
         setLoadedForMethod(method);
-        setResultVisible(resultReady);
+        setJobLoaded(resultReady);
     }
 
     function loadTarget(round: number, seed: string | undefined): void {
@@ -266,7 +283,7 @@ export function ReplayTab({
     // spin/result left over from a source that's no longer selected.
     const exportReady =
         (findMethod === "spin" && isCurrentSourceLoaded && selectedSpin !== undefined) ||
-        (findMethod !== "spin" && isCurrentSourceLoaded && resultVisible && result !== undefined);
+        (findMethod !== "spin" && isCurrentSourceLoaded && jobLoaded && result !== undefined);
 
     return (
         <div>
@@ -634,12 +651,12 @@ export function ReplayTab({
                     {findMethod !== "spin" && reproduceTarget && (
                         <div>
                             <QuickActions>
-                                {progress === undefined && (
+                                {!jobLoaded && (
                                     <Button
                                         disabled={reproduceDisabled}
                                         onClick={() => {
                                             onRun(reproduceTarget.round, reproduceTarget.seed, findMethod === "artifact" ? true : undefined);
-                                            setResultVisible(true);
+                                            setJobLoaded(true);
                                         }}
                                     >
                                         Reproduce
@@ -657,7 +674,7 @@ export function ReplayTab({
                                 )}
                             </QuickActions>
 
-                            {progress !== undefined && (
+                            {jobLoaded && progress !== undefined && (
                                 <div>
                                     {progress.status === "failed" && error === undefined && <ErrorState message={progress.error ?? "Replay failed."} />}
                                     {error && <ErrorState message={error} />}
@@ -668,7 +685,7 @@ export function ReplayTab({
                                 </div>
                             )}
 
-                            {resultVisible && !active && result?.artifact && (
+                            {jobLoaded && !active && result?.artifact && (
                                 <RoundArtifactInspector
                                     artifact={result.artifact}
                                     comparison={findMethod === "artifact" ? comparison : undefined}
@@ -676,7 +693,7 @@ export function ReplayTab({
                                     stateAfter={result.stateAfter}
                                 />
                             )}
-                            {resultVisible && !active && result && !result.artifact && (
+                            {jobLoaded && !active && result && !result.artifact && (
                                 <div>
                                     <Table withRowBorders={false} mb="sm">
                                         <Table.Tbody>
@@ -721,7 +738,7 @@ export function ReplayTab({
                                     )}
                                 </div>
                             )}
-                            {resultVisible && !active && !result && <EmptyState message="Reproduce a round to inspect it." />}
+                            {jobLoaded && !active && !result && <EmptyState message="Reproduce a round to inspect it." />}
                         </div>
                     )}
                 </div>
