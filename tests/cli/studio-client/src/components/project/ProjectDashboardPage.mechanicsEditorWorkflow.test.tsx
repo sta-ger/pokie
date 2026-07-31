@@ -804,10 +804,13 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
                 expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
             },
             // This chains more sequential steps (tab switch, dirty edit, Back nav, confirm, tab
-            // unmount/remount, Close project, a second navigate) than any other test in this file -- the
-            // project's global 15000ms testTimeout leaves too little headroom under concurrent Jest
-            // workers, same reasoning as happyPath.test.tsx's own explicit per-test timeout.
-            30000,
+            // unmount/remount, Close project, a second navigate) than any other test in this file -- same
+            // reasoning as happyPath.test.tsx's own explicit per-test timeout, and the same 60000ms every
+            // other explicit override in this test's sibling ProjectDashboardPage.*Workflow.test.tsx files
+            // already uses (this one was previously left at a stale 30000ms, below even the project's
+            // current 60000ms global testTimeout, which is what let it intermittently exceed budget under
+            // concurrent Jest workers).
+            60000,
         );
 
         // A project can simultaneously have an unapplied Mechanics Editor draft *and* an active
