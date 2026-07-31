@@ -873,4 +873,202 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(screen.queryByText("Round no longer available")).not.toBeInTheDocument();
         expect(screen.queryByText("Loading recent spins…")).not.toBeInTheDocument();
     }, 60000);
+
+    it("Create Session and Load Session immediately drop a round selected from history, even before the request settles or if it fails", async () => {
+        const user = userEvent.setup();
+        let capturedRequestId: string | undefined;
+        let createCallCount = 0;
+        let releaseSecondCreate: (() => void) | undefined;
+        let releaseLoad: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/runtime") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "stopped"})});
+            }
+            if (path === "/api/project/runtime/start") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(RUNNING_STATE_DEBUG)});
+            }
+            if (path === "/api/project/runtime/spins") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () =>
+                        Promise.resolve(
+                            capturedRequestId === undefined
+                                ? []
+                                : [
+                                    sessionFor({credits: 1005, win: 15, sessionVersion: 2, studioRound: 1, studioRequestId: capturedRequestId, debug: {stateAfter: {}, requestId: capturedRequestId}}),
+                                    sessionFor({credits: 700, win: 777, studioRound: 0, studioRequestId: "req-older-decoy", debug: {stateAfter: {}, requestId: "req-older-decoy"}}),
+                                ],
+                        ),
+                });
+            }
+            if (path === "/api/project/runtime/sessions") {
+                createCallCount += 1;
+                if (createCallCount === 1) {
+                    return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor()})});
+                }
+                // The re-create stays pending until released, then rejects outright (a network failure,
+                // never touching sessionId -- unlike a resolved business error, which would) -- proves the
+                // previously selected round is gone the instant Create Session is clicked again, not only
+                // once the failure actually lands.
+                return new Promise((_resolve, reject) => {
+                    releaseSecondCreate = () => reject(new Error("Cannot create another session right now."));
+                });
+            }
+            if (path === "/api/project/runtime/sessions/sess-1/spins") {
+                const body = JSON.parse(init?.body ?? "{}") as {requestId?: string};
+                capturedRequestId = body.requestId;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})})});
+            }
+            if (path === "/api/project/runtime/sessions/sess-1") {
+                // Reloading the very same session id also stays pending until released, then rejects --
+                // sessionId never changes in that case, so nothing but a synchronous clear on click can
+                // drop the stale selection.
+                return new Promise((_resolve, reject) => {
+                    releaseLoad = () => reject(new Error("Session not found."));
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route) {
+                const {ok, status, body} = route({url, init});
+                return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+            }
+            return Promise.reject(new Error(`no fake route for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        // Pick the *older* decoy round from history, not the one just spun -- its requestId disagrees
+        // with lastSpin, so Retry & Debug are now keyed off this selection instead.
+        const history = section("Round history for this session");
+        await waitFor(() => expect(within(history).getByText(/req-older-decoy/)).toBeInTheDocument());
+        await user.click(within(history).getByText(/req-older-decoy/));
+        expect(await screen.findByRole("button", {name: "Debug this round in Replay & Debug"})).toBeEnabled();
+        expect(within(section("Retry & Debug")).getByText("req-older-decoy")).toBeInTheDocument();
+
+        // Re-create a session while that older round is still selected. The prior selection must stop
+        // being Inspect/Debug-able, and Retry & Debug must fall back to the real last spin, the instant
+        // the request is issued -- not only once its failure actually lands.
+        await user.click(screen.getByRole("button", {name: "Create or restore a different session"}));
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument();
+        expect(within(section("Retry & Debug")).queryByText("req-older-decoy")).not.toBeInTheDocument();
+        expect(within(section("Retry & Debug")).getByText(capturedRequestId as string)).toBeInTheDocument();
+
+        releaseSecondCreate?.();
+        expect(await screen.findByText("Cannot create another session right now.")).toBeInTheDocument();
+
+        // Still no trace of the stale selection now that the failure has actually landed.
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(within(section("Retry & Debug")).queryByText("req-older-decoy")).not.toBeInTheDocument();
+
+        // Re-select the older round, then take the Load Session path instead -- same story: gone the
+        // instant the request is issued, still gone once it fails.
+        await user.click(within(section("Round history for this session")).getByText(/req-older-decoy/));
+        expect(await screen.findByRole("button", {name: "Debug this round in Replay & Debug"})).toBeEnabled();
+
+        await user.click(screen.getByRole("button", {name: "Create or restore a different session"}));
+        await user.click(screen.getByRole("radio", {name: "Restore existing"}));
+        await user.type(screen.getByLabelText("Session id"), "sess-1");
+        await user.click(screen.getByRole("button", {name: "Load Session"}));
+
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(within(section("Retry & Debug")).queryByText("req-older-decoy")).not.toBeInTheDocument();
+
+        releaseLoad?.();
+        expect(await screen.findByText("Session not found.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+    }, 60000);
+
+    it("Retry immediately drops a round selected from history, even before the retry settles or if it fails", async () => {
+        const user = userEvent.setup();
+        let capturedRequestId: string | undefined;
+        let spinCallCount = 0;
+        let releaseRetry: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/runtime") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "stopped"})});
+            }
+            if (path === "/api/project/runtime/start") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(RUNNING_STATE_DEBUG)});
+            }
+            if (path === "/api/project/runtime/spins") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () =>
+                        Promise.resolve(
+                            capturedRequestId === undefined
+                                ? []
+                                : [
+                                    sessionFor({credits: 1005, win: 15, sessionVersion: 2, studioRound: 1, studioRequestId: capturedRequestId, debug: {stateAfter: {}, requestId: capturedRequestId}}),
+                                    sessionFor({credits: 700, win: 777, studioRound: 0, studioRequestId: "req-older-decoy", debug: {stateAfter: {}, requestId: "req-older-decoy"}}),
+                                ],
+                        ),
+                });
+            }
+            if (path === "/api/project/runtime/sessions") {
+                return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor()})});
+            }
+            if (path === "/api/project/runtime/sessions/sess-1/spins") {
+                const body = JSON.parse(init?.body ?? "{}") as {requestId?: string};
+                spinCallCount += 1;
+                if (spinCallCount === 1) {
+                    capturedRequestId = body.requestId;
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: sessionFor({credits: 1005, win: 15, sessionVersion: 2})})});
+                }
+                // The retry (of the *older* selected round, not lastSpin) stays pending until released,
+                // then fails -- proves the stale selection is gone the instant Retry is clicked.
+                return new Promise((resolve) => {
+                    releaseRetry = () => resolve({ok: false, status: 409, json: () => Promise.resolve({error: "Session changed elsewhere.", reason: "conflict"})});
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route) {
+                const {ok, status, body} = route({url, init});
+                return Promise.resolve({ok, status, json: () => Promise.resolve(body)});
+            }
+            return Promise.reject(new Error(`no fake route for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+
+        const history = section("Round history for this session");
+        await waitFor(() => expect(within(history).getByText(/req-older-decoy/)).toBeInTheDocument());
+        await user.click(within(history).getByText(/req-older-decoy/));
+        expect(await screen.findByRole("button", {name: "Debug this round in Replay & Debug"})).toBeEnabled();
+
+        await user.click(screen.getByRole("button", {name: "Retry this request"}));
+
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument();
+
+        releaseRetry?.();
+        expect(await screen.findByText("Session changed elsewhere.")).toBeInTheDocument();
+
+        expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
+        expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
+        expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument();
+    }, 60000);
 });

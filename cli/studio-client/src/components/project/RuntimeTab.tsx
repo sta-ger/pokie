@@ -357,11 +357,13 @@ export function RuntimeTab({
 
     function handleCreateSession(): void {
         pendingActionRef.current = "create";
+        setSelectedRound(undefined);
         onCreateSession(createSeed.trim() || undefined, createInitialBalance.trim() === "" ? undefined : Number(createInitialBalance));
     }
 
     function handleLoadSession(id: string): void {
         pendingActionRef.current = "load";
+        setSelectedRound(undefined);
         onLoadSession(id);
     }
 
@@ -395,12 +397,12 @@ export function RuntimeTab({
     }
 
     function handleRetry(detail: {requestId: string; expectedVersion: number | undefined}): void {
+        pendingActionRef.current = "spin";
+        setSelectedRound(undefined);
         if (detail.requestId === lastSpin.requestId && detail.expectedVersion === lastSpin.expectedVersion) {
-            pendingActionRef.current = "spin";
             onRepeatSpin();
             return;
         }
-        pendingActionRef.current = "spin";
         onSpin(detail.requestId, detail.expectedVersion);
     }
 
