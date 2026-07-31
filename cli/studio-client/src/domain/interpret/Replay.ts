@@ -58,7 +58,14 @@ function formatScreenGrid(screen: readonly (readonly (string | number)[])[]): st
 }
 
 export type ReplayResultView = {
+    // The replay job id (StudioReplayJobView.id) -- what onInspectStored/onCompareStored/
+    // buildReplayDownloadUrl are all keyed by. Never the replay session's own identity -- see
+    // `sessionId` below.
     id: string;
+    // The actual newly-created game session's own identity (ReplayDescriptor.sessionId), minted fresh at
+    // session-creation time inside StudioReplayExecutionService.run() -- distinct from `id` above, which
+    // is the job/request tracking id minted before that session ever existed.
+    sessionId: string;
     game: {id: string; name: string; version: string};
     round: number;
     seed: string | null;
@@ -94,6 +101,7 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
     const descriptor: ReplayDescriptor = job.descriptor;
     return {
         id: job.id,
+        sessionId: descriptor.sessionId,
         game: descriptor.game,
         round: descriptor.round,
         seed: descriptor.seed,
@@ -325,7 +333,7 @@ function screensEqual(a: readonly (readonly (string | number)[])[], b: readonly 
 }
 
 // Gates the Reproduce step for a "Replay Artifact" record (a pasted or previously-stored replay,
-// as opposed to a fresh Seed & Round/Recent Simulation attempt, which never claims to reproduce a
+// as opposed to a fresh Recreate from seed/Recent Simulation attempt, which never claims to reproduce a
 // *specific* prior result and so is never gated by this) — reproducing forward from round 1 is only
 // ever a faithful, *verifiable* match of the original result when the seed and exact game build that
 // produced it are known, AND — whenever the record carries a round artifact at all — its own game

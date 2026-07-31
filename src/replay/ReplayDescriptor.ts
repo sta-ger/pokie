@@ -1,6 +1,11 @@
 import type {RoundArtifactJson} from "../artifact/RoundArtifactJson.js";
 
 export type ReplayDescriptor = {
+    // The identity of the actual game session this replay created and played forward -- minted fresh
+    // each run, independent of any job/request id a caller (e.g. Studio's StudioReplayExecutionService)
+    // tracks the run itself under. Two runs of the same seed/round produce two different sessionIds,
+    // since each is a brand-new session, never a lookup of a prior one.
+    sessionId: string;
     game: {id: string; name: string; version: string};
     seed: string | null;
     round: number;

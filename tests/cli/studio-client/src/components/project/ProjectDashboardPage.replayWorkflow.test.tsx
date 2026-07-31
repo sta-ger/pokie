@@ -50,6 +50,7 @@ function artifactFor(overrides: Partial<RoundArtifact> = {}, hash = "hash-1"): R
 
 function descriptorFor(overrides: Partial<ReplayDescriptor> = {}, artifactHash = "hash-1"): ReplayDescriptor {
     return {
+        sessionId: "session-1",
         game: GAME,
         seed: "demo-seed",
         round: 1,
@@ -97,7 +98,7 @@ function listEntryFor(id: string, overrides: Partial<StudioReplayListEntry> = {}
 async function goToReplayTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Replay"}));
-    await screen.findByRole("radio", {name: "Seed & Round"});
+    await screen.findByRole("radio", {name: "Recreate from seed"});
 }
 
 // Each comparison-dimension row (RoundArtifactInspector's own <List.Item>) renders its label and its
@@ -113,7 +114,7 @@ function dimensionRow(label: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Replay & Debug workflow", () => {
-    it("runs a Seed & Round replay, inspects the full artifact with step navigation, and exports it", async () => {
+    it("runs a Recreate from seed replay, inspects the full artifact with step navigation, and exports it", async () => {
         const user = userEvent.setup();
         let pollCount = 0;
         const twoStepArtifact = artifactFor({
@@ -165,6 +166,53 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByText("free-spin-triggered")).toBeInTheDocument();
 
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-1/download");
+    }, 60000);
+
+    it("reports the actual new replay session identity separately from the replay job id, alongside requested/actual round, seed, and run time", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    expect(JSON.parse(call.init.body ?? "{}")).toEqual({round: 3, seed: "demo-seed"});
+                    return {ok: true, status: 200, body: jobFor("job-identity", {status: "queued", round: 3, completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-identity": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-identity", {status: "running", round: 3, completedRounds: 0})};
+                }
+                return {
+                    ok: true,
+                    status: 200,
+                    body: jobFor("job-identity", {
+                        status: "completed",
+                        round: 3,
+                        descriptor: descriptorFor({sessionId: "fresh-session-42", round: 3}),
+                    }),
+                };
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.clear(screen.getByLabelText(/^Target round number in a new replay session/));
+        await user.type(screen.getByLabelText(/^Target round number in a new replay session/), "3");
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+
+        await waitFor(() => expect(screen.getByRole("cell", {name: "fresh-session-42"})).toBeInTheDocument(), {timeout: 15000});
+        // The job id that tracked the run is shown too, but under its own distinct label -- never as
+        // the "Replay session" row, so the two identities are never conflated.
+        expect(screen.getByRole("cell", {name: "job-identity"})).toBeInTheDocument();
+        expect(screen.getAllByRole("row").some((row) => row.textContent?.includes("Requested round") && row.textContent?.includes("3"))).toBe(true);
+        expect(screen.getAllByRole("row").some((row) => row.textContent?.includes("Actual round reached") && row.textContent?.includes("3"))).toBe(true);
+        expect(screen.getByText(/Not verified -- a fresh forward replay/)).toBeInTheDocument();
     }, 60000);
 
     it("shows state before/after in the Inspector when the backend captured them", async () => {
@@ -822,7 +870,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
         await user.click(screen.getByRole("button", {name: "Replay"}));
-        await screen.findByRole("radio", {name: "Seed & Round"});
+        await screen.findByRole("radio", {name: "Recreate from seed"});
         await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
 
         // Project A's slow response finally resolves -- must never reach project B's now-mounted UI.
@@ -931,6 +979,44 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByText("Raw state after")).toBeVisible();
     }, 60000);
 
+    it("keeps Session Spin a plain existing-record lookup keyed by session/round/request identity -- picking a spin never starts a replay job or mutates the session", async () => {
+        const user = userEvent.setup();
+        const spin: StudioRuntimeSessionView = {
+            sessionId: "sess-lookup",
+            game: GAME,
+            credits: 950,
+            bet: 1,
+            win: 0,
+            studioRound: 7,
+            studioRequestId: "req-lookup",
+            studioRecordedAt: "2026-01-01T00:00:00.000Z",
+        };
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: [spin]}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+        await user.click(await screen.findByRole("button", {name: /Round 7 in session sess-lookup/}));
+
+        // The spin's own recorded round/session/request identity is shown as-is -- a lookup, never a
+        // fresh execution summary (no "Replay session"/"Replay job"/"Reproducibility" rows exist here at
+        // all, since nothing was reproduced).
+        expect(screen.getByRole("cell", {name: "sess-lookup"})).toBeInTheDocument();
+        expect(screen.getByRole("cell", {name: /Round 7 in session sess-lookup/})).toBeInTheDocument();
+        expect(screen.getByRole("cell", {name: "req-lookup"})).toBeInTheDocument();
+        expect(screen.queryByText("Replay session")).not.toBeInTheDocument();
+        expect(screen.queryByText("Replay job")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
+
+        // No POST to /api/project/replays was ever issued -- selecting a spin is a pure read of an
+        // already-recorded round, never a replay run that would create/mutate a session.
+        expect(calls.some((call) => call.url.startsWith("/api/project/replays") && call.init?.method === "POST")).toBe(false);
+    }, 60000);
+
     it("discards an out-of-order Recent Replays list response, keeping only the latest refresh's result", async () => {
         const user = userEvent.setup();
         const entryOld: StudioReplayListEntry = {id: "old", round: 1, status: "completed", startedAt: "2026-01-01T00:00:00.000Z", game: GAME};
@@ -1006,8 +1092,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(within(recentReplaysSection).getByRole("button", {name: "Inspect"}));
 
         expect(await within(recentReplaysSection).findByText("That replay no longer exists.")).toBeInTheDocument();
-        // Still on Seed & Round with nothing loaded -- the failed fetch never marked anything loaded.
-        expect(screen.getByRole("radio", {name: "Seed & Round"})).toBeInTheDocument();
+        // Still on Recreate from seed with nothing loaded -- the failed fetch never marked anything loaded.
+        expect(screen.getByRole("radio", {name: "Recreate from seed"})).toBeInTheDocument();
         expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
     });
 
@@ -1051,8 +1137,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.queryByText(/Round 1, seed demo-seed\./)).not.toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
 
-        // Switching back to Seed & Round starts fresh too -- nothing carried over either direction.
-        await user.click(screen.getByRole("radio", {name: "Seed & Round"}));
+        // Switching back to Recreate from seed starts fresh too -- nothing carried over either direction.
+        await user.click(screen.getByRole("radio", {name: "Recreate from seed"}));
         expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     }, 60000);

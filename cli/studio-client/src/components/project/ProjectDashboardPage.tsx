@@ -492,7 +492,7 @@ export function ProjectDashboardPage() {
     // Runs a replay, clearing any in-progress "expected artifact" comparison unless the caller is the
     // one continuing that exact comparison (the artifact Load step's own "Continue to Reproduce") --
     // otherwise a stale `expectedReplay` from an earlier artifact-compare attempt would produce a bogus
-    // match/mismatch banner on a later, unrelated Seed & Round / Recent Simulation reproduction.
+    // match/mismatch banner on a later, unrelated Recreate from seed / Recent Simulation reproduction.
     const runReplay = useCallback(
         (round: number, seed: string | undefined, keepExpected = false) => {
             if (!keepExpected) {

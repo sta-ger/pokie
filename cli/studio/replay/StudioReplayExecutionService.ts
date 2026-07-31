@@ -220,6 +220,12 @@ export class StudioReplayExecutionService {
         record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
 
         const context: PokieGameContext | undefined = record.seed === undefined ? undefined : {seed: record.seed};
+        // Minted here, at the exact moment the brand-new session is created -- never reused from
+        // `record.id` (the job id, minted in start() before this session exists at all). Two runs of
+        // the same seed/round each get their own sessionId, since each is a genuinely new session, not a
+        // lookup of a prior one -- this is what lets the UI show the real session identity instead of
+        // mislabeling the job id as one.
+        const sessionId = this.createId();
         let session: GameSessionHandling;
         try {
             session = game.createSession(context);
@@ -286,6 +292,7 @@ export class StudioReplayExecutionService {
         }
 
         const descriptor: ReplayDescriptor = {
+            sessionId,
             game: record.game,
             seed: record.seed ?? null,
             round: record.round,

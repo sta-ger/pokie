@@ -3,6 +3,7 @@ import {buildReplayDownload} from "../../../../cli/studio/replay/buildReplayDown
 
 function createDescriptor(overrides: Partial<ReplayDescriptor> = {}): ReplayDescriptor {
     return {
+        sessionId: "session-1",
         game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         seed: "demo",
         round: 42,

@@ -2706,7 +2706,15 @@ describe("StudioServer", () => {
 
             const firstDescriptor = first.body.descriptor as Record<string, unknown>;
             const secondDescriptor = second.body.descriptor as Record<string, unknown>;
-            expect(secondDescriptor).toEqual({...firstDescriptor, timestamp: secondDescriptor.timestamp, durationMs: secondDescriptor.durationMs});
+            // sessionId is expected to vary since a fresh replay session is minted per request;
+            // timestamp/durationMs are wall-clock and also expected to vary between runs.
+            expect(secondDescriptor).toEqual({
+                ...firstDescriptor,
+                sessionId: secondDescriptor.sessionId,
+                timestamp: secondDescriptor.timestamp,
+                durationMs: secondDescriptor.durationMs,
+            });
+            expect(firstDescriptor.sessionId).not.toBe(secondDescriptor.sessionId);
         });
 
         it("still succeeds for a game that ignores the seed entirely", async () => {

@@ -2912,8 +2912,11 @@ picked one.
 
 The source choice offers four methods:
 
-- **Seed & Round** — a **round** (required, a positive integer) and an optional **seed**, same as `pokie replay
-  --round/--seed`. **Load** stages it as the round/seed to reproduce.
+- **Recreate from seed** — a **target round number in a new replay session** (required, a positive integer) and an
+  optional **seed**, same as `pokie replay --round/--seed`. Reproducing always creates a brand-new game session and
+  plays it forward from round 1 through the target round — it never looks up an existing session's recorded round,
+  even when the seed happens to match one that was recorded before (that's what **Session Spin**/**Replay Artifact**
+  are for). **Load** stages it as the round/seed to reproduce.
 - **Replay Artifact** — paste a replay artifact JSON (as produced by this same tab's own Export) into a textarea;
   **Validate & load** posts it to `POST /api/project/replays/inspect-artifact` (see below), which applies the exact
   same round/seed validation `POST /api/project/replays` itself would. A structurally invalid nested artifact is
