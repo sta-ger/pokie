@@ -289,6 +289,57 @@ outcome-space size still fails closed with `weighted-outcome-library-generation-
 incompatible grid weights into a falsely "exact" result. `options.onProgress` is called periodically with the same
 `(processedRawIndex, progressTotal)` pair.
 
+### CLI usage: `generate` vs. `build`
+
+```
+pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>]
+    [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>]
+    [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>]
+    [--resume <file>] [--progress] [--format json]
+```
+
+`generate` is the CLI entry point for everything above: it loads `<packageRoot>` — a package built by
+`pokie build` (or any package `loadPokieGame()` can require) — and drives *its own* session/win-calculation
+runtime through `generateExactWeightedOutcomeLibrary`, exactly as described in "Generating" above. This is a
+different verb from `pokie outcomelibrary build <config.json>` (see [Outcome Library Bundle](outcome-library-bundle.md#cli-usage)):
+`build` never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
+outcome streams) that some earlier step, such as `generate`, already produced. `validate` likewise only ever
+inspects an already-built bundle. `generate` is the one outcomelibrary verb that runs a live game.
+
+- `<packageRoot>` — required. The game must opt into exact enumeration via
+  `PokieGame.createExactEnumerationSession` (see "Opting a game into exact enumeration" above); a game that
+  doesn't — any stateful or non-reel-enumerable mechanic such as free games, cascades, or hold-and-win — has no
+  exact strategy, and `generate` fails closed with exit code `1` and the `WeightedOutcomeLibraryGenerationError`'s
+  `weighted-outcome-library-generation-unsupported` code rather than guessing at one.
+- `--mode <betModeId>` — the `betMode` threaded onto every generated outcome's artifact; also folds into the
+  default `--library-id` (`<manifest.id>-<mode>` instead of just `<manifest.id>`) when `--library-id` isn't given.
+- `--stake <number>` — the stake threaded onto every generated artifact; must be a positive number (see "library
+  homogeneity" above — a library can only ever describe one stake).
+- `--config-hash <hash>` — the `provenance.configHash` threaded onto every generated artifact.
+- `--library-id <id>` — overrides the default `<manifest.id>[-<mode>]` library id.
+- `--max-outcome-space-size <n>` — overrides the default 20,000,000-raw-combination bound above which `generate`
+  refuses to sweep exhaustively (accepts an arbitrarily large decimal string, parsed straight to `bigint`, since a
+  raw combination count routinely exceeds `Number.MAX_SAFE_INTEGER`).
+- `--bounded --sample-size <n> --seed <string>` — opts into the honestly-labelled `"bounded-coverage"` strategy
+  once the raw space exceeds `--max-outcome-space-size`; all three must be given together — `--sample-size`/`--seed`
+  without `--bounded`, or `--bounded` without both of the other two, are rejected rather than silently ignored. A
+  space within `--max-outcome-space-size` is always swept exactly regardless of whether `--bounded` was also given.
+- `--estimate` / `--dry-run` — run only the cheap, non-enumerating `estimateExactOutcomeSpaceSize` probe and print
+  the raw space size plus which strategy (`"exact"` or `"bounded-coverage"`) a real run would resolve to, without
+  sweeping a single reel-stop tuple or playing a round.
+- `--out <file>` — write the generated `WeightedOutcomeLibrary` JSON to `<file>` in addition to the summary/JSON
+  printed to stdout.
+- `--resume <file>` — on a run cancelled by `Ctrl-C` (`SIGINT`), `generate` writes a resumable checkpoint to
+  `<file>` and exits with code `130`, printing the exact command to rerun; passing the same `--resume <file>` on
+  the next invocation reads that checkpoint back and continues the sweep from where it left off (see "Large
+  spaces: bounds, bounded-coverage, cancel/resume/progress" above — only ever valid for a run that itself resolves
+  to `"exact"`). `Ctrl-C` without `--resume` still cancels (also exit code `130`) but loses all progress, since
+  there's nowhere to persist the checkpoint to. On a run that completes normally, a stale checkpoint left over at
+  `--resume <file>` from an earlier cancelled attempt is deleted, never silently reused by a later run.
+- `--progress` — print periodic `processedRawIndex / progressTotal` lines to stderr while sweeping.
+- `--format json` — print the full `{library, diagnostics}` result (or, with `--estimate`/`--dry-run`, the
+  estimate report) as JSON to stdout instead of the default human-readable summary.
+
 ### Generator diagnostics on a bundle
 
 `OutcomeLibraryGeneratorDiagnostics` (`algorithm`, `strategy`, `totalOutcomeSpaceSize`/`sampledRawCount` — using the
