@@ -153,6 +153,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                     analysis,
                     indexFile,
                     outcomesFile,
+                    ...(mode.generator !== undefined ? {generator: mode.generator} : {}),
                 };
                 manifestEntries.push(manifestEntry);
 

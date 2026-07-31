@@ -1,0 +1,243 @@
+import crypto from "crypto";
+import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
+import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
+import type {RoundArtifactProvenance} from "../../artifact/RoundArtifactProvenance.js";
+import type {PokieGame} from "../../gamepackage/PokieGame.js";
+import {SeededWeightedOutcomeRandomSource} from "../../pregenerated/SeededWeightedOutcomeRandomSource.js";
+import type {ValidationRule} from "../../validation/ValidationRule.js";
+import {buildWeightedOutcomeLibrary, type WeightedOutcomeInput} from "../buildWeightedOutcomeLibrary.js";
+import {compareIds} from "../internal/compareIds.js";
+import type {WeightedOutcomeLibrary} from "../WeightedOutcomeLibrary.js";
+import {accumulateUniqueGridWeights} from "./internal/accumulateUniqueGridWeights.js";
+import {ForcedSymbolsCombinationsGenerator} from "./internal/ForcedSymbolsCombinationsGenerator.js";
+import {sampleStopTuples} from "./internal/sampleStopTuples.js";
+import {sweepStopTuples} from "./internal/sweepStopTuples.js";
+import {toBigIntSafeDecimal} from "./internal/toBigIntSafeDecimal.js";
+import {estimateExactOutcomeSpaceSize} from "./estimateExactOutcomeSpaceSize.js";
+import type {OutcomeLibraryGeneratorDiagnostics, OutcomeLibraryGenerationStrategy} from "./OutcomeLibraryGeneratorDiagnostics.js";
+import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGenerationError.js";
+
+// Above this raw reel-stop combination count, generation refuses to sweep exhaustively unless the caller
+// either raises maxOutcomeSpaceSize explicitly or opts into "bounded" -- chosen as a size any single Node
+// process can sweep (with dedup) in well under a minute for a typical grid, not a hard platform limit.
+export const DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE = BigInt(20_000_000);
+
+export type BoundedCoverageGenerationOptions = {
+    // How many independent reel-stop draws to sample (with replacement) through the real calculation path.
+    readonly sampleSize: bigint;
+    // Deterministic -- the same seed always draws the same sample, so a "bounded-coverage" library can be
+    // reproduced exactly later (see OutcomeLibraryGeneratorDiagnostics.seed).
+    readonly seed: string;
+};
+
+// PokieGame.createExactEnumerationSession is deliberately not generic (same convention as PokieGame.createSession
+// itself) -- a game package's own symbol alphabet is always string-keyed at this boundary, the same way every
+// other PokieGame-level API in this codebase is.
+export type GenerateExactWeightedOutcomeLibraryOptions = {
+    readonly libraryId: string;
+    // The loaded, executable built package (see loadPokieGame) generation drives -- must implement
+    // PokieGame.createExactEnumerationSession or generation fails closed with
+    // WeightedOutcomeLibraryGenerationError("weighted-outcome-library-generation-unsupported").
+    readonly game: PokieGame;
+    readonly pokieVersion: string;
+    readonly configHash?: string;
+    readonly betMode?: string;
+    readonly stake?: number;
+    readonly maxOutcomeSpaceSize?: bigint;
+    // Explicit opt-in: only consulted once the space actually exceeds maxOutcomeSpaceSize. Its mere presence
+    // never downgrades an otherwise-exact run -- a space within maxOutcomeSpaceSize is always swept exactly.
+    readonly bounded?: BoundedCoverageGenerationOptions;
+    // Resume point for the "exact" strategy's own raw reel-stop sweep -- see
+    // WeightedOutcomeLibraryGenerationCancelledError.processedRawIndex. Ignored for "bounded-coverage".
+    readonly startIndex?: bigint;
+    readonly signal?: AbortSignal;
+    readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
+    readonly artifactValidator?: ValidationRule<RoundArtifact>;
+    readonly now?: () => Date;
+};
+
+export type GenerateExactWeightedOutcomeLibraryResult = {
+    readonly library: WeightedOutcomeLibrary;
+    readonly diagnostics: OutcomeLibraryGeneratorDiagnostics;
+};
+
+type PreparedGeneration = {
+    readonly strategy: OutcomeLibraryGenerationStrategy;
+    readonly totalOutcomeSpaceSize: bigint;
+    readonly progressTotal: bigint;
+    readonly reelWindows: string[][][];
+    readonly tuples: Generator<{tuple: number[]; rawIndex: bigint}>;
+};
+
+function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
+    const {game} = options;
+    if (typeof game.createExactEnumerationSession !== "function") {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-unsupported",
+            `"${game.getManifest().id}" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.`,
+        );
+    }
+
+    const estimate = estimateExactOutcomeSpaceSize(game);
+    const maxOutcomeSpaceSize = options.maxOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
+    const strategy: OutcomeLibraryGenerationStrategy = estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
+
+    if (strategy === "bounded-coverage" && options.bounded === undefined) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-space-exceeded",
+            `"${game.getManifest().id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
+                `maxOutcomeSpaceSize (${maxOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
+                'bounded-coverage strategy via the "bounded" option.',
+        );
+    }
+
+    // A throwaway probe (its own forced grid is never played) reads the reel strips once, off the exact same
+    // executable session type generation later plays for real -- so reelWindows below is guaranteed to match
+    // what createExactEnumerationSession actually enumerates over, never a second, independently-derived view.
+    const probe = game.createExactEnumerationSession(new ForcedSymbolsCombinationsGenerator<string>([]));
+    const sequences = probe.getSymbolsSequences();
+    const reelsSymbolsNumber = probe.getReelsSymbolsNumber();
+    const reelWindows: string[][][] = sequences.map((sequence) =>
+        Array.from({length: sequence.getSize()}, (_unused, position) => sequence.getSymbols(position, reelsSymbolsNumber)),
+    );
+    const reelSizes = sequences.map((sequence) => sequence.getSize());
+
+    if (strategy === "exact") {
+        return {
+            strategy,
+            totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
+            progressTotal: estimate.totalOutcomeSpaceSize,
+            reelWindows,
+            tuples: sweepStopTuples(reelSizes, options.startIndex ?? BigInt(0)),
+        };
+    }
+
+    const bounded = options.bounded as BoundedCoverageGenerationOptions;
+    return {
+        strategy,
+        totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
+        progressTotal: bounded.sampleSize,
+        reelWindows,
+        tuples: sampleStopTuples(reelSizes, bounded.sampleSize, new SeededWeightedOutcomeRandomSource(bounded.seed)),
+    };
+}
+
+function outcomeIdForGrid(gridKey: string): string {
+    return `outcome-${crypto.createHash("sha256").update(gridKey).digest("hex").slice(0, 16)}`;
+}
+
+function toSafeWeightNumber(weight: bigint, id: string): number {
+    if (weight > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-weight-not-representable",
+            `outcome "${id}"'s exact combinatorial weight (${weight}) exceeds Number.MAX_SAFE_INTEGER and cannot be represented as WeightedOutcome.weight.`,
+        );
+    }
+    return Number(weight);
+}
+
+// The core, reusable public producer: an executable built package (a loaded PokieGame -- see loadPokieGame) to
+// a canonical WeightedOutcomeLibrary, exact whenever the game's own reel-stop space is finite and within
+// bounds, and only ever an explicitly-labelled "bounded-coverage" sample otherwise (see
+// GenerateExactWeightedOutcomeLibraryOptions.bounded) -- never silently downgraded and never mislabeled.
+//
+// Every outcome is built by driving the SAME session/win-calculation runtime a live round uses --
+// PokieGame.createExactEnumerationSession's own concrete VideoSlotSessionHandling, played for real via
+// play() -- with only its randomness-backed SymbolsCombinationsGenerating swapped for a deterministic,
+// forced one (see ForcedSymbolsCombinationsGenerator); no second calculation path exists anywhere in this
+// module. Distinct reel-stop tuples that render the same visible grid are deduplicated (mirroring
+// SymbolsCombinationsAnalyzer.getUniqueCombinationsWithWeights's own "dedupe before the expensive
+// win-calculation step" optimization -- see math-modeling.md) and their exact integer counts summed as
+// bigint before ever crossing into a `number`-typed WeightedOutcome.weight, so a count that would silently
+// lose precision fails fast (weighted-outcome-library-generation-weight-not-representable) instead of
+// quietly rounding. The resulting outcomes are handed to buildWeightedOutcomeLibrary unchanged, so
+// homogeneous provenance/betMode/stake, JSON-safety, and every other existing invariant are still checked by
+// that one real builder, never re-implemented here.
+export async function *streamExactWeightedOutcomes(
+    options: GenerateExactWeightedOutcomeLibraryOptions,
+): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics> {
+    const {game} = options;
+    const manifest = game.getManifest();
+    const prepared = prepare(options);
+
+    const {grids, processedRawCount} = await accumulateUniqueGridWeights<string>(prepared.reelWindows, prepared.tuples, prepared.progressTotal, {
+        signal: options.signal,
+        onProgress: options.onProgress,
+    });
+
+    const provenance: RoundArtifactProvenance = {
+        game: manifest,
+        pokieVersion: options.pokieVersion,
+        ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
+    };
+
+    // Canonically sorted by id before ever being yielded -- both so this function's own output already
+    // matches buildWeightedOutcomeLibrary's own sort order, and because a caller streaming this straight into
+    // OutcomeLibraryBundleModeInput.outcomes (see streamExactWeightedOutcomes's own doc comment) requires
+    // outcomes to already arrive in that order; the writer only ever verifies it, it never re-sorts.
+    const sortedUniqueGrids = Array.from(grids.entries())
+        .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
+        .sort((a, b) => compareIds(a.id, b.id));
+
+    for (const {id, entry} of sortedUniqueGrids) {
+        // Guaranteed non-null by prepare(): a game whose createExactEnumerationSession was undefined would
+        // already have thrown before this point.
+        const session = game.createExactEnumerationSession!(new ForcedSymbolsCombinationsGenerator<string>(entry.grid));
+        if (!session.canPlayNextGame()) {
+            throw new WeightedOutcomeLibraryGenerationError(
+                "weighted-outcome-library-generation-session-not-playable",
+                `"${manifest.id}"'s createExactEnumerationSession() returned a session that cannot play a round ` +
+                    `(bet ${session.getBet()} > credits ${session.getCreditsAmount()}); it must return a session with enough credits for one round.`,
+            );
+        }
+        session.play();
+
+        const artifact = buildRoundArtifactFromSession(session, {
+            roundId: id,
+            provenance,
+            ...(options.betMode !== undefined ? {betMode: options.betMode} : {}),
+            ...(options.stake !== undefined ? {stake: options.stake} : {}),
+        });
+
+        yield {id, weight: toSafeWeightNumber(entry.weight, id), artifact};
+    }
+
+    return {
+        algorithm: "pokie-exact-reel-enumeration-v1",
+        strategy: prepared.strategy,
+        totalOutcomeSpaceSize: toBigIntSafeDecimal(prepared.totalOutcomeSpaceSize),
+        sampledRawCount: toBigIntSafeDecimal(processedRawCount),
+        ...(prepared.strategy === "bounded-coverage" ? {seed: (options.bounded as BoundedCoverageGenerationOptions).seed} : {}),
+        pokieVersion: options.pokieVersion,
+        game: manifest,
+        ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
+        generatedAt: (options.now ?? (() => new Date()))().toISOString(),
+    };
+}
+
+// Convenience over streamExactWeightedOutcomes for the common case: collects the whole stream (still one
+// unique outcome's artifact alive at a time while streaming -- see that function's own doc comment for what
+// "bounded memory" actually means here) and hands it to buildWeightedOutcomeLibrary, so a caller who wants a
+// full, already-validated WeightedOutcomeLibrary in memory never has to wire the collection loop themselves.
+// A caller building a canonical outcome-library bundle instead should use streamExactWeightedOutcomes
+// directly as an OutcomeLibraryBundleModeInput's own "outcomes" -- both are the exact same underlying
+// generation, never two calculation paths.
+export async function generateExactWeightedOutcomeLibrary(
+    options: GenerateExactWeightedOutcomeLibraryOptions,
+): Promise<GenerateExactWeightedOutcomeLibraryResult> {
+    const stream = streamExactWeightedOutcomes(options);
+    const outcomes: WeightedOutcomeInput[] = [];
+    let step = await stream.next();
+    while (!step.done) {
+        outcomes.push(step.value);
+        step = await stream.next();
+    }
+
+    const library = buildWeightedOutcomeLibrary({
+        libraryId: options.libraryId,
+        outcomes,
+        ...(options.artifactValidator !== undefined ? {artifactValidator: options.artifactValidator} : {}),
+    });
+
+    return {library, diagnostics: step.value};
+}
