@@ -1,4 +1,4 @@
-import {screen} from "@testing-library/react";
+import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {StudioCertificationBuildView, StudioCertificationSourceValidateView} from "../../../../../../cli/studio-client/src/api/types";
@@ -14,6 +14,14 @@ const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: numb
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+    // Certification's own source-bundle autodetection probes this on mount -- "absent" (no bundle at the
+    // conventional "outcomes/bundle" location) keeps every scenario below exactly as it was before that
+    // probe existed; the dedicated autodetection tests further down override it to "ok".
+    "/api/home/fs/browse": () => ({
+        ok: true,
+        status: 200,
+        body: {status: "error", error: "not found", resolvedPath: "/games/a/outcomes/bundle", reason: "absent"},
+    }),
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -82,6 +90,13 @@ async function fillSelectStep(user: ReturnType<typeof userEvent.setup>, bundleDi
 }
 
 describe("ProjectDashboardPage - Certification workflow", () => {
+    // jsdom has no layout engine and doesn't implement Element.scrollIntoView -- Mantine's Combobox (used
+    // by the Mode name Select once project modes are known) calls it when keyboard-navigating options.
+    // Same fix as the Mechanics Editor workflow test's own identical "Free games scatter symbol" Select.
+    beforeAll(() => {
+        Element.prototype.scrollIntoView = jest.fn();
+    });
+
     it("runs the full Select -> Validate -> Build -> Inspect -> Export workflow", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
@@ -135,6 +150,128 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         expect(await screen.findByText("Failed")).toBeInTheDocument();
         expect(screen.getByText(/The mode index is missing\./)).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Build bundle"})).not.toBeInTheDocument();
+        // The disabled/absent Continue is never the only signal something's missing -- the step spells
+        // out why, right where the button would otherwise be.
+        expect(screen.getByText("The source bundle failed validation -- fix the errors above before continuing.")).toBeInTheDocument();
+    });
+
+    it("explains why Continue to Validate is blocked before a source bundle directory is entered", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+
+        expect(screen.getByRole("button", {name: "Continue to Validate"})).toBeDisabled();
+        expect(screen.getByText("Enter a source outcome-library bundle directory above.")).toBeInTheDocument();
+    });
+
+    it("autodetects a real source bundle and lets Use detected fill the field", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/games/a/outcomes/bundle", displayPath: "outcomes/bundle", entries: []},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+
+        expect(await screen.findByText("Detected an outcome-library bundle at /games/a/outcomes/bundle.")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Use detected"}));
+        expect(screen.getByLabelText("Source outcome-library bundle directory")).toHaveValue("/games/a/outcomes/bundle");
+    });
+
+    it("auto-fills the first mode row from the project's own modes, restricts new rows to the modes still remaining, and explains when they're exhausted", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/inspect": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    packageRoot: "/games/a",
+                    valid: true,
+                    generated: true,
+                    buildInfo: {
+                        schemaVersion: 1,
+                        generatedBy: "pokie build",
+                        pokieVersion: "1.3.0",
+                        generatedAt: "2026-07-20T00:00:00.000Z",
+                        blueprintHash: "sha256:blueprint",
+                        source: "/games/a/blueprint.json",
+                        game: GAME,
+                    },
+                },
+            }),
+            "/api/home/blueprints/load": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", path: "/games/a/blueprint.json", blueprintHash: "sha256:blueprint", blueprint: {betModes: [{id: "base"}, {id: "bonus"}]}},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+
+        // The first row auto-fills from the project's own first mode -- a real mode/seed/recommended
+        // sample count, not a blank template the user has to fill in from scratch. Mode name is now a
+        // restricted dropdown ("combobox"), not free text -- queried by role rather than label, since its
+        // portal-rendered option list is *also* labelled "Mode name" and would otherwise collide with
+        // getByLabelText.
+        expect(await screen.findByDisplayValue("cert-base")).toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.getAllByRole("combobox", {name: "Mode name"})[0]).toHaveValue("base");
+        });
+
+        // Add mode only offers what's left -- "base" is already claimed by the first row, so opening the
+        // second row's own dropdown must never offer it again.
+        await user.click(screen.getByRole("button", {name: "Add mode"}));
+        await user.click(screen.getAllByRole("combobox", {name: "Mode name"})[1]);
+        // Mantine's Select combobox: pick the (only) available option via keyboard rather than querying/
+        // clicking a floating-positioned option node, which jsdom never lays out visibly (see the
+        // Mechanics Editor workflow test's own identical note) -- ArrowDown+Enter landing on "bonus"
+        // (asserted below), rather than "base", is itself the proof that "base" wasn't offered.
+        await user.keyboard("{ArrowDown}{Enter}");
+        await waitFor(() => {
+            expect(screen.getAllByRole("combobox", {name: "Mode name"})[1]).toHaveValue("bonus");
+        });
+
+        // Every project mode is now claimed -- Add mode explains why it's disabled instead of just
+        // silently disappearing.
+        expect(screen.getByRole("button", {name: "Add mode"})).toBeDisabled();
+        expect(screen.getByText("All 2 project modes (base, bonus) already have a row above.")).toBeInTheDocument();
+    });
+
+    it("persists Select/configure to this browser session across switching tabs away and back, and Clear saved values resets it", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+        await user.type(screen.getByLabelText("Source outcome-library bundle directory"), "./bundle");
+        await user.type(screen.getByLabelText("Mode name"), "base");
+        await user.type(screen.getByLabelText("Seed"), "cert-seed-1");
+
+        // Switching away and back fully unmounts/remounts CertificationTab (a plain conditional render,
+        // not a hidden panel) -- session storage, not React state, is what keeps these fields around.
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await user.click(screen.getByRole("button", {name: "Certification"}));
+
+        expect(await screen.findByLabelText("Source outcome-library bundle directory")).toHaveValue("./bundle");
+        expect(screen.getByLabelText("Mode name")).toHaveValue("base");
+        expect(screen.getByLabelText("Seed")).toHaveValue("cert-seed-1");
+
+        await user.click(screen.getByRole("button", {name: "Clear saved values"}));
+        expect(screen.getByLabelText("Source outcome-library bundle directory")).toHaveValue("");
+        expect(screen.getByLabelText("Mode name")).toHaveValue("");
+
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await user.click(screen.getByRole("button", {name: "Certification"}));
+        expect(await screen.findByLabelText("Source outcome-library bundle directory")).toHaveValue("");
     });
 
     it("shows build failure diagnostics (errors, no manifest) when a requested mode isn't in the source bundle", async () => {

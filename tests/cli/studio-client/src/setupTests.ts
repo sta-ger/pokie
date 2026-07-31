@@ -22,3 +22,12 @@ import {configure} from "@testing-library/dom";
 // simulation-poll test was moved off its old 20000ms budget (its explicit 3000ms + 15000ms waits plus
 // an inherited 15000ms findByRole could outlast it) to the 45000ms this lane uses everywhere else.
 configure({asyncUtilTimeout: 15000});
+
+// Certification's own Select/configure autosave (and anything else that later adopts sessionStorage the
+// same way) writes real entries into jsdom's shared window across every test in a file -- without this,
+// a value one test saves under a project root another test reuses (e.g. "/games/a") would leak in as
+// that later test's own initial field values, corrupting an assertion that never touched persistence at
+// all.
+afterEach(() => {
+    window.sessionStorage.clear();
+});
