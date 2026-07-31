@@ -919,7 +919,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // Loads straight into its own inspect view -- no Reproduce action exists for this source at all.
         expect(screen.getByText(/there's nothing to reproduce it against/)).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
-        expect(screen.getByText("sess-2")).toBeInTheDocument();
+        expect(screen.getByRole("cell", {name: "sess-2"})).toBeInTheDocument();
 
         // Raw state before/after now lives under Advanced details, not shown unconditionally -- the
         // region is mounted-but-hidden (see AdvancedDisclosure's own doc comment), so this checks
