@@ -154,13 +154,19 @@ surfaces independently and are not duplicated here.
 
 ## Owner steps
 
-Every surface above is frozen as **current state only** — this baseline names no redesign and schedules no
-removal. Where a future Phase 3 step changes one of these facts, that step is this document's *named owner*
-for the change (bump the version marker above in the same commit): CLI package-only inputs (§1) → a not-yet-
-scheduled `P3-POLISH-*` step; build/create/init semantics and the generated-package file seam (§2–§3) → a
-not-yet-scheduled `P3-POLISH-*` step; Studio routes (§4) → a not-yet-scheduled `P3-POLISH-*` step; PAR/
-outcome/Stake surfaces (§5) → a not-yet-scheduled `P3-POLISH-*` step; the adapter boundary (§6) → already
-resolved by explicit decision (v1.3 item 7), so its own "owner step" is only ever a documentation update, not
-a behavior change, unless a future step explicitly reopens the decision itself. No step number is assigned
-here in advance of that step actually being planned — this baseline's own job is only to make the "what did
-this look like before" question answerable, not to pre-commit to a removal this step doesn't itself make.
+Every surface above is frozen as **current state only** — this baseline (`P3-POLISH-01`) names no redesign
+and performs no product migration or removal itself. Where a future Phase 3 step changes one of these facts,
+that step is this document's *named owner* for the change (bump the version marker above in the same commit):
+
+- **CLI package-only inputs (§1)** → `P3-POLISH-02`.
+- **Build/create/init semantics and the generated-package file seam (§2–§3)** → `P3-POLISH-03`.
+- **Studio routes (§4)** → `P3-POLISH-04`.
+- **PAR/outcome/Stake surfaces (§5)** → `P3-POLISH-05`.
+- **Adapter boundary (§6)** → `P3-POLISH-06` — already resolved by explicit decision (v1.3 item 7), so this
+  owner step is only ever a documentation update, not a behavior change, unless it explicitly reopens the
+  decision itself.
+
+Naming these owners here reserves *which* later step in the `P3-POLISH-*` series is accountable for each
+surface so a removal never lands without an explicit, reviewable decision against this baseline; it does not
+itself schedule *when* that step runs, and none of `P3-POLISH-02`–`P3-POLISH-06` make any change, migration,
+or removal as part of this step — that work, if any, belongs entirely to the numbered step once it runs.
