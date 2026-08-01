@@ -85,4 +85,21 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/stakeEngineExport"]});
         expect(await screen.findByText("Output directory")).toBeInTheDocument();
     });
+
+    it("shows a subject-specific recovery message, never the raw backend text, when the deployment targets list fails to load", async () => {
+        renderRoutedApp({
+            fetchImpl: fetchImplFrom({
+                ...BASE_ROUTES,
+                "/api/project/deployment/targets": () => ({ok: false, status: 500, body: {error: "ECONNREFUSED 127.0.0.1:4123"}}),
+            }),
+            initialEntries: ["/project/overview"],
+        });
+        await screen.findByRole("heading", {name: "A"});
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", {name: "Export & Deploy"}));
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("The deployment targets list couldn't reach the Studio server. Check your connection and try again.");
+        expect(alert).not.toHaveTextContent("ECONNREFUSED");
+    });
 });

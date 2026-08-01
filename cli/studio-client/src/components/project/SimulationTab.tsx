@@ -5,6 +5,7 @@ import {useEffect, useRef, useState} from "react";
 import type {StudioSimulationReportListEntry} from "../../api/types";
 import type {ReportListView} from "../../domain/interpret/Reports";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
+import {describeProjectActionError} from "../../domain/projectActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {EmptyState} from "../common/EmptyState";
@@ -194,7 +195,7 @@ export function SimulationTab({
             {activeStep === 1 && (
                 <div>
                     {progress === undefined && <EmptyState message="No simulation has been run yet." />}
-                    {error && <ErrorState message={error} />}
+                    {error && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
                     {progress !== undefined && (
                         <div>
                             <Text size="sm" mb={4}>
@@ -226,7 +227,9 @@ export function SimulationTab({
             {activeStep === 2 && (
                 <div>
                     {reviewedDetail.status === "loading" && <LoadingState label="Loading report…" />}
-                    {reviewedDetail.status === "error" && <ErrorState message={reviewedDetail.message} />}
+                    {reviewedDetail.status === "error" && (
+                        <ErrorState message={describeProjectActionError("This report", reviewedDetail.message)} />
+                    )}
                     {outcome === undefined && reviewedDetail.status === "empty" && progress === undefined && (
                         <EmptyState message="Run a simulation to see results here." />
                     )}
@@ -275,7 +278,9 @@ export function SimulationTab({
                                         </List>
                                     )}
                                     {compareDetail.status === "loading" && <LoadingState label="Loading comparison…" />}
-                                    {compareDetail.status === "error" && <ErrorState message={compareDetail.message} />}
+                                    {compareDetail.status === "error" && (
+                                        <ErrorState message={describeProjectActionError("The comparison report", compareDetail.message)} />
+                                    )}
                                     {compareDetail.status === "loaded" && (
                                         <SimpleGrid cols={{base: 1, md: 2}}>
                                             <div>
@@ -329,7 +334,7 @@ export function SimulationTab({
                         Refresh
                     </Button>
                 </QuickActions>
-                {recentRunsError && <ErrorState message={recentRunsError} />}
+                {recentRunsError && <ErrorState message={describeProjectActionError("The recent runs list", recentRunsError)} />}
                 {runAgainNotice && <WarningState message={runAgainNotice} />}
                 {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
                 {recentRuns.status === "loaded" && (

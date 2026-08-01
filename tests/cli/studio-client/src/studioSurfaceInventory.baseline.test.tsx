@@ -399,8 +399,14 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
     });
 });
 
-describe("Advanced tab raw-error surface baseline", () => {
-    it("Deployment: a failed targets fetch renders the raw server error text verbatim, no retry/remediation copy added", async () => {
+// Was "raw-error surface baseline" -- pinned the pre-[P2-POLISH-25] behavior where these three fetch
+// failures rendered the server's own raw message verbatim, with no remediation copy added. All three are
+// now translated (Deployment/Export & Deploy's targetsError via domain/projectActionError.ts, Runtime's
+// state.message via domain/runtimeActionError.ts, Replay's listError via domain/replayActionError.ts --
+// see docs/studio-phase2-workflow-audit-matrix.md) -- this now pins the corrected behavior instead, same
+// role reversed.
+describe("Advanced tab subject-specific recovery copy baseline", () => {
+    it("Deployment: a failed targets fetch shows a subject-specific recovery message, never the raw server text", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
             "/api/project/deployment/targets": () => ({ok: false, status: 500, body: {error: "deployment targets registry unavailable"}}),
@@ -409,10 +415,16 @@ describe("Advanced tab raw-error surface baseline", () => {
         await screen.findByRole("heading", {name: "My Slot"});
 
         const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "deployment targets registry unavailable")).toBe(true);
+        expect(
+            alerts.some(
+                (alert) =>
+                    alert.textContent === "The deployment targets list couldn't be completed. Try again, and check the Studio server logs if the problem persists.",
+            ),
+        ).toBe(true);
+        expect(alerts.every((alert) => alert.textContent !== "deployment targets registry unavailable")).toBe(true);
     });
 
-    it("Runtime: a failed status fetch renders the raw server error text verbatim, no retry/remediation copy added", async () => {
+    it("Runtime: a failed status fetch shows a subject-specific recovery message, never the raw server text", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
             "/api/project/runtime": () => ({ok: false, status: 500, body: {error: "runtime status endpoint unreachable"}}),
@@ -421,10 +433,15 @@ describe("Advanced tab raw-error surface baseline", () => {
         await screen.findByRole("heading", {name: "My Slot"});
 
         const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "runtime status endpoint unreachable")).toBe(true);
+        expect(
+            alerts.some(
+                (alert) => alert.textContent === "The runtime server couldn't be completed. Try again, and check the Studio server logs if the problem persists.",
+            ),
+        ).toBe(true);
+        expect(alerts.every((alert) => alert.textContent !== "runtime status endpoint unreachable")).toBe(true);
     });
 
-    it("Replay: a failed Recent Replays fetch renders the raw server error text verbatim, no retry/remediation copy added", async () => {
+    it("Replay: a failed Recent Replays fetch shows a subject-specific recovery message, never the raw server text", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
             "/api/project/replays": () => ({ok: false, status: 500, body: {error: "replay list endpoint unreachable"}}),
@@ -433,7 +450,12 @@ describe("Advanced tab raw-error surface baseline", () => {
         await screen.findByRole("heading", {name: "My Slot"});
 
         const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "replay list endpoint unreachable")).toBe(true);
+        expect(
+            alerts.some(
+                (alert) => alert.textContent === "The replay list couldn't be completed. Try again, and check the Studio server logs if the problem persists.",
+            ),
+        ).toBe(true);
+        expect(alerts.every((alert) => alert.textContent !== "replay list endpoint unreachable")).toBe(true);
     });
 });
 

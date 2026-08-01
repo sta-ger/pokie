@@ -204,20 +204,37 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     const [validateView, setValidateView] = useState<CertificationSourceValidateRequestView>({status: "idle"});
     const validateRequestIdRef = useRef(0);
     const validateGuard = useDoubleSubmitGuard();
+    // True once a *completed* Validate response has been silently invalidated by a later Select/configure
+    // edit -- same distinction DeploymentTab's own preflightOutdated draws between "outdated" and "never
+    // run": tells a user who already validated once that what they saw is stale, rather than leaving the
+    // reset to idle unexplained. Cleared the instant a fresh Validate run starts.
+    const [validateOutdated, setValidateOutdated] = useState(false);
 
     // ---- Build bundle ----
     const [buildView, setBuildView] = useState<CertificationBuildRequestView>({status: "idle"});
     const buildRequestIdRef = useRef(0);
     const buildGuard = useDoubleSubmitGuard();
+    // Same "outdated" distinction as validateOutdated above, for a completed Build silently invalidated by
+    // a later mode/output-directory edit -- the case validateOutdated alone can't cover, since editing
+    // modes/outDir (unlike bundleDir) never touches Validate at all, only Build. Cleared the instant a
+    // fresh Build run starts. Rendered on Select/configure (where modes live) rather than duplicating the
+    // validateOutdated banner's own "rerun Validate" guidance whenever both are true at once.
+    const [buildOutdated, setBuildOutdated] = useState(false);
 
     function invalidateBuild(): void {
         buildRequestIdRef.current++;
+        if (buildView.status !== "idle" && buildView.status !== "loading") {
+            setBuildOutdated(true);
+        }
         setBuildView({status: "idle"});
         buildGuard.end();
     }
 
     function invalidateValidate(): void {
         validateRequestIdRef.current++;
+        if (validateView.status !== "idle" && validateView.status !== "loading") {
+            setValidateOutdated(true);
+        }
         setValidateView({status: "idle"});
         validateGuard.end();
         invalidateBuild();
@@ -343,6 +360,7 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
         }
         const requestId = ++validateRequestIdRef.current;
         invalidateBuild();
+        setValidateOutdated(false);
         setValidateView({status: "loading"});
         validateCertificationSourceBundle(fetchImpl, bundleDir.trim())
             .then((result) => {
@@ -368,6 +386,7 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
             return;
         }
         const requestId = ++buildRequestIdRef.current;
+        setBuildOutdated(false);
         setBuildView({status: "loading"});
         buildCertificationEvidenceBundle(fetchImpl, bundleDir.trim(), modeInputs, outDir.trim())
             .then((result) => {
@@ -612,6 +631,20 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                             Clear saved values
                         </Anchor>
                     </Text>
+                    {validateOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- the bundle directory changed since the last Validate run. Its result no
+                            longer reflects what&apos;s configured here; rerun Validate before Build bundle is
+                            offered again.
+                        </Alert>
+                    )}
+                    {!validateOutdated && buildOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- the modes or output directory changed since the last Build run. Its
+                            result no longer reflects what&apos;s configured here; rerun Build certification
+                            bundle before Inspect/Export are offered again.
+                        </Alert>
+                    )}
                     <PathInput
                         label="Source outcome-library bundle directory"
                         placeholder="./outcomes/bundle"

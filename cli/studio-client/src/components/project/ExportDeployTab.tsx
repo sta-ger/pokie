@@ -6,6 +6,7 @@ import {
     type ExportDeployTargetKind,
 } from "../../domain/interpret/ExportDeployTargets";
 import type {DeploymentTargetsListView} from "../../domain/interpret/Deployment";
+import {describeProjectActionError} from "../../domain/projectActionError";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
@@ -164,7 +165,7 @@ export function ExportDeployTab({
                 </Button>
             </QuickActions>
             {targetsView.status === "loading" && <LoadingState label="Loading registered deployment targets…" />}
-            {targetsError && <ErrorState message={targetsError} />}
+            {targetsError && <ErrorState message={describeProjectActionError("The deployment targets list", targetsError)} />}
 
             {GROUP_ORDER.map((kind) => {
                 const groupCards = cards.filter((card) => card.kind === kind);

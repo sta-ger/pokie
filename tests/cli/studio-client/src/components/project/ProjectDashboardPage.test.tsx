@@ -229,7 +229,9 @@ describe("ProjectDashboardPage", () => {
 
         await user.click(screen.getByRole("button", {name: "Run Validate"}));
         await waitFor(() => expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument());
-        expect(await screen.findByText("Internal error")).toBeInTheDocument();
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("This validation request couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).not.toHaveTextContent("Internal error");
 
         await user.click(screen.getByRole("button", {name: "Overview"}));
         expect(await screen.findByText("Validation failed")).toBeInTheDocument();

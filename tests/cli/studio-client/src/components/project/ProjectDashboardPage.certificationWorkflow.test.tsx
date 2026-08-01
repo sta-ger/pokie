@@ -513,4 +513,51 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         expect(screen.getByRole("button", {name: "Continue to Build bundle"})).toBeInTheDocument();
         expect(screen.queryByText(/incomplete/)).not.toBeInTheDocument();
     });
+
+    it("marks a completed Build (not Validate) as Outdated when only modes/output directory change, and marks Validate Outdated instead when the bundle directory changes", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+            "/api/project/certification/build": () => ({ok: true, status: 200, body: okBuildView()}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToCertificationTab(user);
+        await fillSelectStep(user, "./bundle");
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText("Clean");
+
+        // Editing a mode field (not the bundle directory) invalidates only Build -- Validate's own result
+        // is untouched, so only the Build-specific Outdated message should render.
+        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        await user.type(screen.getByLabelText("Seed"), "-changed");
+
+        expect(
+            await screen.findByText(
+                /Outdated -- the modes or output directory changed since the last Build run\. Its result no longer reflects what's configured here; rerun Build certification bundle before Inspect\/Export are offered again\./,
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/Outdated -- the bundle directory changed since the last Validate run/)).not.toBeInTheDocument();
+
+        // Re-running Build clears the notice.
+        await user.click(screen.getByRole("button", {name: /Build bundle/i}));
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: /Select\/configure/i}));
+        expect(screen.queryByText(/Outdated -- the modes or output directory changed/)).not.toBeInTheDocument();
+
+        // Editing the bundle directory instead invalidates both Validate and Build -- only the broader
+        // Validate-specific Outdated message should render, not a duplicate Build-specific one.
+        await user.type(screen.getByLabelText("Source outcome-library bundle directory"), "-changed");
+        expect(
+            await screen.findByText(
+                /Outdated -- the bundle directory changed since the last Validate run\. Its result no longer reflects what's configured here; rerun Validate before Build bundle is offered again\./,
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/Outdated -- the modes or output directory changed since the last Build run/)).not.toBeInTheDocument();
+    });
 });

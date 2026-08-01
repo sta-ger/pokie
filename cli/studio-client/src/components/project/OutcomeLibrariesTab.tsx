@@ -33,6 +33,7 @@ import {
     type OutcomeLibraryRegistryRequestView,
     type OutcomeLibrarySelectRequestView,
 } from "../../domain/interpret/OutcomeLibraries";
+import {describeOutcomeLibraryGenerationErrorExplanation, OUTCOME_LIBRARY_UNSUPPORTED_EXPLANATION} from "../../domain/outcomeLibraryGenerateError";
 import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
@@ -303,6 +304,10 @@ export function OutcomeLibrariesTab({
     const [selectView, setSelectView] = useState<OutcomeLibrarySelectRequestView>({status: "idle"});
     const selectRequestIdRef = useRef(0);
     const selectGuard = useDoubleSubmitGuard();
+    // True once a *completed* Select/import response has been silently invalidated by a later field edit
+    // -- same distinction DeploymentTab's own preflightOutdated draws between "outdated" and "never
+    // selected". Cleared the instant a fresh Load-library run starts.
+    const [selectOutdated, setSelectOutdated] = useState(false);
 
     // ---- Validate & analyze (deep, bundle-only) ----
     const [deepValidateView, setDeepValidateView] = useState<OutcomeLibraryDeepValidateRequestView>({status: "idle"});
@@ -314,6 +319,11 @@ export function OutcomeLibrariesTab({
     const [compareView, setCompareView] = useState<OutcomeLibraryCompareRequestView>({status: "idle"});
     const compareRequestIdRef = useRef(0);
     const compareGuard = useDoubleSubmitGuard();
+    // Same "outdated" distinction as selectOutdated above, for a completed Compare silently invalidated by
+    // a later right-side (comparison) selector edit -- selectOutdated alone can't cover this, since editing
+    // rightFields never touches Select/import at all, only Compare. Cleared the instant a fresh Compare run
+    // starts.
+    const [compareOutdated, setCompareOutdated] = useState(false);
 
     function invalidateDeepValidate(): void {
         deepValidateRequestIdRef.current++;
@@ -323,6 +333,10 @@ export function OutcomeLibrariesTab({
 
     function invalidateCompare(): void {
         compareRequestIdRef.current++;
+        const wasSettled = !("status" in compareView) || (compareView.status !== "idle" && compareView.status !== "loading");
+        if (wasSettled) {
+            setCompareOutdated(true);
+        }
         setCompareView({status: "idle"});
         compareGuard.end();
     }
@@ -331,6 +345,9 @@ export function OutcomeLibrariesTab({
     // downstream that described *that* library (a deep-validate run, a comparison).
     function invalidateSelect(): void {
         selectRequestIdRef.current++;
+        if (selectView.status !== "idle" && selectView.status !== "loading") {
+            setSelectOutdated(true);
+        }
         setSelectView({status: "idle"});
         selectGuard.end();
         invalidateDeepValidate();
@@ -363,6 +380,7 @@ export function OutcomeLibrariesTab({
         const requestId = ++selectRequestIdRef.current;
         invalidateDeepValidate();
         invalidateCompare();
+        setSelectOutdated(false);
         setSelectView({status: "loading"});
         selectOutcomeLibrary(fetchImpl, selector)
             .then((result) => {
@@ -417,6 +435,7 @@ export function OutcomeLibrariesTab({
             return;
         }
         const requestId = ++compareRequestIdRef.current;
+        setCompareOutdated(false);
         setCompareView({status: "loading"});
         // Ties the comparison to the exact left library the Inspect step already showed the user --
         // see StudioOutcomeLibraryCompareView.leftSnapshotStale's own doc comment.
@@ -639,7 +658,16 @@ export function OutcomeLibrariesTab({
                     </QuickActions>
                     {estimateView.status === "error" && <ErrorState message={describePathActionError("The outcome space estimate", estimateView.message)} />}
                     {estimateView.status === "load-error" && <ErrorState message={describePathActionError("The outcome space estimate", estimateView.error)} />}
-                    {estimateView.status === "unsupported" && <ErrorState message={estimateView.error} />}
+                    {estimateView.status === "unsupported" && (
+                        <Alert color="red" variant="light" role="alert" title="Can't estimate this game's outcome space" mb="sm" style={{overflowWrap: "anywhere"}}>
+                            <Text size="sm" mb="xs">
+                                {OUTCOME_LIBRARY_UNSUPPORTED_EXPLANATION}
+                            </Text>
+                            <AdvancedDisclosure detail="server message">
+                                <Text size="sm">{estimateView.error}</Text>
+                            </AdvancedDisclosure>
+                        </Alert>
+                    )}
                     {estimateResult && (
                         <Alert color={estimateResult.requiresBounded ? "yellow" : "blue"} icon={<IconAlertTriangle size={16} />} mt="sm">
                             {describeOutcomeLibraryEstimateSummary(estimateResult)}
@@ -654,8 +682,28 @@ export function OutcomeLibrariesTab({
                 </QuickActions>
                 {generateView.status === "error" && <ErrorState message={describePathActionError("The outcome library generation", generateView.message)} />}
                 {generateView.status === "load-error" && <ErrorState message={describePathActionError("The outcome library generation", generateView.error)} />}
-                {generateView.status === "unsupported" && <ErrorState message={generateView.error} />}
-                {generateView.status === "generation-error" && <ErrorState message={generateView.error} />}
+                {generateView.status === "unsupported" && (
+                    <Alert color="red" variant="light" role="alert" title="Can't generate this outcome library" mb="sm" style={{overflowWrap: "anywhere"}}>
+                        <Text size="sm" mb="xs">
+                            {OUTCOME_LIBRARY_UNSUPPORTED_EXPLANATION}
+                        </Text>
+                        <AdvancedDisclosure detail="server message">
+                            <Text size="sm">{generateView.error}</Text>
+                        </AdvancedDisclosure>
+                    </Alert>
+                )}
+                {generateView.status === "generation-error" && (
+                    <Alert color="red" variant="light" role="alert" title="Outcome library generation failed" mb="sm" style={{overflowWrap: "anywhere"}}>
+                        <Text size="sm" mb="xs">
+                            {describeOutcomeLibraryGenerationErrorExplanation(generateView.code)}
+                        </Text>
+                        <AdvancedDisclosure detail="server message">
+                            <Text size="sm">
+                                {generateView.code}: {generateView.error}
+                            </Text>
+                        </AdvancedDisclosure>
+                    </Alert>
+                )}
                 {generateView.status === "invalid" && (
                     <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="The generated library failed to write" mt="sm">
                         <IssueList title="Errors" issues={generateView.errors} />
@@ -773,6 +821,13 @@ export function OutcomeLibrariesTab({
 
             {activeStep === 1 && (
                 <div>
+                    {selectOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- the selector changed since the last Load library run. Its result (and
+                            any Validate & analyze/Compare built from it) no longer reflects what&apos;s
+                            configured here; reload the library before continuing.
+                        </Alert>
+                    )}
                     <SelectorFieldsInput fields={fields} onChange={handleFieldsChange} idPrefix="Library" relevantDirectory={projectRoot} />
                     <QuickActions>
                         <Button onClick={() => runSelect()} loading={selectView.status === "loading"} disabled={buildSelector(fields) === undefined}>
@@ -897,6 +952,13 @@ export function OutcomeLibrariesTab({
                 ) : (
                     <div>
                         <PageSection legend="Compare with another library">
+                            {compareOutdated && (
+                                <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                                    Outdated -- the comparison selector changed since the last Compare run. Its
+                                    result no longer reflects what&apos;s configured here; rerun Compare to see
+                                    an up-to-date comparison.
+                                </Alert>
+                            )}
                             <SelectorFieldsInput fields={rightFields} onChange={handleRightFieldsChange} idPrefix="Comparison" relevantDirectory={projectRoot} />
                             <QuickActions>
                                 <Button

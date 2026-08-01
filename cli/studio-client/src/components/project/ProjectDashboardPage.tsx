@@ -28,6 +28,7 @@ import {describeReplayComparison, describeReplayList, describeReplayResult, isRe
 import {describeReportsList, type ReportListView} from "../../domain/interpret/Reports";
 import {describeRecentSpinsList, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
+import {describeReplayActionError} from "../../domain/replayActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
@@ -458,7 +459,7 @@ export function ProjectDashboardPage() {
                 })
                 .catch((error: unknown) => {
                     if (requestId === expectedReplayRequestIdRef.current) {
-                        setExpectedReplay({status: "error", message: errorMessage(error)});
+                        setExpectedReplay({status: "error", message: describeReplayActionError("The stored replay", errorMessage(error))});
                     }
                 });
         },
@@ -502,7 +503,7 @@ export function ProjectDashboardPage() {
                 })
                 .catch((error: unknown) => {
                     if (requestId === expectedReplayRequestIdRef.current) {
-                        setExpectedReplay({status: "error", message: errorMessage(error)});
+                        setExpectedReplay({status: "error", message: describeReplayActionError("The pasted artifact", errorMessage(error))});
                     }
                 });
         },

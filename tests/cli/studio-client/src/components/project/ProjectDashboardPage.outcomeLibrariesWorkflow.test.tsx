@@ -186,6 +186,55 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         expect(screen.getByText(/RTP changed by \+2\.00 percentage points/)).toBeInTheDocument();
     });
 
+    it("marks a completed Compare as Outdated once the comparison selector changes, and clears it on a fresh Compare run", async () => {
+        const user = userEvent.setup();
+        const compareView: StudioOutcomeLibraryCompareView = {
+            left: okSelectView("lib-a"),
+            right: okSelectView("lib-b", ANALYSIS_B),
+            leftSnapshotStale: false,
+            diff: {
+                rtp: {left: 0.95, right: 0.97, delta: 0.02, percentDelta: (0.02 / 0.95) * 100},
+                hitFrequency: {left: 0.24, right: 0.26, delta: 0.02, percentDelta: (0.02 / 0.24) * 100},
+                variance: {left: 12, right: 12, delta: 0, percentDelta: 0},
+                standardDeviation: {left: Math.sqrt(12), right: Math.sqrt(12), delta: 0, percentDelta: 0},
+                maxWin: {left: 500, right: 500, delta: 0, percentDelta: 0},
+                payoutDistribution: [],
+                warnings: [],
+            },
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("lib-a")}),
+            "/api/project/outcome-libraries/compare": () => ({ok: true, status: 200, body: compareView}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToOutcomeLibrariesTab(user);
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
+        await user.click(screen.getByRole("button", {name: "Load library"}));
+        await screen.findByText("Loaded successfully");
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Compare or use"}));
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/other.json");
+        await user.click(screen.getByRole("button", {name: "Compare"}));
+        await screen.findByText("95.00%");
+
+        // Editing the comparison (right-side) selector after a completed compare must invalidate that
+        // result and explain why, the same way Select/import's own outdated banner already does.
+        await user.type(screen.getByLabelText("Library JSON path"), "-changed");
+
+        expect(
+            await screen.findByText(
+                /Outdated -- the comparison selector changed since the last Compare run\. Its result no longer reflects what's configured here; rerun Compare to see an up-to-date comparison\./,
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText("95.00%")).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Compare"}));
+        await screen.findByText("95.00%");
+        expect(screen.queryByText(/Outdated -- the comparison selector changed/)).not.toBeInTheDocument();
+    });
+
     it("ignores a late select response for library A once library B has been loaded", async () => {
         const user = userEvent.setup();
         let resolveA: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
@@ -469,6 +518,62 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
         expect(await screen.findByText("95.00%")).toBeInTheDocument();
         const selectCall = calls.find((call) => call.url === "/api/project/outcome-libraries/select");
         expect(JSON.parse(selectCall?.init?.body ?? "{}")).toEqual({selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}});
+    });
+
+    it("shows a subject-specific explanation, never the raw server text, when this game's mechanic can't be exactly generated", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "unsupported",
+                    error: '"a" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.',
+                } as StudioOutcomeLibraryGenerateResultView,
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.type(screen.getByLabelText("Mode"), "base");
+        await user.click(screen.getByRole("button", {name: "Generate"}));
+
+        expect(await screen.findByText("Can't generate this outcome library")).toBeInTheDocument();
+        expect(screen.getByText(/This game's own mechanic can't be exactly enumerated/)).toBeInTheDocument();
+        expect(screen.getByText(/does not implement createExactEnumerationSession/)).not.toBeVisible();
+        await user.click(screen.getByText("Show advanced details (server message)"));
+        expect(screen.getByText(/does not implement createExactEnumerationSession/)).toBeVisible();
+    });
+
+    it("shows a code-specific explanation, never the raw server text, when generation fails with a space-exceeded error", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "generation-error",
+                    code: "weighted-outcome-library-generation-space-exceeded",
+                    error: "The outcome space (50,000,000) exceeds the maximum (20,000,000) and no bounded strategy was requested.",
+                } as StudioOutcomeLibraryGenerateResultView,
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.type(screen.getByLabelText("Mode"), "base");
+        await user.click(screen.getByRole("button", {name: "Generate"}));
+
+        expect(await screen.findByText("Outcome library generation failed")).toBeInTheDocument();
+        expect(screen.getByText(/This outcome space is too large to generate exactly/)).toBeInTheDocument();
+        expect(screen.getByText(/Raise "Max outcome space size"/)).toBeInTheDocument();
+        expect(screen.getByText(/exceeds the maximum/)).not.toBeVisible();
+        await user.click(screen.getByText("Show advanced details (server message)"));
+        expect(screen.getByText(/exceeds the maximum/)).toBeVisible();
     });
 
     it("hands off Deploy to the Deployment tab's own workflow instead of duplicating it", async () => {

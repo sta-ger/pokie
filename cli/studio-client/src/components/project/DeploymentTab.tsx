@@ -25,6 +25,7 @@ import {
     type DeploymentTargetsListView,
 } from "../../domain/interpret/Deployment";
 import {describePathActionError} from "../../domain/pathActionError";
+import {describeProjectActionError} from "../../domain/projectActionError";
 import type {DeploymentProjectModesView} from "../../hooks/useDeploymentManager";
 import {useConfirm} from "../../hooks/useConfirm";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
@@ -614,7 +615,7 @@ export function DeploymentTab({
                             Refresh
                         </Button>
                     </QuickActions>
-                    {targetsError && <ErrorState message={targetsError} />}
+                    {targetsError && <ErrorState message={describeProjectActionError("The deployment targets list", targetsError)} />}
                     <SelectTargetStep
                         view={targetsView}
                         selectedTarget={selectedTarget}
