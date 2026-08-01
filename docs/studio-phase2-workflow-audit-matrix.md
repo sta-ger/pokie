@@ -1,9 +1,15 @@
 # POKIE Studio Phase 2 cross-cutting workflow audit matrix (v1)
 
-**Status:** committed as of `[P2-POLISH-25]` (correction round, 2026-08-01), audited against the
+**Status:** committed as of `[P2-POLISH-25]` (latest correction round, 2026-08-01), audited against the
 implementation as it stood at commit `f5c10bc` ("surface stale Validate/Select results as Outdated across
 Certification, Outcome Libraries and Stake Engine Export tabs") plus the further corrections this document's
-own commit adds on top.
+own commit adds on top. This round closes the two raw-error-passthrough findings the previous correction
+round left explicitly, deliberately open (Outcome Libraries' Generate/Estimate `unsupported`/`generation-error`
+states, Mechanics Editor's Load/Validate/Apply raw exception text) -- see their own sections below, and the
+classification matrix's `describePathActionError` column, for what changed. Simulation & Reports/Overview/
+Validation's own raw `inspection`/`validation`/simulation-run error props and Export & Deploy's mount-time
+`targetsError` remain open; see "Deferred findings" for exactly what's left and why it wasn't folded into this
+same round.
 
 **Why this document exists, and how it relates to `docs/studio-phase2-inventory.md`:** that document is an
 explicitly **frozen baseline**, pinned to commit `30b1dd4` plus the `[P2-POLISH-01]`/`[P2-POLISH-04]`
@@ -35,9 +41,9 @@ handling; and **raw-error surfaces** (a caught exception's message shown with no
 | Runtime | cyclic (persistent session workspace) | **No** -- replaced by an always-visible multi-section workspace (`P2-POLISH-16`) | N/A -- staleness prevented structurally (selection cleared on every invalidating action) | **Yes this step** -- own `describeRuntimeActionError` helper, not `describePathActionError` (Runtime failures are server/network, not a user-typed path); covers server start/restart/refresh, session create/load, and spin/retry; "blocked"/"conflict" get their own hand-authored `RecoveryNotice` copy, with the raw server message moved behind `AdvancedDisclosure` (`[P2-POLISH-25]` correction round, see below) |
 | Deployment | partially linear | **Yes**, 6 steps, `onStepClick`, `aria-current` | **Yes** -- `preflightOutdated` `Alert` | **Yes** |
 | Export & Deploy | nonlinear (stateless picker shell) | Never had one (`P2-POLISH-20`) | N/A -- no mutable result state | No (`targetsError` raw) |
-| Outcome Libraries | partially linear | Yes, 5 steps | **Partial** -- Select (`selectOutdated`, since `f5c10bc`) **and now Compare** (`compareOutdated`, this step) covered; deep-validate has no separate flag but is fully covered by cascade from `selectOutdated` | Yes, 7 of 9 error call sites (2 `unsupported`/`generation-error` Generate states stay raw -- see below) |
+| Outcome Libraries | partially linear | Yes, 5 steps | **Partial** -- Select (`selectOutdated`, since `f5c10bc`) **and now Compare** (`compareOutdated`, this step) covered; deep-validate has no separate flag but is fully covered by cascade from `selectOutdated` | **Yes, every error call site** -- the Generate/Estimate steps' own `unsupported`/`generation-error` statuses, previously raw, are now a hand-authored explanation (a new `domain/outcomeLibraryGenerateError.ts`) with the server's own message kept behind `AdvancedDisclosure`, fixed this correction round (see below) |
 | Stake Engine Export | partially linear | Yes, 5 steps | **Partial->complete this step** -- Validate (`validateOutdated`, since `f5c10bc`) **and now Export** (`exportOutdated`, this step) covered | Yes, except the hand-built conflict message (deliberate) |
-| Mechanics Editor | nonlinear (no `disabled` on any Stepper step) | Yes, but purely a progress label -- every step always clickable | Validate: correctly self-invalidating. **Apply: now covered** (`applyOutdated`, this step) | **No** (raw passthrough) |
+| Mechanics Editor | nonlinear (no `disabled` on any Stepper step) | Yes, but purely a progress label -- every step always clickable | Validate: correctly self-invalidating. **Apply: now covered** (`applyOutdated`, this step) | **Yes this correction round** -- Load/Validate/Apply's own raw `ErrorState` sites now route through `describePathActionError` (see below); previously raw fs/JSON exception text (`loadBlueprint`'s `load-error`, a network-exception catch around `validateBlueprint`, `applyProjectBlueprint`'s own fs/commit failures) |
 | Certification | partially linear | Yes, 5 steps | **Complete this step** -- Validate (`validateOutdated`, since `f5c10bc`) **and now Build** (`buildOutdated`, this step) covered | Yes (Validate/Build) |
 | Provably Fair | partially linear (Verify deliberately always reachable) | Yes, 4 steps | **New this step** -- Configure (`configureOutdated`) | Yes (Configure/Generate/Verify, except the already-specific `invalid`/`build-error` domain messages) |
 | Simulation & Reports | linear (4-step Stepper, forward-gated by data) | Yes | N/A -- `startRun` clears stale results outright rather than merely flagging them | No (raw, except the hand-authored `runAgainNotice`) |
@@ -139,16 +145,29 @@ for Stake Engine Export) but left a second, symmetric result in each tab uncover
   Export (not Validate) as Outdated when only the output directory changes, and marks Validate Outdated
   instead when a mode changes".
 
-**Left deliberately unfixed, evidence-only (same reasoning as `studio-phase2-inventory.md`'s own deferred
-list):** Outcome Libraries' Generate step has two raw (`unsupported`/`generation-error`) status branches that
-bypass `describePathActionError` -- these are server-classified domain messages, not raw exceptions, so lower
-severity than a true raw-exception leak; narrow enough (2 of 9 call sites in one tab) that fixing them wasn't
-part of what this audit's own named-workflow scope (Certification/Provably Fair) required, and bundling an
-unrelated tab's cosmetic error-copy change into this correction round risks exactly the kind of scope drift
-the previous review flagged. Stake Engine Export's `conflict` status is likewise left raw -- it's already a
+**Outcome Libraries' Generate/Estimate raw-error passthrough, fixed this correction round:** the previous
+round left the Generate step's `unsupported`/`generation-error` statuses (and the identical `unsupported`
+status on the Estimate panel just above it) rendering the server's raw `WeightedOutcomeLibraryGenerationError`
+text directly via `ErrorState message={...}`, on the reasoning that these are server-classified domain
+messages rather than a raw exception, so lower severity than a true raw-exception leak -- approving the step
+without closing that gap was flagged on review as still a "raw backend text with no added remediation"
+surface regardless of severity, the same bar this document's own methodology applies to every other tab.
+Fixed via a new `domain/outcomeLibraryGenerateError.ts`: `"unsupported"` (the loaded game doesn't implement
+`createExactEnumerationSession()` at all -- see `WeightedOutcomeLibraryGenerationError`'s own doc comment --
+so there is no bounded/sampled fallback to offer) gets one fixed, hand-authored explanation pointing at
+Simulation & Reports as the alternative; `"generation-error"` is keyed on its own `code` (space-exceeded ->
+raise the max/enable bounded coverage; weight-not-representable/session-not-playable -> a mechanic/config
+issue in the game itself, not something retrying fixes) with a generic fallback for any other code. Both keep
+the server's own message available via `AdvancedDisclosure` rather than dropping it outright -- same
+"hand-authored primary explanation, raw detail behind disclosure" convention Runtime's blocked/conflict and
+Replay's mid-run job failure already established -- since the exact thrown message (e.g. the actual
+outcome-space/max numbers) is genuinely useful to someone chasing why a specific game hit this. See
+`ProjectDashboardPage.outcomeLibrariesWorkflow.test.tsx`'s "shows a subject-specific explanation, never the
+raw server text, when this game's mechanic can't be exactly generated" and "...when generation fails with a
+space-exceeded error" regressions. Stake Engine Export's `conflict` status is still left raw -- it's already a
 hand-crafted, specific message (`StakeEngineExportRequestView`'s own `conflict` variant), the same class of
 "already actionable, don't reclassify" exception `studio-phase2-inventory.md` documents for every other tab's
-conflict messages.
+conflict messages, not the same finding as Generate's `unsupported`/`generation-error` above.
 
 ## Replay, Runtime, Export & Deploy (post-redesign, not in the frozen baseline)
 
@@ -292,6 +311,34 @@ any other stale Apply result) on screen. See
 `ProjectDashboardPage.mechanicsEditorWorkflow.test.tsx`'s "marks a completed Apply result Outdated once a
 further edit is made, instead of continuing to claim the project is up to date" regression.
 
+**Raw-error passthrough, fixed this correction round:** every one of this tab's own `ErrorState` sites
+(the initial project-blueprint Load, the Validate step's own request failure, and Apply's `"error"` status)
+rendered the raw backend/fs/JSON exception text directly, with no added remediation -- exactly the finding
+this document's own audit methodology exists to catch, and the reason this tab's own classification-matrix
+column read a bare "No (raw passthrough)" while every sibling Stepper-bearing tab (Certification, Deployment,
+Provably Fair) already routed through `describePathActionError`. All three now do too: Load's own
+`loadBlueprint()` `"load-error"` (a path that doesn't exist/isn't readable -- see
+`StudioBlueprintLoadView`'s own doc comment) and its mount-effect's network-exception catch both go through
+`describePathActionError("The project's source blueprint", ...)`; Validate's own catch (there is no
+server-side `"error"` status for `/api/home/blueprints/validate` at all -- see `StudioBlueprintValidationView`
+-- so this is always a client-side network exception) goes through
+`describePathActionError("This validation request", ...)`; Apply's `"error"` status (always one of
+`applyGameBlueprintToProject`'s own fs-read/JSON-parse/commit failures, or the same kind of network-exception
+catch) goes through `describePathActionError("The project's blueprint file", ...)`. Apply's `"conflict"`
+status is left exactly as it already was -- its message is already a hand-authored, specific string set
+directly by this tab (`runApply()`'s own conflict branch), not a raw exception, matching the same
+"already-specific domain message, don't reclassify" exception this document applies everywhere else. Unlike
+Runtime/Replay/Outcome Libraries' own raw-error fixes, none of these three needed an `AdvancedDisclosure` --
+`describePathActionError`'s own convention (already used as-is by Certification/Deployment/Provably Fair for
+the identical class of fs/network failure) drops the raw text rather than tucking it behind a disclosure, on
+the same reasoning those tabs already establish: an absent/permission/wrong-type/schema/other fs or network
+failure is an everyday, expected outcome of driving a real filesystem/server, not internal state a developer
+needs the exact wording of. See `ProjectDashboardPage.mechanicsEditorWorkflow.test.tsx`'s "shows a
+subject-specific recovery message, never the raw backend text, when loading the project's source blueprint
+fails", "...when the validation request itself fails (not a domain validation result)", and the renamed
+"...on a failed Apply..." regressions (the latter two updated from asserting the raw `"Disk full."` text to
+asserting it's gone and the translated copy is what's shown).
+
 ## Simulation & Reports, Overview (not in the frozen baseline)
 
 **Simulation** is a linear, forward-gated 4-step Stepper (Configure -> Run -> Review -> Export) with full
@@ -300,10 +347,25 @@ navigation through the Stepper, skipping disabled steps" fixture). No Outdated-i
 fix: `startRun` (shared by Configure-submit/Retry/"Run again") clears `reportDetail`/`compareDetail`/
 `selectedReportId` outright the instant any new run starts, rather than leaving a stale Review panel up with
 a badge -- a stronger guarantee than a visual indicator would provide, so no change is warranted.
+**Raw-error passthrough -- a genuine finding, not corrected this round:** `SimulationTab`'s own `error`,
+`reviewedDetail.message`, `compareDetail.message`, and `recentRunsError` are all raw exception text rendered
+via bare `ErrorState`, exactly like Mechanics Editor's own finding above -- but unlike that tab, none of these
+four are local state: every one is owned and set by `ProjectDashboardPage.tsx` itself (its own `runSimulation`/
+`openHistoricReport`/`runCompare`/recent-runs-fetch catch blocks), the same shared-state-owner shape Runtime's
+`useRuntimeManager` has, just without that hook's own translation layer. Fixing it the same way Runtime/Replay
+were fixed is a same-shape, contained change (translate at each of those four catch sites, or at
+`SimulationTab`'s own render call sites the way this round's Mechanics Editor/Outcome Libraries fixes did) --
+but it touches `ProjectDashboardPage.tsx` itself rather than a single self-contained tab component, so it's
+recorded here rather than folded into this round; see "Deferred findings" for the concrete follow-up scope.
 
 **Overview** is a flat single-panel view with no Stepper/gating of any kind. Its one piece of stateful
 freshness (`inspection`) is already correctly refetched on project switch by the shared `projectKey` effect
-in `ProjectDashboardPage.tsx`. No findings requiring correction.
+in `ProjectDashboardPage.tsx`. No Outdated/freshness finding here -- **but the same raw-error passthrough
+finding applies:** `inspection.status === "error"` renders `inspection.message` (a raw network-exception catch
+around `inspectProject()`, set by `ProjectDashboardPage.tsx`) via bare `ErrorState`, unremediated. (Its sibling
+`provenance.status === "error"` panel is not this finding -- `provenance`'s error is a curated server field
+describing a specific build-info problem, not a caught exception, so it's already the kind of "already
+actionable" domain message this document leaves alone elsewhere.) Same follow-up scope as Simulation above.
 
 ## Validation (not in the frozen baseline) -- a structural gap, documented but not fixed
 
@@ -313,6 +375,14 @@ other piece of project-scoped view state it owns (`reportDetail`, `compareDetail
 `resetForProjectSwitch()`) and re-fetches `inspection` -- but never touches `validation`. Read in isolation,
 this looks like exactly the class of bug this document exists to catch: a previous project's Validate
 success/error could, in principle, keep rendering under a new project's Validate tab.
+
+**Separately, a raw-error passthrough finding, not corrected this round:** `ValidationTab`'s own
+`view.status === "error" && <ErrorState message={view.message} />` is the same raw network-exception-catch
+shape as Simulation/Overview above (`validation.message` is set by `ProjectDashboardPage.tsx`'s own catch
+around `validateProject()`, not a curated domain field) -- a distinct finding from the project-switch gap
+investigated below, and left open for the same reason: the fix lives in `ProjectDashboardPage.tsx`'s shared
+state, not this self-contained tab component. Same follow-up scope as Simulation/Overview; see "Deferred
+findings".
 
 **Investigated in depth, left unfixed:** `RuntimeTab`/`DeploymentTab`/`OutcomeLibrariesTab`/etc.'s own
 `key={projectKey ?? "no-project"}` doc comments (`ProjectDashboardPage.tsx`, e.g. immediately above
@@ -356,6 +426,8 @@ shipped without either a confirmed live trigger or an honest way to prove it, pe
 | `RuntimeTab.tsx` | Load Session button's `disabled` condition now requires a non-blank (trimmed) "Session id" field, with a "Required to load an existing session" input description (previously a fail-open silent no-op, same shape as the Provably Fair Verify fix above) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "disables Load Session for a blank (or whitespace-only) session id, with inline guidance, and restores normal behavior once a session id is supplied" |
 | `RuntimeTab.tsx` | Every raw `ErrorState`/`session.message`/`recentSpinsError` site (Server start/restart/refresh, Create/Load Session, Spin/Retry, "Round history"/"Restore existing" recent-spins fetch) now routed through a new subject-specific `describeRuntimeActionError()` (mirrors `describePathActionError`'s "classify, never echo the raw text" shape, but for network/server failures); a failed Create/Load Session whose response is a domain error is also now actually rendered (it was previously invisible, since `sessionId` resets to `undefined` and unmounts the panel that used to render it) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "shows a subject-specific recovery message, never the raw backend text or a silent no-op, when Load Session fails outright"; "...instead of raw backend text when the runtime server itself fails to start"; `runtimeActionError.test.ts` for the classifier |
 | `RuntimeTab.tsx` | `SpinOutcome`'s "blocked"/"conflict" `RecoveryNotice` no longer renders the raw `body.error` text (game-server internals like `canPlayNextGame()`/session version numbers) as its primary message -- replaced with hand-authored, subject-specific copy for each state, with the raw text preserved (not dropped) behind a new per-state `AdvancedDisclosure` (review-round correction: the first pass through this step incorrectly treated the pre-existing title+action as proof the whole notice was already hand-authored, missing that the message body underneath it was still raw passthrough) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "shows a clear 'insufficient funds' state with a shortcut to create a new session"; "shows a clear 'session changed elsewhere' conflict state, and Reload session recovers it"; "Retry immediately drops a round selected from history..." (all three updated to assert the raw text is present-but-hidden, not gone) |
+| `OutcomeLibrariesTab.tsx` | Generate/Estimate's `unsupported`/`generation-error` statuses no longer render the raw `WeightedOutcomeLibraryGenerationError` message as primary text -- a new `domain/outcomeLibraryGenerateError.ts` gives `unsupported` one fixed explanation and `generation-error` a `code`-keyed one (with a generic fallback), raw server message kept behind a new `AdvancedDisclosure` (this correction round, closing the finding the previous round explicitly left unfixed) | `ProjectDashboardPage.outcomeLibrariesWorkflow.test.tsx`: "shows a subject-specific explanation, never the raw server text, when this game's mechanic can't be exactly generated"; "...when generation fails with a space-exceeded error" |
+| `MechanicsEditorTab.tsx` | Load/Validate/Apply's own raw `ErrorState` sites (previously the one Stepper-bearing tab with a bare "No (raw passthrough)" in the classification matrix) now route through `describePathActionError`, same convention Certification/Deployment/Provably Fair already use; Apply's already-hand-authored `"conflict"` message is untouched (this correction round) | `ProjectDashboardPage.mechanicsEditorWorkflow.test.tsx`: "shows a subject-specific recovery message, never the raw backend text, when loading the project's source blueprint fails"; "...when the validation request itself fails (not a domain validation result)"; the two renamed "...on a failed Apply..." tests (updated from asserting raw `"Disk full."` text to asserting it's gone) |
 
 Every `xxxOutdated` fix above (`configureOutdated`/`buildOutdated`/`compareOutdated`/`exportOutdated`) follows
 the exact lifecycle `f5c10bc` already established (`validateOutdated`/`selectOutdated`): a boolean set inside
@@ -374,9 +446,9 @@ Recorded so a future step doesn't have to rediscover them, same convention
 1. **Certification has no in-app re-verification of an already-built evidence bundle** -- only
    `pokie certification verify --source` on the CLI. A real asymmetry with Provably Fair; a feature addition,
    not a correction, so left for an explicit future redesign decision.
-2. Outcome Libraries' Generate step has two raw (non-`describePathActionError`) status branches
-   (`unsupported`/`generation-error`); Stake Engine Export's `conflict` status is raw but already a
-   deliberately hand-crafted message, same as every other tab's own conflict messages.
+2. Stake Engine Export's `conflict` status is raw but already a deliberately hand-crafted message, same as
+   every other tab's own conflict messages -- not the same finding as Outcome Libraries' Generate step, which
+   this correction round fixed (see its own section above).
 3. Replay is the one sibling of Runtime/Deployment/Outcome Libraries without a `key={projectKey}` remount
    guard; only its page-owned `expected` state has direct project-switch fixture coverage today.
 4. Validation's project-switch reset gap exists in the code but is not reachable through any current
@@ -385,3 +457,24 @@ Recorded so a future step doesn't have to rediscover them, same convention
    silent no-ops (`studio-phase2-inventory.md`'s own Cross-cutting findings) -- both are now fixed as of this
    step (Provably Fair first-pass, Runtime's Load Session in the correction round for `[P2-POLISH-25]`
    itself, once flagged as still in scope).
+6. **Simulation & Reports, Overview, and Validation each have a genuine raw-error-passthrough finding, not
+   corrected by either `[P2-POLISH-25]` round:** `SimulationTab`'s `error`/`reviewedDetail.message`/
+   `compareDetail.message`/`recentRunsError`, `OverviewTab`'s `inspection.message`, and `ValidationTab`'s
+   `view.message` are all raw network-exception text (a catch around `runSimulation`/`openHistoricReport`/
+   `runCompare`/the recent-runs fetch/`inspectProject`/`validateProject`, all set by
+   `ProjectDashboardPage.tsx` itself) rendered via bare `ErrorState` with no remediation -- the same class of
+   finding Mechanics Editor and Outcome Libraries' Generate step had, and this document's own classification
+   matrix already marked all three "No" before this round. Not folded into this round because, unlike
+   Mechanics Editor/Outcome Libraries (both fully self-contained tab components), the raw text these three
+   render is *owned and set by `ProjectDashboardPage.tsx`* -- the one file every other tab's own state also
+   lives in -- so touching it has a materially larger blast radius than a single tab file. The fix itself is
+   the same shape already proven three times over (`describePathActionError`/`describeRuntimeActionError`/
+   `describeReplayActionError`): translate at each `ProjectDashboardPage.tsx` catch site or at each tab's own
+   render call site, subject-specific per surface. Left as the concrete, scoped follow-up this document
+   recommends next, rather than declared "no findings" the way earlier drafts of this document's Simulation/
+   Overview sections did -- that framing was inaccurate and is corrected in this round's edit to those
+   sections above.
+7. Export & Deploy's `targetsError` (and Deployment's own identical `targetsError`) stay raw -- a
+   mount-time list fetch with no user-typed path, the one long-standing, appwide exception this document
+   applies consistently everywhere that shape occurs (see `RecentProjectsPanel`'s own list error), not a
+   newly-discovered gap specific to this tab.

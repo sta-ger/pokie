@@ -33,6 +33,7 @@ import {
     type OutcomeLibraryRegistryRequestView,
     type OutcomeLibrarySelectRequestView,
 } from "../../domain/interpret/OutcomeLibraries";
+import {describeOutcomeLibraryGenerationErrorExplanation, OUTCOME_LIBRARY_UNSUPPORTED_EXPLANATION} from "../../domain/outcomeLibraryGenerateError";
 import {describePathActionError} from "../../domain/pathActionError";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
@@ -657,7 +658,16 @@ export function OutcomeLibrariesTab({
                     </QuickActions>
                     {estimateView.status === "error" && <ErrorState message={describePathActionError("The outcome space estimate", estimateView.message)} />}
                     {estimateView.status === "load-error" && <ErrorState message={describePathActionError("The outcome space estimate", estimateView.error)} />}
-                    {estimateView.status === "unsupported" && <ErrorState message={estimateView.error} />}
+                    {estimateView.status === "unsupported" && (
+                        <Alert color="red" variant="light" role="alert" title="Can't estimate this game's outcome space" mb="sm" style={{overflowWrap: "anywhere"}}>
+                            <Text size="sm" mb="xs">
+                                {OUTCOME_LIBRARY_UNSUPPORTED_EXPLANATION}
+                            </Text>
+                            <AdvancedDisclosure detail="server message">
+                                <Text size="sm">{estimateView.error}</Text>
+                            </AdvancedDisclosure>
+                        </Alert>
+                    )}
                     {estimateResult && (
                         <Alert color={estimateResult.requiresBounded ? "yellow" : "blue"} icon={<IconAlertTriangle size={16} />} mt="sm">
                             {describeOutcomeLibraryEstimateSummary(estimateResult)}
@@ -672,8 +682,28 @@ export function OutcomeLibrariesTab({
                 </QuickActions>
                 {generateView.status === "error" && <ErrorState message={describePathActionError("The outcome library generation", generateView.message)} />}
                 {generateView.status === "load-error" && <ErrorState message={describePathActionError("The outcome library generation", generateView.error)} />}
-                {generateView.status === "unsupported" && <ErrorState message={generateView.error} />}
-                {generateView.status === "generation-error" && <ErrorState message={generateView.error} />}
+                {generateView.status === "unsupported" && (
+                    <Alert color="red" variant="light" role="alert" title="Can't generate this outcome library" mb="sm" style={{overflowWrap: "anywhere"}}>
+                        <Text size="sm" mb="xs">
+                            {OUTCOME_LIBRARY_UNSUPPORTED_EXPLANATION}
+                        </Text>
+                        <AdvancedDisclosure detail="server message">
+                            <Text size="sm">{generateView.error}</Text>
+                        </AdvancedDisclosure>
+                    </Alert>
+                )}
+                {generateView.status === "generation-error" && (
+                    <Alert color="red" variant="light" role="alert" title="Outcome library generation failed" mb="sm" style={{overflowWrap: "anywhere"}}>
+                        <Text size="sm" mb="xs">
+                            {describeOutcomeLibraryGenerationErrorExplanation(generateView.code)}
+                        </Text>
+                        <AdvancedDisclosure detail="server message">
+                            <Text size="sm">
+                                {generateView.code}: {generateView.error}
+                            </Text>
+                        </AdvancedDisclosure>
+                    </Alert>
+                )}
                 {generateView.status === "invalid" && (
                     <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="The generated library failed to write" mt="sm">
                         <IssueList title="Errors" issues={generateView.errors} />

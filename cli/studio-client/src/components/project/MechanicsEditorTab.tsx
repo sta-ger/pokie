@@ -9,6 +9,7 @@ import {errorMessage} from "../../domain/errorMessage";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {describeSectionStatusText} from "../../domain/interpret/BlueprintSections";
 import {classifyIssuesByStep, describeStepStatus, MECHANICS_EDITOR_STEPS, type MechanicsEditorStepId} from "../../domain/interpret/mechanicsEditorSections";
+import {describePathActionError} from "../../domain/pathActionError";
 import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
@@ -351,7 +352,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
     if (loadView.status === "error") {
         return (
             <PageSection legend="Mechanics Editor">
-                <ErrorState message={loadView.message} />
+                <ErrorState message={describePathActionError("The project's source blueprint", loadView.message)} />
             </PageSection>
         );
     }
@@ -448,7 +449,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
                             Run validation
                         </Button>
                     </QuickActions>
-                    {validateView.status === "error" && <ErrorState message={validateView.message} />}
+                    {validateView.status === "error" && <ErrorState message={describePathActionError("This validation request", validateView.message)} />}
                     {validateView.status === "idle" && (
                         <Text size="sm" c="dimmed">
                             No validation result yet — run validation to see errors and warnings.
@@ -496,7 +497,8 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
                                 Validate your configuration successfully before applying.
                             </Text>
                         )}
-                        {(applyView.status === "error" || applyView.status === "conflict") && <ErrorState message={applyView.message} />}
+                        {applyView.status === "error" && <ErrorState message={describePathActionError("The project's blueprint file", applyView.message)} />}
+                        {applyView.status === "conflict" && <ErrorState message={applyView.message} />}
                         {applyView.status === "invalid" && (
                             <div>
                                 <IssueList title="Errors" issues={applyView.errors} />

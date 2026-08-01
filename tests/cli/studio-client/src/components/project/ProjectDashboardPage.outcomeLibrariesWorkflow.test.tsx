@@ -520,6 +520,62 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
         expect(JSON.parse(selectCall?.init?.body ?? "{}")).toEqual({selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}});
     });
 
+    it("shows a subject-specific explanation, never the raw server text, when this game's mechanic can't be exactly generated", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "unsupported",
+                    error: '"a" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.',
+                } as StudioOutcomeLibraryGenerateResultView,
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.type(screen.getByLabelText("Mode"), "base");
+        await user.click(screen.getByRole("button", {name: "Generate"}));
+
+        expect(await screen.findByText("Can't generate this outcome library")).toBeInTheDocument();
+        expect(screen.getByText(/This game's own mechanic can't be exactly enumerated/)).toBeInTheDocument();
+        expect(screen.getByText(/does not implement createExactEnumerationSession/)).not.toBeVisible();
+        await user.click(screen.getByText("Show advanced details (server message)"));
+        expect(screen.getByText(/does not implement createExactEnumerationSession/)).toBeVisible();
+    });
+
+    it("shows a code-specific explanation, never the raw server text, when generation fails with a space-exceeded error", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "generation-error",
+                    code: "weighted-outcome-library-generation-space-exceeded",
+                    error: "The outcome space (50,000,000) exceeds the maximum (20,000,000) and no bounded strategy was requested.",
+                } as StudioOutcomeLibraryGenerateResultView,
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.type(screen.getByLabelText("Mode"), "base");
+        await user.click(screen.getByRole("button", {name: "Generate"}));
+
+        expect(await screen.findByText("Outcome library generation failed")).toBeInTheDocument();
+        expect(screen.getByText(/This outcome space is too large to generate exactly/)).toBeInTheDocument();
+        expect(screen.getByText(/Raise "Max outcome space size"/)).toBeInTheDocument();
+        expect(screen.getByText(/exceeds the maximum/)).not.toBeVisible();
+        await user.click(screen.getByText("Show advanced details (server message)"));
+        expect(screen.getByText(/exceeds the maximum/)).toBeVisible();
+    });
+
     it("hands off Deploy to the Deployment tab's own workflow instead of duplicating it", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

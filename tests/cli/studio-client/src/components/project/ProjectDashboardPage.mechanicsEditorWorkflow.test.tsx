@@ -166,6 +166,40 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(screen.getByRole("button", {name: "Apply"})).toBeDisabled();
     });
 
+    it("shows a subject-specific recovery message, never the raw backend text, when loading the project's source blueprint fails", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "load-error", error: `ENOENT: no such file or directory, open '${SOURCE_PATH}'`}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+
+        expect(await screen.findByText("The project's source blueprint could not be found. Check the path and try again.")).toBeInTheDocument();
+        expect(screen.queryByText(/ENOENT/)).not.toBeInTheDocument();
+    });
+
+    it("shows a subject-specific recovery message, never the raw backend text, when the validation request itself fails (not a domain validation result)", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/blueprints/validate": () => {
+                throw new Error("Failed to fetch");
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
+        await user.click(screen.getByRole("button", {name: "Run validation"}));
+
+        expect(await screen.findByText("This validation request could not be completed. Try again, and check the Studio server logs if the problem persists.")).toBeInTheDocument();
+        expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+    });
+
     it("preserves in-progress edits when switching between steps", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
@@ -305,7 +339,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
     });
 
-    it("shows the server's error on a failed Apply of a Bet Modes edit, keeps it recoverable, and Discard reverts it", async () => {
+    it("shows a subject-specific recovery message, never the raw backend text, on a failed Apply of a Bet Modes edit, keeps it recoverable, and Discard reverts it", async () => {
         const user = userEvent.setup();
         const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -330,7 +364,8 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         await user.click(screen.getByRole("button", {name: "Apply"}));
         await user.click(await screen.findByRole("button", {name: "Confirm"}));
 
-        expect(await screen.findByText("Disk full.")).toBeInTheDocument();
+        expect(await screen.findByText("The project's blueprint file could not be completed. Try again, and check the Studio server logs if the problem persists.")).toBeInTheDocument();
+        expect(screen.queryByText("Disk full.")).not.toBeInTheDocument();
         expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
 
@@ -472,7 +507,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("A");
     });
 
-    it("shows the server's error on a failed Apply, never marks the draft clean, and still lets Discard work", async () => {
+    it("shows a subject-specific recovery message, never the raw backend text, on a failed Apply, never marks the draft clean, and still lets Discard work", async () => {
         const user = userEvent.setup();
         // The atomic build-then-commit rollback itself (a build/commit failure never leaving the
         // project's source or generated output ahead of one another) is verified directly against the
@@ -502,7 +537,8 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         await user.click(screen.getByRole("button", {name: "Apply"}));
         await user.click(await screen.findByRole("button", {name: "Confirm"}));
 
-        expect(await screen.findByText("Disk full.")).toBeInTheDocument();
+        expect(await screen.findByText("The project's blueprint file could not be completed. Try again, and check the Studio server logs if the problem persists.")).toBeInTheDocument();
+        expect(screen.queryByText("Disk full.")).not.toBeInTheDocument();
         expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
 
