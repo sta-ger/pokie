@@ -266,6 +266,10 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
     const [validateView, setValidateView] = useState<StakeEngineExportValidateRequestView>({status: "idle"});
     const validateRequestIdRef = useRef(0);
     const validateGuard = useDoubleSubmitGuard();
+    // True once a *completed* Validate response has been silently invalidated by a later Configure edit --
+    // same distinction DeploymentTab's own preflightOutdated draws between "outdated" and "never run".
+    // Cleared the instant a fresh Validate run starts.
+    const [validateOutdated, setValidateOutdated] = useState(false);
 
     // ---- Export ----
     const [exportView, setExportView] = useState<StakeEngineExportRequestView>({status: "idle"});
@@ -288,6 +292,7 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
     function invalidateValidate(): void {
         validateRequestIdRef.current++;
         setValidateView({status: "idle"});
+        setValidateOutdated(true);
         validateGuard.end();
         invalidateExport();
     }
@@ -331,6 +336,7 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
         }
         const requestId = ++validateRequestIdRef.current;
         invalidateExport();
+        setValidateOutdated(false);
         setValidateView({status: "loading"});
         validateStakeEngineExport(fetchImpl, modeInputs)
             .then((result) => {
@@ -593,6 +599,12 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
                         onPathSelected={handleOutDirChange}
                         mb="sm"
                     />
+                    {validateOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- the modes changed since the last Validate run. Its result no longer
+                            reflects what&apos;s configured here; rerun Validate before Export is offered again.
+                        </Alert>
+                    )}
                     <Text size="sm" fw={600} mb={4}>
                         Modes to export
                     </Text>

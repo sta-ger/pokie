@@ -303,6 +303,10 @@ export function OutcomeLibrariesTab({
     const [selectView, setSelectView] = useState<OutcomeLibrarySelectRequestView>({status: "idle"});
     const selectRequestIdRef = useRef(0);
     const selectGuard = useDoubleSubmitGuard();
+    // True once a *completed* Select/import response has been silently invalidated by a later field edit
+    // -- same distinction DeploymentTab's own preflightOutdated draws between "outdated" and "never
+    // selected". Cleared the instant a fresh Load-library run starts.
+    const [selectOutdated, setSelectOutdated] = useState(false);
 
     // ---- Validate & analyze (deep, bundle-only) ----
     const [deepValidateView, setDeepValidateView] = useState<OutcomeLibraryDeepValidateRequestView>({status: "idle"});
@@ -332,6 +336,7 @@ export function OutcomeLibrariesTab({
     function invalidateSelect(): void {
         selectRequestIdRef.current++;
         setSelectView({status: "idle"});
+        setSelectOutdated(true);
         selectGuard.end();
         invalidateDeepValidate();
         invalidateCompare();
@@ -363,6 +368,7 @@ export function OutcomeLibrariesTab({
         const requestId = ++selectRequestIdRef.current;
         invalidateDeepValidate();
         invalidateCompare();
+        setSelectOutdated(false);
         setSelectView({status: "loading"});
         selectOutcomeLibrary(fetchImpl, selector)
             .then((result) => {
@@ -773,6 +779,13 @@ export function OutcomeLibrariesTab({
 
             {activeStep === 1 && (
                 <div>
+                    {selectOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- the selector changed since the last Load library run. Its result (and
+                            any Validate & analyze/Compare built from it) no longer reflects what&apos;s
+                            configured here; reload the library before continuing.
+                        </Alert>
+                    )}
                     <SelectorFieldsInput fields={fields} onChange={handleFieldsChange} idPrefix="Library" relevantDirectory={projectRoot} />
                     <QuickActions>
                         <Button onClick={() => runSelect()} loading={selectView.status === "loading"} disabled={buildSelector(fields) === undefined}>

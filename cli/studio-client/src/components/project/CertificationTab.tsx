@@ -204,6 +204,11 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     const [validateView, setValidateView] = useState<CertificationSourceValidateRequestView>({status: "idle"});
     const validateRequestIdRef = useRef(0);
     const validateGuard = useDoubleSubmitGuard();
+    // True once a *completed* Validate response has been silently invalidated by a later Select/configure
+    // edit -- same distinction DeploymentTab's own preflightOutdated draws between "outdated" and "never
+    // run": tells a user who already validated once that what they saw is stale, rather than leaving the
+    // reset to idle unexplained. Cleared the instant a fresh Validate run starts.
+    const [validateOutdated, setValidateOutdated] = useState(false);
 
     // ---- Build bundle ----
     const [buildView, setBuildView] = useState<CertificationBuildRequestView>({status: "idle"});
@@ -219,6 +224,7 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     function invalidateValidate(): void {
         validateRequestIdRef.current++;
         setValidateView({status: "idle"});
+        setValidateOutdated(true);
         validateGuard.end();
         invalidateBuild();
     }
@@ -343,6 +349,7 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
         }
         const requestId = ++validateRequestIdRef.current;
         invalidateBuild();
+        setValidateOutdated(false);
         setValidateView({status: "loading"});
         validateCertificationSourceBundle(fetchImpl, bundleDir.trim())
             .then((result) => {
@@ -612,6 +619,13 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                             Clear saved values
                         </Anchor>
                     </Text>
+                    {validateOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- the bundle directory changed since the last Validate run. Its result no
+                            longer reflects what&apos;s configured here; rerun Validate before Build bundle is
+                            offered again.
+                        </Alert>
+                    )}
                     <PathInput
                         label="Source outcome-library bundle directory"
                         placeholder="./outcomes/bundle"
