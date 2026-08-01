@@ -73,6 +73,7 @@ export class StudioOutcomeLibraryGenerateService {
     private readonly bundleReader: OutcomeLibraryBundleReading<string>;
     private readonly realpath: (resolvedPath: string) => string;
     private readonly directoryExists: (dirPath: string) => boolean;
+    private readonly isDirectory: (dirPath: string) => boolean;
     private readonly readTextFile: (filePath: string) => string;
     private readonly writeTextFile: (filePath: string, contents: string) => void;
     private readonly ensureDirectory: (dirPath: string) => void;
@@ -86,6 +87,13 @@ export class StudioOutcomeLibraryGenerateService {
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
         directoryExists: (dirPath: string) => boolean = (dirPath) => fs.existsSync(dirPath),
+        isDirectory: (dirPath: string) => boolean = (dirPath) => {
+            try {
+                return fs.statSync(dirPath).isDirectory();
+            } catch {
+                return false;
+            }
+        },
         readTextFile: (filePath: string) => string = (filePath) => fs.readFileSync(filePath, "utf-8"),
         writeTextFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         ensureDirectory: (dirPath: string) => void = (dirPath) => fs.mkdirSync(dirPath, {recursive: true}),
@@ -98,6 +106,7 @@ export class StudioOutcomeLibraryGenerateService {
         this.bundleReader = bundleReader;
         this.realpath = realpath;
         this.directoryExists = directoryExists;
+        this.isDirectory = isDirectory;
         this.readTextFile = readTextFile;
         this.writeTextFile = writeTextFile;
         this.ensureDirectory = ensureDirectory;
@@ -387,11 +396,14 @@ export class StudioOutcomeLibraryGenerateService {
     // yet, or an older bundle predating this index), a corrupt one, or a symlink escape under the project
     // root all simply fall back to reporting an empty list of *additional* dirs -- DEFAULT_BUNDLE_DIR
     // itself is always still checked directly by discoverBundleDirs. Each individual parsed entry is
-    // likewise validated as a safe, project-contained, non-symlink-escaping directory (the same check
-    // registry() itself applies before reading a directory) and silently dropped if it isn't -- an entry
-    // hand-edited or corrupted into an absolute path, a ".."-style escape, or a symlink escape must never
-    // be allowed to reach registry() and make it report a load-error for the *entire* index, which would
-    // block discovery of every other, still-valid entry alongside it.
+    // likewise validated as a safe, project-contained, non-symlink-escaping *directory* (the same
+    // containment check registry() itself applies before reading a directory, plus an actual on-disk
+    // isDirectory() check -- fs.existsSync alone would also be true for a plain file) and silently dropped
+    // if it isn't -- an entry hand-edited or corrupted into an absolute path, a ".."-style escape, a
+    // symlink escape, a blank string (which resolves to the project root itself, an existing directory but
+    // never a bundle), or a project-contained file must never be allowed to reach registry() and make it
+    // report a load-error for the *entire* index, which would block discovery of every other, still-valid
+    // entry alongside it.
     private readRegistryIndex(projectRoot: string): string[] {
         const resolved = resolveProjectDirectory(projectRoot, StudioOutcomeLibraryGenerateService.REGISTRY_INDEX_RELATIVE_PATH, this.realpath);
         if (resolved.status === "error" || !this.directoryExists(resolved.resolvedPath)) {
@@ -402,9 +414,13 @@ export class StudioOutcomeLibraryGenerateService {
             if (!Array.isArray(parsed)) {
                 return [];
             }
-            return parsed.filter(
-                (entry): entry is string => typeof entry === "string" && resolveProjectDirectory(projectRoot, entry, this.realpath).status === "ok",
-            );
+            return parsed.filter((entry): entry is string => {
+                if (typeof entry !== "string" || entry.trim().length === 0) {
+                    return false;
+                }
+                const resolvedEntry = resolveProjectDirectory(projectRoot, entry, this.realpath);
+                return resolvedEntry.status === "ok" && this.isDirectory(resolvedEntry.resolvedPath);
+            });
         } catch {
             return [];
         }

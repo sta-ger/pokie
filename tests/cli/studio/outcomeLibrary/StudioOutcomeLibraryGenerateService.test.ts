@@ -225,6 +225,32 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(result.modes[0]).toMatchObject({modeName: "base", bundleDir: "custom-outcomes", buildStatus: "compatible"});
         });
 
+        it("ignores a blank or project-contained non-directory persisted registry-index entry instead of failing the whole registry read", async () => {
+            const first = service();
+            const generated = await first.generate(projectRoot, {outDir: "custom-outcomes"});
+            expect(generated.status).toBe("ok");
+
+            // Tamper with the persisted, project-scoped registry index directly on disk -- as if it had
+            // been hand-edited or corrupted -- mixing a blank entry (which resolves to the project root
+            // itself, an existing but non-bundle directory) and a project-contained plain file (which
+            // existsSync would report as "existing" even though it is never a valid bundle directory)
+            // alongside the one legitimate, already-discovered custom directory.
+            fs.writeFileSync(path.join(projectRoot, "not-a-directory.txt"), "nope");
+            const registryIndexPath = path.join(projectRoot, ".pokie", "outcome-library-registry.json");
+            fs.writeFileSync(registryIndexPath, JSON.stringify(["custom-outcomes", "", "not-a-directory.txt"]));
+
+            // Simulates a Studio server restart against the tampered index.
+            const restarted = service();
+            const result = await restarted.registry(projectRoot);
+            if (result.status !== "ok" || result.buildStatus === "missing") {
+                throw new Error(`expected a compatible build, got ${JSON.stringify(result)}`);
+            }
+            expect(result.buildStatus).toBe("compatible");
+            expect(result.bundleDir).toBe("custom-outcomes");
+            expect(result.modes).toHaveLength(1);
+            expect(result.modes[0]).toMatchObject({modeName: "base", bundleDir: "custom-outcomes", buildStatus: "compatible"});
+        });
+
         it("keeps only the most recently generated occurrence when the same mode is later regenerated into a different output directory", async () => {
             let clock = new Date("2026-01-01T00:00:00.000Z");
             const writer = new OutcomeLibraryBundleWriter<string>(POKIE_VERSION, undefined, () => clock);
