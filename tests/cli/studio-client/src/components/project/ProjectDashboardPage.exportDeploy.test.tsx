@@ -63,7 +63,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         // ExportDeployTab only pre-selects it, it never runs the deployment pipeline itself. It's also
         // the only registered target, so Select-target is skipped entirely and this lands straight on
         // Configure -- no artificial step forcing a click through the single option.
-        expect(await screen.findByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
     });
 
     it("hands off to the (unchanged) Stake Engine Export tab when the static-export card is chosen", async () => {
@@ -80,7 +80,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
     it("keeps the legacy /project/deployment and /project/stakeEngineExport routes deep-link compatible", async () => {
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/deployment"]});
         // The only registered target is selected automatically, auto-advancing straight to Configure.
-        expect(await screen.findByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
 
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/stakeEngineExport"]});
         expect(await screen.findByText("Output directory")).toBeInTheDocument();

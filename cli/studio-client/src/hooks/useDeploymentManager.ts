@@ -25,7 +25,7 @@ const EMPTY_MODE: StudioDeploymentModeInput = {modeName: "", librarySelector: BL
 // inspectProject -> loadBlueprint -> betModes lookup, which reflects the editable tracked source
 // instead. "unavailable" covers both "no current build" and "load failed": either way, the Configure
 // step's own mode picker has nothing to pick from -- the Configure step blocks mode-name entry, Add
-// mode, and Check compatibility & preview entirely until this resolves to "ok" (see
+// mode, and deployment preflight entirely until this resolves to "ok" (see
 // describeBuildModesUnavailable), rather than falling back to a hand-typed mode name.
 export type DeploymentProjectModesView = {status: "loading"} | {status: "unavailable"} | {status: "ok"; modeIds: readonly string[]};
 
@@ -80,6 +80,35 @@ export function useDeploymentManager() {
         setRunLoading(trackerRef.current.isRunInFlight());
     }, []);
 
+    // Whether a previously *successful* Check-compatibility/preview run no longer reflects the current
+    // Configure-step inputs -- true only once something that actually invalidates it (a mode/library/target
+    // edit, or the selected target's own descriptor changing underneath it, see markConfigChanged below)
+    // happens *after* a run already landed. Deliberately distinct from "nothing has been run yet" (plain
+    // `runResult === undefined` with this staying false) -- the Configure step's own banner (see
+    // DeploymentTab) reads this to tell a user who already checked once "what you saw is stale, re-check"
+    // apart from "you haven't checked at all yet". Cleared the instant a fresh run starts (see run() below)
+    // and by resetForProjectSwitch(), which starts an entirely new context with nothing to call outdated.
+    const [preflightOutdated, setPreflightOutdated] = useState(false);
+    // Mirrors `runResult` synchronously for markConfigChanged's own read below -- every config-changing
+    // setter is a useCallback whose own dependency list doesn't include `runResult` itself (adding it would
+    // recreate the setter, and the components it's passed to, on every run), so this ref is what lets that
+    // callback see whether a run result currently exists without depending on it directly.
+    const runResultRef = useRef<DeploymentRunResultView>(undefined);
+    useEffect(() => {
+        runResultRef.current = runResult;
+    }, [runResult]);
+
+    // The single path every Configure-step edit (mode name/library, add/remove row, target
+    // selection/descriptor change) invalidates a stale run through -- same invalidate() effect, plus
+    // marking preflightOutdated when there was actually a run to go stale (a blank-to-blank edit before
+    // ever running once has nothing to call outdated).
+    const markConfigChanged = useCallback(() => {
+        if (runResultRef.current !== undefined) {
+            setPreflightOutdated(true);
+        }
+        invalidate();
+    }, [invalidate]);
+
     // Monotonic request id guarding refreshTargets() against a stale/out-of-order response -- same
     // requestId pattern ProjectDashboardPage's own refreshRecentSpins() uses. Two overlapping Refresh
     // clicks (or a Refresh still in flight when the project switches, see resetForProjectSwitch() below)
@@ -117,12 +146,12 @@ export function useDeploymentManager() {
                     if (fresh === undefined) {
                         selectedTargetRef.current = undefined;
                         setSelectedTarget(undefined);
-                        invalidate();
+                        markConfigChanged();
                     } else {
                         selectedTargetRef.current = fresh;
                         setSelectedTarget(fresh);
                         if (hasTargetDescriptorChanged(current, fresh)) {
-                            invalidate();
+                            markConfigChanged();
                         }
                     }
                 } else if (targets.length === 1) {
@@ -141,7 +170,7 @@ export function useDeploymentManager() {
                 }
                 setTargetsError(errorMessage(error));
             });
-    }, [fetchImpl, invalidate]);
+    }, [fetchImpl, markConfigChanged]);
 
     // The Configure step's own two discovery inputs -- the project's own current build modes (see
     // getDeploymentBuildModes's own doc comment, backed by the same authoritative resolver
@@ -218,6 +247,7 @@ export function useDeploymentManager() {
         targetsRequestIdRef.current++;
         modesRequestIdRef.current++;
         invalidate();
+        setPreflightOutdated(false);
         selectedTargetRef.current = undefined;
         setSelectedTarget(undefined);
         setModes([EMPTY_MODE]);
@@ -232,9 +262,9 @@ export function useDeploymentManager() {
         (target: StudioDeploymentTargetSummary) => {
             selectedTargetRef.current = target;
             setSelectedTarget(target);
-            invalidate();
+            markConfigChanged();
         },
-        [invalidate],
+        [markConfigChanged],
     );
 
     // Sets a row's own mode name (from the Configure step's Select, only ever reachable once the
@@ -253,17 +283,17 @@ export function useDeploymentManager() {
                         : mode,
                 ),
             );
-            invalidate();
+            markConfigChanged();
         },
-        [invalidate, registryView],
+        [markConfigChanged, registryView],
     );
 
     const setModeLibrarySelector = useCallback(
         (index: number, librarySelector: OutcomeLibrarySelector) => {
             setModes((prev) => prev.map((mode, i) => (i === index ? {...mode, librarySelector} : mode)));
-            invalidate();
+            markConfigChanged();
         },
-        [invalidate],
+        [markConfigChanged],
     );
 
     // Only ever adds a row when there is a build mode left to add it for (or the project's own build
@@ -281,15 +311,15 @@ export function useDeploymentManager() {
             const modeName = remaining !== undefined && remaining.length === 1 ? remaining[0] : "";
             return [...prev, {modeName, librarySelector: defaultLibrarySelectorFor(modeName, registryView)}];
         });
-        invalidate();
-    }, [invalidate, modes, projectModesView, registryView, selectedTarget]);
+        markConfigChanged();
+    }, [markConfigChanged, modes, projectModesView, registryView, selectedTarget]);
 
     const removeMode = useCallback(
         (index: number) => {
             setModes((prev) => (prev.length > 1 ? prev.filter((_mode, i) => i !== index) : [EMPTY_MODE]));
-            invalidate();
+            markConfigChanged();
         },
-        [invalidate],
+        [markConfigChanged],
     );
 
     const run = useCallback(
@@ -302,6 +332,9 @@ export function useDeploymentManager() {
                 return;
             }
             setSelectedArtifactPath(undefined);
+            // A fresh run is exactly what clears "outdated" -- whatever it lands on (success or failure) is
+            // itself the up to date answer for the *current* Configure-step inputs, not a stale one.
+            setPreflightOutdated(false);
             // A previous run's error must never linger once a new attempt starts -- otherwise a retry
             // that's still in flight would keep showing the *old* failure's ErrorState alongside its own
             // loading indicator, and a stale-but-not-yet-cleared error could outlive a run that actually
@@ -349,6 +382,7 @@ export function useDeploymentManager() {
         runResult,
         runError,
         runLoading,
+        preflightOutdated,
         selectedArtifactPath,
         refreshTargets,
         refreshProjectModesAndRegistry,

@@ -929,6 +929,7 @@ export function ProjectDashboardPage() {
                             runResult={deployment.runResult}
                             runError={deployment.runError}
                             runLoading={deployment.runLoading}
+                            preflightOutdated={deployment.preflightOutdated}
                             selectedArtifactPath={deployment.selectedArtifactPath}
                             onSelectArtifact={deployment.selectArtifact}
                             projectRoot={projectKey}

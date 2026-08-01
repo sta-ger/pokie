@@ -69,20 +69,20 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         await user.click(screen.getByRole("button", {name: "Deployment"}));
         // The only registered target is selected automatically, auto-advancing the stepper straight to
         // Configure -- no artificial Select-target click needed.
-        await screen.findByRole("button", {name: "Check compatibility & preview"});
+        await screen.findByRole("button", {name: "Run deployment preflight"});
 
         // The project's own sole build mode ("base", see BASE_ROUTES' own inspect/blueprint routes) is
         // auto-selected into the row the moment build-mode discovery resolves -- deployment modes only
         // ever come from the current build, never a hand-typed name. Only the Outcome library path still
-        // needs filling in by hand before "Check compatibility & preview" is anything but a blocked no-op.
+        // needs filling in by hand before "Run deployment preflight" is anything but a blocked no-op.
         await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
         await user.type(screen.getByLabelText("Outcome library path"), "base.json");
 
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         // A second click while the first request is still in flight must be a silent no-op (the
         // DeploymentRunTracker refuses a concurrent beginRun() while inFlight is true), not a second
         // competing request.
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         expect(runRequests).toHaveLength(1);
 
         // Editing a mode's own library path while the run is still in flight invalidates its token
@@ -99,11 +99,11 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         await waitFor(() => {
             expect(screen.queryByText("first.json")).not.toBeInTheDocument();
         });
-        expect(screen.getByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
 
         // A fresh run started *after* the stale one resolved works normally, auto-advancing to
         // Check-compatibility once it lands.
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await waitFor(() => expect(runRequests).toHaveLength(2));
         runRequests[1].resolve(stageResult("second"));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));

@@ -161,7 +161,7 @@ export function canAddDeploymentMode(
 // The Configure step's own domain-language remediation for "the project's build modes aren't available
 // yet" -- an unknown `buildModeIds` (see remainingDeploymentModeChoices's own doc comment) means there is
 // no real bet mode to pick from, so this replaces the old free-text fallback: every mode-name control
-// stays disabled and both "Add mode" and "Check compatibility & preview" stay blocked (see
+// stays disabled and both "Add mode" and the deployment preflight ("Run deployment preflight") stay blocked (see
 // canAddDeploymentMode and DeploymentTab's own configureBlockers) until the build's own modes resolve.
 // `undefined` once they have -- nothing to block on this account.
 export function describeBuildModesUnavailable(buildModeIds: readonly string[] | undefined): string | undefined {
@@ -274,7 +274,7 @@ export function describeDeploymentModeRowStatus(status: DeploymentModeRowStatus)
     return DEPLOYMENT_MODE_ROW_STATUS_DESCRIPTIONS[status];
 }
 
-// Plain-language reasons the Configure step's own "Check compatibility & preview" is blocked -- computed
+// Plain-language reasons the Configure step's own deployment preflight is blocked -- computed
 // entirely client-side from already-known row statuses, never a raw schema/validation path (see
 // validateDeploymentRunRequest's own request-shape errors, which are a distinct, request-level concern
 // this never surfaces directly to the user).
@@ -295,6 +295,52 @@ export function computeDeploymentConfigureBlockers(rows: readonly StudioDeployme
         }
     });
     return blockers;
+}
+
+// The Preview-artifacts step's own plain-language account of what a deployment preflight run actually
+// touched -- shown alongside the artifact list regardless of outcome, since even a validation/transport
+// failure still generated *something* worth explaining the provenance of. Distinguishes the four things
+// an external deployment conceptually is: this mode's own outcome library (input, read-only), the
+// target's own adapter (the thing that transforms that library into its own artifact shape -- never this
+// UI's own code), the artifacts that transformation produced (output, listed separately), and where a
+// real Deploy would eventually send them (the destination). Destination detail is only ever as exact as
+// the preflight contract actually supplies: the SDK's own local-json-example target (see
+// LOCAL_JSON_EXAMPLE_TARGET_ID) writes to a known, project-relative local path via
+// atomicallyWriteExternalDeploymentArtifactsToDirectory's own documented temp-directory/atomic-swap/
+// best-effort-cleanup contract, so that exact destination and lifecycle is rendered here rather than
+// asserted away as opaque; any other, third-party target's own runtimeAdapter genuinely isn't
+// introspectable client-side (see StudioDeploymentTargetSummary's own doc comment), so this says so
+// honestly instead of inventing a location or a temp-file story the target may not even have. Either way,
+// a deployment preflight (publish: false) never calls that destination's own runtimeAdapter at all (see
+// StudioDeploymentService.run()'s own doc comment) -- nothing is written, locally or remotely, so this
+// never claims a mutation that didn't happen.
+export function describeDeploymentPreflightArtifactNote(target: StudioDeploymentTargetSummary): string {
+    const inputAdapterOutput =
+        `Input: this mode's own outcome library, read only -- never modified by this pipeline, and neither is the ` +
+        `project's own built package/blueprint it was checked against.\n\n` +
+        `Adapter: "${target.id}"'s own generator transforms that library into the artifacts listed below (output).`;
+
+    const destination =
+        target.id === LOCAL_JSON_EXAMPLE_TARGET_ID
+            ? `Destination: a real Deploy writes these exact artifacts to this project's own deployment/${target.id} ` +
+              `folder on local disk -- nothing is published externally. That folder is only ever replaced ` +
+              `atomically: every artifact is first written into a fresh temporary folder beside it, and only ` +
+              `swapped into place, in one atomic step, once every file has been written successfully. If anything ` +
+              `fails before that swap, the temporary folder is deleted and deployment/${target.id} is left exactly ` +
+              `as it was -- never a partial result. After a successful swap, the folder it replaced is removed as ` +
+              `a best-effort cleanup step; a failure to remove it is only ever a warning, never a failed deploy, ` +
+              `and the leftover folder's own path is reported so it can be removed by hand.`
+            : `Destination: a real Deploy sends these exact artifacts to "${target.id}"'s own registered ` +
+              `destination. This UI can't confirm whether that's a local path, a remote endpoint, or a registry, ` +
+              `or whether it uses a temporary file along the way -- a third-party target's own runtimeAdapter is ` +
+              `never introspectable client-side, only its declared id/requirements/capabilities are.`;
+
+    const nonMutation =
+        `Nothing here is written anywhere yet: this deployment preflight never reaches that destination at all -- ` +
+        `these artifacts exist only in this response, and neither the local project nor "${target.id}" itself has ` +
+        `been touched. Run Deploy separately to actually publish them.`;
+
+    return `${inputAdapterOutput}\n\n${destination}\n\n${nonMutation}`;
 }
 
 export type DeploymentRunResultView = {
