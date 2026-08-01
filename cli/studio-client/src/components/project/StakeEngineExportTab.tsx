@@ -159,8 +159,9 @@ function StakeEngineExportModeSourceField({
 // One Configure-step mode row -- the status badge is the exact same classifyStakeEngineExportModeSourceStatus
 // the Configure step's own gating is built from, never a second, diverging notion of "is this row's source
 // OK". "Generate or pick from the Outcome Libraries hub" is only offered once there's actually a problem
-// this tab can't fix on its own (no compatible library discovered yet, or the discovered one has fallen
-// behind the current build) -- otherwise it would just be noise on every row.
+// this tab can't fix on its own (no compatible library discovered yet, the discovered one has fallen
+// behind the current build, or the chosen selector doesn't resolve to a readable library at all) --
+// otherwise it would just be noise on every row.
 function StakeEngineExportModeRow({
     mode,
     index,
@@ -210,7 +211,7 @@ function StakeEngineExportModeRow({
                     <FieldWarningText message={warnings.cost} />
                 </div>
             </Group>
-            {(status === "missing" || status === "wrong") && (
+            {(status === "missing" || status === "wrong" || status === "invalid") && (
                 <QuickActions>
                     <Button variant="default" size="xs" onClick={onOpenOutcomeLibraries}>
                         Generate or pick from the Outcome Libraries hub
