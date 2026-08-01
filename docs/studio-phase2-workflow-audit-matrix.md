@@ -60,17 +60,13 @@ shallow render or a hand-inspected source excerpt. This is this project's own es
 ("'Executable fixture' in this document always means a test that renders through the real routed app ..., not
 a shallow/unit render") -- and this document has followed the same rule from its own first version.
 
-**On screenshots specifically:** the implementation sandbox this document (and every `P2-POLISH-*` step before
-it) was produced in has no browser-automation or screenshot-capture pipeline -- no Playwright/Puppeteer
-install, no headless browser (confirmed by grepping `node_modules` and `package.json`; see
-`docs/studio-phase2-final-verification-report.md`'s own "Verification methodology and known limitations"
-section). No file in this repository's history, across every `P2-POLISH-*` step, has ever committed an image
-file as evidence -- every prior round's "evidence" is the same route/state/action/DOM-assertion shape
-described above. This document keeps that convention rather than inventing image artifacts that couldn't
-actually have been captured: the jsdom-rendered DOM assertions cited throughout (a real component tree, real
-Mantine `role="alert"`/`aria-current`/`disabled` output, real translated copy) are the verifiable substitute
-for a screenshot that this project's test suite actually provides, and are treated as equivalent evidence for
-every finding in this document.
+**On screenshots specifically:** P2-26 now adds a real local-browser capture pass in
+[`phase2-browser-evidence/`](phase2-browser-evidence/README.md). The images are Chrome captures of the built
+Studio task clone serving a deterministic generated game; they cover Home and every Project Dashboard route at a
+settled initial state. The manifest identifies each route, visible state, and SHA-256 checksum. They complement,
+rather than replace, the executable RTL route/state/action fixtures above: a screenshot proves the rendered
+browser surface, while the fixture is the repeatable proof of clicks, accessibility roles, stale state and error
+remediation.
 
 **On roles:** Studio (`cli/studio-client`) is a single-operator local tool -- there is no authentication,
 session, or permission/role system anywhere in `cli/studio-client/src` (confirmed by grepping for

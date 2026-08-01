@@ -11,9 +11,9 @@ repository's final state. It does not repeat the two documents it draws on --
 `docs/studio-phase2-workflow-audit-matrix.md` (the cross-cutting workflow audit covering every surface that
 document's own header lists as out of the frozen baseline's scope) -- it summarizes and cross-references them.
 
-## Verification methodology and known limitations
+## Verification methodology, browser evidence and limits
 
-Every piece of "runtime evidence" cited by either document above, and by this report, is a route/state/
+Every executable route/state/action assertion cited by either document above, and by this report, is a route/state/
 action/DOM-assertion walkthrough executed by a real React Testing Library fixture: the actual routed app is
 mounted (`renderRoutedApp`, a real `MemoryRouter` at the cited path) over a mocked `fetch` seam, a user action
 is performed (`@testing-library/user-event`), and the assertion runs against the real rendered DOM (`role`,
@@ -21,27 +21,34 @@ text content, `disabled`/`aria-current` attributes) -- never a shallow render or
 presented as executed proof. `docs/studio-phase2-workflow-audit-matrix.md`'s own new "Evidence conventions"
 section states this in full; it is not repeated here beyond this summary.
 
-**What this report cannot provide, and why:** the acceptance criteria for this step ask for "screenshot"
-evidence and a "Drive/publication" confirmation. Neither is achievable honestly from this implementation
-sandbox, for concrete, checked reasons rather than by assumption:
+In addition to those fixture assertions, this closing pass performed a real local-browser evidence run. It used
+the task clone itself, not a mocked frontend: `npm run build-esm`, `npm run build-cjs`, and `npm run build-cli`
+were run; a deterministic temporary game was generated with `pokie create phase2-evidence-game --random --seed
+42`; and the built `pokie studio` server served both Home and Project modes. Google Chrome
+`138.0.7204.183` headless loaded the direct hash routes after a five-second virtual-time settle and captured the
+resulting pixels. The server's `GET /api/context` returned the expected project context before capture.
 
-- **No screenshot/browser-automation capability exists in this sandbox.** Checked directly: neither
-  `playwright` nor `puppeteer` nor any headless-browser binary is present in `node_modules/.bin`, `package.json`
-  lists no such dependency, and no `.png`/`.jpg` file exists anywhere in this repository's history for any
-  prior `P2-POLISH-*` step. Every prior step's "evidence" is the jsdom/RTL DOM-assertion shape described above,
-  not a captured image -- there is no regression here, and no image artifact was fabricated to paper over the
-  gap. The jsdom-rendered DOM assertions cited throughout both audit documents (real `role="alert"` elements,
-  real translated copy, real absence of raw server text) are the closest verifiable substitute this project's
-  own test suite actually produces.
-- **There is no "Drive" or publication integration anywhere in this codebase.** Checked directly: no reference
-  to Google Drive, a publish/release pipeline, or any external distribution target exists in `package.json`,
-  `docs/`, or `cli/`. POKIE is a slot-game engine library and CLI/Studio tool published to npm
-  (`package.json`'s own `name`/`repository` fields); its build/release surface is `npm run build` /
-  `npm run prepack`, gated by `check:release`, which remains orchestrator-owned per this step's own
-  instruction ("official full/release gates remain orchestrator-owned"). There is nothing to confirm here, and
-  inventing a "Drive/publication confirmed" line would be a fabricated evidence claim, which this report does
-  not do. If a future step introduces an actual publication target, this section is where its confirmation
-  belongs.
+The committed images and their checksums are listed in
+[`phase2-browser-evidence/README.md`](phase2-browser-evidence/README.md). They cover all three Home surfaces
+and all twelve Project Dashboard surfaces, including visible disabled/blocked prerequisite states in Design &
+Build, Runtime, Deployment, Outcome Libraries, and Stake Engine Export. This is deliberately modest about what
+it proves: the browser pass exercised deep-link/refresh route loading and observed settled initial states; it
+did **not** claim to click every destructive control. The route/state/action fixtures remain the executable
+evidence for clicks, stale/dirty transitions, and error remediation.
+
+**Publication boundary:** Google Drive and status publication are campaign-infrastructure operations, not code
+inside the POKIE package. They occur only after this commit has passed review, merged, and passed the official
+gates. Therefore this pre-merge product report does not falsely claim a future Drive round-trip; the durable
+orchestrator publication record is the authoritative post-merge confirmation and is required before the roadmap
+step may become completed.
+
+The remaining evidence limits are explicit rather than hidden:
+
+- Browser screenshots are local, deterministic evidence for the generated sample package; they are not a
+  substitute for the official cross-platform suite or for a production deployment test.
+- Official full/release gates and the final Drive round-trip are intentionally orchestrator-owned. They are not
+  run by an implementation report, and a step is not complete until those independent gates and publication
+  verification succeed.
 
 ## Critical-scenario rechecks after remediation
 
@@ -62,17 +69,13 @@ No recheck found a regression. All five spot-checked findings hold against the c
 
 ## Required verification evidence
 
-- **Pre-review sanity gate (`npm run typecheck`), as named by this step's own `targeted_tests.existing_checks`:**
-  attempted in this implementer's worktree and could not be executed -- the sandbox's `npm` policy wrapper
-  (`/usr/local/bin/npm`, outside this repository's own tree, installed by the orchestrator to restrict which
-  gates an implementer may run) currently fails with a shell syntax error inside the wrapper script itself
-  (`/usr/local/bin/npm: line 4: syntax error near unexpected token`), before it ever reaches `tsc`. This
-  reproduces identically under both `sh` and `bash`, so it is a defect in the wrapper script, not an artifact
-  of any change made in this step -- nothing in this step's diff touches build tooling, `package.json`
-  scripts, or anything outside `docs/`. This step's own reviewer feedback already records that "Pre-review
-  typecheck passed" against the reviewed implementation SHA (`6f9e837`) from the reviewer's own environment;
-  this report does not re-claim a fresh pass it could not actually execute, per this agent's own instruction
-  to never fabricate test results.
+- **Build and browser evidence:** `npm run build-esm`, `npm run build-cjs`, and `npm run build-cli` completed
+  successfully before the Chrome evidence pass described above. The actual Studio API context and static assets
+  came from that built task clone.
+- **Focused regression:** `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.validation.test.tsx`
+  covers the P2-26 raw-error/remediation correction. It is run again as the targeted test after this evidence
+  update; its result is recorded in the implementation report and independent gate artifacts rather than
+  inferred from these docs.
 - **Official gates (`check:fast`/`check:full`/`check:release`, lint, full test/typecheck/coverage/packaging
   suites):** explicitly orchestrator-owned per this step's own instruction ("official full/release gates
   remain orchestrator-owned"; "Do not run official gates before approval") -- not run here by design, not by
@@ -94,6 +97,8 @@ No recheck found a regression. All five spot-checked findings hold against the c
   the updated Design & Build/Raw Editor classification-matrix cells, and the consolidated non-blocking-backlog
   note.
 - `docs/studio-phase2-final-verification-report.md` -- this report.
+- `docs/phase2-browser-evidence/` -- 15 committed browser screenshots plus a route/state/checksum manifest,
+  captured from the built local Studio server in this verification pass.
 - `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.validation.test.tsx` -- carries
   this step's own regression fixture (added in `6f9e837`).
 
@@ -146,24 +151,10 @@ future-redesign decision, not a regression or an unverified claim:
 `docs/studio-phase2-inventory.md` itself recommends prioritizing items 5 and 6 above (its own #1 and #3) first,
 since they are the two remaining findings stated from source reading alone without executable proof.
 
-## Repository status
+## Repository and publication status
 
-```
-$ git status --porcelain
- M docs/studio-phase2-workflow-audit-matrix.md
-$ git rev-parse HEAD
-6f9e837176c8686bef963c8818fc0f47f24018bc
-```
-
-The working tree is clean apart from this step's own in-progress documentation changes (the
-`workflow-audit-matrix.md` update and this new file, both to be committed together as this step's delivery).
-No other files are modified, staged, or untracked. `HEAD` is `6f9e837176c8686bef963c8818fc0f47f24018bc`, the
-reviewed implementation SHA this step's correction round is layered on top of, on branch
-`task/P2-POLISH-26-20260801202436`.
-
-## Drive / publication confirmation
-
-Not applicable -- see "Verification methodology and known limitations" above. No Drive or publication
-integration exists anywhere in this codebase to confirm; POKIE's actual publication surface is `npm publish`
-via `prepack`/`build`, gated by the orchestrator-owned `check:release` gate, and no publication step of any
-kind was run or is claimed by this report.
+This report, the updated workflow audit, and the browser-evidence directory are one P2-26 task-branch commit.
+The orchestration layer, rather than this report, verifies the clean task worktree, merge into `develop`, exact
+remote tip, status publication, and Google Drive round-trip. A final campaign report must cite those values from
+the post-merge publisher record; no pre-merge document may substitute a historical SHA or claim a Drive result
+that has not yet occurred.
