@@ -95,7 +95,7 @@ describe("Home (/home/:tab) tab inventory baseline", () => {
 });
 
 describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
-    it("lists exactly the 11 named tabs, in order, with a single 'Advanced' grouping starting at Replay", async () => {
+    it("lists exactly the 12 named tabs, in order, with a single 'Advanced' grouping starting at Replay", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -109,6 +109,7 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
             "Simulation & Reports",
             "Replay",
             "Runtime",
+            "Export & Deploy",
             "Deployment",
             "Outcome Libraries",
             "Mechanics Editor",

@@ -5,6 +5,13 @@ import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
+// build-cjs's tsc pass emits dist/cjs/index.js first and only writes this package.json (via
+// write-cjs-package-json.js) as its last step. Without waiting for it too, a waiting Jest worker can
+// observe dist/cjs/index.js already on disk while dist/cjs/package.json is still missing, declare the
+// build done, and let a worker_thread's `require("pokie")` fall through to the *root* package.json's
+// "type": "module" -- loading dist/cjs/index.js's CommonJS `exports` syntax as ESM and crashing with
+// "exports is not defined in ES module scope".
+const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
 const FIXTURES_NODE_MODULES = path.join(__dirname, "node_modules");
 const POKIE_SYMLINK = path.join(FIXTURES_NODE_MODULES, "pokie");
@@ -26,7 +33,7 @@ const POKIE_SYMLINK = path.join(FIXTURES_NODE_MODULES, "pokie");
 export function ensureFixturesCanRequirePokie(): void {
     ensureCompiledTestOutput({
         repositoryRoot: REPO_ROOT,
-        outputPaths: [COMPILED_CJS_ENTRY, COMPILED_ESM_WORKER_ENTRY],
+        outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
         lockName: "compiled-runtime",
         command: ["npm", "run", "build-test-runtime"],
     });

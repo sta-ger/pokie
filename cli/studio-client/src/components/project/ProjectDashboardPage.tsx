@@ -42,6 +42,7 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {CertificationTab} from "./CertificationTab";
 import {DeploymentTab} from "./DeploymentTab";
+import {ExportDeployTab} from "./ExportDeployTab";
 import {MechanicsEditorTab} from "./MechanicsEditorTab";
 import {OutcomeLibrariesTab} from "./OutcomeLibrariesTab";
 import {OverviewTab} from "./OverviewTab";
@@ -58,6 +59,7 @@ export type ProjectTab =
     | "simulation"
     | "replay"
     | "runtime"
+    | "exportDeploy"
     | "deployment"
     | "outcomeLibraries"
     | "mechanicsEditor"
@@ -66,15 +68,23 @@ export type ProjectTab =
     | "stakeEngineExport";
 
 // Primary happy-path tabs (Overview -> Validate -> Simulate, which now also owns Reports) come first,
-// unlabeled/implicit; Replay/Runtime/Deployment/Outcome Libraries/Mechanics Editor/Certification/
-// Provably Fair/Stake Engine Export are tagged `section: "Advanced"` so NavTabs visually separates them --
-// everything's still one click away, just no longer presented as equal-weight to the main flow.
+// unlabeled/implicit; Replay/Runtime/Export & Deploy/Deployment/Outcome Libraries/Mechanics Editor/
+// Certification/Provably Fair/Stake Engine Export are tagged `section: "Advanced"` so NavTabs visually
+// separates them -- everything's still one click away, just no longer presented as equal-weight to the
+// main flow.
+//
+// "exportDeploy"/ExportDeployTab is a shared target-selection shell in front of "deployment"/
+// "stakeEngineExport" (see ExportDeployTargets.ts's own doc comment) -- it never replaces either tab, it
+// only helps a user pick between them and pre-selects a deployment target before handing off. Both of
+// those tabs (and their URLs) are deliberately kept in this list, unchanged, right after it: an existing
+// deep link to /project/deployment or /project/stakeEngineExport must keep working exactly as before.
 const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "overview", label: "Overview"},
     {value: "validation", label: "Validate"},
     {value: "simulation", label: "Simulation & Reports"},
     {value: "replay", label: "Replay", section: "Advanced"},
     {value: "runtime", label: "Runtime", section: "Advanced"},
+    {value: "exportDeploy", label: "Export & Deploy", section: "Advanced"},
     {value: "deployment", label: "Deployment", section: "Advanced"},
     {value: "outcomeLibraries", label: "Outcome Libraries", section: "Advanced"},
     {value: "mechanicsEditor", label: "Mechanics Editor", section: "Advanced"},
@@ -879,6 +889,18 @@ export function ProjectDashboardPage() {
                             recentSpins={recentSpinsView}
                             recentSpinsError={recentSpinsError}
                             onRefreshRecentSpins={refreshRecentSpins}
+                        />
+                    )}
+                    {activeTab === "exportDeploy" && (
+                        <ExportDeployTab
+                            targetsView={deployment.targetsView}
+                            targetsError={deployment.targetsError}
+                            onRefreshTargets={deployment.refreshTargets}
+                            onSelectDeploymentTarget={(target) => {
+                                deployment.selectTarget(target);
+                                setActiveTab("deployment");
+                            }}
+                            onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
                         />
                     )}
                     {activeTab === "deployment" && (
