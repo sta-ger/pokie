@@ -386,7 +386,12 @@ export class StudioOutcomeLibraryGenerateService {
     // own manifest read of each directory is), so a missing file (nothing generated into a custom outDir
     // yet, or an older bundle predating this index), a corrupt one, or a symlink escape under the project
     // root all simply fall back to reporting an empty list of *additional* dirs -- DEFAULT_BUNDLE_DIR
-    // itself is always still checked directly by discoverBundleDirs.
+    // itself is always still checked directly by discoverBundleDirs. Each individual parsed entry is
+    // likewise validated as a safe, project-contained, non-symlink-escaping directory (the same check
+    // registry() itself applies before reading a directory) and silently dropped if it isn't -- an entry
+    // hand-edited or corrupted into an absolute path, a ".."-style escape, or a symlink escape must never
+    // be allowed to reach registry() and make it report a load-error for the *entire* index, which would
+    // block discovery of every other, still-valid entry alongside it.
     private readRegistryIndex(projectRoot: string): string[] {
         const resolved = resolveProjectDirectory(projectRoot, StudioOutcomeLibraryGenerateService.REGISTRY_INDEX_RELATIVE_PATH, this.realpath);
         if (resolved.status === "error" || !this.directoryExists(resolved.resolvedPath)) {
@@ -394,7 +399,12 @@ export class StudioOutcomeLibraryGenerateService {
         }
         try {
             const parsed: unknown = JSON.parse(this.readTextFile(resolved.resolvedPath));
-            return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [];
+            if (!Array.isArray(parsed)) {
+                return [];
+            }
+            return parsed.filter(
+                (entry): entry is string => typeof entry === "string" && resolveProjectDirectory(projectRoot, entry, this.realpath).status === "ok",
+            );
         } catch {
             return [];
         }
