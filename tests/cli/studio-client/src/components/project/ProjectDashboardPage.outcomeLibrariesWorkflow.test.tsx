@@ -552,7 +552,11 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
     // custom outDir (see its own test coverage) -- this only asserts the client renders that faithfully.
     it("shows the discovered library in the Registry panel after generating to a custom, non-default output directory", async () => {
         const user = userEvent.setup();
-        let registryCallCount = 0;
+        // Keyed on whether Generate has actually run yet -- not a raw call count. The Deployment tab's
+        // own useDeploymentManager hook (see ProjectDashboardPage's projectKey effect) fetches this same
+        // registry endpoint once on mount regardless of which tab is active, so the ordinal position of
+        // "the first registry call this test's assertions care about" is no longer fixed at 1.
+        let generated = false;
         const customGenerateResult: StudioOutcomeLibraryGenerateResultView = {
             ...GENERATE_RESULT,
             bundleDir: "custom-outcomes",
@@ -560,10 +564,12 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
         };
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/outcome-libraries/generate": () => ({ok: true, status: 200, body: customGenerateResult}),
+            "/api/project/outcome-libraries/generate": () => {
+                generated = true;
+                return {ok: true, status: 200, body: customGenerateResult};
+            },
             "/api/project/outcome-libraries/registry": () => {
-                registryCallCount += 1;
-                if (registryCallCount === 1) {
+                if (!generated) {
                     return {ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}};
                 }
                 return {
