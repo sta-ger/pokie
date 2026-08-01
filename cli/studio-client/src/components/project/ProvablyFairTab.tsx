@@ -1,4 +1,4 @@
-import {Button, NumberInput, SegmentedControl, Stepper, Table, Text, Textarea, TextInput} from "@mantine/core";
+import {Alert, Button, NumberInput, SegmentedControl, Stepper, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useRef, useState, type ReactNode} from "react";
 import {configureFairnessRound, generateFairnessProof, verifyFairnessProof} from "../../api/apiClient";
@@ -74,6 +74,11 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
     const [configureView, setConfigureView] = useState<FairnessConfigureRequestView>({status: "idle"});
     const configureRequestIdRef = useRef(0);
     const configureGuard = useDoubleSubmitGuard();
+    // True once a *completed* Configure response has been silently invalidated by a later seed/mode edit --
+    // same "outdated" distinction Certification's own validateOutdated/buildOutdated draw. Shown on
+    // Configure itself, since the commitments a user just published live on that same step; cleared the
+    // instant a fresh Configure run starts.
+    const [configureOutdated, setConfigureOutdated] = useState(false);
 
     // ---- Generate/inspect proof ----
     const [generateView, setGenerateView] = useState<FairnessGenerateRequestView>({status: "idle"});
@@ -106,6 +111,9 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
 
     function invalidateConfigure(): void {
         configureRequestIdRef.current++;
+        if (configureView.status !== "idle") {
+            setConfigureOutdated(true);
+        }
         setConfigureView({status: "idle"});
         configureGuard.end();
         invalidateGenerate();
@@ -124,6 +132,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
         }
         const requestId = ++configureRequestIdRef.current;
         invalidateGenerate();
+        setConfigureOutdated(false);
         setConfigureView({status: "loading"});
         configureFairnessRound(fetchImpl, fields)
             .then((result) => {
@@ -255,6 +264,13 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
 
             {activeStep === 0 && (
                 <div>
+                    {configureOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- a seed or mode field changed since the last Compute commitments run.
+                            Its commitments (and any Generate/Verify built from them) no longer reflect
+                            what&apos;s configured here; rerun Compute commitments before continuing.
+                        </Alert>
+                    )}
                     <PathInput
                         label="Source outcome-library bundle directory"
                         placeholder="./outcomes/bundle"
@@ -458,7 +474,11 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                         mb="sm"
                     />
                     <QuickActions>
-                        <Button onClick={runVerify} loading={verifyView.status === "loading"} disabled={resolveVerifyInputs() === undefined}>
+                        <Button
+                            onClick={runVerify}
+                            loading={verifyView.status === "loading"}
+                            disabled={resolveVerifyInputs() === undefined || verifyBundleDir.trim().length === 0}
+                        >
                             Verify
                         </Button>
                     </QuickActions>

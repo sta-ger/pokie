@@ -214,9 +214,18 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     const [buildView, setBuildView] = useState<CertificationBuildRequestView>({status: "idle"});
     const buildRequestIdRef = useRef(0);
     const buildGuard = useDoubleSubmitGuard();
+    // Same "outdated" distinction as validateOutdated above, for a completed Build silently invalidated by
+    // a later mode/output-directory edit -- the case validateOutdated alone can't cover, since editing
+    // modes/outDir (unlike bundleDir) never touches Validate at all, only Build. Cleared the instant a
+    // fresh Build run starts. Rendered on Select/configure (where modes live) rather than duplicating the
+    // validateOutdated banner's own "rerun Validate" guidance whenever both are true at once.
+    const [buildOutdated, setBuildOutdated] = useState(false);
 
     function invalidateBuild(): void {
         buildRequestIdRef.current++;
+        if (buildView.status !== "idle") {
+            setBuildOutdated(true);
+        }
         setBuildView({status: "idle"});
         buildGuard.end();
     }
@@ -375,6 +384,7 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
             return;
         }
         const requestId = ++buildRequestIdRef.current;
+        setBuildOutdated(false);
         setBuildView({status: "loading"});
         buildCertificationEvidenceBundle(fetchImpl, bundleDir.trim(), modeInputs, outDir.trim())
             .then((result) => {
@@ -624,6 +634,13 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                             Outdated -- the bundle directory changed since the last Validate run. Its result no
                             longer reflects what&apos;s configured here; rerun Validate before Build bundle is
                             offered again.
+                        </Alert>
+                    )}
+                    {!validateOutdated && buildOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- the modes or output directory changed since the last Build run. Its
+                            result no longer reflects what&apos;s configured here; rerun Build certification
+                            bundle before Inspect/Export are offered again.
                         </Alert>
                     )}
                     <PathInput

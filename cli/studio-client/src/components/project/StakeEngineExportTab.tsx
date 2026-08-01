@@ -275,6 +275,12 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
     const [exportView, setExportView] = useState<StakeEngineExportRequestView>({status: "idle"});
     const exportRequestIdRef = useRef(0);
     const exportGuard = useDoubleSubmitGuard();
+    // Same "outdated" distinction as validateOutdated above, for a completed Export silently invalidated
+    // by a later Configure edit (modes or output directory) -- validateOutdated alone can't cover an
+    // outDir-only edit, since that never touches Validate at all, only Export. Cleared the instant a fresh
+    // Export run starts. Rendered on Configure (where modes/outDir live) rather than duplicating the
+    // validateOutdated banner's own "rerun Validate" guidance whenever both are true at once.
+    const [exportOutdated, setExportOutdated] = useState(false);
 
     // Bumps the request id and resets the *displayed* result to idle -- but deliberately never touches
     // exportGuard here. Response freshness (which result, if any, is worth showing) and write-operation
@@ -286,6 +292,9 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
     // unconditionally (whether or not that settled response turns out to still be the current one).
     function invalidateExport(): void {
         exportRequestIdRef.current++;
+        if (exportView.status !== "idle") {
+            setExportOutdated(true);
+        }
         setExportView({status: "idle"});
     }
 
@@ -361,6 +370,7 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
             return;
         }
         const requestId = ++exportRequestIdRef.current;
+        setExportOutdated(false);
         setExportView({status: "loading"});
         exportStakeEngine(fetchImpl, modeInputs, outDir.trim(), overwrite)
             .then((result) => {
@@ -603,6 +613,13 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
                         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
                             Outdated -- the modes changed since the last Validate run. Its result no longer
                             reflects what&apos;s configured here; rerun Validate before Export is offered again.
+                        </Alert>
+                    )}
+                    {!validateOutdated && exportOutdated && (
+                        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                            Outdated -- the modes or output directory changed since the last Export run. Its
+                            result no longer reflects what&apos;s configured here; rerun Export to Stake Engine
+                            before Review result is offered again.
                         </Alert>
                     )}
                     <Text size="sm" fw={600} mb={4}>

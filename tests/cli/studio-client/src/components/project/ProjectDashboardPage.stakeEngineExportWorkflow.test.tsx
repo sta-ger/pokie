@@ -102,6 +102,54 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
         expect(screen.getByText("index.json")).toBeInTheDocument();
     });
 
+    it("marks a completed Export (not Validate) as Outdated when only the output directory changes, and marks Validate Outdated instead when a mode changes", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/stakeengine/validate": () => ({ok: true, status: 200, body: okValidateView()}),
+            "/api/project/stakeengine/export": () => ({ok: true, status: 201, body: okExportView()}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToStakeEngineExportTab(user);
+        await fillConfigureStep(user, "./outcomes/base.json");
+        await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
+        await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Export"}));
+        await user.click(screen.getByRole("button", {name: "Export to Stake Engine"}));
+        await screen.findByText("Clean");
+
+        // Editing the output directory (not a mode) invalidates only Export -- Validate's own result is
+        // untouched, so only the Export-specific Outdated message should render.
+        await user.click(screen.getByRole("button", {name: /Source, modes & output/i}));
+        await user.type(screen.getByLabelText("Output directory"), "-changed");
+
+        expect(
+            await screen.findByText(
+                /Outdated -- the modes or output directory changed since the last Export run\. Its result no longer reflects what's configured here; rerun Export to Stake Engine before Review result is offered again\./,
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/Outdated -- the modes changed since the last Validate run/)).not.toBeInTheDocument();
+
+        // Re-running Export clears the notice.
+        await user.click(screen.getByRole("button", {name: /Write to disk/i}));
+        await user.click(screen.getByRole("button", {name: "Export to Stake Engine"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: /Source, modes & output/i}));
+        expect(screen.queryByText(/Outdated -- the modes or output directory changed/)).not.toBeInTheDocument();
+
+        // Editing a mode instead invalidates both Validate and Export -- only the broader Validate-specific
+        // Outdated message should render, not a duplicate Export-specific one.
+        await user.type(screen.getByLabelText("Source: canonical outcome library"), "-changed");
+        expect(
+            await screen.findByText(
+                /Outdated -- the modes changed since the last Validate run\. Its result no longer reflects what's configured here; rerun Validate before Export is offered again\./,
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/Outdated -- the modes or output directory changed since the last Export run/)).not.toBeInTheDocument();
+    });
+
     it("shows a clear invalid state for an unsupported cost/outcome combination and never offers Continue to Export", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

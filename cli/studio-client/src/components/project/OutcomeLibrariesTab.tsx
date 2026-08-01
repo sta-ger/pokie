@@ -318,6 +318,11 @@ export function OutcomeLibrariesTab({
     const [compareView, setCompareView] = useState<OutcomeLibraryCompareRequestView>({status: "idle"});
     const compareRequestIdRef = useRef(0);
     const compareGuard = useDoubleSubmitGuard();
+    // Same "outdated" distinction as selectOutdated above, for a completed Compare silently invalidated by
+    // a later right-side (comparison) selector edit -- selectOutdated alone can't cover this, since editing
+    // rightFields never touches Select/import at all, only Compare. Cleared the instant a fresh Compare run
+    // starts.
+    const [compareOutdated, setCompareOutdated] = useState(false);
 
     function invalidateDeepValidate(): void {
         deepValidateRequestIdRef.current++;
@@ -327,6 +332,10 @@ export function OutcomeLibrariesTab({
 
     function invalidateCompare(): void {
         compareRequestIdRef.current++;
+        const wasSettled = !("status" in compareView && compareView.status === "idle");
+        if (wasSettled) {
+            setCompareOutdated(true);
+        }
         setCompareView({status: "idle"});
         compareGuard.end();
     }
@@ -423,6 +432,7 @@ export function OutcomeLibrariesTab({
             return;
         }
         const requestId = ++compareRequestIdRef.current;
+        setCompareOutdated(false);
         setCompareView({status: "loading"});
         // Ties the comparison to the exact left library the Inspect step already showed the user --
         // see StudioOutcomeLibraryCompareView.leftSnapshotStale's own doc comment.
@@ -910,6 +920,13 @@ export function OutcomeLibrariesTab({
                 ) : (
                     <div>
                         <PageSection legend="Compare with another library">
+                            {compareOutdated && (
+                                <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                                    Outdated -- the comparison selector changed since the last Compare run. Its
+                                    result no longer reflects what&apos;s configured here; rerun Compare to see
+                                    an up-to-date comparison.
+                                </Alert>
+                            )}
                             <SelectorFieldsInput fields={rightFields} onChange={handleRightFieldsChange} idPrefix="Comparison" relevantDirectory={projectRoot} />
                             <QuickActions>
                                 <Button

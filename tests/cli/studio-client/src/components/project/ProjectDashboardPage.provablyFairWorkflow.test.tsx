@@ -344,4 +344,85 @@ describe("ProjectDashboardPage - Provably Fair workflow", () => {
         expect(screen.queryByText("sha256:server-seed-hash")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Generate/inspect proof"})).not.toBeInTheDocument();
     });
+
+    it("marks a completed Configure as Outdated once a seed/mode field changes, and clears it on a fresh Compute commitments run", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/fairness/configure": () => ({ok: true, status: 200, body: {status: "ok", serverSeedCommitment: SERVER_SEED_COMMITMENT, commitment: COMMITMENT}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToProvablyFairTab(user);
+        await fillConfigureStep(user);
+        expect(screen.getByText("sha256:server-seed-hash")).toBeInTheDocument();
+
+        await user.type(screen.getByLabelText("Client seed"), "-changed");
+
+        expect(
+            await screen.findByText(
+                /Outdated -- a seed or mode field changed since the last Compute commitments run\. Its commitments \(and any Generate\/Verify built from them\) no longer reflect what's configured here; rerun Compute commitments before continuing\./,
+            ),
+        ).toBeInTheDocument();
+        // The commitments themselves are gone the instant the field changed -- there's nothing stale left
+        // on screen, only the explanatory notice above.
+        expect(screen.queryByText("sha256:server-seed-hash")).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Compute commitments"}));
+        await screen.findByText("Server seed commitment (publish first)");
+        expect(screen.queryByText(/Outdated -- a seed or mode field changed/)).not.toBeInTheDocument();
+    });
+
+    it("disables Verify when the Verify-step bundle directory is blank, for both a generated and a pasted external proof/commitment", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/fairness/configure": () => ({ok: true, status: 200, body: {status: "ok", serverSeedCommitment: SERVER_SEED_COMMITMENT, commitment: COMMITMENT}}),
+            "/api/project/fairness/generate": () => ({ok: true, status: 200, body: {status: "ok", proof: PROOF}}),
+            "/api/project/fairness/verify": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToProvablyFairTab(user);
+        await fillConfigureStep(user);
+        await user.click(screen.getByRole("button", {name: "Continue to Generate/inspect proof"}));
+        await user.click(screen.getByRole("button", {name: "Generate round proof"}));
+        expect(await screen.findByText("0007")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Continue to Verify"}));
+        // Configure's own successful run already auto-populated the Verify-step bundle directory -- clear
+        // it by hand to reproduce a user who blanked it out (or an external verifier who never ran
+        // Configure at all, see the paste case below).
+        const verifyBundleDirInput = screen.getByLabelText("Source outcome-library bundle directory");
+        await user.clear(verifyBundleDirInput);
+        expect(screen.getByRole("button", {name: "Verify", exact: true})).toBeDisabled();
+
+        await user.type(verifyBundleDirInput, "./bundle");
+        expect(screen.getByRole("button", {name: "Verify", exact: true})).not.toBeDisabled();
+        await user.click(screen.getByRole("button", {name: "Verify", exact: true}));
+        expect(await screen.findByText("Verified")).toBeInTheDocument();
+
+        expect(calls.filter((call) => call.url === "/api/project/fairness/verify")).toHaveLength(1);
+    });
+
+    it("disables Verify for a pasted external proof/commitment when the bundle directory is blank, rather than silently no-opping", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/fairness/verify": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToProvablyFairTab(user);
+        await user.click(screen.getByRole("button", {name: /Verify/}));
+        await user.click(screen.getByText("Paste external proof/commitment"));
+
+        await user.click(screen.getByLabelText("Proof JSON"));
+        await user.paste(JSON.stringify(PROOF));
+        await user.click(screen.getByLabelText("Commitment JSON"));
+        await user.paste(JSON.stringify(COMMITMENT));
+
+        // The bundle directory is left blank -- Verify must be disabled, not silently clickable-but-inert.
+        expect(screen.getByRole("button", {name: "Verify", exact: true})).toBeDisabled();
+    });
 });

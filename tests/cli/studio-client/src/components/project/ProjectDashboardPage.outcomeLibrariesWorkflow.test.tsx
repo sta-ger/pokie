@@ -186,6 +186,55 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         expect(screen.getByText(/RTP changed by \+2\.00 percentage points/)).toBeInTheDocument();
     });
 
+    it("marks a completed Compare as Outdated once the comparison selector changes, and clears it on a fresh Compare run", async () => {
+        const user = userEvent.setup();
+        const compareView: StudioOutcomeLibraryCompareView = {
+            left: okSelectView("lib-a"),
+            right: okSelectView("lib-b", ANALYSIS_B),
+            leftSnapshotStale: false,
+            diff: {
+                rtp: {left: 0.95, right: 0.97, delta: 0.02, percentDelta: (0.02 / 0.95) * 100},
+                hitFrequency: {left: 0.24, right: 0.26, delta: 0.02, percentDelta: (0.02 / 0.24) * 100},
+                variance: {left: 12, right: 12, delta: 0, percentDelta: 0},
+                standardDeviation: {left: Math.sqrt(12), right: Math.sqrt(12), delta: 0, percentDelta: 0},
+                maxWin: {left: 500, right: 500, delta: 0, percentDelta: 0},
+                payoutDistribution: [],
+                warnings: [],
+            },
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("lib-a")}),
+            "/api/project/outcome-libraries/compare": () => ({ok: true, status: 200, body: compareView}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToOutcomeLibrariesTab(user);
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
+        await user.click(screen.getByRole("button", {name: "Load library"}));
+        await screen.findByText("Loaded successfully");
+        await user.click(screen.getByRole("button", {name: "Continue to Inspect"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Compare or use"}));
+        await user.type(screen.getByLabelText("Library JSON path"), "./libs/other.json");
+        await user.click(screen.getByRole("button", {name: "Compare"}));
+        await screen.findByText("95.00%");
+
+        // Editing the comparison (right-side) selector after a completed compare must invalidate that
+        // result and explain why, the same way Select/import's own outdated banner already does.
+        await user.type(screen.getByLabelText("Library JSON path"), "-changed");
+
+        expect(
+            await screen.findByText(
+                /Outdated -- the comparison selector changed since the last Compare run\. Its result no longer reflects what's configured here; rerun Compare to see an up-to-date comparison\./,
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText("95.00%")).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Compare"}));
+        await screen.findByText("95.00%");
+        expect(screen.queryByText(/Outdated -- the comparison selector changed/)).not.toBeInTheDocument();
+    });
+
     it("ignores a late select response for library A once library B has been loaded", async () => {
         const user = userEvent.setup();
         let resolveA: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
