@@ -17,6 +17,7 @@ import {
     type RuntimeSpinResultView,
     type RuntimeStateView,
 } from "../../domain/interpret/Runtime";
+import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
@@ -177,7 +178,10 @@ function SpinOutcome({session, onCreateNew, onReloadSession}: {session: Session;
         return <ErrorState message="Runtime is not running — start it first." />;
     }
     if (session.status === "error") {
-        return <ErrorState message={session.message} />;
+        // Not necessarily a spin specifically -- a re-create/reload issued while a previous session is
+        // still tracked (its network-exception catch never resets `sessionId`, see useRuntimeManager's
+        // own createSession()/loadSession()) settles right here too, alongside a genuine spin failure.
+        return <ErrorState message={describeRuntimeActionError("This request", session.message)} />;
     }
     if (session.status === "blocked") {
         return <RecoveryNotice title="Can't play this round" message={session.message} actionLabel="Create a new session" onAction={onCreateNew} />;
@@ -487,8 +491,8 @@ export function RuntimeTab({
                 </form>
 
                 <Text mt="sm">{runtimeStateLabel(state)}</Text>
-                {state.status === "error" && <ErrorState message={state.message} />}
-                {state.status === "failed" && <ErrorState message={state.error} />}
+                {state.status === "error" && <ErrorState message={describeRuntimeActionError("The runtime server", state.message)} />}
+                {state.status === "failed" && <ErrorState message={describeRuntimeActionError("The runtime server", state.error)} />}
                 {state.status === "loading" && <LoadingState />}
                 {state.status === "running" && (
                     <div>
@@ -596,6 +600,12 @@ export function RuntimeTab({
                             aria-label="Create or restore method"
                         />
 
+                        {!sessionReachable && session.status === "error" && (
+                            <ErrorState message={describeRuntimeActionError("This request", session.message)} />
+                        )}
+                        {!sessionReachable && session.status === "not-found" && <ErrorState message={session.message} />}
+                        {!sessionReachable && session.status === "not-running" && <ErrorState message={session.message} />}
+
                         {restoreMethod === "new" && (
                             <QuickActions>
                                 <TextInput
@@ -643,7 +653,9 @@ export function RuntimeTab({
                                         Refresh
                                     </Button>
                                 </QuickActions>
-                                {recentSpinsError && <ErrorState message={recentSpinsError} />}
+                                {recentSpinsError && (
+                                    <ErrorState message={describeRuntimeActionError("The recent sessions list", recentSpinsError)} />
+                                )}
                                 {recentSessionIds.length === 0 ? (
                                     <EmptyState message="No recent sessions yet in this Studio session." />
                                 ) : (
@@ -682,7 +694,7 @@ export function RuntimeTab({
                         Refresh
                     </Button>
                 </QuickActions>
-                {recentSpinsError && <ErrorState message={recentSpinsError} />}
+                {recentSpinsError && <ErrorState message={describeRuntimeActionError("The round history", recentSpinsError)} />}
                 {!sessionReachable && <EmptyState message="Create or restore a session first." />}
                 {sessionReachable && sessionRounds.length === 0 && <EmptyState message="No rounds played yet this session." />}
                 {sessionReachable && sessionRounds.length > 0 && (

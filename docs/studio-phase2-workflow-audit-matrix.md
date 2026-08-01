@@ -32,7 +32,7 @@ handling; and **raw-error surfaces** (a caught exception's message shown with no
 | Advanced Tools (3 forms) | nonlinear (independent forms) | No | N/A | Yes (v4 update) |
 | Open Project | nonlinear (2 independent paths) | No | N/A | Yes (v3 update, `OpenProjectForm`) |
 | Replay | nonlinear (source-choice picker, not a wizard) | **No** -- replaced by a `SegmentedControl` source picker (`P2-POLISH-12`) | N/A -- staleness prevented structurally (state reset on source switch), not flagged after the fact | **No** (raw passthrough throughout) |
-| Runtime | cyclic (persistent session workspace) | **No** -- replaced by an always-visible multi-section workspace (`P2-POLISH-16`) | N/A -- staleness prevented structurally (selection cleared on every invalidating action) | **No** (raw passthrough, except the hand-built "blocked"/"conflict" `RecoveryNotice` cases) |
+| Runtime | cyclic (persistent session workspace) | **No** -- replaced by an always-visible multi-section workspace (`P2-POLISH-16`) | N/A -- staleness prevented structurally (selection cleared on every invalidating action) | **Yes this step** -- own `describeRuntimeActionError` helper, not `describePathActionError` (Runtime failures are server/network, not a user-typed path); covers server start/restart/refresh, session create/load, and spin/retry -- "blocked"/"conflict" keep their existing hand-built `RecoveryNotice` copy |
 | Deployment | partially linear | **Yes**, 6 steps, `onStepClick`, `aria-current` | **Yes** -- `preflightOutdated` `Alert` | **Yes** |
 | Export & Deploy | nonlinear (stateless picker shell) | Never had one (`P2-POLISH-20`) | N/A -- no mutable result state | No (`targetsError` raw) |
 | Outcome Libraries | partially linear | Yes, 5 steps | **Partial** -- Select (`selectOutdated`, since `f5c10bc`) **and now Compare** (`compareOutdated`, this step) covered; deep-validate has no separate flag but is fully covered by cascade from `selectOutdated` | Yes, 7 of 9 error call sites (2 `unsupported`/`generation-error` Generate states stay raw -- see below) |
@@ -177,14 +177,38 @@ any time... the same session can cycle through Play/Inspect/Debug indefinitely")
 exist in the whole file (Start/Stop, plus Load Session below); everything else is freshness-gated by clearing
 `selectedRound` on every invalidating action (session change, Stop, Restart, Refresh, Create/Load session,
 Spin, Retry) rather than a visual "Outdated" badge -- the same structural-reset philosophy Replay uses.
-`aria-current` is used manually on the round-history list (not via a Stepper, since none exists). Raw-error
-passthrough throughout, except the pre-existing "blocked"/"conflict" `RecoveryNotice` treatment. No
+`aria-current` is used manually on the round-history list (not via a Stepper, since none exists). No
 stale-*Stepper*-result finding applies (there's no Stepper), and the existing structural-reset pattern already
 satisfies the same freshness goal the Outdated banners serve elsewhere. `[P2-POLISH-25]` closed the one
 inferable/empty-input gap this tab had: "Restore existing"'s "Session id" `TextInput` now carries a `disabled`
 Load Session button and a "Required to load an existing session" description whenever the field is blank or
 whitespace-only, matching Provably Fair's Verify fix in the same step -- previously the button looked
 clickable and silently no-op'd on a blank id.
+
+**Raw-error passthrough, fixed this step (`P2-POLISH-25` correction):** every non-domain failure in this file
+(`state.status === "error"`/`"failed"` for Start/Restart/Refresh, `session.status === "error"` for
+Create/Load/Spin/Retry, and `recentSpinsError` for both the "Round history" panel and the "Restore existing"
+recent-sessions picker) used to render the raw fetch exception or server `body.error` text directly via
+`ErrorState message={...}`, with no added remediation -- exactly the finding this document's own audit
+methodology exists to catch (the "blocked"/"conflict" `RuntimeSpinResultView` states were already hand-authored
+`RecoveryNotice` copy, never raw, and are unchanged). Fixed with a new `domain/runtimeActionError.ts`,
+`describeRuntimeActionError(subject, message)` -- same "classify a raw message into a stable reason, then
+subject-specific status + remediation copy, never echo the raw text back" shape `describePathActionError`
+already establishes, but classifying *network/server* failures (`Failed to fetch`/`ECONNREFUSED` ->
+"couldn't reach the Studio server"; `EADDRINUSE` -> "the configured host/port is already in use"; a
+schema/required-field rejection -> "was rejected as invalid"; anything else -> a generic "couldn't be
+completed, check the Studio server logs" fallback) rather than `describePathActionError`'s own
+absent/permission/wrong-type path reasons, since none of Runtime's failures come from a user-typed path. Every
+call site above now routes through it with its own subject ("The runtime server", "This request", "The round
+history", "The recent sessions list"). This also surfaced and closed a second, related gap: a failed Create
+Session/Load Session whose server response is itself a *domain* error (not a thrown exception) resets
+`sessionId` to `undefined` (see `useRuntimeManager`'s own `createSession()`/`loadSession()`), which made
+`sessionReachable` false and left the session-workspace panel that renders `session.status === "error"`
+unmounted -- so that failure was previously never shown at all, not merely shown raw. The "Restore
+existing"/"New session" switcher panel now renders it directly. See
+`ProjectDashboardPage.runtimeWorkflow.test.tsx`'s "shows a subject-specific recovery message, never the raw
+backend text or a silent no-op, when Load Session fails outright" and "...instead of raw backend text when the
+runtime server itself fails to start" regressions, plus `runtimeActionError.test.ts` for the classifier itself.
 
 **Deployment**: unchanged since the frozen baseline in every respect that matters here -- still the one tab
 across the whole app that both retains a classic Stepper *and* already has an explicit "Outdated" `Alert`
@@ -282,13 +306,16 @@ shipped without either a confirmed live trigger or an honest way to prove it, pe
 | `OutcomeLibrariesTab.tsx` | New `compareOutdated` Outdated `Alert` on the Compare step | `ProjectDashboardPage.outcomeLibrariesWorkflow.test.tsx`: "marks a completed Compare as Outdated once the comparison selector changes..." |
 | `StakeEngineExportTab.tsx` | New `exportOutdated` Outdated `Alert` on Configure, mutually exclusive with the existing `validateOutdated` one | `ProjectDashboardPage.stakeEngineExportWorkflow.test.tsx`: "marks a completed Export (not Validate) as Outdated when only the output directory changes..." |
 | `RuntimeTab.tsx` | Load Session button's `disabled` condition now requires a non-blank (trimmed) "Session id" field, with a "Required to load an existing session" input description (previously a fail-open silent no-op, same shape as the Provably Fair Verify fix above) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "disables Load Session for a blank (or whitespace-only) session id, with inline guidance, and restores normal behavior once a session id is supplied" |
+| `RuntimeTab.tsx` | Every raw `ErrorState`/`session.message`/`recentSpinsError` site (Server start/restart/refresh, Create/Load Session, Spin/Retry, "Round history"/"Restore existing" recent-spins fetch) now routed through a new subject-specific `describeRuntimeActionError()` (mirrors `describePathActionError`'s "classify, never echo the raw text" shape, but for network/server failures); a failed Create/Load Session whose response is a domain error is also now actually rendered (it was previously invisible, since `sessionId` resets to `undefined` and unmounts the panel that used to render it) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "shows a subject-specific recovery message, never the raw backend text or a silent no-op, when Load Session fails outright"; "...instead of raw backend text when the runtime server itself fails to start"; `runtimeActionError.test.ts` for the classifier |
 
-Every fix above follows the exact lifecycle `f5c10bc` already established (`validateOutdated`/
-`selectOutdated`): a boolean set inside the existing `invalidate*()` function whenever the view being
-invalidated was not already idle, cleared at the start of the corresponding `run*()`, rendered as one
-`<Alert color="yellow" variant="light" icon={<IconAlertTriangle .../>}>` at the point where the invalidating
-field lives. No new mechanism was introduced; each gap was a narrow, mechanical extension of a pattern
-already reviewed and accepted for its sibling result in the same tab.
+Every `xxxOutdated` fix above (`configureOutdated`/`buildOutdated`/`compareOutdated`/`exportOutdated`) follows
+the exact lifecycle `f5c10bc` already established (`validateOutdated`/`selectOutdated`): a boolean set inside
+the existing `invalidate*()` function whenever the view being invalidated was not already idle, cleared at the
+start of the corresponding `run*()`, rendered as one `<Alert color="yellow" variant="light"
+icon={<IconAlertTriangle .../>}>` at the point where the invalidating field lives -- no new mechanism, each gap
+a narrow, mechanical extension of a pattern already reviewed and accepted for its sibling result in the same
+tab. The two Runtime fixes above are unrelated in shape (a `disabled`-guard fix and a raw-error-translation
+fix, respectively) and are described in full in Runtime's own section above.
 
 ## Deferred findings (documented, not corrected this step)
 

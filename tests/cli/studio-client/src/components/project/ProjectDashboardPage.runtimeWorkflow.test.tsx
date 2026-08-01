@@ -160,6 +160,57 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(screen.getByText(/Session sess-old.*500\.00/)).toBeInTheDocument();
     }, 60000);
 
+    it("shows a subject-specific recovery message, never the raw backend text or a silent no-op, when Load Session fails outright", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions/sess-bad": () => ({ok: true, status: 200, body: {status: "error", error: "Internal runtime session error."}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("radio", {name: "Restore existing"}));
+        await user.type(screen.getByLabelText("Session id"), "sess-bad");
+        await user.click(screen.getByRole("button", {name: "Load Session"}));
+
+        expect(
+            await screen.findByText("This request couldn't be completed. Try again, and check the Studio server logs if the problem persists."),
+        ).toBeInTheDocument();
+        expect(screen.queryByText("Internal runtime session error.")).not.toBeInTheDocument();
+        // Still recoverable in place -- Load Session stays right there to retry, not a dead end.
+        expect(screen.getByRole("button", {name: "Load Session"})).toBeInTheDocument();
+    }, 60000);
+
+    it("shows a subject-specific recovery message instead of raw backend text when the runtime server itself fails to start", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/start": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "failed", error: "EADDRINUSE: address already in use 127.0.0.1:4123"},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+
+        await user.click(screen.getByRole("button", {name: "Start"}));
+
+        expect(
+            await screen.findByText(
+                "The runtime server couldn't start -- the configured host/port is already in use. Choose a different port, or stop whatever else is using it, then try again.",
+            ),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/EADDRINUSE/)).not.toBeInTheDocument();
+    }, 60000);
+
     it("proves idempotent replay: retrying the last request returns the exact same result", async () => {
         const user = userEvent.setup();
         let spinCallCount = 0;
@@ -971,8 +1022,16 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         await user.click(await screen.findByRole("button", {name: "Spin"}));
         await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
 
+        // Still on the Runtime tab: its own "Round history" panel translates the fetch failure into a
+        // subject-specific recovery message -- never the raw "network down" text.
+        expect(
+            await screen.findByText("The round history couldn't be completed. Try again, and check the Studio server logs if the problem persists."),
+        ).toBeInTheDocument();
+
         await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
 
+        // The handoff lands on Replay & Debug, which reads the exact same recentSpinsError state through
+        // its own (untouched) rendering -- still the raw fetch error there, never the fallback.
         expect(await screen.findByText("network down")).toBeInTheDocument();
         expect(screen.queryByText("Round no longer available")).not.toBeInTheDocument();
         expect(screen.queryByText("Loading recent spins…")).not.toBeInTheDocument();
@@ -1070,7 +1129,10 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(within(section("Retry & Debug")).getByText(capturedRequestId as string)).toBeInTheDocument();
 
         releaseSecondCreate?.();
-        expect(await screen.findByText("Cannot create another session right now.")).toBeInTheDocument();
+        expect(
+            await screen.findByText("This request couldn't be completed. Try again, and check the Studio server logs if the problem persists."),
+        ).toBeInTheDocument();
+        expect(screen.queryByText("Cannot create another session right now.")).not.toBeInTheDocument();
 
         // Still no trace of the stale selection now that the failure has actually landed.
         expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
@@ -1092,7 +1154,10 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(within(section("Retry & Debug")).queryByText("req-older-decoy")).not.toBeInTheDocument();
 
         releaseLoad?.();
-        expect(await screen.findByText("Session not found.")).toBeInTheDocument();
+        expect(
+            await screen.findByText("This request couldn't be completed. Try again, and check the Studio server logs if the problem persists."),
+        ).toBeInTheDocument();
+        expect(screen.queryByText("Session not found.")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
         expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();
     }, 60000);
