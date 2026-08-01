@@ -19,6 +19,7 @@ import {
 } from "../../domain/interpret/Replay";
 import type {ReportListView} from "../../domain/interpret/Reports";
 import {describeRuntimeScreen, type RecentSpinsListView} from "../../domain/interpret/Runtime";
+import {describeReplayActionError} from "../../domain/replayActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
@@ -451,7 +452,7 @@ export function ReplayTab({
                                 Refresh
                             </Button>
                         </QuickActions>
-                        {listError && <ErrorState message={listError} />}
+                        {listError && <ErrorState message={describeReplayActionError("The replay list", listError)} />}
                         {listView.status === "empty" && <EmptyState message="No replays run yet." />}
                         {listView.status === "loaded" && (
                             <List listStyleType="none" spacing={4}>
@@ -500,7 +501,7 @@ export function ReplayTab({
                         </Button>
                     </QuickActions>
                     {recentSpins.status === "loading" && recentSpinsError === undefined && <LoadingState label="Loading recent spins…" />}
-                    {recentSpinsError && <ErrorState message={recentSpinsError} />}
+                    {recentSpinsError && <ErrorState message={describeReplayActionError("The spin list", recentSpinsError)} />}
                     {recentSpins.status === "empty" && (
                         <EmptyState message="No spins recorded yet in this Studio session — start the runtime and spin a session first." />
                     )}
@@ -575,7 +576,7 @@ export function ReplayTab({
                             Refresh
                         </Button>
                     </QuickActions>
-                    {recentRunsError && <ErrorState message={recentRunsError} />}
+                    {recentRunsError && <ErrorState message={describeReplayActionError("The simulation list", recentRunsError)} />}
                     {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
                     {recentRuns.status === "loaded" && (
                         <List listStyleType="none" spacing={4} mb="sm">
@@ -853,8 +854,19 @@ export function ReplayTab({
 
                             {jobLoaded && progress !== undefined && (
                                 <div>
-                                    {progress.status === "failed" && error === undefined && <ErrorState message={progress.error ?? "Replay failed."} />}
-                                    {error && <ErrorState message={error} />}
+                                    {progress.status === "failed" && error === undefined && (
+                                        <Alert color="red" variant="light" role="alert" title="Reproduce failed" mb="sm" style={{overflowWrap: "anywhere"}}>
+                                            <Text size="sm" mb="xs">
+                                                The replay session hit an error partway through -- most likely a bug in the game&apos;s own logic
+                                                triggered by this seed/round, not something wrong with Replay itself. &quot;Run again with the same
+                                                parameters&quot; below retries it as-is.
+                                            </Text>
+                                            <AdvancedDisclosure detail="server message">
+                                                <Text size="sm">{progress.error ?? "Replay failed."}</Text>
+                                            </AdvancedDisclosure>
+                                        </Alert>
+                                    )}
+                                    {error && <ErrorState message={describeReplayActionError("This replay request", error)} />}
                                     <Text size="sm" mb={4}>
                                         {progress.status} — {progress.completedRounds}/{progress.round} rounds
                                     </Text>
@@ -978,7 +990,7 @@ export function ReplayTab({
                         Refresh
                     </Button>
                 </QuickActions>
-                {listError && <ErrorState message={listError} />}
+                {listError && <ErrorState message={describeReplayActionError("The replay list", listError)} />}
                 {listView.status === "empty" && <EmptyState message="No replays run yet." />}
                 {listView.status === "loaded" && (
                     <List listStyleType="none" spacing={4}>

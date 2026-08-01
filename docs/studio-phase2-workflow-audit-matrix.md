@@ -31,7 +31,7 @@ handling; and **raw-error surfaces** (a caught exception's message shown with no
 | Raw Editor | nonlinear (no progress UI at all) | No | N/A | Load/Save (v3 update) |
 | Advanced Tools (3 forms) | nonlinear (independent forms) | No | N/A | Yes (v4 update) |
 | Open Project | nonlinear (2 independent paths) | No | N/A | Yes (v3 update, `OpenProjectForm`) |
-| Replay | nonlinear (source-choice picker, not a wizard) | **No** -- replaced by a `SegmentedControl` source picker (`P2-POLISH-12`) | N/A -- staleness prevented structurally (state reset on source switch), not flagged after the fact | **No** (raw passthrough throughout) |
+| Replay | nonlinear (source-choice picker, not a wizard) | **No** -- replaced by a `SegmentedControl` source picker (`P2-POLISH-12`) | N/A -- staleness prevented structurally (state reset on source switch), not flagged after the fact | **Yes this step** -- own `describeReplayActionError` helper (list/spin-list/simulation-list fetches and a failed run/cancel request); a replay job that fails mid-run keeps its hand-authored explanation primary with the raw server message behind `AdvancedDisclosure`, same convention as Runtime's `[P2-POLISH-25]` correction; the two already-specific client-authored `expected` messages ("That's not valid JSON.", "That replay has no stored result to compare against.") are left as-is, matching the "don't reclassify an already-specific domain message" exception this document applies elsewhere |
 | Runtime | cyclic (persistent session workspace) | **No** -- replaced by an always-visible multi-section workspace (`P2-POLISH-16`) | N/A -- staleness prevented structurally (selection cleared on every invalidating action) | **Yes this step** -- own `describeRuntimeActionError` helper, not `describePathActionError` (Runtime failures are server/network, not a user-typed path); covers server start/restart/refresh, session create/load, and spin/retry; "blocked"/"conflict" get their own hand-authored `RecoveryNotice` copy, with the raw server message moved behind `AdvancedDisclosure` (`[P2-POLISH-25]` correction round, see below) |
 | Deployment | partially linear | **Yes**, 6 steps, `onStepClick`, `aria-current` | **Yes** -- `preflightOutdated` `Alert` | **Yes** |
 | Export & Deploy | nonlinear (stateless picker shell) | Never had one (`P2-POLISH-20`) | N/A -- no mutable result state | No (`targetsError` raw) |
@@ -152,23 +152,55 @@ conflict messages.
 
 ## Replay, Runtime, Export & Deploy (post-redesign, not in the frozen baseline)
 
-**Replay** (`P2-POLISH-12` through `P2-POLISH-15`): the Stepper described in `studio-phase2-inventory.md` no
-longer exists. `ReplayTab.tsx` is a `SegmentedControl` source-choice picker (Seed & Round / Replay Artifact /
-Spin / Simulation), each with its own independent load control; nothing is gated behind a click, matching the
-file's own doc comment disclaiming the old Stepper entirely. Staleness is prevented structurally --
-`switchSource()` resets every per-source selection, and out-of-order responses are discarded via a
-`loadedForMethod`/monotonic-id pattern -- rather than flagged after the fact. Disabled actions:
-"Validate & load" (blank paste box), "Reproduce" (`describeReplayReproducibility` judged unreproducible for
-the Replay Artifact source only), "Download JSON" fallback. Every error surface in this file is raw
-(`ErrorState message={...}` with no `describePathActionError` translation) -- `listError`,
-`expected.message`, `progress.error`, `recentSpinsError`, `recentRunsError`. One evidence-only gap worth a
-closer look in a future step: `ReplayTab` is the one sibling of Runtime/Deployment/Outcome Libraries that is
-**not** given `key={projectKey}` in `ProjectDashboardPage.tsx`, despite those three siblings' own explicit
-doc comments naming that pattern as necessary for their own local state to survive a project switch
-correctly; only the page-owned `expected` state (not Replay's own local `findMethod`/`selectedSpin`/etc.) has
-direct project-switch fixture coverage (`replayWorkflow.test.tsx`'s "clears the 'expected artifact' state
-when the project changes mid-load"). Not fixed here -- outside the audit's Certification/Provably Fair scope
-and would need its own dedicated fixture to verify first.
+**Replay** (`P2-POLISH-12` through `P2-POLISH-15`, raw-error passthrough fixed `[P2-POLISH-25]` correction
+round): the Stepper described in `studio-phase2-inventory.md` no longer exists. `ReplayTab.tsx` is a
+`SegmentedControl` source-choice picker (Seed & Round / Replay Artifact / Spin / Simulation), each with its
+own independent load control; nothing is gated behind a click, matching the file's own doc comment disclaiming
+the old Stepper entirely. Staleness is prevented structurally -- `switchSource()` resets every per-source
+selection, and out-of-order responses are discarded via a `loadedForMethod`/monotonic-id pattern -- rather
+than flagged after the fact. Disabled actions: "Validate & load" (blank paste box), "Reproduce"
+(`describeReplayReproducibility` judged unreproducible for the Replay Artifact source only), "Download JSON"
+fallback. One evidence-only gap worth a closer look in a future step: `ReplayTab` is the one sibling of
+Runtime/Deployment/Outcome Libraries that is **not** given `key={projectKey}` in `ProjectDashboardPage.tsx`,
+despite those three siblings' own explicit doc comments naming that pattern as necessary for their own local
+state to survive a project switch correctly; only the page-owned `expected` state (not Replay's own local
+`findMethod`/`selectedSpin`/etc.) has direct project-switch fixture coverage (`replayWorkflow.test.tsx`'s
+"clears the 'expected artifact' state when the project changes mid-load"). Not fixed here -- outside the
+audit's Certification/Provably Fair scope and would need its own dedicated fixture to verify first.
+
+**Replay raw-error passthrough, fixed this step (`P2-POLISH-25` correction):** this document previously
+recorded every error surface in `ReplayTab.tsx` as raw (`ErrorState message={...}` with no translation) --
+`listError`, `expected.message`, `progress.error`, `recentSpinsError`, `recentRunsError` -- and approving the
+step without closing that gap was flagged on review as premature (the "subject-specific explanation/
+remediation for every error" requirement covers every Studio surface touched by this document's own audit
+methodology, not only Runtime). Fixed via a new `domain/replayActionError.ts`,
+`describeReplayActionError(subject, message)` -- same "classify a raw message into a stable reason
+(network/schema/not-found/other), then subject-specific status + remediation copy, never echo the raw text
+back" shape `describePathActionError`/`describeRuntimeActionError` already establish. `listError` (both its
+"Or pick from recent replays" and bottom "Recent replays" renderings), `recentSpinsError`, `recentRunsError`,
+and the top-level run/cancel `error` are now routed through it at render time in `ReplayTab.tsx`, each with
+its own subject ("The replay list", "The spin list", "The simulation list", "This replay request") -- the same
+per-tab-render-time wrapping convention `RuntimeTab.tsx` already uses for its own copy of `recentSpinsError`,
+so the two tabs' independent subject-specific wrappings of the *same* underlying state never conflict.
+`progress.error` (a replay job's own execution failure, e.g. a bug in the game's logic hit mid-replay -- see
+`StudioReplayExecutionService.fail()`) gets the same treatment Runtime's blocked/conflict fix uses: a
+hand-authored primary explanation, with the raw server message moved behind the same `AdvancedDisclosure`
+convention rather than dropped, since a developer chasing the exact thrown error still needs it.
+`expected.message` (the Replay Artifact source's Validate & load / Reproduce-and-compare failures) is
+deliberately **not** wrapped in `ReplayTab.tsx` itself -- two of its three possible values
+("That's not valid JSON.", "That replay has no stored result to compare against.") are already
+hand-authored, client-specific copy set directly by `ProjectDashboardPage.tsx` (never a raw exception), the
+same "already-specific domain message, don't reclassify" exception this document applies to Provably Fair's
+`invalid`/`build-error` states and Stake Engine Export's hand-built conflict message. Only the third,
+genuinely-raw case -- an `errorMessage(error)` catch around `getReplay`/`inspectReplayArtifact` -- is
+translated, and it's translated at its source in `ProjectDashboardPage.tsx`'s `onCompareStored`/
+`onLoadExpectedFromPaste` catch blocks (subjects "The stored replay"/"The pasted artifact") rather than at
+render time, since `ExpectedReplayState` has no separate status to distinguish it from the two hand-authored
+cases the way Provably Fair's `FairnessGenerateRequestView` does. See
+`ProjectDashboardPage.replayWorkflow.test.tsx`'s "shows a subject-specific recovery message..." (spin list,
+simulation list, run failure) and "shows a hand-authored explanation for a replay job that fails mid-run..."
+regressions, plus the updated "blocks reproducing a pasted artifact..." and "stays put and shows an error..."
+tests (now asserting the translated text, and that the raw server text is no longer the primary message).
 
 **Runtime** (`P2-POLISH-16`, Load Session's blank-id guard added `[P2-POLISH-25]`): also no longer a
 Stepper -- an always-visible, persistent multi-section workspace (Server / Current session / Inspect round /

@@ -479,7 +479,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(dimensionRow("Visible screen:").textContent).toMatch(/match/);
     }, 60000);
 
-    it("blocks reproducing a pasted artifact with an invalid outer round/seed", async () => {
+    it("blocks reproducing a pasted artifact with an invalid outer round/seed, showing a subject-specific message instead of the raw server text", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -494,7 +494,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({round: 0}))}});
         await user.click(screen.getByRole("button", {name: "Validate & load"}));
 
-        await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent('"round" must be a positive integer.'));
+        await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("The pasted artifact was rejected as invalid."));
+        expect(screen.getByRole("alert")).not.toHaveTextContent('"round" must be a positive integer.');
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     }, 60000);
 
@@ -1108,7 +1109,9 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.click(within(recentReplaysSection).getByRole("button", {name: "Inspect"}));
 
-        expect(await within(recentReplaysSection).findByText("That replay no longer exists.")).toBeInTheDocument();
+        // Subject-specific recovery copy, not the raw "That replay no longer exists." server text.
+        expect(await within(recentReplaysSection).findByText(/The replay list could no longer be found\./)).toBeInTheDocument();
+        expect(within(recentReplaysSection).queryByText("That replay no longer exists.")).not.toBeInTheDocument();
         // Still on Recreate from seed with nothing loaded -- the failed fetch never marked anything loaded.
         expect(screen.getByRole("radio", {name: "Recreate from seed"})).toBeInTheDocument();
         expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
@@ -1367,5 +1370,112 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: /session sess-live/}));
         expect(screen.getByText("Live spin")).toBeInTheDocument();
         expect(screen.queryByText("Pre-generated outcome library")).not.toBeInTheDocument();
+    }, 60000);
+
+    it("shows a subject-specific recovery message, not the raw server text, when the recent spins list fails to load", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime/spins": () => ({ok: false, status: 500, body: {error: "spins.json is corrupted on disk"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+
+        expect(await screen.findByText(/The spin list couldn't be completed\./)).toBeInTheDocument();
+        expect(screen.queryByText("spins.json is corrupted on disk")).not.toBeInTheDocument();
+    }, 60000);
+
+    it("shows a subject-specific recovery message, not the raw server text, when the recent simulations list fails to load", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: false, status: 500, body: {error: "reports index is corrupted on disk"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+        await user.click(screen.getByRole("radio", {name: "Recent Simulation"}));
+
+        expect(await screen.findByText(/The simulation list couldn't be completed\./)).toBeInTheDocument();
+        expect(screen.queryByText("reports index is corrupted on disk")).not.toBeInTheDocument();
+    }, 60000);
+
+    // A replay job that fails mid-run (StudioReplayExecutionService.fail()) carries the underlying game's
+    // own thrown error text -- internal enough (a stack-trace-flavored message, possibly naming an
+    // internal method) that it shouldn't be the first thing a user sees. The hand-authored explanation is
+    // the primary message; the raw text stays reachable, not discarded, behind the same AdvancedDisclosure
+    // convention the Runtime tab's own blocked/conflict fix uses.
+    it("shows a hand-authored explanation for a replay job that fails mid-run, with the raw server message tucked behind a disclosure", async () => {
+        const user = userEvent.setup();
+        let pollCount = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    return {ok: true, status: 200, body: jobFor("job-crash", {status: "queued", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+            "/api/project/replays/job-crash": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-crash", {status: "running", completedRounds: 0})};
+                }
+                return {
+                    ok: true,
+                    status: 200,
+                    body: jobFor("job-crash", {
+                        status: "failed",
+                        descriptor: undefined,
+                        error: "TypeError: Cannot read properties of undefined (reading 'reelStrips')",
+                    }),
+                };
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+
+        const alert = await screen.findByRole("alert", undefined, {timeout: 15000});
+        expect(alert).toHaveTextContent("Reproduce failed");
+        expect(alert).toHaveTextContent(/bug in the game's own logic/);
+
+        // The raw message is present in the DOM (not dropped) but hidden until Advanced details opens --
+        // same "mounted but hidden via the `hidden` attribute" convention AdvancedDisclosure always uses.
+        expect(screen.getByText(/Cannot read properties of undefined/)).not.toBeVisible();
+        await user.click(screen.getByText(/Show advanced details/));
+        expect(screen.getByText(/Cannot read properties of undefined/)).toBeVisible();
+
+        // Retry is still offered right below -- the recovery action this notice's own copy points to.
+        expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument();
+    }, 60000);
+
+    it("shows a subject-specific recovery message, not the raw network error, when starting a replay itself fails outright", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": (call: FakeCall) => {
+                if (call.init?.method === "POST") {
+                    return {ok: false, status: 500, body: {error: "ECONNREFUSED talking to the game sandbox"}};
+                }
+                return {ok: true, status: 200, body: []};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+
+        expect(await screen.findByText(/This replay request couldn't reach the Studio server\./)).toBeInTheDocument();
+        expect(screen.queryByText(/ECONNREFUSED talking to the game sandbox/)).not.toBeInTheDocument();
     }, 60000);
 });
