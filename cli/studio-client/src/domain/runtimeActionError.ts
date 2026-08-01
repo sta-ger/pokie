@@ -6,7 +6,7 @@
 // `{status: "error", message: body.error}`, or StudioRuntimeManager.fail()'s own caught-exception text
 // for a runtime that failed to start). Classified into a stable reason so a caller's remediation copy
 // stays consistent across every Runtime call site instead of echoing the raw text back.
-export type RuntimeActionErrorReason = "network" | "port-in-use" | "schema" | "other";
+export type RuntimeActionErrorReason = "network" | "port-in-use" | "schema" | "stale-library" | "other";
 
 export function classifyRuntimeActionErrorReason(message: string): RuntimeActionErrorReason {
     if ((/failed to fetch|networkerror|econnrefused|enotfound/i).test(message)) {
@@ -17,6 +17,9 @@ export function classifyRuntimeActionErrorReason(message: string): RuntimeAction
     }
     if ((/is required\.|must be a non-empty string|is not valid json|unexpected token .*json/i).test(message)) {
         return "schema";
+    }
+    if ((/changed since you selected it/i).test(message)) {
+        return "stale-library";
     }
     return "other";
 }
@@ -30,6 +33,10 @@ const RUNTIME_ACTION_ISSUE_COPY: Record<RuntimeActionErrorReason, (subject: stri
         remediation: "Choose a different port, or stop whatever else is using it, then try again.",
     }),
     schema: (subject) => ({status: `${subject} was rejected as invalid.`, remediation: "Check the values entered and try again."}),
+    "stale-library": (subject) => ({
+        status: `${subject} refused to start against a pre-generated outcome library that changed since you selected it in Outcome Libraries.`,
+        remediation: "Re-select it in Outcome Libraries and try again.",
+    }),
     other: (subject) => ({
         status: `${subject} couldn't be completed.`,
         remediation: "Try again, and check the Studio server logs if the problem persists.",
