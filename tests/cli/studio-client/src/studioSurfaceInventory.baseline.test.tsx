@@ -472,12 +472,7 @@ describe("Scoped path-action error remediation baseline", () => {
         const target = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
-            "/api/project/inspect": () => ({
-                ok: true,
-                status: 200,
-                body: {packageRoot: "/games/my-slot", valid: true, generated: true, buildInfo: {source: "blueprint.json"}},
-            }),
-            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", blueprint: {betModes: [{id: "base"}]}}}),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
             "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: [target]}),
             "/api/project/deployment/runs": () => ({ok: false, status: 500, body: {error: 'Could not read "./outcomes/base.json": ENOENT: no such file or directory'}}),
