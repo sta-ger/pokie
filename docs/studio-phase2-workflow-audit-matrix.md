@@ -1,6 +1,15 @@
 # POKIE Studio Phase 2 cross-cutting workflow audit matrix (v1)
 
-**Status:** committed as of `[P2-POLISH-25]` (second correction round, 2026-08-01), audited against the
+**Status:** committed as of `[P2-POLISH-26]` (2026-08-01, commit `6f9e837`), which closes the one raw-error
+surface this document's own `[P2-POLISH-25]` sweep did not reach -- `BlueprintValidationPanel`'s "error"
+status, shared by Design & Build (`/home/design`) and Raw Editor (`/home/advanced`'s non-guided
+`BlueprintEditorPage` instance). See "P2-POLISH-26: closing the `BlueprintValidationPanel` raw-error/
+non-alert gap" below for the full route/state/action walkthrough and evidence, and
+`docs/studio-phase2-final-verification-report.md` for the final Phase 2 verification report (required
+evidence inventory, critical-scenario rechecks, resolved-findings/backlog summary, and repository status).
+No raw-error-passthrough finding remains open anywhere in this document's scope as of `[P2-POLISH-26]`.
+
+**Status (history):** committed as of `[P2-POLISH-25]` (second correction round, 2026-08-01), audited against the
 implementation as it stood at commit `f5c10bc` ("surface stale Validate/Select results as Outdated across
 Certification, Outcome Libraries and Stake Engine Export tabs") plus the further corrections this document's
 own commit adds on top. The first correction round closed the two raw-error-passthrough findings the original
@@ -35,12 +44,47 @@ freshness** (does an upstream edit leave a now-stale result displayed with no in
 **keyboard / `aria-current`** behavior; **persistence** across tab/project switch; **inferable/empty-input**
 handling; and **raw-error surfaces** (a caught exception's message shown with no added remediation).
 
+## Evidence conventions
+
+Every finding and fix in this document (this section and every one before it) is backed by a **route/state/
+action walkthrough**, cited the same way throughout: the React Router path the workflow lives on (`/home/:tab`
+or `/project/:tab`, per `routes.tsx`), the workflow's state immediately before the action (idle / loading /
+a specific result status such as `ok`/`error`/`blocked`/`conflict`), the user action taken (a button click, a
+field edit, a paste), and the resulting DOM state -- which role/text/attribute appears, and which raw text
+does not. That walkthrough is executed for real, not merely described: every citation of the shape "see
+`Foo.test.tsx`'s '...' fixture" is a React Testing Library test that mounts the actual routed app
+(`renderRoutedApp`, a real `MemoryRouter` at the cited path) over a mocked `fetch` seam and asserts on the
+real rendered DOM (`getByRole`, `toHaveTextContent`, `queryByText(...).not.toBeInTheDocument()`), not a
+shallow render or a hand-inspected source excerpt. This is this project's own established convention for
+"runtime evidence" -- `docs/studio-phase2-inventory.md`'s own "Assumptions" section states it explicitly
+("'Executable fixture' in this document always means a test that renders through the real routed app ..., not
+a shallow/unit render") -- and this document has followed the same rule from its own first version.
+
+**On screenshots specifically:** the implementation sandbox this document (and every `P2-POLISH-*` step before
+it) was produced in has no browser-automation or screenshot-capture pipeline -- no Playwright/Puppeteer
+install, no headless browser (confirmed by grepping `node_modules` and `package.json`; see
+`docs/studio-phase2-final-verification-report.md`'s own "Verification methodology and known limitations"
+section). No file in this repository's history, across every `P2-POLISH-*` step, has ever committed an image
+file as evidence -- every prior round's "evidence" is the same route/state/action/DOM-assertion shape
+described above. This document keeps that convention rather than inventing image artifacts that couldn't
+actually have been captured: the jsdom-rendered DOM assertions cited throughout (a real component tree, real
+Mantine `role="alert"`/`aria-current`/`disabled` output, real translated copy) are the verifiable substitute
+for a screenshot that this project's test suite actually provides, and are treated as equivalent evidence for
+every finding in this document.
+
+**On roles:** Studio (`cli/studio-client`) is a single-operator local tool -- there is no authentication,
+session, or permission/role system anywhere in `cli/studio-client/src` (confirmed by grepping for
+`userRole`/`permission`/`isAdmin`-shaped code; none exists). Every workflow below is reachable by the one
+implicit "Studio operator" role; "required roles" for this document's audit purposes means "every route and
+control reachable in the app," which the Scope paragraph above already enumerates in full, not a matrix of
+distinct user roles that don't exist in this codebase.
+
 ## Classification matrix
 
 | Workflow | Classification | Stepper retained | Outdated-result indicator | `describePathActionError` used |
 |---|---|---|---|---|
-| Design & Build (guided) | linear (read-only `StepProgressList`, no `onStepClick`) | No (see below) | N/A (idle-on-edit, no stale flash) | Load/Save/Build (v3 update) |
-| Raw Editor | nonlinear (no progress UI at all) | No | N/A | Load/Save (v3 update) |
+| Design & Build (guided) | linear (read-only `StepProgressList`, no `onStepClick`) | No (see below) | N/A (idle-on-edit, no stale flash) | Load/Save/Build/**Validate** (`[P2-POLISH-26]` update) |
+| Raw Editor | nonlinear (no progress UI at all) | No | N/A | Load/Save/**Validate** (`[P2-POLISH-26]` update) |
 | Advanced Tools (3 forms) | nonlinear (independent forms) | No | N/A | Yes (v4 update) |
 | Open Project | nonlinear (2 independent paths) | No | N/A | Yes (v3 update, `OpenProjectForm`) |
 | Replay | nonlinear (source-choice picker, not a wizard) | **No** -- replaced by a `SegmentedControl` source picker (`P2-POLISH-12`) | N/A -- staleness prevented structurally (state reset on source switch), not flagged after the fact | **Yes this step** -- own `describeReplayActionError` helper (list/spin-list/simulation-list fetches and a failed run/cancel request); a replay job that fails mid-run keeps its hand-authored explanation primary with the raw server message behind `AdvancedDisclosure`, same convention as Runtime's `[P2-POLISH-25]` correction; the two already-specific client-authored `expected` messages ("That's not valid JSON.", "That replay has no stored result to compare against.") are left as-is, matching the "don't reclassify an already-specific domain message" exception this document applies elsewhere |
@@ -462,6 +506,57 @@ gets -- worth closing for consistency with the pattern the rest of that effect a
 shipped without either a confirmed live trigger or an honest way to prove it, per this correction round's own
 "implement only verified in-scope corrections" instruction.
 
+## P2-POLISH-26: closing the `BlueprintValidationPanel` raw-error/non-alert gap
+
+**Route:** `/home/design` (Design & Build, guided `BlueprintEditorPage` instance) and `/home/advanced` (Raw
+Editor, the non-guided `BlueprintEditorPage` instance reached from Advanced Tools -- both share the exact same
+`BlueprintValidationPanel` component, mounted at `BlueprintEditorPage.tsx:539`, so the fix and its evidence
+apply identically to both routes).
+
+**Prior state, and the finding:** `docs/studio-phase2-inventory.md`'s "Deferred unknowns" #6 documented, from
+source alone, that `BlueprintValidationPanel`'s `"error"` status (the `POST /api/home/blueprints/validate`
+request itself failing outright -- a network exception, not a domain validation result) rendered as a plain
+Mantine `<Text>`, not through `ErrorState`/`role="alert"` at all -- the one raw-error surface in the whole
+Studio audit (this document and `studio-phase2-inventory.md` combined) that wasn't even wrapped in an
+`Alert`, let alone translated. That gap was carried forward, undecided, through every `[P2-POLISH-25]` round
+of this document without being closed, since this document's own `[P2-POLISH-25]` sweep audited every *tab*
+component's raw-error surfaces but `BlueprintValidationPanel` sits under Design & Build/Raw Editor, which
+(per this document's own header) are out of this document's frozen-baseline scope and were never re-audited
+here.
+
+**Action and resulting state (evidence):** clicking "Validate" while the validate request rejects (a network
+exception, e.g. `fetch` itself throwing) now renders `<ErrorState message={describePathActionError("This
+validation request", view.message)} />` -- the same `describePathActionError` treatment
+`MechanicsEditorTab.tsx` already uses for the identical endpoint's identical network-exception catch (see
+this document's own Mechanics Editor section above) -- instead of the raw exception text in a plain,
+non-alert `<Text>`. Verified end to end by
+`tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.validation.test.tsx`'s "shows a
+subject-specific recovery message, never the raw backend text, when the validation request itself fails
+outright (not a domain validation result)": it renders the real routed app at `/home/design`, rejects the
+validate `fetch` call with `new Error("Failed to fetch")`, clicks "Validate", then asserts (a)
+`screen.findByRole("alert")` resolves (proving a real `role="alert"` element now exists, closing the
+accessibility gap), (b) that alert's text is the translated copy ("This validation request could not be
+completed. Try again, and check the Studio server logs if the problem persists."), and (c) the raw
+`"Failed to fetch"` text is absent from the document (`queryByText(...).not.toBeInTheDocument()`) -- so the
+fix is proven both for what now appears and for what no longer does. The `"invalid"`/`"ok"` statuses (the
+plain-`<Text>` summary line for a completed validation result, not the request-failure case) are unchanged --
+they were never the accessibility gap, since a domain validation result showing warnings/errors via the
+adjacent `IssueList` component was never raw exception text.
+
+**Classification-matrix impact:** Design & Build and Raw Editor's `describePathActionError used` column
+(above) now reads "Load/Save/Build/Validate" and "Load/Save/Validate" respectively -- both tabs are fully
+routed through the same classifier for every one of their raw-error surfaces, closing the last exception
+`docs/studio-phase2-inventory.md` itself called out ("the one raw-error case in this whole document that
+isn't even wrapped in an `Alert`"). No other finding was opened or closed in this pass: this correction round
+is scoped narrowly to the one verified Phase 2/release-blocking gap named above, per its own "implement only
+verified in-scope corrections" instruction -- no unrelated Design & Build/Raw Editor behavior was touched.
+
+## Verified corrections implemented in P2-POLISH-26
+
+| Tab | Fix | Regression test |
+|---|---|---|
+| `BlueprintValidationPanel.tsx` (shared by Design & Build `/home/design` and Raw Editor `/home/advanced`) | The Validate request's `"error"` status now renders through `ErrorState`/`describePathActionError("This validation request", ...)` instead of a plain, non-`role="alert"` `<Text>` with raw exception text -- closes `docs/studio-phase2-inventory.md`'s "Deferred unknowns" #6 | `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.validation.test.tsx`: "shows a subject-specific recovery message, never the raw backend text, when the validation request itself fails outright (not a domain validation result)" |
+
 ## Verified corrections implemented this step
 
 | Tab | Fix | Regression test |
@@ -522,3 +617,13 @@ Recorded so a future step doesn't have to rediscover them, same convention
    shared `targetsError` state -- via a new `domain/projectActionError.ts`, the fourth `describe*ActionError`
    helper alongside `describePathActionError`/`describeReplayActionError`/`describeRuntimeActionError`. No
    raw-error-passthrough finding remains open anywhere in this document's audited scope.
+7. **`BlueprintValidationPanel`'s raw-error/non-alert Validate-request finding, fixed `[P2-POLISH-26]`:** see
+   its own section above ("P2-POLISH-26: closing the `BlueprintValidationPanel` raw-error/non-alert gap").
+   Closes `docs/studio-phase2-inventory.md`'s "Deferred unknowns" #6 as well.
+
+Two findings remain genuinely open as non-blocking backlog, both documented (not exercised by an executable
+fixture) in `docs/studio-phase2-inventory.md` rather than this document, and untouched by `[P2-POLISH-26]`
+since neither was named as a verified Phase 2/release blocker for this step: its own "Deferred unknowns" #1
+(Outcome Libraries' six evidence-only `describePathActionError` call sites) and #3 (Stake Engine Export's
+non-monotonic Stepper re-locking gap) -- see `docs/studio-phase2-final-verification-report.md`'s "Non-blocking
+backlog" section for the consolidated list across both documents.
