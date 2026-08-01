@@ -14,6 +14,7 @@ const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: numb
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+    "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -69,7 +70,7 @@ async function goToStakeEngineExportTab(user: ReturnType<typeof userEvent.setup>
 
 async function fillConfigureStep(user: ReturnType<typeof userEvent.setup>, libraryPath: string): Promise<void> {
     await user.type(screen.getByLabelText("Mode name"), "base");
-    await user.type(screen.getByLabelText("Outcome library path"), libraryPath);
+    await user.type(screen.getByLabelText("Source: canonical outcome library"), libraryPath);
     await user.click(screen.getByRole("button", {name: "Continue to Preview"}));
 }
 
@@ -133,6 +134,33 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
         expect(await screen.findByText("Failed")).toBeInTheDocument();
         expect(screen.getByText(/not representable in Stake units/)).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Continue to Export"})).not.toBeInTheDocument();
+    });
+
+    it("offers the Outcome Libraries hub recovery action for an Invalid source, and it navigates to that tab", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/stakeengine/validate": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "load-error", error: 'mode "base": library is corrupted and unreadable.'},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToStakeEngineExportTab(user);
+        await fillConfigureStep(user, "./outcomes/base.json");
+
+        await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
+        await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
+        expect(await screen.findByText(/could not be completed/)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: /Source, modes & output/i}));
+        expect(await screen.findByText("Invalid")).toBeInTheDocument();
+        const recoveryButton = screen.getByRole("button", {name: "Generate or pick from the Outcome Libraries hub"});
+
+        await user.click(recoveryButton);
+        expect(await screen.findByRole("button", {name: /Generate.*From the current build/})).toBeInTheDocument();
     });
 
     it("returns an overwritable conflict for a directory recognized as a prior export, and succeeds once the user chooses Overwrite", async () => {

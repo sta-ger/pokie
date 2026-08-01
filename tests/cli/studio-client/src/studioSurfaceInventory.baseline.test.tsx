@@ -372,7 +372,7 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         expect(loadButton).not.toBeDisabled();
     });
 
-    it("Stake Engine Export's Configure step: outDir is inferable (a real, non-blank 'stakeengine' initial value, not a placeholder) -- Mode name/Outcome library path stay genuinely non-inferable placeholders", async () => {
+    it("Stake Engine Export's Configure step: outDir is inferable (a real, non-blank 'stakeengine' initial value, not a placeholder) -- Mode name/Source canonical outcome library stay genuinely non-inferable placeholders", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
         renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
@@ -381,20 +381,20 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         // [P2-POLISH-04]: outDir's own default output directory is a real code-backed convention (this
         // tab's own state, mirrored nowhere else) -- it renders as an actual initial *value*, so its
         // former "./stakeengine" placeholder (structurally unreachable, since the field is never blank)
-        // was removed rather than left as dead/misleading markup. Mode name and Outcome library path have
-        // no such convention anywhere in the CLI (no command derives/writes a per-mode-name library path
-        // -- see docs/studio-phase2-inventory.md's own v5 update) -- genuinely un-inferable, so they
-        // correctly keep their illustrative placeholders.
+        // was removed rather than left as dead/misleading markup. Mode name and the source canonical
+        // outcome library have no such convention anywhere in the CLI (no command derives/writes a
+        // per-mode-name library path -- see docs/studio-phase2-inventory.md's own v5 update) --
+        // genuinely un-inferable, so they correctly keep their illustrative placeholders.
         const outDirInput = screen.getByLabelText("Output directory") as HTMLInputElement;
         expect(outDirInput.value).toBe("stakeengine");
         expect(outDirInput).not.toHaveAttribute("placeholder");
         expect(screen.getByLabelText("Mode name")).toHaveAttribute("placeholder", "base");
-        expect(screen.getByLabelText("Outcome library path")).toHaveAttribute("placeholder", "./outcomes/base.json");
+        expect(screen.getByLabelText("Source: canonical outcome library")).toHaveAttribute("placeholder", "./outcomes/base.json");
 
         const continueButton = screen.getByRole("button", {name: "Continue to Preview"});
         expect(continueButton).toBeDisabled();
         await user.type(screen.getByLabelText("Mode name"), "base");
-        await user.type(screen.getByLabelText("Outcome library path"), "./outcomes/base.json");
+        await user.type(screen.getByLabelText("Source: canonical outcome library"), "./outcomes/base.json");
         expect(continueButton).not.toBeDisabled();
     });
 });
@@ -522,7 +522,7 @@ describe("Scoped path-action error remediation baseline", () => {
         await screen.findByRole("heading", {name: "My Slot"});
 
         await user.type(screen.getByLabelText("Mode name"), "base");
-        await user.type(screen.getByLabelText("Outcome library path"), "./outcomes/missing.json");
+        await user.type(screen.getByLabelText("Source: canonical outcome library"), "./outcomes/missing.json");
         await user.click(screen.getByRole("button", {name: "Continue to Preview"}));
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
         await user.click(screen.getByRole("button", {name: "Run diagnostics"}));

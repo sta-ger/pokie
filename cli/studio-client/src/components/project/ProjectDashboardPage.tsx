@@ -977,7 +977,11 @@ export function ProjectDashboardPage() {
                     {activeTab === "stakeEngineExport" && (
                         // Same reasoning as OutcomeLibrariesTab's own key above -- StakeEngineExportTab
                         // owns all of its own stepper state locally (no page-level hook).
-                        <StakeEngineExportTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
+                        <StakeEngineExportTab
+                            key={projectKey ?? "no-project"}
+                            projectRoot={projectKey}
+                            onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
+                        />
                     )}
                 </div>
             )}

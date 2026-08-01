@@ -4116,12 +4116,12 @@ describe("StudioServer", () => {
             const homeBaseUrl = await startServerForProject(undefined);
 
             const validateResponse = await post(`${homeBaseUrl}/api/project/stakeengine/validate`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
             });
             expect(validateResponse.status).toBe(409);
 
             const exportResponse = await post(`${homeBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
             expect(exportResponse.status).toBe(409);
@@ -4135,7 +4135,7 @@ describe("StudioServer", () => {
             expect((missingModes.body as {error: string}).error).toMatch(/modes/);
 
             const missingOutDir = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
             });
             expect(missingOutDir.status).toBe(400);
             expect((missingOutDir.body as {error: string}).error).toMatch(/outDir/);
@@ -4146,7 +4146,7 @@ describe("StudioServer", () => {
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const validateResponse = await post(`${projectBaseUrl}/api/project/stakeengine/validate`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
             });
             expect(validateResponse.status).toBe(200);
             const validateView = validateResponse.body as {status: string; errors: unknown[]; modes: {modeName: string}[]};
@@ -4155,7 +4155,7 @@ describe("StudioServer", () => {
             expect(validateView.modes.map((mode) => mode.modeName)).toEqual(["base"]);
 
             const exportResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
             expect(exportResponse.status).toBe(201);
@@ -4172,7 +4172,7 @@ describe("StudioServer", () => {
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const conflictResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
             expect(conflictResponse.status).toBe(409);
@@ -4192,7 +4192,7 @@ describe("StudioServer", () => {
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
                 overwrite: true,
             });
@@ -4210,14 +4210,14 @@ describe("StudioServer", () => {
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const firstExport = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
             expect(firstExport.status).toBe(201);
 
             writeLibrary("bonus.json", {libraryId: "bonus-lib", betMode: "bonus", stake: 1});
             const conflictResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "bonus", libraryPath: "bonus.json", cost: 1}],
+                modes: [{modeName: "bonus", librarySelector: {kind: "json", path: "bonus.json"}, cost: 1}],
                 outDir: "stakeengine",
             });
             expect(conflictResponse.status).toBe(409);
@@ -4225,7 +4225,7 @@ describe("StudioServer", () => {
             expect(conflictView.overwritable).toBe(true);
 
             const overwriteResponse = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "bonus", libraryPath: "bonus.json", cost: 1}],
+                modes: [{modeName: "bonus", librarySelector: {kind: "json", path: "bonus.json"}, cost: 1}],
                 outDir: "stakeengine",
                 overwrite: true,
             });
@@ -4240,7 +4240,7 @@ describe("StudioServer", () => {
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/stakeengine/export`, {
-                modes: [{modeName: "base", libraryPath: "base.json", cost: 1 / 3}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1 / 3}],
                 outDir: "stakeengine",
             });
 
@@ -4254,7 +4254,7 @@ describe("StudioServer", () => {
             const projectBaseUrl = await startServerForProject(stakeProjectRoot);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/stakeengine/validate`, {
-                modes: [{modeName: "base", libraryPath: "../outside.json", cost: 1}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "../outside.json"}, cost: 1}],
             });
 
             expect(status).toBe(200);

@@ -141,7 +141,7 @@ describe("Contract baseline: Deployment (target/registry/preflight/deploy) vs. S
         expect("publish" in deployment).toBe(true);
 
         const exportRequest = validateStakeEngineExportRequest({
-            modes: [{modeName: "base", libraryPath: "base.json", cost: 1}],
+            modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}],
             outDir: "out",
         });
         expect("targetId" in exportRequest).toBe(false);
@@ -149,9 +149,9 @@ describe("Contract baseline: Deployment (target/registry/preflight/deploy) vs. S
     });
 
     it("Export (unlike Deployment) requires an outDir and defaults overwrite to false -- Deployment has no output-directory concept at all", () => {
-        const exportRequest = validateStakeEngineExportRequest({modes: [{modeName: "base", libraryPath: "base.json", cost: 1}], outDir: "out"});
-        expect(exportRequest).toEqual({modes: [{modeName: "base", libraryPath: "base.json", cost: 1}], outDir: "out", overwrite: false});
-        expect(() => validateStakeEngineExportRequest({modes: [{modeName: "base", libraryPath: "base.json", cost: 1}]})).toThrow(
+        const exportRequest = validateStakeEngineExportRequest({modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], outDir: "out"});
+        expect(exportRequest).toEqual({modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}], outDir: "out", overwrite: false});
+        expect(() => validateStakeEngineExportRequest({modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]})).toThrow(
             '"outDir" must be a non-empty string.',
         );
         expect(
@@ -163,14 +163,14 @@ describe("Contract baseline: Deployment (target/registry/preflight/deploy) vs. S
         expect(() =>
             validateDeploymentRunRequest({targetId: "t", modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]}),
         ).not.toThrow();
-        expect(() => validateStakeEngineExportRequest({modes: [{modeName: "base", libraryPath: "base.json"}], outDir: "out"})).toThrow(
+        expect(() => validateStakeEngineExportRequest({modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}], outDir: "out"})).toThrow(
             "modes[0].cost must be a number.",
         );
     });
 
     it("the Validate-only Stake Engine Export request carries just modes -- no outDir/overwrite, since it never writes anything", () => {
-        const validateOnly = validateStakeEngineExportValidateRequest({modes: [{modeName: "base", libraryPath: "base.json", cost: 1}]});
-        expect(validateOnly).toEqual({modes: [{modeName: "base", libraryPath: "base.json", cost: 1}]});
+        const validateOnly = validateStakeEngineExportValidateRequest({modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]});
+        expect(validateOnly).toEqual({modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]});
         expect("outDir" in validateOnly).toBe(false);
         expect("overwrite" in validateOnly).toBe(false);
     });
@@ -216,9 +216,9 @@ describe("Contract baseline: Outcome Libraries selector, and the missing package
             }),
         ).not.toThrow();
         expect(() =>
-            validateStakeEngineExportRequest({modes: [{modeName: noSuchMode, libraryPath: "base.json", cost: 1}], outDir: "out"}),
+            validateStakeEngineExportRequest({modes: [{modeName: noSuchMode, librarySelector: {kind: "json", path: "base.json"}, cost: 1}], outDir: "out"}),
         ).not.toThrow();
-        expect(() => validateStakeEngineExportValidateRequest({modes: [{modeName: noSuchMode, libraryPath: "base.json", cost: 1}]})).not.toThrow();
+        expect(() => validateStakeEngineExportValidateRequest({modes: [{modeName: noSuchMode, librarySelector: {kind: "json", path: "base.json"}, cost: 1}]})).not.toThrow();
 
         // Nor does the outcome-library selector itself: a bundle/stakeengine selector's own `modeName`
         // is just a lookup key resolved lazily against the bundle/export directory on disk, never

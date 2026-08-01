@@ -86,6 +86,16 @@ canonical decimal form of a safe non-negative integer (`"0"`, `"1"`, `"2"`, ... 
 and simply parses it. `weight` has no unit conversion (Stake's own weight column is just an integer, not scaled
 by `cost`) but must likewise already be a whole number.
 
+This means a library produced by the canonical outcome-library generator (`generateExactWeightedOutcomeLibrary`,
+whose own ids are content-addressed — see [Weighted Outcome Library](weighted-outcome-library.md)) never satisfies
+this exporter/validator on its own, and by design: neither invents that mapping itself. The Project Dashboard's own
+Stake Engine Export integration (`StudioStakeEngineExportService`) is where that gap is actually bridged, one layer
+above this exporter — every resolved library is deterministically relabeled into Stake's own integer id convention
+(each outcome's own weight/artifact/provenance untouched, only `id` changes) before it ever reaches
+`StakeEngineExportValidator`/`StakeEngineExporter`, so a real generated library still resolves through to a real
+Stake export (see `canonicalizeOutcomeIdsForStakeEngine`). A library whose ids are already Stake-compatible is left
+alone.
+
 ## Events: a generic, mechanic-agnostic mapping
 
 Stake's own math-sdk doesn't standardize an event schema beyond "a list of dictionary objects" — every game
