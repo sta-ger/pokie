@@ -160,10 +160,10 @@ migration responsibility actually reaches that surface*, not by proximity to thi
 version marker above in the same commit as whichever step changes one of these facts:
 
 - **CLI package-only inputs (§1)** is three distinct future concerns, not one: the **resolver** that would
-  relax which commands require an already-loadable `packageRoot` → `P3-POLISH-02`; the **materialization**
+  relax which commands require an already-loadable `packageRoot` → `P3-POLISH-03`; the **materialization**
   path a relaxed command falls back to once it no longer requires one on disk (in-memory or implicit-build)
-  → `P3-POLISH-03`; and the resulting **CLI** surface/help-text/dispatcher change once 02–03 land →
-  `P3-POLISH-04`.
+  → `P3-POLISH-08`; and the resulting **capability**/CLI surface/help-text/dispatcher change once the resolver
+  and materialization land → `P3-POLISH-09`.
 - **Build/create/init semantics and the generated-package file seam (§2–§3)** is three distinct tools, not
   one: shared target-directory **preparation** semantics across `create`/`init`/`build` → `P3-POLISH-05`;
   the **creator** (`pokie create` / `GamePackageCreator`) → `P3-POLISH-06`; and **create-init**
@@ -171,16 +171,15 @@ version marker above in the same commit as whichever step changes one of these f
   `P3-POLISH-07`.
 - **Studio routes (§4)** — the Home vs. project-workspace split (`/` + `/home/:tab` vs. `/project` +
   `/project/:tab`) is its own multi-step migration, not a single step: Studio Home migration and workspace
-  migration together → `P3-POLISH-08`–`P3-POLISH-21`.
+  migration together → `P3-POLISH-10`–`P3-POLISH-19`.
 - **PAR sheet (§5)** → `P3-POLISH-22`.
-- **Outcome libraries (§5)** → `P3-POLISH-23`.
-- **Stake Engine (§5)** → `P3-POLISH-24`, the Build-Export step family that §6's adapter-boundary owner
-  step also belongs to.
-- **Adapter boundary (§6)** → `P3-POLISH-25` — the Build-Export family's own SDK-boundary step; already
-  resolved by explicit decision (v1.3 item 7), so this owner step is only ever a documentation update, not a
-  behavior change, unless it explicitly reopens the decision itself.
+- **Outcome libraries and Stake Engine (§5)** → `P3-POLISH-21`.
+- **Adapter boundary (§6)** → `P3-POLISH-20`, the Build-Export step family that §5's Outcome-library/Stake-
+  Engine owner step (`P3-POLISH-21`) also belongs to; already resolved by explicit decision (v1.3 item 7), so
+  this owner step is only ever a documentation update, not a behavior change, unless it explicitly reopens the
+  decision itself.
 
 Naming these owners here reserves *which* later step in the `P3-POLISH-*` series is accountable for each
 surface so a removal never lands without an explicit, reviewable decision against this baseline; it does not
-itself schedule *when* that step runs, and none of `P3-POLISH-02`–`P3-POLISH-25` make any change, migration,
+itself schedule *when* that step runs, and none of `P3-POLISH-02`–`P3-POLISH-24` make any change, migration,
 or removal as part of this step — that work, if any, belongs entirely to the numbered step once it runs.
