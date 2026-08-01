@@ -1,14 +1,18 @@
 import {DeploymentRunRequestInput, validateDeploymentRunRequest} from "../../../../cli/studio/deployment/validateDeploymentRunRequest.js";
 
 function validInput(overrides: DeploymentRunRequestInput = {}): DeploymentRunRequestInput {
-    return {targetId: "local-json-example", modes: [{modeName: "base", libraryPath: "base.json"}], ...overrides};
+    return {targetId: "local-json-example", modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}], ...overrides};
 }
 
 describe("validateDeploymentRunRequest", () => {
     it("accepts a well-formed request and defaults publish to false", () => {
         const validated = validateDeploymentRunRequest(validInput());
 
-        expect(validated).toEqual({targetId: "local-json-example", modes: [{modeName: "base", libraryPath: "base.json"}], publish: false});
+        expect(validated).toEqual({
+            targetId: "local-json-example",
+            modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
+            publish: false,
+        });
     });
 
     it("accepts an explicit publish value", () => {
@@ -19,10 +23,23 @@ describe("validateDeploymentRunRequest", () => {
 
     it("accepts multiple modes", () => {
         const validated = validateDeploymentRunRequest(
-            validInput({modes: [{modeName: "base", libraryPath: "base.json"}, {modeName: "bonus", libraryPath: "bonus.json"}]}),
+            validInput({
+                modes: [
+                    {modeName: "base", librarySelector: {kind: "json", path: "base.json"}},
+                    {modeName: "bonus", librarySelector: {kind: "json", path: "bonus.json"}},
+                ],
+            }),
         );
 
         expect(validated.modes).toHaveLength(2);
+    });
+
+    it("accepts a bundle librarySelector", () => {
+        const validated = validateDeploymentRunRequest(
+            validInput({modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]}),
+        );
+
+        expect(validated.modes).toEqual([{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]);
     });
 
     it("throws for a missing targetId", () => {
@@ -50,22 +67,52 @@ describe("validateDeploymentRunRequest", () => {
     });
 
     it("throws when a mode entry has a missing modeName", () => {
-        expect(() => validateDeploymentRunRequest(validInput({modes: [{libraryPath: "base.json"}]}))).toThrow("modes[0].modeName must be a non-empty string.");
-    });
-
-    it("throws when a mode entry has an empty modeName", () => {
-        expect(() => validateDeploymentRunRequest(validInput({modes: [{modeName: "  ", libraryPath: "base.json"}]}))).toThrow(
+        expect(() => validateDeploymentRunRequest(validInput({modes: [{librarySelector: {kind: "json", path: "base.json"}}]}))).toThrow(
             "modes[0].modeName must be a non-empty string.",
         );
     });
 
-    it("throws when a mode entry has a missing libraryPath", () => {
-        expect(() => validateDeploymentRunRequest(validInput({modes: [{modeName: "base"}]}))).toThrow("modes[0].libraryPath must be a non-empty string.");
+    it("throws when a mode entry has an empty modeName", () => {
+        expect(() =>
+            validateDeploymentRunRequest(validInput({modes: [{modeName: "  ", librarySelector: {kind: "json", path: "base.json"}}]})),
+        ).toThrow("modes[0].modeName must be a non-empty string.");
+    });
+
+    it("throws when a mode entry has a missing librarySelector", () => {
+        expect(() => validateDeploymentRunRequest(validInput({modes: [{modeName: "base"}]}))).toThrow(
+            '"modes[0].librarySelector.kind" must be one of "json", "bundle", "stakeengine".',
+        );
+    });
+
+    it("throws when a mode entry's librarySelector is missing its path", () => {
+        expect(() => validateDeploymentRunRequest(validInput({modes: [{modeName: "base", librarySelector: {kind: "json"}}]}))).toThrow(
+            '"modes[0].librarySelector.path" must be a non-empty string.',
+        );
+    });
+
+    it("throws when two modes share the same modeName", () => {
+        expect(() =>
+            validateDeploymentRunRequest(
+                validInput({
+                    modes: [
+                        {modeName: "base", librarySelector: {kind: "json", path: "base.json"}},
+                        {modeName: "base", librarySelector: {kind: "json", path: "other.json"}},
+                    ],
+                }),
+            ),
+        ).toThrow('"base" was given more than once in "modes" — each mode may only be deployed once per run.');
     });
 
     it("reports the correct index for a malformed mode past the first", () => {
         expect(() =>
-            validateDeploymentRunRequest(validInput({modes: [{modeName: "base", libraryPath: "base.json"}, {modeName: "", libraryPath: "bonus.json"}]})),
+            validateDeploymentRunRequest(
+                validInput({
+                    modes: [
+                        {modeName: "base", librarySelector: {kind: "json", path: "base.json"}},
+                        {modeName: "", librarySelector: {kind: "json", path: "bonus.json"}},
+                    ],
+                }),
+            ),
         ).toThrow("modes[1].modeName must be a non-empty string.");
     });
 

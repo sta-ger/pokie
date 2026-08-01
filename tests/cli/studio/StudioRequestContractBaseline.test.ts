@@ -128,8 +128,15 @@ describe("Contract baseline: Runtime retry/debug", () => {
 
 describe("Contract baseline: Deployment (target/registry/preflight/deploy) vs. Stake Engine Export", () => {
     it("Deployment carries a targetId (looked up against the target registry) and a publish flag (false=preflight, true=deploy) -- Stake Engine Export has neither", () => {
-        const deployment = validateDeploymentRunRequest({targetId: "local-json-example", modes: [{modeName: "base", libraryPath: "base.json"}]});
-        expect(deployment).toEqual({targetId: "local-json-example", modes: [{modeName: "base", libraryPath: "base.json"}], publish: false});
+        const deployment = validateDeploymentRunRequest({
+            targetId: "local-json-example",
+            modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
+        });
+        expect(deployment).toEqual({
+            targetId: "local-json-example",
+            modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
+            publish: false,
+        });
         expect("targetId" in deployment).toBe(true);
         expect("publish" in deployment).toBe(true);
 
@@ -147,11 +154,15 @@ describe("Contract baseline: Deployment (target/registry/preflight/deploy) vs. S
         expect(() => validateStakeEngineExportRequest({modes: [{modeName: "base", libraryPath: "base.json", cost: 1}]})).toThrow(
             '"outDir" must be a non-empty string.',
         );
-        expect("outDir" in validateDeploymentRunRequest({targetId: "t", modes: [{modeName: "base", libraryPath: "base.json"}]})).toBe(false);
+        expect(
+            "outDir" in validateDeploymentRunRequest({targetId: "t", modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}]}),
+        ).toBe(false);
     });
 
     it("Export's own mode rows carry a per-mode 'cost' (Stake's payout-multiplier unit conversion) that Deployment's modes never need", () => {
-        expect(() => validateDeploymentRunRequest({targetId: "t", modes: [{modeName: "base", libraryPath: "base.json", cost: 1}]})).not.toThrow();
+        expect(() =>
+            validateDeploymentRunRequest({targetId: "t", modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}, cost: 1}]}),
+        ).not.toThrow();
         expect(() => validateStakeEngineExportRequest({modes: [{modeName: "base", libraryPath: "base.json"}], outDir: "out"})).toThrow(
             "modes[0].cost must be a number.",
         );
@@ -199,7 +210,10 @@ describe("Contract baseline: Outcome Libraries selector, and the missing package
         const noSuchMode = "totally-unrelated-mode-name-not-in-any-package";
 
         expect(() =>
-            validateDeploymentRunRequest({targetId: "local-json-example", modes: [{modeName: noSuchMode, libraryPath: "base.json"}]}),
+            validateDeploymentRunRequest({
+                targetId: "local-json-example",
+                modes: [{modeName: noSuchMode, librarySelector: {kind: "json", path: "base.json"}}],
+            }),
         ).not.toThrow();
         expect(() =>
             validateStakeEngineExportRequest({modes: [{modeName: noSuchMode, libraryPath: "base.json", cost: 1}], outDir: "out"}),

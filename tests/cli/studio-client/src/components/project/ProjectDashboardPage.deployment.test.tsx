@@ -64,6 +64,12 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         // Configure -- no artificial Select-target click needed.
         await screen.findByRole("button", {name: "Check compatibility & preview"});
 
+        // The project isn't built from a tracked source blueprint (see BASE_ROUTES' own inspect route),
+        // so the mode row falls back to free-text Mode name/Outcome library path fields -- both must be
+        // filled in before "Check compatibility & preview" is anything but a blocked no-op.
+        await user.type(screen.getByLabelText("Mode name"), "base");
+        await user.type(screen.getByLabelText("Outcome library path"), "base.json");
+
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         // A second click while the first request is still in flight must be a silent no-op (the
         // DeploymentRunTracker refuses a concurrent beginRun() while inFlight is true), not a second
@@ -71,10 +77,11 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         expect(runRequests).toHaveLength(1);
 
-        // Editing a mode while the run is still in flight invalidates its token (bumping the tracker's
-        // revision) without starting a second request -- beginRun() still refuses while inFlight, exactly
-        // like the double-click above. The original request is now stale before it has even resolved.
-        await user.type(screen.getByLabelText("Mode name"), "base");
+        // Editing a mode's own library path while the run is still in flight invalidates its token
+        // (bumping the tracker's revision) without starting a second request -- beginRun() still refuses
+        // while inFlight, exactly like the double-click above. The original request is now stale before it
+        // has even resolved.
+        await user.type(screen.getByLabelText("Outcome library path"), "-edited");
         expect(runRequests).toHaveLength(1);
 
         // The now-stale response arrives -- isCurrent(token) must reject it, so nothing renders, and the

@@ -3523,7 +3523,7 @@ describe("StudioServer", () => {
 
             const runResponse = await post(`${homeBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
             });
             expect(runResponse.status).toBe(409);
             expect(runResponse.body).toEqual({error: "No active project."});
@@ -3548,7 +3548,7 @@ describe("StudioServer", () => {
         it("rejects a malformed run request body with 400 and never touches the SDK", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
 
-            const emptyTargetId = await post(`${projectBaseUrl}/api/project/deployment/runs`, {targetId: "", modes: [{modeName: "base", libraryPath: "base.json"}]});
+            const emptyTargetId = await post(`${projectBaseUrl}/api/project/deployment/runs`, {targetId: "", modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}]});
             expect(emptyTargetId.status).toBe(400);
             expect((emptyTargetId.body as {error: string}).error).toMatch(/targetId/);
 
@@ -3562,7 +3562,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "does-not-exist",
-                modes: [{modeName: "base", libraryPath: "does-not-exist-either.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "does-not-exist-either.json"}}],
             });
 
             expect(status).toBe(404);
@@ -3574,7 +3574,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "missing.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "missing.json"}}],
             });
 
             expect(status).toBe(400);
@@ -3586,7 +3586,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "../outside.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "../outside.json"}}],
             });
 
             expect(status).toBe(400);
@@ -3599,7 +3599,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
             });
 
             expect(status).toBe(400);
@@ -3612,7 +3612,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
                 publish: false,
             });
 
@@ -3643,7 +3643,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
                 publish: true,
             });
 
@@ -3664,7 +3664,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
                 publish: true,
             });
 
@@ -3682,7 +3682,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
                 publish: true,
             });
 

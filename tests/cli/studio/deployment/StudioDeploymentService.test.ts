@@ -5,13 +5,54 @@ import {
     ExternalDeploymentProjectedModeInput,
     ExternalDeploymentTarget,
     ExternalRoundProjector,
+    OutcomeLibraryBundleManifest,
+    OutcomeLibraryBundleModeIndex,
+    OutcomeLibraryBundleReading,
     RoundArtifact,
     RoundArtifactProvenance,
     WeightedOutcomeLibrary,
+    WeightedOutcomeLibraryAnalyzer,
     WinEvaluationResult,
 } from "pokie";
 import {StudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
 import type {ValidatedDeploymentRunRequest} from "../../../../cli/studio/deployment/validateDeploymentRunRequest.js";
+
+class FakeBundleReader implements OutcomeLibraryBundleReading<string> {
+    private readonly manifest: OutcomeLibraryBundleManifest;
+    private readonly library: WeightedOutcomeLibrary<string>;
+
+    constructor(manifest: OutcomeLibraryBundleManifest, library: WeightedOutcomeLibrary<string>) {
+        this.manifest = manifest;
+        this.library = library;
+    }
+
+    public readManifest(): Promise<OutcomeLibraryBundleManifest> {
+        return Promise.resolve(this.manifest);
+    }
+
+    public readModeIndex(): Promise<OutcomeLibraryBundleModeIndex> {
+        throw new Error("not used in these tests");
+    }
+
+    public iterateModeOutcomes(): AsyncIterable<never> {
+        throw new Error("not used in these tests");
+    }
+
+    public readOutcomeById(): Promise<undefined> {
+        return Promise.resolve(undefined);
+    }
+
+    public drawOutcome(): Promise<never> {
+        throw new Error("not used in these tests");
+    }
+
+    public readLibrary(_bundleDir: string, modeName: string): Promise<WeightedOutcomeLibrary<string>> {
+        if (!this.manifest.modes.some((mode) => mode.modeName === modeName)) {
+            throw new Error(`unknown mode "${modeName}"`);
+        }
+        return Promise.resolve(this.library);
+    }
+}
 
 class NoOpRoundProjector implements ExternalRoundProjector {
     public project(_artifact: RoundArtifact): Record<string, never> {
@@ -53,7 +94,7 @@ function testLibrary(): WeightedOutcomeLibrary {
 }
 
 function runRequest(overrides: Partial<ValidatedDeploymentRunRequest> = {}): ValidatedDeploymentRunRequest {
-    return {targetId: "local-json-example", modes: [{modeName: "base", libraryPath: "base.json"}], publish: false, ...overrides};
+    return {targetId: "local-json-example", modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}], publish: false, ...overrides};
 }
 
 // These tests use a fake, never-created-on-disk "/project" as the project root, paired with an
@@ -100,7 +141,7 @@ describe("StudioDeploymentService", () => {
         };
         const service = new StudioDeploymentService(undefined, () => stubTarget({artifactGenerator: {generate}}), readFile, identityRealpath);
 
-        await service.run("/project", runRequest({modes: [{modeName: "base", libraryPath: "base.json"}]}));
+        await service.run("/project", runRequest({modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}]}));
 
         expect(generate).not.toHaveBeenCalled();
     });
@@ -165,5 +206,94 @@ describe("StudioDeploymentService", () => {
         const content = result.status === "ok" ? result.view.generation?.artifacts[0]?.content : undefined;
         expect(content).toBe('{"fromBuffer":true}');
         expect(typeof content).toBe("string");
+    });
+
+    it("deploys a mode whose librarySelector points at a bundle, not only a flat JSON file", async () => {
+        const library = testLibrary();
+        const analyzer = new WeightedOutcomeLibraryAnalyzer<string>();
+        const manifest: OutcomeLibraryBundleManifest = {
+            schemaVersion: 1,
+            generatedBy: "pokie outcomelibrary build",
+            pokieVersion: "1.3.0",
+            generatedAt: "2026-01-01T00:00:00.000Z",
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            artifactPokieVersion: "1.3.0",
+            modes: [
+                {
+                    modeName: "base",
+                    betMode: "base",
+                    stake: 1,
+                    libraryId: "lib-bundle",
+                    libraryHash: "sha256:whatever",
+                    outcomeCount: 1,
+                    totalWeight: 1,
+                    analysis: analyzer.analyze(library),
+                    indexFile: "index_base.json",
+                    outcomesFile: "outcomes_base.jsonl",
+                },
+            ],
+            files: ["manifest.json", "index_base.json", "outcomes_base.jsonl"],
+        };
+        const service = new StudioDeploymentService(
+            undefined,
+            () => stubTarget(),
+            () => {
+                throw new Error("readFile should not be used for a bundle selector");
+            },
+            identityRealpath,
+            new FakeBundleReader(manifest, library),
+        );
+
+        const result = await service.run(
+            "/project",
+            runRequest({modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]}),
+        );
+
+        expect(result.status).toBe("ok");
+        expect(result.status === "ok" && result.view.compatibilityIssues).toEqual([]);
+    });
+
+    it("returns load-error, prefixed with the mode name, when a bundle librarySelector's mode isn't in the bundle", async () => {
+        const library = testLibrary();
+        const analyzer = new WeightedOutcomeLibraryAnalyzer<string>();
+        const manifest: OutcomeLibraryBundleManifest = {
+            schemaVersion: 1,
+            generatedBy: "pokie outcomelibrary build",
+            pokieVersion: "1.3.0",
+            generatedAt: "2026-01-01T00:00:00.000Z",
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            artifactPokieVersion: "1.3.0",
+            modes: [
+                {
+                    modeName: "bonus",
+                    betMode: "bonus",
+                    stake: 1,
+                    libraryId: "lib-bundle",
+                    libraryHash: "sha256:whatever",
+                    outcomeCount: 1,
+                    totalWeight: 1,
+                    analysis: analyzer.analyze(library),
+                    indexFile: "index_bonus.json",
+                    outcomesFile: "outcomes_bonus.jsonl",
+                },
+            ],
+            files: ["manifest.json", "index_bonus.json", "outcomes_bonus.jsonl"],
+        };
+        const service = new StudioDeploymentService(
+            undefined,
+            () => stubTarget(),
+            () => "",
+            identityRealpath,
+            new FakeBundleReader(manifest, library),
+        );
+
+        const result = await service.run(
+            "/project",
+            runRequest({modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]}),
+        );
+
+        expect(result.status).toBe("load-error");
+        expect(result.status === "load-error" && result.error).toContain('mode "base"');
+        expect(result.status === "load-error" && result.error).toContain('unknown mode "base"');
     });
 });

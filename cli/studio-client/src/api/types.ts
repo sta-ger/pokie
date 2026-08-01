@@ -583,10 +583,13 @@ export type StudioDeploymentTargetSummary = {
     capabilities: string[];
 };
 
-// One mode row of a POST /api/project/deployment/runs request body.
+// One mode row of a POST /api/project/deployment/runs request body — "librarySelector" is the same
+// OutcomeLibrarySelector (see below) the Outcome Libraries tab's own Select/Compare/Generate steps
+// already use, so a deployment mode can point at a plain JSON file, one mode of a canonical
+// outcome-library bundle the registry discovered, or one mode of a Stake Engine export.
 export type StudioDeploymentModeInput = {
     modeName: string;
-    libraryPath: string;
+    librarySelector: OutcomeLibrarySelector;
 };
 
 // One generated artifact as sent back from POST /api/project/deployment/runs — see

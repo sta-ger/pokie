@@ -61,7 +61,8 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
             result.current.selectTarget(TARGET);
         });
         act(() => {
-            result.current.updateMode(0, {modeName: "base", libraryPath: "lib.json"});
+            result.current.setModeName(0, "base");
+            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
         });
         expect(result.current.selectedTarget).toEqual(TARGET);
 
@@ -75,7 +76,7 @@ describe("useDeploymentManager - resetForProjectSwitch", () => {
         });
 
         expect(result.current.selectedTarget).toBeUndefined();
-        expect(result.current.modes).toEqual([{modeName: "", libraryPath: ""}]);
+        expect(result.current.modes).toEqual([{modeName: "", librarySelector: {kind: "json", path: ""}}]);
         expect(result.current.targetsView).toEqual({status: "loading"});
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.runError).toBeUndefined();
@@ -474,5 +475,142 @@ describe("useDeploymentManager - run() clears the previous result immediately", 
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.runResult).not.toBe(firstResult);
         expect(result.current.runLoading).toBe(true);
+    });
+});
+
+function projectModesFetch(modeIds: string[]): FetchLike {
+    return (url) => {
+        const [path] = url.split("?");
+        if (path === "/api/project/inspect") {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({packageRoot: "/project", valid: true, generated: true, buildInfo: {source: "blueprint.json"}}),
+            });
+        }
+        if (path === "/api/home/blueprints/load") {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({status: "ok", blueprint: {betModes: modeIds.map((id) => ({id}))}}),
+            });
+        }
+        if (path === "/api/project/outcome-libraries/registry") {
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"})});
+        }
+        return Promise.reject(new Error(`unexpected fetch ${url}`));
+    };
+}
+
+describe("useDeploymentManager - refreshProjectModesAndRegistry auto-fills a lone build mode", () => {
+    it("fills the sole build mode into an otherwise-untouched first row", async () => {
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(projectModesFetch(["base"]))});
+
+        act(() => {
+            result.current.refreshProjectModesAndRegistry();
+        });
+
+        await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base"]}));
+        expect(result.current.modes).toEqual([{modeName: "base", librarySelector: {kind: "json", path: ""}}]);
+    });
+
+    it("leaves multiple build modes for the user to pick, rather than guessing", async () => {
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(projectModesFetch(["base", "bonus"]))});
+
+        act(() => {
+            result.current.refreshProjectModesAndRegistry();
+        });
+
+        await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base", "bonus"]}));
+        expect(result.current.modes).toEqual([{modeName: "", librarySelector: {kind: "json", path: ""}}]);
+    });
+});
+
+describe("useDeploymentManager - setModeName discovers a registry-compatible library", () => {
+    it("sets a bundle librarySelector when the registry reports a compatible library for the picked mode", async () => {
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/outcome-libraries/registry") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () =>
+                        Promise.resolve({
+                            status: "ok",
+                            bundleDir: "outcomelibrary",
+                            buildStatus: "compatible",
+                            game: {id: "g", name: "G", version: "1.0.0"},
+                            currentGame: {id: "g", name: "G", version: "1.0.0"},
+                            artifactPokieVersion: "1.0.0",
+                            currentPokieVersion: "1.0.0",
+                            generatedAt: "2026-01-01T00:00:00.000Z",
+                            modes: [
+                                {modeName: "base", libraryId: "lib", bundleDir: "outcomelibrary", buildStatus: "compatible", outcomeCount: 1, totalWeight: 1, rtp: 0.95, hash: "h"},
+                            ],
+                        }),
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refreshProjectModesAndRegistry();
+        });
+        await waitFor(() => expect(result.current.registryView?.status).toBe("ok"));
+
+        act(() => {
+            result.current.setModeName(0, "base");
+        });
+
+        expect(result.current.modes).toEqual([{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]);
+    });
+});
+
+describe("useDeploymentManager - addMode respects the target's own multiMode capability", () => {
+    it("does nothing when the selected target doesn't declare multiMode", async () => {
+        const multiTarget = {id: "single-mode-target", version: "1.0.0", requirements: {}, capabilities: []};
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([multiTarget])});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refreshTargets();
+        });
+        await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
+
+        act(() => {
+            result.current.addMode();
+        });
+
+        expect(result.current.modes).toHaveLength(1);
+    });
+
+    it("adds a row when the selected target declares multiMode", async () => {
+        const multiTarget = {id: "multi-mode-target", version: "1.0.0", requirements: {}, capabilities: ["multiMode"]};
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([multiTarget])});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refreshTargets();
+        });
+        await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
+
+        act(() => {
+            result.current.addMode();
+        });
+
+        expect(result.current.modes).toHaveLength(2);
     });
 });

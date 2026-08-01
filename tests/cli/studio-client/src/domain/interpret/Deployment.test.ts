@@ -1,18 +1,48 @@
 import {
+    canAddDeploymentMode,
+    classifyDeploymentModeRow,
     collectStageIssues,
+    computeDeploymentConfigureBlockers,
+    describeDeploymentModeRowStatus,
     describeDeploymentOutcome,
     describeDeploymentRunResult,
     describeDeploymentTargetsList,
     describeTargetCapability,
     describeTargetRequirements,
+    discoverDeploymentModeLibrarySelector,
+    remainingDeploymentModeChoices,
     splitIssuesBySeverity,
+    usedDeploymentModeNames,
 } from "../../../../../../cli/studio-client/src/domain/interpret/Deployment";
 import type {
+    StudioDeploymentModeInput,
     StudioDeploymentRunView,
     StudioDeploymentStageSummary,
     StudioDeploymentTargetSummary,
+    StudioOutcomeLibraryRegistryView,
     ValidationIssue,
 } from "../../../../../../cli/studio-client/src/api/types";
+
+function mode(modeName: string, librarySelector: StudioDeploymentModeInput["librarySelector"] = {kind: "json", path: ""}): StudioDeploymentModeInput {
+    return {modeName, librarySelector};
+}
+
+function registryOk(overrides: Partial<Extract<StudioOutcomeLibraryRegistryView, {status: "ok"; buildStatus: "compatible"}>> = {}): StudioOutcomeLibraryRegistryView {
+    return {
+        status: "ok",
+        bundleDir: "outcomelibrary",
+        buildStatus: "compatible",
+        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+        currentGame: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+        artifactPokieVersion: "1.0.0",
+        currentPokieVersion: "1.0.0",
+        generatedAt: "2026-01-01T00:00:00.000Z",
+        modes: [],
+        ...overrides,
+    };
+}
+
+const MISSING_REGISTRY: StudioOutcomeLibraryRegistryView = {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"};
 
 function target(overrides: Partial<StudioDeploymentTargetSummary> = {}): StudioDeploymentTargetSummary {
     return {id: "local-json-example", version: "1.0.0", requirements: {}, capabilities: [], ...overrides};
@@ -201,5 +231,125 @@ describe("describeTargetRequirements", () => {
 
     it("does not mention symbolAlphabet when it is 'any' (the permissive default)", () => {
         expect(describeTargetRequirements({symbolAlphabet: "any"})).toEqual(["No special requirements -- accepts any compatible outcome library."]);
+    });
+});
+
+describe("usedDeploymentModeNames", () => {
+    it("collects every non-blank mode name except the excluded row's own", () => {
+        const rows = [mode("base"), mode("bonus"), mode("")];
+        expect(usedDeploymentModeNames(rows, 0)).toEqual(new Set(["bonus"]));
+        expect(usedDeploymentModeNames(rows, -1)).toEqual(new Set(["base", "bonus"]));
+    });
+});
+
+describe("remainingDeploymentModeChoices", () => {
+    it("is undefined when the project's own build modes aren't known yet", () => {
+        expect(remainingDeploymentModeChoices(undefined, [mode("base")], 0)).toBeUndefined();
+    });
+
+    it("excludes modes already claimed by another row, but keeps this row's own current choice", () => {
+        const rows = [mode("base"), mode("bonus")];
+        expect(remainingDeploymentModeChoices(["base", "bonus", "superbonus"], rows, 0)).toEqual(["base", "superbonus"]);
+        expect(remainingDeploymentModeChoices(["base", "bonus", "superbonus"], rows, 1)).toEqual(["bonus", "superbonus"]);
+    });
+});
+
+describe("canAddDeploymentMode", () => {
+    it("is false once one mode already exists and the target doesn't declare multiMode", () => {
+        expect(canAddDeploymentMode(["base", "bonus"], [mode("base")], false)).toBe(false);
+    });
+
+    it("is true for a multiMode target with a remaining build mode", () => {
+        expect(canAddDeploymentMode(["base", "bonus"], [mode("base")], true)).toBe(true);
+    });
+
+    it("is false for a multiMode target once every build mode is already used", () => {
+        expect(canAddDeploymentMode(["base", "bonus"], [mode("base"), mode("bonus")], true)).toBe(false);
+    });
+
+    it("falls back to true when build modes aren't known yet, still respecting multiMode", () => {
+        expect(canAddDeploymentMode(undefined, [mode("base")], true)).toBe(true);
+        expect(canAddDeploymentMode(undefined, [mode("base")], false)).toBe(false);
+    });
+});
+
+describe("discoverDeploymentModeLibrarySelector", () => {
+    it("returns a bundle selector for a mode the registry reports compatible", () => {
+        const registry = registryOk({modes: [{modeName: "base", libraryId: "lib", bundleDir: "outcomelibrary", buildStatus: "compatible", outcomeCount: 1, totalWeight: 1, rtp: 0.95, hash: "h"}]});
+        expect(discoverDeploymentModeLibrarySelector("base", registry)).toEqual({kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"});
+    });
+
+    it("returns undefined for a mode the registry only reports as stale/wrong", () => {
+        const registry = registryOk({modes: [{modeName: "base", libraryId: "lib", bundleDir: "outcomelibrary", buildStatus: "wrong", outcomeCount: 1, totalWeight: 1, rtp: 0.95, hash: "h"}]});
+        expect(discoverDeploymentModeLibrarySelector("base", registry)).toBeUndefined();
+    });
+
+    it("returns undefined when the registry has nothing built at all", () => {
+        expect(discoverDeploymentModeLibrarySelector("base", MISSING_REGISTRY)).toBeUndefined();
+    });
+});
+
+describe("classifyDeploymentModeRow", () => {
+    it("is unselected for a blank mode name", () => {
+        expect(classifyDeploymentModeRow(mode(""), 0, [mode("")], MISSING_REGISTRY)).toBe("unselected");
+    });
+
+    it("is duplicate when another row already claims the same mode name", () => {
+        const rows = [mode("base", {kind: "json", path: "a.json"}), mode("base", {kind: "json", path: "b.json"})];
+        expect(classifyDeploymentModeRow(rows[0], 0, rows, MISSING_REGISTRY)).toBe("duplicate");
+    });
+
+    it("is missing when a mode is picked but the librarySelector is blank", () => {
+        expect(classifyDeploymentModeRow(mode("base"), 0, [mode("base")], MISSING_REGISTRY)).toBe("missing");
+    });
+
+    it("is wrongBuild when the chosen bundle selector is registry-known but stale/wrong", () => {
+        const registry = registryOk({modes: [{modeName: "base", libraryId: "lib", bundleDir: "outcomelibrary", buildStatus: "stale", outcomeCount: 1, totalWeight: 1, rtp: 0.95, hash: "h"}]});
+        const row = mode("base", {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"});
+        expect(classifyDeploymentModeRow(row, 0, [row], registry)).toBe("wrongBuild");
+    });
+
+    it("is invalid when the last run's own load-error named this exact mode", () => {
+        const row = mode("base", {kind: "json", path: "base.json"});
+        expect(classifyDeploymentModeRow(row, 0, [row], MISSING_REGISTRY, 'mode "base": "base.json" is not valid JSON.')).toBe("invalid");
+    });
+
+    it("is not invalid when the last run's own load-error named a different mode", () => {
+        const row = mode("base", {kind: "json", path: "base.json"});
+        expect(classifyDeploymentModeRow(row, 0, [row], MISSING_REGISTRY, 'mode "bonus": "bonus.json" is not valid JSON.')).toBe("ready");
+    });
+
+    it("is ready for a picked mode with a non-blank selector and no known problem", () => {
+        const row = mode("base", {kind: "json", path: "base.json"});
+        expect(classifyDeploymentModeRow(row, 0, [row], MISSING_REGISTRY)).toBe("ready");
+    });
+
+    it("is ready for a registry-compatible bundle selector", () => {
+        const registry = registryOk({modes: [{modeName: "base", libraryId: "lib", bundleDir: "outcomelibrary", buildStatus: "compatible", outcomeCount: 1, totalWeight: 1, rtp: 0.95, hash: "h"}]});
+        const row = mode("base", {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"});
+        expect(classifyDeploymentModeRow(row, 0, [row], registry)).toBe("ready");
+    });
+});
+
+describe("describeDeploymentModeRowStatus", () => {
+    it("describes every status with a label and color", () => {
+        expect(describeDeploymentModeRowStatus("ready")).toEqual({label: "Ready", color: "green"});
+        expect(describeDeploymentModeRowStatus("missing")).toEqual({label: "Missing library", color: "red"});
+        expect(describeDeploymentModeRowStatus("wrongBuild").color).toBe("yellow");
+    });
+});
+
+describe("computeDeploymentConfigureBlockers", () => {
+    it("is empty when every row is ready", () => {
+        const rows = [mode("base", {kind: "json", path: "base.json"})];
+        expect(computeDeploymentConfigureBlockers(rows, ["ready"])).toEqual([]);
+    });
+
+    it("names each blocked row in plain language, never a raw schema path", () => {
+        const rows = [mode("base"), mode("")];
+        const blockers = computeDeploymentConfigureBlockers(rows, ["missing", "unselected"]);
+
+        expect(blockers).toEqual(["base: choose, generate, or pick a compatible outcome library from the hub.", "Row 2: pick a bet mode."]);
+        expect(blockers.some((message) => message.includes("/"))).toBe(false);
     });
 });

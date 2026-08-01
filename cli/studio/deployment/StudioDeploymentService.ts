@@ -5,10 +5,14 @@ import {
     ExternalDeploymentServicing,
     ExternalDeploymentTarget,
     ExternalDeploymentTargetRegistry,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
+    StakeEngineImporter,
+    StakeEngineImporting,
 } from "pokie";
 import fs from "fs";
 import path from "path";
-import {loadWeightedOutcomeLibraryFromProjectFile} from "./loadWeightedOutcomeLibraryFromProjectFile.js";
+import {loadOutcomeLibraryFromSelector} from "../outcomeLibrary/loadOutcomeLibraryFromSelector.js";
 import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 import type {StudioDeploymentTargetSummary} from "./StudioDeploymentTargetSummary.js";
 import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
@@ -37,6 +41,8 @@ export type StudioDeploymentRunResult =
 export class StudioDeploymentService {
     private readonly externalDeploymentService: ExternalDeploymentServicing;
     private readonly createLocalTarget: (outDir: string) => ExternalDeploymentTarget;
+    private readonly bundleReader: OutcomeLibraryBundleReading<string>;
+    private readonly stakeEngineImporter: StakeEngineImporting<string>;
     private readonly readFile: (resolvedPath: string) => string;
     private readonly realpath: (resolvedPath: string) => string;
 
@@ -45,11 +51,15 @@ export class StudioDeploymentService {
         createLocalTarget: (outDir: string) => ExternalDeploymentTarget = (outDir) => createLocalJsonExternalDeploymentTarget({outDir}),
         readFile: (resolvedPath: string) => string = (resolvedPath) => fs.readFileSync(resolvedPath, "utf-8"),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
+        bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
+        stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
     ) {
         this.externalDeploymentService = externalDeploymentService;
         this.createLocalTarget = createLocalTarget;
         this.readFile = readFile;
         this.realpath = realpath;
+        this.bundleReader = bundleReader;
+        this.stakeEngineImporter = stakeEngineImporter;
     }
 
     public listTargets(projectRoot: string): StudioDeploymentTargetSummary[] {
@@ -59,10 +69,12 @@ export class StudioDeploymentService {
     }
 
     // Looks the requested target up in the same registry listTargets() itself builds (so "is this
-    // target even registered" can never disagree between the two calls), loads every mode's own
-    // library file (see loadWeightedOutcomeLibraryFromProjectFile — the first mode/library that fails
-    // to load stops the whole request before ExternalDeploymentService is ever called, since there's
-    // no well-formed input to give it yet), then runs the one real pipeline call.
+    // target even registered" can never disagree between the two calls), resolves every mode's own
+    // librarySelector (see loadOutcomeLibraryFromSelector — the same json/bundle/stakeengine resolution
+    // the Outcome Libraries tab's own Select/Compare already use, so a mode can deploy straight from a
+    // bundle the registry found compatible, not only a hand-typed flat JSON file; the first mode/library
+    // that fails to load stops the whole request before ExternalDeploymentService is ever called, since
+    // there's no well-formed input to give it yet), then runs the one real pipeline call.
     public async run(projectRoot: string, request: ValidatedDeploymentRunRequest): Promise<StudioDeploymentRunResult> {
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
@@ -72,9 +84,16 @@ export class StudioDeploymentService {
 
         const modes: ExternalDeploymentModeInput[] = [];
         for (const mode of request.modes) {
-            const loaded = loadWeightedOutcomeLibraryFromProjectFile(projectRoot, mode.libraryPath, this.readFile, this.realpath);
-            if (loaded.status === "error") {
-                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.message}`};
+            const loaded = await loadOutcomeLibraryFromSelector(
+                projectRoot,
+                mode.librarySelector,
+                this.bundleReader,
+                this.stakeEngineImporter,
+                this.readFile,
+                this.realpath,
+            );
+            if (loaded.status === "load-error") {
+                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`};
             }
             modes.push({modeName: mode.modeName, library: loaded.library});
         }
