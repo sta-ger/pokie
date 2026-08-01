@@ -59,10 +59,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByText("External Adapter: local-json-example");
         await user.click(screen.getByRole("button", {name: "Select & configure in Deployment"}));
 
-        // Landed on the (unchanged) Deployment tab's own Select-target step, with the same target already
-        // marked selected -- ExportDeployTab only pre-selects it, it never runs the deployment pipeline
-        // itself.
-        expect(await screen.findByRole("button", {name: "Selected"})).toBeInTheDocument();
+        // Landed on the (unchanged) Deployment tab, with the same target already marked selected --
+        // ExportDeployTab only pre-selects it, it never runs the deployment pipeline itself. It's also
+        // the only registered target, so Select-target is skipped entirely and this lands straight on
+        // Configure -- no artificial step forcing a click through the single option.
+        expect(await screen.findByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
     });
 
     it("hands off to the (unchanged) Stake Engine Export tab when the static-export card is chosen", async () => {
@@ -78,7 +79,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
     it("keeps the legacy /project/deployment and /project/stakeEngineExport routes deep-link compatible", async () => {
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/deployment"]});
-        expect(await screen.findByRole("button", {name: "Select"})).toBeInTheDocument();
+        // The only registered target is selected automatically, auto-advancing straight to Configure.
+        expect(await screen.findByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
 
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/stakeEngineExport"]});
         expect(await screen.findByText("Output directory")).toBeInTheDocument();

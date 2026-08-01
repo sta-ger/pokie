@@ -928,6 +928,7 @@ export function ProjectDashboardPage() {
                             selectedArtifactPath={deployment.selectedArtifactPath}
                             onSelectArtifact={deployment.selectArtifact}
                             projectRoot={projectKey}
+                            onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
                         />
                     )}
                     {activeTab === "outcomeLibraries" && (

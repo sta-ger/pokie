@@ -19,6 +19,13 @@ import type {
 // false "No deployment targets registered." before the first request has actually completed.
 export type DeploymentTargetsListView = {status: "loading"} | {status: "empty"} | {status: "loaded"; targets: StudioDeploymentTargetSummary[]};
 
+// The External Adapter SDK's own ready-to-run example target's id -- shared by the Select-target step
+// (which explains, in plain language, that this specific target only ever writes local JSON artifacts
+// and never publishes anything externally) and ExportDeployTargets.ts's own card classification.
+// Defined here (not in ExportDeployTargets.ts) since that module already imports from this one -- this
+// avoids a cycle.
+export const LOCAL_JSON_EXAMPLE_TARGET_ID = "local-json-example";
+
 export function describeDeploymentTargetsList(targets: StudioDeploymentTargetSummary[]): DeploymentTargetsListView {
     return targets.length === 0 ? {status: "empty"} : {status: "loaded", targets};
 }

@@ -92,6 +92,14 @@ export function useDeploymentManager() {
                             invalidate();
                         }
                     }
+                } else if (targets.length === 1) {
+                    // Nothing to choose between -- a lone registered target is selected automatically, so
+                    // Select-target never forces a click through an artificial single-option step. Never
+                    // fires once something is already selected (the `current !== undefined` branch above
+                    // owns that case), so this can only ever pick this project's own first/only target, not
+                    // silently override a deliberate choice.
+                    selectedTargetRef.current = targets[0];
+                    setSelectedTarget(targets[0]);
                 }
             })
             .catch((error: unknown) => {
