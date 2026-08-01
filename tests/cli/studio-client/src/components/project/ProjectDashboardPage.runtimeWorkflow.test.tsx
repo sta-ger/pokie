@@ -90,6 +90,12 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         // not DOM presence. The "Request id" textbox genuinely isn't reachable via role query here -- it's
         // the session card's own Advanced-spin-options field, hidden behind its own (separate) disclosure.
         const inspect = section("Inspect round");
+        // The settle effect that turns a completed spin into a selected round runs off the same
+        // microtask chain as the fetch response, but a slow render can push its continuation onto a
+        // real timer tick (see jestPolyfills.ts's own MessageChannel doc comment) -- waiting for the
+        // round's own disclosure toggle to appear is what makes this robust to that, instead of
+        // asserting immediately against whatever rendered synchronously after the click.
+        await within(inspect).findByText(/Show advanced details/);
         expect(within(inspect).getByText(/"sessionVersion"/)).not.toBeVisible();
         expect(screen.queryByRole("textbox", {name: /request id/i})).not.toBeInTheDocument();
 
