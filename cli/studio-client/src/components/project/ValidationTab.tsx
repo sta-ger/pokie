@@ -1,5 +1,6 @@
 import {Button, List, Text} from "@mantine/core";
 import type {ProjectValidationView} from "../../domain/interpret/ProjectDashboard";
+import {describeProjectActionError} from "../../domain/projectActionError";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
@@ -14,7 +15,7 @@ export function ValidationTab({view, onValidate}: {view: ProjectValidationView; 
                 </Button>
             </QuickActions>
             {view.status === "loading" && <LoadingState label="Validating…" />}
-            {view.status === "error" && <ErrorState message={view.message} />}
+            {view.status === "error" && <ErrorState message={describeProjectActionError("This validation request", view.message)} />}
             {view.status === "success" && (
                 <div>
                     <Text mb="sm">

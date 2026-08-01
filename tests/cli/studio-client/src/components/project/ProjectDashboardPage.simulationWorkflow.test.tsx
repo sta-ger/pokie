@@ -877,13 +877,112 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToSimulationTab(user);
 
-        expect(await screen.findByRole("alert")).toBeInTheDocument();
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("The recent runs list couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).not.toHaveTextContent("Something went wrong listing reports.");
 
         const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
         await user.click(within(recentRunsSection).getByRole("button", {name: "Refresh"}));
 
         await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
         expect(reportsCallCount).toBe(2);
+    }, 60000);
+
+    it("shows a subject-specific recovery message, never the raw backend text, when the simulation request itself fails outright", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/simulations": () => ({ok: false, status: 502, body: {error: "Failed to fetch"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("This simulation request couldn't reach the Studio server. Check your connection and try again.");
+        expect(alert).not.toHaveTextContent("Failed to fetch");
+    }, 60000);
+
+    it("shows a subject-specific recovery message, never the raw backend text, when opening a historic report fails", async () => {
+        const user = userEvent.setup();
+        const entry: StudioSimulationReportListEntry = {
+            id: "broken-job",
+            status: "completed",
+            game: {id: "a", version: "1.0.0"},
+            requestedRounds: 1000,
+            actualRounds: 1000,
+            workers: 1,
+            rtp: 0.5,
+            hitFrequency: 0.3,
+            maxWin: 50,
+            startedAt: "2026-11-01T00:00:00.000Z",
+            completedAt: "2026-11-01T00:00:05.000Z",
+            durationMs: 500,
+            hasWarnings: false,
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: [entry]}),
+            "/api/project/reports/broken-job": () => ({ok: false, status: 500, body: {error: "ENOENT: no such file or directory"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+
+        const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
+        await user.click(within(recentRunsSection).getByRole("button", {name: "Open"}));
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("This report couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).not.toHaveTextContent("ENOENT");
+    }, 60000);
+
+    it("shows a subject-specific recovery message, never the raw backend text, when loading a comparison report fails", async () => {
+        const user = userEvent.setup();
+        const otherEntry: StudioSimulationReportListEntry = {
+            id: "compare-candidate",
+            status: "completed",
+            game: {id: "a", version: "1.0.0"},
+            requestedRounds: 2000,
+            actualRounds: 2000,
+            workers: 1,
+            rtp: 0.5,
+            hitFrequency: 0.3,
+            maxWin: 50,
+            startedAt: "2026-11-02T00:00:00.000Z",
+            completedAt: "2026-11-02T00:00:05.000Z",
+            durationMs: 500,
+            hasWarnings: false,
+        };
+        let pollCount = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: [otherEntry]}),
+            "/api/project/reports/compare-candidate": () => ({ok: false, status: 500, body: {error: "Something went wrong."}}),
+            "/api/project/reports/job-compare-fail": () => ({ok: true, status: 200, body: reportDetailFor()}),
+            "/api/project/simulations": () => ({ok: true, status: 200, body: jobFor("job-compare-fail", {status: "queued", roundsCompleted: 0})}),
+            "/api/project/simulations/job-compare-fail": () => {
+                pollCount += 1;
+                if (pollCount < 2) {
+                    return {ok: true, status: 200, body: jobFor("job-compare-fail", {status: "running", roundsCompleted: 100})};
+                }
+                return {ok: true, status: 200, body: jobFor("job-compare-fail", {status: "completed", report: reportFor()})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await user.click(await screen.findByRole("button", {name: "Compare with another run"}, {timeout: 15000}));
+        await user.click(await screen.findByRole("button", {name: /a v1\.0\.0/}));
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("The comparison report couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).not.toHaveTextContent("Something went wrong.");
     }, 60000);
 
     it("clears the blocked Run again notice once the active simulation completes on its own", async () => {

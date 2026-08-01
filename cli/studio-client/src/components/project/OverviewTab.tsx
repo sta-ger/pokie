@@ -1,5 +1,6 @@
 import {Button, Table, Text} from "@mantine/core";
 import type {InspectionResultView, NextActionView, ProvenanceView} from "../../domain/interpret/ProjectDashboard";
+import {describeProjectActionError} from "../../domain/projectActionError";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {NextStepCallout} from "../common/NextStepCallout";
@@ -107,7 +108,9 @@ export function OverviewTab({
 
             <PageSection legend="Inspect">
                 {inspection.status === "loading" && <LoadingState label="Inspecting…" />}
-                {inspection.status === "error" && <ErrorState message={inspection.message} />}
+                {inspection.status === "error" && (
+                    <ErrorState message={describeProjectActionError("The project inspection", inspection.message)} />
+                )}
                 {inspection.status === "loaded" && (
                     <div>
                         <Table withRowBorders={false} mb="sm">

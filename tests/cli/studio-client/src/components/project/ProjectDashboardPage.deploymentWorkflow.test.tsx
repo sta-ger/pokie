@@ -454,4 +454,20 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         resolveRun?.({ok: true, status: 200, json: () => Promise.resolve(baseRunView({stages: [stage("descriptor", "ok")]}))});
         await waitFor(() => expect(screen.queryByRole("button", {name: "Run deployment preflight"})).not.toBeInTheDocument());
     });
+
+    it("shows a subject-specific recovery message, never the raw backend text, when the deployment targets list fails to load", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/deployment/targets": () => ({ok: false, status: 500, body: {error: "ENOENT: no such file or directory"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", {name: "Deployment"}));
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("The deployment targets list couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).not.toHaveTextContent("ENOENT");
+    });
 });
