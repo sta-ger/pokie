@@ -339,7 +339,6 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
     });
 
     it("Deployment's Configure step shows Mode name/Outcome library path with no placeholder at all -- an empty field reads as empty, not as a pre-filled example", async () => {
-        const user = userEvent.setup();
         const target = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
@@ -348,8 +347,8 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
-        await user.click(await screen.findByRole("button", {name: "Select"}));
-        await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Modes & libraries")}));
+        // A lone target auto-selects and lands straight on Configure -- no artificial Select-target click.
+        await screen.findByLabelText("Mode name");
 
         expect(screen.getByLabelText("Mode name")).not.toHaveAttribute("placeholder");
         expect(screen.getByLabelText("Outcome library path")).not.toHaveAttribute("placeholder");
@@ -476,8 +475,8 @@ describe("Scoped path-action error remediation baseline", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
-        await user.click(await screen.findByRole("button", {name: "Select"}));
-        await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Modes & libraries")}));
+        // A lone target auto-selects and lands straight on Configure -- no artificial Select-target click.
+        await screen.findByLabelText("Mode name");
         await user.type(screen.getByLabelText("Mode name"), "base");
         await user.type(screen.getByLabelText("Outcome library path"), "./outcomes/missing.json");
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
