@@ -111,7 +111,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
 
     function invalidateConfigure(): void {
         configureRequestIdRef.current++;
-        if (configureView.status !== "idle") {
+        if (configureView.status !== "idle" && configureView.status !== "loading") {
             setConfigureOutdated(true);
         }
         setConfigureView({status: "idle"});

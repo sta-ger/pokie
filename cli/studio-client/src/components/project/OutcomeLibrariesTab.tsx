@@ -332,7 +332,7 @@ export function OutcomeLibrariesTab({
 
     function invalidateCompare(): void {
         compareRequestIdRef.current++;
-        const wasSettled = !("status" in compareView && compareView.status === "idle");
+        const wasSettled = !("status" in compareView) || (compareView.status !== "idle" && compareView.status !== "loading");
         if (wasSettled) {
             setCompareOutdated(true);
         }
@@ -344,8 +344,10 @@ export function OutcomeLibrariesTab({
     // downstream that described *that* library (a deep-validate run, a comparison).
     function invalidateSelect(): void {
         selectRequestIdRef.current++;
+        if (selectView.status !== "idle" && selectView.status !== "loading") {
+            setSelectOutdated(true);
+        }
         setSelectView({status: "idle"});
-        setSelectOutdated(true);
         selectGuard.end();
         invalidateDeepValidate();
         invalidateCompare();

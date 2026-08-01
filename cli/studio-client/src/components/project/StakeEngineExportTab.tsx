@@ -292,7 +292,7 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
     // unconditionally (whether or not that settled response turns out to still be the current one).
     function invalidateExport(): void {
         exportRequestIdRef.current++;
-        if (exportView.status !== "idle") {
+        if (exportView.status !== "idle" && exportView.status !== "loading") {
             setExportOutdated(true);
         }
         setExportView({status: "idle"});
@@ -300,8 +300,10 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
 
     function invalidateValidate(): void {
         validateRequestIdRef.current++;
+        if (validateView.status !== "idle" && validateView.status !== "loading") {
+            setValidateOutdated(true);
+        }
         setValidateView({status: "idle"});
-        setValidateOutdated(true);
         validateGuard.end();
         invalidateExport();
     }

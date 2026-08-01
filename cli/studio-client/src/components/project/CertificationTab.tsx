@@ -223,7 +223,7 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
 
     function invalidateBuild(): void {
         buildRequestIdRef.current++;
-        if (buildView.status !== "idle") {
+        if (buildView.status !== "idle" && buildView.status !== "loading") {
             setBuildOutdated(true);
         }
         setBuildView({status: "idle"});
@@ -232,8 +232,10 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
 
     function invalidateValidate(): void {
         validateRequestIdRef.current++;
+        if (validateView.status !== "idle" && validateView.status !== "loading") {
+            setValidateOutdated(true);
+        }
         setValidateView({status: "idle"});
-        setValidateOutdated(true);
         validateGuard.end();
         invalidateBuild();
     }

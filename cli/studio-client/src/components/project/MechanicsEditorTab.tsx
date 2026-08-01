@@ -155,7 +155,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
     // effect, rather than folded into that one, so each stays focused on the single result it owns.
     useEffect(() => {
         applyRequestIdRef.current++;
-        if (applyView.status !== "idle") {
+        if (applyView.status !== "idle" && applyView.status !== "loading") {
             setApplyOutdated(true);
         }
         setApplyView({status: "idle"});
