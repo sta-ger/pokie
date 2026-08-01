@@ -7,6 +7,7 @@ import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
 import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
+import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
@@ -88,6 +89,13 @@ export type StudioServerOptions = {
     // OutcomeLibraryBundle/StakeEngine services; no `loadGame`/`pokieVersion` needed, same reasoning as
     // deploymentService.
     outcomeLibraryService?: StudioOutcomeLibraryService;
+    // Drives the Project Dashboard's Outcome Libraries tab's own Generate step/Registry panel (POST
+    // /api/project/outcome-libraries/generate/estimate, /generate, GET /registry) -- built on the exact
+    // same generateExactWeightedOutcomeLibrary/estimateExactOutcomeSpaceSize "pokie outcomelibrary
+    // generate" itself drives, plus the same OutcomeLibraryBundleWriter/Reader "build"/deep validation use.
+    // Needs `pokieVersion` (embedded in every bundle it writes/compares against), same reasoning as
+    // certificationService/stakeEngineExportService.
+    outcomeLibraryGenerateService?: StudioOutcomeLibraryGenerateService;
     // Drives the Project Dashboard's Certification tab (POST /api/project/certification/validate-source,
     // /build) — built directly on top of pokie's own CertificationEvidenceBundleBuilder/
     // OutcomeLibraryBundleValidator; no `loadGame` needed (same reasoning as deploymentService), but

@@ -35,6 +35,7 @@ import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {validateNativeBrowseRequest, NativeBrowseRequestInput} from "./home/validateNativeBrowseRequest.js";
+import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {validateOutcomeLibrarySelectRequest, OutcomeLibrarySelectRequestInput} from "./outcomeLibrary/validateOutcomeLibrarySelectRequest.js";
 import {validateOutcomeLibraryCompareRequest, OutcomeLibraryCompareRequestInput} from "./outcomeLibrary/validateOutcomeLibraryCompareRequest.js";
@@ -42,6 +43,11 @@ import {
     validateOutcomeLibraryDeepValidateRequest,
     OutcomeLibraryDeepValidateRequestInput,
 } from "./outcomeLibrary/validateOutcomeLibraryDeepValidateRequest.js";
+import {
+    validateOutcomeLibraryGenerateEstimateRequest,
+    OutcomeLibraryGenerateEstimateRequestInput,
+} from "./outcomeLibrary/validateOutcomeLibraryGenerateEstimateRequest.js";
+import {validateOutcomeLibraryGenerateRequest, OutcomeLibraryGenerateRequestInput} from "./outcomeLibrary/validateOutcomeLibraryGenerateRequest.js";
 import type {StudioDiagnosticsView} from "./StudioDiagnosticsView.js";
 import {validateBuildRequest, BuildRequestInput} from "./home/validateBuildRequest.js";
 import {validateCreateProjectRequest, CreateProjectRequestInput} from "./home/validateCreateProjectRequest.js";
@@ -142,6 +148,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly runtimeManager: StudioRuntimeManager;
     private readonly deploymentService: StudioDeploymentService;
     private readonly outcomeLibraryService: StudioOutcomeLibraryService;
+    private readonly outcomeLibraryGenerateService: StudioOutcomeLibraryGenerateService;
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
@@ -173,6 +180,7 @@ export class StudioServer implements StudioServerHandling {
         this.runtimeManager = options.runtimeManager ?? new StudioRuntimeManager(this.loadGame);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.outcomeLibraryService = options.outcomeLibraryService ?? new StudioOutcomeLibraryService();
+        this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
         this.stakeEngineExportService = options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion);
@@ -552,6 +560,21 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/project/outcome-libraries/validate-deep") {
             await this.handleValidateOutcomeLibraryDeep(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/outcome-libraries/generate/estimate") {
+            await this.handleEstimateOutcomeLibraryGeneration(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/outcome-libraries/generate") {
+            await this.handleGenerateOutcomeLibrary(req, res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/outcome-libraries/registry") {
+            await this.handleGetOutcomeLibraryRegistry(res);
             return;
         }
 
@@ -1145,6 +1168,51 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, await this.outcomeLibraryService.validateBundleDeep(this.currentContext.projectRoot, validated.bundleDir, validated.modeName));
+    }
+
+    private async handleEstimateOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateOutcomeLibraryGenerateEstimateRequest((body ?? {}) as OutcomeLibraryGenerateEstimateRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.outcomeLibraryGenerateService.estimate(this.currentContext.projectRoot, validated));
+    }
+
+    private async handleGenerateOutcomeLibrary(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateOutcomeLibraryGenerateRequest((body ?? {}) as OutcomeLibraryGenerateRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.outcomeLibraryGenerateService.generate(this.currentContext.projectRoot, validated));
+    }
+
+    private async handleGetOutcomeLibraryRegistry(res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.outcomeLibraryGenerateService.registry(this.currentContext.projectRoot));
     }
 
     private async handleValidateCertificationSourceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {

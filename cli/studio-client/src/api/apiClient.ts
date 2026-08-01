@@ -30,6 +30,9 @@ import type {
     StudioOpenFolderView,
     StudioOutcomeLibraryCompareView,
     StudioOutcomeLibraryDeepValidateView,
+    StudioOutcomeLibraryGenerateEstimateView,
+    StudioOutcomeLibraryGenerateResultView,
+    StudioOutcomeLibraryRegistryView,
     StudioOutcomeLibrarySelectView,
     StudioParSheetExportView,
     StudioParSheetImportView,
@@ -849,6 +852,63 @@ export async function validateOutcomeLibraryDeep(fetchImpl: FetchLike, bundleDir
         throw new Error(await extractErrorMessage(response, "Failed to deep-validate the outcome library bundle"));
     }
     return (await response.json()) as StudioOutcomeLibraryDeepValidateView;
+}
+
+// The Generate step's own "how big is this?" preflight -- see StudioOutcomeLibraryGenerateEstimateView's
+// own doc comment. `maxOutcomeSpaceSize` is a decimal string (same bigint-safe convention as the CLI's own
+// --max-outcome-space-size), never a plain `number` -- a raw reel-stop combination count routinely exceeds
+// Number.MAX_SAFE_INTEGER.
+export async function estimateOutcomeLibraryGeneration(fetchImpl: FetchLike, mode?: string, maxOutcomeSpaceSize?: string): Promise<StudioOutcomeLibraryGenerateEstimateView> {
+    const response = await fetchImpl("/api/project/outcome-libraries/generate/estimate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({mode, maxOutcomeSpaceSize}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to estimate the outcome library generation"));
+    }
+    return (await response.json()) as StudioOutcomeLibraryGenerateEstimateView;
+}
+
+// The Generate step's own request options -- mirrors "pokie outcomelibrary generate"'s own flags (see
+// OutcomeLibraryCommand's GenerateCliOptions), never a parallel vocabulary. sampleSize is a decimal string,
+// same reasoning as maxOutcomeSpaceSize above.
+export type OutcomeLibraryGenerateRequestOptions = {
+    mode?: string;
+    stake?: number;
+    configHash?: string;
+    libraryId?: string;
+    maxOutcomeSpaceSize?: string;
+    bounded?: {sampleSize: string; seed: string};
+    outDir?: string;
+};
+
+// Drives generateExactWeightedOutcomeLibrary against the current project's own built package -- the exact
+// same public generation service "pokie outcomelibrary generate" itself calls -- then writes the result
+// straight into the project's own outcome-library bundle (see StudioOutcomeLibraryGenerateService.generate's
+// own doc comment). Never throws for a domain-level failure (unsupported package, generation error, invalid
+// write) -- that's carried in the returned view's own status, same convention as every other
+// outcome-library apiClient function here.
+export async function generateOutcomeLibrary(fetchImpl: FetchLike, options: OutcomeLibraryGenerateRequestOptions): Promise<StudioOutcomeLibraryGenerateResultView> {
+    const response = await fetchImpl("/api/project/outcome-libraries/generate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(options),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to generate the outcome library"));
+    }
+    return (await response.json()) as StudioOutcomeLibraryGenerateResultView;
+}
+
+// The Registry panel's own "does a compatible library already exist for this build?" check -- see
+// StudioOutcomeLibraryRegistryView's own doc comment.
+export async function getOutcomeLibraryRegistry(fetchImpl: FetchLike): Promise<StudioOutcomeLibraryRegistryView> {
+    const response = await fetchImpl("/api/project/outcome-libraries/registry");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to fetch the outcome library registry"));
+    }
+    return (await response.json()) as StudioOutcomeLibraryRegistryView;
 }
 
 // The Certification tab's own preflight (see StudioCertificationSourceValidateView) — the exact same
