@@ -170,8 +170,8 @@ version marker above in the same commit as whichever step changes one of these f
   (`pokie init` / `GamePackageScaffolder`, plus the `GENERATED_PACKAGE_FILES` seam it shares with `build`) →
   `P3-POLISH-07`.
 - **Studio routes (§4)** — the Home vs. project-workspace split (`/` + `/home/:tab` vs. `/project` +
-  `/project/:tab`) is its own multi-step migration, not a single step: Studio Home migration and workspace
-  migration together → `P3-POLISH-10`–`P3-POLISH-19`.
+  `/project/:tab`) is its own multi-step migration, not a single step: Studio Home migration → `P3-POLISH-13`;
+  the capability-driven workspace shell → `P3-POLISH-15`.
 - **PAR sheet (§5)** → `P3-POLISH-22`.
 - **Outcome libraries and Stake Engine (§5)** → `P3-POLISH-21`.
 - **Adapter boundary (§6)** → `P3-POLISH-20`, the Build-Export step family that §5's Outcome-library/Stake-
