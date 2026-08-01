@@ -48,7 +48,10 @@ type ProjectTargetMatch = {readonly adapter: ProjectTargetTypeAdapter; readonly 
 // resolution depends only on how many of them recognize the target — zero (undefined), exactly one (that
 // type), or more than one (ProjectTargetAmbiguousError; see that class's own doc comment). Two adapters can
 // only collide in the first place if the underlying on-disk shapes themselves genuinely overlap — a real
-// recognition conflict, not a matter of which adapter happened to run first.
+// recognition conflict, not a matter of which adapter happened to run first. An adapter's own recognize() can
+// also throw ProjectTargetMalformedError when a target's manifest already signals intent to be that adapter's
+// type but fails a deeper read (see that class's own doc comment) — recognizeAll() below lets that propagate
+// rather than swallowing it the way an ordinary non-match is swallowed.
 export class ProjectTargetResolver implements ProjectResolving {
     private readonly directoryAdapters: readonly ProjectTargetTypeAdapter[];
     private readonly fileAdapters: readonly ProjectTargetTypeAdapter[];

@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {ProjectTargetAmbiguousError} from "../../src/project/ProjectTargetAmbiguousError.js";
+import {ProjectTargetMalformedError} from "../../src/project/ProjectTargetMalformedError.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
 import type {ProjectTargetTypeAdapter} from "../../src/project/ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "../../src/project/ProjectTargetUnsupportedError.js";
@@ -97,6 +98,58 @@ describe("ProjectTargetResolver", () => {
             capabilities: ["outcomeLibrary.read"],
             provenance: expect.stringContaining("manifest.json"),
         });
+    });
+
+    it("returns undefined for a directory with an ordinary package.json that never mentions \"pokie\"", async () => {
+        const projectRoot = path.join(workDir, "ordinary-package");
+        fs.mkdirSync(projectRoot, {recursive: true});
+        fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "ordinary", version: "1.0.0"}));
+
+        expect(await resolver.resolve(projectRoot)).toBeUndefined();
+    });
+
+    it("throws ProjectTargetMalformedError for a directory whose package.json isn't valid JSON", async () => {
+        const projectRoot = path.join(workDir, "broken-package-json");
+        fs.mkdirSync(projectRoot, {recursive: true});
+        fs.writeFileSync(path.join(projectRoot, "package.json"), "{not valid json");
+
+        await expect(resolver.resolve(projectRoot)).rejects.toThrow(ProjectTargetMalformedError);
+    });
+
+    it("throws ProjectTargetMalformedError for a directory whose package.json declares \"pokie\" but is missing \"pokie.entry\"", async () => {
+        const projectRoot = path.join(workDir, "incomplete-pokie-package");
+        fs.mkdirSync(projectRoot, {recursive: true});
+        fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "game", pokie: {}}));
+
+        await expect(resolver.resolve(projectRoot)).rejects.toThrow(ProjectTargetMalformedError);
+        await expect(resolver.resolve(projectRoot)).rejects.toThrow(/pokie\.entry/);
+    });
+
+    it("returns undefined for a directory with a manifest.json that never mentions \"schemaVersion\"", async () => {
+        const bundleDir = path.join(workDir, "unrelated-manifest");
+        fs.mkdirSync(bundleDir, {recursive: true});
+        fs.writeFileSync(path.join(bundleDir, "manifest.json"), JSON.stringify({manifestVersion: 3, name: "some-extension"}));
+
+        expect(await resolver.resolve(bundleDir)).toBeUndefined();
+    });
+
+    it("throws ProjectTargetMalformedError for an outcome-library bundle directory whose manifest.json isn't valid JSON", async () => {
+        const bundleDir = path.join(workDir, "broken-outcome-manifest");
+        fs.mkdirSync(bundleDir, {recursive: true});
+        fs.writeFileSync(path.join(bundleDir, "manifest.json"), "{not valid json");
+
+        await expect(resolver.resolve(bundleDir)).rejects.toThrow(ProjectTargetMalformedError);
+    });
+
+    it("throws ProjectTargetMalformedError for an outcome-library bundle directory whose manifest.json declares \"schemaVersion\" but the wrong shape", async () => {
+        const bundleDir = path.join(workDir, "invalid-shape-outcome-manifest");
+        fs.mkdirSync(bundleDir, {recursive: true});
+        fs.writeFileSync(
+            path.join(bundleDir, "manifest.json"),
+            JSON.stringify({...SAMPLE_OUTCOME_LIBRARY_MANIFEST, modes: "not-an-array"}),
+        );
+
+        await expect(resolver.resolve(bundleDir)).rejects.toThrow(ProjectTargetMalformedError);
     });
 
     it("resolves a blueprint-shaped .json file as a blueprint project", async () => {

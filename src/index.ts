@@ -243,6 +243,7 @@ export * from "./project/ProjectMaterializationResult.js";
 export * from "./project/ProjectMaterializing.js";
 export * from "./project/ProjectResolving.js";
 export * from "./project/ProjectTargetAmbiguousError.js";
+export * from "./project/ProjectTargetMalformedError.js";
 export * from "./project/ProjectTargetResolver.js";
 export * from "./project/ProjectTargetTypeAdapter.js";
 export * from "./project/ProjectTargetUnsupportedError.js";
