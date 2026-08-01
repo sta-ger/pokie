@@ -8,16 +8,23 @@ import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import {ProjectTargetAmbiguousError} from "./ProjectTargetAmbiguousError.js";
 import type {ProjectResolving} from "./ProjectResolving.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
+import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
 import {StakeAdapterProjectTargetAdapter} from "./StakeAdapterProjectTargetAdapter.js";
 import {TsPackageProjectTargetAdapter} from "./TsPackageProjectTargetAdapter.js";
+
+// The one file extension resolve() explicitly rejects rather than silently reporting undefined for — see its
+// ProjectTargetUnsupportedError usage below.
+const WASM_FILE_EXTENSION = ".wasm";
 
 // The default, fixed set of per-ProjectType adapters ProjectTargetResolver registers when constructed without
 // an explicit list — one per resolvable ProjectType. Deliberately excludes "wasm": recognizing an ordinary
 // .wasm file today would mean trusting its file extension alone (the same shortcut the prototype this module
 // replaces took), and POKIE has no versioned WASM export contract yet (no manifest/signature identifying a
 // .wasm file as its own) to recognize instead — see ProjectType.ts's own "wasm" doc comment. Until that
-// contract exists, an ordinary .wasm file is simply not recognized by any adapter here, so resolve() reports
-// it the same as any other unrecognized path: `undefined`, not a "wasm" project.
+// contract exists, an ordinary .wasm file is simply not recognized by any adapter here — but unlike a
+// genuinely unrelated unrecognized path, resolve() special-cases that one extension to throw
+// ProjectTargetUnsupportedError instead of quietly returning `undefined`, so a caller pointing POKIE at a
+// .wasm file learns *why* it was rejected rather than mistaking it for "not a POKIE target at all".
 const DEFAULT_PROJECT_TARGET_ADAPTERS: readonly ProjectTargetTypeAdapter[] = [
     new TsPackageProjectTargetAdapter(),
     new StakeAdapterProjectTargetAdapter(),
@@ -81,6 +88,13 @@ export class ProjectTargetResolver implements ProjectResolving {
         const matches = await this.recognizeAll(candidateAdapters, resolvedPath);
 
         if (matches.length === 0) {
+            if (stat.isFile() && path.extname(resolvedPath).toLowerCase() === WASM_FILE_EXTENSION) {
+                throw new ProjectTargetUnsupportedError(
+                    `"${resolvedPath}" is a WASM build target, but POKIE has no versioned WASM export contract yet ` +
+                        `(see the "wasm" ProjectType doc comment) — this is not a supported POKIE project, and does not ` +
+                        `mean WASM execution is supported.`,
+                );
+            }
             return undefined;
         }
         if (matches.length > 1) {

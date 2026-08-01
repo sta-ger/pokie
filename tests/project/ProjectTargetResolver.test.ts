@@ -5,6 +5,7 @@ import path from "path";
 import {ProjectTargetAmbiguousError} from "../../src/project/ProjectTargetAmbiguousError.js";
 import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js";
 import type {ProjectTargetTypeAdapter} from "../../src/project/ProjectTargetTypeAdapter.js";
+import {ProjectTargetUnsupportedError} from "../../src/project/ProjectTargetUnsupportedError.js";
 
 const SAMPLE_BLUEPRINT = {
     manifest: {id: "sample", name: "Sample", version: "1.0.0"},
@@ -153,7 +154,15 @@ describe("ProjectTargetResolver", () => {
         const wasmFile = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
 
-        expect(await resolver.resolve(wasmFile)).toBeUndefined();
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetUnsupportedError);
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(/no versioned WASM export contract/);
+    });
+
+    it("returns undefined for a file with an unrecognized extension that isn't a WASM target", async () => {
+        const unknownFile = path.join(workDir, "notes.txt");
+        fs.writeFileSync(unknownFile, "just some text");
+
+        expect(await resolver.resolve(unknownFile)).toBeUndefined();
     });
 
     it("returns undefined for a plain directory that matches none of the known project shapes", async () => {

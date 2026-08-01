@@ -245,6 +245,7 @@ export * from "./project/ProjectResolving.js";
 export * from "./project/ProjectTargetAmbiguousError.js";
 export * from "./project/ProjectTargetResolver.js";
 export * from "./project/ProjectTargetTypeAdapter.js";
+export * from "./project/ProjectTargetUnsupportedError.js";
 export * from "./project/ProjectType.js";
 export * from "./project/StakeAdapterProjectTargetAdapter.js";
 export * from "./project/TsPackageProjectTargetAdapter.js";
