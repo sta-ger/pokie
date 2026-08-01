@@ -1047,8 +1047,12 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         await user.click(screen.getByRole("button", {name: "Debug this round in Replay & Debug"}));
 
         // The handoff lands on Replay & Debug, which reads the exact same recentSpinsError state through
-        // its own (untouched) rendering -- still the raw fetch error there, never the fallback.
-        expect(await screen.findByText("network down")).toBeInTheDocument();
+        // its own rendering -- translated into its own subject-specific recovery message, never the raw
+        // fetch error text and never the "not found" fallback.
+        expect(
+            await screen.findByText("The spin list couldn't be completed. Try again, and check the Studio server logs if the problem persists."),
+        ).toBeInTheDocument();
+        expect(screen.queryByText("network down")).not.toBeInTheDocument();
         expect(screen.queryByText("Round no longer available")).not.toBeInTheDocument();
         expect(screen.queryByText("Loading recent spins…")).not.toBeInTheDocument();
     }, 60000);
