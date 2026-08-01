@@ -3494,6 +3494,16 @@ describe("StudioServer", () => {
             }
         }
 
+        // The real resolveCurrentBuildModeIds default would try to actually load deploymentProjectRoot as
+        // a built pokie package (see resolveCurrentBuildModeIds.ts) and fail, since these fixture project
+        // directories are never actually built -- which run() now treats as a rejection (see
+        // StudioDeploymentService's own doc comment). Every test below that isn't specifically exercising
+        // that current-build-modes check supplies this stand-in instead, so it isn't accidentally
+        // exercised as a side effect of an unrelated scenario.
+        function deploymentServiceForBuildModes(modeIds: readonly string[] | undefined): StudioDeploymentService {
+            return new StudioDeploymentService(undefined, undefined, undefined, undefined, undefined, undefined, () => Promise.resolve(modeIds));
+        }
+
         // A target whose generator returns a structurally malformed result (content of the wrong
         // type) — exercises the exact scenario this stabilization pass fixed: the real diagnostics
         // must surface as an "artifactValidation" ERROR, never hidden behind a "generation"/"skipped"
@@ -3511,22 +3521,50 @@ describe("StudioServer", () => {
                         ({artifacts: [{relativePath: "index.json", content: 12345 as any}], issues: []}) as ExternalArtifactGenerationResult,
                 },
             };
-            return new StudioDeploymentService(undefined, () => malformedTarget);
+            return new StudioDeploymentService(undefined, () => malformedTarget, undefined, undefined, undefined, undefined, () => Promise.resolve(["base"]));
         }
 
-        it("returns 409 for GET targets and POST runs when there is no active project", async () => {
+        it("returns 409 for GET targets, GET build-modes, and POST runs when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);
 
             const targetsResponse = await get(`${homeBaseUrl}/api/project/deployment/targets`);
             expect(targetsResponse.status).toBe(409);
             expect(targetsResponse.body).toEqual({error: "No active project."});
 
+            const buildModesResponse = await get(`${homeBaseUrl}/api/project/deployment/build-modes`);
+            expect(buildModesResponse.status).toBe(409);
+            expect(buildModesResponse.body).toEqual({error: "No active project."});
+
             const runResponse = await post(`${homeBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
             });
             expect(runResponse.status).toBe(409);
             expect(runResponse.body).toEqual({error: "No active project."});
+        });
+
+        // The Configure step's own mode picker is backed by GET /api/project/deployment/build-modes,
+        // resolved server-side from the same authoritative current-build resolver POST .../runs itself
+        // checks a request against (see StudioDeploymentService.getBuildModes/resolveCurrentBuildModeIds's
+        // own doc comments) — never the mutable tracked source blueprint, so this must reflect the current
+        // build even when the injected resolver reports modes a fixture project's own (never-built) source
+        // wouldn't have.
+        it("returns the current build's own modes from GET /api/project/deployment/build-modes", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base", "bonus"]));
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/deployment/build-modes`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "ok", modeIds: ["base", "bonus"]});
+        });
+
+        it("returns unavailable from GET /api/project/deployment/build-modes when the project has no current build", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(undefined));
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/deployment/build-modes`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "unavailable"});
         });
 
         it("lists exactly the local example target with its requirements/capabilities", async () => {
@@ -3548,7 +3586,7 @@ describe("StudioServer", () => {
         it("rejects a malformed run request body with 400 and never touches the SDK", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
 
-            const emptyTargetId = await post(`${projectBaseUrl}/api/project/deployment/runs`, {targetId: "", modes: [{modeName: "base", libraryPath: "base.json"}]});
+            const emptyTargetId = await post(`${projectBaseUrl}/api/project/deployment/runs`, {targetId: "", modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}]});
             expect(emptyTargetId.status).toBe(400);
             expect((emptyTargetId.body as {error: string}).error).toMatch(/targetId/);
 
@@ -3562,19 +3600,80 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "does-not-exist",
-                modes: [{modeName: "base", libraryPath: "does-not-exist-either.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "does-not-exist-either.json"}}],
             });
 
             expect(status).toBe(404);
             expect(body).toEqual({error: 'Unknown deployment target "does-not-exist".'});
         });
 
-        it("returns 400 when a mode's library file doesn't exist", async () => {
-            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+        it("returns 400, in domain language, when a mode isn't part of the active project's own current build — even for a request that never went through the Configure UI", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["bonus"]));
+            writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "missing.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
+            });
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toBe('mode "base" isn\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.');
+        });
+
+        it("deploys a mode that is part of the active project's own current build", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
+            writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
+                publish: false,
+            });
+
+            expect(status).toBe(200);
+            expect((body as {publish: boolean}).publish).toBe(false);
+        });
+
+        it("returns 400, in domain language, when the active project has no inspectable current build at all — never reaching library loading", async () => {
+            const readFile = jest.fn(() => {
+                throw new Error("library file should not be read when the current build isn't known");
+            });
+            const service = new StudioDeploymentService(undefined, undefined, readFile, undefined, undefined, undefined, () => Promise.resolve(undefined));
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, service);
+            writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
+            });
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toBe(
+                'This project has no current build to deploy against -- run "pokie build" (or the Certification tab\'s own build step), then try again.',
+            );
+            expect(readFile).not.toHaveBeenCalled();
+        });
+
+        it("returns 400, in domain language, when a bundle librarySelector's modeName differs from its own deployment row's mode — never reaching library loading", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base", "bonus"]));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "bonus"}}],
+            });
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toBe(
+                'mode "base"\'s library selector names mode "bonus" -- a bundle/Stake Engine selector must name the exact same mode as its own deployment row.',
+            );
+        });
+
+        it("returns 400 when a mode's library file doesn't exist", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "missing.json"}}],
             });
 
             expect(status).toBe(400);
@@ -3582,11 +3681,11 @@ describe("StudioServer", () => {
         });
 
         it("returns 400 when a mode's library path escapes the project root", async () => {
-            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "../outside.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "../outside.json"}}],
             });
 
             expect(status).toBe(400);
@@ -3594,12 +3693,12 @@ describe("StudioServer", () => {
         });
 
         it("returns 400 when a mode's library file is not valid JSON", async () => {
-            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
             fs.writeFileSync(path.join(deploymentProjectRoot, "base.json"), "{ not json");
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
             });
 
             expect(status).toBe(400);
@@ -3607,12 +3706,12 @@ describe("StudioServer", () => {
         });
 
         it("previews a valid deployment (publish: false) without writing any files, and shows generated artifact content", async () => {
-            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
             writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
                 publish: false,
             });
 
@@ -3638,12 +3737,12 @@ describe("StudioServer", () => {
         });
 
         it("deploys a valid deployment (publish: true), delivers it, and writes the generated files to disk", async () => {
-            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
             writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
                 publish: true,
             });
 
@@ -3659,12 +3758,12 @@ describe("StudioServer", () => {
         });
 
         it("reports a genuinely incompatible library via compatibilityIssues (200, structured), without generating or writing anything", async () => {
-            const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base"]));
             fs.writeFileSync(path.join(deploymentProjectRoot, "base.json"), JSON.stringify({schemaVersion: 1, libraryId: "", outcomes: []}));
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
                 publish: true,
             });
 
@@ -3682,7 +3781,7 @@ describe("StudioServer", () => {
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
-                modes: [{modeName: "base", libraryPath: "base.json"}],
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
                 publish: true,
             });
 

@@ -1,15 +1,22 @@
-import {Alert, Anchor, Button, Card, Group, List, Radio, Stepper, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Card, Group, List, Radio, Select, Stepper, Text} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
-import type {StudioDeploymentModeInput, StudioDeploymentStageSummary, StudioDeploymentTargetSummary} from "../../api/types";
+import type {OutcomeLibrarySelector, StudioDeploymentModeInput, StudioDeploymentStageSummary, StudioDeploymentTargetSummary, StudioOutcomeLibraryRegistryView} from "../../api/types";
 import {
+    canAddDeploymentMode,
+    classifyDeploymentModeRow,
     collectStageIssues,
     COMPATIBILITY_STAGE_KEYS,
+    computeDeploymentConfigureBlockers,
+    describeBuildModesUnavailable,
+    describeDeploymentModeRowStatus,
     describeDeploymentOutcome,
     describeTargetCapability,
     describeTargetRequirements,
     LOCAL_JSON_EXAMPLE_TARGET_ID,
+    MULTI_MODE_CAPABILITY_ID,
     PREVIEW_STAGE_KEYS,
+    remainingDeploymentModeChoices,
     splitIssuesBySeverity,
     TRANSPORT_STAGE_KEYS,
     type DeploymentOutcomeKind,
@@ -17,11 +24,13 @@ import {
     type DeploymentTargetsListView,
 } from "../../domain/interpret/Deployment";
 import {describePathActionError} from "../../domain/pathActionError";
+import type {DeploymentProjectModesView} from "../../hooks/useDeploymentManager";
 import {useConfirm} from "../../hooks/useConfirm";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
+import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
 import {OutcomeBanner} from "../common/OutcomeBanner";
 import {PageSection} from "../common/PageSection";
@@ -204,6 +213,124 @@ function SelectTargetStep({
     return <TargetPicker targets={view.targets} initialTargetId={selectedTarget?.id} onContinue={onSelectTarget} />;
 }
 
+// A row's own outcome-library field -- a registry-discovered bundle is shown read-only (with a way back
+// to a hand-chosen file), everything else is the same PathInput every other flat-JSON-library field in
+// this app already uses.
+function DeploymentModeLibraryField({
+    selector,
+    projectRoot,
+    onChange,
+}: {
+    selector: OutcomeLibrarySelector;
+    projectRoot: string | undefined;
+    onChange: (selector: OutcomeLibrarySelector) => void;
+}) {
+    if (selector.kind === "bundle") {
+        return (
+            <div>
+                <Text size="sm" fw={600}>
+                    Outcome library
+                </Text>
+                <Text size="sm" style={{overflowWrap: "anywhere"}}>
+                    Discovered: <code>{selector.bundleDir}</code> (mode &quot;{selector.modeName}&quot;)
+                </Text>
+                <Anchor component="button" type="button" size="xs" onClick={() => onChange({kind: "json", path: ""})}>
+                    Choose a different file instead
+                </Anchor>
+            </div>
+        );
+    }
+    return (
+        <PathInput
+            label="Outcome library path"
+            kind="file"
+            browseTitle="Browse for an outcome library"
+            browseId="deployment-outcome-library-path"
+            fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+            relevantDirectory={projectRoot}
+            value={selector.kind === "json" ? selector.path : ""}
+            onChange={(event) => onChange({kind: "json", path: event.currentTarget.value})}
+            onPathSelected={(path) => onChange({kind: "json", path})}
+        />
+    );
+}
+
+// One Configure-step mode row -- mode name is always picked from the project's own build modes (a Select
+// restricted to remainingDeploymentModeChoices, never a hand-typed string); until those are known (see
+// DeploymentProjectModesView's own doc comment), the control stays disabled rather than accepting free
+// text -- the Configure step's own buildModesUnavailableMessage explains why. The library field discovers
+// a compatible outcome library automatically (see
+// useDeploymentManager's own setModeName) and otherwise offers Choose (the PathInput above) or a way to
+// the Outcome Libraries tab's own Generate/Registry hub. The status badge is the exact same
+// classifyDeploymentModeRow the Configure-step blockers list below is built from -- never a second,
+// diverging notion of "is this row OK".
+function DeploymentModeRow({
+    mode,
+    index,
+    modes,
+    projectModesView,
+    registryView,
+    lastRunError,
+    projectRoot,
+    canRemove,
+    onModeNameChange,
+    onLibrarySelectorChange,
+    onRemove,
+    onOpenOutcomeLibraries,
+}: {
+    mode: StudioDeploymentModeInput;
+    index: number;
+    modes: readonly StudioDeploymentModeInput[];
+    projectModesView: DeploymentProjectModesView;
+    registryView: StudioOutcomeLibraryRegistryView | undefined;
+    lastRunError: string | undefined;
+    projectRoot: string | undefined;
+    canRemove: boolean;
+    onModeNameChange: (modeName: string) => void;
+    onLibrarySelectorChange: (selector: OutcomeLibrarySelector) => void;
+    onRemove: () => void;
+    onOpenOutcomeLibraries: () => void;
+}) {
+    const status = classifyDeploymentModeRow(mode, index, modes, registryView ?? {status: "load-error", error: ""}, lastRunError);
+    const statusInfo = describeDeploymentModeRowStatus(status);
+    const buildModeIds = projectModesView.status === "ok" ? projectModesView.modeIds : undefined;
+    const remaining = remainingDeploymentModeChoices(buildModeIds, modes, index);
+
+    return (
+        <Card withBorder padding="sm" mb="sm">
+            <Group justify="space-between" mb="xs">
+                <Badge color={statusInfo.color}>{statusInfo.label}</Badge>
+                {canRemove && <RowActions itemLabel={`mode ${index + 1}`} onRemove={onRemove} />}
+            </Group>
+            <Group gap="sm" wrap="wrap" align="flex-start">
+                <div>
+                    {remaining !== undefined ? (
+                        <Select
+                            label="Mode name"
+                            placeholder="Choose a mode…"
+                            data={remaining as string[]}
+                            value={mode.modeName.trim().length > 0 ? mode.modeName : null}
+                            onChange={(value) => onModeNameChange(value ?? "")}
+                        />
+                    ) : (
+                        <Select label="Mode name" placeholder="Build modes unavailable" data={[]} value={null} disabled />
+                    )}
+                </div>
+                <div style={{flex: 1, minWidth: 260}}>
+                    <DeploymentModeLibraryField selector={mode.librarySelector} projectRoot={projectRoot} onChange={onLibrarySelectorChange} />
+                </div>
+            </Group>
+            {(status === "missing" || status === "wrongBuild") && (
+                <QuickActions>
+                    <Button variant="default" size="xs" onClick={onOpenOutcomeLibraries}>
+                        Generate or pick from the Outcome Libraries hub
+                    </Button>
+                </QuickActions>
+            )}
+        </Card>
+    );
+}
+
 // Which stage-key group a run outcome's own issues live in -- used by the Review-result step, which
 // (unlike Check-compatibility/Preview-artifacts) doesn't already know from its own position in the
 // workflow which group is relevant, since a real deploy can fail at any stage.
@@ -291,7 +418,10 @@ export function DeploymentTab({
     selectedTarget,
     onSelectTarget,
     modes,
-    onUpdateMode,
+    projectModesView,
+    registryView,
+    onSetModeName,
+    onSetModeLibrarySelector,
     onAddMode,
     onRemoveMode,
     onPreview,
@@ -303,6 +433,7 @@ export function DeploymentTab({
     onSelectArtifact,
     projectRoot,
     onOpenStakeEngineExport,
+    onOpenOutcomeLibraries,
 }: {
     targetsView: DeploymentTargetsListView;
     targetsError: string | undefined;
@@ -310,7 +441,10 @@ export function DeploymentTab({
     selectedTarget: StudioDeploymentTargetSummary | undefined;
     onSelectTarget: (target: StudioDeploymentTargetSummary) => void;
     modes: StudioDeploymentModeInput[];
-    onUpdateMode: (index: number, patch: Partial<StudioDeploymentModeInput>) => void;
+    projectModesView: DeploymentProjectModesView;
+    registryView: StudioOutcomeLibraryRegistryView | undefined;
+    onSetModeName: (index: number, modeName: string) => void;
+    onSetModeLibrarySelector: (index: number, selector: OutcomeLibrarySelector) => void;
     onAddMode: () => void;
     onRemoveMode: (index: number) => void;
     onPreview: () => void;
@@ -322,6 +456,7 @@ export function DeploymentTab({
     onSelectArtifact: (path: string) => void;
     projectRoot?: string;
     onOpenStakeEngineExport: () => void;
+    onOpenOutcomeLibraries: () => void;
 }) {
     const confirm = useConfirm();
     // Starts on Configure, not Select-target, when a target is already selected the moment this mounts --
@@ -419,13 +554,30 @@ export function DeploymentTab({
     const previewReachable = runResult !== undefined && outcome !== "incompatible";
     const reviewReachable = runResult !== undefined && runResult.publish;
 
+    // Configure's own gates -- every mode row's status, computed the exact same way its own badge is (see
+    // DeploymentModeRow), a target-capability-aware "is there room for another row" check, and the
+    // plain-language blockers list built from those statuses. `runError`'s own "mode "<name>": ..." prefix
+    // (see StudioDeploymentService.run()) is the only way a row can read "invalid" before a fresh
+    // Check-compatibility run reclassifies it -- see classifyDeploymentModeRow's own doc comment. While the
+    // project's own build modes aren't known yet, buildModesUnavailableMessage takes over as the sole
+    // blocker -- there is nothing a per-row status could meaningfully report when no row can even pick a
+    // real mode yet (see describeBuildModesUnavailable's own doc comment).
+    const buildModeIds = projectModesView.status === "ok" ? projectModesView.modeIds : undefined;
+    const buildModesUnavailableMessage = describeBuildModesUnavailable(buildModeIds);
+    const modeStatuses = modes.map((mode, index) => classifyDeploymentModeRow(mode, index, modes, registryView ?? {status: "load-error", error: ""}, runError));
+    const configureBlockers = buildModesUnavailableMessage !== undefined ? [buildModesUnavailableMessage] : computeDeploymentConfigureBlockers(modes, modeStatuses);
+    const canAddMode = canAddDeploymentMode(buildModeIds, modes, selectedTarget?.capabilities.includes(MULTI_MODE_CAPABILITY_ID) ?? false);
+
     return (
         <div>
             <Text size="sm" c="dimmed" mb="sm">
-                Deploys a canonical outcome library to a registered external deployment target via the pokie package&apos;s
-                own External Adapter SDK. &quot;Check &amp; Preview&quot; runs the full pipeline (compatibility check,
-                projection, generation, artifact validation, target diagnostic) without writing anything; &quot;Deploy&quot;
-                additionally publishes the generated artifacts to the target.
+                Deploys canonical outcome libraries -- never the game package or blueprint itself -- to a registered
+                external deployment target via the pokie package&apos;s own External Adapter SDK. Each mode below maps to
+                one bet mode from the project&apos;s own build; the built package/blueprint only supplies provenance
+                context (game id, version, config) used to judge whether a library is still compatible, never the
+                deployed content itself. &quot;Check &amp; Preview&quot; runs the full pipeline (compatibility check,
+                projection, generation, artifact validation, target diagnostic) without writing anything;
+                &quot;Deploy&quot; additionally publishes the generated artifacts to the target.
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
@@ -478,41 +630,52 @@ export function DeploymentTab({
                             Target: <strong>{selectedTarget.id}</strong>
                         </Text>
                         <Text size="sm" c="dimmed" mb="sm">
-                            Each mode below deploys one bet mode&apos;s canonical outcome library -- the library path is
-                            relative to the project root, the same file a Simulation run or `pokie build` would use.
+                            Each mode below deploys one bet mode&apos;s canonical outcome library. A row&apos;s own status
+                            shows whether that library is Ready, Missing, from the Wrong build, Invalid, or a Duplicate of
+                            another row -- discovered automatically from the Outcome Libraries registry when possible,
+                            otherwise choose a file, generate one, or open the hub.
                         </Text>
+                        {buildModesUnavailableMessage !== undefined && (
+                            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                                {buildModesUnavailableMessage}
+                            </Alert>
+                        )}
 
                         <PageSection legend="Deployment modes">
                             {modes.map((mode, index) => (
-                                <QuickActions key={index}>
-                                    <TextInput
-                                        label="Mode name"
-                                        value={mode.modeName}
-                                        onChange={(event) => onUpdateMode(index, {modeName: event.currentTarget.value})}
-                                    />
-                                    <PathInput
-                                        label="Outcome library path"
-                                        kind="file"
-                                        browseTitle="Browse for an outcome library"
-                                        browseId="deployment-outcome-library-path"
-                                        fileFilters={[{name: "JSON files", extensions: ["json"]}]}
-                                        relevantDirectory={projectRoot}
-                                        value={mode.libraryPath}
-                                        onChange={(event) => onUpdateMode(index, {libraryPath: event.currentTarget.value})}
-                                        onPathSelected={(path) => onUpdateMode(index, {libraryPath: path})}
-                                    />
-                                    <RowActions itemLabel={`mode ${index + 1}`} onRemove={() => onRemoveMode(index)} />
-                                </QuickActions>
+                                <DeploymentModeRow
+                                    key={index}
+                                    mode={mode}
+                                    index={index}
+                                    modes={modes}
+                                    projectModesView={projectModesView}
+                                    registryView={registryView}
+                                    lastRunError={runError}
+                                    projectRoot={projectRoot}
+                                    canRemove={modes.length > 1}
+                                    onModeNameChange={(modeName) => onSetModeName(index, modeName)}
+                                    onLibrarySelectorChange={(selector) => onSetModeLibrarySelector(index, selector)}
+                                    onRemove={() => onRemoveMode(index)}
+                                    onOpenOutcomeLibraries={onOpenOutcomeLibraries}
+                                />
                             ))}
                             <QuickActions>
-                                <Button variant="default" onClick={onAddMode}>
+                                <Button variant="default" onClick={onAddMode} disabled={!canAddMode}>
                                     Add mode
                                 </Button>
                             </QuickActions>
+                            {!canAddMode && selectedTarget !== undefined && !selectedTarget.capabilities.includes(MULTI_MODE_CAPABILITY_ID) && (
+                                <Text size="xs" c="dimmed" mt={4}>
+                                    &quot;{selectedTarget.id}&quot; doesn&apos;t declare multiMode support -- it only accepts one mode per
+                                    deployment.
+                                </Text>
+                            )}
                         </PageSection>
 
+                        {configureBlockers.length > 0 && <IssueList title="Before you can continue" issues={configureBlockers.map((message) => ({message}))} />}
+
                         <QuickActions>
-                            <Button onClick={handleCheckAndPreview} loading={runLoading}>
+                            <Button onClick={handleCheckAndPreview} loading={runLoading} disabled={configureBlockers.length > 0}>
                                 Check compatibility &amp; preview
                             </Button>
                         </QuickActions>

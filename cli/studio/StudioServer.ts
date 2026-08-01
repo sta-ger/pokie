@@ -543,6 +543,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "GET" && url.pathname === "/api/project/deployment/build-modes") {
+            await this.handleGetDeploymentBuildModes(res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/project/deployment/runs") {
             await this.handleRunDeployment(req, res);
             return;
@@ -1081,6 +1086,14 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, this.deploymentService.listTargets(this.currentContext.projectRoot));
     }
 
+    private async handleGetDeploymentBuildModes(res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        this.sendJson(res, 200, await this.deploymentService.getBuildModes(this.currentContext.projectRoot));
+    }
+
     // A well-formed request that fails at the domain level (unknown targetId, an unreadable/malformed
     // library file) still gets its own precise status (404 / 400) here, same as everywhere else in this
     // class — only the pipeline's own findings (incompatible content, a failed projector, ...) are
@@ -1105,7 +1118,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 404, {error: `Unknown deployment target "${validated.targetId}".`});
             return;
         }
-        if (result.status === "load-error") {
+        if (result.status === "invalid-modes" || result.status === "load-error") {
             this.sendJson(res, 400, {error: result.error});
             return;
         }

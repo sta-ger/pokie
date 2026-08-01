@@ -338,7 +338,7 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         expect(computeButton).not.toBeDisabled();
     });
 
-    it("Deployment's Configure step shows Mode name/Outcome library path with no placeholder at all -- an empty field reads as empty, not as a pre-filled example", async () => {
+    it("Deployment's Configure step: Mode name is a disabled Select with an explanatory placeholder until the current build's modes are known, and Outcome library path has no placeholder at all", async () => {
         const target = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
@@ -348,9 +348,12 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         await screen.findByRole("heading", {name: "My Slot"});
 
         // A lone target auto-selects and lands straight on Configure -- no artificial Select-target click.
-        await screen.findByLabelText("Mode name");
-
-        expect(screen.getByLabelText("Mode name")).not.toHaveAttribute("placeholder");
+        // PROJECT_ROUTES' own inspect route never declares `generated`, so the project's own build modes
+        // stay unavailable -- Mode name is a disabled Select (deployment modes only ever come from the
+        // current build, never a hand-typed field), explicit about why via its own placeholder.
+        const modeNameField = await screen.findByRole("combobox", {name: "Mode name"});
+        expect(modeNameField).toBeDisabled();
+        expect(modeNameField).toHaveAttribute("placeholder", "Build modes unavailable");
         expect(screen.getByLabelText("Outcome library path")).not.toHaveAttribute("placeholder");
     });
 
@@ -469,6 +472,8 @@ describe("Scoped path-action error remediation baseline", () => {
         const target = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: [target]}),
             "/api/project/deployment/runs": () => ({ok: false, status: 500, body: {error: 'Could not read "./outcomes/base.json": ENOENT: no such file or directory'}}),
         });
@@ -476,8 +481,9 @@ describe("Scoped path-action error remediation baseline", () => {
         await screen.findByRole("heading", {name: "My Slot"});
 
         // A lone target auto-selects and lands straight on Configure -- no artificial Select-target click.
-        await screen.findByLabelText("Mode name");
-        await user.type(screen.getByLabelText("Mode name"), "base");
+        // The project's own sole build mode ("base") auto-selects into the row -- deployment modes only
+        // ever come from the current build, never a hand-typed name.
+        await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
         await user.type(screen.getByLabelText("Outcome library path"), "./outcomes/missing.json");
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
 

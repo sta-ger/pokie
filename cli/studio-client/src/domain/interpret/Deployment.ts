@@ -1,8 +1,11 @@
 import type {
+    OutcomeLibrarySelector,
     StudioDeploymentArtifactView,
+    StudioDeploymentModeInput,
     StudioDeploymentRunView,
     StudioDeploymentStageSummary,
     StudioDeploymentTargetSummary,
+    StudioOutcomeLibraryRegistryView,
     ValidationIssue,
 } from "../../api/types";
 
@@ -59,10 +62,16 @@ export function hasTargetDescriptorChanged(previous: StudioDeploymentTargetSumma
 // declare its own ids ExternalDeploymentCompatibilityValidator never checks against), so an unrecognized
 // one is shown as-is rather than hidden — a target author's own capability id is still useful information
 // even when this UI doesn't have a friendlier label for it yet.
+// Mirrors ExternalDeploymentCapability.ts's own MULTI_MODE_DEPLOYMENT_CAPABILITY id -- a target that
+// doesn't declare this only ever accepts exactly one mode per deployment (see
+// ExternalDeploymentCompatibilityValidator's own enforcement of that), which is what gates whether the
+// Configure step's own "Add mode" action is ever offered.
+export const MULTI_MODE_CAPABILITY_ID = "multiMode";
+
 const KNOWN_CAPABILITY_DESCRIPTIONS: Record<string, string> = {
     "roundArtifact.featureEvents": "Rounds with feature events (e.g. free spins, bonus triggers)",
     "roundArtifact.debugMetadata": "Rounds carrying debug metadata",
-    multiMode: "More than one bet mode in a single deployment",
+    [MULTI_MODE_CAPABILITY_ID]: "More than one bet mode in a single deployment",
 };
 
 export function describeTargetCapability(capabilityId: string): string {
@@ -88,6 +97,204 @@ export function describeTargetRequirements(requirements: StudioDeploymentTargetS
         lines.push("No special requirements -- accepts any compatible outcome library.");
     }
     return lines;
+}
+
+// ---- Configure step: mode mapping ----
+// The Configure step maps each deployed mode to the built game's own bet modes (never a hand-typed
+// string -- until the build's own modes are known, mode-name entry stays blocked entirely, see
+// describeBuildModesUnavailable) and, per row, to a compatible outcome library discovered from the
+// Outcome Libraries registry (never an empty free-text path) -- these functions are the pure decision
+// logic behind that mapping, unit-testable without a real Select/PathInput/registry fetch.
+
+function trimmedModeName(row: StudioDeploymentModeInput): string {
+    return row.modeName.trim();
+}
+
+// Every mode name already claimed by some *other* row -- mirrors CertificationTab's own usedModeNames,
+// the shared "forbid duplicates" primitive both tabs build their own remaining-choices/blocker logic on.
+export function usedDeploymentModeNames(rows: readonly StudioDeploymentModeInput[], excludeIndex: number): Set<string> {
+    return new Set(rows.filter((_row, index) => index !== excludeIndex).map(trimmedModeName).filter((name) => name.length > 0));
+}
+
+// Build modes still available to the row at `index` -- every one of the project's own build modes not
+// already claimed by some *other* row, plus this row's own current selection (so choosing it never makes
+// it vanish from its own dropdown). `undefined` `buildModeIds` means the project's own build modes aren't
+// known yet (still loading, or this project wasn't built from a tracked source blueprint at all -- see
+// CertificationTab's own ProjectModesView) -- callers must treat that as "nothing pickable yet" (see
+// describeBuildModesUnavailable below), never fall back to an unrestricted mode-name input: a deployment
+// mode must always come from the current build, never a hand-typed string that might not even exist in it.
+export function remainingDeploymentModeChoices(
+    buildModeIds: readonly string[] | undefined,
+    rows: readonly StudioDeploymentModeInput[],
+    index: number,
+): readonly string[] | undefined {
+    if (buildModeIds === undefined) {
+        return undefined;
+    }
+    const used = usedDeploymentModeNames(rows, index);
+    const ownValue = rows[index] !== undefined ? trimmedModeName(rows[index]) : "";
+    return buildModeIds.filter((id) => id === ownValue || !used.has(id));
+}
+
+// Whether "Add mode" should ever be offered -- gated on three independent things: the project's own build
+// modes actually being known (an unknown `buildModeIds`, see remainingDeploymentModeChoices's own doc
+// comment, means there is nothing real to pick for a new row, so adding one is blocked outright rather
+// than falling back to a hand-typed mode name), the selected target's own declared multiMode capability (a
+// target that omits it only ever accepts exactly one mode per deployment, see
+// ExternalDeploymentCompatibilityValidator), and whether any build mode remains unclaimed by an existing
+// row.
+export function canAddDeploymentMode(
+    buildModeIds: readonly string[] | undefined,
+    rows: readonly StudioDeploymentModeInput[],
+    targetSupportsMultiMode: boolean,
+): boolean {
+    if (buildModeIds === undefined) {
+        return false;
+    }
+    if (rows.length >= 1 && !targetSupportsMultiMode) {
+        return false;
+    }
+    const used = usedDeploymentModeNames(rows, -1);
+    return buildModeIds.some((id) => !used.has(id));
+}
+
+// The Configure step's own domain-language remediation for "the project's build modes aren't available
+// yet" -- an unknown `buildModeIds` (see remainingDeploymentModeChoices's own doc comment) means there is
+// no real bet mode to pick from, so this replaces the old free-text fallback: every mode-name control
+// stays disabled and both "Add mode" and "Check compatibility & preview" stay blocked (see
+// canAddDeploymentMode and DeploymentTab's own configureBlockers) until the build's own modes resolve.
+// `undefined` once they have -- nothing to block on this account.
+export function describeBuildModesUnavailable(buildModeIds: readonly string[] | undefined): string | undefined {
+    if (buildModeIds !== undefined) {
+        return undefined;
+    }
+    return "This project's build modes aren't available yet -- deployment modes can only come from the current build, never a hand-typed name. Build this project from a tracked source blueprint, then reopen this tab to pick modes here.";
+}
+
+export function isBlankLibrarySelector(selector: OutcomeLibrarySelector): boolean {
+    if (selector.kind === "json") {
+        return selector.path.trim().length === 0;
+    }
+    if (selector.kind === "bundle") {
+        return selector.bundleDir.trim().length === 0 || selector.modeName.trim().length === 0;
+    }
+    return selector.stakeDir.trim().length === 0 || selector.modeName.trim().length === 0;
+}
+
+// Whether a row's own librarySelector is safe to silently replace when its modeName changes -- a blank
+// selector obviously is, and so is a "bundle" one (its own `modeName` field must always match the row's,
+// see discoverDeploymentModeLibrarySelector's own doc comment, so it's already tied to the mode it was
+// discovered for). A manually-chosen "json"/"stakeengine" selector is never auto-replaced this way -- see
+// useDeploymentManager's own setModeName, which is the only caller of this.
+export function isAutoDiscoverableLibrarySelector(selector: OutcomeLibrarySelector): boolean {
+    return selector.kind === "bundle" || isBlankLibrarySelector(selector);
+}
+
+// The Outcome Libraries registry's own compatibility classification for exactly the bundle a row's own
+// librarySelector points at -- `undefined` when the registry has nothing to say about it (no registry
+// data yet, no bundle for this mode, or the row's own selector isn't a bundle selector at all, e.g. a
+// hand-chosen flat JSON file the registry never indexed).
+function registryBuildStatusForSelector(
+    modeName: string,
+    selector: OutcomeLibrarySelector,
+    registry: StudioOutcomeLibraryRegistryView,
+): "compatible" | "stale" | "wrong" | undefined {
+    if (registry.status !== "ok" || registry.buildStatus === "missing" || selector.kind !== "bundle") {
+        return undefined;
+    }
+    return registry.modes.find((mode) => mode.modeName === modeName && mode.bundleDir === selector.bundleDir)?.buildStatus;
+}
+
+// The latest registry-known library compatible with the current build for a given mode name, ready to
+// drop straight into a row's own librarySelector -- `undefined` when the registry has no (or no longer
+// compatible) entry for this mode, at which point the Configure step falls back to offering
+// Choose/Generate/open the hub instead of silently leaving the row on a stale selector.
+export function discoverDeploymentModeLibrarySelector(modeName: string, registry: StudioOutcomeLibraryRegistryView): OutcomeLibrarySelector | undefined {
+    if (registry.status !== "ok" || registry.buildStatus === "missing") {
+        return undefined;
+    }
+    const entry = registry.modes.find((mode) => mode.modeName === modeName && mode.buildStatus === "compatible");
+    return entry === undefined ? undefined : {kind: "bundle", bundleDir: entry.bundleDir, modeName: entry.modeName};
+}
+
+// Every status a Configure row's own mode-name+library pairing can be in, in the language the row's own
+// status badge shows:
+//   - "unselected": no mode picked yet (a freshly added row).
+//   - "duplicate": this row's mode name is already claimed by another row -- forbidden outright, never
+//     silently deployed twice (see usedDeploymentModeNames -- structurally shouldn't happen through the
+//     Select-based mode picker alone, but is still checked here as the one place duplicate-ness is
+//     actually decided, in case a row's own selection is ever set another way).
+//   - "missing": a mode is picked but no library has been chosen/discovered for it yet.
+//   - "wrongBuild": the chosen library is a registry-known bundle that's stale or from a different game
+//     build -- present, but not safe to deploy as-is.
+//   - "invalid": the last Check/Deploy run's own load-error named this exact mode (see
+//     StudioDeploymentService.run()'s own "mode "<name>": <reason>" prefix) -- the chosen selector doesn't
+//     actually resolve to a readable, well-formed library.
+//   - "ready": everything about this row is deployable as far as the Configure step can tell locally; the
+//     Check-compatibility step is still the authoritative last word.
+export type DeploymentModeRowStatus = "unselected" | "duplicate" | "missing" | "wrongBuild" | "invalid" | "ready";
+
+export function classifyDeploymentModeRow(
+    row: StudioDeploymentModeInput,
+    index: number,
+    rows: readonly StudioDeploymentModeInput[],
+    registry: StudioOutcomeLibraryRegistryView,
+    lastRunError?: string,
+): DeploymentModeRowStatus {
+    const modeName = trimmedModeName(row);
+    if (modeName.length === 0) {
+        return "unselected";
+    }
+    if (usedDeploymentModeNames(rows, index).has(modeName)) {
+        return "duplicate";
+    }
+    if (isBlankLibrarySelector(row.librarySelector)) {
+        return "missing";
+    }
+    if (lastRunError !== undefined && lastRunError.includes(`mode "${modeName}"`)) {
+        return "invalid";
+    }
+    const registryStatus = registryBuildStatusForSelector(modeName, row.librarySelector, registry);
+    if (registryStatus === "wrong" || registryStatus === "stale") {
+        return "wrongBuild";
+    }
+    return "ready";
+}
+
+const DEPLOYMENT_MODE_ROW_STATUS_DESCRIPTIONS: Record<DeploymentModeRowStatus, {label: string; color: string}> = {
+    unselected: {label: "Pick a mode", color: "gray"},
+    ready: {label: "Ready", color: "green"},
+    missing: {label: "Missing library", color: "red"},
+    wrongBuild: {label: "Wrong build", color: "yellow"},
+    invalid: {label: "Invalid", color: "red"},
+    duplicate: {label: "Duplicate mode", color: "red"},
+};
+
+export function describeDeploymentModeRowStatus(status: DeploymentModeRowStatus): {label: string; color: string} {
+    return DEPLOYMENT_MODE_ROW_STATUS_DESCRIPTIONS[status];
+}
+
+// Plain-language reasons the Configure step's own "Check compatibility & preview" is blocked -- computed
+// entirely client-side from already-known row statuses, never a raw schema/validation path (see
+// validateDeploymentRunRequest's own request-shape errors, which are a distinct, request-level concern
+// this never surfaces directly to the user).
+export function computeDeploymentConfigureBlockers(rows: readonly StudioDeploymentModeInput[], statuses: readonly DeploymentModeRowStatus[]): string[] {
+    const blockers: string[] = [];
+    statuses.forEach((status, index) => {
+        const modeLabel = trimmedModeName(rows[index]) || `Row ${index + 1}`;
+        if (status === "unselected") {
+            blockers.push(`${modeLabel}: pick a bet mode.`);
+        } else if (status === "missing") {
+            blockers.push(`${modeLabel}: choose, generate, or pick a compatible outcome library from the hub.`);
+        } else if (status === "wrongBuild") {
+            blockers.push(`${modeLabel}: the selected library is from a different or older build -- regenerate it or pick another.`);
+        } else if (status === "duplicate") {
+            blockers.push(`${modeLabel}: this mode is already used by another row -- remove one.`);
+        } else if (status === "invalid") {
+            blockers.push(`${modeLabel}: the selected library couldn't be read as a valid outcome library.`);
+        }
+    });
+    return blockers;
 }
 
 export type DeploymentRunResultView = {

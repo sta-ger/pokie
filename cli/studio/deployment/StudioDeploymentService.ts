@@ -5,10 +5,17 @@ import {
     ExternalDeploymentServicing,
     ExternalDeploymentTarget,
     ExternalDeploymentTargetRegistry,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
+    StakeEngineImporter,
+    StakeEngineImporting,
 } from "pokie";
 import fs from "fs";
 import path from "path";
-import {loadWeightedOutcomeLibraryFromProjectFile} from "./loadWeightedOutcomeLibraryFromProjectFile.js";
+import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
+import {loadOutcomeLibraryFromSelector} from "../outcomeLibrary/loadOutcomeLibraryFromSelector.js";
+import {resolveCurrentBuildModeIds} from "./resolveCurrentBuildModeIds.js";
+import type {StudioDeploymentBuildModesView} from "./StudioDeploymentBuildModesView.js";
 import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 import type {StudioDeploymentTargetSummary} from "./StudioDeploymentTargetSummary.js";
 import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
@@ -19,7 +26,42 @@ const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
 export type StudioDeploymentRunResult =
     | {readonly status: "ok"; readonly view: StudioDeploymentRunView}
     | {readonly status: "target-not-found"}
+    | {readonly status: "invalid-modes"; readonly error: string}
     | {readonly status: "load-error"; readonly error: string};
+
+// Domain-language remediation for a request naming a mode absent/stale from the current build (see
+// resolveCurrentBuildModeIds's own doc comment) -- never the raw "modeName" schema path, always which
+// mode(s) were rejected and which ones are actually pickable right now, the same "current build only"
+// contract the Configure step's own describeBuildModesUnavailable/remainingDeploymentModeChoices already
+// enforce client-side (see cli/studio-client/src/domain/interpret/Deployment.ts).
+function describeInvalidDeploymentModes(staleModeNames: readonly string[], buildModeIds: readonly string[]): string {
+    const staleList = staleModeNames.map((name) => `mode "${name}"`).join(", ");
+    const verb = staleModeNames.length === 1 ? "isn't" : "aren't";
+    return `${staleList} ${verb} part of this project's current build -- rebuild the project, then pick from: ${buildModeIds.join(", ")}.`;
+}
+
+// Domain-language remediation for a request made against a project with no inspectable current build
+// (see resolveCurrentBuildModeIds's own doc comment) -- there is nothing real to check a requested mode
+// against, so nothing can be proven safe to deploy; this is a rejection, never a "nothing to check,
+// skip the check" pass-through.
+function describeBuildModesUnavailableForDeployment(): string {
+    return 'This project has no current build to deploy against -- run "pokie build" (or the Certification tab\'s own build step), then try again.';
+}
+
+// A bundle/Stake Engine selector carries its own "modeName" (which mode of the bundle/export to read --
+// see OutcomeLibrarySelector); a "json" selector has no such field. Mismatched against the deployment
+// row's own mode would silently deploy one mode's data under another mode's name, so this is checked --
+// and rejected -- before any selector is ever resolved to a real library.
+function selectorModeName(selector: OutcomeLibrarySelector): string | undefined {
+    return selector.kind === "json" ? undefined : selector.modeName;
+}
+
+function describeSelectorModeMismatch(modeName: string, selectorModeName: string): string {
+    return (
+        `mode "${modeName}"'s library selector names mode "${selectorModeName}" -- a bundle/Stake Engine ` +
+        "selector must name the exact same mode as its own deployment row."
+    );
+}
 
 // The Project Dashboard's Deployment tab, built directly on top of the pokie package's own External
 // Adapter SDK (see docs/external-adapter-sdk.md) — this class never projects a RoundArtifact, never
@@ -28,7 +70,10 @@ export type StudioDeploymentRunResult =
 // own single orchestrator. What this class actually owns is Studio-specific plumbing only: which
 // target(s) are available for the active project (a registry seeded with exactly the SDK's own
 // local-filesystem example target — see docs/cli.md's own "no private RGS integration" note, which
-// applies here too), and turning a validated HTTP request into the SDK's own input shapes.
+// applies here too), turning a validated HTTP request into the SDK's own input shapes, and rejecting a
+// mode absent from the active project's own current build (see resolveCurrentBuildModeIds) before any of
+// that — a check the Configure UI already makes unreachable through normal use, but which still has to
+// hold for a request that skips the UI entirely (see run()'s own doc comment).
 //
 // "Preview" vs "Deploy" is not two different pipelines — it's the exact same deploy() call against two
 // different target objects: publish:false strips `runtimeAdapter` (so ExternalDeploymentService's own
@@ -37,19 +82,28 @@ export type StudioDeploymentRunResult =
 export class StudioDeploymentService {
     private readonly externalDeploymentService: ExternalDeploymentServicing;
     private readonly createLocalTarget: (outDir: string) => ExternalDeploymentTarget;
+    private readonly bundleReader: OutcomeLibraryBundleReading<string>;
+    private readonly stakeEngineImporter: StakeEngineImporting<string>;
     private readonly readFile: (resolvedPath: string) => string;
     private readonly realpath: (resolvedPath: string) => string;
+    private readonly resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined>;
 
     constructor(
         externalDeploymentService: ExternalDeploymentServicing = new ExternalDeploymentService(),
         createLocalTarget: (outDir: string) => ExternalDeploymentTarget = (outDir) => createLocalJsonExternalDeploymentTarget({outDir}),
         readFile: (resolvedPath: string) => string = (resolvedPath) => fs.readFileSync(resolvedPath, "utf-8"),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
+        bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
+        stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
+        resolveBuildModeIds: (projectRoot: string) => Promise<readonly string[] | undefined> = resolveCurrentBuildModeIds,
     ) {
         this.externalDeploymentService = externalDeploymentService;
         this.createLocalTarget = createLocalTarget;
         this.readFile = readFile;
         this.realpath = realpath;
+        this.bundleReader = bundleReader;
+        this.stakeEngineImporter = stakeEngineImporter;
+        this.resolveBuildModeIds = resolveBuildModeIds;
     }
 
     public listTargets(projectRoot: string): StudioDeploymentTargetSummary[] {
@@ -58,11 +112,29 @@ export class StudioDeploymentService {
             .map((target) => ({id: target.id, version: target.version, requirements: target.requirements, capabilities: target.capabilities}));
     }
 
+    // The Configure step's own mode picker, backed by the exact same current-built-package resolution
+    // run() itself checks a request against (see resolveCurrentBuildModeIds's own doc comment) -- so the
+    // Configure UI can never offer a mode run() would go on to reject, and never drifts from it just
+    // because the tracked source was edited, moved, or deleted after the last build.
+    public async getBuildModes(projectRoot: string): Promise<StudioDeploymentBuildModesView> {
+        const modeIds = await this.resolveBuildModeIds(projectRoot);
+        return modeIds === undefined ? {status: "unavailable"} : {status: "ok", modeIds};
+    }
+
     // Looks the requested target up in the same registry listTargets() itself builds (so "is this
-    // target even registered" can never disagree between the two calls), loads every mode's own
-    // library file (see loadWeightedOutcomeLibraryFromProjectFile — the first mode/library that fails
-    // to load stops the whole request before ExternalDeploymentService is ever called, since there's
-    // no well-formed input to give it yet), then runs the one real pipeline call.
+    // target even registered" can never disagree between the two calls), then rejects outright (status:
+    // "invalid-modes") if the active project's own current build modes aren't known at all (see
+    // resolveCurrentBuildModeIds -- an ungenerated project, or one whose entry module fails to load, has
+    // nothing real to check a requested mode against, so nothing can be proven safe to deploy; this is a
+    // rejection, never "nothing to check, skip the check") or if any requested mode isn't one of them.
+    // Also rejects any mode whose bundle/Stake Engine librarySelector names a different mode than its
+    // own deployment row (see selectorModeName) -- before either check, no selector is ever resolved to
+    // a real library. Only once every mode passes both checks does it resolve each mode's own
+    // librarySelector (see loadOutcomeLibraryFromSelector — the same json/bundle/stakeengine resolution
+    // the Outcome Libraries tab's own Select/Compare already use, so a mode can deploy straight from a
+    // bundle the registry found compatible, not only a hand-typed flat JSON file; the first mode/library
+    // that fails to load stops the whole request before ExternalDeploymentService is ever called, since
+    // there's no well-formed input to give it yet), then runs the one real pipeline call.
     public async run(projectRoot: string, request: ValidatedDeploymentRunRequest): Promise<StudioDeploymentRunResult> {
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
@@ -70,11 +142,38 @@ export class StudioDeploymentService {
             return {status: "target-not-found"};
         }
 
+        const buildModeIds = await this.resolveBuildModeIds(projectRoot);
+        if (buildModeIds === undefined) {
+            return {status: "invalid-modes", error: describeBuildModesUnavailableForDeployment()};
+        }
+        const staleModeNames = request.modes.map((mode) => mode.modeName).filter((modeName) => !buildModeIds.includes(modeName));
+        if (staleModeNames.length > 0) {
+            return {status: "invalid-modes", error: describeInvalidDeploymentModes(staleModeNames, buildModeIds)};
+        }
+
+        const mismatchedSelectorMode = request.modes.find((mode) => {
+            const named = selectorModeName(mode.librarySelector);
+            return named !== undefined && named !== mode.modeName;
+        });
+        if (mismatchedSelectorMode !== undefined) {
+            return {
+                status: "invalid-modes",
+                error: describeSelectorModeMismatch(mismatchedSelectorMode.modeName, selectorModeName(mismatchedSelectorMode.librarySelector) as string),
+            };
+        }
+
         const modes: ExternalDeploymentModeInput[] = [];
         for (const mode of request.modes) {
-            const loaded = loadWeightedOutcomeLibraryFromProjectFile(projectRoot, mode.libraryPath, this.readFile, this.realpath);
-            if (loaded.status === "error") {
-                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.message}`};
+            const loaded = await loadOutcomeLibraryFromSelector(
+                projectRoot,
+                mode.librarySelector,
+                this.bundleReader,
+                this.stakeEngineImporter,
+                this.readFile,
+                this.realpath,
+            );
+            if (loaded.status === "load-error") {
+                return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`};
             }
             modes.push({modeName: mode.modeName, library: loaded.library});
         }

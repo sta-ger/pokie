@@ -10,7 +10,14 @@ const TARGET = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
     "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME}}),
-    "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
+    "/api/project/inspect": () => ({
+        ok: true,
+        status: 200,
+        body: {packageRoot: "/games/a", valid: true, generated: true, buildInfo: {source: "blueprint.json"}},
+    }),
+    "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", blueprint: {betModes: [{id: "base"}]}}}),
+    "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+    "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
@@ -50,12 +57,15 @@ function stepperStep(label: string, description: string): RegExp {
 
 // TARGET is the only registered target, so it's selected automatically (no artificial Select-target
 // click) and the stepper lands straight on Configure -- see useDeploymentManager's own auto-select in
-// refreshTargets() and DeploymentTab's own undefined -> defined selectedTarget effect.
+// refreshTargets() and DeploymentTab's own undefined -> defined selectedTarget effect. The project's own
+// sole build mode ("base", see BASE_ROUTES' own inspect/blueprint routes) auto-selects into the row the
+// moment build-mode discovery resolves -- deployment modes only ever come from the current build, never a
+// hand-typed name -- so only the Outcome library path still needs filling in by hand.
 async function goToDeploymentConfigure(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Deployment"}));
     await screen.findByRole("button", {name: "Check compatibility & preview"});
-    await user.type(screen.getByLabelText("Mode name"), "base");
+    await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
     await user.type(screen.getByLabelText("Outcome library path"), "libs/base.json");
 }
 
@@ -333,7 +343,10 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         expect(await screen.findByRole("button", {name: "base.json"})).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Back to Configure"}));
-        await user.type(screen.getByLabelText("Mode name"), "-edited");
+        // Mode name only ever comes from the current build (a Select, never a hand-typed field) -- editing
+        // the row's own library path is what this exercises instead, invalidating the stale run exactly the
+        // same way (see useDeploymentManager's own setModeLibrarySelector).
+        await user.type(screen.getByLabelText("Outcome library path"), "-edited");
 
         // The previous run's result is gone -- back on Configure, and Check-compatibility/Preview
         // artifacts/Deploy no longer show the stale, now-invalidated run.

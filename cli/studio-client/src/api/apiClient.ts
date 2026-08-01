@@ -15,6 +15,7 @@ import type {
     StudioCertificationBuildView,
     StudioCertificationSourceValidateView,
     StudioContext,
+    StudioDeploymentBuildModesView,
     StudioDeploymentModeInput,
     StudioDeploymentRunView,
     StudioDeploymentTargetSummary,
@@ -776,6 +777,18 @@ export async function listDeploymentTargets(fetchImpl: FetchLike): Promise<Studi
         throw new Error(await extractErrorMessage(response, "Failed to fetch deployment targets"));
     }
     return (await response.json()) as StudioDeploymentTargetSummary[];
+}
+
+// The Configure step's own mode picker's data source — see
+// cli/studio/deployment/StudioDeploymentBuildModesView.ts's own doc comment: resolved server-side from
+// the project's own current *built* package, so editing, moving, or deleting the tracked source after a
+// build never changes what Configure offers to pick from.
+export async function getDeploymentBuildModes(fetchImpl: FetchLike): Promise<StudioDeploymentBuildModesView> {
+    const response = await fetchImpl("/api/project/deployment/build-modes");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to fetch the project's current build modes"));
+    }
+    return (await response.json()) as StudioDeploymentBuildModesView;
 }
 
 // "publish: false" (the default) runs compatibility-check + preview only — see

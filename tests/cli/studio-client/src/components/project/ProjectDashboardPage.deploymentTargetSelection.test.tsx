@@ -1,4 +1,4 @@
-import {screen} from "@testing-library/react";
+import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -7,7 +7,14 @@ const GAME = {id: "a", name: "A", version: "1.0.0"};
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
     "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME}}),
-    "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
+    "/api/project/inspect": () => ({
+        ok: true,
+        status: 200,
+        body: {packageRoot: "/games/a", valid: true, generated: true, buildInfo: {source: "blueprint.json"}},
+    }),
+    "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", blueprint: {betModes: [{id: "base"}]}}}),
+    "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+    "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
@@ -150,7 +157,9 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
         await user.click(screen.getByRole("radio", {name: /target-one/}));
         await user.click(screen.getByRole("button", {name: "Continue with target"}));
 
-        await user.type(screen.getByLabelText("Mode name"), "base");
+        // The project's own sole build mode ("base") auto-selects into the row -- deployment modes only
+        // ever come from the current build, never a hand-typed name.
+        await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
         await user.type(screen.getByLabelText("Outcome library path"), "libs/base.json");
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
@@ -166,7 +175,7 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
 
         expect(await screen.findByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
         expect(screen.queryByText("base.json")).not.toBeInTheDocument();
-        expect(screen.getByLabelText("Mode name")).toHaveValue("base");
+        expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base");
         expect(screen.getByLabelText("Outcome library path")).toHaveValue("libs/base.json");
     });
 });
