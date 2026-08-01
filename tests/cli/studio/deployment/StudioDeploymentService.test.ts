@@ -121,6 +121,58 @@ describe("StudioDeploymentService", () => {
         expect(result).toEqual({status: "target-not-found"});
     });
 
+    it("rejects a mode absent from the active project's own current build, without ever reading its library", async () => {
+        const readFile = jest.fn(() => {
+            throw new Error("library file should not be read for a rejected mode");
+        });
+        const service = new StudioDeploymentService(undefined, () => stubTarget(), readFile, identityRealpath, undefined, undefined, () => ["bonus"]);
+
+        const result = await service.run("/project", runRequest());
+
+        expect(result).toEqual({
+            status: "invalid-modes",
+            error: 'mode "base" isn\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.',
+        });
+        expect(readFile).not.toHaveBeenCalled();
+    });
+
+    it("rejects every stale mode in one request, listing only the current build's own modes as pickable", async () => {
+        const service = new StudioDeploymentService(undefined, () => stubTarget({capabilities: ["multiMode"]}), () => "", identityRealpath, undefined, undefined, () => ["bonus"]);
+
+        const result = await service.run(
+            "/project",
+            runRequest({
+                modes: [
+                    {modeName: "base", librarySelector: {kind: "json", path: "base.json"}},
+                    {modeName: "super", librarySelector: {kind: "json", path: "super.json"}},
+                ],
+            }),
+        );
+
+        expect(result).toEqual({
+            status: "invalid-modes",
+            error: 'mode "base", mode "super" aren\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.',
+        });
+    });
+
+    it("deploys a mode that is part of the active project's own current build", async () => {
+        const library = testLibrary();
+        const service = new StudioDeploymentService(undefined, () => stubTarget(), () => JSON.stringify(library), identityRealpath, undefined, undefined, () => ["base", "bonus"]);
+
+        const result = await service.run("/project", runRequest());
+
+        expect(result.status).toBe("ok");
+    });
+
+    it("never rejects on current-build grounds when the current build's modes aren't known (e.g. an ungenerated project)", async () => {
+        const library = testLibrary();
+        const service = new StudioDeploymentService(undefined, () => stubTarget(), () => JSON.stringify(library), identityRealpath, undefined, undefined, () => undefined);
+
+        const result = await service.run("/project", runRequest());
+
+        expect(result.status).toBe("ok");
+    });
+
     it("returns load-error, prefixed with the mode name, when a library fails to load", async () => {
         const readFile = () => {
             throw new Error("simulated read failure");

@@ -1105,7 +1105,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 404, {error: `Unknown deployment target "${validated.targetId}".`});
             return;
         }
-        if (result.status === "load-error") {
+        if (result.status === "invalid-modes" || result.status === "load-error") {
             this.sendJson(res, 400, {error: result.error});
             return;
         }

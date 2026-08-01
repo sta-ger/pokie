@@ -3569,6 +3569,39 @@ describe("StudioServer", () => {
             expect(body).toEqual({error: 'Unknown deployment target "does-not-exist".'});
         });
 
+        it("returns 400, in domain language, when a mode isn't part of the active project's own current build — even for a request that never went through the Configure UI", async () => {
+            const projectBaseUrl = await startServerForProject(
+                deploymentProjectRoot,
+                new StudioDeploymentService(undefined, undefined, undefined, undefined, undefined, undefined, () => ["bonus"]),
+            );
+            writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
+            });
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toBe('mode "base" isn\'t part of this project\'s current build -- rebuild the project, then pick from: bonus.');
+        });
+
+        it("deploys a mode that is part of the active project's own current build", async () => {
+            const projectBaseUrl = await startServerForProject(
+                deploymentProjectRoot,
+                new StudioDeploymentService(undefined, undefined, undefined, undefined, undefined, undefined, () => ["base"]),
+            );
+            writeLibraryFile("base.json", buildDeploymentTestLibrary("lib"));
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/deployment/runs`, {
+                targetId: "local-json-example",
+                modes: [{modeName: "base", librarySelector: {kind: "json", path: "base.json"}}],
+                publish: false,
+            });
+
+            expect(status).toBe(200);
+            expect((body as {publish: boolean}).publish).toBe(false);
+        });
+
         it("returns 400 when a mode's library file doesn't exist", async () => {
             const projectBaseUrl = await startServerForProject(deploymentProjectRoot);
 
