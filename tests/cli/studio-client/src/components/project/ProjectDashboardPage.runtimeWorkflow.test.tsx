@@ -273,8 +273,16 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         await user.click(screen.getByRole("button", {name: "Create Session"}));
         await user.click(await screen.findByRole("button", {name: "Spin"}));
 
-        expect(await screen.findByText("Session cannot play the next round.")).toBeInTheDocument();
         expect(screen.getByText("Can't play this round")).toBeInTheDocument();
+        expect(
+            await screen.findByText(
+                /This session can.t play another round right now -- for example, insufficient balance for the bet/,
+            ),
+        ).toBeInTheDocument();
+        // The raw server message is still available, but tucked behind the disclosure, never the primary text.
+        expect(screen.getByText("Session cannot play the next round.")).not.toBeVisible();
+        await user.click(screen.getByText("Show advanced details (server message)"));
+        expect(screen.getByText("Session cannot play the next round.")).toBeVisible();
 
         await user.click(screen.getByRole("button", {name: "Create a new session"}));
         expect(screen.getByRole("radio", {name: "New session"})).toBeChecked();
@@ -303,9 +311,15 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         await user.click(screen.getByRole("button", {name: "Create Session"}));
         await user.click(await screen.findByRole("button", {name: "Spin"}));
 
-        expect(await screen.findByText("Expected session version 1 but was 2.")).toBeInTheDocument();
         expect(screen.getByText("Session changed elsewhere")).toBeInTheDocument();
+        expect(
+            await screen.findByText(/This session was updated by another request since it was last loaded here/),
+        ).toBeInTheDocument();
         expect(spinAttempts).toBe(1);
+        // The raw server message is still available, but tucked behind the disclosure, never the primary text.
+        expect(screen.getByText("Expected session version 1 but was 2.")).not.toBeVisible();
+        await user.click(screen.getByText("Show advanced details (server message)"));
+        expect(screen.getByText("Expected session version 1 but was 2.")).toBeVisible();
 
         await user.click(screen.getByRole("button", {name: "Reload session"}));
         await waitFor(() => expect(screen.getByText(/1010\.00/)).toBeInTheDocument());
@@ -740,7 +754,9 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(screen.getByText("Spin a round, or pick one from round history below, to inspect it here.")).toBeInTheDocument();
 
         releaseSecondSpin?.();
-        expect(await screen.findByText("Session cannot play the next round.")).toBeInTheDocument();
+        expect(await screen.findByText("Can't play this round")).toBeInTheDocument();
+        // The raw server message is still available, but tucked behind the disclosure, never the primary text.
+        expect(screen.getByText("Session cannot play the next round.")).not.toBeVisible();
 
         // Still no trace of the first round now that the failure has actually landed.
         expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
@@ -1234,7 +1250,12 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument();
 
         releaseRetry?.();
-        expect(await screen.findByText("Session changed elsewhere.")).toBeInTheDocument();
+        expect(await screen.findByText("Session changed elsewhere")).toBeInTheDocument();
+        expect(
+            await screen.findByText(/This session was updated by another request since it was last loaded here/),
+        ).toBeInTheDocument();
+        // The raw server message is still available, but tucked behind the disclosure, never the primary text.
+        expect(screen.getByText("Session changed elsewhere.")).not.toBeVisible();
 
         expect(screen.queryByRole("button", {name: "Debug this round in Replay & Debug"})).not.toBeInTheDocument();
         expect(screen.getByText("Select a round from history below to debug.")).toBeInTheDocument();

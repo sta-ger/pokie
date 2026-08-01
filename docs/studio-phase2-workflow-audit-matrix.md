@@ -32,7 +32,7 @@ handling; and **raw-error surfaces** (a caught exception's message shown with no
 | Advanced Tools (3 forms) | nonlinear (independent forms) | No | N/A | Yes (v4 update) |
 | Open Project | nonlinear (2 independent paths) | No | N/A | Yes (v3 update, `OpenProjectForm`) |
 | Replay | nonlinear (source-choice picker, not a wizard) | **No** -- replaced by a `SegmentedControl` source picker (`P2-POLISH-12`) | N/A -- staleness prevented structurally (state reset on source switch), not flagged after the fact | **No** (raw passthrough throughout) |
-| Runtime | cyclic (persistent session workspace) | **No** -- replaced by an always-visible multi-section workspace (`P2-POLISH-16`) | N/A -- staleness prevented structurally (selection cleared on every invalidating action) | **Yes this step** -- own `describeRuntimeActionError` helper, not `describePathActionError` (Runtime failures are server/network, not a user-typed path); covers server start/restart/refresh, session create/load, and spin/retry -- "blocked"/"conflict" keep their existing hand-built `RecoveryNotice` copy |
+| Runtime | cyclic (persistent session workspace) | **No** -- replaced by an always-visible multi-section workspace (`P2-POLISH-16`) | N/A -- staleness prevented structurally (selection cleared on every invalidating action) | **Yes this step** -- own `describeRuntimeActionError` helper, not `describePathActionError` (Runtime failures are server/network, not a user-typed path); covers server start/restart/refresh, session create/load, and spin/retry; "blocked"/"conflict" get their own hand-authored `RecoveryNotice` copy, with the raw server message moved behind `AdvancedDisclosure` (`[P2-POLISH-25]` correction round, see below) |
 | Deployment | partially linear | **Yes**, 6 steps, `onStepClick`, `aria-current` | **Yes** -- `preflightOutdated` `Alert` | **Yes** |
 | Export & Deploy | nonlinear (stateless picker shell) | Never had one (`P2-POLISH-20`) | N/A -- no mutable result state | No (`targetsError` raw) |
 | Outcome Libraries | partially linear | Yes, 5 steps | **Partial** -- Select (`selectOutdated`, since `f5c10bc`) **and now Compare** (`compareOutdated`, this step) covered; deep-validate has no separate flag but is fully covered by cascade from `selectOutdated` | Yes, 7 of 9 error call sites (2 `unsupported`/`generation-error` Generate states stay raw -- see below) |
@@ -190,8 +190,24 @@ clickable and silently no-op'd on a blank id.
 Create/Load/Spin/Retry, and `recentSpinsError` for both the "Round history" panel and the "Restore existing"
 recent-sessions picker) used to render the raw fetch exception or server `body.error` text directly via
 `ErrorState message={...}`, with no added remediation -- exactly the finding this document's own audit
-methodology exists to catch (the "blocked"/"conflict" `RuntimeSpinResultView` states were already hand-authored
-`RecoveryNotice` copy, never raw, and are unchanged). Fixed with a new `domain/runtimeActionError.ts`,
+methodology exists to catch. The "blocked"/"conflict" `RuntimeSpinResultView` states already had a
+hand-authored `RecoveryNotice` *title* ("Can't play this round" / "Session changed elsewhere") and action --
+but their `message` body was still the raw `body.error` text passed straight from
+`StudioRuntimeManager.translateSpinResult()`, itself the underlying game server's own 400/409 response (e.g.
+`Session "sess-1" cannot play the next round (canPlayNextGame() returned false).` or `Session "sess-1" version
+mismatch: expected version 1, but the current version is 2.`) -- internal method-name/session-version detail,
+not something a player-facing UI should lead with. This was missed on this document's first pass through this
+step (it wrongly read the existing title+action as proof the whole notice was already hand-authored) and
+caught only on review: fixed in the same correction round by replacing that raw `message` with hand-authored,
+subject-specific copy for each of the two states, with the original raw text preserved behind the same
+`AdvancedDisclosure` convention `RoundSummary`'s own raw JSON already uses in this file (detail: "server
+message") rather than dropped -- so a developer chasing a specific `canPlayNextGame()`/version-mismatch detail
+can still get at it, just never as the primary text. See `ProjectDashboardPage.runtimeWorkflow.test.tsx`'s
+"shows a clear 'insufficient funds' state..." and "shows a clear 'session changed elsewhere' conflict
+state..." (both updated this round to assert the raw text is present-but-`not.toBeVisible()` until the
+disclosure is opened, not absent).
+
+Fixed the remaining (non-`blocked`/`conflict`) call sites with a new `domain/runtimeActionError.ts`,
 `describeRuntimeActionError(subject, message)` -- same "classify a raw message into a stable reason, then
 subject-specific status + remediation copy, never echo the raw text back" shape `describePathActionError`
 already establishes, but classifying *network/server* failures (`Failed to fetch`/`ECONNREFUSED` ->
@@ -307,6 +323,7 @@ shipped without either a confirmed live trigger or an honest way to prove it, pe
 | `StakeEngineExportTab.tsx` | New `exportOutdated` Outdated `Alert` on Configure, mutually exclusive with the existing `validateOutdated` one | `ProjectDashboardPage.stakeEngineExportWorkflow.test.tsx`: "marks a completed Export (not Validate) as Outdated when only the output directory changes..." |
 | `RuntimeTab.tsx` | Load Session button's `disabled` condition now requires a non-blank (trimmed) "Session id" field, with a "Required to load an existing session" input description (previously a fail-open silent no-op, same shape as the Provably Fair Verify fix above) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "disables Load Session for a blank (or whitespace-only) session id, with inline guidance, and restores normal behavior once a session id is supplied" |
 | `RuntimeTab.tsx` | Every raw `ErrorState`/`session.message`/`recentSpinsError` site (Server start/restart/refresh, Create/Load Session, Spin/Retry, "Round history"/"Restore existing" recent-spins fetch) now routed through a new subject-specific `describeRuntimeActionError()` (mirrors `describePathActionError`'s "classify, never echo the raw text" shape, but for network/server failures); a failed Create/Load Session whose response is a domain error is also now actually rendered (it was previously invisible, since `sessionId` resets to `undefined` and unmounts the panel that used to render it) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "shows a subject-specific recovery message, never the raw backend text or a silent no-op, when Load Session fails outright"; "...instead of raw backend text when the runtime server itself fails to start"; `runtimeActionError.test.ts` for the classifier |
+| `RuntimeTab.tsx` | `SpinOutcome`'s "blocked"/"conflict" `RecoveryNotice` no longer renders the raw `body.error` text (game-server internals like `canPlayNextGame()`/session version numbers) as its primary message -- replaced with hand-authored, subject-specific copy for each state, with the raw text preserved (not dropped) behind a new per-state `AdvancedDisclosure` (review-round correction: the first pass through this step incorrectly treated the pre-existing title+action as proof the whole notice was already hand-authored, missing that the message body underneath it was still raw passthrough) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "shows a clear 'insufficient funds' state with a shortcut to create a new session"; "shows a clear 'session changed elsewhere' conflict state, and Reload session recovers it"; "Retry immediately drops a round selected from history..." (all three updated to assert the raw text is present-but-hidden, not gone) |
 
 Every `xxxOutdated` fix above (`configureOutdated`/`buildOutdated`/`compareOutdated`/`exportOutdated`) follows
 the exact lifecycle `f5c10bc` already established (`validateOutdated`/`selectOutdated`): a boolean set inside
@@ -314,8 +331,8 @@ the existing `invalidate*()` function whenever the view being invalidated was no
 start of the corresponding `run*()`, rendered as one `<Alert color="yellow" variant="light"
 icon={<IconAlertTriangle .../>}>` at the point where the invalidating field lives -- no new mechanism, each gap
 a narrow, mechanical extension of a pattern already reviewed and accepted for its sibling result in the same
-tab. The two Runtime fixes above are unrelated in shape (a `disabled`-guard fix and a raw-error-translation
-fix, respectively) and are described in full in Runtime's own section above.
+tab. The three Runtime fixes above are unrelated in shape (a `disabled`-guard fix and two raw-error-translation
+fixes) and are described in full in Runtime's own section above.
 
 ## Deferred findings (documented, not corrected this step)
 

@@ -170,6 +170,14 @@ function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
 // `onCreateNew`/`onReloadSession` give each state its own obvious next action. Shown right under the
 // Spin button itself (this is live feedback on the action just taken), never inside the Inspect panel
 // below, which is about a *selected round*'s data, not the in-flight status of the last request.
+//
+// `blocked`/`conflict`'s own `message` is the underlying game server's raw 400/409 `error` body (see
+// StudioRuntimeManager.translateSpinResult()) -- e.g. `Session "sess-1" cannot play the next round
+// (canPlayNextGame() returned false).` or `Session "sess-1" version mismatch: expected version 1, but the
+// current version is 2.` -- exposing internal method/session-version detail no player-facing UI should lead
+// with. The hand-authored title+action already carries the actionable "what happened, what to do" story, so
+// the raw body only ever appears tucked behind the same AdvancedDisclosure convention as RoundSummary's own
+// raw JSON, never as the Alert's primary text.
 function SpinOutcome({session, onCreateNew, onReloadSession}: {session: Session; onCreateNew: () => void; onReloadSession: () => void}) {
     if (session.status === "not-found") {
         return <ErrorState message="Unknown session id." />;
@@ -184,10 +192,44 @@ function SpinOutcome({session, onCreateNew, onReloadSession}: {session: Session;
         return <ErrorState message={describeRuntimeActionError("This request", session.message)} />;
     }
     if (session.status === "blocked") {
-        return <RecoveryNotice title="Can't play this round" message={session.message} actionLabel="Create a new session" onAction={onCreateNew} />;
+        return (
+            <RecoveryNotice
+                title="Can't play this round"
+                message={
+                    <>
+                        <Text size="sm" mb="xs">
+                            This session can&apos;t play another round right now -- for example, insufficient balance for the bet, or a game rule
+                            blocking play until an in-progress feature finishes.
+                        </Text>
+                        <AdvancedDisclosure detail="server message">
+                            <Text size="sm">{session.message}</Text>
+                        </AdvancedDisclosure>
+                    </>
+                }
+                actionLabel="Create a new session"
+                onAction={onCreateNew}
+            />
+        );
     }
     if (session.status === "conflict") {
-        return <RecoveryNotice title="Session changed elsewhere" message={session.message} actionLabel="Reload session" onAction={onReloadSession} />;
+        return (
+            <RecoveryNotice
+                title="Session changed elsewhere"
+                message={
+                    <>
+                        <Text size="sm" mb="xs">
+                            This session was updated by another request since it was last loaded here, so this spin was refused instead of
+                            overwriting those changes.
+                        </Text>
+                        <AdvancedDisclosure detail="server message">
+                            <Text size="sm">{session.message}</Text>
+                        </AdvancedDisclosure>
+                    </>
+                }
+                actionLabel="Reload session"
+                onAction={onReloadSession}
+            />
+        );
     }
     return null;
 }
