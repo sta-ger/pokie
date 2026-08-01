@@ -236,6 +236,8 @@ export * from "./project/PokieOperation.js";
 export * from "./project/PokieProject.js";
 export * from "./project/ProjectCapabilities.js";
 export * from "./project/ProjectCapability.js";
+export * from "./project/ProjectMaterializationResult.js";
+export * from "./project/ProjectMaterializing.js";
 export * from "./project/ProjectResolving.js";
 export * from "./project/ProjectType.js";
 export * from "./project/UnsupportedProjectOperationDiagnostic.js";
