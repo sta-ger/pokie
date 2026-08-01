@@ -15,10 +15,10 @@ import type {ProjectType} from "./ProjectType.js";
 export type ProjectCapabilities = readonly ProjectCapability[];
 
 // The one place that decides which ProjectCapability each ProjectType grants — every other file in this
-// module (PokieProjectResolver when it stamps a resolved PokieProject, describeUnsupportedProjectOperation
-// when it looks for an alternative type) reads this map rather than re-deciding "does this type support
-// that capability" independently. "wasm" deliberately maps to an empty array — see ProjectType.ts's own doc
-// comment on that entry.
+// module (a future ProjectResolving implementation stamping a resolved PokieProject,
+// describeUnsupportedProjectOperation when it looks for an alternative type) reads this map rather than
+// re-deciding "does this type support that capability" independently. "wasm" deliberately maps to an empty
+// array — see ProjectType.ts's own doc comment on that entry.
 export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapabilities>> = {
     blueprint: [BLUEPRINT_BUILD_CAPABILITY],
     tsPackage: [RUNTIME_EXECUTE_CAPABILITY],

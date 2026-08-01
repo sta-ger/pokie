@@ -234,7 +234,6 @@ export * from "./pregenerated/WeightedOutcomeSelector.js";
 export * from "./pregenerated/buildPreGeneratedRoundResult.js";
 export * from "./project/PokieOperation.js";
 export * from "./project/PokieProject.js";
-export * from "./project/PokieProjectResolver.js";
 export * from "./project/ProjectCapabilities.js";
 export * from "./project/ProjectCapability.js";
 export * from "./project/ProjectResolving.js";
