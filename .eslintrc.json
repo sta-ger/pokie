@@ -40,7 +40,11 @@
                 "react-hooks/set-state-in-effect": "off",
                 "@typescript-eslint/no-non-null-assertion": "off",
                 "@typescript-eslint/no-explicit-any": "error",
-                "@typescript-eslint/no-unused-vars": "warn",
+                // Leading-underscore is this codebase's convention for intentionally-unused bindings
+                // (e.g. destructuring a key off an object just to omit it from the rest, or satisfying
+                // an interface's parameter list without using the argument) -- honor it here instead of
+                // warning on every such binding.
+                "@typescript-eslint/no-unused-vars": ["warn", {"argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "destructuredArrayIgnorePattern": "^_"}],
                 "@typescript-eslint/adjacent-overload-signatures": "off",
                 // Successor of the previously disabled no-empty-interface (removed from
                 // typescript-eslint v8's rule set). The interface-per-class convention declares
