@@ -15,6 +15,7 @@ import fs from "fs";
 import {loadOutcomeLibraryFromSelector} from "../outcomeLibrary/loadOutcomeLibraryFromSelector.js";
 import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
+import {canonicalizeOutcomeIdsForStakeEngine} from "./canonicalizeOutcomeIdsForStakeEngine.js";
 import type {StudioStakeEngineExportModeInput} from "./StudioStakeEngineExportModeInput.js";
 import type {StudioStakeEngineExportValidateView} from "./StudioStakeEngineExportValidateView.js";
 import type {StudioStakeEngineExportView} from "./StudioStakeEngineExportView.js";
@@ -44,7 +45,9 @@ function describeSelectorModeMismatch(modeName: string, mismatchedModeName: stri
 // converts a payoutMultiplier into Stake units, renders a lookup CSV, computes a library hash, or
 // re-implements the exporter's own atomic-directory-replace/"no partial export" contracts; it only
 // resolves each mode's own librarySelector (the same loadOutcomeLibraryFromSelector the Deployment tab
-// already uses) and shapes the result into a view.
+// already uses), relabels outcome ids into Stake's own integer convention when a resolved library doesn't
+// already carry one (see canonicalizeOutcomeIdsForStakeEngine, used by loadModes below), and shapes the
+// result into a view.
 export class StudioStakeEngineExportService {
     private readonly exporter: StakeEngineExporting<string>;
     private readonly validator: StakeEngineExportValidating<string>;
@@ -153,6 +156,13 @@ export class StudioStakeEngineExportService {
     // Rejects a bundle/Stake Engine selector whose own modeName names a different mode than its own
     // export row before resolving anything (see selectorModeName/describeSelectorModeMismatch) -- the
     // same guard StudioDeploymentService.run() applies to its own librarySelector-carrying modes.
+    //
+    // Every resolved library is then run through canonicalizeOutcomeIdsForStakeEngine -- the one place a
+    // library produced by the canonical outcome-library generator (whose ids are content-addressed, never
+    // plain integers) is made Stake-compatible, since neither the generator nor StakeEngineExporter itself
+    // ever invents that mapping (see that function's own doc comment). A library that can't be
+    // canonicalized (unreachable in practice -- see its own doc comment) is reported as this same
+    // domain-level load-error, never a raw thrown error.
     private async loadModes(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<LoadModesResult> {
         const loaded: StakeEngineExportModeInput<string>[] = [];
         for (const mode of modes) {
@@ -164,7 +174,11 @@ export class StudioStakeEngineExportService {
             if (result.status === "load-error") {
                 return {status: "load-error", error: `mode "${mode.modeName}": ${result.error}`};
             }
-            loaded.push({modeName: mode.modeName, cost: mode.cost, library: result.library});
+            const canonicalized = canonicalizeOutcomeIdsForStakeEngine(result.library);
+            if (canonicalized.status === "error") {
+                return {status: "load-error", error: `mode "${mode.modeName}": ${canonicalized.message}`};
+            }
+            loaded.push({modeName: mode.modeName, cost: mode.cost, library: canonicalized.library});
         }
         return {status: "ok", loaded};
     }
