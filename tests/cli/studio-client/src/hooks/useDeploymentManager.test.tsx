@@ -364,7 +364,7 @@ describe("useDeploymentManager - runError clears on the next attempt/success", (
 });
 
 describe("useDeploymentManager - project switch immediately followed by refresh, same target id in the new project", () => {
-    it("keeps the selection empty and never resurrects the previous project's preview/deploy result", async () => {
+    it("auto-selects the new project's own lone target fresh, and never resurrects the previous project's preview/deploy result", async () => {
         // Same id as the old project's own selected target, but a different descriptor -- a different
         // project's registry that just happens to reuse the id.
         const oldProjectTarget = {id: "shared-id", version: "1.0.0", requirements: {}, capabilities: []};
@@ -409,9 +409,12 @@ describe("useDeploymentManager - project switch immediately followed by refresh,
 
         await waitFor(() => expect(result.current.targetsView).toEqual({status: "loaded", targets: [newProjectTarget]}));
 
-        // The coincidentally-same id in the new project must never be silently re-adopted, and the old
-        // project's preview/deploy result must not resurface.
-        expect(result.current.selectedTarget).toBeUndefined();
+        // The coincidentally-same id in the new project must never be silently re-adopted from the old
+        // project's own selection -- resetForProjectSwitch cleared it first, so this refresh's own
+        // "nothing selected yet, exactly one target" auto-select (see refreshTargets()'s own doc comment)
+        // is what picks newProjectTarget up, a fresh selection of the *new* project's own descriptor, not
+        // a leak of the old one. The old project's preview/deploy result must still not resurface.
+        await waitFor(() => expect(result.current.selectedTarget).toEqual(newProjectTarget));
         expect(result.current.runResult).toBeUndefined();
         expect(result.current.runError).toBeUndefined();
     });

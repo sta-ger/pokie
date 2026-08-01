@@ -1,5 +1,5 @@
 import type {StudioDeploymentTargetSummary} from "../../api/types";
-import {describeTargetCapability, describeTargetRequirements} from "./Deployment";
+import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 
 // Pure view-model for the shared Export / Deploy shell (see ExportDeployTab) -- a presentation-layer
 // classification over the two pipelines this Studio actually has (Stake Engine Export's own static
@@ -32,8 +32,6 @@ export type ExportDeployTargetCard = {
     // registry-backed selection to make -- it's reached directly, with nothing to pre-select.
     readonly deploymentTarget?: StudioDeploymentTargetSummary;
 };
-
-const LOCAL_JSON_EXAMPLE_TARGET_ID = "local-json-example";
 
 // Mirrors STAKE_ENGINE_MANIFEST_SCHEMA_VERSION (src/stakeengine/StakeEngineManifest.ts) as a plain literal
 // -- studio-client never imports the pokie package directly (unlike the Studio server), and Stake Engine

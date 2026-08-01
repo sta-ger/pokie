@@ -48,10 +48,12 @@ function stepperStep(label: string, description: string): RegExp {
     return new RegExp(`${label}.*${description}`);
 }
 
+// TARGET is the only registered target, so it's selected automatically (no artificial Select-target
+// click) and the stepper lands straight on Configure -- see useDeploymentManager's own auto-select in
+// refreshTargets() and DeploymentTab's own undefined -> defined selectedTarget effect.
 async function goToDeploymentConfigure(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Deployment"}));
-    await user.click(await screen.findByRole("button", {name: "Select"}));
     await screen.findByRole("button", {name: "Check compatibility & preview"});
     await user.type(screen.getByLabelText("Mode name"), "base");
     await user.type(screen.getByLabelText("Outcome library path"), "libs/base.json");

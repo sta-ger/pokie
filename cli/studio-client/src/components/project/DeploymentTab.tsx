@@ -1,4 +1,4 @@
-import {Alert, Anchor, Button, List, Stepper, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Button, Card, Group, List, Radio, Stepper, Text, TextInput} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import type {StudioDeploymentModeInput, StudioDeploymentStageSummary, StudioDeploymentTargetSummary} from "../../api/types";
@@ -8,6 +8,7 @@ import {
     describeDeploymentOutcome,
     describeTargetCapability,
     describeTargetRequirements,
+    LOCAL_JSON_EXAMPLE_TARGET_ID,
     PREVIEW_STAGE_KEYS,
     splitIssuesBySeverity,
     TRANSPORT_STAGE_KEYS,
@@ -36,55 +37,171 @@ const OUTCOME_BANNER: Record<DeploymentOutcomeKind, {color: string; icon: ReactN
     "transport-failure": {color: "red", icon: <IconAlertTriangle size={16} />, title: "Target couldn't be reached or written to"},
 };
 
-function TargetsList({
+// Requirements/capabilities detail shared by every place a target's own contract is shown -- the
+// multi-target picker's own comparison cards and the single-selected summary alike. The
+// local-json-example callout is deliberately explicit about "local JSON, nothing published externally"
+// -- unlike a real remote target, its own destination could otherwise read as ambiguous about whether
+// anything leaves this machine.
+function TargetDetail({target}: {target: StudioDeploymentTargetSummary}) {
+    return (
+        <div>
+            <Text fw={600}>
+                {target.id} (v{target.version})
+            </Text>
+            {target.id === LOCAL_JSON_EXAMPLE_TARGET_ID && (
+                <Text size="sm" c="dimmed" mt={4}>
+                    Writes local JSON artifacts under this project&apos;s own deployment/{target.id} folder --
+                    nothing is published externally.
+                </Text>
+            )}
+            <Text size="sm" fw={600} mt={4}>
+                Requirements
+            </Text>
+            <List size="sm" withPadding>
+                {describeTargetRequirements(target.requirements).map((line, index) => (
+                    <List.Item key={index}>{line}</List.Item>
+                ))}
+            </List>
+            {target.capabilities.length > 0 && (
+                <>
+                    <Text size="sm" fw={600} mt={4}>
+                        Supports
+                    </Text>
+                    <List size="sm" withPadding>
+                        {target.capabilities.map((capability) => (
+                            <List.Item key={capability}>{describeTargetCapability(capability)}</List.Item>
+                        ))}
+                    </List>
+                </>
+            )}
+        </div>
+    );
+}
+
+// The Select-target step's own empty-registry state -- unlike a bare "nothing here" message, this gives
+// an actual way forward: register a real target, install the SDK's own ready-to-run example, or fall
+// back to the sibling static-export pipeline that needs no registration at all.
+function EmptyTargetRegistry({onOpenStakeEngineExport}: {onOpenStakeEngineExport: () => void}) {
+    return (
+        <div>
+            <EmptyState message="No deployment targets registered." />
+            <Text size="sm" c="dimmed" mt="sm" mb="sm">
+                Register an ExternalDeploymentTarget for this project (see docs/external-adapter-sdk.md) to
+                deploy to a real target -- the SDK ships a ready-to-run local-json-example target you can
+                install to try the pipeline end to end. Until one is registered, Stake Engine Export can still
+                produce a static bundle without any target registration.
+            </Text>
+            <QuickActions>
+                <Button variant="default" size="xs" onClick={onOpenStakeEngineExport}>
+                    Open Stake Engine Export instead
+                </Button>
+            </QuickActions>
+        </div>
+    );
+}
+
+// The picker shown whenever there is more than one registered target to choose between (or, as a
+// defensive fallback, whenever nothing is selected yet at all) -- a single Radio.Group of comparison
+// cards plus one explicit "Continue with target" action, rather than a per-card "Select" button, so
+// picking is a deliberate two-step "compare, then commit" instead of the first click already advancing.
+function TargetPicker({
+    targets,
+    initialTargetId,
+    onContinue,
+}: {
+    targets: readonly StudioDeploymentTargetSummary[];
+    initialTargetId: string | undefined;
+    onContinue: (target: StudioDeploymentTargetSummary) => void;
+}) {
+    const [pickedId, setPickedId] = useState(initialTargetId);
+    const picked = targets.find((target) => target.id === pickedId);
+    return (
+        <div>
+            <Radio.Group value={pickedId ?? ""} onChange={setPickedId} label="Choose a deployment target">
+                {targets.map((target) => (
+                    <Card
+                        key={target.id}
+                        withBorder
+                        mt="xs"
+                        padding="sm"
+                        style={target.id === pickedId ? {borderColor: "var(--mantine-color-blue-6)", borderWidth: 2} : undefined}
+                    >
+                        <Radio value={target.id} label={<TargetDetail target={target} />} />
+                    </Card>
+                ))}
+            </Radio.Group>
+            <QuickActions>
+                <Button disabled={picked === undefined} onClick={() => picked !== undefined && onContinue(picked)}>
+                    Continue with target
+                </Button>
+            </QuickActions>
+        </div>
+    );
+}
+
+// The compact view shown once a target is already selected -- "Change target" only appears when there is
+// something to change to, so a lone registered target (the common case) never dangles a button back to a
+// list with nothing else in it.
+function SelectedTargetSummary({
+    target,
+    hasAlternatives,
+    onChangeTarget,
+}: {
+    target: StudioDeploymentTargetSummary;
+    hasAlternatives: boolean;
+    onChangeTarget: () => void;
+}) {
+    return (
+        <div>
+            <Group justify="space-between" mb="sm">
+                <Text size="sm" c="dimmed">
+                    {hasAlternatives ? "Selected target" : "Automatically selected -- the only target registered"}
+                </Text>
+                {hasAlternatives && (
+                    <Button size="xs" variant="default" onClick={onChangeTarget}>
+                        Change target
+                    </Button>
+                )}
+            </Group>
+            <TargetDetail target={target} />
+        </div>
+    );
+}
+
+// The Select-target step's own root -- a lone compatible target is already selected by the time this
+// renders (see useDeploymentManager's own refreshTargets()), so there is never an artificial step forcing
+// a click through a single option: the compact summary shows right away, with no Change-target button
+// since there is nothing to change to. Multiple targets fall back to TargetPicker's own compare-then-
+// commit flow; picking a different one from there re-collapses back to the summary (see the `browsing`
+// reset below, keyed off `selectedTarget`'s own identity).
+function SelectTargetStep({
     view,
-    selectedTargetId,
-    onSelect,
+    selectedTarget,
+    onSelectTarget,
+    onOpenStakeEngineExport,
 }: {
     view: DeploymentTargetsListView;
-    selectedTargetId: string | undefined;
-    onSelect: (target: StudioDeploymentTargetSummary) => void;
+    selectedTarget: StudioDeploymentTargetSummary | undefined;
+    onSelectTarget: (target: StudioDeploymentTargetSummary) => void;
+    onOpenStakeEngineExport: () => void;
 }) {
+    const [browsing, setBrowsing] = useState(false);
+    useEffect(() => {
+        setBrowsing(false);
+    }, [selectedTarget]);
+
     if (view.status === "loading") {
         return <LoadingState label="Loading deployment targets…" />;
     }
     if (view.status === "empty") {
-        return <EmptyState message="No deployment targets registered." />;
+        return <EmptyTargetRegistry onOpenStakeEngineExport={onOpenStakeEngineExport} />;
     }
-    return (
-        <List listStyleType="none" spacing="md">
-            {view.targets.map((target) => (
-                <List.Item key={target.id}>
-                    <Text fw={600}>
-                        {target.id} (v{target.version})
-                    </Text>
-                    <Text size="sm" fw={600} mt={4}>
-                        Requirements
-                    </Text>
-                    <List size="sm" withPadding>
-                        {describeTargetRequirements(target.requirements).map((line, index) => (
-                            <List.Item key={index}>{line}</List.Item>
-                        ))}
-                    </List>
-                    {target.capabilities.length > 0 && (
-                        <>
-                            <Text size="sm" fw={600} mt={4}>
-                                Supports
-                            </Text>
-                            <List size="sm" withPadding>
-                                {target.capabilities.map((capability) => (
-                                    <List.Item key={capability}>{describeTargetCapability(capability)}</List.Item>
-                                ))}
-                            </List>
-                        </>
-                    )}
-                    <Button size="xs" mt="sm" variant={target.id === selectedTargetId ? "filled" : "default"} onClick={() => onSelect(target)}>
-                        {target.id === selectedTargetId ? "Selected" : "Select"}
-                    </Button>
-                </List.Item>
-            ))}
-        </List>
-    );
+
+    const hasAlternatives = view.targets.length > 1;
+    if (selectedTarget !== undefined && !browsing) {
+        return <SelectedTargetSummary target={selectedTarget} hasAlternatives={hasAlternatives} onChangeTarget={() => setBrowsing(true)} />;
+    }
+    return <TargetPicker targets={view.targets} initialTargetId={selectedTarget?.id} onContinue={onSelectTarget} />;
 }
 
 // Which stage-key group a run outcome's own issues live in -- used by the Review-result step, which
@@ -185,6 +302,7 @@ export function DeploymentTab({
     selectedArtifactPath,
     onSelectArtifact,
     projectRoot,
+    onOpenStakeEngineExport,
 }: {
     targetsView: DeploymentTargetsListView;
     targetsError: string | undefined;
@@ -203,9 +321,15 @@ export function DeploymentTab({
     selectedArtifactPath: string | undefined;
     onSelectArtifact: (path: string) => void;
     projectRoot?: string;
+    onOpenStakeEngineExport: () => void;
 }) {
     const confirm = useConfirm();
-    const [activeStep, setActiveStep] = useState(0);
+    // Starts on Configure, not Select-target, when a target is already selected the moment this mounts --
+    // covers useDeploymentManager's own auto-selection of a lone registered target, which (living in the
+    // page-level hook, not this component) typically resolves before this tab is ever opened, so there is
+    // no post-mount undefined -> defined transition for the effect below to observe. A slower fetch that
+    // resolves *while* this is already mounted is still covered by that effect.
+    const [activeStep, setActiveStep] = useState(() => (selectedTarget === undefined ? 0 : 1));
     const selectedArtifact = runResult?.artifacts.find((artifact) => artifact.relativePath === selectedArtifactPath);
     const outcome = runResult ? describeDeploymentOutcome(runResult) : undefined;
 
@@ -245,6 +369,26 @@ export function DeploymentTab({
             setActiveStep(0);
         }
     }, [selectedTarget]);
+
+    // Covers useDeploymentManager's own auto-selection of a lone registered target (see its
+    // refreshTargets()) -- the moment a target becomes selected out from under Select-target with no
+    // TargetPicker interaction at all (the undefined -> defined transition, tracked via the ref below
+    // rather than `selectedTarget` reference equality), this advances straight to Configure so a single
+    // compatible target never needs an artificial click through Select-target first. A user's own pick
+    // (TargetPicker's Continue-with-target button, including re-picking via Change target) advances the
+    // step itself via handleSelectTarget below -- that path already has a previously-defined selectedTarget,
+    // so it would never trip this transition-only check. A later Refresh merely rebinding the same
+    // selection to a fresh object (see refreshTargets()'s own rebind branch) is defined -> defined, so it
+    // never trips this either.
+    const prevSelectedTargetDefinedRef = useRef(selectedTarget !== undefined);
+    useEffect(() => {
+        const wasDefined = prevSelectedTargetDefinedRef.current;
+        const nowDefined = selectedTarget !== undefined;
+        if (!wasDefined && nowDefined && activeStep === 0) {
+            setActiveStep(1);
+        }
+        prevSelectedTargetDefinedRef.current = nowDefined;
+    }, [selectedTarget, activeStep]);
 
     function handleSelectTarget(target: StudioDeploymentTargetSummary): void {
         onSelectTarget(target);
@@ -316,7 +460,12 @@ export function DeploymentTab({
                         </Button>
                     </QuickActions>
                     {targetsError && <ErrorState message={targetsError} />}
-                    <TargetsList view={targetsView} selectedTargetId={selectedTarget?.id} onSelect={handleSelectTarget} />
+                    <SelectTargetStep
+                        view={targetsView}
+                        selectedTarget={selectedTarget}
+                        onSelectTarget={handleSelectTarget}
+                        onOpenStakeEngineExport={onOpenStakeEngineExport}
+                    />
                 </div>
             )}
 

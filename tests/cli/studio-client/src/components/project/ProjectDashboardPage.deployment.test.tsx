@@ -60,8 +60,8 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Deployment"}));
-        // Selecting a target auto-advances the stepper straight to Configure.
-        await user.click(await screen.findByRole("button", {name: "Select"}));
+        // The only registered target is selected automatically, auto-advancing the stepper straight to
+        // Configure -- no artificial Select-target click needed.
         await screen.findByRole("button", {name: "Check compatibility & preview"});
 
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
