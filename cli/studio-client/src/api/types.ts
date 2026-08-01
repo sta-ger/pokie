@@ -921,7 +921,7 @@ export type StudioFairnessVerifyView = {status: "ok"; errors: ValidationIssue[];
 // cli/studio/stakeengine/StudioStakeEngineExportModeInput.ts's own doc comment.
 export type StudioStakeEngineExportModeInput = {
     modeName: string;
-    libraryPath: string;
+    librarySelector: OutcomeLibrarySelector;
     cost: number;
 };
 

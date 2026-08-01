@@ -1,14 +1,19 @@
 import {
     computeWeightedOutcomeLibraryHash,
     isRecognizedStakeEngineExportDirectory,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
     StakeEngineExporter,
     StakeEngineExporting,
     StakeEngineExportModeInput,
     StakeEngineExportValidating,
     StakeEngineExportValidator,
+    StakeEngineImporter,
+    StakeEngineImporting,
 } from "pokie";
 import fs from "fs";
-import {loadWeightedOutcomeLibraryFromProjectFile} from "../deployment/loadWeightedOutcomeLibraryFromProjectFile.js";
+import {loadOutcomeLibraryFromSelector} from "../outcomeLibrary/loadOutcomeLibraryFromSelector.js";
+import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
 import type {StudioStakeEngineExportModeInput} from "./StudioStakeEngineExportModeInput.js";
 import type {StudioStakeEngineExportValidateView} from "./StudioStakeEngineExportValidateView.js";
@@ -18,15 +23,33 @@ type LoadModesResult =
     | {readonly status: "ok"; readonly loaded: readonly StakeEngineExportModeInput<string>[]}
     | {readonly status: "load-error"; readonly error: string};
 
+// A bundle/Stake Engine selector carries its own "modeName" (which mode of the bundle/export to read --
+// see OutcomeLibrarySelector); a "json" selector has no such field. Mismatched against the export row's
+// own mode would silently export one mode's data under another mode's name, so this is checked -- and
+// rejected -- before any selector is ever resolved to a real library. Mirrors
+// StudioDeploymentService's own selectorModeName/describeSelectorModeMismatch.
+function selectorModeName(selector: OutcomeLibrarySelector): string | undefined {
+    return selector.kind === "json" ? undefined : selector.modeName;
+}
+
+function describeSelectorModeMismatch(modeName: string, mismatchedModeName: string): string {
+    return (
+        `mode "${modeName}"'s library selector names mode "${mismatchedModeName}" -- a bundle/Stake Engine ` +
+        "selector must name the exact same mode as its own export row."
+    );
+}
+
 // The Project Dashboard's Stake Engine Export tab, built directly on top of pokie's own
 // StakeEngineExporter/StakeEngineExportValidator (see docs/stake-engine-export.md) — this class never
 // converts a payoutMultiplier into Stake units, renders a lookup CSV, computes a library hash, or
 // re-implements the exporter's own atomic-directory-replace/"no partial export" contracts; it only
-// resolves each mode's own project-relative libraryPath (the same loadWeightedOutcomeLibraryFromProjectFile
-// the Deployment tab already uses) and shapes the result into a view.
+// resolves each mode's own librarySelector (the same loadOutcomeLibraryFromSelector the Deployment tab
+// already uses) and shapes the result into a view.
 export class StudioStakeEngineExportService {
     private readonly exporter: StakeEngineExporting<string>;
     private readonly validator: StakeEngineExportValidating<string>;
+    private readonly bundleReader: OutcomeLibraryBundleReading<string>;
+    private readonly stakeEngineImporter: StakeEngineImporting<string>;
     private readonly readFile: (resolvedPath: string) => string;
     private readonly realpath: (resolvedPath: string) => string;
 
@@ -36,11 +59,15 @@ export class StudioStakeEngineExportService {
         validator: StakeEngineExportValidating<string> = new StakeEngineExportValidator<string>(),
         readFile: (resolvedPath: string) => string = (resolvedPath) => fs.readFileSync(resolvedPath, "utf-8"),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
+        bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
+        stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
     ) {
         this.exporter = exporter;
         this.validator = validator;
         this.readFile = readFile;
         this.realpath = realpath;
+        this.bundleReader = bundleReader;
+        this.stakeEngineImporter = stakeEngineImporter;
     }
 
     // The exact preflight StakeEngineExporter itself runs (and aborts the whole export on) before writing
@@ -48,14 +75,14 @@ export class StudioStakeEngineExportService {
     // to Export, without triggering a write attempt. Also returns a per-mode provenance summary (outcome
     // count, libraryId/hash) read straight off each loaded library, never Stake-specific and never
     // recomputed beyond what computeWeightedOutcomeLibraryHash already does for every other tab.
-    public validate(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<StudioStakeEngineExportValidateView> {
-        const loaded = this.loadModes(projectRoot, modes);
+    public async validate(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<StudioStakeEngineExportValidateView> {
+        const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
-            return Promise.resolve(loaded);
+            return loaded;
         }
 
         const issues = this.validator.validate(loaded.loaded);
-        return Promise.resolve({
+        return {
             status: "ok",
             modes: loaded.loaded.map((mode) => ({
                 modeName: mode.modeName,
@@ -66,7 +93,7 @@ export class StudioStakeEngineExportService {
             })),
             errors: issues.filter((issue) => issue.severity === "error"),
             warnings: issues.filter((issue) => issue.severity !== "error"),
-        });
+        };
     }
 
     // Runs the real export once every mode's library has been loaded — StakeEngineExporter itself runs
@@ -92,7 +119,7 @@ export class StudioStakeEngineExportService {
             return {status: "load-error", error: resolvedOutDir.message};
         }
 
-        const loaded = this.loadModes(projectRoot, modes);
+        const loaded = await this.loadModes(projectRoot, modes);
         if (loaded.status === "load-error") {
             return loaded;
         }
@@ -123,12 +150,19 @@ export class StudioStakeEngineExportService {
         return {status: "ok", outDir: result.outDir, files: result.files, manifest: result.manifest, warnings: result.issues};
     }
 
-    private loadModes(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): LoadModesResult {
+    // Rejects a bundle/Stake Engine selector whose own modeName names a different mode than its own
+    // export row before resolving anything (see selectorModeName/describeSelectorModeMismatch) -- the
+    // same guard StudioDeploymentService.run() applies to its own librarySelector-carrying modes.
+    private async loadModes(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<LoadModesResult> {
         const loaded: StakeEngineExportModeInput<string>[] = [];
         for (const mode of modes) {
-            const result = loadWeightedOutcomeLibraryFromProjectFile(projectRoot, mode.libraryPath, this.readFile, this.realpath);
-            if (result.status === "error") {
-                return {status: "load-error", error: `mode "${mode.modeName}": ${result.message}`};
+            const namedSelectorMode = selectorModeName(mode.librarySelector);
+            if (namedSelectorMode !== undefined && namedSelectorMode !== mode.modeName) {
+                return {status: "load-error", error: describeSelectorModeMismatch(mode.modeName, namedSelectorMode)};
+            }
+            const result = await loadOutcomeLibraryFromSelector(projectRoot, mode.librarySelector, this.bundleReader, this.stakeEngineImporter, this.readFile, this.realpath);
+            if (result.status === "load-error") {
+                return {status: "load-error", error: `mode "${mode.modeName}": ${result.error}`};
             }
             loaded.push({modeName: mode.modeName, cost: mode.cost, library: result.library});
         }

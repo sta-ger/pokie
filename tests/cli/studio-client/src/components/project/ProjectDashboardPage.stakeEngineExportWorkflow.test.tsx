@@ -14,6 +14,7 @@ const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: numb
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+    "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -69,7 +70,7 @@ async function goToStakeEngineExportTab(user: ReturnType<typeof userEvent.setup>
 
 async function fillConfigureStep(user: ReturnType<typeof userEvent.setup>, libraryPath: string): Promise<void> {
     await user.type(screen.getByLabelText("Mode name"), "base");
-    await user.type(screen.getByLabelText("Outcome library path"), libraryPath);
+    await user.type(screen.getByLabelText("Source: canonical outcome library"), libraryPath);
     await user.click(screen.getByRole("button", {name: "Continue to Preview"}));
 }
 
