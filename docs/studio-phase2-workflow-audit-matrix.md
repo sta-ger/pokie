@@ -37,7 +37,7 @@ handling; and **raw-error surfaces** (a caught exception's message shown with no
 | Export & Deploy | nonlinear (stateless picker shell) | Never had one (`P2-POLISH-20`) | N/A -- no mutable result state | No (`targetsError` raw) |
 | Outcome Libraries | partially linear | Yes, 5 steps | **Partial** -- Select (`selectOutdated`, since `f5c10bc`) **and now Compare** (`compareOutdated`, this step) covered; deep-validate has no separate flag but is fully covered by cascade from `selectOutdated` | Yes, 7 of 9 error call sites (2 `unsupported`/`generation-error` Generate states stay raw -- see below) |
 | Stake Engine Export | partially linear | Yes, 5 steps | **Partial->complete this step** -- Validate (`validateOutdated`, since `f5c10bc`) **and now Export** (`exportOutdated`, this step) covered | Yes, except the hand-built conflict message (deliberate) |
-| Mechanics Editor | nonlinear (no `disabled` on any Stepper step) | Yes, but purely a progress label -- every step always clickable | Validate: correctly self-invalidating (no gap). **Apply: gap, not fixed this step** -- see Deferred findings | **No** (raw passthrough) |
+| Mechanics Editor | nonlinear (no `disabled` on any Stepper step) | Yes, but purely a progress label -- every step always clickable | Validate: correctly self-invalidating. **Apply: now covered** (`applyOutdated`, this step) | **No** (raw passthrough) |
 | Certification | partially linear | Yes, 5 steps | **Complete this step** -- Validate (`validateOutdated`, since `f5c10bc`) **and now Build** (`buildOutdated`, this step) covered | Yes (Validate/Build) |
 | Provably Fair | partially linear (Verify deliberately always reachable) | Yes, 4 steps | **New this step** -- Configure (`configureOutdated`) | Yes (Configure/Generate/Verify, except the already-specific `invalid`/`build-error` domain messages) |
 | Simulation & Reports | linear (4-step Stepper, forward-gated by data) | Yes | N/A -- `startRun` clears stale results outright rather than merely flagging them | No (raw, except the hand-authored `runAgainNotice`) |
@@ -199,17 +199,22 @@ always directly clickable regardless of workflow state, the loosest gating of an
 Studio. Validate correctly self-invalidates on every blueprint edit (a dedicated effect resets it to idle on
 `editor.state.revision` change) -- no stale-result gap there.
 
-**Finding, not fixed this step:** a completed Apply's own success message ("Applied -- the project's
-blueprint and generated game module are up to date.") is **never reset by a subsequent edit** -- `applyView`
-is only ever set from `runApply()`/`handleDiscard()`, not from the same revision-tracking effect that resets
-Validate. So: Apply succeeds -> user edits a field again (Validate correctly resets, Apply's own button
-correctly re-disables) -> the old green "up to date" text is still shown, now factually stale, with no
-"Outdated" indicator at the Apply step itself. This is a real, well-understood gap of exactly the same shape
-as everything fixed elsewhere in this document, but Mechanics Editor is not one of the workflows this
-correction round's instruction named (Certification/Provably Fair explicitly; Outcome Libraries/Stake Engine
-Export by virtue of already being `f5c10bc`'s own incomplete work), and `f5c10bc` never touched this file.
-Recorded here rather than fixed, so a future step doesn't have to rediscover it from scratch -- same
-"deferred, not silently dropped" convention `studio-phase2-inventory.md` uses for its own unresolved findings.
+**Finding, fixed this step (`P2-POLISH-25` correction):** a completed Apply's own success message ("Applied
+-- the project's blueprint and generated game module are up to date.") used to be **never reset by a
+subsequent edit** -- `applyView` was only ever set from `runApply()`/`handleDiscard()`, not from the same
+revision-tracking effect that resets Validate. So: Apply succeeds -> user edits a field again (Validate
+correctly resets, Apply's own button correctly re-disables) -> the old green "up to date" text stayed shown,
+now factually stale, with no "Outdated" indicator at the Apply step itself.
+
+Fixed with the same `xxxOutdated` convention CertificationTab's `validateOutdated`/`buildOutdated` and
+ProvablyFairTab's `configureOutdated` already use: a dedicated `applyOutdated` flag, set whenever the
+revision-tracking effect finds a non-idle `applyView` at the moment an edit bumps `editor.state.revision`
+(resetting `applyView` to idle in the same pass), and cleared the instant a fresh Apply attempt starts or
+Discard reverts to the last-applied blueprint. The Apply step now renders an explicit "Outdated -- this
+project has been edited since the last Apply attempt" alert instead of leaving the stale success message (or
+any other stale Apply result) on screen. See
+`ProjectDashboardPage.mechanicsEditorWorkflow.test.tsx`'s "marks a completed Apply result Outdated once a
+further edit is made, instead of continuing to claim the project is up to date" regression.
 
 ## Simulation & Reports, Overview (not in the frozen baseline)
 
@@ -288,16 +293,14 @@ Recorded so a future step doesn't have to rediscover them, same convention
 1. **Certification has no in-app re-verification of an already-built evidence bundle** -- only
    `pokie certification verify --source` on the CLI. A real asymmetry with Provably Fair; a feature addition,
    not a correction, so left for an explicit future redesign decision.
-2. Mechanics Editor's Apply step can show a stale "Applied -- ... up to date." message after a further,
-   un-applied edit, with no Outdated indicator.
-3. Outcome Libraries' Generate step has two raw (non-`describePathActionError`) status branches
+2. Outcome Libraries' Generate step has two raw (non-`describePathActionError`) status branches
    (`unsupported`/`generation-error`); Stake Engine Export's `conflict` status is raw but already a
    deliberately hand-crafted message, same as every other tab's own conflict messages.
-4. Replay is the one sibling of Runtime/Deployment/Outcome Libraries without a `key={projectKey}` remount
+3. Replay is the one sibling of Runtime/Deployment/Outcome Libraries without a `key={projectKey}` remount
    guard; only its page-owned `expected` state has direct project-switch fixture coverage today.
-5. Validation's project-switch reset gap exists in the code but is not reachable through any current
+4. Validation's project-switch reset gap exists in the code but is not reachable through any current
    navigation path -- see its own section above for the full investigation.
-6. Runtime's Load Session (blank id) and (now fixed) Provably Fair's Verify were both previously-documented
+5. Runtime's Load Session (blank id) and (now fixed) Provably Fair's Verify were both previously-documented
    fail-open silent no-ops (`studio-phase2-inventory.md`'s own Cross-cutting findings) -- Provably Fair's is
    fixed this step; Runtime's Load Session is unchanged (not a named workflow this step, and Runtime's own
    cyclic-workspace design deliberately has no `disabled`-button convention to extend the same way).

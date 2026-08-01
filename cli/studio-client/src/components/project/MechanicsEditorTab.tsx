@@ -1,4 +1,5 @@
-import {Button, Stepper, Text} from "@mantine/core";
+import {Alert, Button, Stepper, Text} from "@mantine/core";
+import {IconAlertTriangle} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import {applyProjectBlueprint, inspectProject, loadBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {ValidationIssue} from "../../api/types";
@@ -142,6 +143,25 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
     const [applyView, setApplyView] = useState<ApplyView>({status: "idle"});
     const applyRequestIdRef = useRef(0);
     const applyGuard = useDoubleSubmitGuard();
+    // True once a *completed* Apply result (its own success message included) has been silently
+    // invalidated by a later edit -- same distinction CertificationTab's own validateOutdated/
+    // buildOutdated draw between "outdated" and "never run". Without this, "Applied -- ... up to date."
+    // stayed on screen after a subsequent edit, since applyView is otherwise only ever set from
+    // runApply()/handleDiscard(), never from the same revision-tracking effect that resets Validate.
+    // Cleared the instant a fresh Apply attempt starts, or Discard reverts to the last-applied blueprint.
+    const [applyOutdated, setApplyOutdated] = useState(false);
+    // Mirrors the validateView-reset effect below, one render tick later so it can see whether the
+    // *previous* applyView was worth flagging as outdated (an idle one never was). Kept as its own
+    // effect, rather than folded into that one, so each stays focused on the single result it owns.
+    useEffect(() => {
+        applyRequestIdRef.current++;
+        if (applyView.status !== "idle") {
+            setApplyOutdated(true);
+        }
+        setApplyView({status: "idle"});
+        applyGuard.end();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor.state.revision]);
 
     // Dirty-tracking: same cleanRevisionRef/nextFormGenerationIsClean/markClean scheme as
     // BlueprintEditorPage's own (see its doc comment) -- kept local to this tab rather than shared,
@@ -262,6 +282,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
         const requestId = ++applyRequestIdRef.current;
         const isStale = (): boolean => requestId !== applyRequestIdRef.current;
         const blueprint = editor.state.blueprint;
+        setApplyOutdated(false);
         setApplyView({status: "loading"});
         applyProjectBlueprint(fetchImpl, blueprint, expectedHash)
             .then((result) => {
@@ -310,6 +331,7 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
         editor.loadFrom(lastLoadedBlueprintRef.current);
         setValidateView({status: "idle"});
         setApplyView({status: "idle"});
+        setApplyOutdated(false);
     }
 
     if (loadView.status === "loading") {
@@ -454,6 +476,13 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
                             Saves this draft back to the project&apos;s blueprint file, then rebuilds the
                             generated game module in place.
                         </Text>
+                        {applyOutdated && (
+                            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                                Outdated — this project has been edited since the last Apply attempt. That
+                                result no longer reflects what&apos;s configured here; validate and apply
+                                again to bring the project up to date.
+                            </Alert>
+                        )}
                         <QuickActions>
                             <Button onClick={handleApply} loading={applyView.status === "loading"} disabled={applyBlocked}>
                                 Apply
