@@ -9,7 +9,13 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         status: 200,
         body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}},
     }),
-    "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
+    "/api/project/inspect": () => ({
+        ok: true,
+        status: 200,
+        body: {packageRoot: "/games/a", valid: true, generated: true, buildInfo: {source: "blueprint.json"}},
+    }),
+    "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", blueprint: {betModes: [{id: "base"}]}}}),
+    "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
@@ -64,10 +70,11 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
         // Configure -- no artificial Select-target click needed.
         await screen.findByRole("button", {name: "Check compatibility & preview"});
 
-        // The project isn't built from a tracked source blueprint (see BASE_ROUTES' own inspect route),
-        // so the mode row falls back to free-text Mode name/Outcome library path fields -- both must be
-        // filled in before "Check compatibility & preview" is anything but a blocked no-op.
-        await user.type(screen.getByLabelText("Mode name"), "base");
+        // The project's own sole build mode ("base", see BASE_ROUTES' own inspect/blueprint routes) is
+        // auto-selected into the row the moment build-mode discovery resolves -- deployment modes only
+        // ever come from the current build, never a hand-typed name. Only the Outcome library path still
+        // needs filling in by hand before "Check compatibility & preview" is anything but a blocked no-op.
+        await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
         await user.type(screen.getByLabelText("Outcome library path"), "base.json");
 
         await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));

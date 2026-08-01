@@ -101,9 +101,10 @@ export function describeTargetRequirements(requirements: StudioDeploymentTargetS
 
 // ---- Configure step: mode mapping ----
 // The Configure step maps each deployed mode to the built game's own bet modes (never a hand-typed
-// string) and, per row, to a compatible outcome library discovered from the Outcome Libraries registry
-// (never an empty free-text path) -- these functions are the pure decision logic behind that mapping,
-// unit-testable without a real Select/PathInput/registry fetch.
+// string -- until the build's own modes are known, mode-name entry stays blocked entirely, see
+// describeBuildModesUnavailable) and, per row, to a compatible outcome library discovered from the
+// Outcome Libraries registry (never an empty free-text path) -- these functions are the pure decision
+// logic behind that mapping, unit-testable without a real Select/PathInput/registry fetch.
 
 function trimmedModeName(row: StudioDeploymentModeInput): string {
     return row.modeName.trim();
@@ -119,8 +120,9 @@ export function usedDeploymentModeNames(rows: readonly StudioDeploymentModeInput
 // already claimed by some *other* row, plus this row's own current selection (so choosing it never makes
 // it vanish from its own dropdown). `undefined` `buildModeIds` means the project's own build modes aren't
 // known yet (still loading, or this project wasn't built from a tracked source blueprint at all -- see
-// CertificationTab's own ProjectModesView) -- callers fall back to an unrestricted mode-name input in that
-// case, never silently hiding every choice.
+// CertificationTab's own ProjectModesView) -- callers must treat that as "nothing pickable yet" (see
+// describeBuildModesUnavailable below), never fall back to an unrestricted mode-name input: a deployment
+// mode must always come from the current build, never a hand-typed string that might not even exist in it.
 export function remainingDeploymentModeChoices(
     buildModeIds: readonly string[] | undefined,
     rows: readonly StudioDeploymentModeInput[],
@@ -134,24 +136,39 @@ export function remainingDeploymentModeChoices(
     return buildModeIds.filter((id) => id === ownValue || !used.has(id));
 }
 
-// Whether "Add mode" should ever be offered -- gated on two independent things: the selected target's own
-// declared multiMode capability (a target that omits it only ever accepts exactly one mode per deployment,
-// see ExternalDeploymentCompatibilityValidator), and whether any build mode remains unclaimed by an
-// existing row. An unknown `buildModeIds` (see remainingDeploymentModeChoices's own doc comment) never
-// blocks adding a row on its own -- only the target's own capability can.
+// Whether "Add mode" should ever be offered -- gated on three independent things: the project's own build
+// modes actually being known (an unknown `buildModeIds`, see remainingDeploymentModeChoices's own doc
+// comment, means there is nothing real to pick for a new row, so adding one is blocked outright rather
+// than falling back to a hand-typed mode name), the selected target's own declared multiMode capability (a
+// target that omits it only ever accepts exactly one mode per deployment, see
+// ExternalDeploymentCompatibilityValidator), and whether any build mode remains unclaimed by an existing
+// row.
 export function canAddDeploymentMode(
     buildModeIds: readonly string[] | undefined,
     rows: readonly StudioDeploymentModeInput[],
     targetSupportsMultiMode: boolean,
 ): boolean {
+    if (buildModeIds === undefined) {
+        return false;
+    }
     if (rows.length >= 1 && !targetSupportsMultiMode) {
         return false;
     }
-    if (buildModeIds === undefined) {
-        return true;
-    }
     const used = usedDeploymentModeNames(rows, -1);
     return buildModeIds.some((id) => !used.has(id));
+}
+
+// The Configure step's own domain-language remediation for "the project's build modes aren't available
+// yet" -- an unknown `buildModeIds` (see remainingDeploymentModeChoices's own doc comment) means there is
+// no real bet mode to pick from, so this replaces the old free-text fallback: every mode-name control
+// stays disabled and both "Add mode" and "Check compatibility & preview" stay blocked (see
+// canAddDeploymentMode and DeploymentTab's own configureBlockers) until the build's own modes resolve.
+// `undefined` once they have -- nothing to block on this account.
+export function describeBuildModesUnavailable(buildModeIds: readonly string[] | undefined): string | undefined {
+    if (buildModeIds !== undefined) {
+        return undefined;
+    }
+    return "This project's build modes aren't available yet -- deployment modes can only come from the current build, never a hand-typed name. Build this project from a tracked source blueprint, then reopen this tab to pick modes here.";
 }
 
 export function isBlankLibrarySelector(selector: OutcomeLibrarySelector): boolean {

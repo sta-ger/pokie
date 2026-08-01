@@ -3,6 +3,7 @@ import {
     classifyDeploymentModeRow,
     collectStageIssues,
     computeDeploymentConfigureBlockers,
+    describeBuildModesUnavailable,
     describeDeploymentModeRowStatus,
     describeDeploymentOutcome,
     describeDeploymentRunResult,
@@ -267,9 +268,23 @@ describe("canAddDeploymentMode", () => {
         expect(canAddDeploymentMode(["base", "bonus"], [mode("base"), mode("bonus")], true)).toBe(false);
     });
 
-    it("falls back to true when build modes aren't known yet, still respecting multiMode", () => {
-        expect(canAddDeploymentMode(undefined, [mode("base")], true)).toBe(true);
+    it("is false when build modes aren't known yet, even for a multiMode target with room to spare", () => {
+        expect(canAddDeploymentMode(undefined, [mode("base")], true)).toBe(false);
         expect(canAddDeploymentMode(undefined, [mode("base")], false)).toBe(false);
+    });
+});
+
+describe("describeBuildModesUnavailable", () => {
+    it("is undefined once the project's own build modes are known", () => {
+        expect(describeBuildModesUnavailable(["base"])).toBeUndefined();
+        expect(describeBuildModesUnavailable([])).toBeUndefined();
+    });
+
+    it("gives an actionable domain-language reason when build modes aren't known yet, never a raw schema path", () => {
+        const message = describeBuildModesUnavailable(undefined);
+        expect(message).toBeDefined();
+        expect(message).toContain("build");
+        expect(message?.includes("/")).toBe(false);
     });
 });
 

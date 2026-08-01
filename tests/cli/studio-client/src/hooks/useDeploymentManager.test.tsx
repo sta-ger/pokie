@@ -591,7 +591,33 @@ describe("useDeploymentManager - addMode respects the target's own multiMode cap
         expect(result.current.modes).toHaveLength(1);
     });
 
-    it("adds a row when the selected target declares multiMode", async () => {
+    it("adds a row when the selected target declares multiMode and the project's own build modes are known", async () => {
+        const multiTarget = {id: "multi-mode-target", version: "1.0.0", requirements: {}, capabilities: ["multiMode"]};
+        const projectModes = projectModesFetch(["base", "bonus"]);
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([multiTarget])});
+            }
+            return projectModes(url, init);
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refreshTargets();
+            result.current.refreshProjectModesAndRegistry();
+        });
+        await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
+        await waitFor(() => expect(result.current.projectModesView).toEqual({status: "ok", modeIds: ["base", "bonus"]}));
+
+        act(() => {
+            result.current.addMode();
+        });
+
+        expect(result.current.modes).toHaveLength(2);
+    });
+
+    it("refuses to add a row while the project's own build modes aren't known yet, even for a multiMode target", async () => {
         const multiTarget = {id: "multi-mode-target", version: "1.0.0", requirements: {}, capabilities: ["multiMode"]};
         const fetchImpl: FetchLike = (url) => {
             const [path] = url.split("?");
@@ -606,11 +632,12 @@ describe("useDeploymentManager - addMode respects the target's own multiMode cap
             result.current.refreshTargets();
         });
         await waitFor(() => expect(result.current.selectedTarget).toEqual(multiTarget));
+        expect(result.current.projectModesView).toEqual({status: "loading"});
 
         act(() => {
             result.current.addMode();
         });
 
-        expect(result.current.modes).toHaveLength(2);
+        expect(result.current.modes).toHaveLength(1);
     });
 });

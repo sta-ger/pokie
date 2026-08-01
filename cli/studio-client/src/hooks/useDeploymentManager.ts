@@ -23,8 +23,9 @@ const EMPTY_MODE: StudioDeploymentModeInput = {modeName: "", librarySelector: BL
 
 // The project's own build modes (see CertificationTab's own identical ProjectModesView) -- "unavailable"
 // covers both "still no tracked source blueprint" and "load failed": either way, the Configure step's own
-// mode picker simply has nothing to restrict against and falls back to an unrestricted mode-name input,
-// same as CertificationTab's own fallback.
+// mode picker has nothing to pick from -- the Configure step blocks mode-name entry, Add mode, and
+// Check compatibility & preview entirely until this resolves to "ok" (see describeBuildModesUnavailable),
+// rather than falling back to a hand-typed mode name.
 export type DeploymentProjectModesView = {status: "loading"} | {status: "unavailable"} | {status: "ok"; modeIds: readonly string[]};
 
 // A freshly added/auto-filled row's own librarySelector -- discovered from the registry when a compatible
@@ -144,8 +145,9 @@ export function useDeploymentManager() {
     // The Configure step's own two discovery inputs -- the project's own build modes (see
     // CertificationTab's identical inspectProject -> loadBlueprint -> betModes lookup) and the outcome
     // library registry (see OutcomeLibrariesTab's own Registry panel). Neither ever blocks the rest of
-    // the tab: a failed/unavailable lookup just leaves the mode picker unrestricted and every row
-    // "missing" until a library is chosen by hand.
+    // the tab: a failed/unavailable build-modes lookup blocks mode-name entry entirely (see
+    // describeBuildModesUnavailable), while a failed/unavailable registry lookup alone just leaves every
+    // row "missing" until a library is chosen by hand.
     const modesRequestIdRef = useRef(0);
     const refreshProjectModesAndRegistry = useCallback(() => {
         const requestId = ++modesRequestIdRef.current;
@@ -251,8 +253,9 @@ export function useDeploymentManager() {
         [invalidate],
     );
 
-    // Sets a row's own mode name (from the Configure step's Select, or the free-text fallback when the
-    // project's own build modes aren't known) -- re-discovers that mode's own librarySelector from the
+    // Sets a row's own mode name (from the Configure step's Select, only ever reachable once the
+    // project's own build modes are known -- see describeBuildModesUnavailable) -- re-discovers that
+    // mode's own librarySelector from the
     // current registry alongside it only when the row's existing selector is itself blank or was itself
     // auto-discovered (see isAutoDiscoverableLibrarySelector's own doc comment); a selector the user
     // picked by hand (Choose) is left untouched by a mode-name edit, only ever replaced by an explicit

@@ -1,4 +1,4 @@
-import {Alert, Anchor, Badge, Button, Card, Group, List, Radio, Select, Stepper, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Card, Group, List, Radio, Select, Stepper, Text} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import type {OutcomeLibrarySelector, StudioDeploymentModeInput, StudioDeploymentStageSummary, StudioDeploymentTargetSummary, StudioOutcomeLibraryRegistryView} from "../../api/types";
@@ -8,6 +8,7 @@ import {
     collectStageIssues,
     COMPATIBILITY_STAGE_KEYS,
     computeDeploymentConfigureBlockers,
+    describeBuildModesUnavailable,
     describeDeploymentModeRowStatus,
     describeDeploymentOutcome,
     describeTargetCapability,
@@ -254,10 +255,11 @@ function DeploymentModeLibraryField({
     );
 }
 
-// One Configure-step mode row -- mode name is picked from the project's own build modes (a Select
-// restricted to remainingDeploymentModeChoices, never a hand-typed string) whenever those are known,
-// falling back to free text only when they genuinely aren't (see DeploymentProjectModesView's own doc
-// comment); the library field discovers a compatible outcome library automatically (see
+// One Configure-step mode row -- mode name is always picked from the project's own build modes (a Select
+// restricted to remainingDeploymentModeChoices, never a hand-typed string); until those are known (see
+// DeploymentProjectModesView's own doc comment), the control stays disabled rather than accepting free
+// text -- the Configure step's own buildModesUnavailableMessage explains why. The library field discovers
+// a compatible outcome library automatically (see
 // useDeploymentManager's own setModeName) and otherwise offers Choose (the PathInput above) or a way to
 // the Outcome Libraries tab's own Generate/Registry hub. The status badge is the exact same
 // classifyDeploymentModeRow the Configure-step blockers list below is built from -- never a second,
@@ -311,7 +313,7 @@ function DeploymentModeRow({
                             onChange={(value) => onModeNameChange(value ?? "")}
                         />
                     ) : (
-                        <TextInput label="Mode name" placeholder="base" value={mode.modeName} onChange={(event) => onModeNameChange(event.currentTarget.value)} />
+                        <Select label="Mode name" placeholder="Build modes unavailable" data={[]} value={null} disabled />
                     )}
                 </div>
                 <div style={{flex: 1, minWidth: 260}}>
@@ -556,14 +558,15 @@ export function DeploymentTab({
     // DeploymentModeRow), a target-capability-aware "is there room for another row" check, and the
     // plain-language blockers list built from those statuses. `runError`'s own "mode "<name>": ..." prefix
     // (see StudioDeploymentService.run()) is the only way a row can read "invalid" before a fresh
-    // Check-compatibility run reclassifies it -- see classifyDeploymentModeRow's own doc comment.
+    // Check-compatibility run reclassifies it -- see classifyDeploymentModeRow's own doc comment. While the
+    // project's own build modes aren't known yet, buildModesUnavailableMessage takes over as the sole
+    // blocker -- there is nothing a per-row status could meaningfully report when no row can even pick a
+    // real mode yet (see describeBuildModesUnavailable's own doc comment).
+    const buildModeIds = projectModesView.status === "ok" ? projectModesView.modeIds : undefined;
+    const buildModesUnavailableMessage = describeBuildModesUnavailable(buildModeIds);
     const modeStatuses = modes.map((mode, index) => classifyDeploymentModeRow(mode, index, modes, registryView ?? {status: "load-error", error: ""}, runError));
-    const configureBlockers = computeDeploymentConfigureBlockers(modes, modeStatuses);
-    const canAddMode = canAddDeploymentMode(
-        projectModesView.status === "ok" ? projectModesView.modeIds : undefined,
-        modes,
-        selectedTarget?.capabilities.includes(MULTI_MODE_CAPABILITY_ID) ?? false,
-    );
+    const configureBlockers = buildModesUnavailableMessage !== undefined ? [buildModesUnavailableMessage] : computeDeploymentConfigureBlockers(modes, modeStatuses);
+    const canAddMode = canAddDeploymentMode(buildModeIds, modes, selectedTarget?.capabilities.includes(MULTI_MODE_CAPABILITY_ID) ?? false);
 
     return (
         <div>
@@ -632,11 +635,10 @@ export function DeploymentTab({
                             another row -- discovered automatically from the Outcome Libraries registry when possible,
                             otherwise choose a file, generate one, or open the hub.
                         </Text>
-                        {projectModesView.status === "unavailable" && (
-                            <Text size="xs" c="dimmed" mb="sm">
-                                This project isn&apos;t built from a tracked source blueprint, so its bet modes can&apos;t be
-                                listed automatically -- enter mode names below as free text.
-                            </Text>
+                        {buildModesUnavailableMessage !== undefined && (
+                            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                                {buildModesUnavailableMessage}
+                            </Alert>
                         )}
 
                         <PageSection legend="Deployment modes">
