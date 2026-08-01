@@ -125,6 +125,41 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(screen.getByText(/Session sess-old.*500\.00/)).toBeInTheDocument();
     }, 60000);
 
+    it("disables Load Session for a blank (or whitespace-only) session id, with inline guidance, and restores normal behavior once a session id is supplied", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions/sess-old": () => ({ok: true, status: 200, body: {status: "ok", session: sessionFor({sessionId: "sess-old", credits: 500})}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("radio", {name: "Restore existing"}));
+
+        // Blank by default -- Load Session must not look clickable, and the input itself explains why.
+        expect(screen.getByRole("button", {name: "Load Session"})).toBeDisabled();
+        expect(screen.getByText("Required to load an existing session")).toBeInTheDocument();
+
+        // Whitespace-only is the same as blank -- still disabled, no silent no-op click possible.
+        await user.type(screen.getByLabelText("Session id"), "   ");
+        expect(screen.getByRole("button", {name: "Load Session"})).toBeDisabled();
+
+        // A real, trimmed session id restores the normal Load Session behavior.
+        await user.clear(screen.getByLabelText("Session id"));
+        await user.type(screen.getByLabelText("Session id"), "sess-old");
+        expect(screen.getByRole("button", {name: "Load Session"})).not.toBeDisabled();
+
+        await user.click(screen.getByRole("button", {name: "Load Session"}));
+
+        await screen.findByRole("button", {name: "Spin"});
+        expect(screen.getByText(/Session sess-old.*500\.00/)).toBeInTheDocument();
+    }, 60000);
+
     it("proves idempotent replay: retrying the last request returns the exact same result", async () => {
         const user = userEvent.setup();
         let spinCallCount = 0;

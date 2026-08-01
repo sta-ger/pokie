@@ -170,17 +170,21 @@ direct project-switch fixture coverage (`replayWorkflow.test.tsx`'s "clears the 
 when the project changes mid-load"). Not fixed here -- outside the audit's Certification/Provably Fair scope
 and would need its own dedicated fixture to verify first.
 
-**Runtime** (`P2-POLISH-16`): also no longer a Stepper -- an always-visible, persistent multi-section
-workspace (Server / Current session / Inspect round / Round history / Retry & Debug), explicitly documented
-in-source as cyclic ("every panel below is reachable at any time... the same session can cycle through
-Play/Inspect/Debug indefinitely"). Only two hard `disabled` props exist in the whole file (Start/Stop);
-everything else is freshness-gated by clearing `selectedRound` on every invalidating action (session change,
-Stop, Restart, Refresh, Create/Load session, Spin, Retry) rather than a visual "Outdated" badge -- the same
-structural-reset philosophy Replay uses. `aria-current` is used manually on the round-history list (not via a
-Stepper, since none exists). Raw-error passthrough throughout, except the pre-existing "blocked"/"conflict"
-`RecoveryNotice` treatment. Not touched by `[P2-POLISH-25]` and not revisited here -- no stale-*Stepper*-result
-finding applies (there's no Stepper), and the existing structural-reset pattern already satisfies the
-same freshness goal the Outdated banners serve elsewhere.
+**Runtime** (`P2-POLISH-16`, Load Session's blank-id guard added `[P2-POLISH-25]`): also no longer a
+Stepper -- an always-visible, persistent multi-section workspace (Server / Current session / Inspect round /
+Round history / Retry & Debug), explicitly documented in-source as cyclic ("every panel below is reachable at
+any time... the same session can cycle through Play/Inspect/Debug indefinitely"). Three hard `disabled` props
+exist in the whole file (Start/Stop, plus Load Session below); everything else is freshness-gated by clearing
+`selectedRound` on every invalidating action (session change, Stop, Restart, Refresh, Create/Load session,
+Spin, Retry) rather than a visual "Outdated" badge -- the same structural-reset philosophy Replay uses.
+`aria-current` is used manually on the round-history list (not via a Stepper, since none exists). Raw-error
+passthrough throughout, except the pre-existing "blocked"/"conflict" `RecoveryNotice` treatment. No
+stale-*Stepper*-result finding applies (there's no Stepper), and the existing structural-reset pattern already
+satisfies the same freshness goal the Outdated banners serve elsewhere. `[P2-POLISH-25]` closed the one
+inferable/empty-input gap this tab had: "Restore existing"'s "Session id" `TextInput` now carries a `disabled`
+Load Session button and a "Required to load an existing session" description whenever the field is blank or
+whitespace-only, matching Provably Fair's Verify fix in the same step -- previously the button looked
+clickable and silently no-op'd on a blank id.
 
 **Deployment**: unchanged since the frozen baseline in every respect that matters here -- still the one tab
 across the whole app that both retains a classic Stepper *and* already has an explicit "Outdated" `Alert`
@@ -277,6 +281,7 @@ shipped without either a confirmed live trigger or an honest way to prove it, pe
 | `CertificationTab.tsx` | New `buildOutdated` Outdated `Alert` on Select/configure, mutually exclusive with the existing `validateOutdated` one | `ProjectDashboardPage.certificationWorkflow.test.tsx`: "marks a completed Build (not Validate) as Outdated when only modes/output directory change..." |
 | `OutcomeLibrariesTab.tsx` | New `compareOutdated` Outdated `Alert` on the Compare step | `ProjectDashboardPage.outcomeLibrariesWorkflow.test.tsx`: "marks a completed Compare as Outdated once the comparison selector changes..." |
 | `StakeEngineExportTab.tsx` | New `exportOutdated` Outdated `Alert` on Configure, mutually exclusive with the existing `validateOutdated` one | `ProjectDashboardPage.stakeEngineExportWorkflow.test.tsx`: "marks a completed Export (not Validate) as Outdated when only the output directory changes..." |
+| `RuntimeTab.tsx` | Load Session button's `disabled` condition now requires a non-blank (trimmed) "Session id" field, with a "Required to load an existing session" input description (previously a fail-open silent no-op, same shape as the Provably Fair Verify fix above) | `ProjectDashboardPage.runtimeWorkflow.test.tsx`: "disables Load Session for a blank (or whitespace-only) session id, with inline guidance, and restores normal behavior once a session id is supplied" |
 
 Every fix above follows the exact lifecycle `f5c10bc` already established (`validateOutdated`/
 `selectOutdated`): a boolean set inside the existing `invalidate*()` function whenever the view being
@@ -300,7 +305,7 @@ Recorded so a future step doesn't have to rediscover them, same convention
    guard; only its page-owned `expected` state has direct project-switch fixture coverage today.
 4. Validation's project-switch reset gap exists in the code but is not reachable through any current
    navigation path -- see its own section above for the full investigation.
-5. Runtime's Load Session (blank id) and (now fixed) Provably Fair's Verify were both previously-documented
-   fail-open silent no-ops (`studio-phase2-inventory.md`'s own Cross-cutting findings) -- Provably Fair's is
-   fixed this step; Runtime's Load Session is unchanged (not a named workflow this step, and Runtime's own
-   cyclic-workspace design deliberately has no `disabled`-button convention to extend the same way).
+5. Runtime's Load Session (blank id) and Provably Fair's Verify were both previously-documented fail-open
+   silent no-ops (`studio-phase2-inventory.md`'s own Cross-cutting findings) -- both are now fixed as of this
+   step (Provably Fair first-pass, Runtime's Load Session in the correction round for `[P2-POLISH-25]`
+   itself, once flagged as still in scope).

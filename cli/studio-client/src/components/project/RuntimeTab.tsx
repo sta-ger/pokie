@@ -622,12 +622,14 @@ export function RuntimeTab({
                                 <QuickActions>
                                     <TextInput
                                         label="Session id"
+                                        description="Required to load an existing session"
                                         value={restoreSessionId}
                                         onChange={(event) => setRestoreSessionId(event.currentTarget.value)}
                                     />
                                     <Button
                                         loading={session.status === "loading"}
-                                        onClick={() => restoreSessionId.trim() && handleLoadSession(restoreSessionId.trim())}
+                                        disabled={restoreSessionId.trim() === ""}
+                                        onClick={() => handleLoadSession(restoreSessionId.trim())}
                                     >
                                         Load Session
                                     </Button>
