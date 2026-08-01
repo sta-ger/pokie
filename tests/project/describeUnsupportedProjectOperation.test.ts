@@ -1,0 +1,57 @@
+import {describeUnsupportedProjectOperation} from "../../src/project/describeUnsupportedProjectOperation.js";
+import {BUILD_OPERATION, SIM_OPERATION, WASM_EXPORT_OPERATION} from "../../src/project/PokieOperation.js";
+import type {PokieProject} from "../../src/project/PokieProject.js";
+import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
+import type {ProjectType} from "../../src/project/ProjectType.js";
+
+function projectOf(type: ProjectType): PokieProject {
+    return {type, rootPath: `/projects/${type}`, capabilities: PROJECT_TYPE_CAPABILITIES[type]} as PokieProject;
+}
+
+describe("describeUnsupportedProjectOperation", () => {
+    it("returns undefined when the project grants the operation's required capability", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("tsPackage"), SIM_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("blueprint"), BUILD_OPERATION)).toBeUndefined();
+    });
+
+    it("returns undefined for an operation this module doesn't recognize at all", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("blueprint"), "someUnknownOperation")).toBeUndefined();
+    });
+
+    it("names the detected type, operation, and missing capability for an unsupported operation", () => {
+        const diagnostic = describeUnsupportedProjectOperation(projectOf("blueprint"), SIM_OPERATION);
+
+        expect(diagnostic).toEqual({
+            detectedType: "blueprint",
+            operation: SIM_OPERATION,
+            missingCapability: "runtime.execute",
+            alternatives: ["tsPackage"],
+            message: expect.stringContaining("tsPackage"),
+        });
+    });
+
+    it("lists every other project type that already supports the operation as an alternative", () => {
+        const diagnostic = describeUnsupportedProjectOperation(projectOf("parWorkbook"), SIM_OPERATION);
+
+        expect(diagnostic?.alternatives).toEqual(["tsPackage"]);
+    });
+
+    it("reports no alternatives for an operation no project type currently supports", () => {
+        const diagnostic = describeUnsupportedProjectOperation(projectOf("blueprint"), WASM_EXPORT_OPERATION);
+
+        expect(diagnostic).toEqual({
+            detectedType: "blueprint",
+            operation: WASM_EXPORT_OPERATION,
+            missingCapability: "wasm.export",
+            alternatives: [],
+            message: expect.stringContaining("No project type currently supports it."),
+        });
+    });
+
+    it("reports wasm.export as unsupported even for a wasm-typed project", () => {
+        const diagnostic = describeUnsupportedProjectOperation(projectOf("wasm"), WASM_EXPORT_OPERATION);
+
+        expect(diagnostic?.missingCapability).toBe("wasm.export");
+        expect(diagnostic?.alternatives).toEqual([]);
+    });
+});
