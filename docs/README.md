@@ -226,5 +226,8 @@ Every class implements one or more of `*Describing`/`*Determining` (read), `*Set
 
 The rest of this folder is the API reference for using the published `pokie` package. If you're working on POKIE's
 own source instead, see [`testing.md`](testing.md) for how the test suite is organized (fast/integration/packaging/
-release lanes) and how to run it, and [`v1.3-closeout-report.md`](v1.3-closeout-report.md) for the resolved v1.3
-gap-audit priority list and what's explicitly deferred to v2.
+release lanes) and how to run it, [`v1.3-closeout-report.md`](v1.3-closeout-report.md) for the resolved v1.3
+gap-audit priority list and what's explicitly deferred to v2, and [`pokie-phase3-inventory.md`](pokie-phase3-inventory.md)
+for the versioned, executable-fixture-backed baseline of CLI targets, the generated-package seam, Studio's
+home/project routes, and the External Adapter SDK/Stake Engine adapter boundary, frozen ahead of Phase 3
+migration work.
