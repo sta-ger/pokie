@@ -14,6 +14,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     }),
     "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", blueprint: {betModes: [{id: "base"}]}}}),
     "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+    "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
