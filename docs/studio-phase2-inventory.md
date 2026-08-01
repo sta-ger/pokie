@@ -207,11 +207,18 @@ same treatment (63); `saveView` conflict → `RecoveryNotice` with an "Overwrite
 exception to raw passthrough Stake Engine Export's overwritable-conflict case is (61) -- its own message is
 already hand-built, not run through the classifier; Build Preview/Build Result errors via
 the shared `BuildPreviewDisplay`/`BuildResultDisplay` (`common/BuildPreviewDisplay.tsx`,
-`common/BuildResultDisplay.tsx`). **One deviation from the systemic pattern:** `BlueprintValidationPanel`'s
-own "error" status is rendered as a **plain `<Text>`** (`BlueprintValidationPanel.tsx:9-11,30`), *not*
-routed through `ErrorState`/`role="alert"` at all -- the one raw-error case in this whole document that
-isn't even wrapped in an `Alert`, let alone a friendlier one. Flagged here as a real (if narrow)
-accessibility gap: a screen reader relying on `role="alert"` announcements would miss it entirely.
+`common/BuildResultDisplay.tsx`). **Update (`[P2-POLISH-26]`):** `BlueprintValidationPanel`'s own "error"
+status (the `/api/home/blueprints/validate` request itself failing outright -- a network exception, not a
+domain validation result) used to render as a **plain `<Text>`**, not routed through `ErrorState`/`role="alert"`
+at all -- the one raw-error case in this whole document that wasn't even wrapped in an `Alert`, let alone a
+friendlier one, flagged as an accessibility gap (a screen reader relying on `role="alert"` announcements would
+miss it entirely) and left open across every prior update to this document. **Fixed:** the same
+`describePathActionError("This validation request", ...)` treatment `MechanicsEditorTab.tsx` already uses for
+the identical endpoint's identical network-exception catch, now wired at `BlueprintValidationPanel.tsx`'s own
+render call site (`ErrorState` for "error"; the pre-existing plain `<Text>` is left as-is for "invalid"/"ok",
+which were never the accessibility gap). See the new "shows a subject-specific recovery message, never the raw
+backend text, when the validation request itself fails outright..." case in
+`BlueprintEditorPage.validation.test.tsx`.
 
 ---
 
@@ -732,9 +739,10 @@ Build-from-blueprint), which this step's instruction didn't name; and every alre
 already-specific message (Save's/the two exports' conflict messages, Provably Fair's `invalid`/`build-error`
 states). `RuntimeTab.tsx`'s own "blocked"/"conflict" `RecoveryNotice` wrapping and `StakeEngineExportTab.tsx`'s
 overwritable-conflict case remain the two pre-existing exceptions to plain `ErrorState` passthrough, unrelated
-to this fix. **A third, narrower exception** also remains: the guided/Raw Editor's `BlueprintValidationPanel`
-renders its "error" status as a plain `<Text>`, not through `ErrorState`/`role="alert"` at all — see Design &
-Build's own section above; this accessibility gap is unrelated to raw-text content and wasn't in scope here.
+to this fix. **A third exception, closed in `[P2-POLISH-26]`:** the guided/Raw Editor's `BlueprintValidationPanel`
+used to render its "error" status as a plain `<Text>`, not through `ErrorState`/`role="alert"` at all — this
+accessibility gap was unrelated to raw-text content and wasn't in scope for `[P2-POLISH-04]`'s own fix, but is
+now fixed on its own terms; see the `[P2-POLISH-26]` update in Design & Build's own section above.
 
 **Building on top of an un-validated Save is possible.** Save's own request-validation layer (and the
 service that writes it) never checks the blueprint's shape, only that one was sent at all — see Design &
@@ -828,13 +836,13 @@ silently assumed covered:
    blueprint (Destination directory, Existing project directory, Blueprint JSON path) — the identical
    mechanism *is* exercised end to end once, for Open Project's "Project path" field, but not repeated for
    these three; evidence-only, same underlying native-`required` behavior.
-6. `BlueprintValidationPanel`'s own "error" status rendering as a plain `<Text>` instead of `ErrorState` —
-   documented from source (the component's own branch, `BlueprintValidationPanel.tsx:9-11,30`), not exercised
-   by a fixture that actually triggers a validate-request network failure and asserts the *absence* of a
-   `role="alert"` element.
+6. ~~`BlueprintValidationPanel`'s own "error" status rendering as a plain `<Text>` instead of `ErrorState`~~ —
+   **fixed in `[P2-POLISH-26]`**, now exercised end to end by `BlueprintEditorPage.validation.test.tsx`'s own
+   validate-request-network-failure fixture (asserting both the translated text and a real `role="alert"`
+   element); see the update in Design & Build's own section above.
 
-A future extension of this baseline should prioritize (1) and (3) first, since they're the two findings this
-document states from source reading alone without any executable proof.
+A future extension of this baseline should prioritize (1) and (3) first, since they're the two remaining
+findings this document states from source reading alone without any executable proof.
 
 ## Fail-closed expectations
 

@@ -157,6 +157,24 @@ describe("Guided Design & Build: validation staleness and build gating", () => {
         expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
     }, 60000);
 
+    it("shows a subject-specific recovery message, never the raw backend text, when the validation request itself fails outright (not a domain validation result)", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/home/blueprints/validate" && init?.method === "POST") {
+                return Promise.reject(new Error("Failed to fetch"));
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("This validation request could not be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+    }, 60000);
+
     it("a warnings-only validation still allows Build", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url, init) => {
