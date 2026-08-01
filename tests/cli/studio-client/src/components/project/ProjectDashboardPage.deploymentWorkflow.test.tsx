@@ -103,6 +103,13 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         expect(screen.getByText(/Target diagnostic passed/)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Continue to Deploy"})).toBeInTheDocument();
 
+        // Distinguishes input/adapter-transformation/output/destination and spells out that a preview
+        // never touches disk (so there's no temp artifact lifetime/cleanup) and never mutates the source
+        // library or built package -- see describeDeploymentPreviewPipelineNote's own doc comment.
+        expect(screen.getByText(/Input: this mode's own outcome library, read only/)).toBeInTheDocument();
+        expect(screen.getByText(new RegExp(`Adapter: "${TARGET.id}"'s own generator`))).toBeInTheDocument();
+        expect(screen.getByText(/no temporary file, lifetime, or cleanup to account for/)).toBeInTheDocument();
+
         // Raw artifact content and the full stage list stay hidden until Advanced details is opened --
         // the first generated artifact is auto-selected, so its content appears as soon as Advanced opens.
         // The controlled region is always mounted (see AdvancedDisclosure's own doc comment on why),
@@ -352,6 +359,14 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         // artifacts/Deploy no longer show the stale, now-invalidated run.
         expect(screen.getByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
         expect(screen.queryByText("base.json")).not.toBeInTheDocument();
+        // Told apart from "never checked at all" -- an explicit Outdated notice, since this Configure
+        // step's own inputs changed since the last (successful) Check & Preview (see useDeploymentManager's
+        // own preflightOutdated).
+        expect(screen.getByText(/Outdated -- configuration changed since the last Check & Preview/)).toBeInTheDocument();
+
+        // Rerunning is itself what clears the Outdated notice.
+        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await waitFor(() => expect(screen.queryByText(/Outdated -- configuration changed/)).not.toBeInTheDocument());
     });
 
     it("clears target/modes/artifacts when the project switches, leaving a brand new Select-target step", async () => {

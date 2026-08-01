@@ -11,6 +11,7 @@ import {
     describeBuildModesUnavailable,
     describeDeploymentModeRowStatus,
     describeDeploymentOutcome,
+    describeDeploymentPreviewPipelineNote,
     describeTargetCapability,
     describeTargetRequirements,
     LOCAL_JSON_EXAMPLE_TARGET_ID,
@@ -429,6 +430,7 @@ export function DeploymentTab({
     runResult,
     runError,
     runLoading,
+    preflightOutdated,
     selectedArtifactPath,
     onSelectArtifact,
     projectRoot,
@@ -452,6 +454,7 @@ export function DeploymentTab({
     runResult: DeploymentRunResultView | undefined;
     runError: string | undefined;
     runLoading: boolean;
+    preflightOutdated: boolean;
     selectedArtifactPath: string | undefined;
     onSelectArtifact: (path: string) => void;
     projectRoot?: string;
@@ -635,6 +638,14 @@ export function DeploymentTab({
                             another row -- discovered automatically from the Outcome Libraries registry when possible,
                             otherwise choose a file, generate one, or open the hub.
                         </Text>
+                        {preflightOutdated && (
+                            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
+                                Outdated -- configuration changed since the last Check &amp; Preview. Its result no longer
+                                reflects what&apos;s configured here; rerun Check compatibility &amp; preview before Deploy
+                                is offered again.
+                            </Alert>
+                        )}
+
                         {buildModesUnavailableMessage !== undefined && (
                             <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
                                 {buildModesUnavailableMessage}
@@ -715,6 +726,12 @@ export function DeploymentTab({
                     <EmptyState message="Check compatibility first." />
                 ) : (
                     <div>
+                        {selectedTarget !== undefined && (
+                            <Text size="sm" c="dimmed" mb="sm">
+                                {describeDeploymentPreviewPipelineNote(selectedTarget.id)}
+                            </Text>
+                        )}
+
                         {outcome === "validation-failure" && (
                             <DeploymentOutcomeBanner outcome={outcome} issues={collectStageIssues(runResult.stages, PREVIEW_STAGE_KEYS)} />
                         )}

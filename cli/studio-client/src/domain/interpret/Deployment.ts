@@ -297,6 +297,31 @@ export function computeDeploymentConfigureBlockers(rows: readonly StudioDeployme
     return blockers;
 }
 
+// The Preview-artifacts step's own plain-language account of what a preview run actually touched --
+// shown alongside the artifact list regardless of outcome, since even a validation/transport failure
+// still generated *something* worth explaining the provenance of. Distinguishes the four things an
+// external deployment conceptually is: this mode's own outcome library (input, read-only), the target's
+// own adapter (the thing that transforms that library into its own artifact shape -- never this UI's own
+// code), the artifacts that transformation produced (output, listed separately), and where a real Deploy
+// would eventually send them (the target's own destination -- opaque from here, since a third-party
+// target's own runtimeAdapter is never introspectable client-side, see StudioDeploymentTargetSummary's
+// own doc comment). A preview (publish: false) never calls that destination's own runtimeAdapter at all
+// (see StudioDeploymentService.run()'s own doc comment) -- nothing is written anywhere, so there is no
+// temporary file, lifetime, or cleanup for a preview to ever leave behind; a real Deploy's own write is
+// atomic (see atomicallyWriteExternalDeploymentArtifactsToDirectory's own doc comment), so a failed one
+// leaves the destination exactly as it was, never a partially-written result.
+export function describeDeploymentPreviewPipelineNote(targetId: string): string {
+    return (
+        `Input: this mode's own outcome library, read only -- never modified by this pipeline, and neither is the ` +
+        `project's own built package/blueprint it was checked against. Adapter: "${targetId}"'s own generator ` +
+        `transforms that library into the artifacts listed below (output). Destination: publishing later sends ` +
+        `these exact artifacts to "${targetId}"'s own destination via an atomic write -- a failed Deploy leaves it ` +
+        `exactly as it was, never a partial result. Nothing here is written anywhere yet: a preview never reaches ` +
+        `that destination at all, so these artifacts exist only in this response -- no temporary file, lifetime, ` +
+        `or cleanup to account for.`
+    );
+}
+
 export type DeploymentRunResultView = {
     readonly stages: readonly StudioDeploymentStageSummary[];
     readonly artifacts: readonly StudioDeploymentArtifactView[];

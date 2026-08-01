@@ -478,6 +478,105 @@ describe("useDeploymentManager - run() clears the previous result immediately", 
     });
 });
 
+// preflightOutdated distinguishes "a previous Check-compatibility/preview result no longer reflects the
+// current Configure inputs" from plain "nothing has been run yet" -- both leave runResult undefined, but
+// only the former is something a user who already checked once needs to be told about (see
+// useDeploymentManager's own markConfigChanged doc comment).
+describe("useDeploymentManager - preflightOutdated", () => {
+    it("stays false before any run has ever happened, even across config edits", async () => {
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([TARGET])});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refreshTargets();
+        });
+        await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
+
+        act(() => {
+            result.current.setModeName(0, "base");
+        });
+
+        expect(result.current.preflightOutdated).toBe(false);
+    });
+
+    it("becomes true when a mode/library edit invalidates an already-successful run, and clears once a fresh run starts", async () => {
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([TARGET])});
+            }
+            if (path === "/api/project/deployment/runs") {
+                return Promise.resolve(okRunResponse());
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refreshTargets();
+        });
+        await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
+
+        act(() => {
+            result.current.run(false);
+        });
+        await waitFor(() => expect(result.current.runResult).toBeDefined());
+        expect(result.current.preflightOutdated).toBe(false);
+
+        act(() => {
+            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
+        });
+        expect(result.current.runResult).toBeUndefined();
+        expect(result.current.preflightOutdated).toBe(true);
+
+        // Firing a fresh run is itself what un-stales things -- cleared the instant it starts, not only
+        // once its response lands.
+        act(() => {
+            result.current.run(false);
+        });
+        expect(result.current.preflightOutdated).toBe(false);
+    });
+
+    it("resets to false on a project switch rather than carrying an outdated flag into a brand new context", async () => {
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([TARGET])});
+            }
+            if (path === "/api/project/deployment/runs") {
+                return Promise.resolve(okRunResponse());
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useDeploymentManager(), {wrapper: wrapper(fetchImpl)});
+
+        act(() => {
+            result.current.refreshTargets();
+        });
+        await waitFor(() => expect(result.current.selectedTarget).toEqual(TARGET));
+        act(() => {
+            result.current.run(false);
+        });
+        await waitFor(() => expect(result.current.runResult).toBeDefined());
+
+        act(() => {
+            result.current.setModeLibrarySelector(0, {kind: "json", path: "lib.json"});
+        });
+        expect(result.current.preflightOutdated).toBe(true);
+
+        act(() => {
+            result.current.resetForProjectSwitch();
+        });
+        expect(result.current.preflightOutdated).toBe(false);
+    });
+});
+
 function projectModesFetch(modeIds: string[]): FetchLike {
     return (url) => {
         const [path] = url.split("?");
