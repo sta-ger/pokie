@@ -360,6 +360,7 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
+        await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
         expect(screen.getByLabelText("Library JSON path")).toHaveAttribute("placeholder", "./outcomes/base.json");
 
         const loadButton = screen.getByRole("button", {name: "Load library"});
@@ -496,6 +497,7 @@ describe("Scoped path-action error remediation baseline", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
+        await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
         await user.type(screen.getByLabelText("Library JSON path"), "./outcomes/base.json");
         await user.click(screen.getByRole("button", {name: "Load library"}));
 
