@@ -6,7 +6,10 @@ import type {PokieProject} from "./PokieProject.js";
 // so a future implementation (e.g. one that also needs to probe a remote registry for a "stakeAdapter"
 // project) can be swapped in without changing this contract. Never throws for a path that simply doesn't
 // resolve to any known ProjectType — that's an undefined return, not an error; only a genuine I/O failure
-// (e.g. the given path's own parent directory not existing) propagates.
+// (e.g. the given path's own parent directory not existing) propagates. The one other exception: an
+// implementation that recognizes a target as more than one ProjectType at once (a registration/recognition
+// conflict, not a normal non-match) throws rather than silently picking a winner — see
+// ProjectTargetResolver/ProjectTargetAmbiguousError.
 export interface ProjectResolving {
     resolve(targetPath: string): Promise<PokieProject | undefined>;
 }

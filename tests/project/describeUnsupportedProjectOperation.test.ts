@@ -5,7 +5,12 @@ import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.j
 import type {ProjectType} from "../../src/project/ProjectType.js";
 
 function projectOf(type: ProjectType): PokieProject {
-    return {type, rootPath: `/projects/${type}`, capabilities: PROJECT_TYPE_CAPABILITIES[type]} as PokieProject;
+    return {
+        type,
+        rootPath: `/projects/${type}`,
+        capabilities: PROJECT_TYPE_CAPABILITIES[type],
+        provenance: "test fixture",
+    } as PokieProject;
 }
 
 describe("describeUnsupportedProjectOperation", () => {
