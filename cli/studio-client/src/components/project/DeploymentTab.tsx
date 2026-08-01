@@ -11,7 +11,7 @@ import {
     describeBuildModesUnavailable,
     describeDeploymentModeRowStatus,
     describeDeploymentOutcome,
-    describeDeploymentPreviewPipelineNote,
+    describeDeploymentPreflightArtifactNote,
     describeTargetCapability,
     describeTargetRequirements,
     LOCAL_JSON_EXAMPLE_TARGET_ID,
@@ -41,7 +41,7 @@ import {RowActions} from "../common/RowActions";
 
 const OUTCOME_BANNER: Record<DeploymentOutcomeKind, {color: string; icon: ReactNode; title: string}> = {
     success: {color: "green", icon: <IconCircleCheck size={16} />, title: "Deployed successfully"},
-    partial: {color: "blue", icon: <IconCircleCheck size={16} />, title: "Preview succeeded -- ready to deploy"},
+    partial: {color: "blue", icon: <IconCircleCheck size={16} />, title: "Deployment preflight succeeded -- ready to deploy"},
     incompatible: {color: "red", icon: <IconAlertTriangle size={16} />, title: "Incompatible with this target"},
     "validation-failure": {color: "orange", icon: <IconAlertTriangle size={16} />, title: "Content didn't validate for this target"},
     "transport-failure": {color: "red", icon: <IconAlertTriangle size={16} />, title: "Target couldn't be reached or written to"},
@@ -533,7 +533,7 @@ export function DeploymentTab({
         setActiveStep(1);
     }
 
-    function handleCheckAndPreview(): void {
+    function handleRunPreflight(): void {
         pendingAdvanceStepRef.current = 2;
         onPreview();
     }
@@ -578,9 +578,9 @@ export function DeploymentTab({
                 external deployment target via the pokie package&apos;s own External Adapter SDK. Each mode below maps to
                 one bet mode from the project&apos;s own build; the built package/blueprint only supplies provenance
                 context (game id, version, config) used to judge whether a library is still compatible, never the
-                deployed content itself. &quot;Check &amp; Preview&quot; runs the full pipeline (compatibility check,
-                projection, generation, artifact validation, target diagnostic) without writing anything;
-                &quot;Deploy&quot; additionally publishes the generated artifacts to the target.
+                deployed content itself. The &quot;deployment preflight&quot; runs the full pipeline (compatibility
+                check, projection, generation, artifact validation, target diagnostic) without publishing anything --
+                &quot;Deploy&quot; is the only action that actually sends the generated artifacts to the target.
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
@@ -640,9 +640,9 @@ export function DeploymentTab({
                         </Text>
                         {preflightOutdated && (
                             <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
-                                Outdated -- configuration changed since the last Check &amp; Preview. Its result no longer
-                                reflects what&apos;s configured here; rerun Check compatibility &amp; preview before Deploy
-                                is offered again.
+                                Outdated -- configuration changed since the last deployment preflight. Its result no
+                                longer reflects what&apos;s configured here; rerun the deployment preflight before
+                                Deploy is offered again.
                             </Alert>
                         )}
 
@@ -686,8 +686,8 @@ export function DeploymentTab({
                         {configureBlockers.length > 0 && <IssueList title="Before you can continue" issues={configureBlockers.map((message) => ({message}))} />}
 
                         <QuickActions>
-                            <Button onClick={handleCheckAndPreview} loading={runLoading} disabled={configureBlockers.length > 0}>
-                                Check compatibility &amp; preview
+                            <Button onClick={handleRunPreflight} loading={runLoading} disabled={configureBlockers.length > 0}>
+                                Run deployment preflight
                             </Button>
                         </QuickActions>
                         {runLoading && <LoadingState label="Running…" />}
@@ -727,8 +727,8 @@ export function DeploymentTab({
                 ) : (
                     <div>
                         {selectedTarget !== undefined && (
-                            <Text size="sm" c="dimmed" mb="sm">
-                                {describeDeploymentPreviewPipelineNote(selectedTarget.id)}
+                            <Text size="sm" c="dimmed" mb="sm" style={{whiteSpace: "pre-line"}}>
+                                {describeDeploymentPreflightArtifactNote(selectedTarget)}
                             </Text>
                         )}
 
@@ -779,7 +779,7 @@ export function DeploymentTab({
 
             {activeStep === 4 &&
                 (!canContinueToDeploy ? (
-                    <EmptyState message="A successful preview is required before deploying -- go back and run Check compatibility & preview." />
+                    <EmptyState message="A successful deployment preflight is required before deploying -- go back and run it again." />
                 ) : (
                     <div>
                         <Text size="sm" mb="sm">

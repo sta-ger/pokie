@@ -467,7 +467,7 @@ describe("Scoped path-action error remediation baseline", () => {
         expect(alerts.some((alert) => alert.textContent === "bundle directory not found")).toBe(false);
     });
 
-    it("Deployment: a failed Check compatibility & preview call is turned into outcome-library-specific inline remediation, never the raw server error text", async () => {
+    it("Deployment: a failed deployment preflight call is turned into outcome-library-specific inline remediation, never the raw server error text", async () => {
         const user = userEvent.setup();
         const target = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
         const {fetchImpl} = createRoutedFakeFetch({
@@ -485,7 +485,7 @@ describe("Scoped path-action error remediation baseline", () => {
         // ever come from the current build, never a hand-typed name.
         await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
         await user.type(screen.getByLabelText("Outcome library path"), "./outcomes/missing.json");
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
 
         const alerts = await screen.findAllByRole("alert");
         expect(alerts.some((alert) => alert.textContent === "The deployment's outcome library file could not be found. Check the path and try again.")).toBe(

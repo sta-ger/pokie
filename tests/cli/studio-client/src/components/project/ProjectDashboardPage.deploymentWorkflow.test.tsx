@@ -64,7 +64,7 @@ function stepperStep(label: string, description: string): RegExp {
 async function goToDeploymentConfigure(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Deployment"}));
-    await screen.findByRole("button", {name: "Check compatibility & preview"});
+    await screen.findByRole("button", {name: "Run deployment preflight"});
     await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
     await user.type(screen.getByLabelText("Outcome library path"), "libs/base.json");
 }
@@ -93,7 +93,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
 
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
 
         // The artifact-list entry itself, not a bare text match -- "base.json" also appears, always
@@ -103,12 +103,16 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         expect(screen.getByText(/Target diagnostic passed/)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Continue to Deploy"})).toBeInTheDocument();
 
-        // Distinguishes input/adapter-transformation/output/destination and spells out that a preview
-        // never touches disk (so there's no temp artifact lifetime/cleanup) and never mutates the source
-        // library or built package -- see describeDeploymentPreviewPipelineNote's own doc comment.
+        // Distinguishes input/adapter-transformation/output/destination and spells out that a deployment
+        // preflight never touches disk or the remote target (so it never claims a mutation that didn't
+        // happen) -- see describeDeploymentPreflightArtifactNote's own doc comment. TARGET isn't the SDK's
+        // own local-json-example target, so its destination is honestly reported as not introspectable
+        // client-side rather than a fabricated local path.
         expect(screen.getByText(/Input: this mode's own outcome library, read only/)).toBeInTheDocument();
         expect(screen.getByText(new RegExp(`Adapter: "${TARGET.id}"'s own generator`))).toBeInTheDocument();
-        expect(screen.getByText(/no temporary file, lifetime, or cleanup to account for/)).toBeInTheDocument();
+        expect(screen.getByText(new RegExp(`a real Deploy sends these exact artifacts to "${TARGET.id}"'s own registered destination`))).toBeInTheDocument();
+        expect(screen.getByText(/runtimeAdapter is never introspectable client-side/)).toBeInTheDocument();
+        expect(screen.getByText(/this deployment preflight never reaches that destination at all/)).toBeInTheDocument();
 
         // Raw artifact content and the full stage list stay hidden until Advanced details is opened --
         // the first generated artifact is auto-selected, so its content appears as soon as Advanced opens.
@@ -157,7 +161,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         expect(reviewStep).not.toHaveAttribute("aria-current");
         expect(reviewStep).toBeDisabled();
 
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
 
         const previewStep = screen.getByRole("button", {name: stepperStep("Preview artifacts", "What would be generated")});
@@ -185,7 +189,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
 
         expect(await screen.findByText("Incompatible with this target")).toBeInTheDocument();
         expect(screen.getByText(/Library was built with an older pokie version/)).toBeInTheDocument();
@@ -215,7 +219,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
 
         expect(await screen.findByText("Content didn't validate for this target")).toBeInTheDocument();
@@ -258,7 +262,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Deploy"}));
 
@@ -305,7 +309,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Deploy"}));
 
@@ -342,7 +346,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         // The artifact-list entry itself, not a bare text match -- "base.json" also appears, always
         // mounted but hidden, inside Advanced details' full run-result JSON dump (see AdvancedDisclosure's
@@ -357,15 +361,15 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         // The previous run's result is gone -- back on Configure, and Check-compatibility/Preview
         // artifacts/Deploy no longer show the stale, now-invalidated run.
-        expect(screen.getByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
         expect(screen.queryByText("base.json")).not.toBeInTheDocument();
         // Told apart from "never checked at all" -- an explicit Outdated notice, since this Configure
-        // step's own inputs changed since the last (successful) Check & Preview (see useDeploymentManager's
+        // step's own inputs changed since the last (successful) deployment preflight (see useDeploymentManager's
         // own preflightOutdated).
-        expect(screen.getByText(/Outdated -- configuration changed since the last Check & Preview/)).toBeInTheDocument();
+        expect(screen.getByText(/Outdated -- configuration changed since the last deployment preflight/)).toBeInTheDocument();
 
         // Rerunning is itself what clears the Outdated notice.
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await waitFor(() => expect(screen.queryByText(/Outdated -- configuration changed/)).not.toBeInTheDocument());
     });
 
@@ -384,7 +388,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         // The artifact-list entry itself -- see the "base.json" assertion above for why a bare
         // getByText would now match more than once.
@@ -435,7 +439,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToDeploymentConfigure(user);
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
 
         await user.click(screen.getByRole("button", {name: "Close project"}));
         expect(await screen.findByText(/active simulation, replay, deployment, or running runtime/)).toBeInTheDocument();
@@ -446,8 +450,8 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
 
         // Flushes the response so the test doesn't leave a dangling unawaited state update behind --
         // once it lands, the Stepper auto-advances past Configure (see DeploymentTab's own
-        // pendingAdvanceStepRef effect), so "Check compatibility & preview" is no longer rendered at all.
+        // pendingAdvanceStepRef effect), so "Run deployment preflight" is no longer rendered at all.
         resolveRun?.({ok: true, status: 200, json: () => Promise.resolve(baseRunView({stages: [stage("descriptor", "ok")]}))});
-        await waitFor(() => expect(screen.queryByRole("button", {name: "Check compatibility & preview"})).not.toBeInTheDocument());
+        await waitFor(() => expect(screen.queryByRole("button", {name: "Run deployment preflight"})).not.toBeInTheDocument());
     });
 });

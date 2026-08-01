@@ -70,7 +70,7 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
         await openDeploymentTab(user);
 
         // Lands straight on Configure -- no artificial Select-target click was ever needed.
-        expect(await screen.findByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
 
         // Navigating back to Select-target (still always reachable, e.g. to double check what's
         // selected) shows the compact summary, explicit about being auto-selected, with no Change
@@ -109,7 +109,7 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
         expect(continueButton).not.toBeDisabled();
         await user.click(continueButton);
 
-        expect(await screen.findByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
 
         // Going back to Select-target now shows the compact summary plus a Change target button, since
         // target-one is still a real alternative.
@@ -161,7 +161,7 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
         // ever come from the current build, never a hand-typed name.
         await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
         await user.type(screen.getByLabelText("Outcome library path"), "libs/base.json");
-        await user.click(screen.getByRole("button", {name: "Check compatibility & preview"}));
+        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
         expect(await screen.findByRole("button", {name: "base.json"})).toBeInTheDocument();
 
@@ -173,7 +173,7 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
         await user.click(screen.getByRole("radio", {name: /target-two/}));
         await user.click(screen.getByRole("button", {name: "Continue with target"}));
 
-        expect(await screen.findByRole("button", {name: "Check compatibility & preview"})).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
         expect(screen.queryByText("base.json")).not.toBeInTheDocument();
         expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base");
         expect(screen.getByLabelText("Outcome library path")).toHaveValue("libs/base.json");

@@ -25,7 +25,7 @@ const EMPTY_MODE: StudioDeploymentModeInput = {modeName: "", librarySelector: BL
 // inspectProject -> loadBlueprint -> betModes lookup, which reflects the editable tracked source
 // instead. "unavailable" covers both "no current build" and "load failed": either way, the Configure
 // step's own mode picker has nothing to pick from -- the Configure step blocks mode-name entry, Add
-// mode, and Check compatibility & preview entirely until this resolves to "ok" (see
+// mode, and deployment preflight entirely until this resolves to "ok" (see
 // describeBuildModesUnavailable), rather than falling back to a hand-typed mode name.
 export type DeploymentProjectModesView = {status: "loading"} | {status: "unavailable"} | {status: "ok"; modeIds: readonly string[]};
 
