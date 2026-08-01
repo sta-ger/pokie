@@ -1,8 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from "react";
-import {getOutcomeLibraryRegistry, inspectProject, loadBlueprint, listDeploymentTargets, runDeployment} from "../api/apiClient";
+import {getDeploymentBuildModes, getOutcomeLibraryRegistry, listDeploymentTargets, runDeployment} from "../api/apiClient";
 import type {OutcomeLibrarySelector, StudioDeploymentModeInput, StudioDeploymentTargetSummary, StudioOutcomeLibraryRegistryView} from "../api/types";
 import {useStudioApi} from "../context/StudioApiProvider";
-import {asBetModesList} from "../domain/blueprintFormOps";
 import {DeploymentRunTracker} from "../domain/deploymentRunTracker";
 import {errorMessage} from "../domain/errorMessage";
 import {
@@ -21,11 +20,13 @@ import {
 const BLANK_JSON_SELECTOR: OutcomeLibrarySelector = {kind: "json", path: ""};
 const EMPTY_MODE: StudioDeploymentModeInput = {modeName: "", librarySelector: BLANK_JSON_SELECTOR};
 
-// The project's own build modes (see CertificationTab's own identical ProjectModesView) -- "unavailable"
-// covers both "still no tracked source blueprint" and "load failed": either way, the Configure step's own
-// mode picker has nothing to pick from -- the Configure step blocks mode-name entry, Add mode, and
-// Check compatibility & preview entirely until this resolves to "ok" (see describeBuildModesUnavailable),
-// rather than falling back to a hand-typed mode name.
+// The project's own *current built package* modes (see getDeploymentBuildModes/
+// resolveCurrentBuildModeIds's own doc comment) -- deliberately not CertificationTab's own
+// inspectProject -> loadBlueprint -> betModes lookup, which reflects the editable tracked source
+// instead. "unavailable" covers both "no current build" and "load failed": either way, the Configure
+// step's own mode picker has nothing to pick from -- the Configure step blocks mode-name entry, Add
+// mode, and Check compatibility & preview entirely until this resolves to "ok" (see
+// describeBuildModesUnavailable), rather than falling back to a hand-typed mode name.
 export type DeploymentProjectModesView = {status: "loading"} | {status: "unavailable"} | {status: "ok"; modeIds: readonly string[]};
 
 // A freshly added/auto-filled row's own librarySelector -- discovered from the registry when a compatible
@@ -142,10 +143,11 @@ export function useDeploymentManager() {
             });
     }, [fetchImpl, invalidate]);
 
-    // The Configure step's own two discovery inputs -- the project's own build modes (see
-    // CertificationTab's identical inspectProject -> loadBlueprint -> betModes lookup) and the outcome
-    // library registry (see OutcomeLibrariesTab's own Registry panel). Neither ever blocks the rest of
-    // the tab: a failed/unavailable build-modes lookup blocks mode-name entry entirely (see
+    // The Configure step's own two discovery inputs -- the project's own current build modes (see
+    // getDeploymentBuildModes's own doc comment, backed by the same authoritative resolver
+    // StudioDeploymentService.run() itself checks a request against) and the outcome library registry
+    // (see OutcomeLibrariesTab's own Registry panel). Neither ever blocks the rest of the tab: a
+    // failed/unavailable build-modes lookup blocks mode-name entry entirely (see
     // describeBuildModesUnavailable), while a failed/unavailable registry lookup alone just leaves every
     // row "missing" until a library is chosen by hand.
     const modesRequestIdRef = useRef(0);
@@ -154,29 +156,11 @@ export function useDeploymentManager() {
         setProjectModesView({status: "loading"});
         setRegistryView(undefined);
 
-        inspectProject(fetchImpl)
-            .then((report) => {
-                if (requestId !== modesRequestIdRef.current) {
-                    return undefined;
+        getDeploymentBuildModes(fetchImpl)
+            .then((view) => {
+                if (requestId === modesRequestIdRef.current) {
+                    setProjectModesView(view);
                 }
-                if (!report.generated || report.buildInfo?.source === undefined) {
-                    setProjectModesView({status: "unavailable"});
-                    return undefined;
-                }
-                return loadBlueprint(fetchImpl, report.buildInfo.source).then((result) => {
-                    if (requestId !== modesRequestIdRef.current) {
-                        return;
-                    }
-                    if (result.status === "load-error") {
-                        setProjectModesView({status: "unavailable"});
-                        return;
-                    }
-                    const blueprint = result.blueprint as Record<string, unknown> | null;
-                    const modeIds = asBetModesList(blueprint?.betModes)
-                        .map((mode) => mode.id.trim())
-                        .filter((id) => id.length > 0);
-                    setProjectModesView(modeIds.length > 0 ? {status: "ok", modeIds} : {status: "unavailable"});
-                });
             })
             .catch(() => {
                 if (requestId === modesRequestIdRef.current) {

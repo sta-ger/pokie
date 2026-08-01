@@ -15,6 +15,7 @@ import path from "path";
 import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
 import {loadOutcomeLibraryFromSelector} from "../outcomeLibrary/loadOutcomeLibraryFromSelector.js";
 import {resolveCurrentBuildModeIds} from "./resolveCurrentBuildModeIds.js";
+import type {StudioDeploymentBuildModesView} from "./StudioDeploymentBuildModesView.js";
 import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 import type {StudioDeploymentTargetSummary} from "./StudioDeploymentTargetSummary.js";
 import {toStudioDeploymentRunView} from "./toStudioDeploymentRunView.js";
@@ -109,6 +110,15 @@ export class StudioDeploymentService {
         return this.buildRegistry(projectRoot)
             .list()
             .map((target) => ({id: target.id, version: target.version, requirements: target.requirements, capabilities: target.capabilities}));
+    }
+
+    // The Configure step's own mode picker, backed by the exact same current-built-package resolution
+    // run() itself checks a request against (see resolveCurrentBuildModeIds's own doc comment) -- so the
+    // Configure UI can never offer a mode run() would go on to reject, and never drifts from it just
+    // because the tracked source was edited, moved, or deleted after the last build.
+    public async getBuildModes(projectRoot: string): Promise<StudioDeploymentBuildModesView> {
+        const modeIds = await this.resolveBuildModeIds(projectRoot);
+        return modeIds === undefined ? {status: "unavailable"} : {status: "ok", modeIds};
     }
 
     // Looks the requested target up in the same registry listTargets() itself builds (so "is this

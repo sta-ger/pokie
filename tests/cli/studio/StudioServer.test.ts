@@ -3524,12 +3524,16 @@ describe("StudioServer", () => {
             return new StudioDeploymentService(undefined, () => malformedTarget, undefined, undefined, undefined, undefined, () => Promise.resolve(["base"]));
         }
 
-        it("returns 409 for GET targets and POST runs when there is no active project", async () => {
+        it("returns 409 for GET targets, GET build-modes, and POST runs when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);
 
             const targetsResponse = await get(`${homeBaseUrl}/api/project/deployment/targets`);
             expect(targetsResponse.status).toBe(409);
             expect(targetsResponse.body).toEqual({error: "No active project."});
+
+            const buildModesResponse = await get(`${homeBaseUrl}/api/project/deployment/build-modes`);
+            expect(buildModesResponse.status).toBe(409);
+            expect(buildModesResponse.body).toEqual({error: "No active project."});
 
             const runResponse = await post(`${homeBaseUrl}/api/project/deployment/runs`, {
                 targetId: "local-json-example",
@@ -3537,6 +3541,30 @@ describe("StudioServer", () => {
             });
             expect(runResponse.status).toBe(409);
             expect(runResponse.body).toEqual({error: "No active project."});
+        });
+
+        // The Configure step's own mode picker is backed by GET /api/project/deployment/build-modes,
+        // resolved server-side from the same authoritative current-build resolver POST .../runs itself
+        // checks a request against (see StudioDeploymentService.getBuildModes/resolveCurrentBuildModeIds's
+        // own doc comments) — never the mutable tracked source blueprint, so this must reflect the current
+        // build even when the injected resolver reports modes a fixture project's own (never-built) source
+        // wouldn't have.
+        it("returns the current build's own modes from GET /api/project/deployment/build-modes", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(["base", "bonus"]));
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/deployment/build-modes`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "ok", modeIds: ["base", "bonus"]});
+        });
+
+        it("returns unavailable from GET /api/project/deployment/build-modes when the project has no current build", async () => {
+            const projectBaseUrl = await startServerForProject(deploymentProjectRoot, deploymentServiceForBuildModes(undefined));
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/deployment/build-modes`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "unavailable"});
         });
 
         it("lists exactly the local example target with its requirements/capabilities", async () => {

@@ -583,6 +583,11 @@ export type StudioDeploymentTargetSummary = {
     capabilities: string[];
 };
 
+// GET /api/project/deployment/build-modes' own DTO — see
+// cli/studio/deployment/StudioDeploymentBuildModesView.ts's own doc comment: resolved from the
+// project's own current built package, never the mutable tracked source blueprint.
+export type StudioDeploymentBuildModesView = {status: "ok"; modeIds: readonly string[]} | {status: "unavailable"};
+
 // One mode row of a POST /api/project/deployment/runs request body — "librarySelector" is the same
 // OutcomeLibrarySelector (see below) the Outcome Libraries tab's own Select/Compare/Generate steps
 // already use, so a deployment mode can point at a plain JSON file, one mode of a canonical

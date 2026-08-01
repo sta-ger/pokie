@@ -481,18 +481,11 @@ describe("useDeploymentManager - run() clears the previous result immediately", 
 function projectModesFetch(modeIds: string[]): FetchLike {
     return (url) => {
         const [path] = url.split("?");
-        if (path === "/api/project/inspect") {
+        if (path === "/api/project/deployment/build-modes") {
             return Promise.resolve({
                 ok: true,
                 status: 200,
-                json: () => Promise.resolve({packageRoot: "/project", valid: true, generated: true, buildInfo: {source: "blueprint.json"}}),
-            });
-        }
-        if (path === "/api/home/blueprints/load") {
-            return Promise.resolve({
-                ok: true,
-                status: 200,
-                json: () => Promise.resolve({status: "ok", blueprint: {betModes: modeIds.map((id) => ({id}))}}),
+                json: () => Promise.resolve({status: "ok", modeIds}),
             });
         }
         if (path === "/api/project/outcome-libraries/registry") {
