@@ -341,4 +341,63 @@ describe("BlueprintProjectMaterializer", () => {
         expect(retried.runtimePath).toBe(cacheDir);
         expect(retryRunner.calls).toEqual([]);
     });
+
+    it("never evicts or renames a cache entry that a concurrent caller publishes as ready between this caller's own initial stale observation and its cleanup attempt", async () => {
+        const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+
+        // Same marker-less-stale-entry setup as the tests above.
+        const seeded = await seeder.materialize(blueprintProjectOf(blueprintPath));
+        const cacheDir = seeded.runtimePath;
+        fs.rmSync(path.join(cacheDir, ".pokie-materialized.json"));
+        fs.writeFileSync(path.join(cacheDir, "corrupt-leftover.txt"), "not a real build");
+
+        const lockDir = `${cacheDir}.lock`;
+        const materializerA = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const materializerB = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+
+        // By the time materializerA reaches this point in its own materialize() call, it has already run
+        // its real, un-mocked initial "is cacheDir ready?" check against the stale entry above and observed
+        // it stale (that check happens strictly before the first thing A ever does towards becoming this
+        // cache key's cleanup/claim owner: acquiring `<cacheDir>.lock` via this exact `mkdir` call).
+        // Intercepting *that* `mkdir` call -- and only its first, real invocation, which can only be A's,
+        // since B hasn't started yet -- lets this test force B to build and fully publish a ready runtime
+        // into cacheDir while A is paused mid-flight, already past its own stale observation but not yet
+        // holding cleanup ownership: exactly the interleaving the reviewer flagged as unsafe.
+        const realMkdir = fs.promises.mkdir.bind(fs.promises) as (targetPath: fs.PathLike) => Promise<void>;
+        let interceptedFirstLockAttempt = false;
+        const mkdirSpy = jest.spyOn(fs.promises, "mkdir").mockImplementation((async (targetPath: fs.PathLike) => {
+            if (!interceptedFirstLockAttempt && targetPath === lockDir) {
+                interceptedFirstLockAttempt = true;
+                const winner = await materializerB.materialize(blueprintProjectOf(blueprintPath));
+                expect(winner.runtimePath).toBe(cacheDir);
+            }
+            return realMkdir(targetPath);
+        }) as typeof fs.promises.mkdir);
+
+        let loser: Awaited<ReturnType<typeof materializerA.materialize>>;
+        try {
+            loser = await materializerA.materialize(blueprintProjectOf(blueprintPath));
+        } finally {
+            mkdirSpy.mockRestore();
+        }
+
+        // A never evicted or renamed B's already-published, ready cacheDir -- it simply re-observed
+        // readiness once it finally acquired the (by-then-released) lock, and borrowed B's entry untouched.
+        expect(loser.runtimePath).toBe(cacheDir);
+        expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(false);
+        expect(fs.existsSync(path.join(cacheDir, "dist", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(cacheDir, ".pokie-materialized.json"))).toBe(true);
+
+        // No staging or lock leftovers under the cache root.
+        expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(cacheDir)]);
+
+        // Retryable: a later call still finds a single, ready entry and simply borrows it.
+        const retryRunner = createRecordingRunner();
+        const retried = await new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, retryRunner, createStubPackageValidator(validReport), cacheRoot).materialize(
+            blueprintProjectOf(blueprintPath),
+        );
+        expect(retried.runtimePath).toBe(cacheDir);
+        expect(retryRunner.calls).toEqual([]);
+    });
 });
