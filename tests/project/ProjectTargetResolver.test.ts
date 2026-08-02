@@ -247,12 +247,12 @@ describe("ProjectTargetResolver", () => {
         const fakeAdapterA: ProjectTargetTypeAdapter = {
             type: "tsPackage",
             targetKind: "directory",
-            recognize: async () => "fake match A",
+            recognize: () => Promise.resolve("fake match A"),
         };
         const fakeAdapterB: ProjectTargetTypeAdapter = {
             type: "stakeAdapter",
             targetKind: "directory",
-            recognize: async () => "fake match B",
+            recognize: () => Promise.resolve("fake match B"),
         };
         const ambiguousResolver = new ProjectTargetResolver([fakeAdapterA, fakeAdapterB]);
         const ambiguousDir = path.join(workDir, "ambiguous");
@@ -265,12 +265,12 @@ describe("ProjectTargetResolver", () => {
         const duplicateA: ProjectTargetTypeAdapter = {
             type: "blueprint",
             targetKind: "file",
-            recognize: async () => undefined,
+            recognize: () => Promise.resolve(undefined),
         };
         const duplicateB: ProjectTargetTypeAdapter = {
             type: "blueprint",
             targetKind: "file",
-            recognize: async () => undefined,
+            recognize: () => Promise.resolve(undefined),
         };
 
         expect(() => new ProjectTargetResolver([duplicateA, duplicateB])).toThrow(/more than one adapter/);
