@@ -33,7 +33,10 @@ import type {SheetGrid} from "./SheetGrid.js";
 // (mirrors GameBlueprint's own required fields); the rest are optional, matching reelStrips/
 // paylines/availableBets/winModel/mechanics/betModes being optional on GameBlueprint itself. "Meta"
 // is provenance-only — see ProvenanceSheetMapping.
-const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
+// Exported so ProjectTargetResolver's parWorkbook adapter (see project/internal/looksLikeParWorkbookFile.ts)
+// can recognize "this .xlsx has the required PAR sheets" against the exact same list this importer itself
+// requires, rather than maintaining a second copy that could silently drift out of sync.
+export const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
 const OPTIONAL_SHEETS = ["ReelStrips", "Paylines", "AvailableBets", "WinModel", "Mechanics", "BetModes", "Meta"];
 const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS];
 const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;

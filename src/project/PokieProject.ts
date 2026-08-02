@@ -10,6 +10,12 @@ type PokieProjectBase = {
     // stakeAdapter) this project was resolved from — see ProjectResolving.
     readonly rootPath: string;
     readonly capabilities: ProjectCapabilities;
+    // Human-readable explanation of the on-disk signal that made a ProjectResolving implementation recognize
+    // "rootPath" as this exact "type" — e.g. which manifest field, required field set, or required sheet
+    // names matched (see ProjectTargetResolver's own per-type adapters). Exists so a caller surfacing a
+    // resolved project to a user (a CLI confirmation, a Studio import preview) can explain *why* POKIE thinks
+    // this path is a blueprint/package/bundle/etc, not just assert that it is.
+    readonly provenance: string;
 };
 
 export type BlueprintProject = PokieProjectBase & {readonly type: "blueprint"};
