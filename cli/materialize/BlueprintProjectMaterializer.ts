@@ -37,7 +37,17 @@ const MATERIALIZED_MARKER_FILE = ".pokie-materialized.json";
 // never correctness: whoever eventually acquires the lock always re-checks readiness before acting.
 const LOCK_RETRY_DELAY_MS = 15;
 
+// Written into a freshly claimed `<cacheDir>.lock` directory, immediately after the `mkdir` that claims it --
+// records which OS process is holding this cache key's lock so a *later* contender can tell an actively-held
+// lock (holder's pid still alive: keep waiting, never touch it) apart from an abandoned one (holder's pid is
+// gone -- it crashed, was killed, or otherwise exited without ever reaching releaseLock()): only the latter is
+// ever safe to reclaim. See acquireLock()'s own doc comment for why pid liveness, specifically, is what makes
+// that distinction safe.
+const LOCK_HOLDER_FILE = "holder.json";
+
 type MaterializedMarker = {readonly cacheKey: string};
+
+type LockHolder = {readonly pid: number};
 
 // The concrete ProjectMaterializing for "blueprint" (and, trivially, "tsPackage") PokieProjects -- the
 // implementation ProjectMaterializing.ts was left contract-only in P3-POLISH-02. Turns a blueprint source
@@ -71,6 +81,13 @@ type MaterializedMarker = {readonly cacheKey: string};
 // comment). A cache entry that's ever been published as ready is therefore never renamed, removed, or even
 // briefly absent again -- unlike a bare "check readiness, then delete", which a concurrent claimant could
 // always outrun.
+//
+// A `<cacheDir>.lock` left behind by a holder that never released it -- a killed or crashed process, a failed
+// cleanup -- can never be allowed to block every future caller forever. acquireLock() tells that apart from an
+// actively-held lock by the recorded holder's pid liveness (see its own doc comment): still alive, every
+// contender just keeps waiting, no matter how long; gone, the next contender to notice reclaims it and
+// proceeds exactly as if it had been released normally. A lock that genuinely can't be reclaimed (e.g. a
+// filesystem permissions failure) is surfaced as a thrown error, never silently retried forever.
 export class BlueprintProjectMaterializer implements ProjectMaterializing {
     private readonly pokieVersion: string;
     private readonly generator: GamePackageGenerating;
@@ -232,17 +249,86 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     // anywhere ever wins a given attempt; every other contender just retries after a short delay against
     // whatever the winner leaves behind (ready, and this contender borrows it; released and still stale,
     // and this contender becomes the new owner -- see materializeUnderLock()'s own doc comment).
+    //
+    // A lock left behind by a holder that's simply gone -- terminated, killed, or otherwise never reached its
+    // own releaseLock() -- must never be allowed to block every future caller forever. Each contender that
+    // finds `lockDir` already claimed therefore checks whether its recorded holder pid (LOCK_HOLDER_FILE,
+    // written by the winner immediately after its own `mkdir`) is still alive: still alive, this contender
+    // just keeps waiting -- an active holder is never reclaimed or interrupted, no matter how long it runs.
+    // Gone, this contender reclaims the abandoned lock itself (reclaimAbandonedLock()) and loops back to
+    // retry `mkdir`, exactly as if the lock had been released normally. Reclaiming is itself safe to attempt
+    // redundantly from multiple contenders at once -- see reclaimAbandonedLock()'s own doc comment -- because
+    // the actual exclusivity guarantee always comes from `mkdir`'s atomicity, never from reclaim.
     private async acquireLock(lockDir: string): Promise<void> {
         for (;;) {
             try {
                 await fs.promises.mkdir(lockDir);
+                fs.writeFileSync(path.join(lockDir, LOCK_HOLDER_FILE), JSON.stringify({pid: process.pid} as LockHolder));
                 return;
             } catch (error) {
                 if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") {
                     throw error;
                 }
             }
+            if (await this.isLockAbandoned(lockDir)) {
+                await this.reclaimAbandonedLock(lockDir);
+                continue;
+            }
             await this.delay(LOCK_RETRY_DELAY_MS);
+        }
+    }
+
+    // True only when `lockDir` unambiguously belongs to a process that is no longer running -- never on
+    // uncertainty. A holder file that hasn't appeared yet (its owner is mid-`mkdir`-then-write, or the lock
+    // was released in the instant between our failed `mkdir` and this read) reads as "not abandoned": the
+    // next loop iteration's `mkdir` attempt will observe whichever of those is actually true. This is what
+    // keeps a genuinely active holder from ever being reclaimed or interrupted.
+    private async isLockAbandoned(lockDir: string): Promise<boolean> {
+        let raw: string;
+        try {
+            raw = await fs.promises.readFile(path.join(lockDir, LOCK_HOLDER_FILE), "utf-8");
+        } catch {
+            return false;
+        }
+        let holder: Partial<LockHolder>;
+        try {
+            holder = JSON.parse(raw);
+        } catch {
+            return false;
+        }
+        return typeof holder.pid === "number" && !this.isProcessAlive(holder.pid);
+    }
+
+    // Signaling pid 0 (no-op) is the standard liveness probe: it succeeds iff a process with that pid exists
+    // and this process is permitted to signal it. ESRCH ("no such process") is the only answer that means
+    // "gone" -- anything else (most commonly EPERM, a process we can see but don't own) means a process is
+    // still there, so this defaults to "alive" rather than risk reclaiming a lock out from under it.
+    private isProcessAlive(pid: number): boolean {
+        try {
+            process.kill(pid, 0);
+            return true;
+        } catch (error) {
+            return (error as NodeJS.ErrnoException)?.code !== "ESRCH";
+        }
+    }
+
+    // Only ever called after isLockAbandoned() has already confirmed `lockDir`'s recorded holder is gone, so
+    // removing it here is safe -- including safe to race: if another contender reclaims (or the -- by then
+    // impossible -- original holder releases) the same lockDir first, this `rm` simply finds nothing left to
+    // remove (force: true tolerates that) and this call's own subsequent `mkdir` retry naturally contends for
+    // the now-fresh lock like any other caller. What this call must never do is stay silent about a lock that
+    // *is* abandoned but can't actually be removed (e.g. a permissions problem on the cache root): swallowing
+    // that would recreate the exact "permanent lock" failure this whole protocol exists to prevent, just one
+    // layer down -- so that failure is thrown, not suppressed.
+    private async reclaimAbandonedLock(lockDir: string): Promise<void> {
+        try {
+            await fs.promises.rm(lockDir, {recursive: true, force: true});
+        } catch (error) {
+            throw new BlueprintMaterializationError(
+                "lock",
+                `Abandoned materialization lock "${lockDir}" could not be removed: ${error instanceof Error ? error.message : String(error)}. ` +
+                    "Remove it manually before retrying.",
+            );
         }
     }
 

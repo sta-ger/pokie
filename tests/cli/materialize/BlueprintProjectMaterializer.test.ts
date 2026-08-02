@@ -1,3 +1,4 @@
+import {spawnSync} from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -75,6 +76,25 @@ function writeBlueprint(dir: string, fileName: string, blueprint: GameBlueprint)
     const filePath = path.join(dir, fileName);
     fs.writeFileSync(filePath, JSON.stringify(blueprint, null, 4));
     return filePath;
+}
+
+// A pid guaranteed dead: spawnSync blocks until the child has already exited, so by the time it returns, no
+// process holds this pid (short of the kernel recycling it, astronomically unlikely within a single test).
+function spawnDeadPid(): number {
+    const result = spawnSync(process.execPath, ["-e", "process.exit(0)"]);
+    if (typeof result.pid !== "number") {
+        throw new Error("failed to spawn a throwaway process to obtain a dead pid for the test fixture");
+    }
+    return result.pid;
+}
+
+function seedStaleMarkerlessCacheEntry(materializer: BlueprintProjectMaterializer, blueprintPath: string): Promise<string> {
+    return materializer.materialize(blueprintProjectOf(blueprintPath)).then((seeded) => {
+        const cacheDir = seeded.runtimePath;
+        fs.rmSync(path.join(cacheDir, ".pokie-materialized.json"));
+        fs.writeFileSync(path.join(cacheDir, "corrupt-leftover.txt"), "not a real build");
+        return cacheDir;
+    });
 }
 
 // Every case here uses the real GamePackageGenerator (pure, fast, no I/O beyond the cache root itself) so the
@@ -399,5 +419,131 @@ describe("BlueprintProjectMaterializer", () => {
         );
         expect(retried.runtimePath).toBe(cacheDir);
         expect(retryRunner.calls).toEqual([]);
+    });
+
+    it("reclaims a lock abandoned by a terminated process and completes materialization, leaving no lock or staging artifacts", async () => {
+        const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const cacheDir = await seedStaleMarkerlessCacheEntry(seeder, blueprintPath);
+
+        // Simulate a prior materialize() call that claimed this cache key's lock and then vanished --
+        // terminated, crashed, or otherwise never reached releaseLock() -- by pre-creating the lock directory
+        // with a holder pid that is verifiably dead.
+        const lockDir = `${cacheDir}.lock`;
+        const deadPid = spawnDeadPid();
+        fs.mkdirSync(lockDir);
+        fs.writeFileSync(path.join(lockDir, "holder.json"), JSON.stringify({pid: deadPid}));
+
+        const runner = createRecordingRunner();
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, createStubPackageValidator(validReport), cacheRoot);
+        const recovered = await materializer.materialize(blueprintProjectOf(blueprintPath));
+
+        expect(recovered.runtimePath).toBe(cacheDir);
+        expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(false);
+        expect(fs.existsSync(path.join(cacheDir, "dist", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(cacheDir, ".pokie-materialized.json"))).toBe(true);
+        expect(runner.calls).toHaveLength(1);
+
+        // No lock, no staging leftovers under the cache root -- just the single, ready cache entry.
+        expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(cacheDir)]);
+
+        // Retryable: a later call still finds a single, ready entry and simply borrows it.
+        const retryRunner = createRecordingRunner();
+        const retried = await new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, retryRunner, createStubPackageValidator(validReport), cacheRoot).materialize(
+            blueprintProjectOf(blueprintPath),
+        );
+        expect(retried.runtimePath).toBe(cacheDir);
+        expect(retryRunner.calls).toEqual([]);
+    });
+
+    it("never reclaims or interrupts a lock whose holder process is still alive, only recovering once it's genuinely released", async () => {
+        const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const cacheDir = await seedStaleMarkerlessCacheEntry(seeder, blueprintPath);
+
+        // A lock whose recorded holder pid is this very test process -- unambiguously alive for the
+        // duration of the test.
+        const lockDir = `${cacheDir}.lock`;
+        const holderPath = path.join(lockDir, "holder.json");
+        fs.mkdirSync(lockDir);
+        fs.writeFileSync(holderPath, JSON.stringify({pid: process.pid}));
+
+        // Deterministically observe that the contender below has re-checked this alive holder's liveness
+        // several times (i.e. is genuinely looping, not stuck or -- the bug under test -- evicting it) before
+        // this test asserts nothing was touched, instead of racing against a wall-clock delay.
+        const realReadFile = fs.promises.readFile.bind(fs.promises);
+        let livenessChecks = 0;
+        let resolveObservedEnough!: () => void;
+        const observedEnough = new Promise<void>((resolve) => {
+            resolveObservedEnough = resolve;
+        });
+        const readFileSpy = jest.spyOn(fs.promises, "readFile").mockImplementation(((targetPath: fs.PathLike, encoding?: BufferEncoding) => {
+            if (targetPath === holderPath) {
+                livenessChecks++;
+                if (livenessChecks === 3) {
+                    resolveObservedEnough();
+                }
+            }
+            return realReadFile(targetPath, encoding ?? "utf-8");
+        }) as typeof fs.promises.readFile);
+
+        const contenderRunner = createRecordingRunner();
+        const contender = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, contenderRunner, createStubPackageValidator(validReport), cacheRoot);
+        const resultPromise = contender.materialize(blueprintProjectOf(blueprintPath));
+
+        await observedEnough;
+        // Still blocked after repeatedly observing the alive holder -- the lock and the stale entry it
+        // guards are both still exactly as seeded, never evicted or interrupted.
+        expect(fs.existsSync(lockDir)).toBe(true);
+        expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(true);
+        expect(contenderRunner.calls).toEqual([]);
+
+        readFileSpy.mockRestore();
+        // Now the holder genuinely releases the lock (not a reclaim -- this test process simply removes its
+        // own lock, exactly as releaseLock() would).
+        fs.rmSync(lockDir, {recursive: true, force: true});
+
+        const result = await resultPromise;
+        expect(result.runtimePath).toBe(cacheDir);
+        expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(false);
+        expect(fs.existsSync(path.join(cacheDir, "dist", "index.js"))).toBe(true);
+        expect(contenderRunner.calls).toHaveLength(1);
+        expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(cacheDir)]);
+    });
+
+    it("surfaces an error, instead of retrying forever, when an abandoned lock cannot be removed", async () => {
+        const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const cacheDir = await seedStaleMarkerlessCacheEntry(seeder, blueprintPath);
+
+        const lockDir = `${cacheDir}.lock`;
+        const deadPid = spawnDeadPid();
+        fs.mkdirSync(lockDir);
+        fs.writeFileSync(path.join(lockDir, "holder.json"), JSON.stringify({pid: deadPid}));
+
+        const realRm = fs.promises.rm.bind(fs.promises);
+        const rmSpy = jest.spyOn(fs.promises, "rm").mockImplementation(((targetPath: fs.PathLike, options?: fs.RmOptions) => {
+            if (targetPath === lockDir) {
+                const permissionError = new Error("permission denied");
+                (permissionError as NodeJS.ErrnoException).code = "EACCES";
+                return Promise.reject(permissionError);
+            }
+            return realRm(targetPath, options);
+        }) as typeof fs.promises.rm);
+
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const caught = await materializer.materialize(blueprintProjectOf(blueprintPath)).catch((error: unknown) => error);
+
+        rmSpy.mockRestore();
+
+        expect(caught).toBeInstanceOf(BlueprintMaterializationError);
+        expect((caught as BlueprintMaterializationError).phase).toBe("lock");
+        // The unreclaimable lock is still there -- surfaced loudly, not silently discarded.
+        expect(fs.existsSync(lockDir)).toBe(true);
+
+        // Once whatever made removal fail is fixed (here: simply removing it), materialization recovers.
+        fs.rmSync(lockDir, {recursive: true, force: true});
+        const retried = await materializer.materialize(blueprintProjectOf(blueprintPath));
+        expect(retried.runtimePath).toBe(cacheDir);
     });
 });
