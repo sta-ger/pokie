@@ -240,7 +240,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
 
         it("`pokie` from a nested directory inside a project still opens that project", async () => {
-            const nested = path.join(projectRoot, "src", "generated");
+            const nested = path.join(projectRoot, "dist");
             expect(fs.existsSync(nested)).toBe(true);
 
             expect(await contextOf([], nested)).toEqual({mode: "project", projectRoot});
@@ -359,7 +359,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
         const projectRoot = (/^ {2}package root {5}(.+)$/m).exec(build.stdout)?.[1].trim();
         expect(projectRoot).toBeDefined();
-        expect(fs.existsSync(path.join(projectRoot!, "src", "generated", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(projectRoot!, "dist", "index.js"))).toBe(true);
 
         const validate = spawnSync(pokieBinPath, ["validate", projectRoot!], {cwd: installDir, encoding: "utf-8", timeout: 60000});
         expect(validate.status).toBe(0);

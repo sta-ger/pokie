@@ -33,7 +33,7 @@ describe("GamePackageGenerator", () => {
         fs.rmSync(cwd, {recursive: true, force: true});
     });
 
-    it("writes package.json, README.md, and dist/index.js under ./<manifest.id> by default", () => {
+    it("writes the complete canonical package file set (package.json, package-lock.json, tsconfig.json, README.md, src/index.ts, dist/index.js) under ./<manifest.id> by default", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
         const result = generator.generate(buildBlueprint(), cwd);
@@ -42,14 +42,18 @@ describe("GamePackageGenerator", () => {
         expect(result.projectRoot).toBe(projectRoot);
         expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
         expect(result.createdFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
-        expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
-        expect(fs.existsSync(path.join(projectRoot, "README.md"))).toBe(true);
-        expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
-        // No blueprint/build-info/src-generated metadata of any kind is left in a newly built package.
-        expect(fs.existsSync(path.join(projectRoot, "src"))).toBe(false);
+        expect(BUILT_PACKAGE_FILES.sort()).toEqual(
+            ["package.json", "package-lock.json", "tsconfig.json", "README.md", "src/index.ts", "dist/index.js"].sort(),
+        );
+        for (const relativeFile of BUILT_PACKAGE_FILES) {
+            expect(fs.existsSync(path.join(projectRoot, ...relativeFile.split("/")))).toBe(true);
+        }
+        // No blueprint/build-info/creation-seed metadata of any kind is left in a newly built package --
+        // "src" only ever holds the one canonical entry module, same as "pokie create"/"pokie init".
+        expect(fs.readdirSync(path.join(projectRoot, "src"))).toEqual(["index.ts"]);
     });
 
-    it("writes a package.json with a pokie dependency and pokie.entry pointing at dist/index.js -- the exact same entry path pokie create/init compile their own TypeScript source into", () => {
+    it("writes a package.json matching the exact same canonical shape buildPackageJsonPatch gives pokie create/pokie init -- pokie dependency, main/exports/pokie.entry, and scripts.build all agreeing on dist/index.js", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
         const result = generator.generate(buildBlueprint(), cwd);
@@ -59,7 +63,45 @@ describe("GamePackageGenerator", () => {
         expect(pkg.version).toBe("0.1.0");
         expect(pkg.dependencies).toEqual({pokie: "^1.3.0"});
         expect(pkg.pokie).toEqual({entry: "./dist/index.js"});
-        expect(pkg.scripts).toEqual({start: "pokie dev .", server: "pokie serve .", client: "pokie client ."});
+        expect(pkg.main).toBe("./dist/index.js");
+        expect(pkg.exports).toBe("./dist/index.js");
+        expect(pkg.scripts).toEqual({build: "tsc", start: "pokie dev .", server: "pokie serve .", client: "pokie client ."});
+        expect(pkg.devDependencies).toEqual(expect.objectContaining({typescript: expect.any(String), "@types/node": expect.any(String)}));
+    });
+
+    it("writes a tsconfig.json matching the exact same canonical shape pokie create/pokie init write, and a package-lock.json seeding the same pokie/typescript/@types-node dependencies package.json declares", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+
+        const result = generator.generate(buildBlueprint(), cwd);
+        const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
+        const tsconfig = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "tsconfig.json"), "utf-8"));
+        const packageLock = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package-lock.json"), "utf-8"));
+
+        expect(tsconfig.compilerOptions.outDir).toBe("dist");
+        expect(tsconfig.compilerOptions.rootDir).toBe("src");
+        expect(tsconfig.include).toEqual(["src"]);
+
+        expect(packageLock.name).toBe(pkg.name);
+        expect(packageLock.version).toBe(pkg.version);
+        expect(packageLock.packages[""].dependencies).toEqual(pkg.dependencies);
+        expect(packageLock.packages[""].devDependencies).toEqual(pkg.devDependencies);
+    });
+
+    it("writes an src/index.ts typed with the real GameBlueprint contract -- the same blueprint data, entry point, and manifest dist/index.js embeds", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+
+        const result = generator.generate(buildBlueprint(), cwd);
+        const source = fs.readFileSync(path.join(result.projectRoot, "src", "index.ts"), "utf-8");
+        const distIndexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
+
+        expect(source).toContain('import type {GameBlueprint} from "pokie";');
+        expect(source).toContain("const blueprint: GameBlueprint = ");
+        expect(source).toContain("module.exports = {");
+        // Both files embed the exact same blueprint data and manifest -- a real "npm run build" of
+        // src/index.ts would reproduce an equivalent dist/index.js, not a different game.
+        const sourceBlueprint = JSON.parse(source.match(/const blueprint: GameBlueprint = ([\s\S]*?);\n\n/)![1]);
+        const distBlueprint = JSON.parse(distIndexJs.match(/const blueprint = ([\s\S]*?);\n\n/)![1]);
+        expect(sourceBlueprint).toEqual(distBlueprint);
     });
 
     it("defaults package.json's description when the blueprint manifest has none, and carries keywords", () => {

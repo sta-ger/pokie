@@ -87,8 +87,11 @@ silently leaving a broken package on disk.
 ## `pokie build [config.json]`
 
 Generates a working [game package](game-packages.md) from a `GameBlueprint` — reels/rows, symbols, paylines,
-paytable, and reel strips/weights for a standard line-pay video slot. Unlike `pokie create`/`pokie init`, the
-output is plain JavaScript with no compile step: it's immediately loadable by every other command below.
+paytable, and reel strips/weights for a standard line-pay video slot. It writes the exact same canonical package
+file set `pokie create`/`pokie init` do (`package.json`, `package-lock.json`, `tsconfig.json`, `README.md`,
+`src/index.ts`, `dist/index.js`) — but unlike them, `dist/index.js` is written directly rather than requiring a
+real `npm install`/`npm run build` first: it's immediately loadable by every other command below, with `src/
+index.ts` there so a real `npm run build` (if you ever run one) still reproduces an equivalent `dist/index.js`.
 
 There are four ways to provide the blueprint:
 
@@ -118,18 +121,24 @@ npm install
 existing `--out` directory](#building-into-an-existing---out-directory) below) — and writes:
 
 - `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
-  omitted), a `pokie` dependency, `start`/`server`/`client` scripts, and `pokie.entry`/`main`/`exports` all
-  pointing at `./dist/index.js` — the exact same entry path `pokie create`/`pokie init` packages compile their
-  own TypeScript source into;
-- `README.md` — a short orientation doc for the built package itself: what each file is, that `dist/index.js`
-  shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev`
-  workflow below;
-- `dist/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig` with the given
-  reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a `VideoSlotSession`, with
-  `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. The file is organized into labeled
-  sections (blueprint data, config assembly, `PokieGame` exports) with a short header comment naming the game
-  and the `pokie` version that built it — no blueprint-hash/provenance metadata is embedded, so re-running
-  `pokie build` on an unchanged blueprint always regenerates a byte-identical file.
+  omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
+  all pointing at `./dist/index.js` — the exact same entry path `pokie create`/`pokie init` packages compile
+  their own TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
+- `package-lock.json`/`tsconfig.json` — the same lockfile seed/compiler config `pokie create`/`pokie init` write
+  (`tsconfig.json` via the same shared `renderTsconfig`), so `npm install && npm run build` behaves identically
+  in a built package;
+- `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
+  `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
+  serve`/`dev` workflow below;
+- `src/index.ts`/`dist/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig`
+  with the given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a
+  `VideoSlotSession`, with `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Both files hold
+  the exact same generated logic — organized into labeled sections (blueprint data, config assembly, `PokieGame`
+  exports) with a short header comment naming the game and the `pokie` version that built it — no blueprint-
+  hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
+  byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
+  immediately loadable with no `npm install`/`npm run build` step; `src/index.ts` is typed (`GameBlueprint`
+  imported from `pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
 
 The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
 build-info file, no `src/generated` nesting — so a later source edit or rebuild never has to reconcile against,

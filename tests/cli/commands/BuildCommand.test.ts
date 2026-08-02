@@ -393,7 +393,7 @@ describe("BuildCommand", () => {
         expect(printed).toContain("paylines         2");
         expect(printed).toContain("bets             1, 2, 5");
         expect(printed).toContain("blueprint hash   sha256:");
-        expect(printed).toContain("would generate   README.md, dist/index.js, package.json");
+        expect(printed).toContain("would generate   README.md, dist/index.js, package-lock.json, package.json, src/index.ts, tsconfig.json");
     });
 
     it("--dry-run reports default paylines/bets when the blueprint omits them", async () => {

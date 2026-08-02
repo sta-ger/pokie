@@ -38,11 +38,16 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
     it("builds, validates, simulates, reports, replays, serves, and dev-serves the generated package", async () => {
         const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
         expect(buildExitCode).toBe(0);
+        // The complete canonical package file set -- same as pokie create/pokie init's own
+        // create -> install -> build -> verify lifecycle produces (see BUILT_PACKAGE_FILES).
         expect(fs.existsSync(path.join(outDir, "package.json"))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "package-lock.json"))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "tsconfig.json"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "README.md"))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "src", "index.ts"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
-        // No blueprint/build-info/src-generated metadata of any kind is left in a newly built package.
-        expect(fs.existsSync(path.join(outDir, "src"))).toBe(false);
+        // No blueprint/build-info/creation-seed metadata of any kind is left in a newly built package.
+        expect(fs.readdirSync(path.join(outDir, "src"))).toEqual(["index.ts"]);
 
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);
@@ -159,6 +164,6 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(printed).toContain("Dry run");
         expect(printed).toContain('game             Sample Slot (id: "sample-slot", v0.1.0)');
         expect(printed).toContain("blueprint hash   sha256:");
-        expect(printed).toContain("would generate   README.md, dist/index.js, package.json");
+        expect(printed).toContain("would generate   README.md, dist/index.js, package-lock.json, package.json, src/index.ts, tsconfig.json");
     });
 });

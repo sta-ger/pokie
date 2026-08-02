@@ -54,7 +54,9 @@ describe("buildGameBuildInfo", () => {
     it("defaults \"files\" to the fixed set of paths pokie build generates", () => {
         const info = buildGameBuildInfo(buildBlueprint(), "1.3.0");
 
-        expect(info.files!.sort()).toEqual(["package.json", "README.md", "dist/index.js"].sort());
+        expect(info.files!.sort()).toEqual(
+            ["package.json", "package-lock.json", "tsconfig.json", "README.md", "src/index.ts", "dist/index.js"].sort(),
+        );
     });
 
     it("records a given \"files\" list sorted, when provided", () => {

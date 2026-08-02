@@ -1,12 +1,9 @@
 import fs from "fs";
 import path from "path";
-import {PokieGameManifest} from "pokie";
-import {buildPackageJsonPatch} from "./buildPackageJsonPatch.js";
+import {buildPackageJsonPatch, PackageJsonLike, PokieGameManifest, renderTsconfig} from "pokie";
 import {deriveManifestDefaults} from "./deriveManifestDefaults.js";
 import {GamePackageScaffolding} from "./GamePackageScaffolding.js";
-import {PackageJsonLike} from "./PackageJsonLike.js";
 import {renderEntryModule} from "./renderEntryModule.js";
-import {renderTsconfig} from "./renderTsconfig.js";
 import {ScaffoldResult} from "./ScaffoldResult.js";
 
 export class GamePackageScaffolder implements GamePackageScaffolding {

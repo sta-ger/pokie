@@ -1,4 +1,12 @@
-import {computeGameBlueprintHash, GameBlueprint, ParSheetExporting, ParSheetImporting, resolveReelStripGeneration, ValidationIssue} from "pokie";
+import {
+    BUILT_PACKAGE_FILES,
+    computeGameBlueprintHash,
+    GameBlueprint,
+    ParSheetExporting,
+    ParSheetImporting,
+    resolveReelStripGeneration,
+    ValidationIssue,
+} from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
@@ -723,7 +731,7 @@ describe("StudioBlueprintService", () => {
             }
             expect(preview.projectRoot).toBe(outDir);
             expect(preview.destinationHasContent).toBe(false);
-            expect(preview.createFiles.sort()).toEqual(["README.md", "package.json", "dist/index.js"].sort());
+            expect(preview.createFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
             expect(preview.updateFiles).toEqual([]);
             expect(preview.deleteFiles).toEqual([]);
             expect(preview.priorBuild).toBeUndefined();
@@ -745,7 +753,7 @@ describe("StudioBlueprintService", () => {
                 return;
             }
             expect(preview.destinationHasContent).toBe(true);
-            expect(preview.createFiles.sort()).toEqual(["README.md", "package.json", "dist/index.js"].sort());
+            expect(preview.createFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
             expect(preview.updateFiles).toEqual([]);
             expect(preview.priorBuild).toBeUndefined();
         });

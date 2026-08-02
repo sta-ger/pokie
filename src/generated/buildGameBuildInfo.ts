@@ -4,12 +4,13 @@ import type {GameBuildInfo} from "./GameBuildInfo.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
 
 // The fixed set of paths (relative to the package root) that GamePackageGenerator writes on every
-// run — the same "package.json"/"README.md"/entry-module shape "pokie create"/"pokie init" scaffold
-// (see cli/scaffold's own buildPackageJsonPatch), with "dist/index.js" standing in for a real tsc
-// compile step (this generator's own source of truth is the GameBlueprint, not hand-written
-// TypeScript, so there's no separate "src/index.ts" to compile from). Also the default for
-// buildGameBuildInfo's own "generatedFiles" param.
-export const BUILT_PACKAGE_FILES = ["package.json", "README.md", "dist/index.js"];
+// run — the exact same canonical package file set "pokie create"/"pokie init" produce via
+// GamePackagePreparer's own create -> install -> build -> verify lifecycle (see the shared
+// buildPackageJsonPatch/renderTsconfig in src/gamepackage), just written directly rather than
+// requiring a real "npm install"/"npm run build" for the output to already be immediately usable —
+// see GamePackageGenerator's own doc comment. Also the default for buildGameBuildInfo's own
+// "generatedFiles" param.
+export const BUILT_PACKAGE_FILES = ["package.json", "package-lock.json", "tsconfig.json", "README.md", "src/index.ts", "dist/index.js"];
 
 // Computes provenance for a would-be/just-run "pokie build" — a pure, in-memory result (see
 // GameBuildInfo's own doc comment for why this is never itself persisted into the built package).

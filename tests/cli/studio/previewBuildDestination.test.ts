@@ -1,9 +1,10 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {BUILT_PACKAGE_FILES} from "pokie";
 import {previewBuildDestination} from "../../../cli/studio/previewBuildDestination.js";
 
-const BUILT_FILES = ["README.md", "package.json", "dist/index.js"].sort();
+const BUILT_FILES = [...BUILT_PACKAGE_FILES].sort();
 
 function writeLegacyBuildInfo(projectRoot: string, overrides: Record<string, unknown> = {}): void {
     fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});

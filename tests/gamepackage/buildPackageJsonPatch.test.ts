@@ -1,4 +1,4 @@
-import {buildPackageJsonPatch} from "../../../cli/scaffold/buildPackageJsonPatch.js";
+import {buildPackageJsonPatch} from "pokie";
 
 describe("buildPackageJsonPatch", () => {
     it("sets pokie.entry, and fills in the build script and dependencies on a bare package.json", () => {
