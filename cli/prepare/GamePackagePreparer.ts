@@ -8,6 +8,7 @@ import {ScaffoldResult} from "../scaffold/ScaffoldResult.js";
 import {GamePackagePreparationError, GamePackagePreparationPhase} from "./GamePackagePreparationError.js";
 import {GamePackagePreparing} from "./GamePackagePreparing.js";
 import {PackageCommandRunning, runPackageCommand} from "./PackageCommandRunner.js";
+import {clearPreparationState, readPreparationState, writePreparationState} from "./PreparationStateStore.js";
 import {PreparationResult} from "./PreparationResult.js";
 
 // The full create -> install dependencies -> build -> verify lifecycle, in that order, stopping and
@@ -18,6 +19,15 @@ import {PreparationResult} from "./PreparationResult.js";
 // PokieGamePackageValidating rather than throwing loadPokieGame's own contract-validation error
 // directly, so a failed verification can be reported as a structured, multi-issue message the same
 // way `pokie validate` already does.
+//
+// A failed "dependencies"/"build"/"verify" phase leaves the scaffold on disk -- calling prepare()
+// again with the same parentDir/name is the documented retry: PreparationStateStore's marker file
+// (written after "create" and updated after each later phase) lets the next attempt recognize its own
+// partial work and resume after the last completed phase, instead of "create" unconditionally failing
+// with "already exists". A directory that exists without that marker (a stray/pre-existing/user
+// directory this tool never touched) still fails "already exists" exactly as before -- retry only ever
+// resumes a directory this preparer itself created, so it can never silently overwrite anyone else's
+// files.
 export class GamePackagePreparer implements GamePackagePreparing {
     private readonly creator: GamePackageCreating;
     private readonly runCommand: PackageCommandRunning;
@@ -35,19 +45,28 @@ export class GamePackagePreparer implements GamePackagePreparing {
     }
 
     public async prepare(parentDir: string, name: string, overrides?: GamePackageCreateOverrides): Promise<PreparationResult> {
-        const phasesCompleted: GamePackagePreparationPhase[] = [];
-
         const scaffold = this.runCreatePhase(parentDir, name, overrides);
-        phasesCompleted.push("create");
+        // runCreatePhase always leaves a marker behind (either one it just wrote, or a resumed one it
+        // found already there), so this always finds at least {phasesCompleted: ["create"]}.
+        const phasesCompleted: GamePackagePreparationPhase[] = [
+            ...(readPreparationState(scaffold.projectRoot)?.phasesCompleted ?? ["create"]),
+        ];
 
-        await this.runManagedCommand("dependencies", scaffold.projectRoot, ["install"]);
-        phasesCompleted.push("dependencies");
+        if (!phasesCompleted.includes("dependencies")) {
+            await this.runManagedCommand("dependencies", scaffold.projectRoot, ["install"]);
+            phasesCompleted.push("dependencies");
+            writePreparationState(scaffold.projectRoot, {manifest: scaffold.manifest, createdFiles: scaffold.createdFiles, phasesCompleted});
+        }
 
-        await this.runManagedCommand("build", scaffold.projectRoot, ["run", "build"]);
-        phasesCompleted.push("build");
+        if (!phasesCompleted.includes("build")) {
+            await this.runManagedCommand("build", scaffold.projectRoot, ["run", "build"]);
+            phasesCompleted.push("build");
+            writePreparationState(scaffold.projectRoot, {manifest: scaffold.manifest, createdFiles: scaffold.createdFiles, phasesCompleted});
+        }
 
         await this.runVerifyPhase(scaffold.projectRoot);
         phasesCompleted.push("verify");
+        clearPreparationState(scaffold.projectRoot);
 
         return {
             projectRoot: scaffold.projectRoot,
@@ -58,6 +77,12 @@ export class GamePackagePreparer implements GamePackagePreparing {
     }
 
     private runCreatePhase(parentDir: string, name: string, overrides?: GamePackageCreateOverrides): ScaffoldResult {
+        const projectRoot = path.join(parentDir, name.trim());
+        const resumable = readPreparationState(projectRoot);
+        if (resumable) {
+            return {projectRoot, manifest: resumable.manifest, createdFiles: resumable.createdFiles, updatedFiles: [], skippedFiles: []};
+        }
+
         let result: ScaffoldResult;
         try {
             result = this.creator.create(parentDir, name, overrides);
@@ -66,8 +91,10 @@ export class GamePackagePreparer implements GamePackagePreparing {
         }
 
         fs.writeFileSync(path.join(result.projectRoot, "README.md"), renderPackageReadme(result.manifest));
+        const createdFiles = [...result.createdFiles, "README.md"];
+        writePreparationState(result.projectRoot, {manifest: result.manifest, createdFiles, phasesCompleted: ["create"]});
 
-        return {...result, createdFiles: [...result.createdFiles, "README.md"]};
+        return {...result, createdFiles};
     }
 
     private async runManagedCommand(phase: GamePackagePreparationPhase, projectRoot: string, npmArgs: string[]): Promise<void> {
@@ -80,7 +107,7 @@ export class GamePackagePreparer implements GamePackagePreparing {
                 phase,
                 `"${npmCommand}" failed in "${projectRoot}": ${detail}\n` +
                     `Run "${npmCommand}" manually in "${projectRoot}" to see the full output, fix the underlying ` +
-                    `issue, then re-run preparation.`,
+                    `issue, then re-run preparation with the same parentDir/name to retry from this phase.`,
             );
         }
     }

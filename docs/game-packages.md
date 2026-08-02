@@ -87,6 +87,21 @@ If a package's `dist` output is missing or stale (built from since-removed depen
 Resolving the entry module stays a pure read: neither function ever runs an install or a build on the caller's
 behalf.
 
+### Retrying a failed preparation
+
+A failed `dependencies`/`build`/`verify` phase leaves the scaffold on disk instead of cleaning it up. Calling
+`prepare()` again with the same `parentDir`/`name` is the supported way to retry: `GamePackagePreparer` writes a
+`.pokie-prepare-state.json` marker into the project root after `create` and after every later phase it completes,
+and reads it back at the start of the next `prepare()` call. When that marker is present, `create` is skipped
+entirely (the scaffold it already wrote is reused as-is) and only the phases that hadn't completed yet run —
+`install` is never repeated once `dependencies` is recorded done, and `build` is never repeated once `build` is.
+The marker is deleted once `verify` succeeds, so a finished package carries no trace of it.
+
+A directory that already exists but carries no marker — a stray, pre-existing, or hand-created directory this
+tool never touched — still fails `create` with its original "already exists" error, exactly as before. Retry only
+ever resumes a directory `GamePackagePreparer` itself created, so it can never silently overwrite anyone else's
+files.
+
 ## The entry module
 
 The entry module's **default export** must be a `PokieGame`:

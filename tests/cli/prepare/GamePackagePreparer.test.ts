@@ -5,7 +5,9 @@ import {PokieGamePackageValidating, PokieGamePackageValidationReport} from "poki
 import {GamePackagePreparationError} from "../../../cli/prepare/GamePackagePreparationError.js";
 import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
 import {PackageCommandResult, PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";
-import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
+import {GamePackageCreateOverrides, GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
+import {GamePackageCreator} from "../../../cli/scaffold/GamePackageCreator.js";
+import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 
 type RecordedCommand = {command: string; args: string[]; cwd: string};
 
@@ -33,6 +35,18 @@ function createStubValidator(
             return Promise.resolve(report);
         },
     };
+}
+
+function createCountingCreator(pokieVersion: string): GamePackageCreating & {callCount: number} {
+    const real = new GamePackageCreator(pokieVersion);
+    const counting = {
+        callCount: 0,
+        create(parentDir: string, name: string, overrides?: GamePackageCreateOverrides): ScaffoldResult {
+            counting.callCount++;
+            return real.create(parentDir, name, overrides);
+        },
+    };
+    return counting;
 }
 
 function validReport(packageRoot: string): PokieGamePackageValidationReport {
@@ -178,5 +192,130 @@ describe("GamePackagePreparer", () => {
         const result = await preparer.prepare(parentDir, "sample-slot", {id: "cf", name: "Sample Slot Deluxe", version: "2.0.0"});
 
         expect(result.manifest).toEqual({id: "cf", name: "Sample Slot Deluxe", version: "2.0.0"});
+    });
+
+    it("prepares a package under a parentDir path containing spaces, passing the space-containing project root through to every phase unmangled", async () => {
+        const spacedParentDir = fs.mkdtempSync(path.join(parentDir, "has spaces "));
+        const runner = createRecordingRunner();
+        const projectRoot = path.join(spacedParentDir, "sample-slot");
+        const validator = createStubValidator(validReport(projectRoot));
+        const preparer = new GamePackagePreparer("1.2.1", undefined, runner, validator);
+
+        const result = await preparer.prepare(spacedParentDir, "sample-slot");
+
+        expect(result.projectRoot).toBe(projectRoot);
+        expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
+        expect(fs.existsSync(path.join(projectRoot, "README.md"))).toBe(true);
+        expect(runner.calls).toEqual([
+            {command: "npm", args: ["install"], cwd: projectRoot},
+            {command: "npm", args: ["run", "build"], cwd: projectRoot},
+        ]);
+        expect(validator.calledWith).toBe(projectRoot);
+    });
+
+    describe("retrying a failed preparation", () => {
+        it("does not touch, or fail on, an unrelated pre-existing directory: 'create' still fails 'already exists', and no command ever runs", async () => {
+            const projectRoot = path.join(parentDir, "sample-slot");
+            fs.mkdirSync(projectRoot);
+            fs.writeFileSync(path.join(projectRoot, "my-own-notes.txt"), "do not touch");
+            const runner = createRecordingRunner();
+            const preparer = new GamePackagePreparer("1.2.1", undefined, runner);
+
+            let caught: unknown;
+            try {
+                await preparer.prepare(parentDir, "sample-slot");
+            } catch (error) {
+                caught = error;
+            }
+
+            expect(caught).toBeInstanceOf(GamePackagePreparationError);
+            expect((caught as GamePackagePreparationError).phase).toBe("create");
+            expect((caught as GamePackagePreparationError).message).toContain("already exists");
+            expect(runner.calls).toEqual([]);
+            expect(fs.readFileSync(path.join(projectRoot, "my-own-notes.txt"), "utf-8")).toBe("do not touch");
+        });
+
+        it("resumes after a failed 'npm install': retrying re-runs install and build, without ever calling the creator again", async () => {
+            const creator = createCountingCreator("1.2.1");
+            const projectRoot = path.join(parentDir, "sample-slot");
+
+            const failingRunner = createRecordingRunner({install: new Error("network error: ETIMEDOUT")});
+            const firstAttempt = new GamePackagePreparer("1.2.1", creator, failingRunner);
+            await expect(firstAttempt.prepare(parentDir, "sample-slot")).rejects.toBeInstanceOf(GamePackagePreparationError);
+            expect(creator.callCount).toBe(1);
+
+            const succeedingRunner = createRecordingRunner();
+            const validator = createStubValidator(validReport(projectRoot));
+            const secondAttempt = new GamePackagePreparer("1.2.1", creator, succeedingRunner, validator);
+            const result = await secondAttempt.prepare(parentDir, "sample-slot");
+
+            expect(creator.callCount).toBe(1);
+            expect(result.phasesCompleted).toEqual(["create", "dependencies", "build", "verify"]);
+            expect(succeedingRunner.calls).toEqual([
+                {command: "npm", args: ["install"], cwd: projectRoot},
+                {command: "npm", args: ["run", "build"], cwd: projectRoot},
+            ]);
+        });
+
+        it("resumes after a failed 'npm run build': retrying skips 'install' entirely and only re-runs build", async () => {
+            const creator = createCountingCreator("1.2.1");
+            const projectRoot = path.join(parentDir, "sample-slot");
+
+            const failingRunner = createRecordingRunner({"run build": new Error("TS2322: type error")});
+            const firstAttempt = new GamePackagePreparer("1.2.1", creator, failingRunner);
+            await expect(firstAttempt.prepare(parentDir, "sample-slot")).rejects.toBeInstanceOf(GamePackagePreparationError);
+            expect(failingRunner.calls).toEqual([
+                {command: "npm", args: ["install"], cwd: projectRoot},
+                {command: "npm", args: ["run", "build"], cwd: projectRoot},
+            ]);
+
+            const succeedingRunner = createRecordingRunner();
+            const validator = createStubValidator(validReport(projectRoot));
+            const secondAttempt = new GamePackagePreparer("1.2.1", creator, succeedingRunner, validator);
+            const result = await secondAttempt.prepare(parentDir, "sample-slot");
+
+            expect(creator.callCount).toBe(1);
+            expect(result.phasesCompleted).toEqual(["create", "dependencies", "build", "verify"]);
+            // Only "run build" -- "install" is never repeated once "dependencies" is already recorded done.
+            expect(succeedingRunner.calls).toEqual([{command: "npm", args: ["run", "build"], cwd: projectRoot}]);
+        });
+
+        it("resumes after a failed verification: retrying skips install and build, and only re-verifies", async () => {
+            const creator = createCountingCreator("1.2.1");
+            const projectRoot = path.join(parentDir, "sample-slot");
+
+            const runner = createRecordingRunner();
+            const failingValidator = createStubValidator({
+                packageRoot: projectRoot,
+                valid: false,
+                game: null,
+                errors: [{code: "pokie-package-load-failed", severity: "error", message: "entry module not found"}],
+                warnings: [],
+                suggestions: [],
+            });
+            const firstAttempt = new GamePackagePreparer("1.2.1", creator, runner, failingValidator);
+            await expect(firstAttempt.prepare(parentDir, "sample-slot")).rejects.toBeInstanceOf(GamePackagePreparationError);
+            expect(runner.calls).toHaveLength(2);
+
+            const succeedingValidator = createStubValidator(validReport(projectRoot));
+            const secondAttempt = new GamePackagePreparer("1.2.1", creator, runner, succeedingValidator);
+            const result = await secondAttempt.prepare(parentDir, "sample-slot");
+
+            expect(creator.callCount).toBe(1);
+            expect(result.phasesCompleted).toEqual(["create", "dependencies", "build", "verify"]);
+            // Still just the original two commands -- neither install nor build ran again for the retry.
+            expect(runner.calls).toHaveLength(2);
+        });
+
+        it("clears its retry marker once preparation succeeds, so the directory carries no trace of it", async () => {
+            const projectRoot = path.join(parentDir, "sample-slot");
+            const runner = createRecordingRunner();
+            const validator = createStubValidator(validReport(projectRoot));
+            const preparer = new GamePackagePreparer("1.2.1", undefined, runner, validator);
+
+            await preparer.prepare(parentDir, "sample-slot");
+
+            expect(fs.existsSync(path.join(projectRoot, ".pokie-prepare-state.json"))).toBe(false);
+        });
     });
 });
