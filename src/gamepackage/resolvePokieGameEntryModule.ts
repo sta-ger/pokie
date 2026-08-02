@@ -26,15 +26,23 @@ export async function resolvePokieGameEntryModule(packageRoot: string): Promise<
         );
     }
 
-    // A canonical package (as `pokie create` scaffolds one) compiles "src/**/*.ts" into the dist
-    // entry checked above via "npm run build" (tsc); a package without a "src" directory at all
+    // A canonical package (as `pokie create` scaffolds one) compiles "src/**/*.ts" into a *separate*
+    // dist entry checked above via "npm run build" (tsc); a package without a "src" directory at all
     // (e.g. a hand-authored plain-JS entry, as several fixtures in this suite are) was never built
     // from TypeScript source in the first place, so there's nothing to compare it against here.
     // Editing source without rebuilding leaves the dist entry on disk and loadable -- import() below
     // would otherwise silently succeed against that now-stale output instead of surfacing the
     // mismatch as a fixable, actionable state.
+    //
+    // A `pokie build`-generated package (GamePackageGenerator) is a different shape entirely: its
+    // entry lives *inside* "src/generated/index.js" itself, self-contained, with no separate compile
+    // step -- "src/generated/build-info.json" is published right alongside it (and can legitimately
+    // land a beat later on disk), which would otherwise make a freshly generated package look "stale"
+    // against its own sibling file. Comparing is only meaningful when entryPath sits outside
+    // sourceRoot -- i.e. a real dist/src split -- so entries inside sourceRoot skip this check.
     const sourceRoot = path.join(packageRoot, "src");
-    if (fs.existsSync(sourceRoot)) {
+    const entryIsOutsideSourceRoot = path.relative(sourceRoot, entryPath).startsWith(`..${path.sep}`);
+    if (entryIsOutsideSourceRoot && fs.existsSync(sourceRoot)) {
         const latestSourceMtimeMs = findLatestFileMtimeMs(sourceRoot);
         const entryMtimeMs = fs.statSync(entryPath).mtimeMs;
         if (latestSourceMtimeMs !== null && latestSourceMtimeMs > entryMtimeMs) {
