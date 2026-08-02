@@ -23,12 +23,33 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // is exactly why this file -- unlike GamePackagePreparer.test.ts -- is matched into the slower
 // "pokie-integration" project (see jest.config.mjs's `*.integration.test.ts` glob) instead of running
 // in the default fast lane.
+//
+// The whole install is kept offline on purpose: pointing "pokie" at this checkout still leaves
+// "typescript" (a direct devDependency) and, transitively, whatever this checkout's own
+// "dependencies" are (pulled in because the linked "pokie" needs them too) as ordinary registry
+// specifiers -- exactly the kind of fetch a network-restricted CI sandbox can't complete. Redirecting
+// all of them to this checkout's own already-installed copies via `file:` (direct deps) and
+// `overrides` (pokie's transitive deps, which this scaffolded package never declares directly) means
+// "npm install" here never needs the registry at all.
 function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
     return (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
         if (args[0] === "install") {
             const packageJsonPath = path.join(cwd, "package.json");
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {dependencies?: Record<string, string>};
+            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {
+                dependencies?: Record<string, string>;
+                devDependencies?: Record<string, string>;
+                overrides?: Record<string, string>;
+            };
+            const repoPackageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
+                dependencies?: Record<string, string>;
+            };
+            const localFileSpec = (name: string): string => `file:${path.join(REPO_ROOT, "node_modules", name)}`;
             packageJson.dependencies = {...packageJson.dependencies, pokie: `file:${REPO_ROOT}`};
+            packageJson.devDependencies = {...packageJson.devDependencies, typescript: localFileSpec("typescript")};
+            packageJson.overrides = {
+                ...packageJson.overrides,
+                ...Object.fromEntries(Object.keys(repoPackageJson.dependencies ?? {}).map((name) => [name, localFileSpec(name)])),
+            };
             fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4));
         }
         return realRunCommand(command, args, cwd);
