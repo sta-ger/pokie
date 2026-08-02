@@ -288,4 +288,57 @@ describe("BlueprintProjectMaterializer", () => {
         expect(fs.existsSync(path.join(cacheDir, "dist", "index.js"))).toBe(true);
         expect(fs.existsSync(path.join(cacheDir, ".pokie-materialized.json"))).toBe(true);
     });
+
+    it("races two truly concurrent materialize() calls recovering from the same marker-less stale cache entry, and never lets a loser destroy the winner's ready runtime", async () => {
+        const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+
+        // Pre-populate the exact directory both concurrent calls below will compute as their shared cache
+        // key -- marker-less, standing in for a prior process that crashed mid-claim (same setup as the
+        // previous test). Firing both materialize() calls together via Promise.all (rather than one `await`ed
+        // after the other) is what makes this "true parallel": both genuinely start from the same not-ready
+        // observation of this exact directory, interleaving their own real, awaited rename/read calls against
+        // it -- unlike a sequential pair, which can never overlap their readiness checks against the same
+        // stale entry (see BlueprintProjectMaterializer's own claim() doc comment on why "check, then delete"
+        // is unsafe only across truly concurrent callers).
+        const seeded = await seeder.materialize(blueprintProjectOf(blueprintPath));
+        const cacheDir = seeded.runtimePath;
+        fs.rmSync(path.join(cacheDir, ".pokie-materialized.json"));
+        fs.writeFileSync(path.join(cacheDir, "corrupt-leftover.txt"), "not a real build");
+
+        const runnerA = createRecordingRunner();
+        const runnerB = createRecordingRunner();
+        const materializerA = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runnerA, createStubPackageValidator(validReport), cacheRoot);
+        const materializerB = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runnerB, createStubPackageValidator(validReport), cacheRoot);
+
+        const [resultA, resultB] = await Promise.all([
+            materializerA.materialize(blueprintProjectOf(blueprintPath)),
+            materializerB.materialize(blueprintProjectOf(blueprintPath)),
+        ]);
+
+        // Both calls compute the identical deterministic cache path regardless of which one actually won
+        // the race to populate it.
+        expect(resultA.runtimePath).toBe(cacheDir);
+        expect(resultB.runtimePath).toBe(cacheDir);
+
+        // Whichever call won, the surviving entry is a complete, verified, uncorrupted runtime -- never
+        // half-evicted, never the corrupt leftover, never missing its marker.
+        expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(false);
+        expect(fs.existsSync(path.join(cacheDir, "dist", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(cacheDir, ".pokie-materialized.json"))).toBe(true);
+
+        // No staging or evicted leftovers under the cache root -- the loser discarded its own redundant
+        // build (and any evicted copy it turned out not to need) instead of leaving debris behind, and no
+        // cache directory was ever left partially replaced.
+        expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(cacheDir)]);
+
+        // Retryable: a later materialize() call still finds a single, ready entry and simply borrows it,
+        // without touching npm again.
+        const retryRunner = createRecordingRunner();
+        const retried = await new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, retryRunner, createStubPackageValidator(validReport), cacheRoot).materialize(
+            blueprintProjectOf(blueprintPath),
+        );
+        expect(retried.runtimePath).toBe(cacheDir);
+        expect(retryRunner.calls).toEqual([]);
+    });
 });

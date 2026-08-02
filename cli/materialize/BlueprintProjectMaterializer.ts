@@ -57,7 +57,9 @@ type MaterializedMarker = {readonly cacheKey: string};
 // whichever loses discards its own (redundant, already-real) build and borrows the winner's instead — so
 // concurrent materialization of the same blueprint never corrupts, and never doubles work observably. A cache
 // directory found without a matching marker (e.g. a prior process crashed between claiming it and writing the
-// marker) is never trusted or served -- it's removed and rebuilt.
+// marker) is never trusted or served -- it's evicted via its own atomic rename and rebuilt, never deleted
+// in place on the strength of an earlier readiness check that a concurrent winner could have since outrun
+// (see claim()'s own doc comment for why "check, then delete" is never safe here).
 export class BlueprintProjectMaterializer implements ProjectMaterializing {
     private readonly pokieVersion: string;
     private readonly generator: GamePackageGenerating;
@@ -102,7 +104,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         const cacheKey = this.computeCacheKey(blueprint);
         const cacheDir = path.join(this.cacheRoot, cacheKey);
 
-        if (this.isReady(cacheDir, cacheKey)) {
+        if (await this.isReady(cacheDir, cacheKey)) {
             return this.borrowed(cacheDir);
         }
 
@@ -114,9 +116,9 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
             await this.runDependenciesPhase(stagingDir);
             await this.runVerifyPhase(stagingDir, project.rootPath);
             this.markReady(stagingDir, cacheKey);
-            this.claim(stagingDir, cacheDir, cacheKey);
+            await this.claim(stagingDir, cacheDir, cacheKey);
         } catch (error) {
-            this.removeBestEffort(stagingDir);
+            await this.removeBestEffort(stagingDir);
             throw error;
         }
 
@@ -178,55 +180,108 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         fs.writeFileSync(path.join(stagingDir, MATERIALIZED_MARKER_FILE), `${JSON.stringify(marker, null, 4)}\n`);
     }
 
-    // Claims `stagingDir` as the cache's own `cacheDir` via a single atomic rename -- the moment this
-    // succeeds, `cacheDir` is either still entirely absent to every other reader, or fully populated and
-    // already-verified; never partial. If another materialize() call already claimed `cacheDir` first (the
-    // rename fails because it's non-empty), and that entry is itself ready, this call's own (redundant, but
-    // just as real) build is discarded right here, never left behind as an orphan. If `cacheDir` exists but
-    // ISN'T ready (a marker-less leftover from a prior crash), it's never trusted or merged with -- removed
-    // and replaced with this call's own freshly-verified build instead.
-    private claim(stagingDir: string, cacheDir: string, cacheKey: string): void {
-        try {
-            fs.renameSync(stagingDir, cacheDir);
-            return;
-        } catch (error) {
-            const code = (error as NodeJS.ErrnoException)?.code;
-            if (code !== "ENOTEMPTY" && code !== "EEXIST") {
-                throw error;
+    // Claims `stagingDir` as the cache's own `cacheDir`. The happy path is a single atomic rename -- the
+    // moment that succeeds, `cacheDir` is either still entirely absent to every other reader, or fully
+    // populated and already-verified; never partial.
+    //
+    // When `cacheDir` is already occupied, this deliberately never deletes it based on a "check readiness,
+    // then delete" sequence -- across two real, separate materialize() callers (different processes, not
+    // just different promises in one), an earlier readiness check can be outrun: caller B can observe
+    // `cacheDir` as not-yet-ready, then caller A can finish claiming it (making it ready) *before* B acts on
+    // its now-stale observation and deletes it. Deleting on a stale check would destroy a concurrent
+    // winner's already-ready, already-verified runtime.
+    //
+    // Instead, once `cacheDir` looks occupied-but-not-ready, it's evicted first via its own atomic rename to
+    // a private, uniquely-named path -- a rename that only one racing caller can ever win; every other
+    // caller instead gets ENOENT (the directory it tried to evict is already gone) and simply retries from
+    // the top against whatever is now at `cacheDir`. Only once a caller has *exclusive, rename-guaranteed
+    // possession* of whatever was evicted is it safe to ask whether that was actually a ready, matching
+    // build: if so, it was a concurrent winner's entry caught in the crossfire and is put straight back
+    // (or, if a third caller has since claimed `cacheDir` again, simply discarded as redundant); only a
+    // genuinely marker-less/stale directory is ever thrown away for good.
+    private async claim(stagingDir: string, cacheDir: string, cacheKey: string): Promise<void> {
+        for (;;) {
+            try {
+                await fs.promises.rename(stagingDir, cacheDir);
+                return;
+            } catch (error) {
+                if (!this.isDirectoryOccupiedError(error)) {
+                    throw error;
+                }
             }
-        }
 
-        if (this.isReady(cacheDir, cacheKey)) {
-            // A concurrent materialize() call already built and claimed this exact cache key first --
-            // this call's own (redundant, but just as real and valid) build is never left behind as an
-            // orphan; only the winner's copy is kept.
-            this.removeBestEffort(stagingDir);
-            return;
-        }
+            if (await this.isReady(cacheDir, cacheKey)) {
+                // A concurrent materialize() call already built and claimed this exact cache key first --
+                // this call's own (redundant, but just as real and valid) build is never left behind as an
+                // orphan; only the winner's copy is kept. (This is only a fast path: even if this check is
+                // itself stale, the evict-then-recheck below still catches it safely.)
+                await this.removeBestEffort(stagingDir);
+                return;
+            }
 
-        this.removeBestEffort(cacheDir);
-        fs.renameSync(stagingDir, cacheDir);
+            const evictedDir = `${cacheDir}.evicted-${crypto.randomBytes(8).toString("hex")}`;
+            try {
+                await fs.promises.rename(cacheDir, evictedDir);
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException)?.code !== "ENOENT") {
+                    throw error;
+                }
+                continue; // another caller already evicted or claimed cacheDir first -- recheck from the top
+            }
+
+            if (await this.isReady(evictedDir, cacheKey)) {
+                // What was actually at cacheDir was a concurrent winner's ready, matching build, not a
+                // stale leftover -- our own not-ready observation above was outrun by that winner. Put it
+                // back rather than destroying it, then treat this call's own staging exactly like any
+                // other loser.
+                try {
+                    await fs.promises.rename(evictedDir, cacheDir);
+                } catch (error) {
+                    if (!this.isDirectoryOccupiedError(error)) {
+                        throw error;
+                    }
+                    // cacheDir was claimed again (by a third caller) while we held the evicted copy -- it
+                    // already has a valid, ready entry for this cacheKey, so ours is redundant too.
+                    await this.removeBestEffort(evictedDir);
+                }
+                await this.removeBestEffort(stagingDir);
+                return;
+            }
+
+            // Genuinely marker-less/stale -- safe to discard for good; loop back and retry claiming
+            // cacheDir (now free, unless a concurrent caller reoccupied it in the meantime, which the top
+            // of the loop handles the same as any other collision).
+            await this.removeBestEffort(evictedDir);
+        }
     }
 
-    private isReady(cacheDir: string, cacheKey: string): boolean {
+    private isDirectoryOccupiedError(error: unknown): boolean {
+        const code = (error as NodeJS.ErrnoException)?.code;
+        return code === "ENOTEMPTY" || code === "EEXIST";
+    }
+
+    private async isReady(cacheDir: string, cacheKey: string): Promise<boolean> {
         const markerPath = path.join(cacheDir, MATERIALIZED_MARKER_FILE);
-        if (!fs.existsSync(markerPath)) {
+        let raw: string;
+        try {
+            raw = await fs.promises.readFile(markerPath, "utf-8");
+        } catch {
             return false;
         }
         try {
-            const marker = JSON.parse(fs.readFileSync(markerPath, "utf-8")) as Partial<MaterializedMarker>;
+            const marker = JSON.parse(raw) as Partial<MaterializedMarker>;
             return marker.cacheKey === cacheKey;
         } catch {
             return false;
         }
     }
 
-    private removeBestEffort(targetPath: string): void {
+    private async removeBestEffort(targetPath: string): Promise<void> {
         try {
-            fs.rmSync(targetPath, {recursive: true, force: true});
+            await fs.promises.rm(targetPath, {recursive: true, force: true});
         } catch {
-            // best-effort only -- a leftover staging directory under the cache root is never served as a
-            // result (see isReady/claim above), just wasted disk until the next cleanup.
+            // best-effort only -- a leftover staging/evicted directory under the cache root is never served
+            // as a result (see isReady/claim above), just wasted disk until the next cleanup.
         }
     }
 
