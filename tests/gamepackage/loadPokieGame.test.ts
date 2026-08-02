@@ -1,4 +1,6 @@
 import {loadPokieGame, readPokiePackageConfig} from "pokie";
+import fs from "fs";
+import os from "os";
 import path from "path";
 
 const fixturesRoot = path.join(__dirname, "fixtures");
@@ -87,5 +89,54 @@ describe("loadPokieGame", () => {
         expect(message).not.toMatch(/^Cannot find module/);
         expect(message).toContain("stale or incomplete");
         expect(message).toContain("npm install && npm run build");
+    });
+
+    it("rejects a canonical package's dist entry when its source was edited after the last build, instead of loading the stale output", async () => {
+        const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stale-source-game-"));
+        try {
+            fs.writeFileSync(
+                path.join(packageRoot, "package.json"),
+                JSON.stringify({name: "stale-source-game", version: "1.0.0", pokie: {entry: "./dist/index.js"}}),
+            );
+
+            fs.mkdirSync(path.join(packageRoot, "src"));
+            const sourcePath = path.join(packageRoot, "src", "index.ts");
+            fs.writeFileSync(sourcePath, "export {};\n");
+
+            fs.mkdirSync(path.join(packageRoot, "dist"));
+            const distEntryPath = path.join(packageRoot, "dist", "index.js");
+            fs.writeFileSync(
+                distEntryPath,
+                'module.exports = {getManifest() { return {id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"}; }, createSession() { return {}; }};\n',
+            );
+
+            const buildTime = new Date(Date.now() - 60_000);
+            fs.utimesSync(sourcePath, buildTime, buildTime);
+            fs.utimesSync(distEntryPath, buildTime, buildTime);
+
+            const game = await loadPokieGame(packageRoot);
+            expect(game.getManifest()).toEqual({id: "stale-source-game", name: "Stale Source Game", version: "1.0.0"});
+
+            // Simulate editing the source after that build completed, without rebuilding.
+            const editTime = new Date();
+            fs.writeFileSync(sourcePath, "export const edited = true;\n");
+            fs.utimesSync(sourcePath, editTime, editTime);
+
+            let caughtError: unknown;
+            try {
+                await loadPokieGame(packageRoot);
+            } catch (error) {
+                caughtError = error;
+            }
+
+            expect(caughtError).toBeInstanceOf(Error);
+            const message = (caughtError as Error).message;
+            expect(message).toContain(distEntryPath);
+            expect(message).toContain("stale");
+            expect(message).toContain("npm run build");
+            expect(message).toContain(packageRoot);
+        } finally {
+            fs.rmSync(packageRoot, {recursive: true, force: true});
+        }
     });
 });

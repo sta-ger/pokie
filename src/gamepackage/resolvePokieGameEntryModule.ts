@@ -26,6 +26,26 @@ export async function resolvePokieGameEntryModule(packageRoot: string): Promise<
         );
     }
 
+    // A canonical package (as `pokie create` scaffolds one) compiles "src/**/*.ts" into the dist
+    // entry checked above via "npm run build" (tsc); a package without a "src" directory at all
+    // (e.g. a hand-authored plain-JS entry, as several fixtures in this suite are) was never built
+    // from TypeScript source in the first place, so there's nothing to compare it against here.
+    // Editing source without rebuilding leaves the dist entry on disk and loadable -- import() below
+    // would otherwise silently succeed against that now-stale output instead of surfacing the
+    // mismatch as a fixable, actionable state.
+    const sourceRoot = path.join(packageRoot, "src");
+    if (fs.existsSync(sourceRoot)) {
+        const latestSourceMtimeMs = findLatestFileMtimeMs(sourceRoot);
+        const entryMtimeMs = fs.statSync(entryPath).mtimeMs;
+        if (latestSourceMtimeMs !== null && latestSourceMtimeMs > entryMtimeMs) {
+            throw new Error(
+                `Entry module "${entryPath}" (from "pokie.entry": "${entry}" in "${packageRoot}/package.json") is ` +
+                    `stale -- its source in "${sourceRoot}" has changed since it was last built. Run "npm run build" ` +
+                    `in "${packageRoot}" to rebuild it, then retry.`,
+            );
+        }
+    }
+
     let entryModule: Record<string, unknown>;
     try {
         // A plain absolute path, not a file:// URL: TypeScript downlevels `import()` to
@@ -67,6 +87,25 @@ export async function resolvePokieGameEntryModule(packageRoot: string): Promise<
 // properties, unaffected by that.
 function isModuleNotFoundError(error: unknown): boolean {
     return typeof error === "object" && error !== null && (error as {code?: unknown}).code === "MODULE_NOT_FOUND";
+}
+
+// null (rather than -Infinity/0) when sourceRoot contains no files at all, so an empty "src"
+// directory can never be treated as newer than a real dist entry.
+function findLatestFileMtimeMs(dir: string): number | null {
+    let latestMtimeMs: number | null = null;
+    for (const dirEntry of fs.readdirSync(dir, {withFileTypes: true})) {
+        const childPath = path.join(dir, dirEntry.name);
+        let childLatestMtimeMs: number | null = null;
+        if (dirEntry.isDirectory()) {
+            childLatestMtimeMs = findLatestFileMtimeMs(childPath);
+        } else if (dirEntry.isFile()) {
+            childLatestMtimeMs = fs.statSync(childPath).mtimeMs;
+        }
+        if (childLatestMtimeMs !== null && (latestMtimeMs === null || childLatestMtimeMs > latestMtimeMs)) {
+            latestMtimeMs = childLatestMtimeMs;
+        }
+    }
+    return latestMtimeMs;
 }
 
 function errorMessage(error: unknown): string {
