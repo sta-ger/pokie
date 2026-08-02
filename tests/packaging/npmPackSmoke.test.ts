@@ -346,10 +346,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         );
     });
 
-    it("builds a package from an Enter-only `pokie build` wizard run, then validates and simulates it", () => {
+    it("builds a package from an Enter-only `pokie init` wizard run, then validates and simulates it", () => {
         // More blank lines than the wizard has questions: the surplus is simply never read, and using
         // an exact count here would encode the very question count the Enter-only contract is about.
-        const build = spawnSync(pokieBinPath, ["build"], {
+        const build = spawnSync(pokieBinPath, ["init"], {
             cwd: installDir,
             encoding: "utf-8",
             input: "\n".repeat(40),
@@ -358,7 +358,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
         expect(build.status).toBe(0);
 
-        const projectRoot = (/^ {2}package root {5}(.+)$/m).exec(build.stdout)?.[1].trim();
+        const projectRoot = (/prepared and verified in "(.+)"\.$/m).exec(build.stdout)?.[1];
         expect(projectRoot).toBeDefined();
         expect(fs.existsSync(path.join(projectRoot!, "dist", "index.js"))).toBe(true);
 
