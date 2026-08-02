@@ -88,7 +88,6 @@ export type BuildProjectView =
           manifest: PokieGameManifest;
           createdFiles: string[];
           buildInfo: GameBuildInfo;
-          unchanged: boolean;
           warnings: ValidationIssue[];
       };
 
@@ -114,7 +113,6 @@ export type BuiltBlueprintSnapshot = {
     manifest: PokieGameManifest;
     projectRoot: string;
     buildInfo: GameBuildInfo;
-    unchanged: boolean;
     warnings: ValidationIssue[];
     createdFiles: string[];
 };

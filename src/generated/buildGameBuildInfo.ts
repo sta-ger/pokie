@@ -4,42 +4,32 @@ import type {GameBuildInfo} from "./GameBuildInfo.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
 
 // The fixed set of paths (relative to the package root) that GamePackageGenerator writes on every
-// run. Also the default for buildGameBuildInfo's "generatedFiles" param, and GamePackageGenerator's
-// fallback when an existing build-info.json predates the "files" field.
-export const GENERATED_PACKAGE_FILES = ["package.json", "README.md", "src/generated/index.js", "src/generated/build-info.json"];
+// run — the same "package.json"/"README.md"/entry-module shape "pokie create"/"pokie init" scaffold
+// (see cli/scaffold's own buildPackageJsonPatch), with "dist/index.js" standing in for a real tsc
+// compile step (this generator's own source of truth is the GameBlueprint, not hand-written
+// TypeScript, so there's no separate "src/index.ts" to compile from). Also the default for
+// buildGameBuildInfo's own "generatedFiles" param.
+export const BUILT_PACKAGE_FILES = ["package.json", "README.md", "dist/index.js"];
 
-// Hashes the blueprint exactly as loaded (same object that gets embedded into the generated module),
-// so re-running "pokie build" on an unchanged blueprint reproduces the same hash — a cheap way to tell
-// "regenerated, nothing changed" apart from "regenerated, blueprint changed" without diffing JSON.
-//
-// "previous" is the prior run's own build-info.json (when rebuilding into an existing package). When
-// its blueprintHash/pokieVersion/source all still match this run, that means nothing that build-info.json
-// exists to describe has actually changed — so its "generatedAt" is reused verbatim instead of stamped
-// with "now". Without this, build-info.json (and only build-info.json; index.js already special-cases
-// this — see renderGeneratedGameModule) would show a spurious diff on every no-op rebuild.
+// Computes provenance for a would-be/just-run "pokie build" — a pure, in-memory result (see
+// GameBuildInfo's own doc comment for why this is never itself persisted into the built package).
+// Hashes the blueprint exactly as loaded (the same object that gets embedded into the generated
+// module), so building an unchanged blueprint always reproduces the same hash — a cheap way to tell
+// "nothing changed" apart from "blueprint changed" without diffing JSON.
 export function buildGameBuildInfo(
     blueprint: GameBlueprint,
     pokieVersion: string,
     sourcePath?: string,
     generatedAt: Date = new Date(),
-    generatedFiles: string[] = GENERATED_PACKAGE_FILES,
-    previous: GameBuildInfo | undefined = undefined,
+    generatedFiles: string[] = BUILT_PACKAGE_FILES,
     reelStripGeneration: GameBuildInfoReelStripGeneration | undefined = undefined,
 ): GameBuildInfo {
-    const blueprintHash = computeGameBlueprintHash(blueprint);
-
-    const isNoOpRebuild =
-        previous !== undefined &&
-        previous.blueprintHash === blueprintHash &&
-        previous.pokieVersion === pokieVersion &&
-        previous.source === sourcePath;
-
     return {
         schemaVersion: GAME_BLUEPRINT_SCHEMA_VERSION,
         generatedBy: "pokie build",
         pokieVersion,
-        generatedAt: isNoOpRebuild ? previous.generatedAt : generatedAt.toISOString(),
-        blueprintHash,
+        generatedAt: generatedAt.toISOString(),
+        blueprintHash: computeGameBlueprintHash(blueprint),
         ...(sourcePath !== undefined ? {source: sourcePath} : {}),
         files: [...generatedFiles].sort(),
         game: blueprint.manifest,

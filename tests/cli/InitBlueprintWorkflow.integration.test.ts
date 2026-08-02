@@ -55,7 +55,7 @@ describe("CLI workflow (integration): pokie build --init-blueprint", () => {
         const buildExitCode = await new BuildCommand("1.3.0").run([blueprintFile, "--out", outDir]);
         expect(buildExitCode).toBe(0);
         expect(fs.existsSync(path.join(outDir, "package.json"))).toBe(true);
-        expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
 
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);

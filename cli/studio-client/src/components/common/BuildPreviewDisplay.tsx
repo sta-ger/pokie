@@ -43,7 +43,7 @@ export function BuildPreviewDisplay({view}: {view: BuildPreviewView}) {
                     </Text>
                     <Text size="sm" style={{overflowWrap: "anywhere"}}>
                         Destination: {view.projectRoot}
-                        {view.destinationHasContent ? " (already exists — building will update it)" : " (does not exist yet — building will create it)"}
+                        {view.destinationHasContent ? " (already exists — building will fail unless it's empty)" : " (does not exist yet — building will create it)"}
                     </Text>
                     {view.priorBuild && view.priorBuild.version !== view.manifest.version && (
                         <Text size="sm">

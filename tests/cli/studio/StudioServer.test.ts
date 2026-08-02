@@ -937,8 +937,8 @@ describe("StudioServer", () => {
             const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
 
             expect(status).toBe(201);
-            expect(body).toMatchObject({status: "ok", manifest: {id: "sample-slot"}, unchanged: false});
-            expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+            expect(body).toMatchObject({status: "ok", manifest: {id: "sample-slot"}});
+            expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
 
             const recent = await get(`${homeBaseUrl}/api/home/recent-projects`);
             expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(outDir);
@@ -955,7 +955,7 @@ describe("StudioServer", () => {
             expect(fs.existsSync(outDir)).toBe(false);
         });
 
-        it("refuses to build over a directory containing files pokie build did not generate", async () => {
+        it("refuses to build into a directory that already has content, whatever put it there", async () => {
             const blueprintPath = writeBlueprintFile(buildBlueprint());
             const outDir = path.join(workDir, "out");
             fs.mkdirSync(outDir, {recursive: true});
@@ -965,7 +965,7 @@ describe("StudioServer", () => {
 
             expect(status).toBe(200);
             expect(body).toMatchObject({status: "error"});
-            expect((body as {error: string}).error).toContain("did not generate: package.json");
+            expect((body as {error: string}).error).toContain("already exists and is not empty");
         });
 
         it("opens a just-built project via the Home Open action, transitioning Studio's context in place", async () => {
@@ -974,9 +974,9 @@ describe("StudioServer", () => {
             const built = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
             const projectRoot = (built.body as {projectRoot: string}).projectRoot;
 
-            // The generated package's entry module (src/generated/index.js) is plain, already-compiled
-            // JS with no further build step — genuinely loadable via the real loadPokieGame, no stub
-            // needed, proving the "Open in Studio" action works end-to-end after a real build.
+            // The built package's entry module (dist/index.js) is plain, already-compiled JS with no
+            // further build step — genuinely loadable via the real loadPokieGame, no stub needed,
+            // proving the "Open in Studio" action works end-to-end after a real build.
             const opened = await post(`${homeBaseUrl}/api/home/projects/open`, {projectRoot});
 
             expect(opened.status).toBe(200);
@@ -1390,8 +1390,8 @@ describe("StudioServer", () => {
                 });
 
                 expect(status).toBe(201);
-                expect(body).toMatchObject({status: "ok", manifest: {id: "sample-slot"}, unchanged: false});
-                expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+                expect(body).toMatchObject({status: "ok", manifest: {id: "sample-slot"}});
+                expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
 
                 const recent = await get(`${homeBaseUrl}/api/home/recent-projects`);
                 expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(outDir);
@@ -1410,18 +1410,19 @@ describe("StudioServer", () => {
                 expect(fs.existsSync(outDir)).toBe(false);
             });
 
-            it("safely rebuilds the same outDir twice (unchanged: true, no conflict)", async () => {
+            it("refuses to rebuild the same outDir twice -- there is no rebuild/merge recognition", async () => {
                 const outDir = path.join(workDir, "out");
 
                 const first = await post(`${homeBaseUrl}/api/home/blueprints/build`, {blueprint: buildBlueprint(), outDir});
                 const second = await post(`${homeBaseUrl}/api/home/blueprints/build`, {blueprint: buildBlueprint(), outDir});
 
                 expect(first.status).toBe(201);
-                expect(second.status).toBe(201);
-                expect(second.body).toMatchObject({status: "ok", unchanged: true});
+                expect(second.status).toBe(200);
+                expect(second.body).toMatchObject({status: "error"});
+                expect((second.body as {error: string}).error).toContain("already exists and is not empty");
             });
 
-            it("refuses to build over a directory containing files pokie build did not generate", async () => {
+            it("refuses to build into a directory that already has content, whatever put it there", async () => {
                 const outDir = path.join(workDir, "out");
                 fs.mkdirSync(outDir, {recursive: true});
                 fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify({name: "someone-elses-project"}));
@@ -1433,7 +1434,7 @@ describe("StudioServer", () => {
 
                 expect(status).toBe(200);
                 expect(body).toMatchObject({status: "error"});
-                expect((body as {error: string}).error).toContain("did not generate: package.json");
+                expect((body as {error: string}).error).toContain("already exists and is not empty");
             });
 
             it("opens a just-built project via the Home Open action, transitioning Studio's context in place (Home -> Project)", async () => {

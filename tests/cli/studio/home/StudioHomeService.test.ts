@@ -219,9 +219,7 @@ describe("StudioHomeService", () => {
             expect(preview.symbolsCount).toBe(2);
             expect(preview.warnings).toEqual([]);
             expect(typeof preview.blueprintHash).toBe("string");
-            expect(preview.expectedFiles).toEqual(
-                expect.arrayContaining(["package.json", "README.md", "src/generated/index.js", "src/generated/build-info.json"]),
-            );
+            expect(preview.expectedFiles).toEqual(expect.arrayContaining(["package.json", "README.md", "dist/index.js"]));
             expect(fs.readdirSync(tmpDir)).toEqual(["blueprint.json"]);
         });
 
@@ -285,7 +283,7 @@ describe("StudioHomeService", () => {
                 return;
             }
             expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
-            expect(fs.existsSync(path.join(result.projectRoot, "src", "generated", "index.js"))).toBe(true);
+            expect(fs.existsSync(path.join(result.projectRoot, "dist", "index.js"))).toBe(true);
             expect(await repository.list()).toHaveLength(1);
         });
 
@@ -308,7 +306,7 @@ describe("StudioHomeService", () => {
             expect(result.status).toBe("load-error");
         });
 
-        it("refuses to build over a directory containing files pokie build did not generate (safe overwrite)", async () => {
+        it("refuses to build into a directory that already has content, whatever put it there", async () => {
             const repository = new InMemoryRecentProjectsRepository();
             const service = new StudioHomeService("1.2.1", repository);
             const blueprintPath = writeBlueprintFile(tmpDir, buildBlueprint());
@@ -320,13 +318,13 @@ describe("StudioHomeService", () => {
 
             expect(result.status).toBe("error");
             if (result.status === "error") {
-                expect(result.error).toContain("did not generate: package.json");
+                expect(result.error).toContain("already exists and is not empty");
                 expect(JSON.stringify(result)).not.toContain("\\n    at ");
             }
             expect(await repository.list()).toEqual([]);
         });
 
-        it("safely rebuilds into a directory previously produced by a build (no conflict)", async () => {
+        it("refuses to rebuild into a directory a previous build already populated -- there is no rebuild/merge recognition", async () => {
             const service = new StudioHomeService("1.2.1");
             const blueprintPath = writeBlueprintFile(tmpDir, buildBlueprint());
             const outDir = path.join(tmpDir, "out");
@@ -335,7 +333,10 @@ describe("StudioHomeService", () => {
             const second = await service.buildProject({blueprintPath, outDir});
 
             expect(first.status).toBe("ok");
-            expect(second.status).toBe("ok");
+            expect(second.status).toBe("error");
+            if (second.status === "error") {
+                expect(second.error).toContain("already exists and is not empty");
+            }
         });
     });
 

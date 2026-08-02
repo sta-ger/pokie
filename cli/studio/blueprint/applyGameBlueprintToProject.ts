@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import {computeGameBlueprintHash, GENERATED_PACKAGE_FILES, type GameBlueprint, type GameBlueprintValidating, type GamePackageGenerating} from "pokie";
+import {BUILT_PACKAGE_FILES, computeGameBlueprintHash, type GameBlueprint, type GameBlueprintValidating, type GamePackageGenerating} from "pokie";
 import {commitStagedPath, finalizeStagedPathBackup, restoreStagedPath, type StagedPathRemover, type StagedPathRenamer} from "./commitStagedPath.js";
 import {publishSourceBlueprint, type SourceLinker, type SourceReader, type SourceUnlinker} from "./publishSourceBlueprint.js";
 import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
@@ -29,7 +29,7 @@ type StagedResource = {readonly realPath: string; readonly stagedPath: string};
 type CommittedResource = {readonly realPath: string; readonly stalePath: string | undefined};
 
 // Applies an edited GameBlueprint to a live project as a single conditional-commit "transaction": the
-// project's own generated files (see GENERATED_PACKAGE_FILES) and its source blueprint file either all
+// project's own generated files (see BUILT_PACKAGE_FILES) and its source blueprint file either all
 // end up reflecting the new blueprint, or none of them do — a caller (Studio's Mechanics Editor) never
 // sees a state where some were updated and others weren't, whatever fails and whenever it fails, and an
 // edit landing outside this transaction entirely (a hand edit, another tool) is never silently discarded
@@ -50,7 +50,7 @@ type CommittedResource = {readonly realPath: string; readonly stalePath: string 
 //      two overlapping applies against the same source can never interleave their commits: the second
 //      one's own lock attempt fails outright. If the lock can't be acquired, this reports an error and
 //      touches nothing.
-//   5. Commit each of GENERATED_PACKAGE_FILES individually — one rename each (see commitStagedPath),
+//   5. Commit each of BUILT_PACKAGE_FILES individually — one rename each (see commitStagedPath),
 //      never a whole-directory swap of projectRoot: a project directory can (and typically does, once
 //      `npm install`ed) hold real content this apply has no business touching, like node_modules or a
 //      user's own files, so only the exact files "pokie build" itself would ever write are ever
@@ -113,7 +113,7 @@ export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProject
     const sourceTempFile = path.join(path.dirname(sourcePath), `.${path.basename(sourcePath)}.tmp-${crypto.randomBytes(6).toString("hex")}`);
     try {
         fs.mkdirSync(packageTempDir, {recursive: true});
-        gamePackageGenerator.generate(blueprint as GameBlueprint, path.dirname(packageTempDir), path.basename(packageTempDir), sourcePath);
+        gamePackageGenerator.generate(blueprint as GameBlueprint, path.dirname(packageTempDir), path.basename(packageTempDir));
         fs.writeFileSync(sourceTempFile, serializeGameBlueprint(blueprint));
     } catch (error) {
         removeBestEffort(packageTempDir, remove);
@@ -131,7 +131,7 @@ export function applyGameBlueprintToProject(options: ApplyGameBlueprintToProject
     }
 
     function commitUnderLock(): StudioBlueprintApplyView {
-        const packageFiles: StagedResource[] = GENERATED_PACKAGE_FILES.map((relativeFile) => {
+        const packageFiles: StagedResource[] = BUILT_PACKAGE_FILES.map((relativeFile) => {
             const segments = relativeFile.split("/");
             return {realPath: path.join(projectRoot, ...segments), stagedPath: path.join(packageTempDir, ...segments)};
         });

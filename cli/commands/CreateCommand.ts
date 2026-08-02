@@ -1,4 +1,5 @@
 import {
+    computeGameBlueprintHash,
     GameBlueprintValidating,
     GameBlueprintValidator,
     GamePackageGenerating,
@@ -120,7 +121,7 @@ export class CreateCommand implements CliCommandHandling {
         for (const file of result.createdFiles) {
             console.log(`  created  ${file}`);
         }
-        console.log(`  blueprint hash   ${result.buildInfo.blueprintHash}`);
+        console.log(`  blueprint hash   ${computeGameBlueprintHash(blueprint)}`);
 
         console.log("\nRunning a short smoke simulation...");
         const smoke = await this.runSmokeSimulation(result.projectRoot, usedSeed);
