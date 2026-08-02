@@ -446,9 +446,9 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
                 symbols: ["A", "B"],
                 paytable: {A: {3: 5}, B: {3: 2}},
                 reelStrips: [
-                    ["A", "A", "A"],
-                    ["A", "A", "A"],
-                    ["A", "A", "A"],
+                    ["A", "A", "B"],
+                    ["A", "A", "B"],
+                    ["A", "A", "B"],
                 ],
             }),
         );
