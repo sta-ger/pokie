@@ -6,6 +6,12 @@ const ENTRY_PATH = "./dist/index.js";
 export function buildPackageJsonPatch(pkg: PackageJsonLike, pokieVersion: string): PackageJsonLike {
     return {
         ...pkg,
+        // "main"/"exports" and "pokie.entry" below are always forced to the same ENTRY_PATH tsconfig's
+        // own outDir/rootDir compiles src/index.ts to -- like pokie.entry already was, unconditionally,
+        // before this field existed -- so a package.json this function has touched can never disagree
+        // with itself about where its compiled output lives.
+        main: ENTRY_PATH,
+        exports: ENTRY_PATH,
         scripts: {
             build: "tsc",
             start: "pokie dev .",

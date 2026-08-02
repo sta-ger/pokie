@@ -5,6 +5,8 @@ describe("buildPackageJsonPatch", () => {
         const patched = buildPackageJsonPatch({name: "sample-slot", version: "1.0.0"}, "1.2.1");
 
         expect(patched.pokie).toEqual({entry: "./dist/index.js"});
+        expect(patched.main).toBe("./dist/index.js");
+        expect(patched.exports).toBe("./dist/index.js");
         expect(patched.scripts).toEqual({
             build: "tsc",
             start: "pokie dev .",
@@ -38,7 +40,20 @@ describe("buildPackageJsonPatch", () => {
         });
         expect(patched.dependencies).toEqual({pokie: "^1.0.0"});
         expect(patched.devDependencies).toEqual({typescript: "^4.9.0"});
-        // pokie.entry is always managed/overwritten by init, unlike the other fields above.
+        // pokie.entry, main, and exports are always managed/overwritten by init, unlike the other
+        // fields above -- so they can never disagree with each other about where dist output lives.
         expect(patched.pokie).toEqual({entry: "./dist/index.js"});
+        expect(patched.main).toBe("./dist/index.js");
+        expect(patched.exports).toBe("./dist/index.js");
+    });
+
+    it("overwrites a stale/mismatched main or exports field, same as it already does for pokie.entry", () => {
+        const patched = buildPackageJsonPatch(
+            {name: "sample-slot", version: "1.0.0", main: "./index.js", exports: {".": "./index.js"}},
+            "1.2.1",
+        );
+
+        expect(patched.main).toBe("./dist/index.js");
+        expect(patched.exports).toBe("./dist/index.js");
     });
 });

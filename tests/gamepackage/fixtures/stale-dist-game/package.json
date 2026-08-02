@@ -1,0 +1,7 @@
+{
+    "name": "stale-dist-game",
+    "version": "1.0.0",
+    "pokie": {
+        "entry": "./dist/index.js"
+    }
+}
