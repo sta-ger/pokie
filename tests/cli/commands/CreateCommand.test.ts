@@ -1,4 +1,5 @@
 import {
+    computeGameBlueprintHash,
     GameBlueprint,
     GameBlueprintValidating,
     GamePackageGenerating,
@@ -103,19 +104,10 @@ describe("CreateCommand", () => {
             seed: 20260721,
             provenance: {generatorVersion: "1.0.0", strategy: "default-line-pay", seed: 20260721},
         };
-        const generatedResult = {
+        const generatedResult: GeneratedGamePackage = {
             projectRoot: "/tmp/blazing-riches-4821",
             manifest: randomBlueprint.manifest,
-            createdFiles: ["package.json", "src/generated/index.js"],
-            buildInfo: {
-                schemaVersion: 1,
-                generatedBy: "pokie create --random",
-                pokieVersion: "1.3.0",
-                generatedAt: "2026-01-01T00:00:00.000Z",
-                blueprintHash: "sha256:abc123",
-                game: randomBlueprint.manifest,
-            },
-            unchanged: false,
+            createdFiles: ["package.json", "dist/index.js"],
         };
         const okSmoke: SmokeSimulationOutcome = {
             ok: true,
@@ -174,7 +166,7 @@ describe("CreateCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 20260721');
             expect(printed).toContain('Provenance: generator 1.0.0, strategy "default-line-pay".');
-            expect(printed).toContain("blueprint hash   sha256:abc123");
+            expect(printed).toContain(`blueprint hash   ${computeGameBlueprintHash(randomBlueprint)}`);
             expect(printed).toContain("Smoke simulation OK: 200 rounds, RTP 96.50%, hit frequency 31.00%.");
             expect(printed).toContain('created in "/tmp/blazing-riches-4821"');
         });

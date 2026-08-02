@@ -161,7 +161,7 @@ export class StudioHomeService {
 
         let generated;
         try {
-            generated = this.gamePackageGenerator.generate(blueprint, process.cwd(), request.outDir, request.blueprintPath);
+            generated = this.gamePackageGenerator.generate(blueprint, process.cwd(), request.outDir);
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -172,8 +172,9 @@ export class StudioHomeService {
             projectRoot: generated.projectRoot,
             manifest: generated.manifest,
             createdFiles: generated.createdFiles,
-            buildInfo: generated.buildInfo,
-            unchanged: generated.unchanged,
+            // Computed purely for this API response -- never persisted into the built package itself
+            // (see GamePackageGenerator's own doc comment).
+            buildInfo: buildGameBuildInfo(blueprint, this.pokieVersion, request.blueprintPath, undefined, generated.createdFiles),
             warnings,
         };
     }

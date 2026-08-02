@@ -72,7 +72,7 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
         if (built.status !== "ok") {
             return;
         }
-        expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
         expect(await repository.list()).toHaveLength(1);
 
         // Re-saving unchanged content is byte-identical (deterministic formatting, no timestamps).
@@ -81,13 +81,11 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
         expect(resaved.status).toBe("ok");
         expect(fs.readFileSync(blueprintPath).equals(firstSaveBytes)).toBe(true);
 
-        // Rebuilding the same outDir with the same blueprint is a safe, deterministic no-op rebuild —
-        // GamePackageGenerator's own safe-rebuild/conflict detection, reused as-is.
+        // Rebuilding into the same, now-populated outDir is refused -- a build only ever writes into a
+        // missing or empty directory (see GamePackageGenerator's own doc comment), there is no
+        // rebuild/merge recognition of a directory a prior build produced.
         const rebuilt = await service.build(blueprint, outDir, blueprintPath);
-        expect(rebuilt.status).toBe("ok");
-        if (rebuilt.status === "ok") {
-            expect(rebuilt.unchanged).toBe(true);
-        }
+        expect(rebuilt.status).toBe("error");
 
         // The generated package is indistinguishable from one produced by "pokie build <config.json>".
         const validateExitCode = await new ValidateCommand().run([outDir]);

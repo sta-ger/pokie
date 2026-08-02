@@ -30,8 +30,7 @@ export function BuildResultDisplay({view, onOpen, onOpenFolder}: {view: BuildPro
         <Stack gap="sm">
             <Text style={{overflowWrap: "anywhere"}}>
                 &quot;{view.manifest.name}&quot; (id: &quot;{view.manifest.id}&quot;, v{view.manifest.version}) built at {formatTimestamp(view.buildInfo.generatedAt)} in
-                &quot;{view.projectRoot}&quot;
-                {view.unchanged ? " (unchanged — deterministic rebuild)." : "."}
+                &quot;{view.projectRoot}&quot;.
             </Text>
             <Text size="xs" c="dimmed" style={{overflowWrap: "anywhere"}}>
                 Blueprint hash: {view.buildInfo.blueprintHash}

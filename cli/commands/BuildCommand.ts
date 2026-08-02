@@ -1,6 +1,7 @@
 import fs from "fs";
 import {
     buildGameBuildInfo,
+    computeGameBlueprintHash,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -327,7 +328,12 @@ export class BuildCommand implements CliCommandHandling {
             return 0;
         }
 
-        const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), outDir, sourcePath, resolution.reelStripGeneration);
+        const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), outDir, resolution.reelStripGeneration);
+
+        // Computed purely for this console summary — never persisted into the built package itself
+        // (see GamePackageGenerator's own doc comment for why a built package tracks nothing about
+        // where it came from).
+        const blueprintHash = computeGameBlueprintHash(blueprint);
 
         console.log("Build summary:");
         for (const file of result.createdFiles) {
@@ -335,17 +341,10 @@ export class BuildCommand implements CliCommandHandling {
         }
         console.log(`  package root     ${result.projectRoot}`);
         console.log(`  game             ${result.manifest.name} (id: "${result.manifest.id}", v${result.manifest.version})`);
-        console.log(`  blueprint hash   ${result.buildInfo.blueprintHash}`);
-        if (result.buildInfo.source) {
-            console.log(`  source           ${result.buildInfo.source}`);
+        console.log(`  blueprint hash   ${blueprintHash}`);
+        if (sourcePath) {
+            console.log(`  source           ${sourcePath}`);
         }
-        console.log(
-            `  status           ${
-                result.unchanged
-                    ? "unchanged — deterministic rebuild (blueprint, pokie version, and source all match the previous build)"
-                    : "generated"
-            }`,
-        );
 
         if (randomSeed !== undefined) {
             console.log("\nRunning a short smoke simulation...");

@@ -1,13 +1,11 @@
 import fs from "fs";
 import path from "path";
-import {PokieGameManifest} from "pokie";
-import {buildPackageJsonPatch} from "./buildPackageJsonPatch.js";
+import {buildPackageJsonPatch, PokieGameManifest, renderTsconfig} from "pokie";
 import {deriveManifestDefaults} from "./deriveManifestDefaults.js";
 import {GamePackageCreateOverrides, GamePackageCreating} from "./GamePackageCreating.js";
 import {renderGameModule} from "./renderGameModule.js";
 import {renderIndexModule} from "./renderIndexModule.js";
 import {renderSessionModule} from "./renderSessionModule.js";
-import {renderTsconfig} from "./renderTsconfig.js";
 import {ScaffoldResult} from "./ScaffoldResult.js";
 
 const DEFAULT_VERSION = "0.1.0";

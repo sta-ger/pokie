@@ -94,10 +94,11 @@ describe("CLI workflow (integration): pokie build (wizard) output passes validat
         expect(prompt.closed).toBe(true);
         expect(fs.existsSync(path.join(outDir, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "README.md"))).toBe(true);
-        expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
 
-        const buildInfo = JSON.parse(fs.readFileSync(path.join(outDir, "src", "generated", "build-info.json"), "utf-8"));
-        expect(buildInfo.game.id).toBe("wizard-slot");
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const game = require(path.join(outDir, "dist", "index.js")) as {getManifest(): {id: string}};
+        expect(game.getManifest().id).toBe("wizard-slot");
 
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);
@@ -140,10 +141,11 @@ describe("CLI workflow (integration): pokie build (wizard) output passes validat
             const projectRoot = path.join(workDir, created[0]);
 
             expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
-            expect(fs.existsSync(path.join(projectRoot, "src", "generated", "index.js"))).toBe(true);
+            expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
 
-            const buildInfo = JSON.parse(fs.readFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "utf-8"));
-            expect(buildInfo.game.id).toBe(created[0]);
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
+            expect(game.getManifest().id).toBe(created[0]);
 
             expect(await new ValidateCommand().run([projectRoot])).toBe(0);
 

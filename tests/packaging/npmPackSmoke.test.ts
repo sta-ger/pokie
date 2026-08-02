@@ -2,6 +2,7 @@ import {ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync} from "ch
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {BUILT_PACKAGE_FILES} from "pokie";
 import {ensureFixturesCanRequirePokie} from "../cli/fixtures/ensureFixturesCanRequirePokie.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
@@ -240,7 +241,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
 
         it("`pokie` from a nested directory inside a project still opens that project", async () => {
-            const nested = path.join(projectRoot, "src", "generated");
+            const nested = path.join(projectRoot, "dist");
             expect(fs.existsSync(nested)).toBe(true);
 
             expect(await contextOf([], nested)).toEqual({mode: "project", projectRoot});
@@ -359,7 +360,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
         const projectRoot = (/^ {2}package root {5}(.+)$/m).exec(build.stdout)?.[1].trim();
         expect(projectRoot).toBeDefined();
-        expect(fs.existsSync(path.join(projectRoot!, "src", "generated", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(projectRoot!, "dist", "index.js"))).toBe(true);
 
         const validate = spawnSync(pokieBinPath, ["validate", projectRoot!], {cwd: installDir, encoding: "utf-8", timeout: 60000});
         expect(validate.status).toBe(0);
@@ -427,5 +428,59 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             timeout: 60000,
         });
         expect(bundleValidate.status).toBe(0);
+    });
+
+    // A "pokie build" package (GamePackageGenerator's canonical output) carries none of the
+    // pre-migration provenance (embedded blueprint, build-info.json, src/generated nesting -- see
+    // GamePackageGenerator's own doc comment) that the older format used to write directly into the
+    // package. Running a real `npm pack` against one proves that contract at the one boundary that
+    // actually matters to a consumer: what a real `npm publish` would ship, not just what's on disk.
+    it("`npm pack`s a package built by the installed binary itself: ships the canonical runtime/source files, nothing from the pre-migration build-info/blueprint/src-generated format", () => {
+        const blueprintPath = path.join(installDir!, "npm-pack-built-package.blueprint.json");
+        fs.writeFileSync(
+            blueprintPath,
+            JSON.stringify({
+                manifest: {id: "npm-pack-built-package", name: "Npm Pack Built Package", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}, B: {3: 2}},
+                reelStrips: [
+                    ["A", "A", "B"],
+                    ["A", "A", "B"],
+                    ["A", "A", "B"],
+                ],
+            }),
+        );
+        const packageRoot = path.join(installDir!, "npm-pack-built-package");
+        const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--out", packageRoot], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
+        expect(build.status).toBe(0);
+
+        // --dry-run: proves what would ship without actually writing/cleaning up a tarball. This built
+        // package's own scripts (build/start/server/client) never include prepack/postpack/prepare, so
+        // --ignore-scripts changes nothing here -- kept anyway, matching this file's own real-tarball
+        // pack above, so packing this package can never run its "build" script a second time.
+        const packOutput = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+            cwd: packageRoot,
+            encoding: "utf-8",
+        });
+        const [{files}] = JSON.parse(packOutput) as Array<{files: Array<{path: string}>}>;
+        const packedPaths = files.map((file) => file.path);
+
+        // package-lock.json is deliberately not asserted here -- npm's own default pack rules always
+        // exclude it (see npm-packlist's strict default rules), regardless of anything this package
+        // itself does.
+        for (const canonicalFile of BUILT_PACKAGE_FILES.filter((file) => file !== "package-lock.json")) {
+            expect(packedPaths).toContain(canonicalFile);
+        }
+        for (const packedPath of packedPaths) {
+            expect(packedPath).not.toMatch(/^src\/generated\//);
+            expect(packedPath.toLowerCase()).not.toContain("build-info");
+            expect(packedPath.toLowerCase()).not.toContain("blueprint");
+        }
     });
 });

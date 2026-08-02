@@ -1,4 +1,5 @@
 import {
+    computeGameBlueprintHash,
     GameBlueprint,
     GameBlueprintValidating,
     GameBuildInfoReelStripGeneration,
@@ -42,13 +43,12 @@ function createStubGenerator(
         blueprint: GameBlueprint;
         cwd: string;
         outDir?: string;
-        sourcePath?: string;
         reelStripGeneration?: GameBuildInfoReelStripGeneration;
     };
 } {
     return {
-        generate(blueprint: GameBlueprint, cwd: string, outDir?: string, sourcePath?: string, reelStripGeneration?: GameBuildInfoReelStripGeneration) {
-            this.calledWith = {blueprint, cwd, outDir, sourcePath, reelStripGeneration};
+        generate(blueprint: GameBlueprint, cwd: string, outDir?: string, reelStripGeneration?: GameBuildInfoReelStripGeneration) {
+            this.calledWith = {blueprint, cwd, outDir, reelStripGeneration};
             return result;
         },
     };
@@ -97,16 +97,7 @@ const wizardBlueprint: GameBlueprint = {
 const generatedResult: GeneratedGamePackage = {
     projectRoot: "/tmp/sample-slot",
     manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-    createdFiles: ["package.json", "src/generated/index.js"],
-    buildInfo: {
-        schemaVersion: 1,
-        generatedBy: "pokie build",
-        pokieVersion: "1.3.0",
-        generatedAt: "2026-01-01T00:00:00.000Z",
-        blueprintHash: "sha256:abc123",
-        game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-    },
-    unchanged: false,
+    createdFiles: ["package.json", "dist/index.js"],
 };
 
 describe("BuildCommand", () => {
@@ -319,7 +310,6 @@ describe("BuildCommand", () => {
             blueprint: rawBlueprint,
             cwd: process.cwd(),
             outDir: "somewhere",
-            sourcePath: "config.json",
         });
     });
 
@@ -335,7 +325,7 @@ describe("BuildCommand", () => {
 
         expect(exitCode).toBe(0);
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("package.json"));
-        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("src/generated/index.js"));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("dist/index.js"));
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('built in "/tmp/sample-slot"'));
     });
 
@@ -348,16 +338,11 @@ describe("BuildCommand", () => {
         expect(printed).toContain("Build summary:");
         expect(printed).toContain("package root     /tmp/sample-slot");
         expect(printed).toContain('game             Sample Slot (id: "sample-slot", v0.1.0)');
-        expect(printed).toContain("blueprint hash   sha256:abc123");
-        expect(printed).toContain("status           generated");
+        expect(printed).toContain(`blueprint hash   ${computeGameBlueprintHash(rawBlueprint)}`);
     });
 
-    it("prints the source path in the build summary when the blueprint has one", async () => {
-        const generator = createStubGenerator({
-            ...generatedResult,
-            buildInfo: {...generatedResult.buildInfo, source: "config.json"},
-        });
-        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), generator);
+    it("prints the source path in the build summary when built from a config file path", async () => {
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
 
         await command.run(["config.json"]);
 
@@ -365,23 +350,22 @@ describe("BuildCommand", () => {
         expect(printed).toContain("source           config.json");
     });
 
-    it("omits the source line from the build summary when the blueprint has no source path", async () => {
-        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
+    it("omits the source line from the build summary when built with no source path (the wizard flow)", async () => {
+        const wizard = createStubWizard({blueprint: wizardBlueprint});
+        const prompt = createStubPrompt();
+        const command = new BuildCommand(
+            "1.3.0",
+            () => rawBlueprint,
+            createStubValidator([]),
+            createStubGenerator(generatedResult),
+            wizard,
+            () => prompt,
+        );
 
-        await command.run(["config.json"]);
+        await command.run([]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).not.toContain("source           ");
-    });
-
-    it("prints an explicit unchanged/deterministic-rebuild status when the generator reports a no-op rebuild", async () => {
-        const generator = createStubGenerator({...generatedResult, unchanged: true});
-        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), generator);
-
-        await command.run(["config.json"]);
-
-        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain("status           unchanged — deterministic rebuild");
     });
 
     it("--dry-run validates without calling the generator or writing anything", async () => {
@@ -409,7 +393,7 @@ describe("BuildCommand", () => {
         expect(printed).toContain("paylines         2");
         expect(printed).toContain("bets             1, 2, 5");
         expect(printed).toContain("blueprint hash   sha256:");
-        expect(printed).toContain("would generate   README.md, package.json, src/generated/build-info.json, src/generated/index.js");
+        expect(printed).toContain("would generate   README.md, dist/index.js, package-lock.json, package.json, src/index.ts, tsconfig.json");
     });
 
     it("--dry-run reports default paylines/bets when the blueprint omits them", async () => {

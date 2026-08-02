@@ -7,7 +7,6 @@ export interface GamePackageGenerating {
         blueprint: GameBlueprint,
         cwd: string,
         outDir?: string,
-        sourcePath?: string,
         reelStripGeneration?: GameBuildInfoReelStripGeneration,
     ): GeneratedGamePackage;
 }

@@ -106,8 +106,7 @@ function BuiltBlueprintSummary({
         <Stack gap="sm">
             <Text style={{overflowWrap: "anywhere"}}>
                 Last built &quot;{snapshot.manifest.name}&quot; (id: &quot;{snapshot.manifest.id}&quot;, v{snapshot.manifest.version}) at{" "}
-                {formatTimestamp(snapshot.buildInfo.generatedAt)} in &quot;{snapshot.projectRoot}&quot;
-                {snapshot.unchanged ? " (unchanged — deterministic rebuild)." : "."}
+                {formatTimestamp(snapshot.buildInfo.generatedAt)} in &quot;{snapshot.projectRoot}&quot;.
             </Text>
             <Text size="xs" c="dimmed" style={{overflowWrap: "anywhere"}}>
                 Blueprint hash: {snapshot.buildInfo.blueprintHash}
@@ -309,7 +308,6 @@ export function BlueprintBuildPanel({
                             manifest: view.manifest,
                             projectRoot: view.projectRoot,
                             buildInfo: view.buildInfo,
-                            unchanged: view.unchanged,
                             warnings: view.warnings,
                             createdFiles: view.createdFiles,
                         });

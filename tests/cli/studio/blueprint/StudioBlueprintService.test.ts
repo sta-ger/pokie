@@ -1,4 +1,12 @@
-import {computeGameBlueprintHash, GameBlueprint, ParSheetExporting, ParSheetImporting, resolveReelStripGeneration, ValidationIssue} from "pokie";
+import {
+    BUILT_PACKAGE_FILES,
+    computeGameBlueprintHash,
+    GameBlueprint,
+    ParSheetExporting,
+    ParSheetImporting,
+    resolveReelStripGeneration,
+    ValidationIssue,
+} from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
@@ -711,7 +719,7 @@ describe("StudioBlueprintService", () => {
             expect(preview.status).toBe("invalid");
         });
 
-        it("reports a fresh destination as non-existent, with every generated file listed to create and none to update", () => {
+        it("reports a fresh destination as non-existent, with every built file listed to create and none to update", () => {
             const service = createService();
             const outDir = path.join(tmpDir, "out");
 
@@ -723,13 +731,13 @@ describe("StudioBlueprintService", () => {
             }
             expect(preview.projectRoot).toBe(outDir);
             expect(preview.destinationHasContent).toBe(false);
-            expect(preview.createFiles.sort()).toEqual(["README.md", "package.json", "src/generated/build-info.json", "src/generated/index.js"].sort());
+            expect(preview.createFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
             expect(preview.updateFiles).toEqual([]);
             expect(preview.deleteFiles).toEqual([]);
             expect(preview.priorBuild).toBeUndefined();
         });
 
-        it("reports an already-built destination as having content, every generated file listed to update, and the prior build's version", async () => {
+        it("reports an already-built destination as having content, with no prior build recognized -- a current build no longer leaves anything behind to recognize itself by", async () => {
             const service = createService();
             const outDir = path.join(tmpDir, "out");
             await service.build(buildBlueprint(), outDir, "blueprint.json");
@@ -745,9 +753,9 @@ describe("StudioBlueprintService", () => {
                 return;
             }
             expect(preview.destinationHasContent).toBe(true);
-            expect(preview.createFiles).toEqual([]);
-            expect(preview.updateFiles.sort()).toEqual(["README.md", "package.json", "src/generated/build-info.json", "src/generated/index.js"].sort());
-            expect(preview.priorBuild).toEqual({version: "0.1.0", blueprintHash: computeGameBlueprintHash(buildBlueprint()), generatedAt: expect.any(String)});
+            expect(preview.createFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
+            expect(preview.updateFiles).toEqual([]);
+            expect(preview.priorBuild).toBeUndefined();
         });
     });
 
@@ -762,7 +770,7 @@ describe("StudioBlueprintService", () => {
             if (result.status !== "ok") {
                 return;
             }
-            expect(fs.existsSync(path.join(result.projectRoot, "src", "generated", "index.js"))).toBe(true);
+            expect(fs.existsSync(path.join(result.projectRoot, "dist", "index.js"))).toBe(true);
             expect(await repository.list()).toHaveLength(1);
         });
 
@@ -786,13 +794,13 @@ describe("StudioBlueprintService", () => {
 
             expect(result.status).toBe("error");
             if (result.status === "error") {
-                expect(result.error).toContain("did not generate: package.json");
+                expect(result.error).toContain("already exists and is not empty");
                 expect(JSON.stringify(result)).not.toContain("\\n    at ");
             }
             expect(await repository.list()).toEqual([]);
         });
 
-        it("safely rebuilds into a directory previously produced by a build (unchanged: true, no conflict)", async () => {
+        it("refuses to build again into a directory a prior build already populated -- there is no rebuild/merge recognition", async () => {
             const service = createService();
             const outDir = path.join(tmpDir, "out");
 
@@ -800,10 +808,7 @@ describe("StudioBlueprintService", () => {
             const second = await service.build(buildBlueprint(), outDir, "blueprint.json");
 
             expect(first.status).toBe("ok");
-            expect(second.status).toBe("ok");
-            if (second.status === "ok") {
-                expect(second.unchanged).toBe(true);
-            }
+            expect(second.status).toBe("error");
         });
 
         it("rejects an outDir that resolves inside Studio's own internal directory", async () => {

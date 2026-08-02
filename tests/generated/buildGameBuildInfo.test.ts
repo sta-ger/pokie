@@ -55,7 +55,7 @@ describe("buildGameBuildInfo", () => {
         const info = buildGameBuildInfo(buildBlueprint(), "1.3.0");
 
         expect(info.files!.sort()).toEqual(
-            ["package.json", "README.md", "src/generated/index.js", "src/generated/build-info.json"].sort(),
+            ["package.json", "package-lock.json", "tsconfig.json", "README.md", "src/index.ts", "dist/index.js"].sort(),
         );
     });
 
@@ -65,46 +65,14 @@ describe("buildGameBuildInfo", () => {
         expect(info.files).toEqual(["a.txt", "b.txt"]);
     });
 
-    it("reuses the previous run's generatedAt when blueprint, pokie version, and source all still match", () => {
+    it("always stamps a fresh generatedAt -- there is no previous-run reuse anymore", () => {
         const blueprint = buildBlueprint();
-        const previous = buildGameBuildInfo(blueprint, "1.3.0", "blueprints/sample-slot.blueprint.json", new Date("2026-01-02T03:04:05.000Z"));
 
-        const info = buildGameBuildInfo(
-            blueprint,
-            "1.3.0",
-            "blueprints/sample-slot.blueprint.json",
-            new Date("2026-06-01T00:00:00.000Z"),
-            undefined,
-            previous,
-        );
+        const first = buildGameBuildInfo(blueprint, "1.3.0", undefined, new Date("2026-01-02T03:04:05.000Z"));
+        const second = buildGameBuildInfo(blueprint, "1.3.0", undefined, new Date("2026-06-01T00:00:00.000Z"));
 
-        expect(info.generatedAt).toBe("2026-01-02T03:04:05.000Z");
-    });
-
-    it("stamps a fresh generatedAt when the blueprint changed since the previous run", () => {
-        const previous = buildGameBuildInfo(buildBlueprint(), "1.3.0", undefined, new Date("2026-01-02T03:04:05.000Z"));
-
-        const info = buildGameBuildInfo(buildBlueprint({rows: 4}), "1.3.0", undefined, new Date("2026-06-01T00:00:00.000Z"), undefined, previous);
-
-        expect(info.generatedAt).toBe("2026-06-01T00:00:00.000Z");
-    });
-
-    it("stamps a fresh generatedAt when the pokie version changed since the previous run", () => {
-        const blueprint = buildBlueprint();
-        const previous = buildGameBuildInfo(blueprint, "1.3.0", undefined, new Date("2026-01-02T03:04:05.000Z"));
-
-        const info = buildGameBuildInfo(blueprint, "1.4.0", undefined, new Date("2026-06-01T00:00:00.000Z"), undefined, previous);
-
-        expect(info.generatedAt).toBe("2026-06-01T00:00:00.000Z");
-    });
-
-    it("stamps a fresh generatedAt when the source path changed since the previous run", () => {
-        const blueprint = buildBlueprint();
-        const previous = buildGameBuildInfo(blueprint, "1.3.0", "a.json", new Date("2026-01-02T03:04:05.000Z"));
-
-        const info = buildGameBuildInfo(blueprint, "1.3.0", "b.json", new Date("2026-06-01T00:00:00.000Z"), undefined, previous);
-
-        expect(info.generatedAt).toBe("2026-06-01T00:00:00.000Z");
+        expect(first.generatedAt).toBe("2026-01-02T03:04:05.000Z");
+        expect(second.generatedAt).toBe("2026-06-01T00:00:00.000Z");
     });
 
     it("records a given reelStripGeneration summary (one entry per generated reel) when provided", () => {
@@ -122,7 +90,7 @@ describe("buildGameBuildInfo", () => {
             ],
         };
 
-        const info = buildGameBuildInfo(buildBlueprint(), "1.3.0", undefined, new Date(), undefined, undefined, reelStripGeneration);
+        const info = buildGameBuildInfo(buildBlueprint(), "1.3.0", undefined, new Date(), undefined, reelStripGeneration);
 
         expect(info.reelStripGeneration).toEqual(reelStripGeneration);
     });

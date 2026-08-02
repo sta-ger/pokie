@@ -87,8 +87,11 @@ silently leaving a broken package on disk.
 ## `pokie build [config.json]`
 
 Generates a working [game package](game-packages.md) from a `GameBlueprint` — reels/rows, symbols, paylines,
-paytable, and reel strips/weights for a standard line-pay video slot. Unlike `pokie create`/`pokie init`, the
-output is plain JavaScript with no compile step: it's immediately loadable by every other command below.
+paytable, and reel strips/weights for a standard line-pay video slot. It writes the exact same canonical package
+file set `pokie create`/`pokie init` do (`package.json`, `package-lock.json`, `tsconfig.json`, `README.md`,
+`src/index.ts`, `dist/index.js`) — but unlike them, `dist/index.js` is written directly rather than requiring a
+real `npm install`/`npm run build` first: it's immediately loadable by every other command below, with `src/
+index.ts` there so a real `npm run build` (if you ever run one) still reproduces an equivalent `dist/index.js`.
 
 There are four ways to provide the blueprint:
 
@@ -114,38 +117,37 @@ npm install
 ```
 
 `pokie build <config.json>` validates the blueprint first (see below) and, if it has no errors, creates
-`./<manifest.id>` (or `--out <dir>`) and writes:
+`./<manifest.id>` (or `--out <dir>`) — which must not already exist, or must be empty (see [Building into an
+existing `--out` directory](#building-into-an-existing---out-directory) below) — and writes:
 
 - `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
-  omitted), a `pokie` dependency, `start`/`server`/`client` scripts, and `pokie.entry` pointing at
-  `./src/generated/index.js`;
-- `README.md` — a short orientation doc for the generated package itself: what each file is, that
-  `src/generated/` is generated output and shouldn't be hand-edited, and the `build -> inspect -> validate -> sim ->
-  report -> replay -> serve`/`dev` workflow below;
-- `src/generated/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig` with the
-  given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a `VideoSlotSession`, with
-  `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. The file is organized into labeled
-  sections (blueprint data, config assembly, `PokieGame` exports) with a header comment summarizing the build
-  metadata below. Re-run `pokie build` to regenerate this file after changing the blueprint — it's generated
-  output, not meant to be hand-edited;
-- `src/generated/build-info.json` — provenance for the generated output: the `GameBlueprint` schema version, the
-  `pokie` version that generated it, an ISO 8601 generation timestamp, a `sha256` hash of the source blueprint
-  (so an unchanged blueprint reproduces the same hash across re-runs), the source file path (when known), the
-  list of files this run generated (`files` — also what a later `pokie build` reads to recognize this directory
-  as safe to rebuild, see below), the blueprint's own `manifest`, and — only when the blueprint's
-  `reelStripGeneration` actually generated at least one reel — a `reelStripGeneration: {reels}` block with one
-  entry per *generated* reel (literal reels have no generation story to record): that reel's own authored config
-  (including its `seed`) and the resulting exact strip; see
-  [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation) above. The same summary (minus
-  the timestamp and the full hash's `sha256:` prefix repetition) is echoed as the header comment in `index.js`, so
-  either file is enough to tell what a generated package was built from. Re-running `pokie build` on an unchanged
-  blueprint with the same `pokie` version regenerates every file byte-identically, including `build-info.json`'s
-  own timestamp (reused from the previous run rather than restamped) — see
-  [Rebuilding an existing `--out` directory](#rebuilding-an-existing---out-directory).
+  omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
+  all pointing at `./dist/index.js` — the exact same entry path `pokie create`/`pokie init` packages compile
+  their own TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
+- `package-lock.json`/`tsconfig.json` — the same lockfile seed/compiler config `pokie create`/`pokie init` write
+  (`tsconfig.json` via the same shared `renderTsconfig`), so `npm install && npm run build` behaves identically
+  in a built package;
+- `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
+  `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
+  serve`/`dev` workflow below;
+- `src/index.ts`/`dist/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig`
+  with the given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a
+  `VideoSlotSession`, with `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Both files hold
+  the exact same generated logic — organized into labeled sections (blueprint data, config assembly, `PokieGame`
+  exports) with a short header comment naming the game and the `pokie` version that built it — no blueprint-
+  hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
+  byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
+  immediately loadable with no `npm install`/`npm run build` step; `src/index.ts` is typed (`GameBlueprint`
+  imported from `pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
 
-After generation, `pokie build` prints a build summary to stdout: package root, game id/name/version, blueprint
-hash, source path (when known), the files it wrote, and a `status` line — `generated` for a real build, or an
-explicit `unchanged` message when the rebuild above turned out to be a no-op.
+The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
+build-info file, no `src/generated` nesting — so a later source edit or rebuild never has to reconcile against,
+or is constrained by, whatever produced it originally; see
+[Building into an existing `--out` directory](#building-into-an-existing---out-directory) below.
+
+After generation, `pokie build` prints a build summary to stdout: the files it wrote, package root,
+game id/name/version, blueprint hash, and source path (when known) — all computed purely for this printout, never
+persisted into the package itself.
 
 Options:
 
@@ -417,9 +419,9 @@ type ReelStripGenerationConfig = {
 };
 ```
 
-Generation is fully **deterministic**: each "generated" entry supplies its own `seed`, so re-running `pokie build`
-on an unchanged blueprint always reproduces the same exact strip for every generated reel, and a rebuild reports
-`status  unchanged` exactly like a literal-`reelStrips` blueprint would.
+Generation is fully **deterministic**: each "generated" entry supplies its own `seed`, so building the same
+unchanged blueprint always reproduces the same exact strip for every generated reel — and the same byte-identical
+built package — exactly like a literal-`reelStrips` blueprint would.
 
 `constraints` entries are plain JSON, not class instances — a `type` field picks which
 [constraint](reel-strip-generation.md#constraints-reelstripconstraint) to build, and every other field maps onto
@@ -452,16 +454,13 @@ present, correct types, unknown symbols, and numeric bounds checked per constrai
 [Validation](#validation) below) — whether a configuration is actually *satisfiable* is a question only
 `ReelStripGenerator` itself can answer, by actually trying.
 
-**`build-info.json`** additionally records `reelStripGeneration: {reels}` when at least one reel was actually
-generated: one entry per *generated* reel (literal reels have no generation story to record) with that reel's own
-authored `config` (including its `seed`), `success`, `attemptsUsed`, `diagnostics`, and — on success — the
-resulting exact `strip`. Absent entirely for a literal-`reelStrips` blueprint, an all-literal
-`reelStripGeneration`, or one using neither field.
-
-`blueprintHash`/the `status  unchanged` no-op-rebuild check are both computed from the blueprint exactly as
-**authored** (with its `reelStripGeneration` array intact), not from the materialized `reelStrips` a build produces
-— two different authored configs that happen to generate byte-identical strips still hash differently, and only an
-unchanged *authored* blueprint is ever reported as a no-op rebuild.
+The built package itself carries no separate record of the generation that produced it — each generated reel's
+resolved strip is materialized straight into a plain `reelStrips` array embedded in `dist/index.js`, with the
+`reelStripGeneration` config (including each reel's own `seed`) gone entirely; the runtime module never depends
+on the generation API. `pokie build`'s own console summary's `blueprint hash`, though, is computed from the
+blueprint exactly as **authored** (with its `reelStripGeneration` array intact), not from the materialized
+`reelStrips` a build produces — two different authored configs that happen to generate byte-identical strips
+still hash differently.
 
 ### Validation
 
@@ -557,31 +556,23 @@ Failure modes:
   anything — whether the blueprint came from `<config.json>` or the wizard.
 - The output directory (`./<manifest.id>` or `--out <dir>`) already existing as a *file* (not a directory)
   throws — pick a different `--out` or remove it first.
-- The output directory already existing and containing a file `pokie build` did not generate — at any of
-  `package.json`, `README.md`, `src/generated/index.js`, `src/generated/build-info.json` — throws, naming the
-  conflicting file(s), instead of silently overwriting them. See the next section for exactly when this does and
-  doesn't trigger.
+- The output directory already existing and having any content in it at all — even just your own unrelated
+  `package.json`, or a directory a previous `pokie build` run itself produced — throws, naming the directory.
+  See the next section.
 
-### Rebuilding an existing `--out` directory
+### Building into an existing `--out` directory
 
-Re-running `pokie build <config.json> --out <dir>` into a directory from a previous `pokie build` run — after
-editing the blueprint, or just to pick up a newer `pokie` version — overwrites it in place instead of throwing.
-This is recognized via that directory's own `src/generated/build-info.json` (itself `pokie build` output): if it
-parses and its `generatedBy` is `"pokie build"`, every file its `files` list names is trusted and freely
-overwritten. An empty or entirely unrelated existing directory (no file at any of the four generated paths) is
-also fine to build into.
+`pokie build` only ever writes into a missing or empty directory — there is no in-place merge/rebuild, and no
+recognition of "this directory is safe to overwrite because a prior `pokie build` produced it": a built package
+carries no metadata of its own for a later build to recognize itself by (see above). Building again — after
+editing the blueprint, or just to pick up a newer `pokie` version — means removing the destination (or its
+contents) first, or pointing `--out` at a different, empty directory.
 
-What isn't overwritten silently: if the directory has no such `build-info.json` (or it fails to parse, or wasn't
-written by `pokie build`) *and* already has a file at one of the four generated paths — e.g. your own unrelated
-`package.json` sitting at that `--out` path — `pokie build` refuses and names exactly which path(s) conflict,
-rather than guessing. Files elsewhere in the directory (anything not at one of those four paths — your own docs,
-`node_modules`, a lockfile, `.git`) are never touched either way and never cause a conflict.
-
-Rebuilding the *same* blueprint with the same `pokie` version reproduces every generated file byte-for-byte,
-`build-info.json` included (see the `build-info.json` bullet above) — a rebuild of an unchanged blueprint is a
-true no-op, not just a smaller diff. The build summary's `status` line calls this out explicitly as `unchanged`.
-Want to check this without writing anything at all? `pokie build <config.json> --dry-run` validates and prints
-the same blueprint hash a real build would produce, with no `--out` directory created or touched.
+Building the *same* blueprint with the same `pokie` version, into two different empty directories, reproduces
+every generated file byte-for-byte — every build is a pure function of the blueprint, never dependent on
+whatever (if anything) previously occupied the destination. Want to check this without writing anything at all?
+`pokie build <config.json> --dry-run` validates and prints the same blueprint hash a real build would produce,
+with no `--out` directory created or touched.
 
 ### Interactive mode (`pokie build` with no arguments)
 
@@ -1889,10 +1880,13 @@ an unknown option, `--out`/`--format` without a value) throw the usual `Usage: p
 
 ## `pokie inspect <packageRoot>`
 
-Prints a package's provenance — reading `package.json` and, when present, `src/generated/build-info.json` — without
-loading or running the game at all. Where `pokie validate` answers "does this package satisfy the `PokieGame`
-contract", `pokie inspect` answers "what is this package and where did it come from": handy right after `pokie
-build` (or on a package you didn't build yourself) to check what blueprint and `pokie` version produced it.
+Prints a package's provenance — reading `package.json` and, when present, a legacy `src/generated/build-info.json`
+— without loading or running the game at all. Where `pokie validate` answers "does this package satisfy the
+`PokieGame` contract", `pokie inspect` answers "what is this package and where did it come from".
+
+A package the *current* `pokie build`/`pokie create --random` produces carries no such provenance file (see
+[Building into an existing `--out` directory](#building-into-an-existing---out-directory) above) — `pokie inspect`
+always reports it as not-generated:
 
 ```
 pokie inspect ./sample-slot
@@ -1901,20 +1895,16 @@ pokie inspect ./sample-slot
 ```
 Inspecting package at "./sample-slot"
 
-  game             Sample Slot (id: "sample-slot", v0.1.0)
-  package root     ./sample-slot
-  blueprint hash   sha256:...
-  source           examples/blueprints/sample-slot.blueprint.json
-  generated at     2026-01-02T03:04:05.000Z
-  pokie version    1.3.0
-  generated files  README.md, package.json, src/generated/build-info.json, src/generated/index.js
+  package.json     name: "sample-slot", version: "0.1.0"
+
+This package does not look like it was generated by "pokie build" (no src/generated/build-info.json found).
 ```
 
-If `src/generated/build-info.json` is missing (or present but not recognizably written by `pokie build` — see
-[Rebuilding an existing `--out` directory](#rebuilding-an-existing---out-directory) for what that check looks
-for), `pokie inspect` doesn't treat that as an error: it prints what `package.json` has (`name`/`version`) and a
-clear "this package does not look like it was generated by `pokie build`" message instead — true for a `pokie
-create`/`pokie init` scaffold, or any hand-written package.
+`src/generated/build-info.json` is only ever recognized when it's already there, parses, and its `generatedBy`
+is `"pokie build"` — true of a package an *older*, pre-migration `pokie build` produced, never something a
+current build writes. When recognized, `pokie inspect` prints the fuller provenance that file carries instead:
+game id/name/version, blueprint hash, source path (when known), generation timestamp, `pokie` version, and the
+files that older run generated.
 
 `pokie inspect` never writes or modifies anything. Exit code is `0` for a normal inspection either way (generated
 or not) — it's only `1` when `<packageRoot>` itself doesn't exist/isn't a directory, or its `package.json` is
@@ -3118,10 +3108,11 @@ client, even for a load/validation failure.
   `{"status": "ok", "warnings": [...], "manifest", "reels", "rows", "symbolsCount", "blueprintHash",
   "expectedFiles"}`. Always `200` for a well-formed request, same reasoning as `GET /api/project/validate`.
 - `POST /api/home/projects/build` — same request shape as the preview; on top of `load-error`/`invalid`, generates
-  the package via the same `GamePackageGenerating` service `pokie build` uses, including its safe-rebuild/conflict
-  check: `{"status": "error", "error": "..."}` (e.g. `"... already exists and contains file(s) ... did not
-  generate: ..."` — refusing to overwrite a directory it didn't produce) or `{"status": "ok", "projectRoot",
-  "manifest", "createdFiles", "buildInfo", "unchanged", "warnings"}` on success (`201`).
+  the package via the same `GamePackageGenerating` service `pokie build` uses, including its missing-or-empty-
+  directory check: `{"status": "error", "error": "..."}` (e.g. `"... already exists and is not empty ..."` —
+  refusing to build into a destination that already has content) or `{"status": "ok", "projectRoot", "manifest",
+  "createdFiles", "buildInfo", "warnings"}` on success (`201`) — `buildInfo` is computed purely for this response,
+  never persisted into the built package itself.
 - `GET /api/home/fs/browse?path=<optional>` — backs the "Browse" action on every filesystem-path input in Home's
   project-creation forms (Create/Init/Build from Blueprint). Lists `path`'s immediate children (defaulting to the
   directory Studio itself was started in when `path` is omitted): always `200` with `{"status": "ok",
@@ -3169,10 +3160,10 @@ client, even for a load/validation failure.
   "invalid", "errors": [...], "warnings": [...]}` or `200 {"status": "ok", "warnings": [...], "manifest", "reels",
   "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`. Never writes anything.
 - `POST /api/home/blueprints/build` — same request shape as the preview; on top of `invalid`, generates the package
-  via the same `GamePackageGenerating` service `pokie build` uses, including its safe-rebuild/conflict check (an
-  `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
+  via the same `GamePackageGenerating` service `pokie build` uses, including its missing-or-empty-directory check
+  (an `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
   `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "manifest", "createdFiles",
-  "buildInfo", "unchanged", "warnings"}` on success — the built project is also recorded as a recent project, so its
+  "buildInfo", "warnings"}` on success — the built project is also recorded as a recent project, so its
   **Open in Studio** button (`POST /api/home/projects/open` below) works exactly like every other Home flow's.
 - `POST /api/home/projects/open` `{"projectRoot": string}` — loads `projectRoot` with `loadPokieGame` and switches
   Studio to Project mode on success (`200 {"context": {...}, "manifest": {...}}`); `400 {"error": "..."}` if it

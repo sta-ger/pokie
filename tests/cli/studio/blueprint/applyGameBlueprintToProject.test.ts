@@ -40,7 +40,7 @@ describe("applyGameBlueprintToProject", () => {
     // exactly the state a project is in before its first Apply.
     function seedProject(blueprint: GameBlueprint): void {
         fs.writeFileSync(sourcePath, serializeGameBlueprint(blueprint));
-        gamePackageGenerator.generate(blueprint, cwd, "sample-slot", sourcePath);
+        gamePackageGenerator.generate(blueprint, cwd, "sample-slot");
     }
 
     function tempArtifactsLeftBehind(): string[] {
@@ -67,7 +67,7 @@ describe("applyGameBlueprintToProject", () => {
         }
         expect(result.blueprintHash).toBe(computeGameBlueprintHash(edited));
         expect(JSON.parse(fs.readFileSync(sourcePath, "utf-8"))).toEqual(edited);
-        expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toContain('"C"');
+        expect(fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8")).toContain('"C"');
         expect(tempArtifactsLeftBehind()).toEqual([]);
     });
 
@@ -94,7 +94,7 @@ describe("applyGameBlueprintToProject", () => {
         expect(result.status).toBe("ok");
         expect(fs.readFileSync(path.join(projectRoot, "node_modules", "pokie", "marker.txt"), "utf-8")).toBe("installed dependency");
         expect(fs.readFileSync(path.join(projectRoot, "NOTES.md"), "utf-8")).toBe("my own notes");
-        expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toContain('"C"');
+        expect(fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8")).toContain('"C"');
     });
 
     it("returns a conflict and makes no writes when the source blueprint on disk no longer matches expectedHash", async () => {
@@ -103,7 +103,7 @@ describe("applyGameBlueprintToProject", () => {
         const externallyEdited = buildBlueprint({symbols: ["A", "B", "EXTERNAL"]});
         // Simulate an external edit that already happened before this apply call was even made.
         fs.writeFileSync(sourcePath, serializeGameBlueprint(externallyEdited));
-        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8");
 
         const result = await applyGameBlueprintToProject({
             projectRoot,
@@ -120,7 +120,7 @@ describe("applyGameBlueprintToProject", () => {
         }
         expect(result.currentHash).toBe(computeGameBlueprintHash(externallyEdited));
         expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(externallyEdited));
-        expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
+        expect(fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8")).toBe(indexJsBefore);
         expect(tempArtifactsLeftBehind()).toEqual([]);
     });
 
@@ -135,7 +135,7 @@ describe("applyGameBlueprintToProject", () => {
         const original = buildBlueprint();
         seedProject(original);
         const externallyEdited = buildBlueprint({symbols: ["A", "B", "EXTERNAL"]});
-        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8");
         let readCount = 0;
 
         const result = await applyGameBlueprintToProject({
@@ -156,7 +156,7 @@ describe("applyGameBlueprintToProject", () => {
 
         expect(result.status).toBe("conflict");
         expect(readCount).toBe(2);
-        expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
+        expect(fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8")).toBe(indexJsBefore);
         expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(original));
         expect(tempArtifactsLeftBehind()).toEqual([]);
     });
@@ -172,7 +172,7 @@ describe("applyGameBlueprintToProject", () => {
         const original = buildBlueprint();
         seedProject(original);
         const externallyEdited = buildBlueprint({symbols: ["A", "B", "EXTERNAL"]});
-        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8");
         let readCount = 0;
         const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
 
@@ -204,7 +204,7 @@ describe("applyGameBlueprintToProject", () => {
             // Source itself is already correctly restored -- the leftover backup is a redundant copy,
             // not the only surviving one.
             expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(original));
-            expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
+            expect(fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8")).toBe(indexJsBefore);
             const leftover = tempArtifactsLeftBehind();
             expect(leftover.length).toBe(1);
             expect(leftover[0]).toContain(".captured-");
@@ -251,7 +251,7 @@ describe("applyGameBlueprintToProject", () => {
             }
             expect(result.blueprintHash).toBe(computeGameBlueprintHash(edited));
             expect(JSON.parse(fs.readFileSync(sourcePath, "utf-8"))).toEqual(edited);
-            expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toContain('"C"');
+            expect(fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8")).toContain('"C"');
             const leftover = tempArtifactsLeftBehind();
             expect(leftover.length).toBe(1);
             expect(leftover[0]).toContain(".tmp-");
@@ -286,7 +286,7 @@ describe("applyGameBlueprintToProject", () => {
     it("rolls the already-committed generated package back and restores source when publishing source itself fails", async () => {
         const original = buildBlueprint();
         seedProject(original);
-        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8");
         const edited = buildBlueprint({symbols: ["A", "B", "C"], paytable: {A: {3: 5}, B: {3: 2}, C: {3: 1}}});
 
         const result = await applyGameBlueprintToProject({
@@ -314,7 +314,7 @@ describe("applyGameBlueprintToProject", () => {
         }
         expect(result.error).toContain("pre-apply original was restored");
         expect(result.error).toContain("rolled back");
-        expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
+        expect(fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8")).toBe(indexJsBefore);
         expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(original));
         expect(tempArtifactsLeftBehind()).toEqual([]);
     });
@@ -326,9 +326,9 @@ describe("applyGameBlueprintToProject", () => {
     it("never touches source when a generated-package-file commit fails", async () => {
         const original = buildBlueprint();
         seedProject(original);
-        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8");
         const edited = buildBlueprint({symbols: ["A", "B", "C"], paytable: {A: {3: 5}, B: {3: 2}, C: {3: 1}}});
-        const indexJsPath = path.join(projectRoot, "src", "generated", "index.js");
+        const indexJsPath = path.join(projectRoot, "dist", "index.js");
         let linkCalled = false;
 
         const result = await applyGameBlueprintToProject({
@@ -373,7 +373,7 @@ describe("applyGameBlueprintToProject", () => {
     it("never overwrites an external write that recreates the source blueprint between capture and publish", async () => {
         const original = buildBlueprint();
         seedProject(original);
-        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8");
         const externallyEdited = buildBlueprint({symbols: ["A", "B", "EXTERNAL"]});
         let readCount = 0;
         let linkCount = 0;
@@ -413,7 +413,7 @@ describe("applyGameBlueprintToProject", () => {
         // to overwriting it.
         expect(linkCount).toBe(1);
         expect(fs.readFileSync(sourcePath, "utf-8")).toBe(serializeGameBlueprint(externallyEdited));
-        expect(fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8")).toBe(indexJsBefore);
+        expect(fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8")).toBe(indexJsBefore);
         // The pre-apply original this apply captured survives at its own ".captured-" path -- the only
         // leftover artifact, and the exact recovery point the error message names.
         const leftover = tempArtifactsLeftBehind();
@@ -435,11 +435,11 @@ describe("applyGameBlueprintToProject", () => {
     it("never overwrites a second external write that lands while restoring a captured original that no longer matched", async () => {
         const original = buildBlueprint();
         seedProject(original);
-        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJsBefore = fs.readFileSync(path.join(projectRoot, "dist", "index.js"), "utf-8");
         const edited = buildBlueprint({symbols: ["A", "B", "C"], paytable: {A: {3: 5}, B: {3: 2}, C: {3: 1}}});
         const firstExternalEdit = buildBlueprint({symbols: ["A", "B", "FIRST-EXTERNAL"]});
         const secondExternalEdit = buildBlueprint({symbols: ["A", "B", "SECOND-EXTERNAL"]});
-        const indexJsPath = path.join(projectRoot, "src", "generated", "index.js");
+        const indexJsPath = path.join(projectRoot, "dist", "index.js");
 
         const result = await applyGameBlueprintToProject({
             projectRoot,
@@ -511,7 +511,7 @@ describe("applyGameBlueprintToProject", () => {
             blueprint: firstEdit,
             blueprintValidator,
             gamePackageGenerator,
-            // The 1st rename is committing the first GENERATED_PACKAGE_FILES entry -- the first apply
+            // The 1st rename is committing the first BUILT_PACKAGE_FILES entry -- the first apply
             // already holds the lock by this point, and source is still fully untouched. Fire a second,
             // fully independent apply attempt exactly there, standing in for a second Studio tab (or
             // another API call) racing in while the first is mid-commit.

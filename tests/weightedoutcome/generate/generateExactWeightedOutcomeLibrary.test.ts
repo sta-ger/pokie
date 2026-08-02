@@ -343,10 +343,10 @@ describe("generateExactWeightedOutcomeLibrary", () => {
     });
 
     // Integration: proves the public producer works against a real "pokie build" package -- loaded
-    // exactly the way loadPokieGame() would, via require() of its generated src/generated/index.js --
-    // not just a hand-built test double (see GenerateTestFixtures.ts). renderGeneratedGameModule.ts
-    // wires createExactEnumerationSession() onto every generated finite video-slot package (any
-    // blueprint without mechanics.freeGames), driving the exact same createConfig()/VideoSlotSession
+    // exactly the way loadPokieGame() would, via require() of its built dist/index.js -- not just a
+    // hand-built test double (see GenerateTestFixtures.ts). renderBuiltGameModule.ts wires
+    // createExactEnumerationSession() onto every generated finite video-slot package (any blueprint
+    // without mechanics.freeGames), driving the exact same createConfig()/VideoSlotSession
     // construction createSession() itself uses.
     describe("against a real generated \"pokie build\" package", () => {
         let cwd: string;
@@ -376,7 +376,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             };
             const result = new GamePackageGenerator("1.3.0").generate(blueprint, cwd);
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            return require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+            return require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
         }
 
         it("implements createExactEnumerationSession and generates an exact library, driven by the real generated session/win-calculation runtime", async () => {
@@ -432,7 +432,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             };
             const result = new GamePackageGenerator("1.3.0").generate(blueprint, cwd);
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+            const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
 
             expect(game.createExactEnumerationSession).toBeUndefined();
 

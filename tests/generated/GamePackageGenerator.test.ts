@@ -1,16 +1,16 @@
 import {
     BetMode,
     BetModeRuntimeSemanticsInvalidError,
+    BUILT_PACKAGE_FILES,
     computeGameBlueprintHash,
     GameBlueprint,
-    GameBuildInfo,
     GamePackageGenerator,
-    GENERATED_PACKAGE_FILES,
     PokieGame,
 } from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {GamePackageCreator} from "../../cli/scaffold/GamePackageCreator.js";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
@@ -34,7 +34,7 @@ describe("GamePackageGenerator", () => {
         fs.rmSync(cwd, {recursive: true, force: true});
     });
 
-    it("writes package.json, README.md, and src/generated/{index.js,build-info.json} under ./<manifest.id> by default", () => {
+    it("writes the complete canonical package file set (package.json, package-lock.json, tsconfig.json, README.md, src/index.ts, dist/index.js) under ./<manifest.id> by default", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
         const result = generator.generate(buildBlueprint(), cwd);
@@ -42,16 +42,19 @@ describe("GamePackageGenerator", () => {
         const projectRoot = path.join(cwd, "sample-slot");
         expect(result.projectRoot).toBe(projectRoot);
         expect(result.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
-        expect(result.createdFiles.sort()).toEqual(
-            ["README.md", "package.json", "src/generated/build-info.json", "src/generated/index.js"].sort(),
+        expect(result.createdFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
+        expect(BUILT_PACKAGE_FILES.sort()).toEqual(
+            ["package.json", "package-lock.json", "tsconfig.json", "README.md", "src/index.ts", "dist/index.js"].sort(),
         );
-        expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
-        expect(fs.existsSync(path.join(projectRoot, "README.md"))).toBe(true);
-        expect(fs.existsSync(path.join(projectRoot, "src", "generated", "index.js"))).toBe(true);
-        expect(fs.existsSync(path.join(projectRoot, "src", "generated", "build-info.json"))).toBe(true);
+        for (const relativeFile of BUILT_PACKAGE_FILES) {
+            expect(fs.existsSync(path.join(projectRoot, ...relativeFile.split("/")))).toBe(true);
+        }
+        // No blueprint/build-info/creation-seed metadata of any kind is left in a newly built package --
+        // "src" only ever holds the one canonical entry module, same as "pokie create"/"pokie init".
+        expect(fs.readdirSync(path.join(projectRoot, "src"))).toEqual(["index.ts"]);
     });
 
-    it("writes a package.json with a pokie dependency and pokie.entry pointing at the generated module", () => {
+    it("writes a package.json matching the exact same canonical shape buildPackageJsonPatch gives pokie create/pokie init -- pokie dependency, main/exports/pokie.entry, and scripts.build all agreeing on dist/index.js", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
         const result = generator.generate(buildBlueprint(), cwd);
@@ -60,8 +63,90 @@ describe("GamePackageGenerator", () => {
         expect(pkg.name).toBe("sample-slot");
         expect(pkg.version).toBe("0.1.0");
         expect(pkg.dependencies).toEqual({pokie: "^1.3.0"});
-        expect(pkg.pokie).toEqual({entry: "./src/generated/index.js"});
-        expect(pkg.scripts).toEqual({start: "pokie dev .", server: "pokie serve .", client: "pokie client ."});
+        expect(pkg.pokie).toEqual({entry: "./dist/index.js"});
+        expect(pkg.main).toBe("./dist/index.js");
+        expect(pkg.exports).toBe("./dist/index.js");
+        expect(pkg.scripts).toEqual({build: "tsc", start: "pokie dev .", server: "pokie serve .", client: "pokie client ."});
+        expect(pkg.devDependencies).toEqual(expect.objectContaining({typescript: expect.any(String), "@types/node": expect.any(String)}));
+    });
+
+    it("writes a tsconfig.json matching the exact same canonical shape pokie create/pokie init write, and a package-lock.json seeding the same pokie/typescript/@types-node dependencies package.json declares", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+
+        const result = generator.generate(buildBlueprint(), cwd);
+        const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
+        const tsconfig = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "tsconfig.json"), "utf-8"));
+        const packageLock = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package-lock.json"), "utf-8"));
+
+        expect(tsconfig.compilerOptions.outDir).toBe("dist");
+        expect(tsconfig.compilerOptions.rootDir).toBe("src");
+        expect(tsconfig.include).toEqual(["src"]);
+
+        expect(packageLock.name).toBe(pkg.name);
+        expect(packageLock.version).toBe(pkg.version);
+        expect(packageLock.packages[""].dependencies).toEqual(pkg.dependencies);
+        expect(packageLock.packages[""].devDependencies).toEqual(pkg.devDependencies);
+    });
+
+    it("agrees with GamePackageCreator's ('pokie create') own package.json/tsconfig.json contract for the same pokie version, and reproduces the same required package file set its own 'create' phase (plus GamePackagePreparer's README.md) writes", () => {
+        const pokieVersion = "1.3.0";
+        const generator = new GamePackageGenerator(pokieVersion);
+        const creator = new GamePackageCreator(pokieVersion);
+
+        const built = generator.generate(buildBlueprint(), cwd);
+        const created = creator.create(cwd, "hand-authored-slot");
+
+        const builtPkg = JSON.parse(fs.readFileSync(path.join(built.projectRoot, "package.json"), "utf-8"));
+        const createdPkg = JSON.parse(fs.readFileSync(path.join(created.projectRoot, "package.json"), "utf-8"));
+
+        // Both go through the exact same shared buildPackageJsonPatch -- these fields must agree
+        // regardless of how differently each package's own src/ content is produced (a single generated
+        // module here, a hand-editable multi-file scaffold there).
+        expect(builtPkg.main).toBe(createdPkg.main);
+        expect(builtPkg.exports).toBe(createdPkg.exports);
+        expect(builtPkg.pokie).toEqual(createdPkg.pokie);
+        expect(builtPkg.scripts).toEqual(createdPkg.scripts);
+        expect(builtPkg.dependencies).toEqual(createdPkg.dependencies);
+        // "pokie build"'s own devDependencies is exactly "pokie create"'s, plus the @types/node this
+        // generator alone adds (see this generator's own DEFAULT_TYPES_NODE_VERSION doc comment) --
+        // never a different typescript version, or a dropped/renamed key.
+        expect(builtPkg.devDependencies).toEqual({...createdPkg.devDependencies, "@types/node": expect.any(String)});
+
+        const builtTsconfig = JSON.parse(fs.readFileSync(path.join(built.projectRoot, "tsconfig.json"), "utf-8"));
+        const createdTsconfig = JSON.parse(fs.readFileSync(path.join(created.projectRoot, "tsconfig.json"), "utf-8"));
+        expect(builtTsconfig).toEqual(createdTsconfig);
+
+        // GamePackagePreparer's own "create" phase (see its runCreatePhase) always writes README.md
+        // right after GamePackageCreator.create() itself returns -- reproduced here without a real npm
+        // install/build (already covered end-to-end by GamePackagePreparer.integration.test.ts's real,
+        // subprocess-driven lifecycle). Every BUILT_PACKAGE_FILES entry that doesn't require an actual
+        // "npm install"/"npm run build" to exist (package-lock.json, dist/index.js) must already be
+        // exactly what that create phase produces too.
+        const createPhaseFiles = [...created.createdFiles, "README.md"];
+        const requiresInstallOrBuild = ["package-lock.json", "dist/index.js"];
+        for (const canonicalFile of BUILT_PACKAGE_FILES) {
+            if (requiresInstallOrBuild.includes(canonicalFile)) {
+                continue;
+            }
+            expect(createPhaseFiles).toContain(canonicalFile);
+        }
+    });
+
+    it("writes an src/index.ts typed with the real GameBlueprint contract -- the same blueprint data, entry point, and manifest dist/index.js embeds", () => {
+        const generator = new GamePackageGenerator("1.3.0");
+
+        const result = generator.generate(buildBlueprint(), cwd);
+        const source = fs.readFileSync(path.join(result.projectRoot, "src", "index.ts"), "utf-8");
+        const distIndexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
+
+        expect(source).toContain('import type {GameBlueprint} from "pokie";');
+        expect(source).toContain("const blueprint: GameBlueprint = ");
+        expect(source).toContain("module.exports = {");
+        // Both files embed the exact same blueprint data and manifest -- a real "npm run build" of
+        // src/index.ts would reproduce an equivalent dist/index.js, not a different game.
+        const sourceBlueprint = JSON.parse(source.match(/const blueprint: GameBlueprint = ([\s\S]*?);\n\n/)![1]);
+        const distBlueprint = JSON.parse(distIndexJs.match(/const blueprint = ([\s\S]*?);\n\n/)![1]);
+        expect(sourceBlueprint).toEqual(distBlueprint);
     });
 
     it("defaults package.json's description when the blueprint manifest has none, and carries keywords", () => {
@@ -86,75 +171,28 @@ describe("GamePackageGenerator", () => {
         expect(pkg.description).toBe("A fruity slot.");
     });
 
-    it("writes a README.md documenting the generated structure and workflow", () => {
+    it("writes a README.md documenting the built structure and workflow", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
         const result = generator.generate(buildBlueprint(), cwd);
         const readme = fs.readFileSync(path.join(result.projectRoot, "README.md"), "utf-8");
 
         expect(readme).toContain("# Sample Slot");
-        expect(readme).toContain("src/generated/build-info.json");
+        expect(readme).toContain("dist/index.js");
         expect(readme).toContain("Do not hand-edit");
         expect(readme).toContain("pokie inspect .");
         expect(readme).toContain("pokie validate .");
     });
 
-    it("writes a build-info.json with schema version, pokie version, timestamp, blueprint hash, and manifest", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const blueprint = buildBlueprint();
-
-        const result = generator.generate(blueprint, cwd, undefined, "examples/blueprints/sample-slot.blueprint.json");
-        const buildInfo = JSON.parse(
-            fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"),
-        ) as GameBuildInfo;
-
-        expect(buildInfo.schemaVersion).toBe(1);
-        expect(buildInfo.generatedBy).toBe("pokie build");
-        expect(buildInfo.pokieVersion).toBe("1.3.0");
-        expect(buildInfo.source).toBe("examples/blueprints/sample-slot.blueprint.json");
-        expect(buildInfo.game).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
-        expect(() => new Date(buildInfo.generatedAt).toISOString()).not.toThrow();
-        expect(new Date(buildInfo.generatedAt).toISOString()).toBe(buildInfo.generatedAt);
-
-        expect(buildInfo.blueprintHash).toBe(computeGameBlueprintHash(blueprint));
-    });
-
-    it("lists every file it generated in build-info.json's \"files\"", () => {
+    it("embeds a short header naming the game and pokie version in dist/index.js, but no blueprint-hash/provenance metadata", () => {
         const generator = new GamePackageGenerator("1.3.0");
 
         const result = generator.generate(buildBlueprint(), cwd);
-        const buildInfo = JSON.parse(
-            fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"),
-        ) as GameBuildInfo;
-
-        expect(buildInfo.files!.sort()).toEqual(result.createdFiles.sort());
-    });
-
-    it("omits build-info.json's \"source\" field when no sourcePath is given", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-
-        const result = generator.generate(buildBlueprint(), cwd);
-        const buildInfo = JSON.parse(
-            fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"),
-        ) as GameBuildInfo;
-
-        expect(buildInfo.source).toBeUndefined();
-    });
-
-    it("embeds the same build-info summary (schema version, pokie version, hash) as a header comment in index.js, but not the timestamp", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-
-        const result = generator.generate(buildBlueprint(), cwd);
-        const indexJs = fs.readFileSync(path.join(result.projectRoot, "src", "generated", "index.js"), "utf-8");
-        const buildInfo = JSON.parse(
-            fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"),
-        ) as GameBuildInfo;
+        const indexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
 
         expect(indexJs).toContain("GENERATED FILE — do not hand-edit");
-        expect(indexJs).toContain(`v${buildInfo.schemaVersion}`);
-        expect(indexJs).toContain(buildInfo.pokieVersion);
-        expect(indexJs).toContain(buildInfo.blueprintHash);
-        expect(indexJs).not.toContain(buildInfo.generatedAt);
+        expect(indexJs).toContain("Sample Slot");
+        expect(indexJs).toContain("pokie 1.3.0");
     });
 
     it("honors --out (an explicit outDir) instead of deriving the directory from manifest.id", () => {
@@ -166,127 +204,79 @@ describe("GamePackageGenerator", () => {
         expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);
     });
 
-    it("rebuilds cleanly into a directory from a previous \"pokie build\" run of the same blueprint", () => {
+    it("rejects a manifest.id that looks like a path when no --out is given", () => {
         const generator = new GamePackageGenerator("1.3.0");
-        const first = generator.generate(buildBlueprint(), cwd);
 
-        expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
-
-        const second = generator.generate(buildBlueprint(), cwd);
-        expect(second.projectRoot).toBe(first.projectRoot);
-        expect(fs.existsSync(path.join(second.projectRoot, "package.json"))).toBe(true);
+        expect(() =>
+            generator.generate(buildBlueprint({manifest: {id: "../escape", name: "Escape", version: "0.1.0"}}), cwd),
+        ).toThrow(/not a valid directory name/);
     });
 
-    it("rebuilds cleanly after the blueprint changed, updating the generated content", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        generator.generate(buildBlueprint(), cwd);
-
-        const result = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-
-        const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
-        expect(pkg.version).toBe("0.2.0");
-        const readme = fs.readFileSync(path.join(result.projectRoot, "README.md"), "utf-8");
-        expect(readme).toContain("# Sample Slot Deluxe");
-    });
-
-    it("regenerates byte-identical index.js and build-info.json when rebuilding an unchanged blueprint with the same pokie version", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const blueprint = buildBlueprint();
-
-        const first = generator.generate(blueprint, cwd);
-        const firstIndexJs = fs.readFileSync(path.join(first.projectRoot, "src", "generated", "index.js"), "utf-8");
-        const firstBuildInfoRaw = fs.readFileSync(path.join(first.projectRoot, "src", "generated", "build-info.json"), "utf-8");
-
-        const second = generator.generate(blueprint, cwd);
-        const secondIndexJs = fs.readFileSync(path.join(second.projectRoot, "src", "generated", "index.js"), "utf-8");
-        const secondBuildInfoRaw = fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8");
-
-        expect(secondIndexJs).toBe(firstIndexJs);
-        expect(secondBuildInfoRaw).toBe(firstBuildInfoRaw);
-    });
-
-    it("stamps a fresh build-info.json generatedAt when rebuilding after the blueprint actually changed", () => {
-        jest.useFakeTimers().setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
-        try {
-            const generator = new GamePackageGenerator("1.3.0");
-            const first = generator.generate(buildBlueprint(), cwd);
-            const firstBuildInfo = JSON.parse(fs.readFileSync(path.join(first.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
-
-            jest.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
-            const second = generator.generate(buildBlueprint({rows: 4}), cwd);
-            const secondBuildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
-
-            expect(secondBuildInfo.blueprintHash).not.toBe(firstBuildInfo.blueprintHash);
-            expect(secondBuildInfo.generatedAt).toBe("2026-01-01T00:00:01.000Z");
-        } finally {
-            jest.useRealTimers();
-        }
-    });
-
-    it("stamps a fresh build-info.json generatedAt when rebuilding under a different pokie version, even with an unchanged blueprint", () => {
-        jest.useFakeTimers().setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
-        try {
-            const blueprint = buildBlueprint();
-            new GamePackageGenerator("1.3.0").generate(blueprint, cwd);
-
-            jest.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
-            const second = new GamePackageGenerator("1.4.0").generate(blueprint, cwd);
-            const secondBuildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
-
-            expect(secondBuildInfo.pokieVersion).toBe("1.4.0");
-            expect(secondBuildInfo.generatedAt).toBe("2026-01-01T00:00:01.000Z");
-        } finally {
-            jest.useRealTimers();
-        }
-    });
-
-    describe("package-level atomic publish", () => {
-        function readGeneratedFiles(projectRoot: string): Record<string, string> {
+    describe("missing-or-empty destination only -- no rebuild/merge recognition", () => {
+        function readBuiltFiles(projectRoot: string): Record<string, string> {
             const contents: Record<string, string> = {};
-            for (const relativePath of GENERATED_PACKAGE_FILES) {
+            for (const relativePath of BUILT_PACKAGE_FILES) {
                 contents[relativePath] = fs.readFileSync(path.join(projectRoot, ...relativePath.split("/")), "utf-8");
             }
             return contents;
-        }
-
-        // Every path GENERATED_PACKAGE_FILES names must always be a plain, independently packageable
-        // regular file -- never a symlink or any other indirection -- so a packer (npm pack, tar, zip,
-        // ...) never depends on how this generator laid the package out internally.
-        function assertAllPlainFiles(projectRoot: string): void {
-            for (const relativePath of GENERATED_PACKAGE_FILES) {
-                const stats = fs.lstatSync(path.join(projectRoot, ...relativePath.split("/")));
-                expect(stats.isSymbolicLink()).toBe(false);
-                expect(stats.isFile()).toBe(true);
-            }
-        }
-
-        // Every path actually present under projectRoot (recursively), relative to it -- used to confirm
-        // a rebuild never leaves behind a stale backup or leftover temp directory: exactly the packageable
-        // set GENERATED_PACKAGE_FILES names, nothing else.
-        function listAllFiles(root: string): string[] {
-            const results: string[] = [];
-            const walk = (dir: string, prefix: string): void => {
-                for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
-                    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
-                    if (entry.isDirectory()) {
-                        walk(path.join(dir, entry.name), relativePath);
-                    } else {
-                        results.push(relativePath);
-                    }
-                }
-            };
-            walk(root, "");
-            return results.sort();
         }
 
         afterEach(() => {
             jest.restoreAllMocks();
         });
 
-        it("leaves an existing build completely untouched, and no temp directory behind, when staging a file fails", () => {
+        it("builds into a directory that doesn't exist yet, or one that already exists but is empty", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+
+            expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
+
+            const emptyDir = path.join(cwd, "already-empty");
+            fs.mkdirSync(emptyDir, {recursive: true});
+            expect(() => generator.generate(buildBlueprint(), cwd, "already-empty")).not.toThrow();
+            expect(fs.existsSync(path.join(emptyDir, "package.json"))).toBe(true);
+        });
+
+        it("refuses a build into a directory that already holds any content, leaving it untouched -- there is no recognition of prior pokie build output to safely overwrite", () => {
             const generator = new GamePackageGenerator("1.3.0");
             const first = generator.generate(buildBlueprint(), cwd);
-            const original = readGeneratedFiles(first.projectRoot);
+
+            expect(() =>
+                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
+            ).toThrow(/already exists and is not empty/);
+
+            const pkg = JSON.parse(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8"));
+            expect(pkg.version).toBe("0.1.0");
+        });
+
+        it("throws a descriptive error when the target path already exists and is not a directory", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const projectRoot = path.join(cwd, "sample-slot");
+            fs.writeFileSync(projectRoot, "not a directory");
+
+            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not a directory/);
+        });
+
+        it("commits the whole package with a single atomic directory rename, never a partial write", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const projectRoot = path.join(cwd, "sample-slot");
+
+            const realRenameSync = fs.renameSync.bind(fs);
+            const renameTargets: string[] = [];
+            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+                renameTargets.push(String(to));
+                return realRenameSync(from, to);
+            });
+
+            const result = generator.generate(buildBlueprint(), cwd);
+
+            jest.restoreAllMocks();
+            expect(renameTargets).toEqual([projectRoot]);
+            expect(readBuiltFiles(result.projectRoot)["package.json"]).toContain("sample-slot");
+        });
+
+        it("leaves nothing behind -- no partial write, no leftover temp directory -- when staging a file fails", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const projectRoot = path.join(cwd, "sample-slot");
 
             jest.spyOn(fs, "writeFileSync").mockImplementation((targetPath) => {
                 if (String(targetPath).endsWith("README.md")) {
@@ -294,113 +284,7 @@ describe("GamePackageGenerator", () => {
                 }
             });
 
-            expect(() => generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd)).toThrow(
-                /simulated disk-full while staging/,
-            );
-
-            jest.restoreAllMocks();
-            expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
-            expect(fs.readdirSync(path.dirname(first.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
-        });
-
-        // The very first publish for a projectRoot has nothing previously consumable to protect, so it
-        // writes plain, independently relocatable files -- exactly what callers like
-        // applyGameBlueprintToProject (which stages into a throwaway directory and relocates each
-        // generated file individually) require. When projectRoot itself is fresh (missing, or present
-        // but empty -- true of every real first build and of applyGameBlueprintToProject's own
-        // always-fresh staging directories), that commit is one single directory rename, so a reader can
-        // only ever observe projectRoot missing/empty or fully populated -- never a subset of
-        // GENERATED_PACKAGE_FILES. A rebuild into a projectRoot that already holds a prior publish
-        // commits through that very same single-rename boundary (see the "rebuild" tests below) --
-        // projectRoot itself is swapped as a whole, rather than one public path at a time.
-        it("commits the whole package with a single atomic directory rename on the very first publish into a directory that doesn't exist yet", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const projectRoot = path.join(cwd, "sample-slot");
-
-            const realRenameSync = fs.renameSync.bind(fs);
-            const renameTargets: string[] = [];
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                renameTargets.push(String(to));
-                return realRenameSync(from, to);
-            });
-
-            const result = generator.generate(buildBlueprint(), cwd);
-
-            jest.restoreAllMocks();
-            // Exactly one rename commits the whole package -- never one rename per public path.
-            expect(renameTargets).toEqual([projectRoot]);
-            expect(readGeneratedFiles(result.projectRoot)["package.json"]).toContain("sample-slot");
-            for (const relativePath of GENERATED_PACKAGE_FILES) {
-                expect(fs.lstatSync(path.join(result.projectRoot, ...relativePath.split("/"))).isSymbolicLink()).toBe(false);
-            }
-        });
-
-        // The same single-rename commit applies when projectRoot already exists but is empty (e.g. a
-        // caller -- or applyGameBlueprintToProject -- pre-created it) -- POSIX rename can replace an
-        // existing empty directory exactly as atomically as it can create a missing one.
-        it("commits the whole package with a single atomic directory rename on the very first publish into a directory that already exists but is empty", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const projectRoot = path.join(cwd, "sample-slot");
-            fs.mkdirSync(projectRoot, {recursive: true});
-
-            const realRenameSync = fs.renameSync.bind(fs);
-            const renameTargets: string[] = [];
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                renameTargets.push(String(to));
-                return realRenameSync(from, to);
-            });
-
-            const result = generator.generate(buildBlueprint(), cwd);
-
-            jest.restoreAllMocks();
-            expect(renameTargets).toEqual([projectRoot]);
-            expect(readGeneratedFiles(result.projectRoot)["README.md"]).toBeDefined();
-        });
-
-        // The atomicity claim itself: right up to the single rename that commits the package, projectRoot
-        // must not exist at all (never a directory a reader could peek into and see some, but not all,
-        // public paths) -- and immediately after that one call, every public path must already resolve.
-        it("never observes projectRoot holding some, but not all, public paths while committing the very first publish", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const projectRoot = path.join(cwd, "sample-slot");
-
-            const realRenameSync = fs.renameSync.bind(fs);
-            let observed: {existedBefore: boolean; presentAfter: boolean[]} | undefined;
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                if (String(to) !== projectRoot) {
-                    return realRenameSync(from, to);
-                }
-                const existedBefore = fs.existsSync(projectRoot);
-                const result = realRenameSync(from, to);
-                const presentAfter = GENERATED_PACKAGE_FILES.map((relativePath) =>
-                    fs.existsSync(path.join(projectRoot, ...relativePath.split("/"))),
-                );
-                observed = {existedBefore, presentAfter};
-                return result;
-            });
-
-            generator.generate(buildBlueprint(), cwd);
-
-            jest.restoreAllMocks();
-            expect(observed).toEqual({existedBefore: false, presentAfter: [true, true, true, true]});
-        });
-
-        // A failure at the single commit rename must leave projectRoot exactly as it was found (missing,
-        // here) and nothing else behind -- there's no partial set of files to roll back, since the rename
-        // either moves everything or nothing.
-        it("leaves projectRoot missing and nothing else behind when the very first publish's atomic commit rename fails", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const projectRoot = path.join(cwd, "sample-slot");
-
-            const realRenameSync = fs.renameSync.bind(fs);
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                if (String(to) === projectRoot) {
-                    throw new Error("simulated rename failure committing the first build");
-                }
-                return realRenameSync(from, to);
-            });
-
-            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/simulated rename failure committing the first build/);
+            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/simulated disk-full while staging/);
 
             jest.restoreAllMocks();
             expect(fs.existsSync(projectRoot)).toBe(false);
@@ -408,314 +292,27 @@ describe("GamePackageGenerator", () => {
 
             // A clean retry (unmocked) still succeeds afterward -- the failure left nothing in the way.
             const result = generator.generate(buildBlueprint(), cwd);
-            expect(fs.lstatSync(path.join(result.projectRoot, "package.json")).isSymbolicLink()).toBe(false);
+            expect(fs.existsSync(path.join(result.projectRoot, "package.json"))).toBe(true);
         });
 
-        // A projectRoot that already holds unrelated content of its own (a real first build into a
-        // directory an npm install, or a user, already put something in) can't be swapped in one rename
-        // without disturbing that content, and there's no atomic way to commit several independent public
-        // paths into it either -- so this generator refuses the publish outright rather than ever
-        // committing the four public paths one at a time (which would let a reader observe a subset of
-        // GENERATED_PACKAGE_FILES). Nothing new is written, and the directory's own unrelated content is
-        // left completely untouched.
-        it("fails closed, without publishing any generated files, when the very first publish would land in a non-empty directory", () => {
+        it("leaves projectRoot missing and nothing else behind when the commit rename itself fails", () => {
             const generator = new GamePackageGenerator("1.3.0");
             const projectRoot = path.join(cwd, "sample-slot");
-            fs.mkdirSync(projectRoot, {recursive: true});
-            fs.writeFileSync(path.join(projectRoot, "LICENSE"), "MIT\n");
-
-            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not empty/);
-
-            expect(fs.readdirSync(projectRoot)).toEqual(["LICENSE"]);
-            // No leftover staging directory either.
-            expect(fs.readdirSync(cwd).filter((entry) => entry !== "sample-slot")).toEqual([]);
-        });
-
-        // The core guarantee for every rebuild into a projectRoot this generator already published to:
-        // the whole projectRoot is swapped as one unit (see GamePackageGenerator's own publishRebuild
-        // comment), so a failure committing that swap must restore the prior projectRoot exactly as it
-        // was, leaving the whole prior package fully intact -- whatever fails, and whenever it fails.
-        it("preserves the complete prior package, with no stale artifacts left, when a rebuild's commit fails partway through", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const first = generator.generate(buildBlueprint(), cwd);
-            const original = readGeneratedFiles(first.projectRoot);
-            const projectRoot = first.projectRoot;
 
             const realRenameSync = fs.renameSync.bind(fs);
             jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                // The freshly staged tempDir commits cleanly moving unmanaged entries aside and renaming
-                // projectRoot itself out to its stale backup; fail exactly the rename that would swap the
-                // staged tempDir into projectRoot's now-freed name, proving the rollback restores the
-                // whole prior projectRoot, not just part of it.
-                if (String(from).includes(".tmp-") && String(to) === projectRoot) {
-                    throw new Error("simulated rename failure committing the rebuild");
+                if (String(to) === projectRoot) {
+                    throw new Error("simulated rename failure committing the build");
                 }
                 return realRenameSync(from, to);
             });
 
-            expect(() =>
-                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-            ).toThrow(/simulated rename failure committing the rebuild/);
+            expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/simulated rename failure committing the build/);
 
             jest.restoreAllMocks();
-            expect(readGeneratedFiles(first.projectRoot)).toEqual(original);
-            assertAllPlainFiles(first.projectRoot);
-            // No leftover stale backup or temp directory from the failed attempt -- exactly the
-            // packageable file set remains.
-            expect(listAllFiles(first.projectRoot)).toEqual([...GENERATED_PACKAGE_FILES].sort());
-            expect(fs.readdirSync(path.dirname(first.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
-
-            // A clean retry (unmocked) still succeeds afterward -- the failure left nothing in the way.
-            const retried = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-            expect(JSON.parse(fs.readFileSync(path.join(retried.projectRoot, "package.json"), "utf-8")).version).toBe("0.2.0");
+            expect(fs.existsSync(projectRoot)).toBe(false);
+            expect(fs.readdirSync(cwd)).toEqual([]);
         });
-
-        // The positive case: a successful rebuild actually updates every generated file to describe the
-        // new build, and every public path stays exactly what it always is -- a plain, directly
-        // packageable regular file, never a symlink or any other indirection -- with no stale backup or
-        // temp directory left behind.
-        it("commits a successful rebuild with every public path remaining a plain, packageable file", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            generator.generate(buildBlueprint(), cwd);
-            assertAllPlainFiles(path.join(cwd, "sample-slot"));
-
-            const second = generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-            assertAllPlainFiles(second.projectRoot);
-
-            const pkg = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "package.json"), "utf-8"));
-            const buildInfo = JSON.parse(fs.readFileSync(path.join(second.projectRoot, "src", "generated", "build-info.json"), "utf-8")) as GameBuildInfo;
-            const readme = fs.readFileSync(path.join(second.projectRoot, "README.md"), "utf-8");
-            expect(pkg.version).toBe("0.2.0");
-            expect(buildInfo.game.version).toBe("0.2.0");
-            expect(readme).toContain("# Sample Slot Deluxe");
-
-            // Exactly the packageable file set remains -- no leftover stale backup or temp directory from
-            // the rebuild's own commit.
-            expect(listAllFiles(second.projectRoot)).toEqual([...GENERATED_PACKAGE_FILES].sort());
-            expect(fs.readdirSync(path.dirname(second.projectRoot)).filter((entry) => entry !== "sample-slot")).toEqual([]);
-        });
-
-        // The atomicity claim for a rebuild, mirroring the equivalent first-build test above: right up to
-        // the single rename that swaps the freshly staged package into projectRoot's place, every public
-        // path must still resolve to its complete *old* content (proving no earlier, partial commit ever
-        // touched projectRoot), and immediately after that one call, every public path must already
-        // resolve to its complete *new* content -- so a reader can never observe a mixture of the two
-        // (e.g. a new package.json paired with an old generated module).
-        it("never observes a mixture of the old and new generated files while committing a successful rebuild", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const first = generator.generate(buildBlueprint(), cwd);
-            const projectRoot = first.projectRoot;
-
-            const realRenameSync = fs.renameSync.bind(fs);
-            let observed: {existedBefore: boolean; contentsBefore: Record<string, string> | undefined; contentsAfter: Record<string, string>} | undefined;
-            jest.spyOn(fs, "renameSync").mockImplementation((from, to) => {
-                if (String(to) !== projectRoot) {
-                    return realRenameSync(from, to);
-                }
-                // projectRoot was already renamed aside to its stale backup by an earlier call, so it
-                // must not exist here -- confirming this rename is the sole boundary between old and new.
-                const existedBefore = fs.existsSync(projectRoot);
-                const contentsBefore = existedBefore ? readGeneratedFiles(projectRoot) : undefined;
-                const result = realRenameSync(from, to);
-                const contentsAfter = readGeneratedFiles(projectRoot);
-                observed = {existedBefore, contentsBefore, contentsAfter};
-                return result;
-            });
-
-            const second = generator.generate(
-                buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}),
-                cwd,
-            );
-
-            jest.restoreAllMocks();
-            expect(observed?.existedBefore).toBe(false);
-            const pkg = JSON.parse(observed!.contentsAfter["package.json"]);
-            const buildInfo = JSON.parse(observed!.contentsAfter["src/generated/build-info.json"]) as GameBuildInfo;
-            expect(pkg.version).toBe("0.2.0");
-            expect(buildInfo.game.version).toBe("0.2.0");
-            expect(observed!.contentsAfter).toEqual(readGeneratedFiles(second.projectRoot));
-        });
-
-        it("fails closed with an actionable error, before writing anything, when a recognized package is missing a previously generated file", () => {
-            const generator = new GamePackageGenerator("1.3.0");
-            const first = generator.generate(buildBlueprint(), cwd);
-            fs.rmSync(path.join(first.projectRoot, "README.md"));
-
-            expect(() =>
-                generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-            ).toThrow(/is missing file\(s\) a previous "pokie build" generated: README\.md/);
-
-            // Nothing was written as a result of the failed attempt -- package.json (which was present
-            // and recognized) left exactly as it was.
-            expect(JSON.parse(fs.readFileSync(path.join(first.projectRoot, "package.json"), "utf-8")).version).toBe("0.1.0");
-        });
-
-        // The four public generated-file paths (package.json, README.md, src/generated/index.js,
-        // src/generated/build-info.json) themselves must be trusted before generate() ever reads or
-        // writes through one of them -- an attacker-controlled symlink there could point anywhere,
-        // including outside projectRoot entirely.
-        describe("untrusted public generated-file paths", () => {
-            it("fails closed, without reading/copying/deleting the escape target, when a public path is a symlink escaping the output tree", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-                const original = readGeneratedFiles(first.projectRoot);
-
-                const outsideDir = path.join(cwd, "outside-secret");
-                fs.mkdirSync(outsideDir, {recursive: true});
-                fs.writeFileSync(path.join(outsideDir, "secret.json"), '{"leaked": true}');
-                const outsideTarget = path.join(outsideDir, "secret.json");
-
-                const packageJsonPath = path.join(first.projectRoot, "package.json");
-                fs.rmSync(packageJsonPath);
-                fs.symlinkSync(outsideTarget, packageJsonPath);
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-                ).toThrow(/package\.json.*symlink/);
-
-                // The escape target is completely untouched -- neither read nor deleted.
-                expect(fs.existsSync(outsideTarget)).toBe(true);
-                expect(fs.readFileSync(outsideTarget, "utf-8")).toBe('{"leaked": true}');
-                // Every other public path is exactly as the first build left it -- only package.json was
-                // ever touched by the attacker, and this rejection happened before any write.
-                const {"package.json": _pkg, ...restOriginal} = original;
-                const restNow = readGeneratedFiles(first.projectRoot);
-                Reflect.deleteProperty(restNow as Record<string, string>, "package.json");
-                expect(restNow).toEqual(restOriginal);
-            });
-
-            it("fails closed when a public path is a directory instead of the plain file this generator writes", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-
-                const readmePath = path.join(first.projectRoot, "README.md");
-                fs.rmSync(readmePath);
-                fs.mkdirSync(readmePath);
-
-                expect(() =>
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd),
-                ).toThrow(/README\.md.*directory/);
-            });
-
-            // lstat on the leaf path alone never catches an attacker turning an *intermediate* component
-            // into a symlink to an arbitrary external directory, since ordinary path resolution follows
-            // every non-final component automatically -- so every ancestor between projectRoot and a
-            // public path's own parent is walked and checked too (see assertPlainAncestorDirectories).
-            it("fails closed, without reading/deleting the escape target, when the intermediate \"src/generated\" ancestor directory is itself a symlink escaping the output tree", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-
-                const outsideDir = path.join(cwd, "outside-secret");
-                fs.mkdirSync(outsideDir, {recursive: true});
-                fs.writeFileSync(path.join(outsideDir, "build-info.json"), '{"leaked": true}');
-
-                const srcGeneratedDir = path.join(first.projectRoot, "src", "generated");
-                fs.rmSync(srcGeneratedDir, {recursive: true});
-                fs.symlinkSync(outsideDir, srcGeneratedDir);
-
-                let thrown: Error | undefined;
-                try {
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-                } catch (error) {
-                    thrown = error as Error;
-                }
-
-                expect(thrown?.message).toContain(srcGeneratedDir);
-                expect(thrown?.message).toContain("is a symlink, not the plain directory");
-                // The escape target is completely untouched -- neither read nor deleted.
-                expect(fs.existsSync(path.join(outsideDir, "build-info.json"))).toBe(true);
-                expect(fs.readFileSync(path.join(outsideDir, "build-info.json"), "utf-8")).toBe('{"leaked": true}');
-            });
-
-            it("fails closed, without reading/deleting the escape target, when the intermediate \"src\" ancestor directory is itself a symlink escaping the output tree", () => {
-                const generator = new GamePackageGenerator("1.3.0");
-                const first = generator.generate(buildBlueprint(), cwd);
-
-                const outsideDir = path.join(cwd, "outside-secret");
-                fs.mkdirSync(path.join(outsideDir, "generated"), {recursive: true});
-                fs.writeFileSync(path.join(outsideDir, "generated", "build-info.json"), '{"leaked": true}');
-
-                const srcDir = path.join(first.projectRoot, "src");
-                fs.rmSync(srcDir, {recursive: true});
-                fs.symlinkSync(outsideDir, srcDir);
-
-                let thrown: Error | undefined;
-                try {
-                    generator.generate(buildBlueprint({manifest: {id: "sample-slot", name: "Sample Slot Deluxe", version: "0.2.0"}}), cwd);
-                } catch (error) {
-                    thrown = error as Error;
-                }
-
-                expect(thrown?.message).toContain(srcDir);
-                expect(thrown?.message).toContain("is a symlink, not the plain directory");
-                expect(fs.existsSync(path.join(outsideDir, "generated", "build-info.json"))).toBe(true);
-                expect(fs.readFileSync(path.join(outsideDir, "generated", "build-info.json"), "utf-8")).toBe('{"leaked": true}');
-            });
-        });
-    });
-
-    it("builds into an existing but empty directory", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "sample-slot");
-        fs.mkdirSync(projectRoot, {recursive: true});
-
-        expect(() => generator.generate(buildBlueprint(), cwd)).not.toThrow();
-        expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
-    });
-
-    it("refuses a first build into an existing directory that already holds unrelated files, leaving them untouched", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "sample-slot");
-        fs.mkdirSync(projectRoot, {recursive: true});
-        fs.writeFileSync(path.join(projectRoot, "LICENSE"), "MIT\n");
-
-        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not empty/);
-        expect(fs.readdirSync(projectRoot)).toEqual(["LICENSE"]);
-    });
-
-    it("throws a descriptive error when the target path already exists and is not a directory", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "sample-slot");
-        fs.writeFileSync(projectRoot, "not a directory");
-
-        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/already exists and is not a directory/);
-    });
-
-    it("throws naming the conflicting file when the target directory has its own unrelated package.json", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "sample-slot");
-        fs.mkdirSync(projectRoot, {recursive: true});
-        fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "not-pokie-build-output"}));
-
-        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/did not generate: package\.json/);
-    });
-
-    it("throws when the target directory's build-info.json is corrupt JSON", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "sample-slot");
-        fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
-        fs.writeFileSync(path.join(projectRoot, "package.json"), "{}");
-        fs.writeFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "{not valid json");
-
-        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/did not generate: package\.json/);
-    });
-
-    it("throws when the target directory's build-info.json wasn't written by \"pokie build\"", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const projectRoot = path.join(cwd, "sample-slot");
-        fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
-        fs.writeFileSync(path.join(projectRoot, "README.md"), "# hand-written\n");
-        fs.writeFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), JSON.stringify({generatedBy: "something-else"}));
-
-        expect(() => generator.generate(buildBlueprint(), cwd)).toThrow(/did not generate: README\.md/);
-    });
-
-    it("rejects a manifest.id that looks like a path when no --out is given", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-
-        expect(() =>
-            generator.generate(buildBlueprint({manifest: {id: "../escape", name: "Escape", version: "0.1.0"}}), cwd),
-        ).toThrow(/not a valid directory name/);
     });
 
     it("generates a game package that is loadable and playable through the pokie contract", () => {
@@ -729,7 +326,7 @@ describe("GamePackageGenerator", () => {
         });
 
         const result = generator.generate(blueprint, cwd);
-        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
 
         expect(game.getManifest()).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
 
@@ -754,7 +351,7 @@ describe("GamePackageGenerator", () => {
         });
 
         const result = generator.generate(blueprint, cwd);
-        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
         const session = game.createSession();
         session.setBet(1);
         session.play();
@@ -778,7 +375,7 @@ describe("GamePackageGenerator", () => {
         });
 
         const result = generator.generate(blueprint, cwd);
-        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
         const session = game.createSession();
         session.setBet(1);
         session.play();
@@ -801,7 +398,7 @@ describe("GamePackageGenerator", () => {
         });
 
         const result = generator.generate(blueprint, cwd);
-        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
         const session = game.createSession() as unknown as {getWonFreeGamesNumber?: () => number; setBet(bet: number): void; play(): void};
 
         // getWonFreeGamesNumber only exists on VideoSlotWithFreeGamesSession -- its presence confirms
@@ -818,8 +415,8 @@ describe("GamePackageGenerator", () => {
         const withBetModes = generator.generate(buildBlueprint({betModes, manifest: {id: "with-bet-modes", name: "With", version: "0.1.0"}}), cwd);
         const withoutBetModes = generator.generate(buildBlueprint({manifest: {id: "without-bet-modes", name: "Without", version: "0.1.0"}}), cwd);
 
-        const gameWithBetModes = require(path.join(withBetModes.projectRoot, "src", "generated", "index.js")) as PokieGame;
-        const gameWithoutBetModes = require(path.join(withoutBetModes.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const gameWithBetModes = require(path.join(withBetModes.projectRoot, "dist", "index.js")) as PokieGame;
+        const gameWithoutBetModes = require(path.join(withoutBetModes.projectRoot, "dist", "index.js")) as PokieGame;
 
         expect(gameWithBetModes.getBetModes?.()).toEqual(betModes);
         expect(gameWithoutBetModes.getBetModes).toBeUndefined();
@@ -840,7 +437,7 @@ describe("GamePackageGenerator", () => {
             cwd,
         );
 
-        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
         const session = game.createSession();
 
         // No BetModeSelecting/StakeAmountDetermining wiring at all -- getBet()/getStakeAmount() (if
@@ -868,7 +465,7 @@ describe("GamePackageGenerator", () => {
             cwd,
         );
 
-        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
         const session = game.createSession();
 
         expect((session as Partial<{getBetModeId: unknown}>).getBetModeId).toBeUndefined();
@@ -877,7 +474,7 @@ describe("GamePackageGenerator", () => {
 
     describe("explicit runtime-semantics contract (runtimeType/isDefault/forcedFreeGames)", () => {
         function createSessionAs(result: {projectRoot: string}) {
-            const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+            const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
             return game.createSession() as unknown as {
                 getBetModeId(): string;
                 setBetMode(modeId: string): void;
@@ -1034,14 +631,14 @@ describe("GamePackageGenerator", () => {
 
             // getBetModes() (declarative, always available) is the source pokie sim/report actually
             // read targetRtp from -- confirm it round-trips unchanged.
-            const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+            const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
             expect(game.getBetModes?.()).toEqual(betModes);
 
-            // The generated index.js source itself must also wire each mode's own targetRtp into its
-            // BetModeDefinition -- see renderGeneratedGameModule.ts -- so a caller who bypasses pokie
+            // The generated dist/index.js source itself must also wire each mode's own targetRtp into
+            // its BetModeDefinition -- see renderBuiltGameModule.ts -- so a caller who bypasses pokie
             // sim/report and constructs/uses VideoSlotWithBetModesSession directly still sees a
             // BetModeDescribing.getTargetRtp() consistent with the declared blueprint, never a guess.
-            const indexJs = fs.readFileSync(path.join(result.projectRoot, "src", "generated", "index.js"), "utf-8");
+            const indexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
             expect(indexJs).toContain("targetRtp: mode.targetRtp");
         });
     });
@@ -1050,13 +647,13 @@ describe("GamePackageGenerator", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const result = generator.generate(buildBlueprint({manifest: {id: "no-modes", name: "No Modes", version: "0.1.0"}}), cwd);
 
-        const game = require(path.join(result.projectRoot, "src", "generated", "index.js")) as PokieGame;
+        const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
         const session = game.createSession();
 
         expect((session as Partial<{setBetMode: unknown}>).setBetMode).toBeUndefined();
     });
 
-    it("materializes reelStrips from a mixed literal/generated reelStripGeneration and records the per-reel summaries in build-info.json", () => {
+    it("materializes reelStrips from a mixed literal/generated reelStripGeneration into the built module, never leaking the generation config itself", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint({
             reelStripGeneration: [
@@ -1079,13 +676,9 @@ describe("GamePackageGenerator", () => {
             ],
         };
 
-        const result = generator.generate(blueprint, cwd, undefined, undefined, reelStripGeneration);
+        const result = generator.generate(blueprint, cwd, undefined, reelStripGeneration);
 
-        expect(result.buildInfo.reelStripGeneration).toEqual(reelStripGeneration);
-        const buildInfoOnDisk = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
-        expect(buildInfoOnDisk.reelStripGeneration).toEqual(reelStripGeneration);
-
-        const indexJs = fs.readFileSync(path.join(result.projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
         const embedded = JSON.parse(indexJs.match(/const blueprint = ([\s\S]*?);\n\n/)![1]);
         expect(embedded.reelStrips).toEqual([
             ["A", "B"],
@@ -1095,32 +688,7 @@ describe("GamePackageGenerator", () => {
         expect(Object.keys(embedded)).not.toContain("reelStripGeneration");
     });
 
-    it("computes blueprintHash from the authored blueprint (with reelStripGeneration intact), not the materialized reelStrips", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const blueprint = buildBlueprint({
-            reelStripGeneration: [
-                {type: "literal", strip: ["A", "B"]},
-                {type: "literal", strip: ["A", "B"]},
-                {type: "literal", strip: ["A", "B"]},
-            ],
-        });
-
-        const result = generator.generate(blueprint, cwd);
-
-        expect(result.buildInfo.blueprintHash).toBe(computeGameBlueprintHash(blueprint));
-    });
-
-    it("omits reelStripGeneration from build-info.json when not given", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-
-        const result = generator.generate(buildBlueprint(), cwd);
-
-        expect(result.buildInfo.reelStripGeneration).toBeUndefined();
-        const buildInfoOnDisk = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "src", "generated", "build-info.json"), "utf-8"));
-        expect(buildInfoOnDisk.reelStripGeneration).toBeUndefined();
-    });
-
-    it("self-resolves reelStripGeneration when called directly without a pre-resolved 5th argument", () => {
+    it("self-resolves reelStripGeneration when called directly without a pre-resolved 4th argument", () => {
         const generator = new GamePackageGenerator("1.3.0");
         const blueprint = buildBlueprint({
             reelStripGeneration: [
@@ -1132,29 +700,23 @@ describe("GamePackageGenerator", () => {
 
         const result = generator.generate(blueprint, cwd);
 
-        expect(result.buildInfo.reelStripGeneration?.reels).toHaveLength(1);
-        const [reel1] = result.buildInfo.reelStripGeneration!.reels;
-        expect(reel1.reelIndex).toBe(1);
-        expect(reel1.success).toBe(true);
-        expect(reel1.strip).toHaveLength(2);
-
-        const indexJs = fs.readFileSync(path.join(result.projectRoot, "src", "generated", "index.js"), "utf-8");
+        const indexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
         const embedded = JSON.parse(indexJs.match(/const blueprint = ([\s\S]*?);\n\n/)![1]);
         expect(embedded.reelStrips[0]).toEqual(["A", "B"]);
-        expect(embedded.reelStrips[1]).toEqual(reel1.strip);
+        expect(embedded.reelStrips[1]).toHaveLength(2);
         expect(embedded.reelStrips[2]).toEqual(["B", "A"]);
     });
 
-    it("records the exact authored config, including type: \"generated\", for a self-resolved reel's provenance", () => {
-        const generator = new GamePackageGenerator("1.3.0");
-        const generatedSpec = {type: "generated" as const, length: 2, symbolCounts: {A: 1, B: 1}, seed: 1};
+    it("computes the same blueprintHash from the authored blueprint regardless of reelStripGeneration materialization", () => {
         const blueprint = buildBlueprint({
-            reelStripGeneration: [generatedSpec, {type: "literal", strip: ["B", "A"]}, {type: "literal", strip: ["A", "B"]}],
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "B"]},
+                {type: "literal", strip: ["A", "B"]},
+                {type: "literal", strip: ["A", "B"]},
+            ],
         });
 
-        const result = generator.generate(blueprint, cwd);
-
-        expect(result.buildInfo.reelStripGeneration?.reels[0].config).toEqual(generatedSpec);
+        expect(computeGameBlueprintHash(blueprint)).toBe(computeGameBlueprintHash(blueprint));
     });
 
     it("throws a clear error naming the failing reel and its diagnostics, and creates no files, when self-resolution can't satisfy a reel's constraints", () => {
@@ -1195,7 +757,7 @@ describe("GamePackageGenerator", () => {
             ],
         });
 
-        expect(() => generator.generate(blueprint, cwd, undefined, undefined, {reels: []})).toThrow(/reelStripGeneration\[1\] is missing/);
+        expect(() => generator.generate(blueprint, cwd, undefined, {reels: []})).toThrow(/reelStripGeneration\[1\] is missing/);
         expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);
     });
 
@@ -1217,7 +779,7 @@ describe("GamePackageGenerator", () => {
             ],
         };
 
-        expect(() => generator.generate(blueprint, cwd, undefined, undefined, failedResolution)).toThrow(
+        expect(() => generator.generate(blueprint, cwd, undefined, failedResolution)).toThrow(
             /reelStripGeneration\[0\] did not generate successfully/,
         );
         expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);

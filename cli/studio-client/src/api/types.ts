@@ -159,7 +159,6 @@ export type StudioBuildResult =
           manifest: PokieGameManifest;
           createdFiles: string[];
           buildInfo: GameBuildInfo;
-          unchanged: boolean;
           warnings: ValidationIssue[];
       };
 

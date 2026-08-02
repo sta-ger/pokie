@@ -6,6 +6,17 @@ import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
+// A built package tracks no provenance of its own (no build-info.json -- see GamePackageGenerator's
+// own doc comment), so cross-build comparisons here go through the blueprint hash BuildCommand/
+// CreateCommand print to their own console summary instead of reading it back off disk.
+function extractBlueprintHash(printed: string): string {
+    const match = printed.match(/blueprint hash\s+(sha256:\S+)/);
+    if (!match) {
+        throw new Error(`No "blueprint hash" line found in:\n${printed}`);
+    }
+    return match[1];
+}
+
 // End-to-end coverage for first-class random game generation (SlotGameNameGenerator +
 // RandomGameBlueprintGenerator): every entry point ("pokie build random", "pokie build --random",
 // "pokie create --random") should produce a real, on-disk package that validates cleanly and
@@ -30,7 +41,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
         const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "20260721", "--out", outDir]);
 
         expect(exitCode).toBe(0);
-        expect(fs.existsSync(path.join(outDir, "src", "generated", "index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
 
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);
@@ -50,36 +61,43 @@ describe("CLI workflow (integration): first-class random game generation", () =>
     it('"pokie build random --seed <n> --preset variant" builds a real package with the richer strategy, deterministically for the same seed', async () => {
         const outDirA = path.join(workDir, "built-variant-a");
         const outDirB = path.join(workDir, "built-variant-b");
+        const logSpy = console.log as jest.Mock;
 
         const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "99", "--preset", "variant", "--out", outDirA]);
         expect(exitCode).toBe(0);
+        const printedA = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        logSpy.mockClear();
         await new BuildCommand("1.3.0").run(["random", "--seed", "99", "--preset", "variant", "--out", outDirB]);
+        const printedB = logSpy.mock.calls.map((call) => call[0]).join("\n");
 
         const validateExitCode = await new ValidateCommand().run([outDirA]);
         expect(validateExitCode).toBe(0);
 
-        const buildInfoA = JSON.parse(fs.readFileSync(path.join(outDirA, "src", "generated", "build-info.json"), "utf-8"));
-        const buildInfoB = JSON.parse(fs.readFileSync(path.join(outDirB, "src", "generated", "build-info.json"), "utf-8"));
-        expect(buildInfoA.blueprintHash).toBe(buildInfoB.blueprintHash);
+        expect(extractBlueprintHash(printedA)).toBe(extractBlueprintHash(printedB));
 
-        const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "random-variant"\./);
-        expect(printed).not.toContain("warning  feature termination");
-        expect(printed).not.toContain("warning  max-win sanity");
+        expect(printedA).toMatch(/Provenance: generator [\d.]+, strategy "random-variant"\./);
+        expect(printedA).not.toContain("warning  feature termination");
+        expect(printedA).not.toContain("warning  max-win sanity");
     });
 
     it('"pokie build random" is deterministic for a fixed seed: rebuilding produces the same generated blueprint hash', async () => {
         const outDirA = path.join(workDir, "built-game-a");
         const outDirB = path.join(workDir, "built-game-b");
+        const logSpy = console.log as jest.Mock;
 
         await new BuildCommand("1.3.0").run(["random", "--seed", "777", "--out", outDirA]);
+        const printedA = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        logSpy.mockClear();
         await new BuildCommand("1.3.0").run(["random", "--seed", "777", "--out", outDirB]);
+        const printedB = logSpy.mock.calls.map((call) => call[0]).join("\n");
 
-        const buildInfoA = JSON.parse(fs.readFileSync(path.join(outDirA, "src", "generated", "build-info.json"), "utf-8"));
-        const buildInfoB = JSON.parse(fs.readFileSync(path.join(outDirB, "src", "generated", "build-info.json"), "utf-8"));
+        expect(extractBlueprintHash(printedA)).toBe(extractBlueprintHash(printedB));
 
-        expect(buildInfoA.blueprintHash).toBe(buildInfoB.blueprintHash);
-        expect(buildInfoA.game.id).toBe(buildInfoB.game.id);
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const gameA = require(path.join(outDirA, "dist", "index.js")) as {getManifest(): {id: string}};
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const gameB = require(path.join(outDirB, "dist", "index.js")) as {getManifest(): {id: string}};
+        expect(gameA.getManifest().id).toBe(gameB.getManifest().id);
     });
 
     it('"pokie build --random" (the flag form) behaves identically to "pokie build random"', async () => {
@@ -109,17 +127,18 @@ describe("CLI workflow (integration): first-class random game generation", () =>
 
             expect(exitCode).toBe(0);
             const projectRoot = path.join(workDir, "my-random-game");
-            expect(fs.existsSync(path.join(projectRoot, "src", "generated", "index.js"))).toBe(true);
+            expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
 
-            const buildInfo = JSON.parse(fs.readFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "utf-8"));
-            expect(buildInfo.game.name).toBe("my-random-game");
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {name: string}};
+            expect(game.getManifest().name).toBe("my-random-game");
 
             const validateExitCode = await new ValidateCommand().run([projectRoot]);
             expect(validateExitCode).toBe(0);
 
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "default-line-pay"\./);
-            expect(printed).toContain(`blueprint hash   ${buildInfo.blueprintHash}`);
+            expect(printed).toContain("blueprint hash   sha256:");
         } finally {
             process.chdir(originalCwd);
         }
@@ -133,10 +152,11 @@ describe("CLI workflow (integration): first-class random game generation", () =>
 
             expect(exitCode).toBe(0);
             const projectRoot = path.join(workDir, "my-variant-game");
-            expect(fs.existsSync(path.join(projectRoot, "src", "generated", "index.js"))).toBe(true);
+            expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
 
-            const buildInfo = JSON.parse(fs.readFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "utf-8"));
-            expect(buildInfo.game.name).toBe("my-variant-game");
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {name: string}};
+            expect(game.getManifest().name).toBe("my-variant-game");
 
             const validateExitCode = await new ValidateCommand().run([projectRoot]);
             expect(validateExitCode).toBe(0);
