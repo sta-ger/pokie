@@ -10,6 +10,7 @@ import {
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {GamePackageCreator} from "../../cli/scaffold/GamePackageCreator.js";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
@@ -85,6 +86,50 @@ describe("GamePackageGenerator", () => {
         expect(packageLock.version).toBe(pkg.version);
         expect(packageLock.packages[""].dependencies).toEqual(pkg.dependencies);
         expect(packageLock.packages[""].devDependencies).toEqual(pkg.devDependencies);
+    });
+
+    it("agrees with GamePackageCreator's ('pokie create') own package.json/tsconfig.json contract for the same pokie version, and reproduces the same required package file set its own 'create' phase (plus GamePackagePreparer's README.md) writes", () => {
+        const pokieVersion = "1.3.0";
+        const generator = new GamePackageGenerator(pokieVersion);
+        const creator = new GamePackageCreator(pokieVersion);
+
+        const built = generator.generate(buildBlueprint(), cwd);
+        const created = creator.create(cwd, "hand-authored-slot");
+
+        const builtPkg = JSON.parse(fs.readFileSync(path.join(built.projectRoot, "package.json"), "utf-8"));
+        const createdPkg = JSON.parse(fs.readFileSync(path.join(created.projectRoot, "package.json"), "utf-8"));
+
+        // Both go through the exact same shared buildPackageJsonPatch -- these fields must agree
+        // regardless of how differently each package's own src/ content is produced (a single generated
+        // module here, a hand-editable multi-file scaffold there).
+        expect(builtPkg.main).toBe(createdPkg.main);
+        expect(builtPkg.exports).toBe(createdPkg.exports);
+        expect(builtPkg.pokie).toEqual(createdPkg.pokie);
+        expect(builtPkg.scripts).toEqual(createdPkg.scripts);
+        expect(builtPkg.dependencies).toEqual(createdPkg.dependencies);
+        // "pokie build"'s own devDependencies is exactly "pokie create"'s, plus the @types/node this
+        // generator alone adds (see this generator's own DEFAULT_TYPES_NODE_VERSION doc comment) --
+        // never a different typescript version, or a dropped/renamed key.
+        expect(builtPkg.devDependencies).toEqual({...createdPkg.devDependencies, "@types/node": expect.any(String)});
+
+        const builtTsconfig = JSON.parse(fs.readFileSync(path.join(built.projectRoot, "tsconfig.json"), "utf-8"));
+        const createdTsconfig = JSON.parse(fs.readFileSync(path.join(created.projectRoot, "tsconfig.json"), "utf-8"));
+        expect(builtTsconfig).toEqual(createdTsconfig);
+
+        // GamePackagePreparer's own "create" phase (see its runCreatePhase) always writes README.md
+        // right after GamePackageCreator.create() itself returns -- reproduced here without a real npm
+        // install/build (already covered end-to-end by GamePackagePreparer.integration.test.ts's real,
+        // subprocess-driven lifecycle). Every BUILT_PACKAGE_FILES entry that doesn't require an actual
+        // "npm install"/"npm run build" to exist (package-lock.json, dist/index.js) must already be
+        // exactly what that create phase produces too.
+        const createPhaseFiles = [...created.createdFiles, "README.md"];
+        const requiresInstallOrBuild = ["package-lock.json", "dist/index.js"];
+        for (const canonicalFile of BUILT_PACKAGE_FILES) {
+            if (requiresInstallOrBuild.includes(canonicalFile)) {
+                continue;
+            }
+            expect(createPhaseFiles).toContain(canonicalFile);
+        }
     });
 
     it("writes an src/index.ts typed with the real GameBlueprint contract -- the same blueprint data, entry point, and manifest dist/index.js embeds", () => {
