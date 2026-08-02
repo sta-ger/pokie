@@ -312,23 +312,58 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         }
     }
 
-    // Only ever called after isLockAbandoned() has already confirmed `lockDir`'s recorded holder is gone, so
-    // removing it here is safe -- including safe to race: if another contender reclaims (or the -- by then
-    // impossible -- original holder releases) the same lockDir first, this `rm` simply finds nothing left to
-    // remove (force: true tolerates that) and this call's own subsequent `mkdir` retry naturally contends for
-    // the now-fresh lock like any other caller. What this call must never do is stay silent about a lock that
-    // *is* abandoned but can't actually be removed (e.g. a permissions problem on the cache root): swallowing
-    // that would recreate the exact "permanent lock" failure this whole protocol exists to prevent, just one
-    // layer down -- so that failure is thrown, not suppressed.
+    // Only ever called after isLockAbandoned() has already confirmed `lockDir`'s recorded holder is gone --
+    // but that observation can be stale by the time this call actually runs: another contender's own reclaim
+    // may already have cleared `lockDir`, and a brand-new contender may have claimed a fresh lock at that
+    // exact path in between. A blind `rm(lockDir)` at that point would delete whatever now happens to be
+    // there -- including a just-acquired, genuinely active lock -- with no way to tell the two apart.
+    //
+    // Instead this hands the abandoned lock off through a private quarantine directory, atomically: a
+    // directory `rename` is a single filesystem operation that always moves whatever currently occupies
+    // `lockDir`, so there is no window between "observe what's there" and "take it" for a fresh claim to
+    // slip in unnoticed. Once quarantined -- now at a path unique to this call, so no other contender can be
+    // racing it -- its holder is re-checked for liveness one last time, this time under full certainty:
+    //   - still abandoned (dead pid): genuinely safe to discard, so this call removes it and returns.
+    //   - alive: this call's own abandonment check was already stale by the time its rename ran -- what it
+    //     grabbed is a fresh, active lock claimed at this path afterwards. It hands that straight back via a
+    //     second rename, restoring the active holder exactly as if this call had never touched `lockDir`.
+    //     If that hand-back itself loses a race (lockDir reclaimed *again* by yet another contender in the
+    //     interim -- see its own inline comment below), the now-doubly-orphaned quarantine copy is simply
+    //     discarded rather than left as permanent disk debris; that holder's own release/reclaim cycle still
+    //     recovers cleanly, since every removal here targets a private path, never `lockDir` itself.
+    // A lock that's genuinely abandoned but can't actually be reclaimed (e.g. a permissions problem on the
+    // cache root) is thrown, never silently retried forever.
     private async reclaimAbandonedLock(lockDir: string): Promise<void> {
+        const quarantineDir = `${lockDir}.reclaim-${crypto.randomBytes(8).toString("hex")}`;
         try {
-            await fs.promises.rm(lockDir, {recursive: true, force: true});
+            await fs.promises.rename(lockDir, quarantineDir);
         } catch (error) {
+            if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+                // Already gone -- another contender reclaimed (or the holder itself released) this exact
+                // lock first. Nothing left for this call to do; the next mkdir retry sees a free path.
+                return;
+            }
             throw new BlueprintMaterializationError(
                 "lock",
                 `Abandoned materialization lock "${lockDir}" could not be removed: ${error instanceof Error ? error.message : String(error)}. ` +
                     "Remove it manually before retrying.",
             );
+        }
+
+        if (await this.isLockAbandoned(quarantineDir)) {
+            await this.removeBestEffort(quarantineDir);
+            return;
+        }
+
+        try {
+            await fs.promises.rename(quarantineDir, lockDir);
+        } catch {
+            // lockDir was reclaimed again by another contender while this call held the quarantine copy --
+            // the active holder it briefly displaced can't be handed back to its expected path anymore.
+            // Discarding the orphaned copy here (rather than leaving it as debris) is the only option left;
+            // that holder's own eventual release/reclaim cycle is unaffected, since it never touches this
+            // private quarantine path.
+            await this.removeBestEffort(quarantineDir);
         }
     }
 

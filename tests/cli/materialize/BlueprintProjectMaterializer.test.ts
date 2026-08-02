@@ -511,7 +511,7 @@ describe("BlueprintProjectMaterializer", () => {
         expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(cacheDir)]);
     });
 
-    it("surfaces an error, instead of retrying forever, when an abandoned lock cannot be removed", async () => {
+    it("surfaces an error, instead of retrying forever, when an abandoned lock cannot be reclaimed", async () => {
         const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
         const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
         const cacheDir = await seedStaleMarkerlessCacheEntry(seeder, blueprintPath);
@@ -521,29 +521,109 @@ describe("BlueprintProjectMaterializer", () => {
         fs.mkdirSync(lockDir);
         fs.writeFileSync(path.join(lockDir, "holder.json"), JSON.stringify({pid: deadPid}));
 
-        const realRm = fs.promises.rm.bind(fs.promises);
-        const rmSpy = jest.spyOn(fs.promises, "rm").mockImplementation(((targetPath: fs.PathLike, options?: fs.RmOptions) => {
-            if (targetPath === lockDir) {
+        // Reclaiming now starts with an atomic rename of `lockDir` itself (see reclaimAbandonedLock()'s own
+        // doc comment on why -- a plain `rm` can no longer tell an abandoned lock apart from one a fresh
+        // contender has since claimed at the same path). Failing that rename is therefore what "can't be
+        // reclaimed" surfaces as.
+        const realRename = fs.promises.rename.bind(fs.promises) as (oldPath: fs.PathLike, newPath: fs.PathLike) => Promise<void>;
+        const renameSpy = jest.spyOn(fs.promises, "rename").mockImplementation(((oldPath: fs.PathLike, newPath: fs.PathLike) => {
+            if (oldPath === lockDir) {
                 const permissionError = new Error("permission denied");
                 (permissionError as NodeJS.ErrnoException).code = "EACCES";
                 return Promise.reject(permissionError);
             }
-            return realRm(targetPath, options);
-        }) as typeof fs.promises.rm);
+            return realRename(oldPath, newPath);
+        }) as typeof fs.promises.rename);
 
         const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
         const caught = await materializer.materialize(blueprintProjectOf(blueprintPath)).catch((error: unknown) => error);
 
-        rmSpy.mockRestore();
+        renameSpy.mockRestore();
 
         expect(caught).toBeInstanceOf(BlueprintMaterializationError);
         expect((caught as BlueprintMaterializationError).phase).toBe("lock");
         // The unreclaimable lock is still there -- surfaced loudly, not silently discarded.
         expect(fs.existsSync(lockDir)).toBe(true);
 
-        // Once whatever made removal fail is fixed (here: simply removing it), materialization recovers.
+        // Once whatever made reclaiming fail is fixed (here: simply removing it), materialization recovers.
         fs.rmSync(lockDir, {recursive: true, force: true});
         const retried = await materializer.materialize(blueprintProjectOf(blueprintPath));
         expect(retried.runtimePath).toBe(cacheDir);
+    });
+
+    it("hands an abandoned lock back untouched, instead of deleting it, when a fresh contender claims lockDir during this call's own reclaim attempt", async () => {
+        const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const cacheDir = await seedStaleMarkerlessCacheEntry(seeder, blueprintPath);
+
+        const lockDir = `${cacheDir}.lock`;
+        const holderPath = path.join(lockDir, "holder.json");
+        const deadPid = spawnDeadPid();
+        fs.mkdirSync(lockDir);
+        fs.writeFileSync(holderPath, JSON.stringify({pid: deadPid}));
+
+        // Intercept the contender's own reclaim rename -- the first rename() call moving `lockDir` itself
+        // into a `.reclaim-` quarantine path -- and, immediately before letting it run for real, simulate a
+        // fresh, genuinely live contender ("C") winning the now-abandoned lockDir out from under it: exactly
+        // the interleaving that made a blind `rm(lockDir)` unsafe (see reclaimAbandonedLock()'s own doc
+        // comment). This only ever fires once: having handed the lock straight back, the contender's next
+        // mkdir retry finds lockDir occupied by C's genuinely alive holder and simply waits on it.
+        const realRename = fs.promises.rename.bind(fs.promises) as (oldPath: fs.PathLike, newPath: fs.PathLike) => Promise<void>;
+        let interceptedReclaim = false;
+        const renameSpy = jest.spyOn(fs.promises, "rename").mockImplementation(((oldPath: fs.PathLike, newPath: fs.PathLike) => {
+            if (!interceptedReclaim && oldPath === lockDir && typeof newPath === "string" && newPath.startsWith(`${lockDir}.reclaim-`)) {
+                interceptedReclaim = true;
+                fs.rmSync(lockDir, {recursive: true, force: true});
+                fs.mkdirSync(lockDir);
+                fs.writeFileSync(holderPath, JSON.stringify({pid: process.pid}));
+            }
+            return realRename(oldPath, newPath);
+        }) as typeof fs.promises.rename);
+
+        // Deterministically observe that the contender has, after handing C's lock back, re-checked its
+        // (now genuinely alive) liveness several times -- i.e. is genuinely looping/waiting on it, not stuck
+        // or -- the bug under test -- having destroyed it -- before asserting anything, instead of racing
+        // against a wall-clock delay.
+        const realReadFile = fs.promises.readFile.bind(fs.promises);
+        let livenessChecksAfterHandback = 0;
+        let resolveObservedEnough!: () => void;
+        const observedEnough = new Promise<void>((resolve) => {
+            resolveObservedEnough = resolve;
+        });
+        const readFileSpy = jest.spyOn(fs.promises, "readFile").mockImplementation(((targetPath: fs.PathLike, encoding?: BufferEncoding) => {
+            if (targetPath === holderPath && interceptedReclaim) {
+                livenessChecksAfterHandback++;
+                if (livenessChecksAfterHandback === 3) {
+                    resolveObservedEnough();
+                }
+            }
+            return realReadFile(targetPath, encoding ?? "utf-8");
+        }) as typeof fs.promises.readFile);
+
+        const contenderRunner = createRecordingRunner();
+        const contender = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, contenderRunner, createStubPackageValidator(validReport), cacheRoot);
+        const resultPromise = contender.materialize(blueprintProjectOf(blueprintPath));
+
+        await observedEnough;
+        readFileSpy.mockRestore();
+        renameSpy.mockRestore();
+
+        // C's freshly claimed lock is still there, untouched, still recording C's own holder -- the
+        // contender's reclaim attempt handed it straight back instead of destroying it, and is now simply
+        // waiting on it like it would on any other active lock.
+        expect(fs.existsSync(lockDir)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(holderPath, "utf-8"))).toEqual({pid: process.pid});
+        expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(true);
+        expect(contenderRunner.calls).toEqual([]);
+
+        // C genuinely releases now (not a reclaim -- a normal releaseLock()).
+        fs.rmSync(lockDir, {recursive: true, force: true});
+
+        const result = await resultPromise;
+        expect(result.runtimePath).toBe(cacheDir);
+        expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(false);
+        expect(fs.existsSync(path.join(cacheDir, "dist", "index.js"))).toBe(true);
+        expect(contenderRunner.calls).toHaveLength(1);
+        expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(cacheDir)]);
     });
 });
