@@ -57,4 +57,35 @@ describe("loadPokieGame", () => {
         const game = await loadPokieGame(path.join(fixturesRoot, "nested-default-game"));
         expect(game.getManifest()).toEqual({id: "nested-default-game", name: "Nested Default Game", version: "1.0.0"});
     });
+
+    it("gives an actionable recovery step (never a raw \"Cannot find module\") when the entry module's dist output is missing", async () => {
+        let caughtError: unknown;
+        try {
+            await loadPokieGame(path.join(fixturesRoot, "missing-dist-game"));
+        } catch (error) {
+            caughtError = error;
+        }
+
+        expect(caughtError).toBeInstanceOf(Error);
+        const message = (caughtError as Error).message;
+        expect(message).not.toMatch(/^Cannot find module/);
+        expect(message).toContain("hasn't been built yet");
+        expect(message).toContain("npm install && npm run build");
+        expect(message).toContain(path.join(fixturesRoot, "missing-dist-game"));
+    });
+
+    it("gives an actionable recovery step when the entry module's dist output is stale (requires a module that no longer exists)", async () => {
+        let caughtError: unknown;
+        try {
+            await loadPokieGame(path.join(fixturesRoot, "stale-dist-game"));
+        } catch (error) {
+            caughtError = error;
+        }
+
+        expect(caughtError).toBeInstanceOf(Error);
+        const message = (caughtError as Error).message;
+        expect(message).not.toMatch(/^Cannot find module/);
+        expect(message).toContain("stale or incomplete");
+        expect(message).toContain("npm install && npm run build");
+    });
 });

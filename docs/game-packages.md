@@ -66,7 +66,26 @@ field:
 ```
 
 `entry` is resolved relative to the package root (the directory containing this `package.json`), the same way
-`main`/`exports` are.
+`main`/`exports` are. A package produced by `pokie create`/`pokie init` keeps all three in agreement — `main`,
+`exports`, and `pokie.entry` always point at the same compiled output (`./dist/index.js` by default), and
+`scripts.build` (`tsc`, driven by the package's own `tsconfig.json`) is what produces it.
+
+## Preparing a package end-to-end
+
+Writing the TypeScript source is only the first step — a package isn't loadable until its dependencies are
+installed and it's been compiled. The CLI-internal `GamePackagePreparer` (`cli/prepare/GamePackagePreparer.ts`)
+carries a target directory through that whole lifecycle in one call: **create** the scaffold (package.json,
+tsconfig.json, README.md, src/index.ts), **install** its dependencies (`npm install`, producing
+package-lock.json), **build** it (`npm run build`, producing dist/index.js), then **verify** the result actually
+loads as a valid `PokieGame` (via `PokieGamePackageValidating`). Each phase's failure is reported as a
+`GamePackagePreparationError` naming which phase failed and a concrete recovery step — never a bare non-zero
+exit code or a raw underlying error with nothing else to go on.
+
+If a package's `dist` output is missing or stale (built from since-removed dependencies, or never built at all),
+`loadPokieGame`/`resolvePokieGameEntryModule` themselves already report that as an actionable error — pointing at
+`npm install && npm run build` — rather than surfacing Node's raw `Cannot find module` as the primary message.
+Resolving the entry module stays a pure read: neither function ever runs an install or a build on the caller's
+behalf.
 
 ## The entry module
 
