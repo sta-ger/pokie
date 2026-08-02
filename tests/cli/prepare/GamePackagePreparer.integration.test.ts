@@ -25,12 +25,29 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // in the default fast lane.
 //
 // The whole install is kept offline on purpose: pointing "pokie" at this checkout still leaves
-// "typescript" (a direct devDependency) and, transitively, whatever this checkout's own
-// "dependencies" are (pulled in because the linked "pokie" needs them too) as ordinary registry
-// specifiers -- exactly the kind of fetch a network-restricted CI sandbox can't complete. Redirecting
-// all of them to this checkout's own already-installed copies via `file:` (direct deps) and
-// `overrides` (pokie's transitive deps, which this scaffolded package never declares directly) means
-// "npm install" here never needs the registry at all.
+// "typescript" (a direct devDependency) and, transitively, this checkout's own "dependencies" --
+// plus *their* dependencies, recursively (e.g. "exceljs" alone pulls in dozens of packages like
+// "archiver" and "@fast-csv/format") -- as ordinary registry specifiers, exactly the kind of fetch a
+// network-restricted CI sandbox can't complete. Redirecting all of them to this checkout's own
+// already-installed copies via `file:` (direct deps) and `overrides` (the full transitive closure,
+// which this scaffolded package never declares directly) means "npm install" here never needs the
+// registry at all.
+function collectTransitiveDependencyNames(rootNames: string[]): string[] {
+    const collected = new Set<string>();
+    const queue = [...rootNames];
+    while (queue.length > 0) {
+        const name = queue.shift() as string;
+        if (collected.has(name)) {
+            continue;
+        }
+        collected.add(name);
+        const pkgPath = path.join(REPO_ROOT, "node_modules", name, "package.json");
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {dependencies?: Record<string, string>};
+        queue.push(...Object.keys(pkg.dependencies ?? {}));
+    }
+    return [...collected];
+}
+
 function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
     return (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
         if (args[0] === "install") {
@@ -46,9 +63,10 @@ function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runP
             const localFileSpec = (name: string): string => `file:${path.join(REPO_ROOT, "node_modules", name)}`;
             packageJson.dependencies = {...packageJson.dependencies, pokie: `file:${REPO_ROOT}`};
             packageJson.devDependencies = {...packageJson.devDependencies, typescript: localFileSpec("typescript")};
+            const transitiveNames = collectTransitiveDependencyNames(Object.keys(repoPackageJson.dependencies ?? {}));
             packageJson.overrides = {
                 ...packageJson.overrides,
-                ...Object.fromEntries(Object.keys(repoPackageJson.dependencies ?? {}).map((name) => [name, localFileSpec(name)])),
+                ...Object.fromEntries(transitiveNames.map((name) => [name, localFileSpec(name)])),
             };
             fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4));
         }
