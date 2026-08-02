@@ -91,10 +91,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         name: "build",
         description:
             "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
-            "interactively via a wizard when run with no config path, or write an editable starter blueprint via " +
-            '--init-blueprint <file>. "random"/--random generates a first-class random game instead (--seed to ' +
-            "reproduce it, --preset default|variant to pick the generation strategy). --dry-run validates and " +
-            "previews without writing anything.",
+            'or write an editable starter blueprint via --init-blueprint <file> (for interactive, wizard-driven ' +
+            'creation instead, see "pokie init"). "random"/--random generates a first-class random game instead ' +
+            "(--seed to reproduce it, --preset default|variant to pick the generation strategy). --dry-run " +
+            "validates and previews without writing anything.",
         verbs: [
             {
                 verb: undefined,
@@ -172,18 +172,47 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "create",
         description:
-            "Create a new POKIE-compatible game package in a new directory, or a random-but-valid " +
-            "one (reels, symbols, paytable already filled in) via --random (--seed to reproduce it, " +
-            "--preset default|variant to pick the generation strategy).",
+            "Write an editable Blueprint Project -- a hand-editable GameBlueprint JSON file (reels, symbols, " +
+            "paytable, reel weighting) -- from the filled-in starter template, --blank for a bare-minimum one, " +
+            "or --random for an always-valid randomly generated one, with its reel weighting already expressed " +
+            "as valid per-reel generation (--seed to reproduce it, --preset default|variant to pick the " +
+            'generation strategy). For a prepared, immediately valid package instead, use "pokie init".',
         verbs: [
-            {verb: undefined, usage: "Usage: pokie create <name>", positionals: ["name"], options: []},
+            {
+                verb: undefined,
+                usage: "Usage: pokie create [name] [--blank] [--out <file>]",
+                positionals: ["name (optional)"],
+                options: [
+                    {flag: "--blank", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    // defaultValue "./starter-slot.blueprint.json": CreateCommand's own defaultBlueprintPath(),
+                    // derived from the starter template's own manifest id -- observed at the injected writeFile's
+                    // own filePath argument.
+                    {
+                        flag: "--out",
+                        required: false,
+                        kind: "unvalidated",
+                        defaultValue: "./starter-slot.blueprint.json",
+                        acceptedValue: "custom-blueprint-out.json",
+                    },
+                ],
+            },
             {
                 verb: "--random",
-                usage: "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
+                usage: "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]",
                 positionals: ["name (optional)"],
                 options: [
                     {flag: "--seed", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "1"},
                     {flag: "--preset", required: false, kind: "validated", defaultValue: "default", acceptedValue: "variant"},
+                    // defaultValue "./prime-crown-olympus.blueprint.json": RandomGameBlueprintGenerator's own
+                    // real, deterministic output for seed 1 (the "--random --seed <integer>" valid case's own
+                    // fixed seed) names the manifest id CreateCommand's defaultBlueprintPath() derives this from.
+                    {
+                        flag: "--out",
+                        required: false,
+                        kind: "unvalidated",
+                        defaultValue: "./prime-crown-olympus.blueprint.json",
+                        acceptedValue: "custom-random-out.blueprint.json",
+                    },
                 ],
             },
         ],
@@ -283,11 +312,16 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "init",
-        description: "Turn the current npm project into a minimal POKIE-compatible game package.",
-        // Takes no CLI arguments at all (scaffolds process.cwd() unconditionally) — no usage/options
-        // surface to freeze, and no contract case: running it for real would write into this repo's
-        // own working directory.
-        verbs: [],
+        description:
+            "Create a prepared, immediately valid POKIE game package -- interactively via a wizard when run " +
+            'with no name (the same GameBlueprint wizard "pokie build" used to offer), or from the filled-in ' +
+            'starter blueprint named "<name>" otherwise. The "programmer-first" package workflow: a real, ' +
+            "editable src/index.ts a developer owns, generated and verified on the spot, no separate npm " +
+            'install/build step required. For an editable GameBlueprint JSON file instead, use "pokie create".',
+        // No declared options -- "[name]" is its one positional, optional (no name launches the
+        // interactive wizard instead, itself fully dependency-injectable, so there's still an
+        // executable "valid" case below without touching real stdin/this repo's own working directory).
+        verbs: [{verb: undefined, usage: "Usage: pokie init [name]", positionals: ["name (optional)"], options: []}],
     },
     {
         name: "inspect",
@@ -859,11 +893,11 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     // --- create ---
     {
         command: "create",
-        kind: "invalid",
-        label: "missing <name>",
+        kind: "valid",
+        label: "(no name, no options — writes the starter blueprint to its own default path)",
         args: [],
-        expectedExitCode: 1,
-        expectedError: "Usage: pokie create <name>",
+        expectedExitCode: 0,
+        expectStdout: "text",
     },
     {
         command: "create",
@@ -875,12 +909,29 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
     {
         command: "create",
+        kind: "valid",
+        label: "--blank (accepted --blank value)",
+        args: ["--blank"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "create",
+        kind: "valid",
+        label: "--out <file> (accepted --out value, default --blank)",
+        args: ["--out", "custom-blueprint-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "create",
         kind: "invalid",
         label: "--random --preset must be default|variant",
         args: ["--random", "--preset", "bogus"],
         expectedExitCode: 1,
         expectedError:
-            "--preset must be one of: default, variant. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
+            "--preset must be one of: default, variant. " +
+            "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]",
     },
     {
         command: "create",
@@ -889,12 +940,13 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["--random", "--seed", "notanumber"],
         expectedExitCode: 1,
         expectedError:
-            "--seed requires an integer value. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
+            "--seed requires an integer value. " +
+            "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]",
     },
     {
         command: "create",
         kind: "valid",
-        label: "--random --seed <integer> (accepted --seed value, default --preset)",
+        label: "--random --seed <integer> (accepted --seed value, default --preset, default --out)",
         args: ["--random", "--seed", "1"],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -902,8 +954,16 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "create",
         kind: "valid",
-        label: "--random --preset variant (accepted --preset value, default --seed)",
+        label: "--random --preset variant (accepted --preset value, default --seed, default --out)",
         args: ["--random", "--preset", "variant"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "create",
+        kind: "valid",
+        label: "--random --out <file> (accepted --out value, default --seed, default --preset)",
+        args: ["--random", "--out", "custom-random-out.blueprint.json"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -1208,16 +1268,41 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
 
     // --- init ---
-    // No usage/options surface to freeze as an "invalid" case (see the CLI_COMMAND_DESCRIPTORS entry
-    // above) — run() takes no args at all, so there is nothing for a caller to get wrong. Still gets
-    // its own "valid" case, since InitCommand's sole dependency (its scaffolder) is just as injectable
-    // as every other command's, so its accepted path is exercisable without touching this repo's own
-    // working directory.
+    // No declared options to freeze coverage for (see the CLI_COMMAND_DESCRIPTORS entry above) — its
+    // one positional, "[name]", is optional, so neither of the two "valid" shapes below is invalid:
+    // omitted, it launches the interactive wizard (itself fully dependency-injectable, so this is
+    // exercisable without touching real stdin or this repo's own working directory); given, it runs
+    // the same validate/generate/verify pipeline non-interactively. It still has its own invalid
+    // shapes though — an unrecognized option, or more than one positional — same as "create"'s own.
+    {
+        command: "init",
+        kind: "invalid",
+        label: "unknown option",
+        args: ["sample-slot", "--bogus"],
+        expectedExitCode: 1,
+        expectedError: 'Unknown option "--bogus". Usage: pokie init [name]',
+    },
+    {
+        command: "init",
+        kind: "invalid",
+        label: "unexpected extra positional argument",
+        args: ["name-one", "name-two"],
+        expectedExitCode: 1,
+        expectedError: 'Unexpected extra argument "name-two". Usage: pokie init [name]',
+    },
     {
         command: "init",
         kind: "valid",
-        label: "(no args — scaffolds the current project via the injected scaffolder)",
+        label: "(no args — launches the interactive wizard via the injected wizard/prompt)",
         args: [],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "init",
+        kind: "valid",
+        label: "<name> (non-interactive path, no wizard involved)",
+        args: ["sample-slot"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -2235,10 +2320,20 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "create",
         kind: "invalid",
+        label: "--out given with no value",
+        args: ["--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie create [name] [--blank] [--out <file>]",
+    },
+    {
+        command: "create",
+        kind: "invalid",
         label: "--random --seed given with no value",
         args: ["--random", "--seed"],
         expectedExitCode: 1,
-        expectedError: "--seed requires an integer value. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
+        expectedError:
+            "--seed requires an integer value. " +
+            "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]",
     },
     {
         command: "create",
@@ -2246,7 +2341,19 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--random --preset given with no value",
         args: ["--random", "--seed", "1", "--preset"],
         expectedExitCode: 1,
-        expectedError: "--preset must be one of: default, variant. Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]",
+        expectedError:
+            "--preset must be one of: default, variant. " +
+            "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]",
+    },
+    {
+        command: "create",
+        kind: "invalid",
+        label: "--random --out given with no value",
+        args: ["--random", "--out"],
+        expectedExitCode: 1,
+        expectedError:
+            "--out requires a file path. " +
+            "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]",
     },
 
     // --- dev: missing-value cases ---

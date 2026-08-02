@@ -18,10 +18,6 @@ import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js
 import {evaluateRandomBuildQualityGates} from "../build/evaluateRandomBuildQualityGates.js";
 import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
-import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
-import {PromptAdapting} from "../wizard/PromptAdapting.js";
-import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type RandomPreset = "default" | "variant";
@@ -45,8 +41,6 @@ export class BuildCommand implements CliCommandHandling {
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly validator: GameBlueprintValidating;
     private readonly generator: GamePackageGenerating;
-    private readonly wizard: GameBlueprintWizarding;
-    private readonly createPrompt: () => PromptAdapting;
     private readonly createStarterBlueprint: () => GameBlueprint;
     private readonly fileExists: (filePath: string) => boolean;
     private readonly writeFile: (filePath: string, contents: string) => void;
@@ -59,8 +53,6 @@ export class BuildCommand implements CliCommandHandling {
         loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         generator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
-        wizard: GameBlueprintWizarding = new GameBlueprintWizard(),
-        createPrompt: () => PromptAdapting = () => new ReadlinePromptAdapter(),
         createStarterBlueprint: () => GameBlueprint = createStarterGameBlueprint,
         fileExists: (filePath: string) => boolean = (filePath) => fs.existsSync(filePath),
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
@@ -75,8 +67,6 @@ export class BuildCommand implements CliCommandHandling {
         this.loadBlueprint = loadBlueprint;
         this.validator = validator;
         this.generator = generator;
-        this.wizard = wizard;
-        this.createPrompt = createPrompt;
         this.createStarterBlueprint = createStarterBlueprint;
         this.fileExists = fileExists;
         this.writeFile = writeFile;
@@ -92,10 +82,10 @@ export class BuildCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
-            "interactively via a wizard when run with no config path, or write an editable starter blueprint via " +
-            "--init-blueprint <file>. \"random\"/--random generates a first-class random game instead (--seed to " +
-            "reproduce it, --preset default|variant to pick the generation strategy). --dry-run validates and " +
-            "previews without writing anything."
+            "or write an editable starter blueprint via --init-blueprint <file> (for interactive, wizard-driven " +
+            'creation instead, see "pokie init"). "random"/--random generates a first-class random game instead ' +
+            "(--seed to reproduce it, --preset default|variant to pick the generation strategy). --dry-run " +
+            "validates and previews without writing anything."
         );
     }
 
@@ -107,10 +97,6 @@ export class BuildCommand implements CliCommandHandling {
     // selected, its own args/options/aliases are declared and validated by Commander alone — see
     // runInitBlueprint/runRandom/runDefault, none of which hand-parses a flag or coerces a value.
     public run(args: string[]): Promise<number> {
-        if (args.length === 0) {
-            return this.runWizard();
-        }
-
         try {
             if (args[0] === "--init-blueprint") {
                 return Promise.resolve(this.runInitBlueprint(args.slice(1)));
@@ -175,7 +161,8 @@ export class BuildCommand implements CliCommandHandling {
                 // An empty-string positional ("pokie build ''") is present as far as Commander's own
                 // required-argument check is concerned, but the pre-Commander behavior this preserves
                 // treated it the same as an entirely missing one (`!configPath`) -- a truly empty argv
-                // is handled earlier, by run()'s own args.length === 0 wizard branch.
+                // ("pokie build" with no args at all) is Commander's own "commander.missingArgument",
+                // caught below and reported the same way.
                 if (!configPath || excess.length > 0) {
                     throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : `${USAGE}\n${BLUEPRINT_HINT}`);
                 }
@@ -193,20 +180,6 @@ export class BuildCommand implements CliCommandHandling {
                     optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a directory path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`),
                 });
             });
-    }
-
-    private async runWizard(): Promise<number> {
-        const prompt = this.createPrompt();
-        try {
-            const result = await this.wizard.run(prompt);
-            if (result === null) {
-                console.log("\nBuild cancelled.");
-                return 1;
-            }
-            return this.buildFromBlueprint(result.blueprint, result.outDir, undefined, false);
-        } finally {
-            prompt.close();
-        }
     }
 
     // "random"/"--random": generates a fresh, always-valid GameBlueprint (see

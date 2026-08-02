@@ -66,7 +66,7 @@ field:
 ```
 
 `entry` is resolved relative to the package root (the directory containing this `package.json`), the same way
-`main`/`exports` are. A package produced by `pokie create`/`pokie init` keeps all three in agreement — `main`,
+`main`/`exports` are. A package produced by `pokie build`/`pokie init` keeps all three in agreement — `main`,
 `exports`, and `pokie.entry` always point at the same compiled output (`./dist/index.js` by default), and
 `scripts.build` (`tsc`, driven by the package's own `tsconfig.json`) is what produces it.
 
@@ -175,7 +175,7 @@ if (result.hasErrors()) {
 }
 ```
 
-`loadPokieGame`, `isPokieGame`, and `PokieGameContractValidationRule` are the building blocks the `pokie create`/
-`pokie init`/`pokie sim`/`pokie validate`/`pokie report`/`pokie diff`/`pokie replay`/`pokie serve`/`pokie client`/
+`loadPokieGame`, `isPokieGame`, and `PokieGameContractValidationRule` are the building blocks the `pokie init`/
+`pokie sim`/`pokie validate`/`pokie report`/`pokie diff`/`pokie replay`/`pokie serve`/`pokie client`/
 `pokie dev` [CLI](cli.md) commands are built on — `pokie validate` in particular wraps this same contract check in
 `PokieGamePackageValidator`, returning a structured report instead of throwing.

@@ -1,51 +1,65 @@
+import fs from "fs";
+import path from "path";
 import {
-    computeGameBlueprintHash,
+    GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
-    GamePackageGenerating,
-    GamePackageGenerator,
     RandomGameBlueprintGenerating,
     RandomGameBlueprintGenerator,
     RandomGameBlueprintVariantStrategy,
     SlotGameNameGenerator,
 } from "pokie";
-import {evaluateRandomBuildQualityGates} from "../build/evaluateRandomBuildQualityGates.js";
-import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
+import {applyBlueprintNameOverride} from "../build/applyBlueprintNameOverride.js";
+import {buildRandomReelStripGeneration} from "../build/buildRandomReelStripGeneration.js";
+import {createBlankGameBlueprint} from "../build/createBlankGameBlueprint.js";
+import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {GamePackageCreating} from "../scaffold/GamePackageCreating.js";
-import {GamePackageCreator} from "../scaffold/GamePackageCreator.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type RandomPreset = "default" | "variant";
 
-const RANDOM_USAGE = "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant]";
+const USAGE = "Usage: pokie create [name] [--blank] [--out <file>]";
+const RANDOM_USAGE = "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]";
 const RANDOM_PRESETS: readonly RandomPreset[] = ["default", "variant"];
 
+// Printed after every successful "pokie create" — this command used to write a hand-editable npm
+// package directly (see GamePackageCreator), the same "programmer-first" role "pokie init" now owns
+// (see InitCommand). A silent switch would leave anyone still expecting that old package output
+// (package.json, src/index.ts, "npm install && npm run build") staring at a lone JSON file with no
+// explanation; this line is that explanation, on every run, not just a doc update someone has to go
+// looking for.
+const MIGRATION_NOTE =
+    '\nNote: "pokie create" now writes an editable Blueprint Project (a GameBlueprint JSON file) -- it no ' +
+    "longer writes a ready-to-run package. For a prepared, immediately valid package instead, run: pokie init [name]";
+
 export class CreateCommand implements CliCommandHandling {
-    private readonly creator: GamePackageCreating;
+    private readonly createStarterBlueprint: () => GameBlueprint;
+    private readonly createBlankBlueprint: () => GameBlueprint;
+    private readonly validator: GameBlueprintValidating;
     private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
-    private readonly validator: GameBlueprintValidating;
-    private readonly packageGenerator: GamePackageGenerating;
-    private readonly runSmokeSimulation: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome>;
+    private readonly fileExists: (filePath: string) => boolean;
+    private readonly writeFile: (filePath: string, contents: string) => void;
 
     constructor(
-        pokieVersion: string,
-        creator: GamePackageCreating = new GamePackageCreator(pokieVersion),
-        randomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(),
+        _pokieVersion: string,
+        createStarterBlueprint: () => GameBlueprint = createStarterGameBlueprint,
+        createBlankBlueprint: () => GameBlueprint = createBlankGameBlueprint,
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
-        packageGenerator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
-        runSmoke: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome> = runSmokeSimulation,
+        randomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(),
+        fileExists: (filePath: string) => boolean = (filePath) => fs.existsSync(filePath),
+        writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
         variantRandomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(
             new SlotGameNameGenerator(),
             new RandomGameBlueprintVariantStrategy(),
         ),
     ) {
-        this.creator = creator;
-        this.randomBlueprintGenerator = randomBlueprintGenerator;
+        this.createStarterBlueprint = createStarterBlueprint;
+        this.createBlankBlueprint = createBlankBlueprint;
         this.validator = validator;
-        this.packageGenerator = packageGenerator;
-        this.runSmokeSimulation = runSmoke;
+        this.randomBlueprintGenerator = randomBlueprintGenerator;
+        this.fileExists = fileExists;
+        this.writeFile = writeFile;
         this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
     }
 
@@ -55,45 +69,78 @@ export class CreateCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Create a new POKIE-compatible game package in a new directory, or a random-but-valid " +
-            "one (reels, symbols, paytable already filled in) via --random (--seed to reproduce it, " +
-            "--preset default|variant to pick the generation strategy)."
+            "Write an editable Blueprint Project -- a hand-editable GameBlueprint JSON file (reels, symbols, " +
+            "paytable, reel weighting) -- from the filled-in starter template, --blank for a bare-minimum one, " +
+            "or --random for an always-valid randomly generated one, with its reel weighting already expressed " +
+            "as valid per-reel generation (--seed to reproduce it, --preset default|variant to pick the " +
+            'generation strategy). For a prepared, immediately valid package instead, use "pokie init".'
         );
     }
 
-    public run(args: string[]): Promise<void | number> {
+    // Both "--random" (runRandom) and the plain path (runBlueprint) are now plain synchronous file I/O
+    // -- neither ever builds or smoke-simulates a package -- but this method's own return type (and
+    // this file's own tests) still distinguish them: the non-random path throws straight out of this
+    // call (a synchronous failure, same as before), while "--random"'s own failures are caught here and
+    // turned into a rejected promise instead, preserving its previous (once-async) rejection behavior.
+    public run(args: string[]): Promise<number> {
         if (args.includes("--random")) {
-            return this.runRandom(args);
+            try {
+                return Promise.resolve(this.runRandom(args));
+            } catch (error) {
+                return Promise.reject(error);
+            }
         }
 
-        const name = this.parseName(args);
-
-        const result = this.creator.create(process.cwd(), name);
-
-        for (const file of result.createdFiles) {
-            console.log(`  created  ${file}`);
-        }
-
-        console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") created in "${result.projectRoot}".`);
-        console.log(`Next: cd ${name} && npm install && npm run build`);
-        console.log('Load it anywhere with: loadPokieGame("' + result.projectRoot + '") from "pokie".');
-
-        return Promise.resolve();
+        return Promise.resolve(this.runBlueprint(args));
     }
 
-    // --random: a valid GameBlueprint (see RandomGameBlueprintGenerator) generated on the fly and run
-    // through the same validate/generate/smoke-simulate pipeline "pokie build random" uses, rather
-    // than the hand-editable scaffold the plain "pokie create <name>" path above writes -- there is no
-    // random content to fill into that scaffold's empty VideoSlotConfig, so a data-driven GameBlueprint
-    // build is what actually produces a playable random game here. "name", if given, is used verbatim
-    // as both the output directory and the manifest name (matching "pokie create <name>"'s own
-    // directory-equals-name convention) and always overrides the generator's own generated name;
-    // omitted, a generated name/directory is picked instead. "--preset" selects the same
-    // already-registered RandomGameBlueprintStrategy "pokie build random --preset" does (default-line-pay
-    // vs the richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset,
-    // same name override always reproduces the same blueprint.
-    private async runRandom(args: string[]): Promise<number> {
-        const {name, seed, preset} = this.parseRandomArgs(args);
+    private runBlueprint(args: string[]): number {
+        let exitCode = 0;
+        const command = createCommanderCliCommand("create")
+            .argument("[name]")
+            .argument("[excess...]")
+            .option("--blank")
+            .option("--out <file>")
+            .action((name: string | null, excess: string[], options: {blank?: boolean; out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unexpected extra argument "${excess[0]}". ${USAGE}`);
+                }
+
+                const template = options.blank ? this.createBlankBlueprint() : this.createStarterBlueprint();
+                const blueprint = applyBlueprintNameOverride(template, name ?? undefined);
+                const filePath = options.out ?? this.defaultBlueprintPath(blueprint.manifest.id);
+
+                this.writeBlueprintFile(filePath, blueprint);
+
+                console.log(`  created  ${filePath}`);
+                console.log(`\nGame blueprint "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") created at "${filePath}".`);
+                console.log(`\nEdit it by hand, then run:`);
+                console.log(`  pokie build ${filePath} --dry-run`);
+                console.log(`  pokie build ${filePath} --out <dir>`);
+                console.log(MIGRATION_NOTE);
+                exitCode = 0;
+            });
+
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            throw translateCommanderError(error, {
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a file path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`),
+            });
+        }
+        return exitCode;
+    }
+
+    // "--random": a data-driven GameBlueprint (see RandomGameBlueprintGenerator) generated on the fly,
+    // the same generator "pokie build random" uses -- but unlike that command, this one never builds or
+    // smoke-simulates a package, it only writes the blueprint out. Its reel weighting is expressed as a
+    // per-reel reelStripGeneration array (see buildRandomReelStripGeneration.ts) rather than a single
+    // flat symbolWeights map, so the file already demonstrates "valid per-reel generation" -- every reel
+    // has its own independent, reproducible generation config -- instead of leaving all of them to share
+    // one implicit engine-wide weighting.
+    private runRandom(args: string[]): number {
+        const {name, seed, preset, out} = this.parseRandomArgs(args);
         const generator = preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
         const {blueprint, seed: usedSeed, provenance} = generator.generate({seed, overrides: name ? {name} : undefined});
 
@@ -103,7 +150,9 @@ export class CreateCommand implements CliCommandHandling {
         );
         console.log(`Provenance: generator ${provenance.generatorVersion}, strategy "${provenance.strategy}".`);
 
-        const issues = this.validator.validate(blueprint);
+        const perReelBlueprint = this.applyPerReelGeneration(blueprint, usedSeed);
+
+        const issues = this.validator.validate(perReelBlueprint);
         const errors = issues.filter((issue) => issue.severity === "error");
         for (const issue of issues.filter((issue) => issue.severity !== "error")) {
             console.log(`  warning  ${issue.code}: ${issue.message}`);
@@ -116,64 +165,52 @@ export class CreateCommand implements CliCommandHandling {
             return 1;
         }
 
-        const result = this.packageGenerator.generate(blueprint, process.cwd(), name);
+        const filePath = out ?? this.defaultBlueprintPath(blueprint.manifest.id);
+        this.writeBlueprintFile(filePath, perReelBlueprint);
 
-        for (const file of result.createdFiles) {
-            console.log(`  created  ${file}`);
-        }
-        console.log(`  blueprint hash   ${computeGameBlueprintHash(blueprint)}`);
-
-        console.log("\nRunning a short smoke simulation...");
-        const smoke = await this.runSmokeSimulation(result.projectRoot, usedSeed);
-        if (!smoke.ok) {
-            console.error(`Smoke simulation failed: ${smoke.error}`);
-            return 1;
-        }
-        console.log(
-            `Smoke simulation OK: ${smoke.rounds} rounds, RTP ${(smoke.rtp * 100).toFixed(2)}%, hit frequency ${(smoke.hitFrequency * 100).toFixed(2)}%.`,
-        );
-        for (const warning of evaluateRandomBuildQualityGates(smoke)) {
-            console.log(`  warning  ${warning}`);
-        }
-
-        console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") created in "${result.projectRoot}".`);
-        console.log(`Next: pokie sim ${result.projectRoot} --rounds 10000 --seed demo --out sim.json`);
+        console.log(`  created  ${filePath}`);
+        console.log(`\nGame blueprint "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") created at "${filePath}".`);
+        console.log(`\nEdit it by hand, then run:`);
+        console.log(`  pokie build ${filePath} --dry-run`);
+        console.log(`  pokie build ${filePath} --out <dir>`);
+        console.log(MIGRATION_NOTE);
 
         return 0;
     }
 
-    // The plain "pokie create <name>" verb has no options of its own (see the fixture's own
-    // {options: []} for it) -- the original never even looked past args[0], so a trailing
-    // "[excess...]" plus allowUnknownOption() here reproduces that same "everything after the name is
-    // silently ignored" behavior (including a stray "-"/"--"-looking token) rather than Commander's
-    // own default of erroring on either.
-    private parseName(args: string[]): string {
-        let name: string | undefined;
-        const command = createCommanderCliCommand("create")
-            .allowUnknownOption()
-            .argument("<name>")
-            .argument("[excess...]")
-            .action((parsedName: string) => {
-                name = parsedName;
-            });
-
-        try {
-            command.parse(args, {from: "user"});
-        } catch (error) {
-            throw translateCommanderError(error, {missingArgument: "Usage: pokie create <name>"});
+    // Bakes the seeded generator's flat symbolWeights ratio into an equivalent per-reel
+    // reelStripGeneration array instead -- see buildRandomReelStripGeneration.ts. A blueprint that
+    // already carries its own reelStrips/reelStripGeneration (the richer "--preset variant" strategy
+    // sometimes produces) is left untouched: there is no flat symbolWeights ratio to convert, and it
+    // already expresses its reel content per-reel (or literally) on its own.
+    private applyPerReelGeneration(blueprint: GameBlueprint, seed: number): GameBlueprint {
+        if (blueprint.symbolWeights === undefined || blueprint.reelStrips !== undefined || blueprint.reelStripGeneration !== undefined) {
+            return blueprint;
         }
-        return name!;
+
+        const reelStripGeneration = buildRandomReelStripGeneration(blueprint.symbolWeights, blueprint.reels, seed);
+        const materialized = {...blueprint, reelStripGeneration};
+        Reflect.deleteProperty(materialized, "symbolWeights");
+        return materialized;
     }
 
-    // "--random" itself is a flag-like verb selector (see run()'s own pre-Commander routing, mirroring
-    // BuildCommand's "random"/"--random"), so it's declared here as an ordinary (ignored) boolean
-    // option Commander accepts wherever it appears in argv, rather than something run() strips off by
-    // position -- the original also scanned for it anywhere in args, not just at args[0]. "[name]" is
-    // an optional leading-or-interspersed positional; a second bare positional token is the original's
-    // own "Unexpected extra argument" case (distinct from an unrecognized "-"/"--" flag, which
-    // Commander itself already classifies as commander.unknownOption).
-    private parseRandomArgs(args: string[]): {name?: string; seed?: number; preset: RandomPreset} {
-        let result: {name?: string; seed?: number; preset: RandomPreset} | undefined;
+    private defaultBlueprintPath(id: string): string {
+        return `./${id}.blueprint.json`;
+    }
+
+    private writeBlueprintFile(filePath: string, blueprint: GameBlueprint): void {
+        if (this.fileExists(filePath)) {
+            throw new Error(`"${filePath}" already exists. Choose a different path, or remove/edit the existing file first.`);
+        }
+        const dir = path.dirname(filePath);
+        if (dir && dir !== ".") {
+            fs.mkdirSync(dir, {recursive: true});
+        }
+        this.writeFile(filePath, `${JSON.stringify(blueprint, null, 4)}\n`);
+    }
+
+    private parseRandomArgs(args: string[]): {name?: string; seed?: number; preset: RandomPreset; out?: string} {
+        let result: {name?: string; seed?: number; preset: RandomPreset; out?: string} | undefined;
         const command = createCommanderCliCommand("create --random")
             .option("--random")
             .argument("[name]")
@@ -195,11 +232,12 @@ export class CreateCommand implements CliCommandHandling {
                 },
                 "default" as RandomPreset,
             )
-            .action((name: string | null, excess: string[], options: {seed?: number; preset: RandomPreset}) => {
+            .option("--out <file>")
+            .action((name: string | null, excess: string[], options: {seed?: number; preset: RandomPreset; out?: string}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unexpected extra argument "${excess[0]}". ${RANDOM_USAGE}`);
                 }
-                result = {name: name ?? undefined, seed: options.seed, preset: options.preset};
+                result = {name: name ?? undefined, seed: options.seed, preset: options.preset, out: options.out};
             });
 
         try {
@@ -213,6 +251,9 @@ export class CreateCommand implements CliCommandHandling {
                     }
                     if (flag === "--preset") {
                         return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
+                    }
+                    if (flag === "--out") {
+                        return `--out requires a file path. ${RANDOM_USAGE}`;
                     }
                     return `Unknown option "${flag}". ${RANDOM_USAGE}`;
                 },

@@ -289,7 +289,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 }),
             ),
         "build::--init-blueprint <file> writes the starter blueprint template": () =>
-            new BuildCommand(TEST_VERSION, undefined, undefined, undefined, undefined, undefined, undefined, () => false, () => undefined),
+            new BuildCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, () => undefined),
         "build::random (no flags at all -- default --seed/--out/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)": (key) => {
             // The one non-dry-run "random" case that also omits --seed/--preset: --out/--dry-run/--seed/--preset
             // all reach a real seam here (GamePackageGenerating.generate() actually runs, unlike every --dry-run
@@ -313,8 +313,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         };
                     },
                 }),
-                undefined,
-                undefined,
                 undefined,
                 undefined,
                 undefined,
@@ -346,8 +344,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         throw new Error("GamePackageGenerating.generate() must not run during a --dry-run random build.");
                     },
                 }),
-                undefined,
-                undefined,
                 undefined,
                 undefined,
                 undefined,
@@ -388,8 +384,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 undefined,
-                undefined,
-                undefined,
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -401,13 +395,11 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "build::random --out <dir> --dry-run (accepted --out value, default --seed/--preset)": (key) => {
-            // The --seed default (omitted) evidence for random: a dry-run build whose randomBlueprintGenerator (10th
+            // The --seed default (omitted) evidence for random: a dry-run build whose randomBlueprintGenerator (8th
             // ctor param) runs with seed undefined; dry-run means the GamePackageGenerating seam is never reached.
             const defaultGenerator = new RandomGameBlueprintGenerator();
             return new BuildCommand(
                 TEST_VERSION,
-                undefined,
-                undefined,
                 undefined,
                 undefined,
                 undefined,
@@ -437,8 +429,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         unchanged: false,
                     }),
                 }),
-                undefined,
-                undefined,
                 undefined,
                 undefined,
                 undefined,
@@ -495,24 +485,58 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 return stubAddressServer(options.port ?? 4444);
             }),
 
+        // Every non-"--random" case below fakes only fileExists/writeFile (CreateCommand's own I/O seam) --
+        // createStarterBlueprint/createBlankBlueprint are wrapped, not replaced, so the actual written content
+        // is CreateCommand's own real starter/blank template, observed at the "--blank" seam by which of the
+        // two the command actually calls.
+        "create::(no name, no options — writes the starter blueprint to its own default path)": (key) =>
+            new CreateCommand(
+                TEST_VERSION,
+                () => {
+                    observe(key, "--blank", "false");
+                    return createStarterGameBlueprint();
+                },
+                undefined,
+                undefined,
+                undefined,
+                () => false,
+                (filePath) => observe(key, "--out", filePath),
+            ),
         "create::<name>": () =>
-            new CreateCommand(TEST_VERSION, {
-                create: () => ({
-                    projectRoot: "/fake/sample-slot",
-                    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                    createdFiles: [],
-                    updatedFiles: [],
-                    skippedFiles: [],
-                }),
-            }),
-        "create::--random --seed <integer> (accepted --seed value, default --preset)": (key) => {
-            // --seed/--preset reach runRandom()'s generator.generate({seed, overrides}) seam, where `generator` is
-            // the randomBlueprintGenerator (3rd ctor param) for the default preset; wrapping a real one observes
-            // both while keeping its (validated-by the real validator) output identical. The packageGenerator (5th)
-            // and runSmoke (6th) stay stubbed exactly as before to keep the write/smoke steps side-effect-free.
+            new CreateCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, () => undefined),
+        "create::--blank (accepted --blank value)": (key) =>
+            new CreateCommand(
+                TEST_VERSION,
+                undefined,
+                () => {
+                    observe(key, "--blank", "true");
+                    return {
+                        manifest: {id: "blank-slot", name: "Blank Slot", version: "0.1.0"},
+                        reels: 3,
+                        rows: 3,
+                        symbols: ["A", "B", "C"],
+                        paytable: {A: {3: 5}},
+                    };
+                },
+                undefined,
+                undefined,
+                () => false,
+                () => undefined,
+            ),
+        "create::--out <file> (accepted --out value, default --blank)": (key) =>
+            new CreateCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, (filePath) => observe(key, "--out", filePath)),
+
+        // --random cases: fileExists/writeFile are still faked (no real I/O), but the blueprint itself comes
+        // from a REAL RandomGameBlueprintGenerator (default preset) so it goes through CreateCommand's own
+        // real GameBlueprintValidator and per-reel reelStripGeneration conversion exactly as production does --
+        // this is what "prime-crown-olympus" below is: RandomGameBlueprintGenerator's own real, deterministic
+        // output for seed 1 (see RandomGameBlueprintGeneratorGoldenSeeds.test.ts for other pinned seeds).
+        "create::--random --seed <integer> (accepted --seed value, default --preset, default --out)": (key) => {
             const defaultGenerator = new RandomGameBlueprintGenerator();
             return new CreateCommand(
                 TEST_VERSION,
+                undefined,
+                undefined,
                 undefined,
                 {
                     generate: (input) => {
@@ -521,52 +545,20 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         return defaultGenerator.generate(input);
                     },
                 },
-                undefined,
-                {
-                    generate: () => ({
-                        projectRoot: "/fake/random-slot",
-                        manifest: {id: "random-slot", name: "Random Slot", version: "0.1.0"},
-                        createdFiles: [],
-                        buildInfo: {
-                            schemaVersion: 1,
-                            generatedBy: "pokie",
-                            pokieVersion: TEST_VERSION,
-                            generatedAt: "2026-01-01T00:00:00.000Z",
-                            blueprintHash: "hash",
-                            game: {id: "random-slot", name: "Random Slot", version: "0.1.0"},
-                        },
-                        unchanged: false,
-                    }),
-                },
-                () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
+                () => false,
+                (filePath) => observe(key, "--out", filePath),
             );
         },
-        "create::--random --preset variant (accepted --preset value, default --seed)": (key) => {
-            // --preset variant routes to the variantRandomBlueprintGenerator (7th ctor param); wrapping a real one
-            // observes --preset "variant" and --seed's default (undefined) at its own generate() seam.
+        "create::--random --preset variant (accepted --preset value, default --seed, default --out)": (key) => {
             const variantGenerator = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
             return new CreateCommand(
                 TEST_VERSION,
                 undefined,
                 undefined,
                 undefined,
-                {
-                    generate: () => ({
-                        projectRoot: "/fake/variant-slot",
-                        manifest: {id: "variant-slot", name: "Variant Slot", version: "0.1.0"},
-                        createdFiles: [],
-                        buildInfo: {
-                            schemaVersion: 1,
-                            generatedBy: "pokie",
-                            pokieVersion: TEST_VERSION,
-                            generatedAt: "2026-01-01T00:00:00.000Z",
-                            blueprintHash: "hash-variant",
-                            game: {id: "variant-slot", name: "Variant Slot", version: "0.1.0"},
-                        },
-                        unchanged: false,
-                    }),
-                },
-                () => Promise.resolve({ok: true, rounds: 150, roundsRequested: 150, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
+                undefined,
+                () => false,
+                () => undefined,
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -574,6 +566,18 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         return variantGenerator.generate(input);
                     },
                 },
+            );
+        },
+        "create::--random --out <file> (accepted --out value, default --seed, default --preset)": (key) => {
+            const defaultGenerator = new RandomGameBlueprintGenerator();
+            return new CreateCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                {generate: (input) => defaultGenerator.generate(input)},
+                () => false,
+                (filePath) => observe(key, "--out", filePath),
             );
         },
 
@@ -943,16 +947,67 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
 
-        "init::(no args — scaffolds the current project via the injected scaffolder)": () =>
-            new InitCommand(TEST_VERSION, {
-                scaffold: () => ({
-                    projectRoot: "/fake/project",
-                    manifest: {id: "fake-project", name: "Fake Project", version: "0.1.0"},
-                    createdFiles: [],
-                    updatedFiles: [],
-                    skippedFiles: [],
-                }),
-            }),
+        "init::(no args — launches the interactive wizard via the injected wizard/prompt)": () =>
+            new InitCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                {
+                    generate: () => ({
+                        projectRoot: "/fake/wiz-game",
+                        manifest: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
+                        createdFiles: [],
+                    }),
+                },
+                {
+                    validate: () =>
+                        Promise.resolve({
+                            packageRoot: "/fake/wiz-game",
+                            valid: true,
+                            game: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
+                            errors: [],
+                            warnings: [],
+                            suggestions: [],
+                        }),
+                },
+                {
+                    run: () =>
+                        Promise.resolve({
+                            blueprint: {
+                                manifest: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
+                                reels: 3,
+                                rows: 3,
+                                symbols: ["A", "B"],
+                                paytable: {A: {3: 5}},
+                            },
+                        }),
+                },
+                () => ({ask: () => Promise.resolve(null), close: () => undefined}),
+            ),
+        "init::<name> (non-interactive path, no wizard involved)": () =>
+            new InitCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                {
+                    generate: () => ({
+                        projectRoot: "/fake/sample-slot",
+                        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                        createdFiles: [],
+                    }),
+                },
+                {
+                    validate: () =>
+                        Promise.resolve({
+                            packageRoot: "/fake/sample-slot",
+                            valid: true,
+                            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            errors: [],
+                            warnings: [],
+                            suggestions: [],
+                        }),
+                },
+            ),
 
         "inspect::<packageRoot>": () =>
             new InspectCommand({
@@ -1729,7 +1784,7 @@ describe("CLI command validation contract (frozen, side-effect-free)", () => {
         }
     });
 
-    it("every command with a validation surface (i.e. every command but init) has at least one invalid contract case", () => {
+    it("every command with a declared verb has at least one invalid contract case", () => {
         const coveredCommands = new Set(INVALID_CASES.map((testCase) => testCase.command));
         const commandsWithVerbs = CLI_COMMAND_DESCRIPTORS.filter((descriptor) => descriptor.verbs.length > 0);
         for (const descriptor of commandsWithVerbs) {

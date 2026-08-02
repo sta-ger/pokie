@@ -79,9 +79,11 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     via `reelStripGeneration` and `ReelStripGenerator`), no compile step required; `pokie build random`/`pokie
     build --random`, which generates a structurally-valid random `GameBlueprint` (via `RandomGameBlueprintGenerator`)
     and builds it, no config file at all, seeded/reproducible and smoke-simulated before it's reported done; `pokie
-    create <name>` (new directory) and `pokie init` (existing project), which scaffold
-    a minimal game package; `pokie create [name] --random`, the same random-generation pipeline as `pokie build
-    random`, named after (and scaffolded into) `<name>` or a generated id; `pokie name`, which prints one or more
+    create [name]`, which writes an editable Blueprint Project (a hand-editable `GameBlueprint` JSON file) rather
+    than a package, and `pokie init [name]`, which produces a prepared, immediately valid game package instead
+    (interactively via a wizard when run with no name); `pokie create [name] --random`, the same random-generation
+    pipeline as `pokie build random`, named after `<name>` or a generated id, written to a Blueprint Project file
+    rather than built; `pokie name`, which prints one or more
     deterministic, offline-generated slot game name(s) (via `SlotGameNameGenerator`) without building anything;
     `pokie sim <packageRoot>`, which runs a simulation against one and reports
     RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without
@@ -195,10 +197,12 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | A sequence of stages within one round (cascades, multi-pick bonuses, ...) | `MultiStageRoundSessionSerializer`, `CascadeSessionSerializer` |
 | Loading an external game package by convention | `PokieGame`, `loadPokieGame` |
 | Generating a game package straight from a JSON blueprint (no compile step) | `pokie build <config.json>` CLI |
-| Generating a structurally-valid random game package with no config file, seeded/reproducible | `pokie build random` / `pokie create [name] --random`, `RandomGameBlueprintGenerator` |
+| Generating a structurally-valid random game package with no config file, seeded/reproducible | `pokie build random`, `RandomGameBlueprintGenerator` |
+| Writing a structurally-valid random Blueprint Project file, seeded/reproducible | `pokie create [name] --random` |
 | Deterministic, offline slot game name generation | `pokie name`, `SlotGameNameGenerator` |
 | Importing/exporting a GameBlueprint as a PAR sheet XLSX workbook | `pokie par import <input.xlsx>` / `pokie par export <config.json>` |
-| Scaffolding a new game package | `pokie create <name>` / `pokie init` CLI |
+| Writing an editable Blueprint Project (GameBlueprint JSON file) | `pokie create [name]` CLI |
+| Scaffolding a new, prepared game package | `pokie init [name]` CLI |
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |
 | Rendering a sim report as Markdown/HTML | `pokie report <simulationReportJson>` |
 | Comparing two sim reports (e.g. before/after a config change) | `pokie diff <leftReportJson> <rightReportJson>` |
