@@ -23,92 +23,99 @@ Running `pokie` with no arguments at all is unaffected and still launches [POKIE
 Studio](#pokie--pokie-studio-experimental). An unrecognized command still prints the same command list, but exits
 non-zero.
 
-## `pokie create <name>`
+## `pokie create [name]`
 
-Scaffolds a brand-new [game package](game-packages.md) in a new `<name>` directory.
+Writes an editable **Blueprint Project** — a hand-editable `GameBlueprint` JSON file (reels, symbols, paytable,
+reel weighting) — rather than a ready-to-run package. For a prepared, immediately valid package instead, see
+[`pokie init`](#pokie-init-name) below.
 
 ```
 npm i -g pokie
 pokie create sample-slot
-cd sample-slot
-npm install
-npm run build
 ```
 
-`pokie create <name>` creates `./<name>` and writes:
+```
+  created  ./sample-slot.blueprint.json
 
-- `package.json` — name `<name>`, a `pokie` dependency, `build`/`start`/`server`/`client` scripts (see
-  [`pokie serve`](#pokie-serve-packageroot-experimental)/[`pokie client`](#pokie-client-packageroot-experimental)/
-  [`pokie dev`](#pokie-dev-packageroot-experimental) below), and `pokie.entry` pointing at `./dist/index.js`;
-- `tsconfig.json` (CommonJS output to `./dist`, source in `./src`);
-- `src/<GameName>Game.ts` — a `PokieGame` implementation (`<GameName>` is `<name>` converted to PascalCase, e.g.
-  `sample-slot` → `SampleSlot`), with a manifest id/name derived from `<name>`, and a `getSessionSerializer()`
-  returning `new VideoSlotSessionSerializer()` so `pokie serve`/`pokie client`/`pokie dev` show the full
-  game-specific payload out of the box (see [Network Serialization](serialization.md));
-- `src/<GameName>Session.ts` — a factory returning a default `VideoSlotSession`;
-- `src/index.ts` — the entry module, re-exporting `<GameName>Game` as its default export.
+Game blueprint "sample-slot" (id: "sample-slot") created at "./sample-slot.blueprint.json".
 
-It fails if `./<name>` already exists — pick a different name or remove the directory first.
+Edit it by hand, then run:
+  pokie build ./sample-slot.blueprint.json --dry-run
+  pokie build ./sample-slot.blueprint.json --out <dir>
 
-The result is loadable like any other [game package](game-packages.md):
-
-```ts
-import {loadPokieGame} from "pokie";
-
-const game = await loadPokieGame("./sample-slot");
-game.createSession().play();
+Note: "pokie create" now writes an editable Blueprint Project (a GameBlueprint JSON file) -- it no longer writes a
+ready-to-run package. For a prepared, immediately valid package instead, run: pokie init [name]
 ```
 
-From here, replace the generated `src/<GameName>Session.ts`/`src/<GameName>Game.ts` with your own symbols,
-paytable, and session wiring — see [Getting Started](getting-started.md) and
-[Game Session & Configuration](game-session.md).
+`pokie create [name]` writes the same filled-in [starter template](#starter-template-pokie-build---init-blueprint-file)
+`pokie build --init-blueprint <file>` does — reels/rows, symbols, available bets, paylines, a paytable, and symbol
+weights, all filled with valid example values — to `./<manifest.id>.blueprint.json` by default, or `--out <file>` to
+pick a different path. `<name>`, when given, overrides the template's own manifest id/name (via the same
+name-derivation rules the old scaffold used), which in turn changes the default output filename; omitted, the
+template's own default id/name (and filename) is used instead. It fails if the destination file already exists —
+pick a different `--out` path, or remove/edit the existing file first.
+
+Options:
+
+- `--blank` — write the bare-minimum blueprint (3x3, three symbols, one payout each, no
+  paylines/`symbolWeights`/`availableBets`) instead of the fuller starter template, for someone who wants to author
+  every field themselves.
+- `--out <file>` — write to `<file>` instead of the default `./<manifest.id>.blueprint.json`.
+
+Every successful run prints a migration note (shown above) — this command used to write a hand-editable npm
+package directly; that "programmer-first" role now belongs to `pokie init`.
 
 ### `pokie create [name] --random`
 
-An entirely different, data-driven output for when you want a playable game immediately rather than a
-hand-editable scaffold: generates a random, always-valid `GameBlueprint` (see [Random generation
-(`pokie build random`)](#random-generation-pokie-build-random) below — same generator, same guarantees) and builds
-it with `GamePackageGenerator`, the same engine `pokie build` uses — not the plain-scaffold path above, since
-there's no random content to fill an empty `VideoSlotConfig` with otherwise.
+Writes a random, always-valid `GameBlueprint` (see [Random generation
+(`pokie build random`)](#random-generation-pokie-build-random) below — same generator, same guarantees) to a
+Blueprint Project file, rather than building a package — same as the plain `pokie create` path above, just with
+randomly generated content. Its reel weighting is already expressed as valid **per-reel generation**: an
+independent, reproducible `reelStripGeneration` entry per reel (targeting the same symbol:weight ratio the
+generator's flat `symbolWeights` would have produced) rather than one implicit engine-wide weighting — a blueprint
+that already carries its own literal `reelStrips`/`reelStripGeneration` (the richer `--preset variant` strategy
+sometimes produces) is left untouched.
 
 ```
-pokie create --random                          # name and directory picked for you
-pokie create my-random-game --random           # named (and scaffolded into) ./my-random-game instead
-pokie create --random --seed 42                # reproduce a specific earlier random game
+pokie create --random                          # name and file path picked for you
+pokie create my-random-game --random           # named ./my-random-game.blueprint.json instead
+pokie create --random --seed 42                # reproduce a specific earlier random blueprint
 pokie create --random --seed 42 --preset variant # same seed, richer strategy -- a different game
+pokie create --random --out my-game.blueprint.json # write to a specific path instead
 ```
 
-`<name>`, when given, is used verbatim both as the manifest name and as the output directory (matching plain
-`pokie create <name>`'s own directory-equals-name convention); omitted, a generated name/id is used for both
-instead. Either way the result is validated, generated, and smoke-simulated exactly as `pokie build random` does
-(see below) — a validation error or a failed smoke simulation exits non-zero with a printed explanation instead of
-silently leaving a broken package on disk.
+`<name>`, when given, is used verbatim as the manifest name (and, via the default output path, the written
+filename); omitted, a generated name/id is used for both instead. The blueprint is validated before writing — a
+validation error exits non-zero with a printed explanation instead of writing anything — but, unlike `pokie build
+random`, nothing is ever built or smoke-simulated: `pokie create --random` only ever writes the blueprint file. Feed
+the result into `pokie build <file> --out <dir>` for a real, playable package.
 
 ## `pokie build [config.json]`
 
 Generates a working [game package](game-packages.md) from a `GameBlueprint` — reels/rows, symbols, paylines,
 paytable, and reel strips/weights for a standard line-pay video slot. It writes the exact same canonical package
-file set `pokie create`/`pokie init` do (`package.json`, `package-lock.json`, `tsconfig.json`, `README.md`,
-`src/index.ts`, `dist/index.js`) — but unlike them, `dist/index.js` is written directly rather than requiring a
-real `npm install`/`npm run build` first: it's immediately loadable by every other command below, with `src/
-index.ts` there so a real `npm run build` (if you ever run one) still reproduces an equivalent `dist/index.js`.
+file set `pokie init` does (`package.json`, `package-lock.json`, `tsconfig.json`, `README.md`, `src/index.ts`,
+`dist/index.js`) — `dist/index.js` is written directly rather than requiring a real `npm install`/`npm run build`
+first: it's immediately loadable by every other command below, with `src/index.ts` there so a real `npm run build`
+(if you ever run one) still reproduces an equivalent `dist/index.js`. (`pokie create`, unlike `pokie build`/`pokie
+init`, never writes a package at all — see [`pokie create [name]`](#pokie-create-name) above.)
 
-There are four ways to provide the blueprint:
+There are three ways to provide the blueprint:
 
 - **config-driven** — `pokie build <config.json>` reads it from a JSON file (this section);
-- **interactive** — `pokie build` with no arguments launches a wizard that asks for the same fields on the
-  terminal (see [Interactive mode](#interactive-mode-pokie-build-with-no-arguments) below);
 - **starter template** — `pokie build --init-blueprint <file>` writes a small, hand-editable example
   `GameBlueprint` to `<file>` instead of building anything, for editing by hand and feeding back into the
   config-driven path above (see [Starter template](#starter-template-pokie-build---init-blueprint-file) below);
-- **random** — `pokie build random` generates an always-valid `GameBlueprint` on the fly (no file, no wizard) and
-  builds it immediately (see [Random generation](#random-generation-pokie-build-random) below).
+- **random** — `pokie build random` generates an always-valid `GameBlueprint` on the fly (no file) and builds it
+  immediately (see [Random generation](#random-generation-pokie-build-random) below).
 
-Both produce the exact same `GameBlueprint` shape, go through the exact same validation
+(For interactive, wizard-driven creation instead — the same `GameBlueprint` wizard `pokie build` used to offer —
+see [`pokie init [name]`](#pokie-init-name) below, which now owns it.)
+
+All three produce the exact same `GameBlueprint` shape, go through the exact same validation
 ([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
 the resulting package supports the exact same
-[`build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---inspect---validate---sim---report---replay---servedev) —
-the wizard is just another way to assemble the same input, not a different code path.
+[`build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---inspect---validate---sim---report---replay---servedev).
 
 ```
 pokie build examples/blueprints/sample-slot.blueprint.json
@@ -122,11 +129,10 @@ existing `--out` directory](#building-into-an-existing---out-directory) below) �
 
 - `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
   omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
-  all pointing at `./dist/index.js` — the exact same entry path `pokie create`/`pokie init` packages compile
-  their own TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
-- `package-lock.json`/`tsconfig.json` — the same lockfile seed/compiler config `pokie create`/`pokie init` write
-  (`tsconfig.json` via the same shared `renderTsconfig`), so `npm install && npm run build` behaves identically
-  in a built package;
+  all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
+  TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
+- `package-lock.json`/`tsconfig.json` — the same lockfile seed/compiler config `pokie init` writes (`tsconfig.json`
+  via the same shared `renderTsconfig`), so `npm install && npm run build` behaves identically in a built package;
 - `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
   `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
   serve`/`dev` workflow below;
@@ -159,8 +165,8 @@ Options:
 
 ### Starter template (`pokie build --init-blueprint <file>`)
 
-For editing by hand rather than writing a `GameBlueprint` from scratch or answering the [interactive
-wizard](#interactive-mode-pokie-build-with-no-arguments)'s prompts:
+For editing by hand rather than writing a `GameBlueprint` from scratch or answering [`pokie init`'s interactive
+wizard](#interactive-mode-pokie-init-with-no-name)'s prompts:
 
 ```
 pokie build --init-blueprint my-game.blueprint.json
@@ -181,9 +187,9 @@ minimum required to pass validation) so there's something concrete to edit for e
 <dir>` works on it completely unedited — but the point is to open it in an editor, change the numbers/symbols/ids
 to your own game, and build that.
 
-This same template is the single source of the [interactive
-wizard](#interactive-mode-pokie-build-with-no-arguments)'s defaults, so the two never drift apart: an Enter-only
-wizard run describes the game this file describes.
+This same template is the single source of [`pokie init`'s interactive
+wizard](#interactive-mode-pokie-init-with-no-name)'s defaults, so the two never drift apart: an Enter-only wizard
+run describes the game this file describes.
 
 The full starter-template workflow — scaffold, hand-edit, validate-only preview, then a real build:
 
@@ -271,7 +277,7 @@ actually built the mechanics (`"default-line-pay"` or `"random-variant"`) — to
 build summary's `blueprint hash` line (shared with every other `pokie build` path) is the complementary piece: a
 `sha256` digest of the blueprint's exact content, for detecting whether a rebuild actually changed anything.
 
-Unlike a config-driven or wizard build, a successful (non-`--dry-run`) random build doesn't stop at validation: it
+Unlike a config-driven build, a successful (non-`--dry-run`) random build doesn't stop at validation: it
 also runs a short (200-round) in-process simulation against the freshly built package — the same
 `ParallelSimulationRunner` [`pokie sim`](#pokie-sim-packageroot) itself uses — as a sanity check that the randomly
 generated content actually loads and plays, not just that its shape passed validation. A failure here (the package
@@ -288,10 +294,10 @@ underneath it — neither ever fails the build on its own (see the no-target-RTP
   the average bet placed (beyond a deliberately generous 100,000x sanity multiplier — this is a backstop against a
   broken generator, not a volatility limit).
 
-`pokie create <name?> --random` (see [`pokie create <name>`](#pokie-create-name) above) is the same generation +
-build + smoke-simulation pipeline (provenance line, blueprint hash, and quality-gate warnings included), just named
-after (and scaffolded into) `<name>` instead of the generated id, for when you want a random game specifically as
-your project's `create` output rather than a `build` output.
+`pokie create [name] --random` (see [`pokie create [name] --random`](#pokie-create-name---random) above) shares
+this same generation pipeline (the provenance/reproduce-command lines, and validation against the same
+`GameBlueprintValidator`) but never builds or smoke-simulates a package — it only writes the resulting blueprint to
+a Blueprint Project file, for hand-editing before a real `pokie build`/`pokie init`.
 
 #### `SlotGameNameGenerator` / `RandomGameBlueprintGenerator`
 
@@ -319,11 +325,11 @@ too tight to satisfy within its attempt budget. `title` is the display name, `sl
 form with a numeric suffix (e.g. `"blazing-riches-4821"`), and `packageName` is an npm-package-name-safe form with
 no suffix (e.g. `"blazing-riches"`) — the same title always yields the same `packageName`, unlike `slug`. The
 suffixed `slug` is offered by `pokie name` for when a guaranteed-distinct id is wanted, but nothing that *creates*
-a game uses it: both the [build wizard](#interactive-mode-pokie-build-with-no-arguments) and
+a game uses it: both the [init wizard](#interactive-mode-pokie-init-with-no-name) and
 `RandomGameBlueprintGenerator` name games from `packageName`, so generated ids stay words-only.
 
 `RandomGameBlueprintGenerator.generate(request?)` accepts an optional `{seed?, overrides?}` — `overrides` is an
-`{id?, name?}` override (what `pokie create <name> --random` uses to pin the manifest to the given `<name>` instead
+`{id?, name?}` override (what `pokie create [name] --random` uses to pin the manifest to the given `<name>` instead
 of a generated one) — pass a `name` to use it verbatim with an id slugified from it, or both `id`/`name` to pin both
 explicitly. Its constructor optionally takes a name generator, a `RandomGameBlueprintStrategy` (defaults to
 `DefaultRandomGameBlueprintStrategy`; pass `RandomGameBlueprintVariantStrategy` for the same richer mechanics
@@ -332,8 +338,8 @@ construction time rather than at `generate()` time. The result's `provenance` (`
 is what the CLI's `Provenance: ...` output line above echoes.
 
 `SlotGameNameGenerator` is also the implementation behind every name the CLI itself suggests — `pokie name` (see
-below) and the [interactive build wizard](#interactive-mode-pokie-build-with-no-arguments)'s game-id suggestion
-both call through it directly; neither re-implements naming, slugging, or theming on its own.
+below) and the [init wizard](#interactive-mode-pokie-init-with-no-name)'s game-id suggestion both call through it
+directly; neither re-implements naming, slugging, or theming on its own.
 
 ### The `GameBlueprint` format
 
@@ -548,12 +554,11 @@ Every error is printed with its code and message, followed by a one-line pointer
 
 Failure modes:
 
-- Missing `<config.json>` launches the [interactive wizard](#interactive-mode-pokie-build-with-no-arguments)
-  instead of failing — see that section for its own cancellation/invalid-input handling. An unknown option (given
-  alongside a config path) throws a `Usage: pokie build <config.json> [--out <dir>]` error (plus the same doc
-  pointer as above).
+- A missing `<config.json>` (`pokie build` with no arguments at all — for interactive, wizard-driven creation
+  instead, see [`pokie init`](#pokie-init-name)) or an unknown option throws a `Usage: pokie build <config.json>
+  [--out <dir>]` error (plus the same doc pointer as above).
 - A blueprint with any error-level issue prints every error plus the doc pointer and exits `1` without generating
-  anything — whether the blueprint came from `<config.json>` or the wizard.
+  anything.
 - The output directory (`./<manifest.id>` or `--out <dir>`) already existing as a *file* (not a directory)
   throws — pick a different `--out` or remove it first.
 - The output directory already existing and having any content in it at all — even just your own unrelated
@@ -574,89 +579,10 @@ whatever (if anything) previously occupied the destination. Want to check this w
 `pokie build <config.json> --dry-run` validates and prints the same blueprint hash a real build would produce,
 with no `--out` directory created or touched.
 
-### Interactive mode (`pokie build` with no arguments)
-
-```
-pokie build
-```
-
-Runs a wizard on the terminal that asks, in order, for: game id/name/version; reels/rows; symbols; available
-bets; paylines; paytable; reel weighting (symbol weights or explicit reel strips); and the output directory.
-
-**Every question has a default and shows it in `[brackets]`**, so pressing Enter through the entire wizard — without
-typing a single answer — produces a complete, valid package: one that passes [`pokie
-validate`](#pokie-validate-packageroot) with no errors and simulates with [`pokie sim`](#pokie-sim-packageroot)
-straight away. Those defaults are not a second set of values maintained here: they are read off the same canonical
-starter blueprint [`pokie build --init-blueprint <file>`](#init-blueprint-pokie-build---init-blueprint-file) writes
-out, so an Enter-only run and an unedited `--init-blueprint` template describe the same game (5×3, symbols
-`A,K,Q,J`, their payouts and weights) apart from the generated id/name.
-
-Typing an answer always overrides the default, so symbols, paytable entries and reel weighting can still be
-specified by hand exactly as before. Two questions additionally accept `-` to opt out of the default entirely
-rather than replace it: a paytable symbol answered with `-` gets no payout at all, and reel weighting answered
-with `-` leaves weighting to the engine (no `symbolWeights`/`reelStrips` in the blueprint).
-
-The wizard is deliberately minimal:
-it asks for the same fields `pokie build <config.json>` needs for a line-pay video slot and nothing more (no
-wilds/scatters yet) — add those by hand-editing the generated blueprint's config-driven equivalent, or wait for a
-future wizard pass.
-
-The game id question offers a ready-made suggestion rather than requiring one to be typed: the wizard mints a
-single [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) result once at the start of
-the run — the same generator `pokie name` uses directly, never a second naming implementation — and offers its
-`packageName` (e.g. `[blazing-riches]`) as the id default — the plain, words-only form, never `slug`'s numerically
-suffixed one, since this id becomes the game's directory and package name. Pressing Enter accepts it; typing anything else always
-wins and is used verbatim as the id instead. That one suggestion is minted before the id question's own reprompt
-loop, so it stays exactly the same across however many invalid attempts that question takes — it is never
-re-rolled mid-run. The name question's own default follows suit: accepting the suggested id defaults the name to
-the suggestion's `title` (e.g. `Blazing Riches`); typing a different id instead falls back to title-casing that
-typed id, the same as before this generator integration existed.
-
-The wizard assembles a plain `GameBlueprint` object — the same shape a `<config.json>` file has — and hands it to
-the exact same [`GameBlueprintValidator`](#validation)/[`GamePackageGenerator`](#pokie-build-configjson) the
-config-driven path uses, so everything in the sections above (the field format, validation rules, `--out`-style
-output directory prompt, rebuild behavior) applies identically; the wizard has no *generation* logic of its own.
-It does do light, per-prompt input-shape checks (a number is a number, a symbol id isn't blank, ...), and a
-handful of these deliberately mirror `GameBlueprintValidator`'s own error-level rules — specifically the ones
-cheap to check immediately against fields already collected earlier in the same run (a paytable `matchCount`
-between 2 and the chosen reel count; a reel-weighting/reel-strip symbol that's actually one of the symbols entered
-earlier) — so a typo is caught and re-asked on the spot instead of only surfacing as a validator error after
-answering every remaining question. This is a convenience, not a second source of truth: the final answer is
-always whatever `GameBlueprintValidator` decides once the wizard hands off its result, same as for
-`<config.json>`.
-
-Per-question input handling:
-
-- An answer that doesn't parse (e.g. non-numeric reels, a duplicate symbol id, a malformed `matchCount:multiplier`
-  pair, a paytable `matchCount` outside `2..reels`, a reel-weighting symbol not among the symbols entered earlier)
-  prints a one-line reason and re-asks the same question — it never silently drops or guesses at bad input.
-- Pressing **Ctrl+C** at any prompt cancels the wizard gracefully: it prints `Build cancelled.` and exits with a
-  non-zero status without writing anything, rather than a stack trace. So does closing/exhausting the input stream
-  (EOF) — e.g. a scripted/piped run that provides fewer answers than the wizard asks for.
-- The paytable and reel-strip prompts are asked once per symbol/reel (so the number of prompts scales with how
-  many symbols/reels you configured earlier in the same run).
-- Reel weighting is a single choice up front — blank for default weights covering exactly the symbols entered
-  earlier (the preset's own weight for every symbol it knows, a rarest-first fallback for any it doesn't), `w` for
-  symbol weights typed by hand (one combined `symbol:count` line), `s` for explicit reel strips (one line per
-  reel), or `-` for the engine's built-in default weighting — mirroring the blueprint's own
-  `reelStrips`/`symbolWeights` mutual exclusivity.
-- A blank paytable answer applies that symbol's default payouts rather than leaving it unpaid: the preset's own
-  entry when it fits the chosen reel count, otherwise a generated ladder that respects it (match counts never
-  exceed `reels`, and matching more never pays less). Answer `-` to leave a symbol without a payout.
-- Symbol ids can't contain `:` — the wizard's own prompts reuse it as a pair separator later on (paytable, symbol
-  weights), so a symbol id containing one would be unparseable there.
-
-Answers can also be piped/scripted (e.g. `printf '...\n...\n' | pokie build`, or piping a saved answers file) —
-each question is answered from the piped input in the same order it would be asked interactively, one line per
-prompt, and the same reprompt-on-invalid-input and EOF-cancellation rules apply.
-
-Once the wizard completes, it prints the same "created files" / "Next:" summary as the config-driven path,
-including the ready-to-run `validate -> sim -> report -> replay -> serve`/`dev` commands below.
-
 ### Workflow: `build` -> `inspect` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
 
 The minimal loop from a blueprint to a running local server, chaining every command this file documents. Unlike
-the [`create`/`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
+the [`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
 output is loadable immediately after `npm install`:
 
 ```
@@ -682,10 +608,10 @@ Each step is the same command documented elsewhere in this file, with the same o
 [`inspect`](#pokie-inspect-packageroot), [`validate`](#pokie-validate-packageroot),
 [`sim`](#pokie-sim-packageroot)/[`report`](#pokie-report-simulationreportjson),
 [`replay`](#pokie-replay-packageroot), and [`serve`](#pokie-serve-packageroot-experimental)/
-[`dev`](#pokie-dev-packageroot-experimental) work identically whether the package came from `pokie build`,
-`pokie create`, or `pokie init` — none of them care how a package was produced, only that it satisfies the
+[`dev`](#pokie-dev-packageroot-experimental) work identically whether the package came from `pokie build` or
+`pokie init` — none of them care how a package was produced, only that it satisfies the
 [game package](game-packages.md) contract. `pokie sim --out` twice (before/after a tweak) also lets you
-[`pokie diff`](#pokie-diff-leftreportjson-rightreportjson) the two reports, same as the [`create`/`init`
+[`pokie diff`](#pokie-diff-leftreportjson-rightreportjson) the two reports, same as the [`init`
 workflow](#workflow) below.
 
 ## `pokie par import <input.xlsx>` / `pokie par export <config.json>`
@@ -1217,50 +1143,137 @@ Options:
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
-## `pokie init`
+## `pokie init [name]`
 
-Turns an existing npm project into a minimal POKIE-compatible game package.
-
-```
-npm init -y
-npm i pokie
-npx pokie init
-```
-
-Run inside the project directory. `pokie init` reads the project's `package.json` and:
-
-- adds/updates `pokie.entry` (pointing at `./dist/index.js`);
-- adds `build`/`start`/`server`/`client` scripts (see
-  [`pokie serve`](#pokie-serve-packageroot-experimental)/[`pokie client`](#pokie-client-packageroot-experimental)/
-  [`pokie dev`](#pokie-dev-packageroot-experimental) below), without overwriting any script you already have;
-- adds `typescript` to `devDependencies` and `pokie` to `dependencies` if either is missing;
-- creates a minimal `tsconfig.json` (CommonJS output to `./dist`, source in `./src`);
-- creates `src/index.ts`, a working entry module exporting a `PokieGame` — `getManifest()` returns an id/name
-  derived from the project's package name (and its version), `createSession()` returns a default
-  `VideoSlotSession`, and `getSessionSerializer()` returns `new VideoSlotSessionSerializer()` (see
-  [Network Serialization](serialization.md)).
-
-It never overwrites an existing `tsconfig.json` or `src/index.ts` — if either is already there, it's left alone
-and reported as skipped. `package.json` is always re-written with the merged fields above.
-
-After running it:
+Creates a **prepared, immediately valid** [game package](game-packages.md) — the "programmer-first" package
+workflow: a real, editable `src/index.ts` a developer owns, generated and verified on the spot, no separate `npm
+install`/`npm run build` step required. For an editable `GameBlueprint` JSON file instead, see [`pokie
+create`](#pokie-create-name) above.
 
 ```
-npm install
-npm run build
+npm i -g pokie
+pokie init sample-slot
 ```
 
-The project is now loadable like any other [game package](game-packages.md):
+```
+  created  package.json
+  created  package-lock.json
+  created  tsconfig.json
+  created  README.md
+  created  src/index.ts
+  created  dist/index.js
+
+Game package "sample-slot" (id: "sample-slot") prepared and verified in "./sample-slot".
+Load it anywhere with: loadPokieGame("./sample-slot") from "pokie".
+
+Next:
+  pokie inspect ./sample-slot
+  pokie sim ./sample-slot --rounds 10000 --seed demo --out sim.json
+  pokie dev ./sample-slot
+```
+
+`pokie init <name>` writes the same filled-in [starter template](#starter-template-pokie-build---init-blueprint-file)
+`pokie create`/`pokie build --init-blueprint` do (manifest overridden to `<name>`, same as `pokie create <name>`'s
+own name-derivation rules), then runs it through the exact same validate/generate pipeline
+[`pokie build`](#pokie-build-configjson) does — `package.json`, `package-lock.json`, `tsconfig.json`, `README.md`,
+`src/index.ts`, `dist/index.js`, written to `./<name>` and immediately loadable, no `npm install`/`npm run build`
+step of its own — and then, unlike `pokie build`, verifies the freshly generated package actually loads (the same
+check [`pokie validate`](#pokie-validate-packageroot) runs) before ever reporting it as "prepared": a validation
+error or a failed load exits non-zero with the printed issues instead of silently leaving a broken package on disk.
+
+`pokie init` with **no name** launches an interactive wizard instead — see [Interactive mode](#interactive-mode-pokie-init-with-no-name)
+below.
+
+The result is loadable like any other [game package](game-packages.md):
 
 ```ts
 import {loadPokieGame} from "pokie";
 
-const game = await loadPokieGame(process.cwd());
+const game = await loadPokieGame("./sample-slot");
 game.createSession().play();
 ```
 
 From here, replace the generated `src/index.ts` with your own symbols, paytable, and session wiring — see
 [Getting Started](getting-started.md) and [Game Session & Configuration](game-session.md).
+
+### Interactive mode (`pokie init` with no name)
+
+```
+pokie init
+```
+
+Runs a wizard on the terminal that asks, in order, for: game id/name/version; reels/rows; symbols; available
+bets; paylines; paytable; reel weighting (symbol weights or explicit reel strips); and the output directory. This
+is the same `GameBlueprint` wizard `pokie build` used to offer before this workflow moved to `pokie init` — the
+wizard's own logic is unchanged, only which command launches it.
+
+**Every question has a default and shows it in `[brackets]`**, so pressing Enter through the entire wizard — without
+typing a single answer — produces a complete, valid package: one that passes [`pokie
+validate`](#pokie-validate-packageroot) with no errors and simulates with [`pokie sim`](#pokie-sim-packageroot)
+straight away. Those defaults are not a second set of values maintained here: they are read off the same canonical
+starter blueprint [`pokie build --init-blueprint <file>`](#starter-template-pokie-build---init-blueprint-file) writes
+out, so an Enter-only run and an unedited `--init-blueprint` template describe the same game (5×3, symbols
+`A,K,Q,J`, their payouts and weights) apart from the generated id/name.
+
+Typing an answer always overrides the default, so symbols, paytable entries and reel weighting can still be
+specified by hand exactly as before. Two questions additionally accept `-` to opt out of the default entirely
+rather than replace it: a paytable symbol answered with `-` gets no payout at all, and reel weighting answered
+with `-` leaves weighting to the engine (no `symbolWeights`/`reelStrips` in the blueprint).
+
+The wizard is deliberately minimal:
+it asks for the same fields `pokie build <config.json>` needs for a line-pay video slot and nothing more (no
+wilds/scatters yet) — add those by hand-editing the generated blueprint's config-driven equivalent, or wait for a
+future wizard pass.
+
+The game id question offers a ready-made suggestion rather than requiring one to be typed: the wizard mints a
+single [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) result once at the start of
+the run — the same generator `pokie name` uses directly, never a second naming implementation — and offers its
+`packageName` (e.g. `[blazing-riches]`) as the id default — the plain, words-only form, never `slug`'s numerically
+suffixed one, since this id becomes the game's directory and package name. Pressing Enter accepts it; typing anything else always
+wins and is used verbatim as the id instead. That one suggestion is minted before the id question's own reprompt
+loop, so it stays exactly the same across however many invalid attempts that question takes — it is never
+re-rolled mid-run. The name question's own default follows suit: accepting the suggested id defaults the name to
+the suggestion's `title` (e.g. `Blazing Riches`); typing a different id instead falls back to title-casing that
+typed id, the same as before this generator integration existed.
+
+The wizard assembles a plain `GameBlueprint` object — the same shape a `<config.json>` file has — and hands it to
+the exact same validate/generate/verify pipeline `pokie init <name>` above uses, so everything in the sections
+above (the field format, validation rules, output directory prompt) applies identically; the wizard has no
+*generation* logic of its own. It does do light, per-prompt input-shape checks (a number is a number, a symbol id
+isn't blank, ...), and a handful of these deliberately mirror `GameBlueprintValidator`'s own error-level rules —
+specifically the ones cheap to check immediately against fields already collected earlier in the same run (a
+paytable `matchCount` between 2 and the chosen reel count; a reel-weighting/reel-strip symbol that's actually one
+of the symbols entered earlier) — so a typo is caught and re-asked on the spot instead of only surfacing as a
+validator error after answering every remaining question. This is a convenience, not a second source of truth: the
+final answer is always whatever `GameBlueprintValidator` decides once the wizard hands off its result, same as for
+`<config.json>`.
+
+Per-question input handling:
+
+- An answer that doesn't parse (e.g. non-numeric reels, a duplicate symbol id, a malformed `matchCount:multiplier`
+  pair, a paytable `matchCount` outside `2..reels`, a reel-weighting symbol not among the symbols entered earlier)
+  prints a one-line reason and re-asks the same question — it never silently drops or guesses at bad input.
+- Pressing **Ctrl+C** at any prompt cancels the wizard gracefully: it prints `Init cancelled.` and exits with a
+  non-zero status without writing anything, rather than a stack trace. So does closing/exhausting the input stream
+  (EOF) — e.g. a scripted/piped run that provides fewer answers than the wizard asks for.
+- The paytable and reel-strip prompts are asked once per symbol/reel (so the number of prompts scales with how
+  many symbols/reels you configured earlier in the same run).
+- Reel weighting is a single choice up front — blank for default weights covering exactly the symbols entered
+  earlier (the preset's own weight for every symbol it knows, a rarest-first fallback for any it doesn't), `w` for
+  symbol weights typed by hand (one combined `symbol:count` line), `s` for explicit reel strips (one line per
+  reel), or `-` for the engine's built-in default weighting — mirroring the blueprint's own
+  `reelStrips`/`symbolWeights` mutual exclusivity.
+- A blank paytable answer applies that symbol's default payouts rather than leaving it unpaid: the preset's own
+  entry when it fits the chosen reel count, otherwise a generated ladder that respects it (match counts never
+  exceed `reels`, and matching more never pays less). Answer `-` to leave a symbol without a payout.
+- Symbol ids can't contain `:` — the wizard's own prompts reuse it as a pair separator later on (paytable, symbol
+  weights), so a symbol id containing one would be unparseable there.
+
+Answers can also be piped/scripted (e.g. `printf '...\n...\n' | pokie init`, or piping a saved answers file) —
+each question is answered from the piped input in the same order it would be asked interactively, one line per
+prompt, and the same reprompt-on-invalid-input and EOF-cancellation rules apply.
+
+Once the wizard completes, it prints the same "prepared and verified" / "Next:" summary shown above.
 
 ## `pokie sim <packageRoot>`
 
@@ -1884,7 +1897,7 @@ Prints a package's provenance — reading `package.json` and, when present, a le
 — without loading or running the game at all. Where `pokie validate` answers "does this package satisfy the
 `PokieGame` contract", `pokie inspect` answers "what is this package and where did it come from".
 
-A package the *current* `pokie build`/`pokie create --random` produces carries no such provenance file (see
+A package the *current* `pokie build`/`pokie init` produces carries no such provenance file (see
 [Building into an existing `--out` directory](#building-into-an-existing---out-directory) above) — `pokie inspect`
 always reports it as not-generated:
 
@@ -2006,7 +2019,7 @@ depends on whether the loaded game implements the optional `PokieGame.getSession
   ```
 - **`getSessionSerializer()` implemented**: `{sessionId, game, credits, ...serializer.getInitialData(session)}` —
   `credits` is always the authoritative wallet balance, overriding whatever the serializer itself computed. For a
-  game returning `new VideoSlotSessionSerializer()` (what `pokie create`/`pokie init` scaffold by default), that
+  game returning `new VideoSlotSessionSerializer()` (what `pokie build`/`pokie init` scaffold by default), that
   means `bet`, `availableBets`, `reelsSymbols`, `availableSymbols`, `paytable`, `linesDefinitions`, and more — see
   [Network Serialization](serialization.md) for the full shape, including the `MultiStageRoundSessionSerializer`/
   `CascadeSessionSerializer` payload for multi-stage/cascade mechanics. This is `getInitialData()`'s output only —
@@ -3327,8 +3340,7 @@ client, even for a load/validation failure.
 A typical end-to-end loop, from a fresh directory to a running dev server, chaining every subcommand above:
 
 ```
-pokie create sample-slot
-cd sample-slot && npm install && npm run build && cd ..
+pokie init sample-slot
 
 pokie validate ./sample-slot
 
@@ -3347,8 +3359,8 @@ pokie dev ./sample-slot
 
 Each step builds on the same `<packageRoot>`:
 
-- [`validate`](#pokie-validate-packageroot) needs a built package (`pokie create`/`pokie init` +
-  `npm install && npm run build`) — it checks the contract before anything else runs.
+- [`validate`](#pokie-validate-packageroot) needs a prepared package (`pokie init`, or `pokie build` + the
+  same-shaped output) — it checks the contract before anything else runs.
 - [`sim --out`](#pokie-sim-packageroot) produces the JSON report that
   [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftreportjson-rightreportjson)
   compares — run `sim` twice (before/after a config change, same `--seed`) to get two reports worth diffing.
@@ -3357,7 +3369,7 @@ Each step builds on the same `<packageRoot>`:
   into a deterministic RNG for `--seed` to mean anything (see [Limitations](#limitations) below).
 - [`dev`](#pokie-dev-packageroot-experimental) (or `serve`/`client` run separately) is normally the last,
   interactive step, not part of a scripted pipeline — it only needs the same built package and runs until
-  stopped. `pokie create`/`pokie init` already scaffold `npm run start`/`server`/`client` scripts wrapping these
+  stopped. `pokie build`/`pokie init` already scaffold `npm run start`/`server`/`client` scripts wrapping these
   three commands.
 
 ## What's next

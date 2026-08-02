@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {SimulationReport} from "pokie";
-import {BuildCommand} from "../../cli/commands/BuildCommand.js";
+import {InitCommand} from "../../cli/commands/InitCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
@@ -48,18 +48,20 @@ class AlwaysEnterPrompt implements PromptAdapting {
     }
 }
 
-// End-to-end happy path for "pokie build" with no arguments: BuildCommand's real GameBlueprintWizard
-// and GameBlueprintValidator/GamePackageGenerator (only the terminal I/O is faked, via a canned
-// PromptAdapting) build a GameBlueprint from scratch, and the resulting package is then run through
-// the same rest-of-the-CLI workflow BuildWorkflow.integration.test.ts exercises for the config-driven
-// path — proving the wizard hands off a package that's indistinguishable from a hand-written
-// <config.json>'s, not a special case the rest of the CLI has to know about.
-describe("CLI workflow (integration): pokie build (wizard) output passes validate/sim/report", () => {
+// End-to-end happy path for "pokie init" with no name: InitCommand's real GameBlueprintWizard (moved
+// here from "pokie build", which no longer offers it) and GameBlueprintValidator/GamePackageGenerator
+// (only the terminal I/O is faked, via a canned PromptAdapting) build a GameBlueprint from scratch, the
+// resulting package is verified on the spot (PokieGamePackageValidator, the same check "pokie validate"
+// runs), and is then run through the same rest-of-the-CLI workflow BuildWorkflow.integration.test.ts
+// exercises for the config-driven path — proving the wizard hands off a package that's
+// indistinguishable from a hand-written <config.json>'s, not a special case the rest of the CLI has to
+// know about.
+describe("CLI workflow (integration): pokie init (wizard) output passes validate/sim/report", () => {
     let workDir: string;
     let outDir: string;
 
     beforeEach(() => {
-        workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-wizard-build-workflow-test-"));
+        workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-wizard-init-workflow-test-"));
         outDir = path.join(workDir, "built-game");
         jest.spyOn(console, "log").mockImplementation(() => undefined);
     });
@@ -69,7 +71,7 @@ describe("CLI workflow (integration): pokie build (wizard) output passes validat
         (console.log as jest.Mock).mockRestore();
     });
 
-    it("builds a package from wizard answers, then validates, simulates, and reports on it", async () => {
+    it("prepares a package from wizard answers, then validates, simulates, and reports on it", async () => {
         const prompt = new FakePromptAdapting([
             "wizard-slot", // id
             "", // name -> default "Wizard Slot"
@@ -87,10 +89,10 @@ describe("CLI workflow (integration): pokie build (wizard) output passes validat
             outDir, // output directory
         ]);
 
-        const buildCommand = new BuildCommand("1.3.0", undefined, undefined, undefined, new GameBlueprintWizard(), () => prompt);
-        const buildExitCode = await buildCommand.run([]);
+        const initCommand = new InitCommand("1.3.0", undefined, undefined, undefined, undefined, new GameBlueprintWizard(), () => prompt);
+        const initExitCode = await initCommand.run([]);
 
-        expect(buildExitCode).toBe(0);
+        expect(initExitCode).toBe(0);
         expect(prompt.closed).toBe(true);
         expect(fs.existsSync(path.join(outDir, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "README.md"))).toBe(true);
@@ -119,7 +121,7 @@ describe("CLI workflow (integration): pokie build (wizard) output passes validat
     // reel weighting, and the default output directory. Reaching exit code 0 at all already proves the
     // paytable defaults were applied — an Enter-only run used to produce an empty paytable, which
     // GameBlueprintValidator rejects with "blueprint-paytable-empty" before anything is written.
-    it("builds, validates and simulates a package when every question is answered with Enter", async () => {
+    it("prepares, validates and simulates a package when every question is answered with Enter", async () => {
         const prompt = new AlwaysEnterPrompt();
         // The default output directory is resolved against the process working directory, so it's
         // pointed at the temp dir — otherwise accepting that default (which is the point of the test)
@@ -127,10 +129,10 @@ describe("CLI workflow (integration): pokie build (wizard) output passes validat
         const cwdSpy = jest.spyOn(process, "cwd").mockReturnValue(workDir);
 
         try {
-            const buildCommand = new BuildCommand("1.3.0", undefined, undefined, undefined, new GameBlueprintWizard(), () => prompt);
-            const buildExitCode = await buildCommand.run([]);
+            const initCommand = new InitCommand("1.3.0", undefined, undefined, undefined, undefined, new GameBlueprintWizard(), () => prompt);
+            const initExitCode = await initCommand.run([]);
 
-            expect(buildExitCode).toBe(0);
+            expect(initExitCode).toBe(0);
             expect(prompt.closed).toBe(true);
             expect(prompt.questions.length).toBeGreaterThan(0);
 

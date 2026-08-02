@@ -12,9 +12,6 @@ import {
 } from "pokie";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {SmokeSimulationOutcome} from "../../../cli/build/runSmokeSimulation.js";
-import {GameBlueprintWizarding} from "../../../cli/wizard/GameBlueprintWizarding.js";
-import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";
-import {WizardResult} from "../../../cli/wizard/WizardResult.js";
 
 function createStubRandomBlueprintGenerator(
     result: RandomGameBlueprintResult,
@@ -54,26 +51,6 @@ function createStubGenerator(
     };
 }
 
-function createStubWizard(result: WizardResult | null | Error): GameBlueprintWizarding {
-    return {
-        run() {
-            return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
-        },
-    };
-}
-
-function createStubPrompt(): PromptAdapting & {closed: boolean} {
-    return {
-        closed: false,
-        ask() {
-            return Promise.resolve(null);
-        },
-        close() {
-            this.closed = true;
-        },
-    };
-}
-
 const rawBlueprint = {manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}};
 const fullBlueprint: GameBlueprint = {
     manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
@@ -86,13 +63,6 @@ const fullBlueprint: GameBlueprint = {
         [1, 1, 1, 1, 1],
     ],
     availableBets: [1, 2, 5],
-};
-const wizardBlueprint: GameBlueprint = {
-    manifest: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
-    reels: 5,
-    rows: 3,
-    symbols: ["A", "K"],
-    paytable: {A: {3: 5}},
 };
 const generatedResult: GeneratedGamePackage = {
     projectRoot: "/tmp/sample-slot",
@@ -121,63 +91,13 @@ describe("BuildCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
-    it("launches the wizard when run without a config path, validating and generating from its result", async () => {
-        const wizard = createStubWizard({blueprint: wizardBlueprint, outDir: "custom-out"});
-        const prompt = createStubPrompt();
-        const validator = createStubValidator([]);
-        const generator = createStubGenerator(generatedResult);
-        const command = new BuildCommand("1.3.0", () => rawBlueprint, validator, generator, wizard, () => prompt);
+    // The interactive wizard used to live here (run with no args at all) -- it's moved to "pokie init"
+    // (see InitCommand and tests/cli/WizardInitWorkflow.integration.test.ts), so "pokie build" with no
+    // args is now simply a missing <config.json> the same way any other missing required argument is.
+    it("reports the usage error, same as any other missing <config.json>, when run with no args at all", async () => {
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
 
-        const exitCode = await command.run([]);
-
-        expect(exitCode).toBe(0);
-        expect(validator.calledWith).toBe(wizardBlueprint);
-        expect(generator.calledWith).toEqual({blueprint: wizardBlueprint, cwd: process.cwd(), outDir: "custom-out"});
-        expect(prompt.closed).toBe(true);
-    });
-
-    it("prints a cancellation message and returns 1 without generating when the wizard is cancelled", async () => {
-        const wizard = createStubWizard(null);
-        const prompt = createStubPrompt();
-        const generator = createStubGenerator(generatedResult);
-        const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), generator, wizard, () => prompt);
-
-        const exitCode = await command.run([]);
-
-        expect(exitCode).toBe(1);
-        expect(generator.calledWith).toBeUndefined();
-        expect(prompt.closed).toBe(true);
-        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("cancelled"));
-    });
-
-    it("still reports blueprint errors from a wizard result, without generating", async () => {
-        const wizard = createStubWizard({blueprint: wizardBlueprint});
-        const prompt = createStubPrompt();
-        const validator = createStubValidator([{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}]);
-        const generator = createStubGenerator(generatedResult);
-        const command = new BuildCommand("1.3.0", () => rawBlueprint, validator, generator, wizard, () => prompt);
-
-        const exitCode = await command.run([]);
-
-        expect(exitCode).toBe(1);
-        expect(generator.calledWith).toBeUndefined();
-        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
-    });
-
-    it("closes the prompt even if the wizard rejects", async () => {
-        const wizard = createStubWizard(new Error("boom"));
-        const prompt = createStubPrompt();
-        const command = new BuildCommand(
-            "1.3.0",
-            () => rawBlueprint,
-            createStubValidator([]),
-            createStubGenerator(generatedResult),
-            wizard,
-            () => prompt,
-        );
-
-        await expect(command.run([])).rejects.toThrow("boom");
-        expect(prompt.closed).toBe(true);
+        await expect(command.run([])).rejects.toThrow(/Usage: pokie build <config\.json>/);
     });
 
     it("throws a descriptive error for an unknown option", async () => {
@@ -195,21 +115,19 @@ describe("BuildCommand", () => {
             paytable: {A: {3: 5}},
         };
 
-        function createCommand(fileExists: boolean, writeFile: jest.Mock, wizard?: GameBlueprintWizarding) {
+        function createCommand(fileExists: boolean, writeFile: jest.Mock) {
             return new BuildCommand(
                 "1.3.0",
                 () => rawBlueprint,
                 createStubValidator([]),
                 createStubGenerator(generatedResult),
-                wizard ?? createStubWizard(new Error("the wizard must not run for --init-blueprint")),
-                () => createStubPrompt(),
                 () => starterBlueprint,
                 () => fileExists,
                 writeFile,
             );
         }
 
-        it("writes the starter blueprint and prints the next-step hint, without running the wizard or generating a package", async () => {
+        it("writes the starter blueprint and prints the next-step hint, without generating a package", async () => {
             const generator = createStubGenerator(generatedResult);
             const writeFile = jest.fn();
             const command = new BuildCommand(
@@ -217,8 +135,6 @@ describe("BuildCommand", () => {
                 () => rawBlueprint,
                 createStubValidator([]),
                 generator,
-                createStubWizard(new Error("the wizard must not run for --init-blueprint")),
-                () => createStubPrompt(),
                 () => starterBlueprint,
                 () => false,
                 writeFile,
@@ -350,19 +266,32 @@ describe("BuildCommand", () => {
         expect(printed).toContain("source           config.json");
     });
 
-    it("omits the source line from the build summary when built with no source path (the wizard flow)", async () => {
-        const wizard = createStubWizard({blueprint: wizardBlueprint});
-        const prompt = createStubPrompt();
+    it("omits the source line from the build summary when built with no source path (the random flow)", async () => {
+        const randomBlueprint: GameBlueprint = {
+            manifest: {id: "no-source-slot", name: "No Source Slot", version: "0.1.0"},
+            reels: 3,
+            rows: 3,
+            symbols: ["A", "B"],
+            paytable: {A: {3: 5}},
+        };
+        const randomGenerator = createStubRandomBlueprintGenerator({
+            blueprint: randomBlueprint,
+            seed: 1,
+            provenance: {generatorVersion: "1.0.0", strategy: "default-line-pay", seed: 1},
+        });
         const command = new BuildCommand(
             "1.3.0",
             () => rawBlueprint,
             createStubValidator([]),
             createStubGenerator(generatedResult),
-            wizard,
-            () => prompt,
+            undefined,
+            undefined,
+            undefined,
+            randomGenerator,
+            jest.fn().mockResolvedValue({ok: true, rounds: 1, roundsRequested: 1, rtp: 1, hitFrequency: 1, maxWin: 1, averageBet: 1}),
         );
 
-        await command.run([]);
+        await command.run(["random"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).not.toContain("source           ");
@@ -579,8 +508,6 @@ describe("BuildCommand", () => {
                 () => rawBlueprint,
                 createStubValidator([]),
                 generator,
-                undefined,
-                undefined,
                 undefined,
                 undefined,
                 undefined,

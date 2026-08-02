@@ -1,7 +1,8 @@
 // Freezes one specific cross-cutting fact about the CLI surface ahead of Phase 3 migration work:
 // which public `pokie` commands take an already-loadable game *package* (a directory satisfying the
-// `PokieGame`/`pokie.entry` contract `loadPokieGame`/`findPokieProjectRoot` read -- produced by any of
-// `pokie build`, `pokie create`, or `pokie init`, not "built" in any narrower sense) as their one
+// `PokieGame`/`pokie.entry` contract `loadPokieGame`/`findPokieProjectRoot` read -- produced by
+// `pokie build` or `pokie init`, not "built" in any narrower sense; `pokie create` writes a source
+// Blueprint Project instead, not a package -- see that command's own entry below) as their one
 // required input, vs. every other command, whose required input is a source config/blueprint, a
 // previously-produced bundle/export/report artifact, a plain file, a project directory to write into,
 // or nothing at all. This axis matters specifically for a future migration step that wants to relax the
@@ -14,10 +15,8 @@
 // section actually needs, plus a short human description for that section's own table.
 export type PackageOnlyCommandInput = {
     command: string;
-    // Matches CliVerbDescriptor.verb exactly (see cliCommandInventory.ts), or "(no verbs)" for `init`,
-    // whose own CLI_COMMAND_DESCRIPTORS entry declares an empty `verbs` array (it takes no CLI
-    // arguments at all -- see that entry's own comment).
-    verb: string | undefined | "(no verbs)";
+    // Matches CliVerbDescriptor.verb exactly (see cliCommandInventory.ts).
+    verb: string | undefined;
     // True iff this verb's one required positional is an existing, loadable POKIE game package
     // directory -- i.e. this command can do nothing at all without one already on disk, produced by a
     // prior `pokie build`/`create`/`init` run (or hand-assembled to the same contract).
@@ -28,10 +27,9 @@ export type PackageOnlyCommandInput = {
     primaryInput: string;
 };
 
-// One entry per (command, verb) pair in CLI_COMMAND_DESCRIPTORS (tests/cli/fixtures/cliCommandInventory.ts),
-// plus `init` (which has none there) -- coverage of that full set is asserted by
-// tests/cli/packageOnlyCommandInputs.contract.test.ts, so this list can't silently drift out of sync
-// with a future command/verb addition, rename, or removal.
+// One entry per (command, verb) pair in CLI_COMMAND_DESCRIPTORS (tests/cli/fixtures/cliCommandInventory.ts) --
+// coverage of that full set is asserted by tests/cli/packageOnlyCommandInputs.contract.test.ts, so this
+// list can't silently drift out of sync with a future command/verb addition, rename, or removal.
 export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     // --- build: writes a package from a blueprint/config; never reads an existing package. ---
     {command: "build", verb: undefined, requiresLoadablePackage: false, primaryInput: "config.json (a GameBlueprint)"},
@@ -46,9 +44,9 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     {command: "client", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
     {command: "dev", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
 
-    // --- create/init: write a new/existing project directory; never read an existing package. ---
-    {command: "create", verb: undefined, requiresLoadablePackage: false, primaryInput: "name (a new directory to create)"},
-    {command: "create", verb: "--random", requiresLoadablePackage: false, primaryInput: "name (optional, a new directory to create)"},
+    // --- create: writes an editable Blueprint Project (a GameBlueprint JSON file); never reads a package. ---
+    {command: "create", verb: undefined, requiresLoadablePackage: false, primaryInput: "name (optional; names the written blueprint file)"},
+    {command: "create", verb: "--random", requiresLoadablePackage: false, primaryInput: "name (optional; names the written blueprint file)"},
 
     {command: "diff", verb: undefined, requiresLoadablePackage: false, primaryInput: "leftReportJson + rightReportJson (pokie sim --out reports)"},
 
@@ -58,11 +56,10 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     {command: "fairness", verb: "reveal", requiresLoadablePackage: false, primaryInput: "commitment.json + --server-seed + --source bundleDir"},
     {command: "fairness", verb: "verify", requiresLoadablePackage: false, primaryInput: "proof.json + --commitment + --source bundleDir"},
 
-    // init: no CLI_COMMAND_DESCRIPTORS verb entries at all (see that fixture's own comment) -- scaffolds
-    // process.cwd() unconditionally. Its own precondition (an existing package.json in cwd) is an
-    // *existing npm project*, not a loadable POKIE package -- `pokie init`'s whole job is turning the
-    // former into the latter.
-    {command: "init", verb: "(no verbs)", requiresLoadablePackage: false, primaryInput: "none (scaffolds the current working directory's own existing npm project in place)"},
+    // init: writes a brand-new, prepared package -- a "name" positional (non-interactive) or, when
+    // omitted, the interactive wizard's own answers. Never reads an existing package; the "package" it
+    // produces is init's own output, not its input.
+    {command: "init", verb: undefined, requiresLoadablePackage: false, primaryInput: "name (optional; omitted launches the interactive wizard instead)"},
 
     {command: "inspect", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
 

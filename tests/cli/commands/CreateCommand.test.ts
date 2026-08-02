@@ -1,28 +1,5 @@
-import {
-    computeGameBlueprintHash,
-    GameBlueprint,
-    GameBlueprintValidating,
-    GamePackageGenerating,
-    GeneratedGamePackage,
-    PokieGameManifest,
-    RandomGameBlueprintGenerating,
-    RandomGameBlueprintRequest,
-    RandomGameBlueprintResult,
-    ValidationIssue,
-} from "pokie";
-import {SmokeSimulationOutcome} from "../../../cli/build/runSmokeSimulation.js";
+import {GameBlueprint, GameBlueprintValidating, RandomGameBlueprintGenerating, RandomGameBlueprintRequest, RandomGameBlueprintResult, ValidationIssue} from "pokie";
 import {CreateCommand} from "../../../cli/commands/CreateCommand.js";
-import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
-import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
-
-function createStubCreator(result: ScaffoldResult): GamePackageCreating & {calledWith?: {parentDir: string; name: string}} {
-    return {
-        create(parentDir: string, name: string) {
-            this.calledWith = {parentDir, name};
-            return result;
-        },
-    };
-}
 
 function createStubRandomBlueprintGenerator(
     result: RandomGameBlueprintResult,
@@ -44,49 +21,132 @@ function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating
     };
 }
 
-function createStubPackageGenerator(
-    result: GeneratedGamePackage,
-): GamePackageGenerating & {calledWith?: {blueprint: GameBlueprint; cwd: string; outDir?: string}} {
-    return {
-        generate(blueprint: GameBlueprint, cwd: string, outDir?: string) {
-            this.calledWith = {blueprint, cwd, outDir};
-            return result;
-        },
-    };
+const starterBlueprint: GameBlueprint = {
+    manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
+    reels: 5,
+    rows: 3,
+    symbols: ["A", "K", "Q", "J"],
+    paytable: {A: {3: 5}},
+};
+
+const blankBlueprint: GameBlueprint = {
+    manifest: {id: "blank-slot", name: "Blank Slot", version: "0.1.0"},
+    reels: 3,
+    rows: 3,
+    symbols: ["A", "B", "C"],
+    paytable: {A: {3: 5}},
+};
+
+function createCommand(
+    fileExists: jest.Mock = jest.fn().mockReturnValue(false),
+    writeFile: jest.Mock = jest.fn(),
+    validator = createStubValidator([]),
+    randomGenerator: RandomGameBlueprintGenerating | undefined = undefined,
+    variantRandomGenerator: RandomGameBlueprintGenerating | undefined = undefined,
+) {
+    const command = new CreateCommand(
+        "1.3.0",
+        () => starterBlueprint,
+        () => blankBlueprint,
+        validator,
+        randomGenerator,
+        fileExists,
+        writeFile,
+        variantRandomGenerator,
+    );
+    return {command, fileExists, writeFile, validator};
 }
 
 describe("CreateCommand", () => {
-    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+    let logSpy: jest.SpyInstance;
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+        logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        logSpy.mockRestore();
+        errorSpy.mockRestore();
+    });
 
     it("has the expected name and description", () => {
-        const command = new CreateCommand(
-            "1.2.1",
-            createStubCreator({projectRoot: "/tmp/sample-slot", manifest, createdFiles: [], updatedFiles: [], skippedFiles: []}),
-        );
+        const {command} = createCommand();
 
         expect(command.getName()).toBe("create");
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
-    it("throws when run without a project name", () => {
-        const command = new CreateCommand("1.2.1", createStubCreator({projectRoot: "", manifest, createdFiles: [], updatedFiles: [], skippedFiles: []}));
+    it("writes the starter blueprint to the default path derived from its own manifest id, with no name given", async () => {
+        const {command, writeFile} = createCommand();
 
-        expect(() => command.run([])).toThrow(/Usage: pokie create <name>/);
+        const exitCode = await command.run([]);
+
+        expect(exitCode).toBe(0);
+        expect(writeFile).toHaveBeenCalledWith("./starter-slot.blueprint.json", `${JSON.stringify(starterBlueprint, null, 4)}\n`);
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain('created at "./starter-slot.blueprint.json"');
+        expect(printed).toContain('pokie init');
     });
 
-    it("creates the project under the current working directory using the given name", async () => {
-        const projectRoot = `${process.cwd()}/sample-slot`;
-        const stub = createStubCreator({
-            projectRoot,
-            manifest,
-            createdFiles: ["package.json", "tsconfig.json", "src/index.ts", "src/SampleSlotGame.ts", "src/SampleSlotSession.ts"],
-            updatedFiles: [],
-            skippedFiles: [],
-        });
-        const command = new CreateCommand("1.2.1", stub);
+    it("overrides the manifest id/name from a given name, and writes to <name>.blueprint.json", async () => {
+        const {command, writeFile} = createCommand();
 
-        await expect(command.run(["sample-slot"])).resolves.toBeUndefined();
-        expect(stub.calledWith).toEqual({parentDir: process.cwd(), name: "sample-slot"});
+        await command.run(["sample-slot"]);
+
+        const written = JSON.parse((writeFile.mock.calls[0] as [string, string])[1]) as GameBlueprint;
+        expect(writeFile.mock.calls[0][0]).toBe("./sample-slot.blueprint.json");
+        expect(written.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
+    });
+
+    it("writes the blank blueprint instead of the starter one when --blank is given", async () => {
+        const {command, writeFile} = createCommand();
+
+        await command.run(["--blank"]);
+
+        expect(writeFile).toHaveBeenCalledWith("./blank-slot.blueprint.json", `${JSON.stringify(blankBlueprint, null, 4)}\n`);
+    });
+
+    it("writes to the given --out path instead of the default", async () => {
+        const {command, writeFile} = createCommand();
+
+        await command.run(["--out", "custom/my-game.blueprint.json"]);
+
+        expect(writeFile.mock.calls[0][0]).toBe("custom/my-game.blueprint.json");
+    });
+
+    // The non-"--random" path resolves synchronously (see CreateCommand.run()'s own doc comment on why
+    // it isn't declared async) -- same as the old "pokie create <name>" scaffold path this replaces, a
+    // parse/validation failure throws straight out of run() rather than rejecting the returned promise.
+    it("throws a clear error instead of silently overwriting an existing file", () => {
+        const {command} = createCommand(jest.fn().mockReturnValue(true));
+
+        expect(() => command.run([])).toThrow(/"\.\/starter-slot\.blueprint\.json" already exists/);
+    });
+
+    it("throws a descriptive error for an invalid name", () => {
+        const {command} = createCommand();
+
+        expect(() => command.run(["../escape"])).toThrow(/is not a valid project name/);
+    });
+
+    it("throws a descriptive error for an unknown option", () => {
+        const {command} = createCommand();
+
+        expect(() => command.run(["--bogus"])).toThrow(/Unknown option "--bogus"/);
+    });
+
+    it("throws a descriptive error for an unexpected extra positional argument", () => {
+        const {command} = createCommand();
+
+        expect(() => command.run(["name-one", "name-two"])).toThrow(/Unexpected extra argument "name-two"/);
+    });
+
+    it("throws a descriptive error when --out is given no value", () => {
+        const {command} = createCommand();
+
+        expect(() => command.run(["--out"])).toThrow(/--out requires a file path/);
     });
 
     describe("--random", () => {
@@ -104,102 +164,71 @@ describe("CreateCommand", () => {
             seed: 20260721,
             provenance: {generatorVersion: "1.0.0", strategy: "default-line-pay", seed: 20260721},
         };
-        const generatedResult: GeneratedGamePackage = {
-            projectRoot: "/tmp/blazing-riches-4821",
-            manifest: randomBlueprint.manifest,
-            createdFiles: ["package.json", "dist/index.js"],
-        };
-        const okSmoke: SmokeSimulationOutcome = {
-            ok: true,
-            rounds: 200,
-            roundsRequested: 200,
-            rtp: 0.965,
-            hitFrequency: 0.31,
-            maxWin: 50,
-            averageBet: 5,
-        };
 
-        function createCommand(
-            randomGenerator = createStubRandomBlueprintGenerator(randomResult),
+        function createRandomCommand(
+            fileExists: jest.Mock = jest.fn().mockReturnValue(false),
+            writeFile: jest.Mock = jest.fn(),
             validator = createStubValidator([]),
-            packageGenerator = createStubPackageGenerator(generatedResult),
-            runSmoke: jest.Mock = jest.fn().mockResolvedValue(okSmoke),
+            randomGenerator = createStubRandomBlueprintGenerator(randomResult),
             variantRandomGenerator = createStubRandomBlueprintGenerator({
                 ...randomResult,
                 provenance: {...randomResult.provenance, strategy: "random-variant"},
             }),
         ) {
-            const command = new CreateCommand(
-                "1.3.0",
-                createStubCreator({projectRoot: "", manifest, createdFiles: [], updatedFiles: [], skippedFiles: []}),
-                randomGenerator,
-                validator,
-                packageGenerator,
-                runSmoke,
-                variantRandomGenerator,
-            );
-            return {command, randomGenerator, validator, packageGenerator, runSmoke, variantRandomGenerator};
+            const {command} = createCommand(fileExists, writeFile, validator, randomGenerator, variantRandomGenerator);
+            return {command, fileExists, writeFile, validator, randomGenerator, variantRandomGenerator};
         }
 
-        let logSpy: jest.SpyInstance;
-        let errorSpy: jest.SpyInstance;
-
-        beforeEach(() => {
-            logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
-            errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
-        });
-
-        afterEach(() => {
-            logSpy.mockRestore();
-            errorSpy.mockRestore();
-        });
-
-        it("generates, validates, builds, and smoke-simulates a random game with no name given", async () => {
-            const {command, randomGenerator, packageGenerator, runSmoke} = createCommand();
+        it("generates a random blueprint, converts its weighting to valid per-reel generation, and writes it out", async () => {
+            const {command, writeFile, randomGenerator} = createRandomCommand();
 
             const exitCode = await command.run(["--random"]);
 
             expect(exitCode).toBe(0);
             expect(randomGenerator.calledWith).toEqual({seed: undefined, overrides: undefined});
-            expect(packageGenerator.calledWith).toEqual({blueprint: randomBlueprint, cwd: process.cwd(), outDir: undefined});
-            expect(runSmoke).toHaveBeenCalledWith(generatedResult.projectRoot, 20260721);
+            expect(writeFile.mock.calls[0][0]).toBe("./blazing-riches-4821.blueprint.json");
+
+            const written = JSON.parse((writeFile.mock.calls[0] as [string, string])[1]) as GameBlueprint;
+            expect(written.symbolWeights).toBeUndefined();
+            expect(written.reelStripGeneration).toHaveLength(5);
+            for (const entry of written.reelStripGeneration ?? []) {
+                expect(entry).toMatchObject({type: "generated", symbolWeights: randomBlueprint.symbolWeights});
+            }
+
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('Generated random game "Blazing Riches" (id: "blazing-riches-4821") from seed 20260721');
             expect(printed).toContain('Provenance: generator 1.0.0, strategy "default-line-pay".');
-            expect(printed).toContain(`blueprint hash   ${computeGameBlueprintHash(randomBlueprint)}`);
-            expect(printed).toContain("Smoke simulation OK: 200 rounds, RTP 96.50%, hit frequency 31.00%.");
-            expect(printed).toContain('created in "/tmp/blazing-riches-4821"');
+            expect(printed).toContain('created at "./blazing-riches-4821.blueprint.json"');
         });
 
-        it("prints a feature-termination warning when the smoke simulation stops before its requested round budget", async () => {
-            const {command} = createCommand(undefined, undefined, undefined, jest.fn().mockResolvedValue({...okSmoke, rounds: 150}));
+        it("leaves a blueprint that already has reelStrips or reelStripGeneration untouched", async () => {
+            const withStrips: GameBlueprint = {...randomBlueprint, reelStrips: [["A", "K"]]};
+            Reflect.deleteProperty(withStrips, "symbolWeights");
+            const {command, writeFile} = createRandomCommand(
+                undefined,
+                undefined,
+                undefined,
+                createStubRandomBlueprintGenerator({...randomResult, blueprint: withStrips}),
+            );
 
             await command.run(["--random"]);
 
-            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-            expect(printed).toContain("warning  feature termination: only 150/200 smoke-simulation rounds completed");
+            const written = JSON.parse((writeFile.mock.calls[0] as [string, string])[1]) as GameBlueprint;
+            expect(written.reelStrips).toEqual([["A", "K"]]);
+            expect(written.reelStripGeneration).toBeUndefined();
         });
 
-        it("prints a max-win sanity warning when the observed max win isn't a finite, non-negative amount", async () => {
-            const {command} = createCommand(undefined, undefined, undefined, jest.fn().mockResolvedValue({...okSmoke, maxWin: -1}));
-
-            await command.run(["--random"]);
-
-            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-            expect(printed).toContain("warning  max-win sanity: observed max win (-1) is not a finite, non-negative amount.");
-        });
-
-        it("forwards a given name as both the manifest name override and the output directory", async () => {
-            const {command, randomGenerator, packageGenerator} = createCommand();
+        it("forwards a given name as both the manifest name override and the default file basename", async () => {
+            const {command, randomGenerator, writeFile} = createRandomCommand();
 
             await command.run(["my-game", "--random"]);
 
             expect(randomGenerator.calledWith).toEqual({seed: undefined, overrides: {name: "my-game"}});
-            expect(packageGenerator.calledWith?.outDir).toBe("my-game");
+            expect(writeFile.mock.calls[0][0]).toBe("./blazing-riches-4821.blueprint.json");
         });
 
         it("forwards --seed to the random blueprint generator", async () => {
-            const {command, randomGenerator} = createCommand();
+            const {command, randomGenerator} = createRandomCommand();
 
             await command.run(["--random", "--seed", "42"]);
 
@@ -207,45 +236,50 @@ describe("CreateCommand", () => {
         });
 
         it("throws a descriptive error for a non-integer --seed", async () => {
-            const {command} = createCommand();
+            const {command} = createRandomCommand();
 
             await expect(command.run(["--random", "--seed", "abc"])).rejects.toThrow(/--seed requires an integer value/);
         });
 
-        it("reports validation errors and returns 1 without generating a package", async () => {
+        it("writes to the given --out path instead of the default", async () => {
+            const {command, writeFile} = createRandomCommand();
+
+            await command.run(["--random", "--out", "custom/random-game.blueprint.json"]);
+
+            expect(writeFile.mock.calls[0][0]).toBe("custom/random-game.blueprint.json");
+        });
+
+        it("throws a descriptive error when --out is given no value", async () => {
+            const {command} = createRandomCommand();
+
+            await expect(command.run(["--random", "--out"])).rejects.toThrow(/--out requires a file path/);
+        });
+
+        it("reports validation errors and returns 1 without writing a file", async () => {
             const issues: ValidationIssue[] = [{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}];
-            const {command, packageGenerator} = createCommand(undefined, createStubValidator(issues));
+            const {command, writeFile} = createRandomCommand(undefined, undefined, createStubValidator(issues));
 
             const exitCode = await command.run(["--random"]);
 
             expect(exitCode).toBe(1);
-            expect(packageGenerator.calledWith).toBeUndefined();
+            expect(writeFile).not.toHaveBeenCalled();
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
         });
 
-        it("returns 1 and reports the error when the smoke simulation fails", async () => {
-            const {command} = createCommand(undefined, undefined, undefined, jest.fn().mockResolvedValue({ok: false, error: "boom"}));
-
-            const exitCode = await command.run(["--random"]);
-
-            expect(exitCode).toBe(1);
-            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Smoke simulation failed: boom"));
-        });
-
         it("throws a descriptive error for an unknown option", async () => {
-            const {command} = createCommand();
+            const {command} = createRandomCommand();
 
             await expect(command.run(["--random", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
         });
 
         it("throws a descriptive error for an unexpected extra positional argument", async () => {
-            const {command} = createCommand();
+            const {command} = createRandomCommand();
 
             await expect(command.run(["--random", "name-one", "name-two"])).rejects.toThrow(/Unexpected extra argument "name-two"/);
         });
 
-        it('uses the default random blueprint generator, not the variant one, when --preset is omitted', async () => {
-            const {command, randomGenerator, variantRandomGenerator} = createCommand();
+        it("uses the default random blueprint generator, not the variant one, when --preset is omitted", async () => {
+            const {command, randomGenerator, variantRandomGenerator} = createRandomCommand();
 
             await command.run(["--random"]);
 
@@ -254,43 +288,19 @@ describe("CreateCommand", () => {
         });
 
         it('forwards "--preset variant" to the variant random blueprint generator instead of the default one', async () => {
-            const {command, randomGenerator, variantRandomGenerator, packageGenerator} = createCommand();
+            const {command, randomGenerator, variantRandomGenerator} = createRandomCommand();
 
             const exitCode = await command.run(["--random", "--seed", "42", "--preset", "variant"]);
 
             expect(exitCode).toBe(0);
             expect(variantRandomGenerator.calledWith).toEqual({seed: 42, overrides: undefined});
             expect(randomGenerator.calledWith).toBeUndefined();
-            expect(packageGenerator.calledWith?.blueprint).toBe(randomBlueprint);
-        });
-
-        it('accepts "--preset default" explicitly', async () => {
-            const {command, randomGenerator, variantRandomGenerator} = createCommand();
-
-            await command.run(["--random", "--preset", "default"]);
-
-            expect(randomGenerator.calledWith).toEqual({seed: undefined, overrides: undefined});
-            expect(variantRandomGenerator.calledWith).toBeUndefined();
-        });
-
-        it("forwards a given name to the variant generator's overrides as well", async () => {
-            const {command, variantRandomGenerator} = createCommand();
-
-            await command.run(["my-game", "--random", "--preset", "variant"]);
-
-            expect(variantRandomGenerator.calledWith).toEqual({seed: undefined, overrides: {name: "my-game"}});
         });
 
         it("throws a descriptive error for an invalid --preset value", async () => {
-            const {command} = createCommand();
+            const {command} = createRandomCommand();
 
             await expect(command.run(["--random", "--preset", "bogus"])).rejects.toThrow(/--preset must be one of: default, variant/);
-        });
-
-        it("throws a descriptive error when --preset is given no value", async () => {
-            const {command} = createCommand();
-
-            await expect(command.run(["--random", "--preset"])).rejects.toThrow(/--preset must be one of: default, variant/);
         });
     });
 });

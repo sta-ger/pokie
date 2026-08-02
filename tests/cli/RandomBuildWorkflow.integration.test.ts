@@ -1,4 +1,4 @@
-import {ValidationIssue} from "pokie";
+import {GameBlueprint, ValidationIssue} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -119,44 +119,64 @@ describe("CLI workflow (integration): first-class random game generation", () =>
         expect(printed).toContain("Dry run");
     });
 
-    it('"pokie create <name> --random" creates a real, playable package named after <name>', async () => {
+    // "pokie create <name> --random" writes an editable Blueprint Project (a GameBlueprint JSON file),
+    // not a package -- see CreateCommand's own doc comment on why. Its reel weighting is expressed as
+    // valid per-reel generation (reelStripGeneration, one independent entry per reel) rather than a
+    // flat symbolWeights map, so feeding the written file straight into "pokie build" (no hand-editing)
+    // still produces a real, playable package -- proving the written blueprint is genuinely a complete,
+    // buildable Blueprint Project, not just a shape-valid in-memory value.
+    it('"pokie create <name> --random" writes a valid, per-reel-generated Blueprint Project that "pokie build" can turn into a real, playable package', async () => {
         const originalCwd = process.cwd();
         process.chdir(workDir);
         try {
             const exitCode = await new CreateCommand("1.3.0").run(["my-random-game", "--random", "--seed", "5"]);
 
             expect(exitCode).toBe(0);
-            const projectRoot = path.join(workDir, "my-random-game");
-            expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
+            const blueprintPath = path.join(workDir, "my-random-game.blueprint.json");
+            expect(fs.existsSync(blueprintPath)).toBe(true);
 
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {name: string}};
-            expect(game.getManifest().name).toBe("my-random-game");
-
-            const validateExitCode = await new ValidateCommand().run([projectRoot]);
-            expect(validateExitCode).toBe(0);
+            const blueprint = JSON.parse(fs.readFileSync(blueprintPath, "utf-8")) as GameBlueprint;
+            expect(blueprint.manifest.id).toBe("my-random-game");
+            expect(blueprint.manifest.name).toBe("my-random-game");
+            expect(blueprint.symbolWeights).toBeUndefined();
+            expect(blueprint.reelStripGeneration).toHaveLength(blueprint.reels);
 
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "default-line-pay"\./);
-            expect(printed).toContain("blueprint hash   sha256:");
+            expect(printed).toContain('pokie init');
+
+            const projectRoot = path.join(workDir, "my-random-game");
+            const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", projectRoot]);
+            expect(buildExitCode).toBe(0);
+            expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
+
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
+            expect(game.getManifest().id).toBe("my-random-game");
+
+            const validateExitCode = await new ValidateCommand().run([projectRoot]);
+            expect(validateExitCode).toBe(0);
         } finally {
             process.chdir(originalCwd);
         }
     });
 
-    it('"pokie create <name> --random --preset variant" creates a real, playable package using the richer strategy', async () => {
+    it('"pokie create <name> --random --preset variant" writes a valid Blueprint Project using the richer strategy', async () => {
         const originalCwd = process.cwd();
         process.chdir(workDir);
         try {
             const exitCode = await new CreateCommand("1.3.0").run(["my-variant-game", "--random", "--seed", "99", "--preset", "variant"]);
 
             expect(exitCode).toBe(0);
-            const projectRoot = path.join(workDir, "my-variant-game");
-            expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
+            const blueprintPath = path.join(workDir, "my-variant-game.blueprint.json");
+            expect(fs.existsSync(blueprintPath)).toBe(true);
 
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {name: string}};
-            expect(game.getManifest().name).toBe("my-variant-game");
+            const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "random-variant"\./);
+
+            const projectRoot = path.join(workDir, "my-variant-game");
+            const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", projectRoot]);
+            expect(buildExitCode).toBe(0);
 
             const validateExitCode = await new ValidateCommand().run([projectRoot]);
             expect(validateExitCode).toBe(0);

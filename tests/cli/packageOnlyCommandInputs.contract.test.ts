@@ -7,12 +7,9 @@ import {PACKAGE_ONLY_COMMAND_INPUTS} from "./fixtures/packageOnlyCommandInputs.j
 // so PACKAGE_ONLY_COMMAND_INPUTS can never silently drift out of sync with a command/verb addition,
 // rename, or removal there.
 describe("Phase 3 current-state contract: package-only command inputs", () => {
-    it("has exactly one classification entry per (command, verb) pair CLI_COMMAND_DESCRIPTORS declares, plus init", () => {
+    it("has exactly one classification entry per (command, verb) pair CLI_COMMAND_DESCRIPTORS declares", () => {
         const descriptorKeys = CLI_COMMAND_DESCRIPTORS.flatMap((descriptor) => descriptor.verbs.map((verb) => `${descriptor.name}::${verb.verb ?? "(default)"}`));
-        // `init` has no CLI_COMMAND_DESCRIPTORS verb entries at all (see that fixture's own comment on
-        // why) -- added here explicitly rather than derived, so this coverage check still proves every
-        // *other* command/verb pair is accounted for.
-        const expectedKeys = [...descriptorKeys, "init::(no verbs)"].sort();
+        const expectedKeys = [...descriptorKeys].sort();
 
         const classifiedKeys = PACKAGE_ONLY_COMMAND_INPUTS.map((entry) => `${entry.command}::${entry.verb ?? "(default)"}`).sort();
 
@@ -21,9 +18,6 @@ describe("Phase 3 current-state contract: package-only command inputs", () => {
 
     it("never marks a verb requiresLoadablePackage unless its own frozen positional is literally 'packageRoot'", () => {
         for (const entry of PACKAGE_ONLY_COMMAND_INPUTS) {
-            if (entry.verb === "(no verbs)") {
-                continue;
-            }
             const descriptor = CLI_COMMAND_DESCRIPTORS.find((candidate) => candidate.name === entry.command);
             const verbDescriptor = descriptor?.verbs.find((candidate) => candidate.verb === entry.verb);
             expect(verbDescriptor).toBeDefined();
