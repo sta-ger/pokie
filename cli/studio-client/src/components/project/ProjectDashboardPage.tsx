@@ -119,10 +119,12 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
 // Game Model's own reachability isn't a plain capability match like every other tab -- it's offered
 // whenever this project's game model is introspectable at all, which is true either because the project
 // carries BLUEPRINT_BUILD_CAPABILITY (a "blueprint" project, editable in place) or because Inspect found
-// "generated" provenance with a real, known source path (an introspectable-but-not-editable package/WASM
-// project that was nonetheless *built from* a tracked blueprint -- see GameModelView/MechanicsEditorTab's
-// own doc comments for how that source is loaded read-only). Mirrors the exact same "generated" +
-// known-source check `blueprintSource` below uses for Overview's own "Configure Game Model" link.
+// "generated" provenance at all (an introspectable-but-not-editable package/WASM project that was
+// nonetheless built via "pokie build" -- see GameModelView/MechanicsEditorTab's own doc comments).
+// Deliberately does NOT also require a known source path: GET /api/project/gameModel (see
+// buildProjectGameModel.ts) still returns a real, truthful projection -- basics from the build record's
+// own manifest, every other section its own explicit "unavailable" diagnostic -- even when the tracked
+// source itself isn't known, so this tab always has real content to show either way.
 function canViewGameModel(header: ProjectHeaderView, inspection: InspectionResultView): boolean {
     if (header.status !== "loaded") {
         return false;
@@ -130,7 +132,7 @@ function canViewGameModel(header: ProjectHeaderView, inspection: InspectionResul
     if (header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)) {
         return true;
     }
-    return inspection.status === "loaded" && inspection.provenance.status === "generated" && inspection.provenance.source !== "(unknown)";
+    return inspection.status === "loaded" && inspection.provenance.status === "generated";
 }
 
 // Whether `tab` is actually reachable for the loaded project. Game Model is special-cased to
