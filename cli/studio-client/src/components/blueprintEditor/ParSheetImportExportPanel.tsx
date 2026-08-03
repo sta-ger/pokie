@@ -103,6 +103,22 @@ export function ParSheetImportExportPanel({
     const confirm = useConfirm();
     const [activeStep, setActiveStep] = useState(0);
 
+    // ---- Preview canonical model state (declared ahead of Import below since invalidateImport/
+    // runImportFor both need to invalidate a stale preview the moment the import it was built from
+    // changes) ----
+    const [buildPreview, setBuildPreview] = useState<BuildPreviewView>({status: "idle"});
+    const previewRequestIdRef = useRef(0);
+    const previewGuard = useDoubleSubmitGuard();
+
+    // Bumping the ref both marks any in-flight preview request stale (so its late response is ignored,
+    // see runCanonicalPreview's own check) and frees the guard immediately, so a fresh preview can start
+    // right away instead of waiting for that now-superseded request to settle.
+    function invalidatePreview(): void {
+        previewRequestIdRef.current++;
+        setBuildPreview({status: "idle"});
+        previewGuard.end();
+    }
+
     // ---- Import ----
     const [importPath, setImportPath] = useState("");
     const [importView, setImportView] = useState<ParSheetImportView>({status: "idle"});
@@ -181,20 +197,8 @@ export function ParSheetImportExportPanel({
     const diagnoseReachable = importView.status !== "idle" && importView.status !== "loading";
 
     // ---- Preview canonical model (reuses the exact same previewBlueprintBuild/BuildPreviewDisplay the
-    // Home nav's own Build-from-Blueprint flow already shows) ----
-    const [buildPreview, setBuildPreview] = useState<BuildPreviewView>({status: "idle"});
-    const previewRequestIdRef = useRef(0);
-    const previewGuard = useDoubleSubmitGuard();
-
-    // Bumping the ref both marks any in-flight preview request stale (so its late response is ignored,
-    // see runCanonicalPreview's own check) and frees the guard immediately, so a fresh preview can start
-    // right away instead of waiting for that now-superseded request to settle.
-    function invalidatePreview(): void {
-        previewRequestIdRef.current++;
-        setBuildPreview({status: "idle"});
-        previewGuard.end();
-    }
-
+    // Home nav's own Build-from-Blueprint flow already shows; state/invalidatePreview declared above,
+    // ahead of Import) ----
     function runCanonicalPreview(): void {
         if (importResult === undefined || !previewGuard.begin()) {
             return;

@@ -1,5 +1,5 @@
-import {Anchor, Button, Table, Text, TextInput, Title} from "@mantine/core";
-import {useCallback, useEffect, useState} from "react";
+import {Anchor, Button, Table, Text, TextInput} from "@mantine/core";
+import {useCallback, useEffect, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {listProjectRegistry, previewProjectImport, registerProjectImport, removeProjectRegistryEntry} from "../../api/apiClient";
 import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, StudioProjectType} from "../../api/types";
@@ -152,6 +152,20 @@ export function ProjectsPanel() {
     // Game's own PAR Sheet Import/Export panel instead of registering it, reusing the exact same guided
     // Import -> Diagnose & map -> Preview -> Apply flow a PAR sheet reached any other way already goes
     // through (see ParSheetImportExportPanel's own doc comment).
+    const renderEntryName = (entry: StudioProjectRegistryView): ReactNode => {
+        if (entry.status === "missing") {
+            return <Text c="dimmed">{entry.name} (missing)</Text>;
+        }
+        if (entry.type === OPENABLE_TYPE) {
+            return (
+                <Anchor component="button" type="button" onClick={() => handleOpen(entry)}>
+                    {entry.name}
+                </Anchor>
+            );
+        }
+        return entry.name;
+    };
+
     const handleGoToDesignGame = (path: string): void => {
         navigate("/home/design", {state: {initialParSheetPath: path}});
     };
@@ -202,15 +216,7 @@ export function ProjectsPanel() {
                                 {listView.entries.map((entry) => (
                                     <Table.Tr key={entry.location}>
                                         <Table.Td>
-                                            {entry.status === "missing" ? (
-                                                <Text c="dimmed">{entry.name} (missing)</Text>
-                                            ) : entry.type === OPENABLE_TYPE ? (
-                                                <Anchor component="button" type="button" onClick={() => handleOpen(entry)}>
-                                                    {entry.name}
-                                                </Anchor>
-                                            ) : (
-                                                entry.name
-                                            )}
+                                            {renderEntryName(entry)}
                                             <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
                                                 {entry.location}
                                             </Text>
@@ -273,7 +279,9 @@ export function ProjectsPanel() {
                 {importView.status === "unrecognized" && (
                     <ErrorState message={`"${importView.path}" doesn't look like any POKIE project type POKIE recognizes.`} />
                 )}
-                {importView.status === "registered" && <Text size="sm">Registered "{importView.name}" -- it now shows up in Your projects above.</Text>}
+                {importView.status === "registered" && (
+                    <Text size="sm">Registered &quot;{importView.name}&quot; -- it now shows up in Your projects above.</Text>
+                )}
 
                 {(importView.status === "recognized" || importView.status === "registering") &&
                     (importView.result.type === "parWorkbook" ? (
