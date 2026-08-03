@@ -66,6 +66,7 @@ import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionServic
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
 import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
 import {StudioRuntimeManager, StudioRuntimeSessionResult, StudioRuntimeSpinResult, StudioRuntimeStartResult} from "./runtime/StudioRuntimeManager.js";
+import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "./StudioProjectRegistrationService.js";
 import {validateRuntimeSessionRequest, RuntimeSessionRequestInput} from "./runtime/validateRuntimeSessionRequest.js";
 import {validateRuntimeSpinRequest, RuntimeSpinRequestInput} from "./runtime/validateRuntimeSpinRequest.js";
 import {validateStartRuntimeRequest, StartRuntimeRequestInput, ValidatedStartRuntimeRequest} from "./runtime/validateStartRuntimeRequest.js";
@@ -161,6 +162,9 @@ export class StudioServer implements StudioServerHandling {
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
+    // The persistent Studio project registry -- see StudioServerOptions.projectRegistrationService's own
+    // doc comment for the default's FileStudioProjectRegistry-vs-app-data-unresolved fallback story.
+    private readonly projectRegistrationService: StudioProjectRegistrationService;
     private readonly toolHandlers: StudioToolHandling[];
     private currentContext: StudioContext;
     // undefined exactly when currentContext.mode === "home" — kept as a separate field (rather than
@@ -195,6 +199,7 @@ export class StudioServer implements StudioServerHandling {
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
         this.stakeEngineExportService = options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion);
+        this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -221,6 +226,9 @@ export class StudioServer implements StudioServerHandling {
                 if (this.currentContext.mode === "project") {
                     this.startProjectDashboardLoad(this.currentContext.projectRoot);
                 }
+                // Also deliberately not awaited, same reasoning as the dashboard load above -- see
+                // migrateRecentProjectsToRegistry's own doc comment.
+                this.migrateRecentProjectsToRegistry();
                 resolve({host: this.host, port: address.port});
             });
         });
@@ -297,6 +305,20 @@ export class StudioServer implements StudioServerHandling {
             .catch(() => {
                 // loadProjectDashboardContext itself never rejects (it catches internally) — this is
                 // an extra safety net only, so a StudioServer never crashes on a background load.
+            });
+    }
+
+    // A one-time sync of Home's own (never-persisted, process-lifetime) recent-projects list into the
+    // persistent project registry -- see StudioProjectRegistrationService.migrateRecentProjects's own
+    // doc comment for why this matters and why it's safe to run on every startup. Fire-and-forget for
+    // the same reason startProjectDashboardLoad above is: the HTTP server must be reachable immediately,
+    // not block startup on this best-effort bookkeeping.
+    private migrateRecentProjectsToRegistry(): void {
+        this.homeService
+            .listRecentProjects()
+            .then((recentProjects) => this.projectRegistrationService.migrateRecentProjects(recentProjects))
+            .catch(() => {
+                // Best-effort only -- a migration failure must never crash Studio's own startup.
             });
     }
 

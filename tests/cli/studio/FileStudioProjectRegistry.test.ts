@@ -1,7 +1,10 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import type {PlatformDirectoryEnvironment} from "../../../cli/paths/PlatformDirectoryEnvironment.js";
+import {PokiePathResolver} from "../../../cli/paths/PokiePathResolver.js";
 import {FileStudioProjectRegistry} from "../../../cli/studio/FileStudioProjectRegistry.js";
+import {PROJECT_REGISTRY_FILE_NAME} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import type {StudioProjectRegistryEntry} from "../../../cli/studio/StudioProjectRegistryEntry.js";
 
 function entry(location: string, overrides: Partial<StudioProjectRegistryEntry> = {}): StudioProjectRegistryEntry {
@@ -105,5 +108,23 @@ describe("FileStudioProjectRegistry", () => {
         await expect(registry.list()).rejects.toThrow("EACCES");
 
         readSpy.mockRestore();
+    });
+
+    describe("rooted at PokiePathResolver.resolveAppDataDirectory() (the real Studio composition path)", () => {
+        it("persists a registered project at the platform app-data location across a Studio restart", async () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {XDG_CONFIG_HOME: path.join(tempDir, "xdg-config")}, homeDir: tempDir};
+            const resolver = new PokiePathResolver({}, env);
+            const appDataDirectory = resolver.resolveAppDataDirectory();
+            if (appDataDirectory === undefined) {
+                throw new Error("expected a resolvable app-data directory in this test");
+            }
+            const registryFileAtAppData = path.join(appDataDirectory, PROJECT_REGISTRY_FILE_NAME);
+
+            await new FileStudioProjectRegistry(registryFileAtAppData).upsert(entry("/a"));
+
+            // A brand-new instance rooted at that same resolved path -- simulating Studio restarting as
+            // a fresh process -- must see the same entry purely by reading the shared app-data file.
+            expect((await new FileStudioProjectRegistry(registryFileAtAppData).list()).map((e) => e.location)).toEqual(["/a"]);
+        });
     });
 });

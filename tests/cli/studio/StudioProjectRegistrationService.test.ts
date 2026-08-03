@@ -2,8 +2,11 @@ import type {GameBlueprint, PokieProject, ProjectResolving} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import type {PlatformDirectoryEnvironment} from "../../../cli/paths/PlatformDirectoryEnvironment.js";
+import {PokiePathResolver} from "../../../cli/paths/PokiePathResolver.js";
+import type {StudioHomeRecentProjectView} from "../../../cli/studio/home/StudioHomeRecentProjectView.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
-import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 
 function fakeResolver(byPath: Record<string, PokieProject>): ProjectResolving {
     return {
@@ -224,6 +227,119 @@ describe("StudioProjectRegistrationService", () => {
             const result = await service.registerExternal(unrelatedFile);
 
             expect(result).toEqual({status: "unrecognized", path: unrelatedFile});
+        });
+    });
+
+    describe("createDefaultStudioProjectRegistrationService", () => {
+        let tmpDir: string;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-registration-default-"));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, {recursive: true, force: true});
+        });
+
+        it("backs the service with a FileStudioProjectRegistry at the resolved app-data directory -- registrations survive a Studio restart", async () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {XDG_CONFIG_HOME: path.join(tmpDir, "xdg-config")}, homeDir: tmpDir};
+            const resolver = new PokiePathResolver({}, env);
+            const blueprintPath = path.join(tmpDir, "game.json");
+            const blueprint: GameBlueprint = {
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}, B: {3: 2}},
+            };
+            fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+
+            const firstStudioProcess = createDefaultStudioProjectRegistrationService(resolver);
+            await firstStudioProcess.registerExternal(blueprintPath);
+
+            // A fresh instance built the same way -- simulating Studio restarting as a brand-new
+            // process -- must see the same registration purely by reading the shared app-data file.
+            const secondStudioProcess = createDefaultStudioProjectRegistrationService(resolver);
+            const list = await secondStudioProcess.list();
+
+            expect(list).toEqual([expect.objectContaining({location: blueprintPath, type: "blueprint"})]);
+        });
+
+        it("falls back to a process-lifetime registry, without throwing, when no app-data directory can be resolved", async () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: ""};
+            const resolver = new PokiePathResolver({}, env);
+            expect(resolver.resolveAppDataDirectory()).toBeUndefined();
+            const blueprintPath = path.join(tmpDir, "game.json");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {}}),
+            );
+
+            const service = createDefaultStudioProjectRegistrationService(resolver);
+            const result = await service.registerExternal(blueprintPath);
+
+            expect(result.status).toBe("ok");
+            // A second instance built the same (unresolvable) way never shares state with the first --
+            // proving the fallback is a fresh in-memory registry each time, not some other hidden
+            // persisted location.
+            const anotherService = createDefaultStudioProjectRegistrationService(resolver);
+            expect(await anotherService.list()).toEqual([]);
+        });
+    });
+
+    describe("migrateRecentProjects", () => {
+        function recent(projectRoot: string, missing = false): StudioHomeRecentProjectView {
+            return {projectRoot, name: path.basename(projectRoot), openedAt: new Date().toISOString(), missing};
+        }
+
+        it("registers each non-missing recent project through the resolver, skipping missing entries entirely", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolveFn = jest.fn((targetPath: string) =>
+                Promise.resolve(path.resolve(targetPath) === path.resolve("/projects/a") ? tsPackageProject("/projects/a") : undefined),
+            );
+            const service = new StudioProjectRegistrationService(registry, {resolve: resolveFn});
+
+            await service.migrateRecentProjects([recent("/projects/a"), recent("/projects/gone", true)]);
+
+            expect(resolveFn).not.toHaveBeenCalledWith(expect.stringContaining("gone"));
+            expect((await registry.list()).map((e) => e.location)).toEqual([path.resolve("/projects/a")]);
+        });
+
+        it("tolerates an unrecognized recent-project path without throwing", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const service = new StudioProjectRegistrationService(registry, fakeResolver({}));
+
+            await expect(service.migrateRecentProjects([recent("/projects/not-a-project")])).resolves.toBeUndefined();
+            expect(await registry.list()).toEqual([]);
+        });
+
+        it("tolerates a resolver throwing for one entry without stopping the rest of the migration", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver: ProjectResolving = {
+                resolve: (targetPath: string) => {
+                    if (path.resolve(targetPath) === path.resolve("/projects/bad.wasm")) {
+                        return Promise.reject(new Error("unsupported"));
+                    }
+                    return Promise.resolve(path.resolve(targetPath) === path.resolve("/projects/a") ? tsPackageProject("/projects/a") : undefined);
+                },
+            };
+            const service = new StudioProjectRegistrationService(registry, resolver);
+
+            await service.migrateRecentProjects([recent("/projects/bad.wasm"), recent("/projects/a")]);
+
+            expect((await registry.list()).map((e) => e.location)).toEqual([path.resolve("/projects/a")]);
+        });
+
+        it("is idempotent -- migrating the same recent projects twice never creates duplicate registry entries", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({"/projects/a": tsPackageProject("/projects/a")});
+            const service = new StudioProjectRegistrationService(registry, resolver);
+            const recentProjects = [recent("/projects/a")];
+
+            await service.migrateRecentProjects(recentProjects);
+            await service.migrateRecentProjects(recentProjects);
+
+            expect((await registry.list()).map((e) => e.location)).toEqual([path.resolve("/projects/a")]);
         });
     });
 });

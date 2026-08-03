@@ -1,11 +1,39 @@
 import {ProjectTargetResolver, type ProjectResolving, type ProjectType} from "pokie";
 import fs from "fs";
 import path from "path";
+import {PokiePathResolver} from "../paths/PokiePathResolver.js";
+import {FileStudioProjectRegistry} from "./FileStudioProjectRegistry.js";
+import type {StudioHomeRecentProjectView} from "./home/StudioHomeRecentProjectView.js";
 import {InMemoryStudioProjectRegistry} from "./InMemoryStudioProjectRegistry.js";
 import type {StudioProjectRegistrationResult} from "./StudioProjectRegistrationResult.js";
 import type {StudioProjectRegistry} from "./StudioProjectRegistry.js";
 import type {StudioProjectOrigin, StudioProjectRegistryEntry} from "./StudioProjectRegistryEntry.js";
 import type {StudioProjectRegistryView} from "./StudioProjectRegistryView.js";
+
+// The file name FileStudioProjectRegistry's persisted registry lives under, inside whatever app-data
+// directory PokiePathResolver.resolveAppDataDirectory() resolves -- shared between
+// createDefaultStudioProjectRegistrationService below and any test that needs to point at the exact same
+// production location (see tests/cli/studio/FileStudioProjectRegistry.test.ts), so the two can never
+// silently drift apart.
+export const PROJECT_REGISTRY_FILE_NAME = "projects.json";
+
+// The registry backend a real Studio runtime (StudioServer) composes StudioProjectRegistrationService
+// with: a FileStudioProjectRegistry rooted at the platform app-data directory when one can be resolved,
+// so registrations survive a Studio restart (see FileStudioProjectRegistry's own doc comment) -- falling
+// back to the same process-lifetime InMemoryStudioProjectRegistry every other caller/test already gets
+// by default when no app-data directory can be determined at all (e.g. no resolvable home directory on
+// this machine). Studio's own startup must never fail, or even degrade any other feature, just because
+// it can't persist this one registry -- see PokiePathResolver.resolveAppDataDirectory's own doc comment
+// for why that case returns `undefined` rather than throwing.
+export function createDefaultStudioProjectRegistrationService(
+    pathResolver: PokiePathResolver = new PokiePathResolver(),
+): StudioProjectRegistrationService {
+    const appDataDirectory = pathResolver.resolveAppDataDirectory();
+    if (appDataDirectory === undefined) {
+        return new StudioProjectRegistrationService();
+    }
+    return new StudioProjectRegistrationService(new FileStudioProjectRegistry(path.join(appDataDirectory, PROJECT_REGISTRY_FILE_NAME)));
+}
 
 // Which ProjectType each resolves from a *file* on disk (blueprint/parWorkbook/wasm) vs. a *directory*
 // (tsPackage/outcomeLibrary/stakeAdapter) — mirrors each ProjectTargetTypeAdapter's own `targetKind` (see
@@ -64,6 +92,33 @@ export class StudioProjectRegistrationService {
 
     public async remove(location: string): Promise<void> {
         await this.registry.remove(path.resolve(location));
+    }
+
+    // A one-time, best-effort sync of Home's own recent-projects list (see
+    // StudioHomeService.listRecentProjects/RecentProjectsRepository) into this registry -- run once by
+    // StudioServer on startup, not a caller-triggered action of its own. RecentProjectsRepository has
+    // never itself been persisted (see its own doc comment: "in-memory (no persistent path)"), so without
+    // this a project a user already has open or recently touched would only ever show up in the
+    // persistent registry once they re-create/re-open/re-register it explicitly by hand. Each entry is
+    // registered the same "resolve, don't trust the caller" way as any other external registration (see
+    // registerExternal) -- an entry whose path no longer resolves to a known POKIE project type comes
+    // back "unrecognized" rather than throwing, a `missing` entry (see StudioHomeRecentProjectView) is
+    // skipped outright before ever reaching the resolver, and a resolver error for one entry (e.g. an
+    // ambiguous or unsupported target -- see ProjectTargetResolver's own doc comment) is swallowed rather
+    // than aborting the rest of the list. Idempotent by construction: registerExternal ultimately upserts
+    // by `location` (see StudioProjectRegistry.upsert), so calling this more than once (Studio restarted,
+    // or start() somehow invoked twice) never creates a duplicate entry -- it only refreshes lastOpenedAt.
+    public async migrateRecentProjects(recentProjects: readonly StudioHomeRecentProjectView[]): Promise<void> {
+        for (const recent of recentProjects) {
+            if (recent.missing) {
+                continue;
+            }
+            try {
+                await this.registerExternal(recent.projectRoot, recent.name);
+            } catch {
+                // Best-effort only -- see this method's own doc comment.
+            }
+        }
     }
 
     // The directory a "show in folder" action should reveal for a given entry — the entry's own

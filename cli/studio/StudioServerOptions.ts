@@ -15,6 +15,7 @@ import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
 import type {StudioContext} from "./StudioContext.js";
+import {StudioProjectRegistrationService} from "./StudioProjectRegistrationService.js";
 import type {StudioToolHandling} from "./StudioToolHandling.js";
 
 export type StudioServerOptions = {
@@ -120,5 +121,13 @@ export type StudioServerOptions = {
     // `loadGame` needed (same reasoning as deploymentService), but does need `pokieVersion` (embedded in
     // the exported manifest's own `pokieVersion` field), same reasoning as certificationService.
     stakeEngineExportService?: StudioStakeEngineExportService;
+    // Owns the persistent Studio project registry (every managed and registered external project Studio
+    // knows about, not just Home's own short recent-projects list) -- see
+    // StudioProjectRegistrationService/FileStudioProjectRegistry. Defaults to
+    // createDefaultStudioProjectRegistrationService(), which composes a FileStudioProjectRegistry rooted
+    // at the platform app-data directory so registrations survive a Studio restart, falling back
+    // gracefully to a process-lifetime registry when no app-data directory can be resolved; overridable
+    // in tests so no real filesystem state is ever touched.
+    projectRegistrationService?: StudioProjectRegistrationService;
     toolHandlers?: StudioToolHandling[];
 };
