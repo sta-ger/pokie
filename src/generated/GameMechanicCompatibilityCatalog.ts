@@ -19,6 +19,9 @@ export type GameMechanicCompatibilityCatalogEntry = readonly GameMechanicFeature
 //     structurally, in its own build() -- that "paylines" and "winModel" are never both set on the same
 //     blueprint (see that class's own doc comment). The catalog trusts that guarantee; it does not (and
 //     cannot) re-verify it per build.
+//   - ["reelStripGeneration"] alone is DefaultRandomGameBlueprintStrategy's own entry: it only ever
+//     expresses its reel weighting as per-reel generated strips, never a flat "symbolWeights" or a
+//     literal "reelStrips", so it needs no combination with anything else.
 export const DEFAULT_GAME_MECHANIC_COMPATIBILITY_CATALOG: readonly GameMechanicCompatibilityCatalogEntry[] = [
     [],
     ["paylines"],
@@ -27,4 +30,5 @@ export const DEFAULT_GAME_MECHANIC_COMPATIBILITY_CATALOG: readonly GameMechanicC
     ["paylines", "reelStrips"],
     ["reelStrips", "winModel"],
     ["paylines", "reelStrips", "winModel"],
+    ["reelStripGeneration"],
 ];

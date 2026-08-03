@@ -5,6 +5,7 @@ import {
     RandomGameBlueprintGenerator,
     RandomGameBlueprintMechanics,
     RandomGameBlueprintStrategy,
+    resolveReelStripGeneration,
 } from "pokie";
 
 function stubStrategy(features: readonly GameMechanicFeature[] = [], name = "stub"): RandomGameBlueprintStrategy {
@@ -82,11 +83,14 @@ describe("RandomGameBlueprintGenerator", () => {
 
         for (const symbolId of blueprint.symbols) {
             expect(blueprint.paytable[symbolId]["3"]).toBeGreaterThan(0);
-            expect(blueprint.symbolWeights![symbolId]).toBeGreaterThan(0);
+            for (const spec of blueprint.reelStripGeneration!) {
+                expect(spec.type).toBe("generated");
+                expect((spec as {symbolWeights: Record<string, number>}).symbolWeights[symbolId]).toBeGreaterThan(0);
+            }
         }
     });
 
-    test("uses no mechanics beyond reels/symbols/paytable/symbolWeights (no wilds, scatters, paylines, or bet modes)", () => {
+    test("uses no mechanics beyond reels/symbols/paytable/reelStripGeneration (no wilds, scatters, paylines, or bet modes)", () => {
         const {blueprint} = new RandomGameBlueprintGenerator().generate({seed: 13});
 
         expect(blueprint.wilds).toBeUndefined();
@@ -96,7 +100,27 @@ describe("RandomGameBlueprintGenerator", () => {
         expect(blueprint.mechanics).toBeUndefined();
         expect(blueprint.betModes).toBeUndefined();
         expect(blueprint.reelStrips).toBeUndefined();
-        expect(blueprint.reelStripGeneration).toBeUndefined();
+        expect(blueprint.symbolWeights).toBeUndefined();
+        expect(blueprint.reelStripGeneration).toHaveLength(blueprint.reels);
+    });
+
+    test("reel weighting is expressed as inspectable per-reel generation, resolvable to concrete strips deterministically", () => {
+        const {blueprint} = new RandomGameBlueprintGenerator().generate({seed: 21});
+
+        const first = resolveReelStripGeneration(blueprint);
+        const second = resolveReelStripGeneration(blueprint);
+
+        expect(first.success).toBe(true);
+        expect(second).toEqual(first);
+        if (first.success) {
+            const strips = first.reelStripGeneration?.reels ?? [];
+            expect(strips).toHaveLength(blueprint.reels);
+            for (const reel of strips) {
+                expect(reel.success).toBe(true);
+                expect(reel.strip).toBeDefined();
+                expect(reel.strip!.length).toBeGreaterThan(0);
+            }
+        }
     });
 
     describe("overrides", () => {

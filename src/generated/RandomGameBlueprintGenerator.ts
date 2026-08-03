@@ -15,7 +15,10 @@ const DEFAULT_MANIFEST_VERSION = "0.1.0";
 
 // Bumped whenever RandomGameBlueprintStrategy's own algorithm changes in a way that would make the
 // same seed produce a different blueprint -- see RandomGameBlueprintProvenance for what this is for.
-const GENERATOR_VERSION = "1.0.0";
+// Bumped to 1.1.0 when DefaultRandomGameBlueprintStrategy switched from a flat symbolWeights map to
+// per-reel reelStripGeneration (same reels/rows/symbols/paytable picks, but extra per-reel seed draws
+// change every downstream value for the same top-level seed).
+const GENERATOR_VERSION = "1.1.0";
 
 // Owns naming, manifest, and provenance for a randomly generated GameBlueprint; the mechanic-bearing
 // fields (reels/rows/symbols/paytable/symbolWeights/...) come from whichever RandomGameBlueprintStrategy
