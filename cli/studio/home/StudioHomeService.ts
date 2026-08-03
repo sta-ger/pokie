@@ -11,6 +11,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import path from "path";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {loadProjectDashboardContext} from "../loadProjectDashboardContext.js";
 import {previewBuildDestination} from "../previewBuildDestination.js";
 import type {ProjectDashboardContext} from "../ProjectDashboardContext.js";
@@ -48,6 +49,13 @@ export class StudioHomeService {
     private readonly gamePackageGenerator: GamePackageGenerating;
     private readonly loadGame: typeof loadPokieGame;
     private readonly pathResolver: PokiePathResolver;
+    // Crosses from "the projectRoot POST /api/home/projects/open was given" to "a real, loadable
+    // runtime" before openProject()'s own loadProjectDashboardContext call ever touches loadGame — same
+    // materializing boundary StudioServer's own resolveRuntimePackageRoot field crosses for a direct
+    // `pokie <path>` launch (see that class's field doc comment). Defaults to a no-op passthrough so
+    // every existing caller/test keeps behaving exactly as before this boundary existed; StudioCommand
+    // wires the real, materializing one in.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
 
     constructor(
         pokieVersion: string,
@@ -59,6 +67,7 @@ export class StudioHomeService {
         gamePackageGenerator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
         loadGame: typeof loadPokieGame = loadPokieGame,
         pathResolver: PokiePathResolver = new PokiePathResolver(),
+        resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     ) {
         this.pokieVersion = pokieVersion;
         this.recentProjectsRepository = recentProjectsRepository;
@@ -69,6 +78,7 @@ export class StudioHomeService {
         this.gamePackageGenerator = gamePackageGenerator;
         this.loadGame = loadGame;
         this.pathResolver = pathResolver;
+        this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
     }
 
     // Backs a future "suggest a default destination" affordance on Home's Create Project form -- purely
@@ -184,7 +194,7 @@ export class StudioHomeService {
     // load" is decided in exactly one place. StudioServer itself performs the actual Studio context
     // transition on a "loaded" result; this only loads and records it as a recent project.
     public async openProject(projectRoot: string): Promise<ProjectDashboardContext> {
-        const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame);
+        const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot);
         if (dashboard.status === "loaded") {
             await this.rememberRecentProject(dashboard.projectRoot, dashboard.game.name);
         }

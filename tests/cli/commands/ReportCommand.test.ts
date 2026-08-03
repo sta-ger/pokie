@@ -1,4 +1,4 @@
-import {SimulationReport, SimulationReportRendering, SimulationReportSet} from "pokie";
+import {PokieProject, PROJECT_TYPE_CAPABILITIES, ProjectResolving, SimulationReport, SimulationReportRendering, SimulationReportSet} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -192,6 +192,53 @@ const reportSet: SimulationReportSet = {
         "buy-10": buildMode("buy-10", 0.9),
     },
 };
+
+// Proves "pokie report" upgrades a raw parse/shape failure into a project-aware message once it turns
+// out `reportPath` actually resolves to a recognized PokieProject -- see ReportCommand's own
+// resolveProject field comment.
+describe("ReportCommand resolved-project boundary", () => {
+    function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
+        const calls: string[] = [];
+        return {
+            calls,
+            resolve(targetPath: string) {
+                calls.push(targetPath);
+                return Promise.resolve(project);
+            },
+        };
+    }
+
+    it('reports a project-aware message when a mistakenly-given target resolves to a "blueprint" project', async () => {
+        const project = {
+            type: "blueprint",
+            rootPath: "/blueprints/game.json",
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            provenance: "test fixture",
+        } as PokieProject;
+        const resolveProject = stubProjectResolver(project);
+        const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject);
+
+        await expect(command.run(["/blueprints/game.json"])).rejects.toThrow(
+            /"\/blueprints\/game\.json" is a "blueprint" project, not a pokie sim report/,
+        );
+        expect(resolveProject.calls).toEqual(["/blueprints/game.json"]);
+    });
+
+    it("falls back to the original error unchanged when the resolver itself fails", async () => {
+        const resolveProject: ProjectResolving = {resolve: () => Promise.reject(new Error("resolver exploded"))};
+        const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject);
+
+        await expect(command.run(["missing.json"])).rejects.toThrow(/Could not read simulation report at "missing\.json"/);
+    });
+
+    it("leaves an unresolved path's original error unchanged", async () => {
+        const resolveProject = stubProjectResolver(undefined);
+        const command = new ReportCommand(createStubReadFile({"other.json": JSON.stringify({foo: "bar"})}), undefined, undefined, resolveProject);
+
+        await expect(command.run(["other.json"])).rejects.toThrow(/does not look like a pokie sim report/);
+        expect(resolveProject.calls).toEqual(["other.json"]);
+    });
+});
 
 describe("ReportCommand (SimulationReportSet -- pokie sim --mode all output)", () => {
     it("renders a side-by-side comparison table plus each mode's own section in Markdown", async () => {

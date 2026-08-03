@@ -1,5 +1,6 @@
 import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
 import type {IncomingMessage} from "http";
+import type {RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
@@ -62,6 +63,13 @@ export type StudioServerOptions = {
     // guessing one. StudioCommand always builds this with readOwnVersion() and passes it in.
     blueprintService: StudioBlueprintService;
     loadGame?: typeof loadPokieGame;
+    // Crosses from "the projectRoot a direct `pokie <path>`/`pokie studio <path>` launch was given" to "a
+    // real, loadable runtime" before the background Project Dashboard load (and runtimeManager's own Play
+    // runtime) ever touch loadGame -- see StudioServer's own field doc comment. Defaults to a real
+    // materializing resolver (operation STUDIO_OPERATION), same "always default to the real thing, only
+    // tests override" shape as runtimeManager above; overridable in tests so no real
+    // BlueprintProjectMaterializer/npm install ever runs.
+    resolveRuntimePackageRoot?: RuntimePackageResolving;
     // Provenance (GET /api/project/inspect) and contract/validation (GET /api/project/validate) for
     // the Project Dashboard — the exact same services `pokie inspect`/`pokie validate` use, so
     // Studio never re-implements either.

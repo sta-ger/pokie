@@ -22,6 +22,7 @@ import {SimCommand} from "./commands/SimCommand.js";
 import {StakeEngineCommand} from "./commands/StakeEngineCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
+import {DEV_OPERATION, REPLAY_OPERATION, SERVE_OPERATION, SIM_OPERATION, VALIDATE_OPERATION} from "pokie";
 import {dispatch} from "./dispatch.js";
 import {createMaterializingRuntimePackageResolver} from "./materialize/materializeRuntimePackage.js";
 
@@ -53,7 +54,12 @@ function run(): Promise<number> {
         new CertificationCommand(readOwnVersion()),
         new ClientCommand(undefined, ownClientRoot()),
         new CreateCommand(readOwnVersion()),
-        new DevCommand(undefined, undefined, {clientRoot: ownClientRoot()}, createMaterializingRuntimePackageResolver(readOwnVersion())),
+        new DevCommand(
+            undefined,
+            undefined,
+            {clientRoot: ownClientRoot()},
+            createMaterializingRuntimePackageResolver(readOwnVersion(), DEV_OPERATION),
+        ),
         new DiffCommand(),
         new FairnessCommand(),
         new InitCommand(readOwnVersion()),
@@ -61,13 +67,20 @@ function run(): Promise<number> {
         new NameCommand(),
         new OutcomeLibraryCommand(readOwnVersion()),
         new ParCommand(readOwnVersion()),
-        new ReplayCommand(undefined, undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion())),
+        new ReplayCommand(undefined, undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), REPLAY_OPERATION)),
         new ReportCommand(),
-        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion())),
-        new SimCommand(undefined, undefined, undefined, undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion())),
+        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), SERVE_OPERATION)),
+        new SimCommand(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            createMaterializingRuntimePackageResolver(readOwnVersion(), SIM_OPERATION),
+        ),
         new StakeEngineCommand(readOwnVersion()),
         new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot()}),
-        new ValidateCommand(),
+        new ValidateCommand(undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), VALIDATE_OPERATION)),
     ];
     return dispatch(commands, process.argv);
 }

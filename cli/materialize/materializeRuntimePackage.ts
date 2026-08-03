@@ -1,5 +1,6 @@
-import {PokieProject, ProjectMaterializing, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {describeUnsupportedProjectOperation, PokieOperation, PokieProject, ProjectMaterializing, ProjectResolving, ProjectTargetResolver} from "pokie";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
+import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
 
 // What every CLI runtime operation (sim/dev/serve/replay, Studio's Play runtime) gets back once it's
 // crossed the boundary below -- "runtimePath" is what it should hand to loadPokieGame (or a worker
@@ -31,15 +32,22 @@ export type MaterializingRuntimePackageResolverDependencies = {
 // caller-given path" to "a real, loadable runtime" -- resolves the given path via ProjectResolving and,
 // only for a resolved "blueprint" PokieProject, materializes it into a real, built-and-installed runtime
 // via BlueprintProjectMaterializer (see that class's own doc comment for what "materialized" means)
-// before the operation ever touches loadPokieGame. Anything else -- an already-runtime-shaped
-// "tsPackage", a path ProjectResolving doesn't recognize as any known project type, or a path that fails
-// to resolve outright -- is handed back exactly as given, never routed through the materializer, so
-// TypeScript-package behavior stays byte-for-byte compatible with every operation's pre-materialization
-// behavior. A materialization failure (a BlueprintMaterializationError, carrying which phase failed)
-// propagates straight out of the returned function -- never caught or rewrapped here -- so a caller can
-// only ever reach loadPokieGame with a genuinely materialized runtime, never after a failed one.
+// before the operation ever touches loadPokieGame. A resolved "tsPackage" already has everything
+// `operation` needs, so it passes straight through (its own rootPath, not the caller's raw string --
+// harmless, since ProjectTargetResolver only ever resolved it in the first place because it already
+// existed on disk). A path ProjectResolving doesn't recognize as any known project type at all -- or that
+// fails to resolve outright -- is handed back exactly as given, never routed through the materializer or
+// checked against `operation`, so behavior against an arbitrary, unrecognized path stays byte-for-byte
+// compatible with every operation's pre-materialization behavior. Anything else resolved -- an
+// outcomeLibrary/stakeAdapter/parWorkbook/wasm project `operation` has no capability to run against --
+// throws an UnsupportedProjectOperationError (see describeUnsupportedProjectOperation) instead of ever
+// reaching loadPokieGame with a path it could only fail against in a confusing, capability-blind way. A
+// materialization failure (a BlueprintMaterializationError, carrying which phase failed) propagates
+// straight out of the returned function -- never caught or rewrapped here -- so a caller can only ever
+// reach loadPokieGame with a genuinely materialized runtime, never after a failed one.
 export function createMaterializingRuntimePackageResolver(
     pokieVersion: string,
+    operation: PokieOperation,
     dependencies: MaterializingRuntimePackageResolverDependencies = {},
 ): RuntimePackageResolving {
     const resolveProject = dependencies.resolveProject ?? new ProjectTargetResolver();
@@ -47,11 +55,20 @@ export function createMaterializingRuntimePackageResolver(
 
     return async (packageRoot: string): Promise<RuntimePackageResolution> => {
         const project: PokieProject | undefined = await resolveProject.resolve(packageRoot);
-        if (project === undefined || project.type !== "blueprint") {
+        if (project === undefined) {
             return {runtimePath: packageRoot, release: noRelease};
         }
 
-        const materialized = await materializer.materialize(project);
-        return {runtimePath: materialized.runtimePath, release: materialized.release};
+        if (project.type === "blueprint") {
+            const materialized = await materializer.materialize(project);
+            return {runtimePath: materialized.runtimePath, release: materialized.release};
+        }
+
+        const diagnostic = describeUnsupportedProjectOperation(project, operation);
+        if (diagnostic !== undefined) {
+            throw new UnsupportedProjectOperationError(diagnostic);
+        }
+
+        return {runtimePath: project.rootPath, release: noRelease};
     };
 }

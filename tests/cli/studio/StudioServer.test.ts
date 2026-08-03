@@ -13,10 +13,15 @@ import {
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
+    PokieProject,
+    ProjectMaterializing,
+    ProjectResolving,
+    PROJECT_TYPE_CAPABILITIES,
     RoundArtifact,
     RoundArtifactProvenance,
     SimulationReport,
     SimulationReportBuilding,
+    STUDIO_OPERATION,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
 } from "pokie";
@@ -25,6 +30,7 @@ import fs from "fs";
 import http, {IncomingMessage} from "http";
 import os from "os";
 import path from "path";
+import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
@@ -66,6 +72,43 @@ function createStubCreator(result: ScaffoldResult): GamePackageCreating & {calls
         create(parentDir: string, name: string): ScaffoldResult {
             this.calls.push({parentDir, name});
             return result;
+        },
+    };
+}
+
+// Same fakes as materializeRuntimePackage.ts's own boundary tests (see
+// tests/cli/materialize/BlueprintProjectMaterializer.test.ts) — what's under test here is only whether
+// StudioServer's Home Open Project route actually reaches the materializing resolver it was configured
+// with, not BlueprintProjectMaterializer's own generate/install/verify lifecycle.
+function stubProjectResolver(result: PokieProject | undefined): ProjectResolving & {calls: string[]} {
+    const calls: string[] = [];
+    return {
+        calls,
+        resolve(targetPath: string) {
+            calls.push(targetPath);
+            return Promise.resolve(result);
+        },
+    };
+}
+
+function fakeMaterializer(runtimePath: string): ProjectMaterializing & {calls: PokieProject[]} {
+    const calls: PokieProject[] = [];
+    return {
+        calls,
+        materialize(project: PokieProject) {
+            calls.push(project);
+            return Promise.resolve({runtimePath, ownsRuntimePath: true, release: () => Promise.resolve()});
+        },
+    };
+}
+
+function rejectingMaterializer(message: string): ProjectMaterializing & {calls: PokieProject[]} {
+    const calls: PokieProject[] = [];
+    return {
+        calls,
+        materialize(project: PokieProject) {
+            calls.push(project);
+            return Promise.reject(new Error(message));
         },
     };
 }
@@ -427,6 +470,121 @@ describe("StudioServer", () => {
 
         const context = await get(`${baseUrl}/api/context`);
         expect(context.body).toEqual({mode: "home"});
+    });
+
+    // Proves POST /api/home/projects/open on this same StudioServer instance actually reaches a
+    // STUDIO_OPERATION materializing resolver through the injected homeService -- the same boundary a
+    // direct `pokie <path>`/`pokie studio <path>` launch crosses via StudioServer's own
+    // resolveRuntimePackageRoot field (see that field's own doc comment). Each test here builds its own
+    // homeService/server pair (rather than reusing the shared beforeEach one, whose homeService defaults
+    // to a no-op passthrough resolver) specifically so a materializing resolver is on the request path
+    // the HTTP route actually runs.
+    describe("Home Open Project runtime package materialization boundary", () => {
+        it("loads the dashboard from the materialized runtime path instead of the raw blueprint path Home was given", async () => {
+            const rawProjectRoot = "/blueprints/raw-game.json";
+            const materializedRuntimePath = "/materialized/raw-game";
+            const project = {type: "blueprint", rootPath: rawProjectRoot, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"} as PokieProject;
+            const resolveProject = stubProjectResolver(project);
+            const materializer = fakeMaterializer(materializedRuntimePath);
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, {resolveProject, materializer});
+
+            const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+            const materializingLoadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));
+            const materializingHomeService = new StudioHomeService(
+                "1.0.0",
+                undefined,
+                creator,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                materializingLoadGame,
+                undefined,
+                resolveRuntimePackageRoot,
+            );
+            const materializingServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService: materializingHomeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, materializingHomeService),
+                loadGame: materializingLoadGame,
+            });
+            const address = await materializingServer.start();
+            const materializingBaseUrl = `http://${address.host}:${address.port}`;
+
+            try {
+                const {status, body} = await post(`${materializingBaseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+
+                expect(status).toBe(200);
+                expect(resolveProject.calls).toEqual([rawProjectRoot]);
+                expect(materializer.calls).toEqual([project]);
+                expect(materializingLoadGame).toHaveBeenCalledWith(materializedRuntimePath);
+                expect(materializingLoadGame).not.toHaveBeenCalledWith(rawProjectRoot);
+                expect(body).toEqual({
+                    context: {mode: "project", projectRoot: path.resolve(rawProjectRoot)},
+                    manifest,
+                });
+            } finally {
+                await materializingServer.stop();
+            }
+        });
+
+        it("returns the structured capability diagnostic, not a raw loader error, for a resolved target the studio operation can't run", async () => {
+            const rawProjectRoot = "/some/outcome-library";
+            const project = {
+                type: "outcomeLibrary",
+                rootPath: rawProjectRoot,
+                capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+                provenance: "test fixture",
+            } as PokieProject;
+            const resolveProject = stubProjectResolver(project);
+            const materializer = rejectingMaterializer("must not be called for a project lacking runtime.execute");
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, {resolveProject, materializer});
+
+            const diagnosticLoadGame = jest.fn();
+            const diagnosticHomeService = new StudioHomeService(
+                "1.0.0",
+                undefined,
+                creator,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                diagnosticLoadGame,
+                undefined,
+                resolveRuntimePackageRoot,
+            );
+            const diagnosticServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService: diagnosticHomeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, diagnosticHomeService),
+                loadGame: diagnosticLoadGame,
+            });
+            const address = await diagnosticServer.start();
+            const diagnosticBaseUrl = `http://${address.host}:${address.port}`;
+
+            try {
+                const {status, body} = await post(`${diagnosticBaseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+
+                expect(status).toBe(400);
+                expect(materializer.calls).toEqual([]);
+                expect(diagnosticLoadGame).not.toHaveBeenCalled();
+                expect(body).toEqual({
+                    error:
+                        '"studio" is not supported for a "outcomeLibrary" project (missing the "runtime.execute" capability). Supported by: tsPackage.',
+                });
+
+                const context = await get(`${diagnosticBaseUrl}/api/context`);
+                expect(context.body).toEqual({mode: "home"});
+            } finally {
+                await diagnosticServer.stop();
+            }
+        });
     });
 
     describe("Home nav: GET /api/home/fs/browse", () => {

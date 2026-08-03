@@ -131,6 +131,40 @@ describe("ValidateCommand", () => {
     });
 });
 
+// Proves "pokie validate" crosses the shared runtime-package-materialization boundary (see
+// materializeRuntimePackage.ts) exactly once per invocation, and only ever validates against whatever
+// runtime path that boundary hands back -- never the caller's own raw packageRoot -- which is also what
+// lets a resolved Blueprint reach a real materialized runtime instead of a raw blueprint file.
+describe("ValidateCommand runtime package materialization boundary", () => {
+    it("resolves the raw packageRoot once and validates the resolved runtime path instead", async () => {
+        const rawPackageRoot = "/blueprints/raw-game.json";
+        const resolvedRuntimePath = "/materialized/raw-game";
+        const resolveCalls: string[] = [];
+        const resolveRuntimePackageRoot = (packageRoot: string) => {
+            resolveCalls.push(packageRoot);
+            return Promise.resolve({runtimePath: resolvedRuntimePath, release: () => Promise.resolve()});
+        };
+        const validator = createStubValidator(validReport);
+        const command = new ValidateCommand(validator, undefined, resolveRuntimePackageRoot);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([rawPackageRoot]);
+
+        (console.log as jest.Mock).mockRestore();
+        expect(resolveCalls).toEqual([rawPackageRoot]);
+        expect(validator.calledWith).toBe(resolvedRuntimePath);
+    });
+
+    it("propagates a materialization/capability failure without ever calling the validator", async () => {
+        const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
+        const validator = createStubValidator(validReport);
+        const command = new ValidateCommand(validator, undefined, resolveRuntimePackageRoot);
+
+        await expect(command.run(["/blueprints/raw-game.json"])).rejects.toThrow(/dependencies phase failed/);
+        expect(validator.calledWith).toBeUndefined();
+    });
+});
+
 describe("ValidateCommand (integration, real PokieGamePackageValidator + fixture packages)", () => {
     const gamepackageFixturesRoot = path.join(__dirname, "..", "..", "gamepackage", "fixtures");
     let outDir: string;

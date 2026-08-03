@@ -2,6 +2,8 @@ import {
     HtmlSimulationReportRenderer,
     isSimulationReportSet,
     MarkdownSimulationReportRenderer,
+    ProjectResolving,
+    ProjectTargetResolver,
     SimulationReport,
     SimulationReportRendering,
     SimulationReportSet,
@@ -18,6 +20,13 @@ export class ReportCommand implements CliCommandHandling {
     private readonly readFile: (file: string) => string;
     private readonly writeFile: (file: string, contents: string) => void;
     private readonly renderers: Record<ReportFormat, SimulationReportRendering>;
+    // Consulted only once reading/parsing/shape-checking `reportPath` as a plain JSON report has already
+    // failed -- see readReportJson's own comment on why a resolved PokieProject (someone pointed "pokie
+    // report" at a game package/blueprint/etc instead of a sim report) upgrades that failure into a
+    // message naming what POKIE actually detected and what to run instead, rather than a bare "not valid
+    // JSON"/shape mismatch. Best-effort: resolve() failing too (or resolving to nothing) simply falls
+    // back to the original, unresolved error, exactly as before this existed.
+    private readonly resolveProject: ProjectResolving;
 
     constructor(
         readFile: (file: string) => string = (file) => fs.readFileSync(file, "utf-8"),
@@ -26,10 +35,12 @@ export class ReportCommand implements CliCommandHandling {
             markdown: new MarkdownSimulationReportRenderer(),
             html: new HtmlSimulationReportRenderer(),
         },
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
     ) {
         this.readFile = readFile;
         this.writeFile = writeFile;
         this.renderers = renderers;
+        this.resolveProject = resolveProject;
     }
 
     public getName(): string {
@@ -40,23 +51,17 @@ export class ReportCommand implements CliCommandHandling {
         return "Render a pokie sim JSON report (see pokie sim --out) as a human-readable Markdown or HTML document.";
     }
 
-    public run(args: string[]): Promise<void> {
-        try {
-            const {reportPath, format, out} = this.parseArgs(args);
-            const parsed = this.readReportJson(reportPath);
-            const renderer = this.renderers[format];
+    public async run(args: string[]): Promise<void> {
+        const {reportPath, format, out} = this.parseArgs(args);
+        const parsed = await this.readReportJson(reportPath);
+        const renderer = this.renderers[format];
 
-            const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
-            console.log(rendered);
+        const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
+        console.log(rendered);
 
-            if (out) {
-                this.writeFile(out, rendered);
-                console.log(`Report written to "${out}".`);
-            }
-
-            return Promise.resolve();
-        } catch (error) {
-            return Promise.reject(error);
+        if (out) {
+            this.writeFile(out, rendered);
+            console.log(`Report written to "${out}".`);
         }
     }
 
@@ -112,19 +117,25 @@ export class ReportCommand implements CliCommandHandling {
         return {reportPath, format, out};
     }
 
-    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {
+    private async readReportJson(reportPath: string): Promise<SimulationReport | SimulationReportSet> {
         let contents: string;
         try {
             contents = this.readFile(reportPath);
         } catch (error) {
-            throw new Error(`Could not read simulation report at "${reportPath}": ${error instanceof Error ? error.message : String(error)}`);
+            throw await this.describeReportPathFailure(
+                reportPath,
+                `Could not read simulation report at "${reportPath}": ${error instanceof Error ? error.message : String(error)}`,
+            );
         }
 
         let parsed: unknown;
         try {
             parsed = JSON.parse(contents);
         } catch (error) {
-            throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+            throw await this.describeReportPathFailure(
+                reportPath,
+                `"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+            );
         }
 
         if (isSimulationReportSet(parsed)) {
@@ -132,13 +143,36 @@ export class ReportCommand implements CliCommandHandling {
         }
 
         if (!this.isSimulationReport(parsed)) {
-            throw new Error(
+            throw await this.describeReportPathFailure(
+                reportPath,
                 `"${reportPath}" does not look like a pokie sim report (expected fields like "game", "rtp", "rounds"). ` +
                     `Generate one with "pokie sim <packageRoot> --out ${reportPath}".`,
             );
         }
 
         return parsed;
+    }
+
+    // Upgrades a raw report-parsing failure into a project-aware one when `reportPath` turns out to
+    // actually resolve to a recognized PokieProject (a game package, blueprint, outcome library, ...) --
+    // see this.resolveProject's own field comment. Best-effort: any resolver error, or no resolved
+    // project at all, falls back to `fallbackMessage` untouched, so an ordinary unrelated/malformed path
+    // still reports exactly the error it always has.
+    private async describeReportPathFailure(reportPath: string, fallbackMessage: string): Promise<Error> {
+        let project;
+        try {
+            project = await this.resolveProject.resolve(reportPath);
+        } catch {
+            return new Error(fallbackMessage);
+        }
+        if (project === undefined) {
+            return new Error(fallbackMessage);
+        }
+        return new Error(
+            `"${reportPath}" is a "${project.type}" project, not a pokie sim report. ` +
+                `"pokie report" only reads a JSON report produced by "pokie sim <packageRoot> --out <file>" -- ` +
+                `run that against this project first, then point "pokie report" at its output.`,
+        );
     }
 
     private isSimulationReport(value: unknown): value is SimulationReport {
