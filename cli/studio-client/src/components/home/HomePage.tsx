@@ -1,4 +1,4 @@
-import {Stack, Text, Title} from "@mantine/core";
+import {Code, Stack, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
@@ -100,6 +100,10 @@ export function HomePage() {
                             <Text c="dimmed" size="sm">
                                 Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn&apos;t
                                 know about yet.
+                            </Text>
+                            <Text c="dimmed" size="sm">
+                                Need a new project from your terminal? Run <Code>pokie init</Code> for a ready-to-build package, or{" "}
+                                <Code>pokie create</Code> for an editable Blueprint Project -- then import it above.
                             </Text>
                             <ProjectsPanel />
                         </Stack>

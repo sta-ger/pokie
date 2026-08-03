@@ -79,6 +79,16 @@ describe("HomePage", () => {
         expect(screen.getByLabelText("Location", {exact: false})).toBeInTheDocument();
         expect(sectionsNav().getByRole("button", {name: "Design Game"})).not.toHaveAttribute("aria-current");
 
+        // The removed "Advanced Tools" scaffold/init-in-place flows have no replacement inside Studio --
+        // this is the visible pointer to the CLI commands that replace them (see HomePage.tsx's own doc
+        // comment), so it has to survive as user-facing copy, not just a source comment.
+        expect(
+            screen.getByText((_, element) => element?.tagName.toLowerCase() === "p" && (element.textContent ?? "").includes("pokie init")),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText((_, element) => element?.tagName.toLowerCase() === "p" && (element.textContent ?? "").includes("pokie create")),
+        ).toBeInTheDocument();
+
         await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
         await expectActiveSection("Design Game");
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
