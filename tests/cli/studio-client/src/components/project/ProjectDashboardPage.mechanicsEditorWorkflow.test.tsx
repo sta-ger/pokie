@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {act, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {GamePackageInspectionReport, StudioBlueprintValidationView} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
@@ -243,6 +243,58 @@ describe("ProjectDashboardPage - Game Model workflow (Blueprint projects, editab
 
         expect(await screen.findByRole("button", {name: "Edit"})).toBeInTheDocument();
         expect(screen.queryByLabelText("Reels")).not.toBeInTheDocument();
+    });
+
+    // P3-POLISH-17 (review fix): leaving Edit mode -- Cancel here, but the same fix covers Save's own
+    // return to "view" -- must cancel the pending debounced auto-validate, not just stop rendering it.
+    // Before this fix, MechanicsEditorTab's own auto-validate effect returned early on `mode !== "edit"`
+    // without clearing autoValidateTimerRef, so a still-pending debounce (scheduled by an edit made
+    // shortly before Cancel) kept its setTimeout alive and fired handleValidate() afterwards, against
+    // the (unchanged, since Cancel never reverts it) discarded draft -- sending a real validate request
+    // for it well after the read-only view had already been restored.
+    //
+    // Fake timers, scoped to this one test (not setupUser's own real-timer default the rest of this
+    // suite relies on -- see its doc comment): racing the real 600ms debounce against this suite's own
+    // multi-step confirm-dialog interaction (findByRole polling + Mantine's Modal mount) is unreliable
+    // under load, since that round trip alone routinely takes longer than 600ms -- a real-timer wait
+    // can't reliably tell a fixed debounce (canceled before it fires) apart from an unfixed one (fired
+    // and just happened to win the race). `advanceTimers: jest.advanceTimersByTime` keeps user-event's
+    // own internal waits working against the same fake clock, so time only ever moves when this test
+    // explicitly advances it -- the debounce genuinely cannot fire on its own, fixed or not, making the
+    // final explicit advance the only thing that could possibly trigger it.
+    it("Cancel of a dirty draft, made before the debounce fires, never lets it fire afterwards", async () => {
+        jest.useFakeTimers({doNotFake: ["queueMicrotask"]});
+        try {
+            const user = userEvent.setup({delay: null, advanceTimers: jest.advanceTimersByTime});
+            const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
+            const {fetchImpl, calls} = createRoutedFakeFetch({...BASE_ROUTES, "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation})});
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await enterEditMode(user);
+
+            await user.click(screen.getByRole("tab", {name: /Symbols/}));
+            const symbolInput = screen.getByLabelText("Symbol 1 id");
+            await user.clear(symbolInput);
+            await user.type(symbolInput, "ZZ");
+            await user.tab();
+
+            // Cancel before the fake clock has advanced anywhere near AUTO_VALIDATE_DEBOUNCE_MS (600ms)
+            // -- this "ZZ" edit's own pending debounce has not fired yet.
+            await user.click(screen.getByRole("button", {name: "Cancel"}));
+            await user.click(await screen.findByRole("button", {name: "Confirm"}));
+            expect(await screen.findByRole("button", {name: "Edit"})).toBeInTheDocument();
+            expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(0);
+
+            // Now advance well past the debounce window -- if leaving Edit mode had not canceled it,
+            // this is what would let it (incorrectly) fire.
+            act(() => {
+                jest.advanceTimersByTime(700);
+            });
+
+            expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(0);
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it("guards navigating away from an unsaved edit, the same way the rest of Project Dashboard's dirty-navigation guards work", async () => {

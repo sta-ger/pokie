@@ -260,6 +260,18 @@ export function MechanicsEditorTab({canEdit, onDirtyChange}: {canEdit: boolean; 
     };
     useEffect(() => {
         if (mode !== "edit") {
+            // Leaving Edit mode (Cancel, a successful Save, or an unsupported/error edit-load's own
+            // Cancel) must cancel any pending debounced auto-validate and invalidate any validate
+            // request still in flight -- otherwise a Cancel made just before the debounce fires would
+            // still send a validate for the just-discarded draft, and a response that settles after
+            // leaving Edit could still land (via isStale()'s requestId check in handleValidate) against
+            // the restored View or a brand-new Edit session's own state.
+            if (autoValidateTimerRef.current !== undefined) {
+                clearTimeout(autoValidateTimerRef.current);
+                autoValidateTimerRef.current = undefined;
+            }
+            validateRequestIdRef.current++;
+            validateGuard.end();
             return undefined;
         }
         validateRequestIdRef.current++;
