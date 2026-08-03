@@ -79,7 +79,7 @@ function jobFor(id: string, overrides: Partial<StudioSimulationJobView> = {}): S
 
 async function goToSimulationTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+    await user.click(screen.getByRole("button", {name: "Simulation"}));
     await screen.findByRole("button", {name: "Run Simulation"});
 }
 
@@ -706,7 +706,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
         await screen.findByRole("button", {name: "Run Simulation"});
 
         // Project A's report request finally resolves -- must never reach project B's now-mounted UI.

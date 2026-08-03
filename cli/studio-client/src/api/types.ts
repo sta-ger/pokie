@@ -20,11 +20,20 @@ export type PokieGameManifest = {
 
 // The Project Dashboard's own read model — see cli/studio/ProjectDashboardContext.ts (the server's
 // copy of this same type; kept as a separate client-side copy, same convention as every other type
-// in this file, since the studio-client TS project compiles independently from cli/studio).
+// in this file, since the studio-client TS project compiles independently from cli/studio). `type`/
+// `capabilities`/`origin` describe the *original* project `projectRoot` resolved from, best-effort --
+// see the server type's own doc comment for why they're independently optional from `game`.
 export type ProjectDashboardContext =
     | {status: "empty"}
     | {status: "loading"; projectRoot: string}
-    | {status: "loaded"; projectRoot: string; game: PokieGameManifest}
+    | {
+          status: "loaded";
+          projectRoot: string;
+          game: PokieGameManifest;
+          type?: StudioProjectType;
+          capabilities?: StudioProjectCapability[];
+          origin?: StudioProjectOrigin;
+      }
     | {status: "error"; projectRoot: string; error: string};
 
 export type GameBuildInfo = {

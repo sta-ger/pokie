@@ -62,9 +62,8 @@ function okExportView(overrides: Partial<StudioStakeEngineExportView & {status: 
     };
 }
 
-async function goToStakeEngineExportTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+async function goToStakeEngineExportTab(): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Stake Engine Export"}));
     await screen.findByLabelText("Output directory");
 }
 
@@ -83,8 +82,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             "/api/project/stakeengine/export": () => ({ok: true, status: 201, body: okExportView()}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
 
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
@@ -110,8 +109,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             "/api/project/stakeengine/export": () => ({ok: true, status: 201, body: okExportView()}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
         await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
@@ -172,8 +171,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
 
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
@@ -195,8 +194,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
 
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
@@ -238,8 +237,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             },
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
         await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
@@ -272,8 +271,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
         await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
@@ -312,8 +311,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
         await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
@@ -371,8 +370,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             return {fetchImpl: impl, calls: callList};
         })();
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
 
@@ -393,8 +392,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             "/api/project/stakeengine/validate": () => ({ok: true, status: 200, body: okValidateView()}),
         });
 
-        const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/overview"]});
-        await goToStakeEngineExportTab(user);
+        const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
         await fillConfigureStep(user, "./outcomes/base.json");
         await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
         await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
@@ -410,9 +409,8 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
             "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
         });
-        renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/stakeEngineExport"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Stake Engine Export"}));
 
         expect(await screen.findByLabelText("Mode name")).toHaveValue("");
         expect(screen.queryByText("Clean")).not.toBeInTheDocument();

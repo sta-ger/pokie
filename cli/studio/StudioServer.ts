@@ -53,7 +53,7 @@ import {
 import {validateOutcomeLibraryGenerateRequest, OutcomeLibraryGenerateRequestInput} from "./outcomeLibrary/validateOutcomeLibraryGenerateRequest.js";
 import type {StudioDiagnosticsView} from "./StudioDiagnosticsView.js";
 import {validateOpenProjectRequest, OpenProjectRequestInput} from "./home/validateOpenProjectRequest.js";
-import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
+import {loadProjectDashboardContext, type ProjectLocationDescribing} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import {isLoopbackRequest} from "./isLoopbackRequest.js";
 import {isPathWithin} from "./isPathWithin.js";
@@ -151,6 +151,12 @@ export class StudioServer implements StudioServerHandling {
     // "runtime.execute" capability Play does. StudioHomeService carries its own, separate copy of this
     // same kind of resolver for the /api/home/projects/open path -- see its own constructor.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
+    // Answers "what is this project itself" (type/capabilities/origin) for startProjectDashboardLoad()'s
+    // own loadProjectDashboardContext call -- bound to projectRegistrationService below (set after it,
+    // in the constructor body) rather than constructed independently, so the Dashboard's own project
+    // identity is always resolved through the same registry/resolver every other Studio Projects flow
+    // already uses.
+    private readonly describeProjectLocation: ProjectLocationDescribing;
     private readonly gamePackageInspector: GamePackageInspecting;
     private readonly gamePackageValidator: PokieGamePackageValidating;
     private readonly simulationService: StudioSimulationService;
@@ -200,6 +206,7 @@ export class StudioServer implements StudioServerHandling {
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
         this.stakeEngineExportService = options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion);
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
+        this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};
     }
@@ -298,7 +305,7 @@ export class StudioServer implements StudioServerHandling {
 
     private startProjectDashboardLoad(projectRoot: string): void {
         this.projectDashboard = {status: "loading", projectRoot};
-        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot)
+        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation)
             .then((dashboard) => {
                 this.projectDashboard = dashboard;
             })

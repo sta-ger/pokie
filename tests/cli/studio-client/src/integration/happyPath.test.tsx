@@ -253,15 +253,10 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         await user.click(screen.getByRole("button", {name: "Leave"}));
         expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
 
-        // 6. Overview recommends running a simulation once the project is known-valid... but validation
-        // hasn't run at the *package* level yet, so the recommended action is to validate first --
-        // exactly the sequencing describeNextAction is meant to enforce.
-        await waitFor(() => expect(screen.getByRole("button", {name: "Validate project"})).toBeInTheDocument());
-        await user.click(screen.getByRole("button", {name: "Validate project"}));
+        // 6. Overview validates automatically as soon as the project loads (no separate "Validate"
+        // section/click any more -- see OverviewTab's own automatic diagnostics), then recommends
+        // running a simulation once it's known-valid.
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
-
-        // 7. Back on Overview, the recommendation is now to simulate.
-        await user.click(screen.getByRole("button", {name: "Overview"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Run a simulation"})).toBeInTheDocument());
         await user.click(screen.getByRole("button", {name: "Run a simulation"}));
 

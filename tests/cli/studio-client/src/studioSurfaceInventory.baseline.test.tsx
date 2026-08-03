@@ -17,7 +17,14 @@ const PROJECT_ROUTES = {
     "/api/project/context": () => ({
         ok: true,
         status: 200,
-        body: {status: "loaded", projectRoot: "/games/my-slot", game: {id: "my-slot", name: "My Slot", version: "1.0.0"}},
+        body: {
+            status: "loaded",
+            projectRoot: "/games/my-slot",
+            game: {id: "my-slot", name: "My Slot", version: "1.0.0"},
+            type: "blueprint",
+            capabilities: ["blueprint.build"],
+            origin: "managed",
+        },
     }),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/my-slot", valid: true}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
@@ -97,7 +104,7 @@ describe("Home (/home/:tab) tab inventory baseline", () => {
 });
 
 describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
-    it("lists exactly the 12 named tabs, in order, with a single 'Advanced' grouping starting at Replay", async () => {
+    it("lists exactly the 9 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, or Stake Engine Export entries", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -107,22 +114,47 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         const tabButtons = within(nav).getAllByRole("button");
         expect(tabButtons.map((button) => button.textContent)).toEqual([
             "Overview",
-            "Validate",
-            "Simulation & Reports",
+            "Game Model",
+            "Simulation",
+            "Analysis",
             "Replay",
             "Runtime",
-            "Export & Deploy",
-            "Deployment",
-            "Outcome Libraries",
-            "Mechanics Editor",
+            "Build/Export",
             "Certification",
-            "Provably Fair",
-            "Stake Engine Export",
+            "Fairness",
         ]);
         // Exactly one "Advanced" section header for the whole nav (NavTabs only prints one when the
-        // section actually changes from the previous item's) -- Overview/Validate/Simulation & Reports
-        // stay ungrouped as the primary happy path; everything from Replay onward shares it.
+        // section actually changes from the previous item's) -- Overview/Game Model/Simulation/Analysis
+        // stay ungrouped as the primary happy path; everything from Replay onward shares it. There's no
+        // "Validate" section any more (validation is now automatic diagnostics inside Overview -- see
+        // OverviewTab), and Deployment/Stake Engine Export are reachable only through Build/Export, not
+        // as their own top-level entries (their routes still work -- see the deep-link test below).
         expect(within(nav).getAllByText("Advanced")).toHaveLength(1);
+    });
+
+    it("still deep-links to Deployment and Stake Engine Export even though neither has its own nav entry", async () => {
+        const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+        expect(screen.getByRole("button", {name: stepperStep("Select target", "Where to publish")})).toBeInTheDocument();
+    });
+
+    it("hides Game Model from the nav for a project this Studio can't edit as a Blueprint", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "loaded", projectRoot: "/games/my-slot", game: {id: "my-slot", name: "My Slot", version: "1.0.0"}, type: "tsPackage", capabilities: ["runtime.execute"]},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        const nav = screen.getByRole("navigation", {name: "Sections"});
+        expect(within(nav).queryByRole("button", {name: "Game Model"})).not.toBeInTheDocument();
     });
 });
 

@@ -1,4 +1,12 @@
-import type {GamePackageInspectionReport, PokieGamePackageValidationReport, ProjectDashboardContext, StudioSimulationJobView} from "../../api/types";
+import type {
+    GamePackageInspectionReport,
+    PokieGamePackageValidationReport,
+    ProjectDashboardContext,
+    StudioProjectCapability,
+    StudioProjectOrigin,
+    StudioProjectType,
+    StudioSimulationJobView,
+} from "../../api/types";
 import {isSimulationActive} from "./Simulation";
 
 // Pure view-model transforms for the Project Dashboard — mirrors cli/client/interpretResponse.ts's
@@ -10,7 +18,20 @@ export type ProjectHeaderView =
     | {status: "empty"}
     | {status: "loading"; projectRoot: string}
     | {status: "error"; projectRoot: string; message: string}
-    | {status: "loaded"; projectRoot: string; id: string; name: string; version: string; description?: string};
+    | {
+          status: "loaded";
+          projectRoot: string;
+          id: string;
+          name: string;
+          version: string;
+          description?: string;
+          // Best-effort identity of the *original* project `projectRoot` resolved from -- undefined
+          // when Studio couldn't independently identify it (see ProjectDashboardContext's own doc
+          // comment), never an error on its own.
+          type?: StudioProjectType;
+          capabilities: StudioProjectCapability[];
+          origin?: StudioProjectOrigin;
+      };
 
 export function describeProjectHeader(context: ProjectDashboardContext): ProjectHeaderView {
     if (context.status === "empty") {
@@ -29,7 +50,42 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
         name: context.game.name,
         version: context.game.version,
         description: context.game.description,
+        type: context.type,
+        capabilities: context.capabilities ?? [],
+        origin: context.origin,
     };
+}
+
+// The capability id "Game Model" (Studio's editor for a project's own Blueprint source) requires --
+// only a project resolved as "blueprint" grants it (see src/project/ProjectCapabilities.ts's own
+// PROJECT_TYPE_CAPABILITIES). Duplicated here as a literal (rather than imported from the "pokie"
+// package) since studio-client is a standalone TS project with no dependency on it -- same convention
+// as StudioProjectCapability's own doc comment in api/types.ts.
+export const BLUEPRINT_BUILD_CAPABILITY: StudioProjectCapability = "blueprint.build";
+
+export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
+    blueprint: "Blueprint",
+    tsPackage: "Package",
+    outcomeLibrary: "Outcome library",
+    stakeAdapter: "Stake Engine export",
+    wasm: "WASM",
+    parWorkbook: "PAR sheet",
+};
+
+const CAPABILITY_LABEL: Record<string, string> = {
+    "blueprint.build": "Build from Blueprint source",
+    "runtime.execute": "Run in-process (simulate, replay, play)",
+    "outcomeLibrary.read": "Read pre-generated outcomes",
+    "stakeAdapter.exchange": "Exchange with Stake Engine",
+    "parWorkbook.exchange": "Exchange as a PAR sheet",
+    "wasm.export": "Export to WASM",
+};
+
+// Capability ids are an open, plain-string vocabulary (see StudioProjectCapability's own doc comment)
+// -- an id this dictionary doesn't recognize yet is shown as-is rather than hidden, so Overview never
+// silently under-reports what a project can do just because a label hasn't been added here.
+export function describeCapability(capability: StudioProjectCapability): string {
+    return CAPABILITY_LABEL[capability] ?? capability;
 }
 
 export type ProvenanceView =
@@ -90,8 +146,8 @@ export type ValidationSummaryView = {
     errors: ValidationIssueView[];
     warnings: ValidationIssueView[];
     suggestions: string[];
-    // "Are there any issues to *show*" -- warnings still render in ValidationTab even though they don't
-    // block anything (see `blocking` below).
+    // "Are there any issues to *show*" -- warnings still render in Overview's own validation
+    // diagnostics even though they don't block anything (see `blocking` below).
     hasIssues: boolean;
     // True only when there are errors or the report itself reports invalid -- warnings alone must never
     // block the happy path (Simulate/Build stay reachable with warnings-only). Kept distinct from

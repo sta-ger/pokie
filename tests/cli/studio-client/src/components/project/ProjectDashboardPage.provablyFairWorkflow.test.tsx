@@ -54,7 +54,7 @@ const PROOF: FairnessRoundProof = {
 
 async function goToProvablyFairTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Provably Fair"}));
+    await user.click(screen.getByRole("button", {name: "Fairness"}));
     await screen.findByLabelText("Source outcome-library bundle directory");
 }
 
@@ -338,7 +338,7 @@ describe("ProjectDashboardPage - Provably Fair workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Provably Fair"}));
+        await user.click(screen.getByRole("button", {name: "Fairness"}));
 
         expect(await screen.findByLabelText("Source outcome-library bundle directory")).toHaveValue("");
         expect(screen.queryByText("sha256:server-seed-hash")).not.toBeInTheDocument();

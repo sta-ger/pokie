@@ -18,10 +18,12 @@ import type {RoundArtifactJson, StudioSimulationReportListEntry} from "../../api
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
+    BLUEPRINT_BUILD_CAPABILITY,
     describeInspection,
     describeNextAction,
     describeValidationSummary,
     type InspectionResultView,
+    type ProjectHeaderView,
     type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
 import {describeReplayComparison, describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
@@ -52,11 +54,9 @@ import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
 import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 import {StakeEngineExportTab} from "./StakeEngineExportTab";
-import {ValidationTab} from "./ValidationTab";
 
 export type ProjectTab =
     | "overview"
-    | "validation"
     | "simulation"
     | "replay"
     | "runtime"
@@ -68,34 +68,49 @@ export type ProjectTab =
     | "provablyFair"
     | "stakeEngineExport";
 
-// Primary happy-path tabs (Overview -> Validate -> Simulate, which now also owns Reports) come first,
-// unlabeled/implicit; Replay/Runtime/Export & Deploy/Deployment/Outcome Libraries/Mechanics Editor/
-// Certification/Provably Fair/Stake Engine Export are tagged `section: "Advanced"` so NavTabs visually
-// separates them -- everything's still one click away, just no longer presented as equal-weight to the
-// main flow.
+// The full vocabulary of Project Dashboard sections, in the order the capability-driven nav below
+// picks from -- there is no standalone "Validate" section any more: validation is now automatic
+// diagnostics folded into Overview itself (see OverviewTab), run on load and re-run on demand, not a
+// separate click-to-check tab. Game Model (mechanicsEditor) is the only entry here gated on a real
+// capability today (BLUEPRINT_BUILD_CAPABILITY -- see visibleProjectTabs below): every other tab is
+// reachable as soon as the dashboard itself has loaded, since loading it at all already proves the
+// underlying project can run in-process (see ProjectDashboardContext's own doc comment). Replay/
+// Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"` so NavTabs visually
+// separates them from the primary Overview -> Game Model -> Simulation -> Analysis flow -- everything's
+// still one click away, just not presented as equal-weight to it.
 //
-// "exportDeploy"/ExportDeployTab is a shared target-selection shell in front of "deployment"/
-// "stakeEngineExport" (see ExportDeployTargets.ts's own doc comment) -- it never replaces either tab, it
-// only helps a user pick between them and pre-selects a deployment target before handing off. Both of
-// those tabs (and their URLs) are deliberately kept in this list, unchanged, right after it: an existing
-// deep link to /project/deployment or /project/stakeEngineExport must keep working exactly as before.
-const PROJECT_TABS: NavTabItem<ProjectTab>[] = [
+// "exportDeploy"/ExportDeployTab (labeled "Build/Export") is a shared target-selection shell in front of
+// "deployment"/"stakeEngineExport" (see ExportDeployTargets.ts's own doc comment) -- it never replaces
+// either tab, it only helps a user pick between them and pre-selects a deployment target before handing
+// off. Both of those routes are deliberately kept in ALL_PROJECT_TABS, unchanged, so an existing deep
+// link to /project/deployment or /project/stakeEngineExport keeps working exactly as before -- they're
+// simply no longer their own top-level nav entries (see visibleProjectTabs), Build/Export is.
+const ALL_PROJECT_TABS: NavTabItem<ProjectTab>[] = [
     {value: "overview", label: "Overview"},
-    {value: "validation", label: "Validate"},
-    {value: "simulation", label: "Simulation & Reports"},
+    {value: "mechanicsEditor", label: "Game Model"},
+    {value: "simulation", label: "Simulation"},
+    {value: "outcomeLibraries", label: "Analysis"},
     {value: "replay", label: "Replay", section: "Advanced"},
     {value: "runtime", label: "Runtime", section: "Advanced"},
-    {value: "exportDeploy", label: "Export & Deploy", section: "Advanced"},
+    {value: "exportDeploy", label: "Build/Export", section: "Advanced"},
     {value: "deployment", label: "Deployment", section: "Advanced"},
-    {value: "outcomeLibraries", label: "Outcome Libraries", section: "Advanced"},
-    {value: "mechanicsEditor", label: "Mechanics Editor", section: "Advanced"},
     {value: "certification", label: "Certification", section: "Advanced"},
-    {value: "provablyFair", label: "Provably Fair", section: "Advanced"},
+    {value: "provablyFair", label: "Fairness", section: "Advanced"},
     {value: "stakeEngineExport", label: "Stake Engine Export", section: "Advanced"},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
-    return PROJECT_TABS.some((tab) => tab.value === value);
+    return ALL_PROJECT_TABS.some((tab) => tab.value === value);
+}
+
+// The nav items NavTabs actually renders -- Game Model only appears once the loaded project's own
+// capabilities say it's supported (a project this Studio can't edit as a Blueprint has nothing for
+// that section to show but an "unsupported" diagnostic, so it isn't offered as a destination at all).
+// "deployment"/"stakeEngineExport" are deliberately never in this list (see ALL_PROJECT_TABS' own doc
+// comment) -- both stay reachable through Build/Export, just not as their own calm-workspace entries.
+function visibleProjectTabs(header: ProjectHeaderView): NavTabItem<ProjectTab>[] {
+    const showGameModel = header.status === "loaded" && header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
+    return ALL_PROJECT_TABS.filter((tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && (tab.value !== "mechanicsEditor" || showGameModel));
 }
 
 // Mirrors the old app's own showProjectDashboard: every tab's data-loading hook lives here, at the page
@@ -632,6 +647,11 @@ export function ProjectDashboardPage() {
         simulation.resetForProjectSwitch();
         replay.resetForProjectSwitch();
         refreshInspect();
+        // Overview's own validation diagnostics run automatically as soon as a project is open --
+        // there's no more separate "Validate" section a user has to remember to click into (see
+        // OverviewTab's own ValidationDiagnostics). runValidate() itself sets `validation` to "loading"
+        // synchronously, so a genuine project switch never shows the *previous* project's stale result.
+        runValidate();
         refreshReports();
         refreshReplayList();
         refreshRecentSpins();
@@ -651,7 +671,7 @@ export function ProjectDashboardPage() {
         runtime.running ||
         deployment.runLoading;
 
-    const activeTabLabel = PROJECT_TABS.find((tab) => tab.value === activeTab)?.label ?? "Overview";
+    const activeTabLabel = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab)?.label ?? "Overview";
     const projectName = header.status === "loaded" ? header.name : "Project";
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
@@ -666,11 +686,15 @@ export function ProjectDashboardPage() {
 
     const nextAction = describeNextAction(validation, simulation.job);
     const onNextAction = (): void => {
+        // "validate"/"validation-failed"/"fix-validation" all resolve to Overview now -- there's no
+        // separate "Validate" section to navigate to any more, validation diagnostics live right there
+        // (see OverviewTab). A retry ("validate"/"validation-failed") re-runs it; "fix-validation" just
+        // scrolls the user back to the diagnostics already shown, nothing to re-run yet.
         if (nextAction.kind === "validate" || nextAction.kind === "validation-failed") {
-            setActiveTab("validation");
+            setActiveTab("overview");
             runValidate();
         } else if (nextAction.kind === "fix-validation") {
-            setActiveTab("validation");
+            setActiveTab("overview");
         } else if (nextAction.kind === "simulate") {
             setActiveTab("simulation");
         } else if (nextAction.kind === "simulation-running") {
@@ -745,7 +769,7 @@ export function ProjectDashboardPage() {
 
     if (header.status === "empty") {
         return (
-            <AppShellLayout navbar={<NavTabs items={PROJECT_TABS} active={activeTab} onSelect={setActiveTab} />}>
+            <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
                 <Text>
                     No active project. <Anchor href="#/home/design">Go to Home</Anchor>.
                 </Text>
@@ -755,7 +779,7 @@ export function ProjectDashboardPage() {
 
     return (
         <AppShellLayout
-            navbar={<NavTabs items={PROJECT_TABS} active={activeTab} onSelect={setActiveTab} />}
+            navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}
             breadcrumbs={[
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
@@ -796,13 +820,14 @@ export function ProjectDashboardPage() {
                         <OverviewTab
                             header={header}
                             inspection={inspection}
+                            validation={validation}
+                            onRevalidate={runValidate}
                             nextAction={nextAction}
                             onNextAction={onNextAction}
                             onConfigureGameModel={onConfigureGameModel}
                             onReinspect={refreshInspect}
                         />
                     )}
-                    {activeTab === "validation" && <ValidationTab view={validation} onValidate={runValidate} />}
                     {activeTab === "simulation" && (
                         <SimulationTab
                             progress={simulation.progress}

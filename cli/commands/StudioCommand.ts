@@ -4,6 +4,7 @@ import {createMaterializingRuntimePackageResolver} from "../materialize/material
 import {openBrowser} from "../openBrowser.js";
 import {StudioBlueprintService} from "../studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../studio/home/StudioHomeService.js";
+import {createDefaultStudioProjectRegistrationService} from "../studio/StudioProjectRegistrationService.js";
 import {StudioContextResolver} from "../studio/StudioContextResolver.js";
 import {StudioContextResolving} from "../studio/StudioContextResolving.js";
 import {StudioServer} from "../studio/StudioServer.js";
@@ -56,6 +57,7 @@ export class StudioCommand implements CliCommandHandling {
         this.createServer = dependencies.createServer ?? ((options) => new StudioServer(options));
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
+        const projectRegistrationService = createDefaultStudioProjectRegistrationService();
         this.homeService =
             dependencies.homeService ??
             new StudioHomeService(
@@ -64,6 +66,7 @@ export class StudioCommand implements CliCommandHandling {
                 undefined,
                 undefined,
                 createMaterializingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION),
+                (location) => projectRegistrationService.describeLocation(location),
             );
         this.studioRoot = dependencies.studioRoot ?? "";
         this.blueprintService =
