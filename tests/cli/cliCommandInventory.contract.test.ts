@@ -2,6 +2,7 @@ import {
     computeFairnessCommitment,
     computeFairnessServerSeedCommitment,
     FairnessRoundProof,
+    GameBlueprint,
     GamePackageGenerating,
     GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
@@ -14,6 +15,7 @@ import {
     RandomGameBlueprintGenerator,
     RandomGameBlueprintVariantStrategy,
     ReplayDescriptor,
+    resolveReelStripGeneration,
     SimulationReport,
     SlotGameNameGenerator,
     StakeEngineStandaloneAnalyzer,
@@ -30,6 +32,7 @@ import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {NameCommand} from "../../cli/commands/NameCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
+import {ReelCommand} from "../../cli/commands/ReelCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ServeCommand} from "../../cli/commands/ServeCommand.js";
@@ -72,6 +75,7 @@ function registerCommands(): CliCommandHandling[] {
         new NameCommand(),
         new OutcomeLibraryCommand(TEST_VERSION),
         new ParCommand(TEST_VERSION),
+        new ReelCommand(),
         new ReplayCommand(),
         new ReportCommand(),
         new ServeCommand(),
@@ -191,6 +195,7 @@ const STDOUT_FORMAT_FLAGS: Record<string, {flag: string; jsonValue: string; nonJ
     name: {flag: "--json", jsonValue: "true", nonJsonValue: "false"},
     outcomelibrary: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
     par: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
+    reel: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
     replay: {flag: "--format", jsonValue: "json", nonJsonValue: "json"},
     sim: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
     stakeengine: {flag: "--format", jsonValue: "json", nonJsonValue: "summary"},
@@ -222,6 +227,41 @@ const STDOUT_BOOLEAN_MARKER_FLAGS: Record<string, {flag: string; trueMarker: str
 
 function deriveObservedBoolean(capturedStdout: string, trueMarker: string): string {
     return capturedStdout.includes(trueMarker) ? "true" : "false";
+}
+
+// Shared by every "reel generate" valid case below: reel 0 is a literal strip (never targeted), reel 1
+// and reel 2 are both "generated" -- deliberately different `length` (4 vs 6) so
+// reelGenerationObserver() can tell them apart from the isolated single-entry reelStripGeneration array
+// resolveReelStripGeneration actually receives (ReelCommand's own generateReel() always calls it with
+// `[effectiveSpec]`, indexed 0 -- the original reelIndex never rides along), even once --seed has
+// overridden the one field ("seed") that would otherwise have identified it.
+const REEL_FIXTURE_BLUEPRINT: GameBlueprint = {
+    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+    reels: 3,
+    rows: 3,
+    symbols: ["A", "B"],
+    paytable: {A: {"3": 5}},
+    reelStripGeneration: [
+        {type: "literal", strip: ["A", "B", "A"]},
+        {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 42},
+        {type: "generated", length: 6, symbolCounts: {A: 3, B: 3}, seed: 43},
+    ],
+};
+
+// Wraps the REAL resolveReelStripGeneration (never reimplemented) so --reel/--seed's actual parsed
+// values are observed at the one real seam available: the isolated single-entry reelStripGeneration
+// array ReelCommand.generateReel() calls it with. `length` (4 vs 6) is what identifies which of the
+// fixture's own two "generated" reels this call is for, since the isolated array itself never carries
+// the original reelIndex.
+function reelGenerationObserver(key: string): typeof resolveReelStripGeneration {
+    return (blueprint, generator) => {
+        const spec = blueprint.reelStripGeneration?.[0];
+        if (spec?.type === "generated") {
+            observe(key, "--reel", spec.length === 4 ? 1 : 2);
+            observe(key, "--seed", spec.seed);
+        }
+        return resolveReelStripGeneration(blueprint, generator);
+    };
 }
 
 // Builds the one stubbed CliCommandHandling instance a given "valid" CLI_CONTRACT_CASES entry
@@ -1320,6 +1360,43 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 },
                 () => createStarterGameBlueprint(),
+            ),
+
+        // Every "reel generate" case shares REEL_FIXTURE_BLUEPRINT/reelGenerationObserver (defined just above
+        // registerCommandsForValidCases()): reel 0 is a literal strip (never targeted), reel 1 and reel 2 are
+        // both "generated" -- deliberately different `length` (4 vs 6) so reelGenerationObserver can tell them
+        // apart from the isolated single-entry reelStripGeneration array resolveReelStripGeneration actually
+        // receives (see ReelCommand's own generateReel(), which always calls it with `[effectiveSpec]`, indexed
+        // 0 -- the original reelIndex never rides along), even once --seed has overridden the one field
+        // ("seed") that would otherwise have identified it.
+        'reel::generate <blueprint.json> (no flags at all -- default --reel/--seed/--apply/--out/--format, previews every "generated" reel, writes nothing)': (key) => {
+            let writeFileCalled = false;
+            deferValueUnlessCalled(key, "--apply", () => writeFileCalled, "false");
+            deferValueUnlessCalled(key, "--out", () => writeFileCalled, "undefined");
+            return new ReelCommand(
+                () => REEL_FIXTURE_BLUEPRINT,
+                () => {
+                    writeFileCalled = true;
+                },
+                reelGenerationObserver(key),
+            );
+        },
+        "reel::generate <blueprint.json> --reel <index> --seed <integer> --format json (accepted --reel/--seed/--format values, machine-readable shape)": (key) =>
+            new ReelCommand(
+                () => REEL_FIXTURE_BLUEPRINT,
+                () => {
+                    throw new Error("writeFile must not run without --apply.");
+                },
+                reelGenerationObserver(key),
+            ),
+        "reel::generate <blueprint.json> --apply --out <file> (accepted --apply/--out values)": (key) =>
+            new ReelCommand(
+                () => REEL_FIXTURE_BLUEPRINT,
+                (filePath) => {
+                    observe(key, "--apply", "true");
+                    observe(key, "--out", filePath);
+                },
+                reelGenerationObserver(key),
             ),
 
         // --round/--seed reach recorder.record({game, seed, round}); --out is observed at writeFile's path (called

@@ -447,6 +447,37 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         ],
     },
     {
+        name: "reel",
+        description:
+            'Generate one or every "generated" reel a Blueprint Project\'s reelStripGeneration declares, via the ' +
+            "same ReelStripGenerator/constraints/presets \"pokie build\" already runs -- a deterministic preview/diff " +
+            'by default, only pinning the result back in as a literal strip with --apply ("pokie reel generate ' +
+            '<blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]").',
+        verbs: [
+            {
+                verb: "generate",
+                usage: "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+                positionals: ["blueprint.json"],
+                options: [
+                    // defaultValue "2": with no --reel, every "generated" reel is targeted in ascending order (the
+                    // fixture blueprint's own reelStripGeneration has reel 1 then reel 2 generated) -- observed at
+                    // the injected resolveGeneration's own reelIndex argument, last-write-wins across both calls.
+                    {flag: "--reel", required: false, kind: "validated", defaultValue: "2", acceptedValue: "1"},
+                    // defaultValue "43": with no --seed, each targeted reel's own authored seed is used unchanged --
+                    // observed the same way as --reel (last-write-wins), so it's reel 2's own fixture seed (43).
+                    {flag: "--seed", required: false, kind: "validated", defaultValue: "43", acceptedValue: "999"},
+                    {flag: "--apply", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    // defaultValue "undefined": no --apply means writeFile is never called at all -- observed via
+                    // deferValueUnlessCalled, same convention as replay/report/par/fairness's own --out.
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "custom.json"},
+                    // --format has no dependency seam (json vs the human summary) -- observed via stdout shape, same
+                    // STDOUT_FORMAT_FLAGS convention diff/par/sim/stakeengine/validate already use.
+                    {flag: "--format", required: false, kind: "validated", defaultValue: "summary", acceptedValue: "json"},
+                ],
+            },
+        ],
+    },
+    {
         name: "replay",
         description: "Best-effort replay of a single round (by seed + round index) from a POKIE game package.",
         verbs: [
@@ -1797,6 +1828,81 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectStdout: "text",
     },
 
+    // --- reel ---
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "missing/unknown subcommand",
+        args: [],
+        expectedExitCode: 1,
+        expectedError: "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+    },
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "generate missing <blueprint.json>",
+        args: ["generate"],
+        expectedExitCode: 1,
+        expectedError: "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+    },
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "generate --reel must be a non-negative integer",
+        args: ["generate", "game.json", "--reel", "-1"],
+        expectedExitCode: 1,
+        expectedError:
+            "--reel must be a non-negative integer. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+    },
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "generate --seed must be an integer",
+        args: ["generate", "game.json", "--seed", "notanumber"],
+        expectedExitCode: 1,
+        expectedError:
+            "--seed requires an integer value. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+    },
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "generate --format only supports json",
+        args: ["generate", "game.json", "--format", "xml"],
+        expectedExitCode: 1,
+        expectedError:
+            '--format only supports "json". Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]',
+    },
+    {
+        // Placed before every other "reel generate" case so it wins the default (omitted) evidence for
+        // --reel/--seed/--apply/--format all at once: the fixture blueprint's reelStripGeneration has reel 1 and
+        // reel 2 "generated" (reel 0 is literal), so omitting --reel targets both, in ascending order -- the
+        // injected resolveGeneration observes --reel/--seed at each call, last-write-wins, landing on reel 2's own
+        // values. --apply's default "false" and --out's default "undefined" both come from writeFile never being
+        // called during this dry-run preview (see deferValueUnlessCalled).
+        command: "reel",
+        kind: "valid",
+        label: 'generate <blueprint.json> (no flags at all -- default --reel/--seed/--apply/--out/--format, previews every "generated" reel, writes nothing)',
+        args: ["generate", "game.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "reel",
+        kind: "valid",
+        label: "generate <blueprint.json> --reel <index> --seed <integer> --format json (accepted --reel/--seed/--format values, machine-readable shape)",
+        args: ["generate", "game.json", "--reel", "1", "--seed", "999", "--format", "json"],
+        expectedExitCode: 0,
+        expectStdout: "json",
+    },
+    {
+        command: "reel",
+        kind: "valid",
+        label: "generate <blueprint.json> --apply --out <file> (accepted --apply/--out values)",
+        args: ["generate", "game.json", "--apply", "--out", "custom.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+
     // --- replay ---
     {
         command: "replay",
@@ -2566,6 +2672,44 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["export", "config.json", "--out"],
         expectedExitCode: 1,
         expectedError: "--out requires a file path. Usage: pokie par export <config.json> [--out <output.xlsx>]",
+    },
+
+    // --- reel: missing-value cases ---
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "generate --reel given with no value",
+        args: ["generate", "game.json", "--reel"],
+        expectedExitCode: 1,
+        expectedError:
+            "--reel must be a non-negative integer. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+    },
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "generate --seed given with no value",
+        args: ["generate", "game.json", "--seed"],
+        expectedExitCode: 1,
+        expectedError:
+            "--seed requires an integer value. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+    },
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "generate --out given with no value",
+        args: ["generate", "game.json", "--apply", "--out"],
+        expectedExitCode: 1,
+        expectedError:
+            "--out requires a file path. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+    },
+    {
+        command: "reel",
+        kind: "invalid",
+        label: "generate --format given with no value",
+        args: ["generate", "game.json", "--format"],
+        expectedExitCode: 1,
+        expectedError:
+            "--format only supports \"json\". Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
     },
 
     // --- replay: missing-value cases ---
