@@ -46,9 +46,24 @@ export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning
             packageJson.dependencies = {...packageJson.dependencies, pokie: `file:${REPO_ROOT}`};
             packageJson.devDependencies = {...packageJson.devDependencies, typescript: localFileSpec("typescript")};
             const transitiveNames = collectTransitiveDependencyNames(Object.keys(repoPackageJson.dependencies ?? {}));
+            const overrideNames: string[] = [];
+            for (const name of transitiveNames) {
+                // npm rejects an `overrides` entry for a package that's also a *direct* dependency/devDependency
+                // unless the override matches that direct spec exactly (EOVERRIDE) -- e.g. the generated
+                // blueprint package.json (GamePackageGenerator) already declares its own "@types/node" devDependency,
+                // which collides with this closure's own entry for the same package. Rewriting the direct spec
+                // in place (same as "typescript" above) keeps both pinned to this checkout without that conflict.
+                if (packageJson.dependencies && name in packageJson.dependencies) {
+                    packageJson.dependencies[name] = localFileSpec(name);
+                } else if (packageJson.devDependencies && name in packageJson.devDependencies) {
+                    packageJson.devDependencies[name] = localFileSpec(name);
+                } else {
+                    overrideNames.push(name);
+                }
+            }
             packageJson.overrides = {
                 ...packageJson.overrides,
-                ...Object.fromEntries(transitiveNames.map((name) => [name, localFileSpec(name)])),
+                ...Object.fromEntries(overrideNames.map((name) => [name, localFileSpec(name)])),
             };
             fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4));
         }
